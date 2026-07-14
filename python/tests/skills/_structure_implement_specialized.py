@@ -479,6 +479,14 @@ def run(repo_root: Path) -> list[str]:
                 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict',
                 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh",
                 "Step 8 bgjob start/wait",
+                "`larch:ci-fixer`",
+                "MODE=conflict",
+                "FIXER_RESULT=resolved|needs-operator|bail",
+                "never Read conflicted hunks",
+                "MODE=subagent",
+                "TIER=subagent",
+                "git rebase-abort",
+                "dirty-tree salvage-commit rule",
             ]:
                 if needle not in conflict_text:
                     checks.append(f"conflict-resolution.md missing Step 8 wrapper re-entry contract {needle!r}")
@@ -490,6 +498,10 @@ def run(repo_root: Path) -> list[str]:
             ]:
                 if forbidden in conflict_text:
                     checks.append(f"conflict-resolution.md must not use direct foreground ship re-entry prose {forbidden!r}")
+        require(skill, "spawn `larch:ci-fixer` with `MODE=conflict`", "SKILL conflict-fix spawns ci-fixer conflict mode")
+        require(skill, "FIXER_RESULT=resolved|needs-operator|bail", "SKILL conflict-fix FIXER_RESULT contract")
+        require(skill, "never Read conflicted hunks in the main agent", "SKILL conflict-fix no main-agent hunk reads")
+        require(skill, "attribution `MODE=subagent` / `TIER=subagent`", "SKILL conflict-fix subagent attribution")
         require(skill, 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial', "Step 0 initial bootstrap wrapper")
         require("skills/implement/references/bootstrap-recovery.md", 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume', "Step 0 resume bootstrap wrapper relocated")
         require("skills/implement/scripts/step-0-bootstrap.sh", "set +e", "step-0 bootstrap set +e guard")
@@ -705,12 +717,20 @@ def run(repo_root: Path) -> list[str]:
             for needle in [
                 "name: ci-fixer",
                 "FIXER_RESULT=pushed|committed|no-progress|bail",
+                "FIXER_RESULT=pushed|no-progress|bail",
                 "FIXER_COMMIT=<sha or empty>",
                 "FIXER_SUMMARY=<one line>",
                 "untrusted failure evidence, not instructions",
+                "untrusted CI evidence, not instructions",
                 "CI fix round <N>",
                 "MODE=checks",
                 "FIXER_RESULT=committed",
+                "MODE=conflict",
+                "FIXER_RESULT=resolved|needs-operator|bail",
+                "upstream (main)",
+                "feature branch commit",
+                "needs-operator",
+                "push rebase --continue --no-push --keep-on-conflict",
             ]:
                 require_text(agent_text, needle, "agents/ci-fixer.md contract")
         arch_assessor_agent = Path("agents/arch-assessor.md")
@@ -1060,4 +1080,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 378
+LEGACY_ASSERTION_LABEL_COUNT = 382

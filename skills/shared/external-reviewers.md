@@ -40,7 +40,7 @@ Only the explicit Continue path may create `.degraded-tools-gate-prompted`. The 
 
 ## Runtime Waterfall Fallback
 
-Runtime zero-survivor collapse at the review stage falls back to Claude-subagent self-review for `/implement` Step 5 (`larch:claude-self-reviewer`) and main-agent self-review for `/design` and `/review` when the normalized reason is `no successful launched reviewer output`. Step 0 both-down remains a hard fail before any review-stage fallback can run. `/implement` conflict-resolution Phase 3 is an exception to this runtime reviewer waterfall: non-trivial `ship_pr_pre_push` resolutions use main-agent self-review only and do not launch external reviewers.
+Runtime zero-survivor collapse at the review stage falls back to Claude-subagent self-review for `/implement` Step 5 (`larch:claude-self-reviewer`) and main-agent self-review for `/design` and `/review` when the normalized reason is `no successful launched reviewer output`. Step 0 both-down remains a hard fail before any review-stage fallback can run. `/implement` conflict-resolution Phase 3 is an exception to this runtime reviewer waterfall: non-trivial `ship_pr_pre_push` resolutions use `larch:ci-fixer` (`MODE=conflict`) self-review only and do not launch external reviewers.
 
 When processing reviewer results, failed external slots should fall through the waterfall dispatcher rather than flipping session-wide availability:
 
