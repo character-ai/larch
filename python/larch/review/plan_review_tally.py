@@ -352,52 +352,69 @@ class _Tally:
             voter_severities=voter_severities,
         )
 
+    def _main_agent_vote_data(
+        self, *, item_id: str, alias_id: str
+    ) -> tuple[list[tally_engine.VoteCell], list[tuple[str, str]], list[str]]:
+        try:
+            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
+                voter_file=self.tally_voter_file, ballot_id=item_id, alias_id=alias_id
+            )
+        except (OSError, FileNotFoundError):
+            severity = ""
+        vote = voting.vote_for_id(
+            ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id
+        )
+        return [], [("MainAgent", vote)], [severity]
+
+    def _panel_vote_data(
+        self, *, item_id: str, alias_id: str
+    ) -> tuple[list[tally_engine.VoteCell], list[tuple[str, str]], list[str]]:
+        cells: list[tally_engine.VoteCell] = []
+        voter_votes: list[tuple[str, str]] = []
+        voter_severities: list[str] = []
+        for pos in (1, 2, 3):
+            voter_file = self.slot_file[pos]
+            tool = self.slot_tool[pos]
+            if not voter_file:
+                cells.append(("", "", "", "", "", tool))
+                continue
+            try:
+                _vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+                    voter_file=voter_file, ballot_id=item_id, alias_id=alias_id
+                )
+            except (OSError, FileNotFoundError):
+                correctness = severity = quality = uncertain = ""
+            vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
+            cells.append((vote, correctness, severity, quality, uncertain, tool))
+            voter_votes.append((tool, vote))
+            voter_severities.append(severity)
+        return cells, voter_votes, voter_severities
+
+    def _vote_data_for_item(
+        self, *, item_id: str, alias_id: str
+    ) -> tuple[list[tally_engine.VoteCell], list[tuple[str, str]], list[str]]:
+        if self.tally_voter_file:
+            return self._main_agent_vote_data(item_id=item_id, alias_id=alias_id)
+        if self.eligible > 0:
+            return self._panel_vote_data(item_id=item_id, alias_id=alias_id)
+        return [], [], []
+
+    @staticmethod
+    def _vote_counts(voter_votes: list[tuple[str, str]]) -> tuple[int, int, int]:
+        yes = sum(vote == "YES" for _label, vote in voter_votes)
+        no = sum(vote == "NO" for _label, vote in voter_votes)
+        return yes, no, len(voter_votes) - yes - no
+
     def _item_contexts(self, sorted_ids: list[str]) -> Iterable[tally_engine.ItemContext]:
         """Lazily prepare every plan-review-specific engine context once."""
         for item_id in sorted_ids:
             block = Path(self.block_dir) / f"{item_id}.md"
             block_text = block.read_text(encoding="utf-8")
             alias_id = self._alias_id(item_id)
-            cells: list[tally_engine.VoteCell] = []
-            voter_votes: list[tuple[str, str]] = []
-            voter_severities: list[str] = []
-            yes = no = judge_error = 0
-            if self.tally_voter_file:
-                try:
-                    _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
-                        voter_file=self.tally_voter_file, ballot_id=item_id, alias_id=alias_id
-                    )
-                except (OSError, FileNotFoundError):
-                    severity = ""
-                vote = voting.vote_for_id(
-                    ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id
-                )
-                voter_votes.append(("MainAgent", vote))
-                voter_severities.append(severity)
-            elif self.eligible > 0:
-                for pos in (1, 2, 3):
-                    voter_file = self.slot_file[pos]
-                    tool = self.slot_tool[pos]
-                    if not voter_file:
-                        cells.append(("", "", "", "", "", tool))
-                        continue
-                    try:
-                        _vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
-                            voter_file=voter_file, ballot_id=item_id, alias_id=alias_id
-                        )
-                    except (OSError, FileNotFoundError):
-                        correctness = severity = quality = uncertain = ""
-                    vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
-                    cells.append((vote, correctness, severity, quality, uncertain, tool))
-                    voter_votes.append((tool, vote))
-                    voter_severities.append(severity)
-            for _label, vote in voter_votes:
-                if vote == "YES":
-                    yes += 1
-                elif vote == "NO":
-                    no += 1
-                else:
-                    judge_error += 1
+            cells, voter_votes, voter_severities = self._vote_data_for_item(
+                item_id=item_id, alias_id=alias_id
+            )
+            yes, no, judge_error = self._vote_counts(voter_votes)
             while len(cells) < _FULL_PANEL:
                 cells.append(("", "", "", "", "", ""))
             yield tally_engine.ItemContext(
@@ -682,27 +699,8 @@ class _Tally:
         for artifact in (accepted_plan, rejected_plan, oos_file):
             _ = artifact.write_text("", encoding="utf-8")
 
-        active_bonus = voting.unique_finder_bonus_from_env()
         if self.eligible == 0:
-            _ = Path(self.tally_file).write_text(
-                "# Plan Review Voting Tally\n\n"
-                "**⚠ Degraded plan-review panel: 0 judges available. "
-                "Panel tier: main-agent-required.**\n\n"
-                + voting.render_voter_agreement_and_severity_scoreboards([]),
-                encoding="utf-8",
-            )
-            self.adjudications = []
-            _ = tally_engine.run_items(
-                self._item_contexts(sorted_ids),
-                serialize=lambda _result: None,
-                security_hook=lambda _context: False,
-                publish=self.adjudications.append,
-            )
-            self._write_findings_classification(self.adjudications)
-            self.status_emitted = True
-            logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="main-agent-vote-required")
-            logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
-            return 0
+            return self._run_zero_voter_tally(sorted_ids)
 
         self.adjudications = []
         _ = tally_engine.run_items(
@@ -711,6 +709,7 @@ class _Tally:
             security_hook=lambda context: voting.is_security_block_text(context.artifact_text),
             publish=self.adjudications.append,
         )
+        active_bonus = voting.unique_finder_bonus_from_env()
         self._render(
             adjudications=self.adjudications,
             accepted_plan=accepted_plan,
@@ -723,6 +722,27 @@ class _Tally:
         self._write_findings_outputs(self.adjudications)
         self.status_emitted = True
         logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="ok")
+        logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
+        return 0
+
+    def _run_zero_voter_tally(self, sorted_ids: list[str]) -> int:
+        _ = Path(self.tally_file).write_text(
+            "# Plan Review Voting Tally\n\n"
+            "**⚠ Degraded plan-review panel: 0 judges available. "
+            "Panel tier: main-agent-required.**\n\n"
+            + voting.render_voter_agreement_and_severity_scoreboards([]),
+            encoding="utf-8",
+        )
+        self.adjudications = []
+        _ = tally_engine.run_items(
+            self._item_contexts(sorted_ids),
+            serialize=lambda _result: None,
+            security_hook=lambda _context: False,
+            publish=self.adjudications.append,
+        )
+        self._write_findings_classification(self.adjudications)
+        self.status_emitted = True
+        logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="main-agent-vote-required")
         logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
         return 0
 
