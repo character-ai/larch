@@ -63,7 +63,8 @@ Vote tally: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_2: [OUT_OF_SCOPE] Sensitive follow-up
 - **Reviewer**: security-reviewer.txt
-- **Concern**: focus-area = security must stay local.
+- **Focus area**: security
+- **Concern**: must stay local.
 
 Vote tally: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
 """,

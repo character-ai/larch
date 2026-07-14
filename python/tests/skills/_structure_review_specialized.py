@@ -167,7 +167,7 @@ def run(repo_root: Path) -> list[str]:
     ): require(protocol, needle, label)
     if not voting.is_file(): failures.append("(20) python/larch/review/voting.py missing")
     if not types.is_file(): failures.append("(20) python/larch/review/review_types.py missing")
-    require(types, r"focus-area\s*=\s*security", "(20d) review_types.py must carry canonical focus-area\\s*=\\s*security token for is_security_block_text")
+    require(types, "_SECURITY_FIELD_RE", "(20d) review_types.py must carry _SECURITY_FIELD_RE for is_security_block_text")
     require(voting, "is_security_block_text", "(20e) voting.py::is_security_block must delegate to review_types.is_security_block_text")
 
     for check, label in (
