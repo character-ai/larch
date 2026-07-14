@@ -127,6 +127,14 @@ def test_dispatch_kv_get() -> None:
     assert rc == 0
 
 
+def test_dispatch_kv_codec_lint() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"larch.lint.lint_kv_codec": MagicMock(main=mock_main)}):
+        rc = cli.main(["lint", "kv-codec"])
+    mock_main.assert_called_once_with([])
+    assert rc == 0
+
+
 def test_kv_get_entrypoint_is_machine_stdout() -> None:
     assert cli._REGISTRY[("kv", "get")] == ("larch.core.kv_cli", "get_main")  # pyright: ignore[reportPrivateUsage]
     assert ("kv", "get") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]

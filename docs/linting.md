@@ -97,6 +97,15 @@ Scope is narrow by design:
 
 ### Python subprocess and environment ratchets
 
+`python3 python/cli.py lint kv-codec` rejects new production loops that split raw
+`KEY=value` rows and shell `awk -F=` / `cut -d=` readers. Use `larch.io` in
+Python or `python3 python/cli.py kv get` in Bash; option and tab parsing are
+outside this narrow rule. Existing intentional bootstrap and compatibility
+sites are listed in `python/kv-codec-baseline.json` with reasons. The baseline
+is strict: stale rows fail, inline suppressions are not accepted, and
+`make regen-kv-codec-baseline` is the guarded refresh target. The lint runs in
+`make py-lint-checks-fast` and the Python CI shard.
+
 `make py-lint-main` also runs custom AST ratchets over Python production modules. All skip symlinks, `test_*.py` at any depth, `conftest.py`, `test_support.py`, and `review_test_support.py`. The subprocess ratchet also skips the runner module at `python/larch/core/proc.py`. The environment ratchet skips the config module at `python/larch/core/config.py`. Those paths are single-sourced as `RUNNER_RELPATH` / `CONFIG_RELPATH` in their respective linters.
 
 `python/cli.py lint subprocess-via-runner` flags direct `subprocess.run`, `subprocess.Popen`, `subprocess.check_output`, and `subprocess.call` call sites. Its baseline identity is `(file, qualified_symbol, callee, occurrence)`. Exemption rows in `python/subprocess-via-runner-exemptions.json` have exactly `file` and `reason`; unknown keys fail the linter.

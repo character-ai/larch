@@ -35,13 +35,12 @@ def get_main(argv: list[str] | None = None) -> int:
     if args is None:
         return 2
 
-    first_match = args.match == "first"
     if args.file is None:
         value = kv_value(
             text=sys.stdin.read(),
             key=args.key,
             default=args.default,
-            first_match=first_match,
+            duplicate_policy=args.match,
             cr_strip=args.cr_strip,
         )
     else:
@@ -49,7 +48,7 @@ def get_main(argv: list[str] | None = None) -> int:
             path=args.file,
             key=args.key,
             default=args.default,
-            first_match=first_match,
+            duplicate_policy=args.match,
             cr_strip=args.cr_strip,
         )
     print(value)

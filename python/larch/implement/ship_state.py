@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core.run_context import RunContext
@@ -91,6 +92,19 @@ _ALLOWED_SHIP_STATE_KEYS = frozenset({
     "MAIN_HEALTH_REPAIR_HEAD",
     "MAIN_HEALTH_HEAD_SHA",
 })
+
+
+def _read_existing_ship_state(path: Path) -> dict[str, str]:
+    """Read the allowlisted last-value state map with the historic error contract."""
+    try:
+        return larch_io.read_kvs(
+            path,
+            duplicate_policy="last",
+            allowed_keys=_ALLOWED_SHIP_STATE_KEYS,
+            errors="strict",
+        )
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ShipError(f"cannot read existing ship state: {path}") from exc
 _TERMINAL_ONLY_STATE_KEYS = frozenset({
     "EXIT_CODE",
     "BAIL_REASON",
@@ -303,15 +317,7 @@ def _write_ship_state(
             _validate_conflict_csv(extra_fields["CONFLICT_FILES"])
     fields: dict[str, str] = {}
     if path.is_file():
-        try:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                if key in _ALLOWED_SHIP_STATE_KEYS and "\n" not in key and "\r" not in key:
-                    fields[key] = value
-        except (OSError, UnicodeDecodeError) as exc:
-            raise ShipError(f"cannot read existing ship state: {path}") from exc
+        fields = _read_existing_ship_state(path)
     if clear_handoff_keys:
         _ = fields.pop("CONFLICT_FILES", None)
     if terminal_outcome is None and phase != "done":
@@ -397,18 +403,9 @@ def _write_ship_state(
 
 
 def _read_patchable_ship_state(path: Path) -> dict[str, str]:
-    fields: dict[str, str] = {}
     if path.is_file():
-        try:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                if key in _ALLOWED_SHIP_STATE_KEYS and "\n" not in key and "\r" not in key:
-                    fields[key] = value
-        except (OSError, UnicodeDecodeError) as exc:
-            raise ShipError(f"cannot read existing ship state: {path}") from exc
-    return fields
+        return _read_existing_ship_state(path)
+    return {}
 
 
 def _write_patchable_ship_state(*, path: Path, tmp: Path, fields: Mapping[str, str]) -> None:

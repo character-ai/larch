@@ -27,4 +27,9 @@ ln -s /bin/bash "$TMP/no-jq/bin/bash"
 out=$(payload | PATH="$TMP/no-jq/bin" "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 
+mkdir -p "$TMP/no-python/bin"
+ln -s "$(command -v jq)" "$TMP/no-python/bin/jq"
+out=$(payload | PATH="$TMP/no-python/bin" "$(command -v bash)" "$HOOK")
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+
 echo 'PASS: hook-deny-run-in-background'

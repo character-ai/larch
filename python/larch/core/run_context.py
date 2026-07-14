@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
 
+from larch import io as larch_io
+
 
 def _env_bool(*, env: dict[str, str], key: str, default: bool = False) -> bool:
     raw = env.get(key)
@@ -27,16 +29,13 @@ def _env_int(*, env: dict[str, str], key: str) -> int | None:
 def _state_value(*, path: str | None, key: str) -> str:
     if not path:
         return ""
-    try:
-        text = Path(path).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
-    prefix = f"{key}="
-    value = ""
-    for line in text.splitlines():
-        if line.startswith(prefix):
-            value = line.removeprefix(prefix)
-    return value
+    return larch_io.read_kv(
+        path=Path(path),
+        key=key,
+        duplicate_policy="last",
+        errors="strict",
+        on_error_default=True,
+    )
 
 
 def _state_bool(*, path: str | None, key: str) -> bool:

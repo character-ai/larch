@@ -14,6 +14,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import cast
 
+from larch import io as larch_io
 from larch.git import gh
 from larch.core import proc
 from larch.core import redact
@@ -123,13 +124,14 @@ def _parse_pause_payload(body: str) -> dict[str, str] | None:
     if start < 0 or end < 0 or end < start:
         return {}
     payload = body[start + len(_PAUSE_START):end]
-    data: dict[str, str] = {}
-    for line in payload.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        data[key.strip()] = value.strip()
-    return data
+    return {
+        key.strip(): value.strip()
+        for key, value in larch_io.parse_kv(
+            payload,
+            duplicate_policy="last",
+            skip_empty_key=True,
+        ).items()
+    }
 
 
 def _emit(kv: list[tuple[str, str]]) -> None:

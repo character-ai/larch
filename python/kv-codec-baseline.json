@@ -1,0 +1,674 @@
+[
+  {
+    "line": 692,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_ci_launcher.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 694,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_ci_launcher.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 696,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_claude_runner.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 115,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_launch_failure.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 172,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_launch_failure.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 338,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_launch_failure.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 294,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_review_launcher.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 424,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_review_launcher.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 426,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_review_launcher.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1043,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_run_external.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 454,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/_vendor.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 110,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/agents/collect_results.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 185,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/bgjob/adapt.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 130,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/bgjob/daemon.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 49,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/core/external_defaults.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 833,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/clarify.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1257,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/clarify.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 322,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_log_publish_flow.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 383,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_oos.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 426,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_oos.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 429,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_oos.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 432,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_oos.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 644,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_oos.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 247,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_pause.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 238,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_postplan.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 819,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_publish.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 252,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_router.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 131,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step0.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 134,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step0.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 138,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step0.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 141,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step0.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 319,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step0_env.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 351,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step0_env.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 34,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step1.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 35,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step1.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 56,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step1.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 57,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step1.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 785,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step2b.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 500,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_step5c.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 320,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_summary.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 70,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_terminal.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 95,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_terminal.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 167,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_terminal.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 462,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_terminal.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1154,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/design_terminal.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 652,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_quality.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 956,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_quality.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1335,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_quality.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1494,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_quality.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 366,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_scout.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 367,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_scout.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 384,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/design/plan_scout.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 180,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/checks_lint_fix.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1086,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/checks_lint_fix.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 607,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/dispatch_commit_route.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 761,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/dispatch_commit_route.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 290,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/dispatch_manifest.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 875,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/dispatch_ship.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 355,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/implement/step_7a.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1170,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/rendering/rendering.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 433,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/report/final_report.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 841,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/report/run_log_commit.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 671,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/review/plan_review_loop.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 249,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/review/plan_review_normalize.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 316,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/review/plan_review_normalize.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 261,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/review/review_pipeline_shared.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1544,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/review/voting.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 304,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/_normalize.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 36,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/_state_mgmt.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 183,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/_tokens.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 119,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/_validate.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 93,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/admission.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 113,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/admission.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 209,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/admission.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1304,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/bootstrap.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1642,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/bootstrap.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1655,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/bootstrap.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1665,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/bootstrap.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 31,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/closeout.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1126,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/finalize.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1157,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/finalize.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1267,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/finalize.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 493,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/session_env.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 529,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/session_env.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 720,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/session_env.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 1391,
+    "message": "ad-hoc KEY=value split loop; use larch.io codec",
+    "path": "python/larch/state/session_env.py",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 169,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "scripts/sessionstart-health.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 170,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "scripts/sessionstart-health.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 171,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "scripts/sessionstart-health.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 300,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/design/scripts/design-step3-mav.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 90,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/implement/scripts/post-tracking-issue.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 125,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/implement/scripts/post-tracking-issue.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 39,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/implement/scripts/refresh-execution-issues.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 208,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/implement/scripts/step-0-bootstrap.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 209,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/implement/scripts/step-0-bootstrap.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  },
+  {
+    "line": 115,
+    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
+    "path": "skills/implement/scripts/step-18.sh",
+    "reason": "legacy or bootstrap reader pending migration to shared codec",
+    "rule_id": "kv-codec"
+  }
+]

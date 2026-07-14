@@ -255,10 +255,16 @@ def _plugin_root() -> Path:
     implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if implement_tmpdir:
         env_file = Path(implement_tmpdir) / "plugin-root.env"
-        if env_file.is_file():
-            for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.startswith("CLAUDE_PLUGIN_ROOT="):
-                    return Path(line.split("=", 1)[1])
+        root = larch_io.read_kv(
+            path=env_file,
+            key="CLAUDE_PLUGIN_ROOT",
+            duplicate_policy="first",
+            reject_symlink=True,
+            on_error_default=True,
+            errors="replace",
+        )
+        if root:
+            return Path(root)
     return Path(__file__).resolve().parents[3]
 
 
@@ -269,11 +275,16 @@ def _base_env() -> dict[str, str]:
         env["IMPLEMENT_TMPDIR"] = implement_tmpdir
         if not env.get("RUN_ID"):
             parent = Path(implement_tmpdir) / "parent-issue.md"
-            if parent.is_file():
-                for line in parent.read_text(encoding="utf-8", errors="replace").splitlines():
-                    if line.startswith("RUN_ID="):
-                        env["RUN_ID"] = line.split("=", 1)[1]
-                        break
+            run_id = larch_io.read_kv(
+                path=parent,
+                key="RUN_ID",
+                duplicate_policy="first",
+                reject_symlink=True,
+                on_error_default=True,
+                errors="replace",
+            )
+            if run_id:
+                env["RUN_ID"] = run_id
     return env
 
 

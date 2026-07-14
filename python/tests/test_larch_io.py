@@ -15,6 +15,18 @@ def test_parse_kv_first_wins() -> None:
     assert larch_io.parse_kv("A=1\nA=2\n", first_wins=True) == {"A": "1"}
 
 
+def test_parse_kv_explicit_duplicate_policies_and_boolean_compatibility() -> None:
+    text = "A=1\nA=2\n"
+    assert larch_io.parse_kv(text, duplicate_policy="first") == {"A": "1"}
+    assert larch_io.parse_kv(text, duplicate_policy="last") == {"A": "2"}
+    assert larch_io.parse_kv(text, duplicate_policy="all") == {"A": ["1", "2"]}
+    assert larch_io.parse_kv(text, first_wins=False) == {"A": "2"}
+    with pytest.raises(ValueError, match="conflicting duplicate policy"):
+        _ = larch_io.parse_kv(text, duplicate_policy="last", first_wins=True)
+    with pytest.raises(ValueError, match="unsupported duplicate_policy"):
+        _ = larch_io.parse_kv(text, duplicate_policy="middle")  # type: ignore[arg-type]  # invalid-input coverage
+
+
 def test_parse_kv_empty_key_policy() -> None:
     assert larch_io.parse_kv("=value\n") == {"": "value"}
     assert not larch_io.parse_kv("=value\n", skip_empty_key=True)
@@ -39,6 +51,9 @@ def test_kv_value_first_and_last() -> None:
     text = "A=1\nA=2\n"
     assert larch_io.kv_value(text=text, key="A") == "1"
     assert larch_io.kv_value(text=text, key="A", first_match=False) == "2"
+    assert larch_io.kv_value(text=text, key="A", duplicate_policy="last") == "2"
+    with pytest.raises(ValueError, match="requires a multi-value"):
+        _ = larch_io.kv_value(text=text, key="A", duplicate_policy="all")  # type: ignore[arg-type]  # invalid-input coverage
 
 
 def test_read_kv_modes(tmp_path: Path) -> None:

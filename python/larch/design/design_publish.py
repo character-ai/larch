@@ -278,11 +278,12 @@ def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
     result_env = design_tmpdir / ".step3-review-result.env"
     if not result_env.is_file() or result_env.is_symlink():
         return "", 0, False
-    kv: dict[str, str] = {}
-    for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
-        if "=" in line:
-            k, v = line.split("=", 1)
-            kv[k] = v
+    kv = larch_io.read_kvs(
+        result_env,
+        duplicate_policy="last",
+        errors="replace",
+        on_error_default=True,
+    )
     status = kv.get("STEP3_REVIEW_LOOP_STATUS", "")
     if not status:
         loop = kv.get("LOOP_STATUS", "")
