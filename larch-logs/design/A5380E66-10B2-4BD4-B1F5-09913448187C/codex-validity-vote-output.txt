@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The reader exists, but the plan requires preserving caller-specific duplicate policies, not forcing every ship-state consumer to last-match.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly preserves design-core non-empty fallback semantics; this repeats the prior neutral concern without new evidence.
+FINDING_3: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- It identifies no concrete readers or feature-path behavior showing an incomplete required migration.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The remaining reader uses the codec and preserves its existing first-match policy; consistency alone is not required by the feature.
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Focused Make targets are optional convenience, so their removal is not necessary to ship the feature.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- This duplicates the prior rejected secret-scrub parsing finding.

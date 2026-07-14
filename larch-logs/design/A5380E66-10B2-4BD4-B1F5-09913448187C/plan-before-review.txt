@@ -1,0 +1,201 @@
+## Approach
+
+Extend the existing codec instead of adding another parser. Preserve each caller’s current first-wins, last-wins, trimming, CR, empty-value, and error behavior through explicit policy arguments.
+
+Use the existing `kv get` command for Bash. Keep `env_file.py`, `parse_allowlisted_env_line`, and `design read-result-env` unchanged.
+
+Delete redundant emit wrappers in the approved surfaces. Route output through `logging_util.emit_kv`, with conversion or sanitization kept at each call site where required.
+
+Add a reason-bearing lint baseline. The baseline may only shrink and must not hide new parser sites.
+
+## Files to modify/create
+
+### UPDATED: python/larch/io.py
+- Replace boolean duplicate switches with an explicit typed `first`, `last`, or `all` policy.
+- Keep backward-compatible defaults for existing callers.
+- Define a stable result shape for `all`, with overloads or domain types that prevent callers from confusing scalar and multi-value results.
+- Preserve values containing `=`, CR policy, comments, empty keys, missing files, symlink checks, and read-error fallbacks.
+
+### UPDATED: python/tests/test_larch_io.py
+- Cover all duplicate policies, invalid policies, CRLF input, empty values, embedded `=`, comments, filtering, and missing or unsafe files.
+- Pin compatibility for the existing default behavior.
+
+### UPDATED: python/larch/core/kv_cli.py
+- Route `--match first|last` through the codec’s explicit policy.
+- Preserve stdin, file, default-value, CR stripping, exit-code, and plain-value stdout behavior.
+
+### UPDATED: python/tests/core/test_kv_cli.py
+- Verify duplicate policy forwarding and byte-compatible Bash-facing output.
+
+### UPDATED: python/larch/design/design_core.py
+- Replace manual first/last and multi-key scans with `read_kv`, `read_kvs`, or `kv_value`.
+- Preserve non-empty fallback semantics and symlink/error handling.
+
+### UPDATED: python/larch/design/design_router.py
+- Replace stdout list parsing and single-key extraction with codec calls.
+- Use the `all` policy where repeated router fields must remain ordered.
+
+### UPDATED: python/larch/design/design_publish.py
+- Parse result envs and transcript status through the codec while retaining last-wins behavior and existing status normalization.
+
+### UPDATED: python/larch/design/design_pause.py
+- Parse pause marker payloads and publish results through the codec.
+- Preserve whitespace trimming and marker validation.
+
+### UPDATED: python/larch/design/design_summary.py
+- Parse scout status through the shared codec without changing fallback text.
+
+### UPDATED: python/larch/design/design_oos.py
+- Replace simple env and issue-result scans with explicit codec policies.
+- Preserve quote stripping, numeric validation, and first-match behavior.
+- Route machine output through `logging_util.emit_kv`.
+
+### UPDATED: python/larch/design/design_terminal.py
+- Replace contract/result-env scans with the codec.
+- Leave tab-delimited ledger field parsing and caller-supplied row validation outside the env codec.
+
+### UPDATED: python/larch/design/clarify.py
+- Replace publish and rename stdout scans with explicit last-match lookups.
+
+### UPDATED: python/larch/implement/preflight.py
+- Read `CLAUDE_PLUGIN_ROOT` and `RUN_ID` through the codec while preserving first-match behavior.
+
+### UPDATED: python/larch/state/session_env.py
+- Migrate raw `KEY=value` file scans that do not require shell quoting or allowlist validation.
+- Keep `parse_allowlisted_env_line` and shell-token parsing unchanged.
+- Remove the pass-through emitter wrapper.
+
+### UPDATED: python/tests/state/test_session_env.py
+- Pin the boundary between raw codec reads and the excluded shell/allowlist grammar.
+- Cover duplicate and empty-value behavior at migrated call sites.
+
+### UPDATED: python/larch/core/logging_util.py
+- Make the canonical emitter accept the value types currently normalized by private wrappers.
+- Convert values once, reject newline and carriage-return injection after conversion, and retain quiet contract-stream routing.
+
+### UPDATED: python/tests/core/test_logging_util.py
+- Cover string, integer, boolean, and hostile multiline values.
+- Verify quiet-mode routing remains unchanged.
+
+### UPDATED: python/larch/git/push.py
+- Delete `_emit_kv` and call the canonical emitter directly.
+
+### UPDATED: python/larch/git/pr.py
+- Delete `_emit_kv` and call the canonical emitter directly.
+
+### UPDATED: python/larch/git/pr_body.py
+- Replace the print-based emitter with `logging_util.emit_kv`.
+
+### UPDATED: python/larch/git/merge.py
+- Delete `_emit_kv` and call the canonical emitter directly.
+
+### UPDATED: python/larch/git/git.py
+- Delete `_emit_kv` and call the canonical emitter directly.
+
+### UPDATED: python/larch/implement/ci.py
+- Delete `_emit_kv` and call the canonical emitter directly.
+
+### UPDATED: python/larch/state/admission.py
+- Remove the wrapper and retain `_single_line` sanitization explicitly at affected calls.
+
+### UPDATED: python/larch/issue/deps_audit.py
+- Replace the print-based emitter with `logging_util.emit_kv`.
+
+### UPDATED: python/larch/agents/_types.py
+- Remove the emitter implementation and expose no second normalization path.
+
+### UPDATED: python/larch/agents/_auth.py
+### UPDATED: python/larch/agents/_ci_launcher.py
+### UPDATED: python/larch/agents/_claude_runner.py
+### UPDATED: python/larch/agents/_drafter.py
+### UPDATED: python/larch/agents/_failure_diag.py
+### UPDATED: python/larch/agents/_launch_failure.py
+### UPDATED: python/larch/agents/_review_launcher.py
+### UPDATED: python/larch/agents/_run_external.py
+### UPDATED: python/larch/agents/agents.py
+- Import and call the canonical emitter directly.
+- Preserve explicit lowercase boolean rendering and integer conversion where wire output depends on it.
+
+### UPDATED: python/tests/agents/test_agents.py
+- Update emitter seams and keep launcher stdout parity assertions.
+
+### UPDATED: scripts/sessionstart-health.sh
+- Replace stalled-run `awk -F=` reads with `cli.py kv get`.
+- Preserve first-match and missing-value fallbacks.
+
+### UPDATED: scripts/hook-deny-run-in-background.sh
+- Replace registry env parsing with `kv get`.
+- Keep the hook fail-closed and exit-0 denial contract intact.
+
+### UPDATED: skills/design/scripts/design-step3-mav.sh
+- Read the final tally status with `kv get --match last`.
+
+### UPDATED: skills/implement/scripts/refresh-execution-issues.sh
+- Funnel generic env reads and plugin-version extraction through `kv get`.
+
+### UPDATED: skills/implement/scripts/post-tracking-issue.sh
+- Funnel env, version, and comment URL reads through `kv get`.
+
+### UPDATED: skills/implement/scripts/step-0-bootstrap.sh
+- Replace the `grep | tail | cut` sentinel parser with `kv get --match last`.
+- Retain bootstrap-only plugin-root discovery where the CLI cannot yet be located.
+
+### UPDATED: skills/implement/scripts/step-18.sh
+- Replace the reusable `awk` env reader with `kv get`.
+- Leave non-parsing output filtering unchanged.
+
+### NEW: python/larch/lint/lint_kv_codec.py
+- Use `larch.lint.engine` to detect ad-hoc Python `split("=", 1)` env loops and Bash `awk -F=` or `cut -d=` env parsing outside codec owners.
+- Scope detection to tracked production files.
+- Exclude tests, fixtures, the codec owner, and proven non-env parsing.
+- Reject malformed, widened, or stale baseline rows. Disable inline self-suppression.
+
+### NEW: python/kv-codec-baseline.json
+- Record remaining intentional or bootstrap-only sites with specific reasons.
+- Use stable per-symbol metrics where possible so ordinary line movement does not churn the baseline.
+
+### NEW: python/tests/lint/test_lint_kv_codec.py
+- Cover Python AST variants, Bash quoting variants, false positives, owner exclusions, tracked-file discovery, malformed baselines, new findings, shrinking counts, and stale rows.
+
+### UPDATED: python/larch/cli.py
+- Register `lint kv-codec`.
+- Keep the existing `kv get` registration and machine-stdout classification.
+
+### UPDATED: python/tests/test_cli.py
+- Verify lint dispatch and retain `kv get` registry coverage.
+
+### UPDATED: Makefile
+- Add the lint to `py-lint-checks-fast`.
+- Add focused lint and test targets plus guarded baseline regeneration.
+- Preserve CI coverage through the existing Python lint shard.
+
+### UPDATED: docs/linting.md
+- Document lint scope, exclusions, exit behavior, baseline schema, regeneration target, and focused tests.
+
+## Edge cases
+
+- Preserve values containing additional `=` characters.
+- Preserve each caller’s duplicate ordering and empty-value fallback.
+- Do not treat `export KEY='v'` as the raw codec grammar.
+- Do not weaken allowlist, shell-token, symlink, CR, or newline checks.
+- Keep bootstrap readers that cannot locate `cli.py` grandfathered with reasons.
+- Do not convert unrelated command-line option or tab-field splitting.
+
+## Failure modes
+
+- A wrong duplicate policy can silently change routing state. Pin each migrated caller with duplicate fixtures.
+- Broad lint matching can flag ordinary string parsing. Require loop and env-pattern evidence.
+- Emitter conversion can change boolean case or permit forged rows. Normalize before the newline check and test exact stdout.
+- Hook migration can fail before plugin-root discovery. Keep unavoidable bootstrap reads outside the funnel and baseline them.
+
+## Testing strategy
+
+- Run focused codec, CLI, logging, session-env, agents, design, git, CI, preflight, and lint pytest modules.
+- Run the affected hook and skill harnesses for SessionStart, background denial, design Step 3, bootstrap, tracking comments, execution-issue refresh, and Step 18.
+- Run `python3 python/cli.py lint kv-codec`.
+- Run `make py-lint-checks-fast` and relevant changed-file checks.
+- Confirm the baseline shrinks for every migrated parser and fails when a new fixture adds an unbaselined parser.
+
+difficulty: HARD
+oversize_override: operator
+diff_lines: 950

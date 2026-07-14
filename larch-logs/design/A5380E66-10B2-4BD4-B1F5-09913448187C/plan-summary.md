@@ -1,0 +1,1 @@
+Unify the `KEY=value` codec, migrate Python and Bash readers without changing duplicate-key semantics, remove redundant emitters, and add a shrinking adoption ratchet. This is HARD because shared wire parsing spans hooks and lifecycle drivers.
