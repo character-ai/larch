@@ -44,12 +44,6 @@
   {
     "file": "larch/agents/_ci_launcher.py",
     "code": "C901",
-    "qualified_symbol": "_validate_ci_args",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/_ci_launcher.py",
-    "code": "C901",
     "qualified_symbol": "launch_claude_ci_main",
     "metric": 13
   },
@@ -351,13 +345,13 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "C901",
     "qualified_symbol": "_review_launch_codex",
-    "metric": 17
+    "metric": 15
   },
   {
     "file": "larch/agents/_review_launcher.py",
     "code": "C901",
     "qualified_symbol": "_review_validate_args",
-    "metric": 24
+    "metric": 16
   },
   {
     "file": "larch/agents/_review_launcher.py",
@@ -375,19 +369,19 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0911",
     "qualified_symbol": "_review_validate_args",
-    "metric": 19
+    "metric": 13
   },
   {
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_launch_codex",
-    "metric": 17
+    "metric": 14
   },
   {
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_validate_args",
-    "metric": 24
+    "metric": 16
   },
   {
     "file": "larch/agents/_review_launcher.py",
@@ -405,7 +399,7 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0913",
     "qualified_symbol": "_review_run_with_retries",
-    "metric": 9
+    "metric": 8
   },
   {
     "file": "larch/agents/_review_launcher.py",
@@ -423,13 +417,13 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_launch_codex",
-    "metric": 77
+    "metric": 71
   },
   {
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_launch_cursor",
-    "metric": 63
+    "metric": 59
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -2685,7 +2679,7 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "_assessment_gate_before_pr",
-    "metric": 15
+    "metric": 14
   },
   {
     "file": "larch/implement/ship.py",
@@ -2727,7 +2721,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "_assessment_gate_before_pr",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/implement/ship.py",
@@ -4017,19 +4011,19 @@
     "file": "larch/release/release_prepare.py",
     "code": "C901",
     "qualified_symbol": "main",
-    "metric": 34
+    "metric": 33
   },
   {
     "file": "larch/release/release_prepare.py",
     "code": "PLR0911",
     "qualified_symbol": "main",
-    "metric": 20
+    "metric": 19
   },
   {
     "file": "larch/release/release_prepare.py",
     "code": "PLR0912",
     "qualified_symbol": "main",
-    "metric": 34
+    "metric": 33
   },
   {
     "file": "larch/release/release_prepare.py",
@@ -5709,7 +5703,7 @@
     "file": "larch/review/review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 67
+    "metric": 66
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5727,7 +5721,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0911",
     "qualified_symbol": "tally_code_votes",
-    "metric": 13
+    "metric": 12
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5745,7 +5739,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 77
+    "metric": 44
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5769,7 +5763,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 232
+    "metric": 230
   },
   {
     "file": "larch/review/review_threshold.py",
@@ -6735,19 +6729,19 @@
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 127
+    "metric": 129
   },
   {
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 123
+    "metric": 126
   },
   {
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 586
+    "metric": 598
   },
   {
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
