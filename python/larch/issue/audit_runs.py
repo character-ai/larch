@@ -1280,6 +1280,18 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _issue_state_closed(*, num: str, repo: str) -> bool:
+    """Re-read issue state after a close so a silently-open prior is not reported closed (G-Py-8)."""
+    view = gh.issue_view_field_read(proc, num, "state", repo=repo)
+    if view.returncode != 0:
+        return False
+    try:
+        data: object = json.loads(view.stdout or "{}")
+    except json.JSONDecodeError:
+        return False
+    return isinstance(data, dict) and str(data.get("state") or "").lower() == "closed"
+
+
 def close_priors_main(argv: list[str] | None = None) -> int:
     p=argparse.ArgumentParser(prog="cli.py audit-runs close-priors"); p.add_argument("--skill",required=True); p.add_argument("--new-issue-number",required=True); p.add_argument("--repo",default="character-ai/larch"); p.add_argument("--operator-invoked",action="store_true"); args=p.parse_args(argv)
     if not _validate_skill(skill=args.skill,prog="audit-close-priors.sh"): return 1
@@ -1321,6 +1333,7 @@ def close_priors_main(argv: list[str] | None = None) -> int:
             if num==args.new_issue_number or not match_audit_report_title(skill=args.skill,title=str(issue.get("title") or "")): continue
             if gh.command(proc, ["issue","comment",num,"--repo",args.repo,"--body-file",str(body)]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue comment failed"); continue
             if gh.issue_close(proc, num, repo=args.repo).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue close failed"); continue
+            if not _issue_state_closed(num=num, repo=args.repo): print(f"CLOSE_FAILED={num}\tREASON={config.CLOSE_POSTCONDITION_UNVERIFIED}"); continue
             print(f"CLOSED_NUMBER={num}")
     finally:
         if body is not None:

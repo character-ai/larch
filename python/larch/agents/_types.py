@@ -9,6 +9,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final, Literal, get_args
 
 from larch.core import logging_util
 
@@ -101,10 +102,16 @@ class LaunchFailure:
     reason: str
 
 
+CodexGateSignal = Literal["model-metadata-not-found", "newer-codex-required"]
+CODEX_GATE_SIGNAL_METADATA_NOT_FOUND: Final[CodexGateSignal] = "model-metadata-not-found"
+CODEX_GATE_SIGNAL_NEWER_REQUIRED: Final[CodexGateSignal] = "newer-codex-required"
+CODEX_GATE_SIGNALS: Final[frozenset[str]] = frozenset(get_args(CodexGateSignal))
+
+
 @dataclass(frozen=True)
 class CodexGateDetail:
     model: str
-    signal: str
+    signal: CodexGateSignal
     message: str
 
 

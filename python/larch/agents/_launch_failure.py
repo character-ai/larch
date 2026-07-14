@@ -22,6 +22,8 @@ from larch.agents._types import (
     _QUOTA_RE,
     _CTRL_RE,
     _PY_CLI,
+    CODEX_GATE_SIGNAL_METADATA_NOT_FOUND,
+    CODEX_GATE_SIGNAL_NEWER_REQUIRED,
     LaunchFailure,
     CodexGateDetail,
     TierAttempt,
@@ -57,7 +59,7 @@ def detect_codex_cli_gate(text: str, *, fallback_model: str = "") -> CodexGateDe
     if metadata is None and version is None:
         return None
     diagnostic_model = ""
-    signal = "model-metadata-not-found" if metadata is not None else "newer-codex-required"
+    signal = CODEX_GATE_SIGNAL_METADATA_NOT_FOUND if metadata is not None else CODEX_GATE_SIGNAL_NEWER_REQUIRED
     if metadata is not None:
         diagnostic_model = metadata.group("model")
     elif version is not None:

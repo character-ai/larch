@@ -969,6 +969,8 @@ def test_close_priors_reports_partial_success(monkeypatch, capsys):
                 return cr(("gh",))
             if argv[:4] == ["gh","issue","close","7"]:  # lint-gh-argv-literal: ok fixture assertion
                 return cr(("gh",))
+            if argv[:4] == ["gh","issue","view","7"]:  # lint-gh-argv-literal: ok post-close state read-back
+                return cr(("gh",), stdout=json.dumps({"state": "CLOSED"}))
             if argv[:4] == ["gh","issue","comment","8"]:  # lint-gh-argv-literal: ok fixture assertion
                 return cr(("gh",), stderr="boom", rc=1)
             raise AssertionError(f"unexpected argv: {argv}")
@@ -977,6 +979,26 @@ def test_close_priors_reports_partial_success(monkeypatch, capsys):
     out = capsys.readouterr().out.splitlines()
     assert "CLOSED_NUMBER=7" in out
     assert any(line.startswith("CLOSE_FAILED=8\tREASON=gh issue comment failed") for line in out)
+
+
+def test_close_priors_flags_unverified_close(monkeypatch, capsys):
+    prior = json.dumps([{"number": 7, "title": "[Implement Run Logs Audit 2026 Report] old"}])
+    class UnverifiedCloseRunner:
+        def run(self, argv, **_kwargs):
+            if argv[:3] == ["gh","issue","list"]:  # lint-gh-argv-literal: ok fixture assertion
+                return cr(("gh",), stdout=prior)
+            if argv[:4] == ["gh","issue","comment","7"]:  # lint-gh-argv-literal: ok fixture assertion
+                return cr(("gh",))
+            if argv[:4] == ["gh","issue","close","7"]:  # lint-gh-argv-literal: ok fixture assertion
+                return cr(("gh",))
+            if argv[:4] == ["gh","issue","view","7"]:  # lint-gh-argv-literal: ok post-close state read-back
+                return cr(("gh",), stdout=json.dumps({"state": "OPEN"}))
+            raise AssertionError(f"unexpected argv: {argv}")
+    monkeypatch.setattr(audit_runs.proc, "run", UnverifiedCloseRunner().run)
+    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert f"CLOSE_FAILED=7\tREASON={config.CLOSE_POSTCONDITION_UNVERIFIED}" in out
+    assert "CLOSED_NUMBER=7" not in out
 
 
 def test_resolve_prs_reports_issue_list_failure(monkeypatch, capsys):

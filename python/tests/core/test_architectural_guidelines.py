@@ -294,6 +294,56 @@ Second body only."""
     )
 
 
+def test_parse_invariant_entries_ignores_headings_inside_fenced_block() -> None:
+    parsed = ag.parse_invariant_entries(
+        "### I-Fence-1: Real invariant\n"
+        "Body before fence.\n"
+        "\n"
+        "```\n"
+        "### I-Fake-9: Heading inside a code fence\n"
+        "```\n"
+        "\n"
+        "Body after fence.\n"
+    )
+
+    assert parsed == (
+        "### I-Fence-1: Real invariant\n"
+        "Body before fence.\n"
+        "\n"
+        "```\n"
+        "### I-Fake-9: Heading inside a code fence\n"
+        "```\n"
+        "\n"
+        "Body after fence."
+    )
+
+
+def test_parse_invariant_entries_honors_longer_closing_fence() -> None:
+    parsed = ag.parse_invariant_entries(
+        "### I-Long-1: Real invariant\n"
+        "Body.\n"
+        "\n"
+        "```\n"
+        "### I-Fenced-9: Inside fence\n"
+        "`````\n"
+        "\n"
+        "### I-Long-2: Second real invariant\n"
+        "Second body.\n"
+    )
+
+    assert parsed == (
+        "### I-Long-1: Real invariant\n"
+        "Body.\n"
+        "\n"
+        "```\n"
+        "### I-Fenced-9: Inside fence\n"
+        "`````\n"
+        "\n"
+        "### I-Long-2: Second real invariant\n"
+        "Second body."
+    )
+
+
 def test_parse_invariant_entries_preserves_bullet_style_body() -> None:
     parsed = ag.parse_invariant_entries(
         """### I-Bullet-1: Bullets remain verbatim

@@ -912,6 +912,13 @@ POST_MERGE_MERGE_RESULTS: Final[frozenset[str]] = frozenset({
     MERGE_RESULT_DRIVER_ALREADY_MERGED,
 })
 
+RECONCILE_STATUS_KEY: Final = "RECONCILE_STATUS"
+RECONCILE_STATUS_OK: Final = "ok"
+RECONCILE_STATUS_FAILED: Final = "failed"
+
+CLOSE_POSTCONDITION_UNVERIFIED: Final = "close-postcondition-unverified"
+LABEL_POSTCONDITION_UNVERIFIED: Final = "label-postcondition-unverified"
+
 FLUSH_COMMIT_SUBJECT_PREFIX: Final = "chore(larch-logs): flush "
 FLUSH_RECOVERY_MAX_COMMITS: Final = 5
 MERGE_PR_INITIAL_UNKNOWN_RETRIES: Final = 4

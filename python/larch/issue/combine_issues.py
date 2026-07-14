@@ -11,11 +11,13 @@ import re
 import sys
 import tempfile
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 from larch.issue import blocker
 from larch.git import gh
+from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.errors import ShipError
@@ -724,13 +726,33 @@ def _combined_away_close_comment(*, issue: str, combined: str) -> str:
     )
 
 
+def _issue_confirmed_closed(*, issue: str, repo: str) -> bool:
+    view = gh.issue_view_field_read(proc, str(issue), "state", repo=repo)
+    if view.returncode != 0:
+        return False
+    try:
+        data: object = json.loads(view.stdout or "{}")
+    except json.JSONDecodeError:
+        return False
+    return isinstance(data, dict) and str(data.get("state") or "").lower() == "closed"
+
+
+def _verified_close(*, result: proc.CommandResult, issue: str, repo: str) -> proc.CommandResult:
+    """Re-read the issue after a wrapper-success close; a silently-open issue re-enters selection scans (G-Py-8)."""
+    if result.returncode != 0 or _issue_confirmed_closed(issue=issue, repo=repo):
+        return result
+    return replace(result, returncode=1, stderr=f"{config.CLOSE_POSTCONDITION_UNVERIFIED}: #{issue} not confirmed closed")
+
+
 def _close_combined_away_issue(issue: str, repo: str, combined: str) -> proc.CommandResult:
     comment = _combined_away_close_comment(issue=issue, combined=combined)
-    return gh.issue_close(proc, issue, repo=repo, comment=comment)
+    result = gh.issue_close(proc, issue, repo=repo, comment=comment)
+    return _verified_close(result=result, issue=issue, repo=repo)
 
 
 def _close_stale_issue(*, issue: str, repo: str, reason: str, comment: str | None) -> proc.CommandResult:
-    return gh.issue_close(proc, issue, repo=repo, reason=reason, comment=comment)
+    result = gh.issue_close(proc, issue, repo=repo, reason=reason, comment=comment)
+    return _verified_close(result=result, issue=issue, repo=repo)
 
 
 def apply_main(argv: list[str] | None = None) -> int:

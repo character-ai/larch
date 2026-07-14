@@ -16,6 +16,7 @@ from larch.core.proc import CommandResult
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_filer
+from larch.issue import oos_priority
 
 
 def _cp(args: list[str], stdout: str = "", stderr: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:
@@ -39,7 +40,12 @@ def _stub_priority_label_add(
             return CommandResult(("gh", "issue", "edit", number), 1, "", "edit failed", 0.01)
         return CommandResult(("gh", "issue", "edit", number), 0, "", "", 0.01)
 
+    def fake_labels_list(_runner: object, number: str, *, repo: str, **_kwargs: object) -> list[str]:
+        _ = (number, repo)
+        return [oos_priority.OOS_CORRECTNESS_LABEL]
+
     monkeypatch.setattr(oos_filer.gh, "issue_label_add", fake_label_add)
+    monkeypatch.setattr(oos_filer.gh, "issue_labels_list", fake_labels_list)
     return calls
 
 
@@ -1429,3 +1435,24 @@ def test_cmd_file_refuses_when_session_env_has_no_auth(tmp_path: Path, monkeypat
     })())  # type: ignore[call-arg]
     assert rc == 1
     assert payload.get("status") == "authorization-refused"
+
+
+def test_apply_priority_label_accepts_verified_label(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(oos_filer.gh, "issue_label_add", lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01))
+    monkeypatch.setattr(oos_filer.gh, "issue_labels_list", lambda *_a, **_k: [oos_priority.OOS_CORRECTNESS_LABEL])
+    ok = oos_filer._apply_priority_label(tmpdir=tmp_path, url="https://github.com/owner/repo/issues/77", repo="owner/repo")
+    assert ok is True
+
+
+def test_apply_priority_label_flags_unverified_label(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(oos_filer.gh, "issue_label_add", lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01))
+    monkeypatch.setattr(oos_filer.gh, "issue_labels_list", lambda *_a, **_k: [])
+    failures: list[str] = []
+
+    def record_failure(**kwargs: object) -> None:
+        failures.append(str(kwargs.get("output", "")))
+
+    monkeypatch.setattr(oos_filer, "_append_tool_failure", record_failure)
+    ok = oos_filer._apply_priority_label(tmpdir=tmp_path, url="https://github.com/owner/repo/issues/77", repo="owner/repo")
+    assert ok is False
+    assert any(config.LABEL_POSTCONDITION_UNVERIFIED in message for message in failures)

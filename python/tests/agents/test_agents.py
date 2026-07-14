@@ -29,6 +29,8 @@ from larch.agents import _ci_launcher
 from larch.agents import _review_launcher
 from larch.agents import _drafter
 from larch.agents import _claude_runner
+from larch.agents import _launch_failure
+from larch.agents import _types
 from larch.design import plan_grammar
 from test_support import completed, ok
 
@@ -1146,6 +1148,34 @@ def test_codex_policy_rejection_excerpt_still_detects_genuine_rejection_after_tr
 
     assert "exec_command failed" in excerpt
     assert "Rejected(blocked by policy)" in excerpt
+
+
+def test_parse_codex_gate_detail_accepts_known_signals_and_rejects_unknown() -> None:
+    identity = "codex-review-test"
+    expected = _launch_failure.detect_codex_cli_gate(
+        "requires a newer version of Codex", fallback_model="gpt-5-codex"
+    )
+    assert expected is not None
+
+    def payload(signal: str) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "identity": identity,
+            "model": expected.model,
+            "signal": signal,
+            "message": expected.message,
+        }
+
+    for known in (
+        _types.CODEX_GATE_SIGNAL_METADATA_NOT_FOUND,
+        _types.CODEX_GATE_SIGNAL_NEWER_REQUIRED,
+    ):
+        parsed = _auth._parse_codex_gate_detail(payload=payload(known), identity=identity)  # pylint: disable=protected-access
+        assert parsed is not None
+        assert parsed.signal == known
+
+    rejected = _auth._parse_codex_gate_detail(payload=payload("bogus-signal"), identity=identity)  # pylint: disable=protected-access
+    assert rejected is None
 
 
 def test_sanitize_codex_events_for_policy_scan_preserves_failed_command_output() -> None:

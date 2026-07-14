@@ -22,6 +22,7 @@ from typing import Literal, cast
 
 from larch.core import config
 from larch.core import proc
+from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import file_oos
 from larch.issue import oos_priority
@@ -638,6 +639,14 @@ def _ensure_priority_label(*, tmpdir: Path, repo: str) -> bool:
     return False
 
 
+def _priority_label_present(*, number: str, repo: str) -> bool:
+    try:
+        labels = gh.issue_labels_list(proc, number, repo=repo)
+    except ShipError:
+        return False
+    return oos_priority.OOS_CORRECTNESS_LABEL in labels
+
+
 def _apply_priority_label(*, tmpdir: Path, url: str, repo: str) -> bool:
     number = oos_priority.issue_number_from_url(url)
     if not repo or not number:
@@ -646,7 +655,16 @@ def _apply_priority_label(*, tmpdir: Path, url: str, repo: str) -> bool:
         return False
     result = gh.issue_label_add(proc, number, oos_priority.OOS_CORRECTNESS_LABEL, repo=repo)
     if result.returncode == 0:
-        return True
+        if _priority_label_present(number=number, repo=repo):
+            return True
+        _append_tool_failure(
+            tmpdir=tmpdir,
+            site="step-9a1-oos-file",
+            tool="gh issue edit",
+            rc=1,
+            output=f"{config.LABEL_POSTCONDITION_UNVERIFIED}: {oos_priority.OOS_CORRECTNESS_LABEL} not present on {url} after add",
+        )
+        return False
     _append_tool_failure(
         tmpdir=tmpdir,
         site="step-9a1-oos-file",
