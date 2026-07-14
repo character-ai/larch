@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -19,6 +20,8 @@ from larch.review import plan_review_common
 from larch.review import plan_review_loop
 from larch.review import plan_review_normalize
 from larch.review import plan_review_round
+from larch.review import plan_review_tally
+from larch.review import tally_engine
 from larch.report import progress_report
 import pytest
 from larch.review import voting
@@ -1841,6 +1844,67 @@ def _write_tally_ballot(path: Path) -> None:
 """,
         encoding="utf-8",
     )
+
+
+def test_plan_review_tally_serializers_only_consume_cached_adjudication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design = tmp_path / "design"
+    block_dir = design / "blocks"
+    block_dir.mkdir(parents=True)
+    block = block_dir / "FINDING_1.md"
+    block_text = """### FINDING_1: Cached policy result
+- **Reviewer**: Cursor-Arch
+- **Severity**: major
+- **Concern**: Preserve the engine outcome.
+"""
+    _ = block.write_text(block_text, encoding="utf-8")
+    tally = plan_review_tally._Tally()  # pyright: ignore[reportPrivateUsage]  # cache is tally-private
+    tally.design_tmpdir = str(design)
+    tally.block_dir = str(block_dir)
+    tally.tally_file = str(design / "voting-tally.md")
+    tally.findings_out = str(design / "findings-classification.tsv")
+    tally.eligible = 1
+    context = tally_engine.ItemContext(
+        item_id="FINDING_1",
+        block_path=block,
+        block_text=block_text,
+        artifact_text=block_text,
+        reviewer="Cursor-Arch",
+        cells=(("YES", "", "major", "", "true", "Claude"), ("", "", "", "", "", ""), ("", "", "", "", "", "")),
+        yes=1,
+        no=0,
+        judge_error=0,
+        is_oos=False,
+        eligible_voters=1,
+        voter_votes=(("Claude", "YES"),),
+        voter_severities=("major",),
+    )
+    adjudication = replace(tally_engine.adjudicate_item(context), security=False)
+
+    def unexpected_policy_call(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("plan-review serializer must consume cached engine policy")
+
+    monkeypatch.setattr(voting, "classify_result", unexpected_policy_call)
+    monkeypatch.setattr(voting, "classify_oos_result", unexpected_policy_call)
+    monkeypatch.setattr(voting, "neutral_high_severity_rescue_to_oos", unexpected_policy_call)
+    monkeypatch.setattr(voting, "oos_fileable_from_votes", unexpected_policy_call)
+    monkeypatch.setattr(voting, "accepted_finding_points_from_severities", unexpected_policy_call)
+
+    tally._render(  # pyright: ignore[reportPrivateUsage]  # exercise serializer boundary
+        adjudications=[adjudication],
+        accepted_plan=design / "accepted-plan-findings.md",
+        accepted_plan_all=design / "accepted-plan-findings-all.md",
+        rejected_plan=design / "rejected-findings.md",
+        oos_file=design / "oos.md",
+        oos_accepted_local=design / "oos-accepted-design.md",
+        active_bonus=0.0,
+    )
+    tally._write_findings_outputs([adjudication])  # pyright: ignore[reportPrivateUsage]  # exercise serializer boundary
+
+    assert "| FINDING_1 | 1 | 0 | 0 | accepted |" in (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert _read_tsv(design / "findings-classification.tsv")["FINDING_1"]["voting_result"] == "accepted"
+    assert _read_tsv(design / "findings-ledger.tsv")["FINDING_1"]["outcome"] == "accepted"
 
 
 def test_tally_plan_review_unique_finder_bonus_with_neutralized_attribution(tmp_path: Path) -> None:
