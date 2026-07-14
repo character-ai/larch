@@ -20,7 +20,7 @@ I assessed the same full diff at this HEAD against the architectural guidelines,
 - **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 01:38:30
-- **Cost**: 💰 TOTAL ~$50.66: Claude $48.01, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.65  |  Tokens: 73941k
+- **Cost**: 💰 TOTAL ~$51.54: Claude $48.86, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.68  |  Tokens: 75477k
 - **Issue**: #7214: https://github.com/character-ai/larch/issues/7214
 - **PR**: #7301: https://github.com/character-ai/larch/pull/7301
 - **Plan review**: N/A
@@ -28,7 +28,7 @@ I assessed the same full diff at this HEAD against the architectural guidelines,
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: N/A
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: code +956/-78, larch-logs +369/-0
+- **Lines (PR diff)**: code +956/-78, larch-logs +371/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
