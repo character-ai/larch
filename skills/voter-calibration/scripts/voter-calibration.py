@@ -24,8 +24,8 @@ python_path = str(plugin_root / "python")
 if python_path not in sys.path:
     sys.path.insert(0, python_path)
 
-from larch.core import proc  # noqa: E402
-from larch.git import gh  # noqa: E402
+from larch.core import proc  # noqa: E402 - after sys.path manipulation
+from larch.git import gh  # noqa: E402 - after sys.path manipulation
 from larch.issue.analyze_issues import (  # noqa: E402
     GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
     _fetch_filed_oos_issue_details,
