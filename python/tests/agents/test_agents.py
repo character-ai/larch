@@ -5634,22 +5634,22 @@ def test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success(
     _ = output.with_suffix(output.suffix + ".failure-diag").write_text("stale\n", encoding="utf-8")
     seen: dict[str, object] = {}
 
-    def fake_exec(argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
-        seen["argv"] = list(argv)
-        trusted = Path(argv[argv.index("--trusted-instructions-file") + 1])
-        seen["trusted_text"] = trusted.read_text(encoding="utf-8")
-        raw = Path(argv[argv.index("--output") + 1])
-        _ = raw.write_text("LARCH_PLAN_BEGIN\nCodex plan\ndiff_lines: 4\nLARCH_PLAN_END\n", encoding="utf-8")
-        _ = raw.with_suffix(raw.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
-        _ = stdout_path.write_text("LAUNCHER_EXIT=0\n", encoding="utf-8")
-        _ = stderr_path.write_text("", encoding="utf-8")
-        return 0
+    def fake_prepare(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        seen["trusted_text"] = Path(trusted_instructions_file).read_text(encoding="utf-8")
+        return (0, "")
+
+    def fake_run_external(*, output: Path, cmd: Sequence[str], **_kwargs: object) -> agents.RunExternalAgentResult:
+        seen["cmd"] = list(cmd)
+        _ = output.write_text("LARCH_PLAN_BEGIN\nCodex plan\ndiff_lines: 4\nLARCH_PLAN_END\n", encoding="utf-8")
+        _ = output.with_suffix(output.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(exit_code=0, output=output)
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
         return ok(())
 
-    monkeypatch.setattr(_drafter, "_launch_codex_exec_inprocess", fake_exec)
+    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
     rc = agents.launch_codex_drafter(
         prompt_file=str(prompt),
@@ -5662,29 +5662,15 @@ def test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success(
     assert rc == 0
     trusted = str(seen["trusted_text"])
     assert "STRICT CONSTRAINTS" in trusted
-    argv_obj = seen["argv"]
-    assert isinstance(argv_obj, list)
-    argv = [str(item) for item in argv_obj]
-    assert argv == [
-        "--output",
-        argv[1],
-        "--timeout",
-        "9",
-        "--workdir",
-        str(repo.resolve()),
-        "--add-dir",
-        str(repo.resolve()),
-        "--sandbox",
-        "read-only",
-        "--usage-label",
-        "codex_plan_draft",
-        "--timing-task-kind",
-        "codex-plan-draft",
-        "--trusted-instructions-file",
-        argv[15],
-        "--prompt-file",
-        str(prompt.resolve()),
-    ]
+    cmd_obj = seen["cmd"]
+    assert isinstance(cmd_obj, list)
+    cmd = [str(item) for item in cmd_obj]
+    assert cmd[:4] == ["codex", "exec", "--sandbox", "read-only"]
+    assert cmd[cmd.index("-C") + 1] == str(repo.resolve())
+    assert cmd[cmd.index("--add-dir") + 1] == str(repo.resolve())
+    assert "--output-last-message" in cmd
+    assert "--json" in cmd
+    assert cmd[-2:] == ["--", "prompt body"]
     assert (design / "plan.txt").read_text(encoding="utf-8") == "Codex plan\ndiff_lines: 4\n"
     status = output.read_text(encoding="utf-8")
     assert "STATUS=OK" in status
@@ -5727,18 +5713,20 @@ def test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail(
     _ = prompt.write_text("prompt body", encoding="utf-8")
     output = design / "status.txt"
 
-    def fake_exec(argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
-        raw = Path(argv[argv.index("--output") + 1])
-        _ = raw.with_suffix(raw.suffix + ".sidecar").write_text("sidecar failure\n", encoding="utf-8")
-        _ = stdout_path.write_text("LAUNCHER_EXIT=13\n", encoding="utf-8")
+    def fake_prepare(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        return (0, "")
+
+    def fake_run_external(*, output: Path, stderr_path: Path, **_kwargs: object) -> agents.RunExternalAgentResult:
+        _ = output.with_suffix(output.suffix + ".sidecar").write_text("sidecar failure\n", encoding="utf-8")
         _ = stderr_path.write_text("stderr fallback\n", encoding="utf-8")
-        return 0
+        return agents.RunExternalAgentResult(exit_code=13, output=output)
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
         return ok(())
 
-    monkeypatch.setattr(_drafter, "_launch_codex_exec_inprocess", fake_exec)
+    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
     rc = agents.launch_codex_drafter(
         prompt_file=str(prompt),
@@ -5771,21 +5759,20 @@ def test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet(
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
     monkeypatch.setenv(config.ENV_DESIGN_TMPDIR, str(design))
 
-    def fake_launch_codex_exec_main(argv: list[str] | None = None) -> int:
-        argv = list(argv or [])
-        raw = Path(argv[argv.index("--output") + 1])
-        _ = raw.write_text("LARCH_PLAN_BEGIN\nquiet plan\ndiff_lines: 2\nLARCH_PLAN_END\n", encoding="utf-8")
-        _ = raw.with_suffix(raw.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
-        _ = raw.with_suffix(raw.suffix + ".done").write_text("0\n", encoding="utf-8")
-        agents._emit_kv(key="LAUNCHER_EXIT", value=0)
-        agents._emit_kv(key="OUTPUT", value=str(raw))
-        return 0
+    def fake_prepare(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        return (0, "")
+
+    def fake_run_external(*, output: Path, **_kwargs: object) -> agents.RunExternalAgentResult:
+        _ = output.write_text("LARCH_PLAN_BEGIN\nquiet plan\ndiff_lines: 2\nLARCH_PLAN_END\n", encoding="utf-8")
+        _ = output.with_suffix(output.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(exit_code=0, output=output)
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
         return ok(())
 
-    monkeypatch.setattr(_drafter, "launch_codex_exec_main", fake_launch_codex_exec_main)
+    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
 
     read_fd, write_fd = os.pipe()

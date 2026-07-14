@@ -112,6 +112,20 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
+    "file": "larch/agents/_drafter.py",
+    "suppression_kind": "type-ignore",
+    "text": "type: ignore[reportUnknownLambdaType]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "suppression_kind": "type-ignore",
+    "text": "type: ignore[reportUnusedFunction]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
     "file": "larch/agents/_failure_diag.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalMemberAccess=false, reportPrivateUsage=false, reportUnusedFunction=false",

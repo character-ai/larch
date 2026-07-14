@@ -45,8 +45,6 @@ from larch.agents._launch_failure import (
 from larch.agents._run_external import (
     external_startup_lock_acquire,
     external_startup_lock_release_after,
-    _codex_auth_args,
-    _trust_config_arg,
     _prepare_codex_home,
     _mirror_codex_quota_from_events,
     _record_usage_from_events,
@@ -64,6 +62,16 @@ from larch.agents._auth import (
     cursor_auth_preflight,
     cursor_auth_export_env,
     _probe_tmpdir,
+)
+from larch.agents._vendor import (
+    CODEX_DESCRIPTOR,
+    CURSOR_DESCRIPTOR,
+    CLAUDE_DESCRIPTOR,
+    VendorLaunchRequest,
+    VendorProcessResult,
+    VendorFamilyHooks,
+    parse_claude_envelope,
+    run_vendor_launch,
 )
 from larch.agents._claude_runner import (
     _record_claude_sub_usage,
@@ -99,112 +107,148 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
             events.unlink()
         with contextlib.suppress(FileNotFoundError):
             sidecar.unlink()
+        try:
+            model_args = tuple(resolve_model_args("codex").argv)
+        except ValueError as exc:
+            _err(f"agent run-negotiation-round: model args failed: {exc}")
+            return 1
         codex_home = Path(tempfile.mkdtemp(prefix="larch-codex-negotiation-home-", dir=str(_probe_tmpdir())))
         try:
             prep_rc, prep_msg = _prepare_codex_home(codex_home)
-            if prep_rc != 0:
-                if prep_msg:
-                    _write(path=sidecar, text=prep_msg + "\n")
-                _emit_kv(key="RESPONSE_FILE", value=str(output_path))
-                return 2
-            try:
-                model_args = list(resolve_model_args("codex").argv)
-            except ValueError as exc:
-                _err(f"agent run-negotiation-round: model args failed: {exc}")
-                return 1
-            cmd = [
-                "codex",
-                "exec",
-                "--sandbox",
-                "workspace-write",
-                "-C",
-                str(workdir),
-                *model_args,
-                "-c",
-                _trust_config_arg(str(workdir)),
-                *_codex_auth_args(),
-                "--output-last-message",
-                str(output_path),
-                "--json",
-                "--",
-                "-",
-            ]
             env: dict[str, str] = dict(os.environ)
             env["CODEX_HOME"] = str(codex_home)
-            state = external_startup_lock_acquire(tool="codex")
-            external_startup_lock_release_after(state=state)
-            with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
-                try:
-                    with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
-                        proc_obj = subprocess.run(
-                            cmd,
-                            stdin=input_handle,
-                            stdout=out_handle,
-                            stderr=err_handle,
-                            cwd=str(workdir),
-                            env=env,
-                            text=True,
-                            check=False,
-                        )
-                    codex_rc = proc_obj.returncode
-                except FileNotFoundError:
-                    codex_rc = 127
-                    _append(path=sidecar, text="Failed to launch child: codex\n")
-            if codex_rc != 0:
-                _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
-            _record_usage_from_events(events=events, sidecar=sidecar, label="codex_negotiation")
-            if codex_rc != 0:
+
+            def _codex_preflight(**_kwargs: object) -> bool:
+                if prep_rc != 0:
+                    if prep_msg:
+                        _write(path=sidecar, text=prep_msg + "\n")
+                    return False
+                return True
+
+            def _codex_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+                state = external_startup_lock_acquire(tool="codex")
+                external_startup_lock_release_after(state=state)
+                with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
+                    try:
+                        with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
+                            # lint-subprocess-via-runner: ok requires stdin, stdout, stderr file handles; proc.run only captures to pipes
+                            proc_obj = subprocess.run(
+                                argv,
+                                stdin=input_handle,
+                                stdout=out_handle,
+                                stderr=err_handle,
+                                cwd=str(workdir),
+                                env=env,
+                                text=True,
+                                check=False,
+                            )
+                        codex_rc = proc_obj.returncode
+                    except FileNotFoundError:
+                        codex_rc = 127
+                        _append(path=sidecar, text="Failed to launch child: codex\n")
+                return VendorProcessResult(exit_code=codex_rc)
+
+            def _codex_mirror_quota(*, result: VendorProcessResult, **_kwargs: object) -> None:
+                if result.exit_code != 0:
+                    _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
+
+            def _codex_record_usage(**_kwargs: object) -> None:
+                _record_usage_from_events(events=events, sidecar=sidecar, label="codex_negotiation")
+
+            def _codex_promote(**_kwargs: object) -> None:
+                _emit_kv(key="RESPONSE_FILE", value=str(output_path))
+
+            request = VendorLaunchRequest(
+                workdir=str(workdir),
+                output=str(output_path),
+                prompt="",
+                model_args=model_args,
+                prompt_via_stdin=True,
+                timing_task_kind="codex_negotiation",
+            )
+            hooks = VendorFamilyHooks(
+                preflight=_codex_preflight,
+                execute=_codex_execute,
+                mirror_quota=_codex_mirror_quota,
+                record_usage=_codex_record_usage,
+                promote_completion=_codex_promote,
+            )
+            outcome = run_vendor_launch(
+                CODEX_DESCRIPTOR,
+                "workspace-write",
+                request,
+                hooks=hooks,
+                use_config_context=False,
+            )
+            if outcome.status == "preflight_refused":
                 _emit_kv(key="RESPONSE_FILE", value=str(output_path))
                 return 2
+            if outcome.process_result is not None and outcome.process_result.exit_code != 0:
+                return 2
+            return 0
         finally:
             shutil.rmtree(codex_home, ignore_errors=True)
-        _emit_kv(key="RESPONSE_FILE", value=str(output_path))
-        return 0
 
     try:
-        model_args = list(resolve_model_args("cursor").argv)
+        model_args = tuple(resolve_model_args("cursor").argv)
     except ValueError as exc:
         _err(f"agent run-negotiation-round: model args failed: {exc}")
         return 1
-    verdict = cursor_auth_preflight(caller="agent run-negotiation-round")
-    if not verdict.ok:
-        _err(verdict.message)
+    wrapped = f" /max-mode on. Prompt: Read the negotiation prompt from {prompt} and respond to it."
+
+    def _cursor_preflight(**_kwargs: object) -> bool:
+        verdict = cursor_auth_preflight(caller="agent run-negotiation-round")
+        if not verdict.ok:
+            _err(verdict.message)
+            return False
+        cursor_auth_export_env()
+        return True
+
+    def _cursor_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+        state = external_startup_lock_acquire(tool="cursor")
+        external_startup_lock_release_after(state=state)
+        try:
+            with output_path.open("w", encoding="utf-8") as handle:
+                # lint-subprocess-via-runner: ok requires stdout file handle; proc.run only captures to pipes
+                result = subprocess.run(  # lint-subprocess-via-runner: ok requires stdout file handle; proc.run only captures to pipes
+                    argv,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    cwd=str(workdir),
+                    env=dict(os.environ),
+                    text=True,
+                    check=False,
+                )
+            cursor_rc = result.returncode
+        except FileNotFoundError:
+            _write(path=output_path, text="Failed to launch child: cursor\n")
+            cursor_rc = 127
+        return VendorProcessResult(exit_code=cursor_rc)
+
+    cursor_request = VendorLaunchRequest(
+        workdir=str(workdir),
+        output=str(output_path),
+        prompt=wrapped,
+        model_args=model_args,
+        timing_task_kind="cursor_negotiation",
+    )
+    cursor_hooks = VendorFamilyHooks(
+        preflight=_cursor_preflight,
+        execute=_cursor_execute,
+        promote_completion=lambda **_kwargs: _emit_kv(key="RESPONSE_FILE", value=str(output_path)),  # type: ignore[reportUnknownLambdaType]
+    )
+    cursor_outcome = run_vendor_launch(
+        CURSOR_DESCRIPTOR,
+        "negotiation-write",
+        cursor_request,
+        hooks=cursor_hooks,
+        use_config_context=False,
+    )
+    if cursor_outcome.status == "preflight_refused":
         _emit_kv(key="RESPONSE_FILE", value=str(output_path))
         return 3
-    cursor_auth_export_env()
-    wrapped = f" /max-mode on. Prompt: Read the negotiation prompt from {prompt} and respond to it."
-    state = external_startup_lock_acquire(tool="cursor")
-    external_startup_lock_release_after(state=state)
-    cmd = [
-        "cursor",
-        "agent",
-        "-p",
-        "--force",
-        "--trust",
-        *model_args,
-        "--workspace",
-        str(workdir),
-        wrapped,
-    ]
-    try:
-        with output_path.open("w", encoding="utf-8") as handle:
-            result = subprocess.run(
-                cmd,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                cwd=str(workdir),
-                env=dict(os.environ),
-                text=True,
-                check=False,
-            )
-        cursor_rc = result.returncode
-    except FileNotFoundError:
-        _write(path=output_path, text="Failed to launch child: cursor\n")
-        cursor_rc = 127
-    if cursor_rc != 0:
-        _emit_kv(key="RESPONSE_FILE", value=str(output_path))
+    if cursor_outcome.process_result is not None and cursor_outcome.process_result.exit_code != 0:
         return 2
-    _emit_kv(key="RESPONSE_FILE", value=str(output_path))
     return 0
 
 
@@ -261,98 +305,109 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=auth_rc, failure_reason=reason)
             return 0
         try:
-            model_args = list(resolve_model_args("codex", with_effort=args.with_effort, codex_role=getattr(args, "model_role", "default")).argv)
+            model_args = tuple(resolve_model_args("codex", with_effort=args.with_effort, codex_role=getattr(args, "model_role", "default")).argv)
         except ValueError as exc:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             return 0
-        sandbox_args = ["--sandbox", "workspace-write"] if args.sandbox == "workspace-write" else ["--sandbox", "read-only"]
-        add_dir_args = [value for d in add_dirs for value in ("--add-dir", d)]
-        child = [
-            "codex",
-            "exec",
-            *sandbox_args,
-            "-C",
-            str(workdir),
-            *add_dir_args,
-            *model_args,
-            "-c",
-            _trust_config_arg(str(workdir)),
-            *_codex_auth_args(),
-            "--output-last-message",
-            str(output),
-            "--json",
-            "--",
-            prompt,
-        ]
-        env: dict[str, str] = dict(os.environ)
-        env["CODEX_HOME"] = home
-        start = time.time()
         events = output.with_suffix(output.suffix + ".events.jsonl")
         sidecar = output.with_suffix(output.suffix + ".sidecar")
-        result = _run_external_agent_with_auth_retries(
-            tool="codex",
-            output=output,
-            timeout_seconds=int(args.timeout, 10),
-            cmd=child,
-            env=env,
-            cwd=str(workdir),
-            stdout_path=events,
-            stderr_path=sidecar,
-        )
-        launcher_exit = result.exit_code
-        end = time.time()
-        events = output.with_suffix(output.suffix + ".events.jsonl")
-        if not events.is_file() or events.stat().st_size == 0:
-            _write(path=events, text="{}\n")
-        _mirror_codex_quota_from_events(events=events, sidecar=output.with_suffix(output.suffix + ".sidecar"))
-        proc.run(
-            [
-                sys.executable,
-                str(_PY_CLI),
-                "timing",
-                "record-vendor-task",
-                "--vendor",
-                "codex",
-                "--task-kind",
-                args.timing_task_kind,
-                "--start-s",
-                str(int(start)),
-                "--end-s",
-                str(int(end)),
-                "--output",
-                str(output),
-                "--exit-code",
-                str(launcher_exit),
-                "--status",
-                "complete" if launcher_exit == 0 else "signal",
-            ],
-            check=False,
-        )
-        _codex_model_name = ""
-        for _i, _arg in enumerate(model_args):
-            if _arg == "-m" and _i + 1 < len(model_args):
-                _codex_model_name = model_args[_i + 1]
-                break
-        _record_usage_from_events(events=events, sidecar=output.with_suffix(output.suffix + ".sidecar"), label=args.usage_label, token_record=output.with_suffix(output.suffix + ".token-record"), model=_codex_model_name)
-        _append(
-            path=output.with_suffix(output.suffix + ".meta"),
-            text="\n".join(
-                [
-                    "OUTER_LAUNCHER=agent launch-codex-exec",
-                    f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
-                    f"OUTER_LAUNCHER_WORKDIR={workdir}",
-                    "OUTER_LAUNCHER_KIND=codex-exec",
-                    f"OUTER_LAUNCHER_SANDBOX={args.sandbox}",
-                    f"OUTER_LAUNCHER_WITH_EFFORT={str(args.with_effort).lower()}",
-                    f"OUTER_LAUNCHER_MODEL_ROLE={args.model_role}",
-                    f"OUTER_LAUNCHER_USAGE_LABEL={args.usage_label}",
-                    f"OUTER_LAUNCHER_TIMING_KIND={args.timing_task_kind}",
-                    f"OUTER_LAUNCHER_ADD_DIRS_JSON={_json_array(add_dirs)}",
-                ]
+        env: dict[str, str] = dict(os.environ)
+        env["CODEX_HOME"] = home
+        start_holder: list[float] = []
+
+        def _exec_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+            start_holder.append(time.time())
+            result = _run_external_agent_with_auth_retries(
+                tool="codex",
+                output=output,
+                timeout_seconds=int(args.timeout, 10),
+                cmd=argv,
+                env=env,
+                cwd=str(workdir),
+                stdout_path=events,
+                stderr_path=sidecar,
             )
-            + "\n"
+            return VendorProcessResult(exit_code=result.exit_code)
+
+        def _exec_mirror_quota(**_kwargs: object) -> None:
+            if not events.is_file() or events.stat().st_size == 0:
+                _write(path=events, text="{}\n")
+            _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
+
+        def _exec_record_timing(*, result: VendorProcessResult, **_kwargs: object) -> None:
+            end = time.time()
+            start = start_holder[0] if start_holder else end
+            proc.run(
+                [
+                    sys.executable,
+                    str(_PY_CLI),
+                    "timing",
+                    "record-vendor-task",
+                    "--vendor",
+                    "codex",
+                    "--task-kind",
+                    args.timing_task_kind,
+                    "--start-s",
+                    str(int(start)),
+                    "--end-s",
+                    str(int(end)),
+                    "--output",
+                    str(output),
+                    "--exit-code",
+                    str(result.exit_code),
+                    "--status",
+                    "complete" if result.exit_code == 0 else "signal",
+                ],
+                check=False,
+            )
+
+        def _exec_record_usage(*, model: str, **_kwargs: object) -> None:
+            _record_usage_from_events(events=events, sidecar=sidecar, label=args.usage_label, token_record=output.with_suffix(output.suffix + ".token-record"), model=model)
+
+        def _exec_promote(**_kwargs: object) -> None:
+            _append(
+                path=output.with_suffix(output.suffix + ".meta"),
+                text="\n".join(
+                    [
+                        "OUTER_LAUNCHER=agent launch-codex-exec",
+                        f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
+                        f"OUTER_LAUNCHER_WORKDIR={workdir}",
+                        "OUTER_LAUNCHER_KIND=codex-exec",
+                        f"OUTER_LAUNCHER_SANDBOX={args.sandbox}",
+                        f"OUTER_LAUNCHER_WITH_EFFORT={str(args.with_effort).lower()}",
+                        f"OUTER_LAUNCHER_MODEL_ROLE={args.model_role}",
+                        f"OUTER_LAUNCHER_USAGE_LABEL={args.usage_label}",
+                        f"OUTER_LAUNCHER_TIMING_KIND={args.timing_task_kind}",
+                        f"OUTER_LAUNCHER_ADD_DIRS_JSON={_json_array(add_dirs)}",
+                    ]
+                )
+                + "\n"
+            )
+            _promote_inner_done(output)
+
+        exec_request = VendorLaunchRequest(
+            workdir=str(workdir),
+            output=str(output),
+            prompt=prompt,
+            model_args=model_args,
+            add_dirs=tuple(add_dirs),
+            timing_task_kind=args.timing_task_kind,
         )
-        _promote_inner_done(output)
+        exec_hooks = VendorFamilyHooks(
+            execute=_exec_execute,
+            mirror_quota=_exec_mirror_quota,
+            record_timing=_exec_record_timing,
+            record_usage=_exec_record_usage,
+            promote_completion=_exec_promote,
+        )
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            args.sandbox,
+            exec_request,
+            hooks=exec_hooks,
+            use_config_context=False,
+        )
+        launcher_exit = outcome.process_result.exit_code if outcome.process_result is not None else 0
     _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
     _emit_kv(key="OUTPUT", value=str(output))
     return 0
@@ -680,7 +735,7 @@ def _write_dialectic_pending(*, path: Path, payload: str) -> bool:
     return True
 
 
-def _launch_codex_exec_inprocess(*, argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
+def _launch_codex_exec_inprocess(*, argv: list[str], stdout_path: Path, stderr_path: Path) -> int:  # type: ignore[reportUnusedFunction]
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             wrapper_rc = launch_codex_exec_main(argv)
@@ -758,36 +813,111 @@ def launch_codex_drafter(
             return 2
         pid = os.getpid()
         raw = design / f"step2b-codex-raw.{pid}.txt"
-        launcher_stdout = design / f"step2b-codex-launcher-stdout.{pid}.txt"
         plan_tmp = design / f"plan.txt.tmp.{pid}"
         summary_tmp = design / f"plan-summary.md.tmp.{pid}"
         scout_candidate = design / f"scout-plan-manifest.json.candidate.{pid}"
         scout_filtered = design / f"scout-plan-manifest.json.filtered.{pid}"
         dialectic_pending = design / RAW_PENDING
         trusted = design / f"step2b-codex-trusted-instructions.{pid}.txt"
-        for path in (raw, launcher_stdout, plan_tmp, summary_tmp, scout_candidate, scout_filtered, trusted):
+        for path in (raw, plan_tmp, summary_tmp, scout_candidate, scout_filtered, trusted):
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
         _write(path=trusted, text=_CODEX_DRAFTER_TRUSTED_INSTRUCTIONS)
         launched = True
-        exec_args = [
-            "--output", str(raw),
-            "--timeout", timeout,
-            "--workdir", str(repo),
-            "--add-dir", str(repo),
-            "--sandbox", "read-only",
-            "--usage-label", "codex_plan_draft",
-            "--timing-task-kind", timing_task_kind,
-            "--trusted-instructions-file", str(trusted),
-            "--prompt-file", str(prompt),
-        ]
-        wrapper_rc = _launch_codex_exec_inprocess(argv=exec_args, stdout_path=launcher_stdout, stderr_path=paths.stderr)
-        launcher_text = launcher_stdout.read_text(encoding="utf-8", errors="replace") if launcher_stdout.is_file() else ""
-        launcher_exit = resolve_launcher_exit(captured_text=launcher_text, output_file=raw, process_rc=wrapper_rc)
+        try:
+            model_args = tuple(resolve_model_args("codex").argv)
+        except ValueError as exc:
+            _err(f"{prog}: model args failed: {exc}")
+            return 1
+        prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
+        launcher_exit = 1
+        with tempfile.TemporaryDirectory(prefix="larch-codex-drafter-home-") as home:
+            prep_rc, prep_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
+            if prep_rc != 0:
+                reason = prep_msg or f"codex auth setup failed (exit {prep_rc})"
+                _write_preflight_bundle(output=raw, timeout=timeout, launcher_exit=prep_rc, failure_reason=reason)
+            else:
+                events = raw.with_suffix(raw.suffix + ".events.jsonl")
+                sidecar = raw.with_suffix(raw.suffix + ".sidecar")
+                env: dict[str, str] = dict(os.environ)
+                env["CODEX_HOME"] = home
+                start_holder: list[float] = []
+
+                def _drafter_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+                    start_holder.append(time.time())
+                    result = _run_external_agent_with_auth_retries(
+                        tool="codex",
+                        output=raw,
+                        timeout_seconds=int(timeout, 10),
+                        cmd=argv,
+                        env=env,
+                        cwd=str(repo),
+                        stdout_path=events,
+                        stderr_path=paths.stderr,
+                    )
+                    return VendorProcessResult(exit_code=result.exit_code)
+
+                def _drafter_mirror_quota(**_kwargs: object) -> None:
+                    if not events.is_file() or events.stat().st_size == 0:
+                        _write(path=events, text="{}\n")
+                    _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
+
+                def _drafter_record_timing(*, result: VendorProcessResult, **_kwargs: object) -> None:
+                    end = time.time()
+                    start = start_holder[0] if start_holder else end
+                    proc.run(
+                        [
+                            sys.executable,
+                            str(_PY_CLI),
+                            "timing",
+                            "record-vendor-task",
+                            "--vendor",
+                            "codex",
+                            "--task-kind",
+                            timing_task_kind,
+                            "--start-s",
+                            str(int(start)),
+                            "--end-s",
+                            str(int(end)),
+                            "--output",
+                            str(raw),
+                            "--exit-code",
+                            str(result.exit_code),
+                            "--status",
+                            "complete" if result.exit_code == 0 else "signal",
+                        ],
+                        check=False,
+                    )
+
+                def _drafter_record_usage(*, model: str, **_kwargs: object) -> None:
+                    _record_usage_from_events(events=events, sidecar=sidecar, label="codex_plan_draft", token_record=raw.with_suffix(raw.suffix + ".token-record"), model=model)
+
+                drafter_request = VendorLaunchRequest(
+                    workdir=str(repo),
+                    output=str(raw),
+                    prompt=prompt_text,
+                    model_args=model_args,
+                    add_dirs=(str(repo),),
+                    timing_task_kind=timing_task_kind,
+                )
+                drafter_hooks = VendorFamilyHooks(
+                    execute=_drafter_execute,
+                    mirror_quota=_drafter_mirror_quota,
+                    record_timing=_drafter_record_timing,
+                    record_usage=_drafter_record_usage,
+                )
+                drafter_outcome = run_vendor_launch(
+                    CODEX_DESCRIPTOR,
+                    "read-only",
+                    drafter_request,
+                    hooks=drafter_hooks,
+                    use_config_context=False,
+                )
+                launcher_exit = drafter_outcome.process_result.exit_code if drafter_outcome.process_result is not None else 1
         token_src = raw.with_suffix(raw.suffix + ".token-record")
         if token_src.is_file() and token_src.stat().st_size > 0:
             shutil.copyfile(token_src, paths.token_record)
-        if launcher_exit != 0 or wrapper_rc != 0:
+        if launcher_exit != 0:
             _write(path=paths.failure_diag, text="CODEX_EXEC_FAILED\n")
             _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EXEC_FAILED")
             source = raw.with_suffix(raw.suffix + ".sidecar") if raw.with_suffix(raw.suffix + ".sidecar").is_file() and raw.with_suffix(raw.suffix + ".sidecar").stat().st_size > 0 else paths.stderr
@@ -846,7 +976,7 @@ def launch_codex_drafter(
         return 0
     finally:
         _write_drafter_dirty_tree_sidecar(output, repo_root=repo, baseline=baseline, launched=launched, tool="codex")
-        for pattern in ("step2b-codex-raw.*.txt", "step2b-codex-launcher-stdout.*.txt", "plan.txt.tmp.*", "plan-summary.md.tmp.*", "scout-plan-manifest.json.candidate.*", "scout-plan-manifest.json.filtered.*", "step2b-codex-trusted-instructions.*.txt"):
+        for pattern in ("step2b-codex-raw.*.txt", "plan.txt.tmp.*", "plan-summary.md.tmp.*", "scout-plan-manifest.json.candidate.*", "scout-plan-manifest.json.filtered.*", "step2b-codex-trusted-instructions.*.txt"):
             for path in design.glob(pattern):
                 with contextlib.suppress(FileNotFoundError):
                     path.unlink()
@@ -937,19 +1067,38 @@ def launch_claude_drafter(
         scout_candidate = design / f"scout-plan-manifest.json.candidate.{pid}"
         scout_filtered = design / f"scout-plan-manifest.json.filtered.{pid}"
         dialectic_pending = design / RAW_PENDING
-        cmd = ["claude", "--model", model, "--print", "--output-format", "json", "--add-dir", str(repo), "--allowedTools", "Read,Glob,Grep,LS", "--permission-mode", "plan"]
+        claude_request = VendorLaunchRequest(
+            workdir=str(repo),
+            output=str(output),
+            prompt="",
+            model=model,
+            timing_task_kind=timing_task_kind,
+        )
+        cmd = CLAUDE_DESCRIPTOR.build_argv("drafter-read", claude_request)
         _write(path=paths.meta, text="OUTER_LAUNCHER=claude-drafter\nTIMEOUT=" + timeout + "\nTOOL=claude\nCMD_JSON=" + _json_array(cmd) + "\n")
         launched = True
         prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
         timeout_bin = shutil.which("timeout")
-        run_cmd = [timeout_bin, timeout, *cmd] if timeout_bin else cmd
-        with json_tmp.open("w", encoding="utf-8") as out, paths.stderr.open("w", encoding="utf-8") as err:
-            try:
-                completed = subprocess.run(run_cmd, input=prompt_text, text=True, stdout=out, stderr=err, check=False)
-                exit_code = completed.returncode
-            except FileNotFoundError:
-                exit_code = 127
-                err.write("Failed to launch child: claude\n")
+
+        def _claude_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+            run_cmd = [timeout_bin, timeout, *argv] if timeout_bin else argv
+            with json_tmp.open("w", encoding="utf-8") as out, paths.stderr.open("w", encoding="utf-8") as err:
+                try:
+                    # lint-subprocess-via-runner: ok requires input string and stdout/stderr file handles; proc.run only captures to pipes
+                    completed = subprocess.run(run_cmd, input=prompt_text, text=True, stdout=out, stderr=err, check=False)
+                    return VendorProcessResult(exit_code=completed.returncode)
+                except FileNotFoundError:
+                    err.write("Failed to launch child: claude\n")
+                    return VendorProcessResult(exit_code=127)
+
+        claude_outcome = run_vendor_launch(
+            CLAUDE_DESCRIPTOR,
+            "drafter-read",
+            claude_request,
+            hooks=VendorFamilyHooks(execute=_claude_execute),
+            use_config_context=False,
+        )
+        exit_code = claude_outcome.process_result.exit_code if claude_outcome.process_result is not None else 127
         if timeout_bin and exit_code == config.EXIT_TIMEOUT:
             status = "TIMEOUT"
             _write_drafter_status_file(output=output, status="TIMEOUT", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="TIMEOUT")
@@ -958,12 +1107,11 @@ def launch_claude_drafter(
             _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CLAUDE_EXIT_NONZERO")
         else:
             try:
-                obj = json.loads(json_tmp.read_text(encoding="utf-8"))
-                value = obj.get("result") if isinstance(obj, dict) and not obj.get("is_error") else None
-                if not isinstance(value, str) or not value:
-                    raise ValueError("claude JSON envelope missing non-empty string result")
-                _write(path=result_tmp, text=value)
-                _record_claude_sub_usage(obj=obj, raw=_drafter_token_raw(timing_task_kind), model=model)
+                envelope = parse_claude_envelope(json_tmp.read_text(encoding="utf-8"))
+                if not envelope.text:
+                    raise ValueError(f"claude JSON envelope parse failed: {envelope.status}")
+                _write(path=result_tmp, text=envelope.text)
+                _record_claude_sub_usage(obj=json.loads(envelope.raw), raw=_drafter_token_raw(timing_task_kind), model=model)
             except (json.JSONDecodeError, ValueError) as exc:
                 _write(path=paths.failure_diag, text="CLAUDE_JSON_RESULT_INVALID\n")
                 _append(path=paths.stderr, text=f"{exc}\n")
