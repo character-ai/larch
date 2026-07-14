@@ -15,6 +15,7 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.review.review_pipeline_shared import (
     PruneFilterResult,
+    PruneRecordOptions,
     PruneRoundCounts,
     REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR,
     REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR,
@@ -203,15 +204,15 @@ def reviewer_prune_record(
     round_num: int,
     manifest: Path,
     classification: Path,
-    label_map: Path | None = None,
-    reviewer_status: Path | None = None,
+    options: PruneRecordOptions | None = None,
 ) -> None:
     rows = _manifest_rows(manifest)
-    label_mp = _read_label_map(label_map)
+    record_options = options or PruneRecordOptions()
+    label_mp = _read_label_map(record_options.label_map)
     plan_mode = bool(label_mp)
     slot_labels = [(row, label_mp.get(str(row.get("slot") or ""), _output_label(row))) for row in rows]
     counts = _read_classification_counts(path=classification, labels=[label for _, label in slot_labels], plan_mode=plan_mode)
-    skipped_labels = _skipped_reviewer_labels(reviewer_status)
+    skipped_labels = _skipped_reviewer_labels(record_options.reviewer_status)
     ledger_rows: list[list[str]] = []
     for row, label in slot_labels:
         count = counts.get(label, PruneRoundCounts())
@@ -269,6 +270,24 @@ def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneR
     return hist
 
 
+def _prior_counts_prunable(prior_counts: Iterable[PruneRoundCounts]) -> bool | None:
+    observed_counts = [counts for counts in prior_counts if counts.observed]
+    if not observed_counts:
+        return None
+    accepted_sum = sum(counts.accepted for counts in observed_counts)
+    weighted_accepted_sum = sum(counts.weighted_accepted for counts in observed_counts)
+    rejected_sum = sum(counts.rejected for counts in observed_counts)
+    total_sum = sum(counts.total for counts in observed_counts)
+    net_prunable = total_sum <= 0 or weighted_accepted_sum - rejected_sum <= 0
+    floor_prunable = (
+        total_sum > 0
+        and accepted_sum < REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR
+        and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
+        < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
+    )
+    return net_prunable or floor_prunable
+
+
 def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: Path) -> PruneFilterResult:
     import shutil  # noqa: PLC0415
     rows = _manifest_rows(manifest)
@@ -301,22 +320,8 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
         if not prior_counts:
             pruned.append(key)
             continue
-        observed_counts = [counts for counts in prior_counts.values() if counts.observed]
-        if not observed_counts:
-            eligible.append(row)
-            continue
-        accepted_sum = sum(counts.accepted for counts in observed_counts)
-        weighted_accepted_sum = sum(counts.weighted_accepted for counts in observed_counts)
-        rejected_sum = sum(counts.rejected for counts in observed_counts)
-        total_sum = sum(counts.total for counts in observed_counts)
-        net_prunable = total_sum <= 0 or weighted_accepted_sum - rejected_sum <= 0
-        floor_prunable = (
-            total_sum > 0
-            and accepted_sum < REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR
-            and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
-            < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
-        )
-        if net_prunable or floor_prunable:
+        prunable = _prior_counts_prunable(prior_counts.values())
+        if prunable:
             pruned.append(key)
             continue
         eligible.append(row)
@@ -453,8 +458,10 @@ def reviewer_prune(argv: list[str]) -> int:
             round_num=round_num,
             manifest=manifest,
             classification=classification,
-            label_map=Path(label_map_raw) if label_map_raw else None,
-            reviewer_status=Path(reviewer_status_raw) if reviewer_status_raw else None,
+            options=PruneRecordOptions(
+                label_map=Path(label_map_raw) if label_map_raw else None,
+                reviewer_status=Path(reviewer_status_raw) if reviewer_status_raw else None,
+            ),
         )
         return 0
     out = Path(_get(parsed=parsed, key="--out"))

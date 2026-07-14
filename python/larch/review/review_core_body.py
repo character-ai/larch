@@ -19,6 +19,7 @@ from larch.report import progress_file
 from larch.report.timing import resolve_timing_ledger_path
 from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_pipeline_shared import (
+    PruneRecordOptions,
     ReviewCommands,
     ReviewCoreBranchContext,
     ReviewCoreResult,
@@ -236,7 +237,13 @@ def _record_prune_round(*, prune_ledger: str, round_num: int, panel_manifest: st
     if not manifest.is_file() or not classification.is_file():
         return ()
     try:
-        reviewer_prune_record(ledger=Path(prune_ledger), round_num=round_num, manifest=manifest, classification=classification, label_map=label_map)
+        reviewer_prune_record(
+            ledger=Path(prune_ledger),
+            round_num=round_num,
+            manifest=manifest,
+            classification=classification,
+            options=PruneRecordOptions(label_map=label_map),
+        )
     except Exception as exc:
         return (("WARN", f"reviewer-prune record failed for round {round_num}: {exc}"),)
     return ()

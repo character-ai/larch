@@ -40,6 +40,12 @@ class PruneRoundCounts:
 
 
 @dataclass(frozen=True)
+class PruneRecordOptions:
+    label_map: Path | None = None
+    reviewer_status: Path | None = None
+
+
+@dataclass(frozen=True)
 class PruneFilterResult:
     prune_active: str
     eligible_count: int

@@ -1924,7 +1924,7 @@ def test_reviewer_prune_record_plan_mode_preserves_spaced_dynamic_label(tmp_path
         str(label_map),
     )
     assert result.returncode == 0, result.stderr
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1\ttrue")
 
 
 def test_reviewer_prune_record_plan_mode_splits_whitespace_slug_labels(tmp_path: Path) -> None:
@@ -1965,14 +1965,14 @@ def test_reviewer_prune_record_plan_mode_splits_whitespace_slug_labels(tmp_path:
 
     assert result.returncode == 0, result.stderr
     lines = ledger.read_text(encoding="utf-8").splitlines()
-    assert lines[1].endswith("Cursor-Pragmatic\t1\t1\t0\t1")
-    assert lines[2].endswith("Codex-Arch\t1\t1\t0\t1")
+    assert lines[1].endswith("Cursor-Pragmatic\t1\t1\t0\t1\ttrue")
+    assert lines[2].endswith("Codex-Arch\t1\t1\t0\t1\ttrue")
 
 
 def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.tsv"
     legacy_header = "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
-    current_header = "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
+    current_header = "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\tobserved"
     ledger.write_text(
         legacy_header
         + "\n"
@@ -1986,7 +1986,7 @@ def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tm
 
     assert ledger.read_text(encoding="utf-8").splitlines() == [
         current_header,
-        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t1\t0\t1",
+        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t1\t0\t1\ttrue",
     ]
 
 
@@ -2313,7 +2313,7 @@ def test_reviewer_prune_filter_keeps_high_severity_code_review_on_weighted_net(t
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1\ttrue")
     assert "PRUNED_COUNT=0" in result.stdout
     assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
@@ -2329,7 +2329,7 @@ def test_reviewer_prune_filter_keeps_low_severity_code_review_positive_net(tmp_p
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1\ttrue")
     assert "PRUNED_COUNT=0" in result.stdout
     assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
@@ -2369,7 +2369,7 @@ def test_reviewer_prune_record_bare_classification_tokens_populate_counts(tmp_pa
 
     row = ledger.read_text(encoding="utf-8").splitlines()[1]
     assert not row.endswith("\t0\t0\t0\t0")
-    assert row.endswith("\t2\t2\t1\t3")
+    assert row.endswith("\t2\t2\t1\t3\ttrue")
 
 
 def test_reviewer_prune_filter_round_two_keeps_productive_bare_token_panel(tmp_path: Path) -> None:
@@ -2384,7 +2384,7 @@ def test_reviewer_prune_filter_round_two_keeps_productive_bare_token_panel(tmp_p
     _write_code_review_prune_classification(round_one, [productive])
 
     _record_prune_classification(ledger, manifest, round_one, 1)
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1\ttrue")
 
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
@@ -2403,7 +2403,7 @@ def test_reviewer_prune_record_code_review_without_scope_stays_unweighted(tmp_pa
 
     _record_prune_classification(ledger, manifest, classification, 1)
 
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1\ttrue")
 
 
 def test_reviewer_prune_record_plan_mode_weights_high_voter_severity(tmp_path: Path) -> None:
@@ -2417,7 +2417,7 @@ def test_reviewer_prune_record_plan_mode_weights_high_voter_severity(tmp_path: P
 
     _record_prune_classification(ledger, manifest, classification, 1, label_map=label_map)
 
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("Cursor-Arch\t1\t2\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("Cursor-Arch\t1\t2\t0\t1\ttrue")
 
 
 def test_reviewer_prune_record_plan_mode_ignores_body_severity_for_weight(tmp_path: Path) -> None:
@@ -2454,7 +2454,7 @@ def test_reviewer_prune_filter_floor_uses_unweighted_accepted_with_high_severity
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t4")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t4\ttrue")
     assert "PRUNED_COUNT=1" in result.stdout
     assert "PANEL_PRUNED_EMPTY=true" in result.stdout
 
@@ -2588,7 +2588,7 @@ def test_review_core_zero_findings_records_prune_ledger(tmp_path: Path) -> None:
         )
         assert result.returncode == 0, result.stderr
 
-    assert ledger.read_text(encoding="utf-8").splitlines()[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
+    assert ledger.read_text(encoding="utf-8").splitlines()[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\tobserved"
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout

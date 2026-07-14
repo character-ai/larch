@@ -27,6 +27,7 @@ from larch.review.review_pipeline_shared import (
     REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR,
     REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR,
     STATIC_REVIEWERS,
+    PruneRecordOptions,
     ReviewCommands,
     ReviewCoreBranchContext,
     ReviewCoreResult,

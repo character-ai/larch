@@ -1016,8 +1016,8 @@ def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypa
     assert values["LOOP_STATUS"] == "complete"
     assert (design / "plan-review-prune-label-map.tsv").read_text(encoding="utf-8") == "cursor-plan-arch\tCursor-Arch\n"
     ledger_lines = (design / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
-    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
-    assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t1\t0\t1"
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\tobserved"
+    assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t1\t0\t1\ttrue"
 
 
 def test_execute_round_snapshots_aggregator_forensics_on_failure(
