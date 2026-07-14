@@ -62,6 +62,30 @@ MARKER_PHRASE_RE: Final = re.compile(
 ISSUE_REFERENCE_RE: Final = re.compile(r"(?<![A-Za-z0-9])#([1-9][0-9]*)")
 BASELINE_PATH_RE: Final = re.compile(r"^python/[^/]+-baseline\.json$")
 VERIFIED_PREDICATE_VERSION: Final = "final-tier-non-pending-v1"
+SWEEP_SCHEMA_VERSION: Final = 1
+SWEEP_DEFAULT_MAX: Final = 20
+SWEEP_INITIAL_WINDOW_SECONDS: Final = 48 * 60 * 60
+SWEEP_DIFF_CAP: Final = DEFAULT_DIFF_CAP
+SWEEP_SYMBOL_CAP: Final = 40
+SWEEP_CONSUMER_CAP: Final = 40
+SWEEP_PENDING_CAP: Final = 1_000
+SWEEP_STATE_FILENAME: Final = "sweep-state.json"
+SWEEP_FINDER_RAW_NAME: Final = "sweep-finder.jsonl"
+SWEEP_REFUTER_RAW_NAME: Final = "sweep-refuter.jsonl"
+SWEEP_SELECTED_MANIFEST_NAME: Final = "sweep-selected-merges.json"
+SWEEP_BUNDLE_MANIFEST_NAME: Final = "sweep-bundle-paths.json"
+SWEEP_PREPARE_SUMMARY_NAME: Final = "sweep-prepare.json"
+SWEEP_SEVERITIES: Final = ("high", "medium", "low")
+SWEEP_CONFIDENCES: Final = ("high", "medium", "low")
+SWEEP_REFUTER_VERDICTS: Final = ("survives", "refuted")
+SWEEP_LOG_FIELDS: Final = 3
+FULL_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}$")
+SWEEP_TIMESTAMP_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+SWEEP_FLUSH_SUBJECT_RE: Final = re.compile(r"^chore\(larch-logs\)")
+SWEEP_RELEASE_SUBJECT_RE: Final = re.compile(r"^Release v")
+SWEEP_PY_DEF_RE: Final = re.compile(r"^\+\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+SWEEP_PY_CLASS_RE: Final = re.compile(r"^\+\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
+SWEEP_PY_CONST_RE: Final = re.compile(r"^\+\s*([A-Z][A-Z0-9_]{2,})\s*=")
 
 
 @dataclass(frozen=True)
@@ -248,6 +272,124 @@ class RunSnapshot:
     chronic_zones: tuple[str, ...]
     chain_edges: tuple[str, ...]
     verified_predicate: str = VERIFIED_PREDICATE_VERSION
+
+
+@dataclass(frozen=True)
+class SweepState:
+    last_sweep_sha: str
+    last_sweep_at: str
+    schema_version: int
+    pending_shas: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SweepPendingEntry:
+    sha: str
+
+
+@dataclass(frozen=True)
+class SweepCommit:
+    merge_sha: str
+    base_sha: str
+    subject: str
+    touched_paths: tuple[str, ...]
+    diff_size: int
+    capped_diff: str
+    diff_truncated: bool
+    changed_symbols: tuple[str, ...]
+    symbols_truncated: bool
+    chronic_zones: tuple[str, ...]
+    is_chronic: bool
+    history_order: int
+    commit_time: int
+
+
+@dataclass(frozen=True)
+class SweepConsumerHit:
+    path: str
+    line: int
+    text: str
+
+
+@dataclass(frozen=True)
+class SweepBundle:
+    pinned_tip: str
+    merge_sha: str
+    base_sha: str
+    subject: str
+    touched_files: tuple[str, ...]
+    chronic_tags: tuple[str, ...]
+    capped_diff: str
+    truncation_notices: tuple[str, ...]
+    changed_symbols: tuple[str, ...]
+    consumers: tuple[SweepConsumerHit, ...]
+    consumers_truncated: bool
+    bundle_path: str
+
+
+@dataclass(frozen=True)
+class SweepFinding:
+    file: str
+    symbol: str
+    description: str
+    severity: str
+    confidence: str
+
+
+@dataclass(frozen=True)
+class SweepFinderRow:
+    merge_sha: str
+    findings: tuple[SweepFinding, ...]
+
+
+@dataclass(frozen=True)
+class SweepRefutationResult:
+    merge_sha: str
+    finding_index: int
+    verdict: str
+
+
+@dataclass(frozen=True)
+class SweepRefuterQueueRow:
+    merge_sha: str
+    finding_index: int
+    file: str
+    symbol: str
+    description: str
+    severity: str
+    confidence: str
+
+
+@dataclass(frozen=True)
+class SweepCandidate:
+    merge_sha: str
+    file: str
+    symbol: str
+    description: str
+    severity: str
+    confidence: str
+
+
+@dataclass(frozen=True)
+class SweepValidatedArtifact:
+    pinned_tip: str
+    selected_manifest_path: str
+    selected_count: int
+    skipped_count: int
+    pending_shas: tuple[str, ...]
+    coverage_incomplete: bool
+    candidates: tuple[SweepCandidate, ...]
+
+
+@dataclass(frozen=True)
+class SweepEnumerationResult:
+    pinned_tip: str
+    selected: tuple[SweepCommit, ...]
+    pending_shas: tuple[str, ...]
+    skipped_count: int
+    coverage_incomplete: bool
+    state_path: Path
+    chronic_zone_names: tuple[str, ...]
 
 
 class AnalyzeBugsError(RuntimeError):
@@ -1929,4 +2071,605 @@ def report_main(argv: list[str]) -> int:
     except AnalyzeBugsError as exc:
         return _fail(str(exc))
     print(report, end="")
+    return 0
+
+
+def _full_sha(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or not FULL_SHA_RE.fullmatch(value):
+        raise AnalyzeBugsError(f"{label} must be a full 40-character lowercase SHA")
+    return value
+
+
+def _sweep_timestamp(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or not SWEEP_TIMESTAMP_RE.fullmatch(value):
+        raise AnalyzeBugsError(f"{label} must be an ISO-8601 UTC timestamp ending in Z")
+    return value
+
+
+def sweep_state_path(ledger_path: Path) -> Path:
+    return ledger_path.expanduser().resolve().parent / SWEEP_STATE_FILENAME
+
+
+def load_sweep_state(path: Path) -> SweepState | None:
+    """Load strict sweep state; absent file means first sweep."""
+    if not path.exists():
+        return None
+    try:
+        raw = _load_json(path)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AnalyzeBugsError(f"malformed sweep state: {path}: {exc}") from exc
+    required = {"last_sweep_sha", "last_sweep_at", "schema_version", "pending_shas"}
+    if set(raw) != required:
+        raise AnalyzeBugsError(f"malformed sweep state keys: {path}")
+    try:
+        schema_version = int(raw["schema_version"])
+    except (TypeError, ValueError) as exc:
+        raise AnalyzeBugsError(f"malformed sweep state schema_version: {path}") from exc
+    if schema_version != SWEEP_SCHEMA_VERSION:
+        raise AnalyzeBugsError(f"unsupported sweep state schema_version={schema_version}: {path}")
+    pending_raw = raw["pending_shas"]
+    if not isinstance(pending_raw, list):
+        raise AnalyzeBugsError(f"malformed sweep state pending_shas: {path}")
+    if len(pending_raw) > SWEEP_PENDING_CAP:
+        raise AnalyzeBugsError(f"sweep state pending_shas exceeds bound {SWEEP_PENDING_CAP}: {path}")
+    pending: list[str] = []
+    seen: set[str] = set()
+    for item in pending_raw:
+        sha = _full_sha(item, label="pending_shas entry")
+        if sha in seen:
+            raise AnalyzeBugsError(f"duplicate pending SHA in sweep state: {sha}")
+        seen.add(sha)
+        pending.append(sha)
+    return SweepState(
+        last_sweep_sha=_full_sha(raw["last_sweep_sha"], label="last_sweep_sha"),
+        last_sweep_at=_sweep_timestamp(raw["last_sweep_at"], label="last_sweep_at"),
+        schema_version=schema_version,
+        pending_shas=tuple(pending),
+    )
+
+
+def write_sweep_state(path: Path, state: SweepState) -> None:
+    """Atomically write validated sweep state beside the ledger."""
+    if state.schema_version != SWEEP_SCHEMA_VERSION:
+        raise AnalyzeBugsError(f"refusing to write unsupported sweep schema_version={state.schema_version}")
+    _full_sha(state.last_sweep_sha, label="last_sweep_sha")
+    _sweep_timestamp(state.last_sweep_at, label="last_sweep_at")
+    if len(state.pending_shas) > SWEEP_PENDING_CAP:
+        raise AnalyzeBugsError(f"pending_shas exceeds bound {SWEEP_PENDING_CAP}")
+    seen: set[str] = set()
+    pending: list[str] = []
+    for sha in state.pending_shas:
+        normalized = _full_sha(sha, label="pending_shas entry")
+        if normalized in seen:
+            raise AnalyzeBugsError(f"duplicate pending SHA: {normalized}")
+        seen.add(normalized)
+        pending.append(normalized)
+    payload = {
+        "last_sweep_sha": state.last_sweep_sha,
+        "last_sweep_at": state.last_sweep_at,
+        "schema_version": state.schema_version,
+        "pending_shas": pending,
+    }
+    _write_json(path, payload)
+
+
+def _git_required(runner: Runner, argv: Sequence[str], *, desc: str) -> str:
+    result = runner.run(list(argv))
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise AnalyzeBugsError(f"{desc} failed{suffix}")
+    return result.stdout
+
+
+def _pin_origin_main(runner: Runner) -> str:
+    fetch = runner.run(["git", "fetch", "origin", "main"])
+    tip = runner.run(["git", "rev-parse", "--verify", "origin/main"])
+    if tip.returncode != 0 or not tip.stdout.strip():
+        detail = (tip.stderr or tip.stdout or fetch.stderr or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise AnalyzeBugsError(f"could not pin origin/main{suffix}")
+    return _full_sha(tip.stdout.strip(), label="origin/main tip")
+
+
+def _is_ancestor(runner: Runner, *, ancestor: str, descendant: str) -> bool:
+    result = runner.run(["git", "merge-base", "--is-ancestor", ancestor, descendant])
+    return result.returncode == 0
+
+
+def _require_reachable(runner: Runner, *, sha: str, tip: str, label: str) -> None:
+    if not _is_ancestor(runner, ancestor=sha, descendant=tip):
+        raise AnalyzeBugsError(f"{label} {sha} is not reachable from pinned tip {tip}")
+
+
+def _excluded_subject(subject: str) -> bool:
+    return bool(SWEEP_FLUSH_SUBJECT_RE.match(subject) or SWEEP_RELEASE_SUBJECT_RE.match(subject))
+
+
+def _larch_logs_only(paths: Sequence[str]) -> bool:
+    return bool(paths) and all(path == "larch-logs" or path.startswith("larch-logs/") for path in paths)
+
+
+def _extract_changed_symbols(diff_text: str) -> tuple[tuple[str, ...], bool]:
+    symbols: list[str] = []
+    seen: set[str] = set()
+    truncated = False
+    for line in diff_text.splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        match = SWEEP_PY_DEF_RE.match(line) or SWEEP_PY_CLASS_RE.match(line) or SWEEP_PY_CONST_RE.match(line)
+        if match is None:
+            continue
+        name = match.group(1)
+        if name in seen:
+            continue
+        if len(symbols) >= SWEEP_SYMBOL_CAP:
+            truncated = True
+            break
+        seen.add(name)
+        symbols.append(name)
+    return tuple(symbols), truncated
+
+
+def _first_parent_evidence(runner: Runner, *, merge_sha: str, diff_cap: int) -> tuple[str, tuple[str, ...], int, str, bool, tuple[str, ...], bool]:
+    base = _git_required(runner, ["git", "rev-parse", "--verify", f"{merge_sha}^1"], desc=f"first-parent base for {merge_sha}").strip()
+    base_sha = _full_sha(base, label=f"first-parent base for {merge_sha}")
+    names = _git_required(
+        runner,
+        ["git", "diff", "--name-only", f"{base_sha}..{merge_sha}"],
+        desc=f"touched paths for {merge_sha}",
+    )
+    touched = tuple(line.strip() for line in names.splitlines() if line.strip())
+    full_diff = _git_required(
+        runner,
+        ["git", "diff", "--unified=1", f"{base_sha}..{merge_sha}"],
+        desc=f"first-parent diff for {merge_sha}",
+    )
+    diff_size = len(full_diff)
+    truncated = len(full_diff) > diff_cap
+    capped = _capped(full_diff, diff_cap)
+    symbols, symbols_truncated = _extract_changed_symbols(full_diff)
+    return base_sha, touched, diff_size, capped, truncated, symbols, symbols_truncated
+
+
+def _discover_consumers(runner: Runner, *, symbols: Sequence[str], defining_paths: Sequence[str]) -> tuple[tuple[SweepConsumerHit, ...], bool]:
+    hits: list[SweepConsumerHit] = []
+    truncated = False
+    exclude_args = [f":(exclude){path}" for path in defining_paths]
+    for symbol in symbols:
+        argv = ["git", "grep", "-n", "-F", "-e", symbol, "--", ".", *exclude_args]
+        result = runner.run(argv)
+        if result.returncode not in {0, 1}:
+            detail = (result.stderr or result.stdout or "").strip()
+            suffix = f": {detail}" if detail else ""
+            raise AnalyzeBugsError(f"consumer scan for {symbol} failed{suffix}")
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            path_part, sep, rest = line.partition(":")
+            if not sep:
+                continue
+            line_part, sep2, text = rest.partition(":")
+            if not sep2 or not line_part.isdecimal():
+                continue
+            path = path_part.strip()
+            if path in defining_paths:
+                continue
+            if len(hits) >= SWEEP_CONSUMER_CAP:
+                truncated = True
+                return tuple(hits), truncated
+            hits.append(SweepConsumerHit(path=path, line=int(line_part), text=text.strip()))
+    return tuple(hits), truncated
+
+
+def _build_sweep_commit(
+    runner: Runner,
+    *,
+    merge_sha: str,
+    subject: str,
+    commit_time: int,
+    history_order: int,
+    chronic_names: set[str],
+    diff_cap: int,
+) -> SweepCommit:
+    base_sha, touched, diff_size, capped, truncated, symbols, symbols_truncated = _first_parent_evidence(
+        runner, merge_sha=merge_sha, diff_cap=diff_cap
+    )
+    zones = _zones_for_files(touched)
+    chronic_hit = tuple(zone for zone in zones if zone in chronic_names)
+    return SweepCommit(
+        merge_sha=merge_sha,
+        base_sha=base_sha,
+        subject=subject,
+        touched_paths=touched,
+        diff_size=diff_size,
+        capped_diff=capped,
+        diff_truncated=truncated,
+        changed_symbols=symbols,
+        symbols_truncated=symbols_truncated,
+        chronic_zones=chronic_hit,
+        is_chronic=bool(chronic_hit),
+        history_order=history_order,
+        commit_time=commit_time,
+    )
+
+
+def _enumerate_window_rows(runner: Runner, *, tip: str, state: SweepState | None, now: int) -> list[tuple[str, str, int]]:
+    if state is None:
+        since = max(0, now - SWEEP_INITIAL_WINDOW_SECONDS)
+        out = _git_required(
+            runner,
+            ["git", "log", "--first-parent", f"--since={since}", "--format=%H%x00%s%x00%ct", tip],
+            desc="first-run sweep enumeration",
+        )
+    else:
+        out = _git_required(
+            runner,
+            ["git", "log", "--first-parent", "--format=%H%x00%s%x00%ct", tip, "--not", state.last_sweep_sha],
+            desc="watermark sweep enumeration",
+        )
+    rows: list[tuple[str, str, int]] = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\0")
+        if len(parts) != SWEEP_LOG_FIELDS:
+            raise AnalyzeBugsError(f"malformed git log sweep row: {line!r}")
+        sha = _full_sha(parts[0], label="enumerated commit")
+        subject = parts[1]
+        try:
+            commit_time = int(parts[2])
+        except ValueError as exc:
+            raise AnalyzeBugsError(f"malformed commit timestamp for {sha}") from exc
+        rows.append((sha, subject, commit_time))
+    # git log is newest-first; history_order should be older-first for deterministic ties.
+    rows.reverse()
+    return rows
+
+
+def _subject_and_time(runner: Runner, *, sha: str) -> tuple[str, int]:
+    out = _git_required(runner, ["git", "show", "-s", "--format=%s%x00%ct", sha], desc=f"commit metadata for {sha}").strip()
+    subject, sep, rest = out.partition("\0")
+    if not sep:
+        raise AnalyzeBugsError(f"malformed commit metadata for {sha}")
+    try:
+        commit_time = int(rest.strip())
+    except ValueError as exc:
+        raise AnalyzeBugsError(f"malformed commit timestamp for {sha}") from exc
+    return subject, commit_time
+
+
+def _chronic_zone_names(*, runner: Runner, repo: str, ledger_path: Path, pinned_tip: str, run_dir: Path) -> tuple[str, ...]:
+    manifest = {
+        "schema_version": "1",
+        "repo": repo,
+        "run_id": "sweep-prepare",
+        "run_dir": str(run_dir),
+        "evidence_ref": pinned_tip,
+        "bugs_requested": 0,
+        "bugs_selected": 0,
+        "generated_at": int(time.time()),
+        "ledger_path": str(ledger_path),
+        "triage_batch_paths": [],
+        "deep_queue_path": "",
+        "issues": [],
+    }
+    analytics = build_analytics_view(manifest=manifest, bundles=[], ledger_path=ledger_path, runner=runner)
+    return tuple(zone.zone for zone in analytics.chronic_zones)
+
+
+def _rank_key(commit: SweepCommit) -> tuple[int, int, int, str]:
+    # Chronic first, then larger diffs, then older history order, then SHA.
+    return (0 if commit.is_chronic else 1, -commit.diff_size, commit.history_order, commit.merge_sha)
+
+
+def sweep_enumeration(
+    *,
+    runner: Runner,
+    ledger_path: Path,
+    run_dir: Path,
+    repo: str,
+    sweep_max: int,
+    diff_cap: int = SWEEP_DIFF_CAP,
+    now: int | None = None,
+    pinned_tip: str | None = None,
+) -> SweepEnumerationResult:
+    if sweep_max <= 0:
+        raise AnalyzeBugsError("--sweep-max must be a positive integer")
+    tip = pinned_tip or _pin_origin_main(runner)
+    tip = _full_sha(tip, label="pinned tip")
+    state_path = sweep_state_path(ledger_path)
+    state = load_sweep_state(state_path)
+    if state is not None:
+        _require_reachable(runner, sha=state.last_sweep_sha, tip=tip, label="last_sweep_sha")
+        for pending in state.pending_shas:
+            _require_reachable(runner, sha=pending, tip=tip, label="pending SHA")
+
+    chronic_names = set(_chronic_zone_names(runner=runner, repo=repo, ledger_path=ledger_path, pinned_tip=tip, run_dir=run_dir))
+    clock = int(time.time()) if now is None else now
+    window_rows = _enumerate_window_rows(runner, tip=tip, state=state, now=clock)
+
+    eligible: dict[str, SweepCommit] = {}
+    history_order = 0
+    for sha, subject, commit_time in window_rows:
+        if _excluded_subject(subject):
+            continue
+        base_sha, touched, diff_size, capped, truncated, symbols, symbols_truncated = _first_parent_evidence(
+            runner, merge_sha=sha, diff_cap=diff_cap
+        )
+        if _larch_logs_only(touched):
+            continue
+        zones = _zones_for_files(touched)
+        chronic_hit = tuple(zone for zone in zones if zone in chronic_names)
+        eligible[sha] = SweepCommit(
+            merge_sha=sha,
+            base_sha=base_sha,
+            subject=subject,
+            touched_paths=touched,
+            diff_size=diff_size,
+            capped_diff=capped,
+            diff_truncated=truncated,
+            changed_symbols=symbols,
+            symbols_truncated=symbols_truncated,
+            chronic_zones=chronic_hit,
+            is_chronic=bool(chronic_hit),
+            history_order=history_order,
+            commit_time=commit_time,
+        )
+        history_order += 1
+
+    if state is not None:
+        for pending in state.pending_shas:
+            if pending in eligible:
+                continue
+            subject, commit_time = _subject_and_time(runner, sha=pending)
+            if _excluded_subject(subject):
+                continue
+            commit = _build_sweep_commit(
+                runner,
+                merge_sha=pending,
+                subject=subject,
+                commit_time=commit_time,
+                history_order=history_order,
+                chronic_names=chronic_names,
+                diff_cap=diff_cap,
+            )
+            if _larch_logs_only(commit.touched_paths):
+                continue
+            eligible[pending] = commit
+            history_order += 1
+
+    ranked = sorted(eligible.values(), key=_rank_key)
+    selected = tuple(ranked[:sweep_max])
+    pending = tuple(commit.merge_sha for commit in ranked[sweep_max:])
+    skipped = len(pending)
+    return SweepEnumerationResult(
+        pinned_tip=tip,
+        selected=selected,
+        pending_shas=pending,
+        skipped_count=skipped,
+        coverage_incomplete=skipped > 0,
+        state_path=state_path,
+        chronic_zone_names=tuple(sorted(chronic_names)),
+    )
+
+
+def _render_sweep_bundle(bundle: SweepBundle) -> str:
+    notices = "\n".join(f"- {item}" for item in bundle.truncation_notices) or "- none"
+    consumers = "\n".join(f"- {hit.path}:{hit.line}: {hit.text}" for hit in bundle.consumers) or "- none"
+    symbols = ", ".join(bundle.changed_symbols) or "none"
+    chronic = ", ".join(bundle.chronic_tags) or "none"
+    touched = "\n".join(f"- {path}" for path in bundle.touched_files) or "- none"
+    return "\n".join(
+        [
+            "# Sweep evidence bundle",
+            "",
+            f"pinned_tip: {bundle.pinned_tip}",
+            f"merge_sha: {bundle.merge_sha}",
+            f"base_sha: {bundle.base_sha}",
+            f"subject: {bundle.subject}",
+            f"chronic_tags: {chronic}",
+            f"changed_symbols: {symbols}",
+            "",
+            "## Touched files",
+            touched,
+            "",
+            "## Truncation notices",
+            notices,
+            "",
+            "## Consumers",
+            consumers,
+            "",
+            "## First-parent diff",
+            "```diff",
+            bundle.capped_diff.rstrip("\n"),
+            "```",
+            "",
+        ]
+    )
+
+
+def build_sweep_bundles(
+    *,
+    runner: Runner,
+    enumeration: SweepEnumerationResult,
+    run_dir: Path,
+    diff_cap: int = SWEEP_DIFF_CAP,
+) -> tuple[SweepBundle, ...]:
+    _private_mkdir(run_dir)
+    bundles: list[SweepBundle] = []
+    for commit in enumeration.selected:
+        consumers, consumers_truncated = _discover_consumers(
+            runner, symbols=commit.changed_symbols, defining_paths=commit.touched_paths
+        )
+        notices: list[str] = []
+        if commit.diff_truncated:
+            notices.append(f"diff truncated to {diff_cap} characters")
+        if commit.symbols_truncated:
+            notices.append(f"changed symbols truncated to {SWEEP_SYMBOL_CAP}")
+        if consumers_truncated:
+            notices.append(f"consumers truncated to {SWEEP_CONSUMER_CAP}")
+        bundle_path = run_dir / f"sweep-{commit.merge_sha}-bundle.md"
+        bundle = SweepBundle(
+            pinned_tip=enumeration.pinned_tip,
+            merge_sha=commit.merge_sha,
+            base_sha=commit.base_sha,
+            subject=commit.subject,
+            touched_files=commit.touched_paths,
+            chronic_tags=commit.chronic_zones,
+            capped_diff=commit.capped_diff,
+            truncation_notices=tuple(notices),
+            changed_symbols=commit.changed_symbols,
+            consumers=consumers,
+            consumers_truncated=consumers_truncated,
+            bundle_path=str(bundle_path),
+        )
+        _atomic_write_text(bundle_path, _render_sweep_bundle(bundle))
+        bundles.append(bundle)
+    return tuple(bundles)
+
+
+def _write_sweep_prepare_artifacts(
+    *,
+    enumeration: SweepEnumerationResult,
+    bundles: Sequence[SweepBundle],
+    run_dir: Path,
+) -> dict[str, object]:
+    selected_path = run_dir / SWEEP_SELECTED_MANIFEST_NAME
+    bundle_manifest_path = run_dir / SWEEP_BUNDLE_MANIFEST_NAME
+    summary_path = run_dir / SWEEP_PREPARE_SUMMARY_NAME
+    selected_payload = {
+        "pinned_tip": enumeration.pinned_tip,
+        "selected_count": len(enumeration.selected),
+        "skipped_count": enumeration.skipped_count,
+        "coverage_incomplete": enumeration.coverage_incomplete,
+        "pending_shas": list(enumeration.pending_shas),
+        "selected": [
+            {
+                "merge_sha": commit.merge_sha,
+                "base_sha": commit.base_sha,
+                "subject": commit.subject,
+                "diff_size": commit.diff_size,
+                "is_chronic": commit.is_chronic,
+                "chronic_zones": list(commit.chronic_zones),
+                "touched_paths": list(commit.touched_paths),
+                "bundle_path": next(bundle.bundle_path for bundle in bundles if bundle.merge_sha == commit.merge_sha),
+            }
+            for commit in enumeration.selected
+        ],
+    }
+    bundle_payload = {
+        "pinned_tip": enumeration.pinned_tip,
+        "bundles": [{"merge_sha": bundle.merge_sha, "path": bundle.bundle_path} for bundle in bundles],
+    }
+    summary_payload = {
+        "pinned_tip": enumeration.pinned_tip,
+        "selected_merge_manifest": str(selected_path),
+        "bundle_path_manifest": str(bundle_manifest_path),
+        "selected_count": len(enumeration.selected),
+        "skipped_count": enumeration.skipped_count,
+        "pending_shas": list(enumeration.pending_shas),
+        "coverage_incomplete": enumeration.coverage_incomplete,
+        "state_path": str(enumeration.state_path),
+        "finder_raw_path": str(run_dir / SWEEP_FINDER_RAW_NAME),
+        "refuter_raw_path": str(run_dir / SWEEP_REFUTER_RAW_NAME),
+        "chronic_zone_names": list(enumeration.chronic_zone_names),
+    }
+    _write_json(selected_path, selected_payload)
+    _write_json(bundle_manifest_path, bundle_payload)
+    _write_json(summary_path, summary_payload)
+    return summary_payload
+
+
+def sweep_prepare(
+    *,
+    runner: Runner,
+    run_dir: Path,
+    ledger_path: Path,
+    repo: str,
+    sweep_max: int,
+    diff_cap: int = SWEEP_DIFF_CAP,
+    now: int | None = None,
+    pinned_tip: str | None = None,
+) -> dict[str, object]:
+    _private_mkdir(run_dir)
+    enumeration = sweep_enumeration(
+        runner=runner,
+        ledger_path=ledger_path,
+        run_dir=run_dir,
+        repo=repo,
+        sweep_max=sweep_max,
+        diff_cap=diff_cap,
+        now=now,
+        pinned_tip=pinned_tip,
+    )
+    bundles = build_sweep_bundles(runner=runner, enumeration=enumeration, run_dir=run_dir, diff_cap=diff_cap)
+    if len(bundles) != len(enumeration.selected):
+        raise AnalyzeBugsError("partial sweep bundle coverage")
+    summary = _write_sweep_prepare_artifacts(enumeration=enumeration, bundles=bundles, run_dir=run_dir)
+    return {
+        "PINNED_TIP": enumeration.pinned_tip,
+        "SELECTED_MERGE_MANIFEST": summary["selected_merge_manifest"],
+        "BUNDLE_PATH_MANIFEST": summary["bundle_path_manifest"],
+        "SELECTED_COUNT": len(enumeration.selected),
+        "SKIPPED_COUNT": enumeration.skipped_count,
+        "PENDING_SHAS": enumeration.pending_shas,
+        "COVERAGE_INCOMPLETE": "true" if enumeration.coverage_incomplete else "false",
+        "STATE_PATH": str(enumeration.state_path),
+        "RUN_DIR": str(run_dir),
+        "SWEEP_FINDER_RAW_PATH": str(run_dir / SWEEP_FINDER_RAW_NAME),
+        "SWEEP_REFUTER_RAW_PATH": str(run_dir / SWEEP_REFUTER_RAW_NAME),
+        "SWEEP_PREPARE_SUMMARY": str(run_dir / SWEEP_PREPARE_SUMMARY_NAME),
+    }
+
+
+def sweep_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python/cli.py analyze-bugs sweep")
+    sub = parser.add_subparsers(dest="subphase", required=True)
+    prepare = sub.add_parser("prepare", help="enumerate merges and write sweep evidence bundles")
+    prepare.add_argument("--run-dir", required=True)
+    prepare.add_argument("--ledger-path", required=True)
+    prepare.add_argument("--repo", default="")
+    prepare.add_argument(
+        "--sweep-max",
+        type=lambda value: _positive_int(value, name="--sweep-max"),
+        default=SWEEP_DEFAULT_MAX,
+    )
+    prepare.add_argument(
+        "--diff-cap",
+        type=lambda value: _positive_int(value, name="--diff-cap"),
+        default=SWEEP_DIFF_CAP,
+    )
+    # Follow-up piece registers ingest-finder / ingest-refuter against this dispatcher.
+    args = parser.parse_args(argv)
+    if args.subphase != "prepare":
+        return _fail(f"unknown sweep subphase: {args.subphase}")
+    try:
+        runner = _runner()
+        repo = resolve_repo(runner, args.repo)
+        payload = sweep_prepare(
+            runner=runner,
+            run_dir=Path(args.run_dir),
+            ledger_path=Path(args.ledger_path),
+            repo=repo,
+            sweep_max=args.sweep_max,
+            diff_cap=args.diff_cap,
+        )
+    except AnalyzeBugsError as exc:
+        return _fail(str(exc))
+    _emit_kvs(
+        {
+            "PINNED_TIP": payload["PINNED_TIP"],
+            "SELECTED_MERGE_MANIFEST": payload["SELECTED_MERGE_MANIFEST"],
+            "BUNDLE_PATH_MANIFEST": payload["BUNDLE_PATH_MANIFEST"],
+            "SELECTED_COUNT": payload["SELECTED_COUNT"],
+            "SKIPPED_COUNT": payload["SKIPPED_COUNT"],
+            "PENDING_SHAS": payload["PENDING_SHAS"],
+            "COVERAGE_INCOMPLETE": payload["COVERAGE_INCOMPLETE"],
+            "STATE_PATH": payload["STATE_PATH"],
+            "RUN_DIR": payload["RUN_DIR"],
+            "SWEEP_FINDER_RAW_PATH": payload["SWEEP_FINDER_RAW_PATH"],
+            "SWEEP_REFUTER_RAW_PATH": payload["SWEEP_REFUTER_RAW_PATH"],
+        }
+    )
     return 0

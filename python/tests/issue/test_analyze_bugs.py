@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import time
 from pathlib import Path
 from typing import cast
 
 import pytest
 
-from larch.core.proc import CommandResult
+from larch.core.proc import CommandResult, ProcRunner
 from larch.issue import analyze_bugs
 from test_support import RecordingRunner, run_cli
 
@@ -1148,3 +1151,492 @@ def test_historical_marker_backfill_is_deferred_until_report_success(tmp_path: P
     assert "| #2 | #1 | marker |" in report
     assert rows[-1]["marker_references"] == [1]
     assert rows[-1]["marker_fingerprint"]
+
+
+def _git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
+    merged = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "sweep-test",
+        "GIT_AUTHOR_EMAIL": "sweep@example.com",
+        "GIT_COMMITTER_NAME": "sweep-test",
+        "GIT_COMMITTER_EMAIL": "sweep@example.com",
+    }
+    if env:
+        merged.update(env)
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=merged,
+    )
+    return result.stdout.strip()
+
+
+def _init_sweep_repo(root: Path) -> Path:
+    repo = root / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "sweep@example.com")
+    _git(repo, "config", "user.name", "sweep-test")
+    return repo
+
+
+def _commit_file(repo: Path, relative: str, content: str, message: str, *, when: int | None = None) -> str:
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    _git(repo, "add", "--", relative)
+    env: dict[str, str] = {}
+    if when is not None:
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(when)) + " +0000"
+        env["GIT_AUTHOR_DATE"] = stamp
+        env["GIT_COMMITTER_DATE"] = stamp
+    _git(repo, "commit", "-q", "-m", message, env=env or None)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _set_origin_main(repo: Path, sha: str | None = None) -> str:
+    tip = sha or _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", "refs/remotes/origin/main", tip)
+    return tip
+
+
+def _ledger_row(
+    *,
+    issue: int,
+    cache_key: str,
+    files: list[str],
+    fix_time: int,
+    fix_sha: str = "a" * 40,
+    added_lines: int = 10,
+) -> str:
+    zones = sorted({analyze_bugs.zone_for_path(path) for path in files})
+    return json.dumps(
+        {
+            "cache_key": cache_key,
+            "issue": issue,
+            "fix_sha": fix_sha,
+            "later_history_hash": "later",
+            "triage_verdict": "FIXED_CLEAR",
+            "triage_reason": "ok",
+            "triage_missing_items": [],
+            "triage_needs_deep": False,
+            "triage_evidence_verified": True,
+            "deep_verdict": "",
+            "deep_reason": "",
+            "sampled": False,
+            "stages_complete": ["triage"],
+            "updated_at": fix_time,
+            "touched_files": files,
+            "fix_time": fix_time,
+            "added_lines": added_lines,
+            "marker_references": [],
+            "marker_fingerprint": "",
+            "zones": zones,
+            "baseline_extended": False,
+            "metadata_version": analyze_bugs.ANALYTICS_METADATA_VERSION,
+        },
+        sort_keys=True,
+    )
+
+
+def _write_chronic_ledger(path: Path, *, now: int) -> None:
+    # Three bugs in python/larch/issue within the 14-day analytics window.
+    rows = [
+        _ledger_row(issue=11, cache_key="c1", files=["python/larch/issue/shared.py"], fix_time=now - 100, fix_sha="1" * 40),
+        _ledger_row(issue=12, cache_key="c2", files=["python/larch/issue/shared.py"], fix_time=now - 200, fix_sha="2" * 40),
+        _ledger_row(issue=13, cache_key="c3", files=["python/larch/issue/shared.py"], fix_time=now - 300, fix_sha="3" * 40),
+    ]
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def test_sweep_state_round_trip_and_absent_default(tmp_path: Path) -> None:
+    path = tmp_path / "sweep-state.json"
+    assert analyze_bugs.load_sweep_state(path) is None
+
+    state = analyze_bugs.SweepState(
+        last_sweep_sha="a" * 40,
+        last_sweep_at="2026-07-13T12:00:00Z",
+        schema_version=analyze_bugs.SWEEP_SCHEMA_VERSION,
+        pending_shas=("b" * 40, "c" * 40),
+    )
+    analyze_bugs.write_sweep_state(path, state)
+    loaded = analyze_bugs.load_sweep_state(path)
+    assert loaded == state
+    assert oct(path.stat().st_mode & 0o777) in {"0o600", "0o400"}
+
+
+def test_sweep_state_rejects_malformed_schema_and_pending(tmp_path: Path) -> None:
+    path = tmp_path / "sweep-state.json"
+    _write_json(
+        path,
+        {
+            "last_sweep_sha": "a" * 40,
+            "last_sweep_at": "2026-07-13T12:00:00Z",
+            "schema_version": 99,
+            "pending_shas": [],
+        },
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="unsupported sweep state schema"):
+        analyze_bugs.load_sweep_state(path)
+
+    _write_json(
+        path,
+        {
+            "last_sweep_sha": "not-a-sha",
+            "last_sweep_at": "2026-07-13T12:00:00Z",
+            "schema_version": 1,
+            "pending_shas": [],
+        },
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="full 40-character"):
+        analyze_bugs.load_sweep_state(path)
+
+    _write_json(
+        path,
+        {
+            "last_sweep_sha": "a" * 40,
+            "last_sweep_at": "2026-07-13T12:00:00Z",
+            "schema_version": 1,
+            "pending_shas": ["b" * 40, "b" * 40],
+        },
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="duplicate pending"):
+        analyze_bugs.load_sweep_state(path)
+
+    _write_json(
+        path,
+        {
+            "last_sweep_sha": "a" * 40,
+            "last_sweep_at": "yesterday",
+            "schema_version": 1,
+            "pending_shas": [],
+        },
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="ISO-8601"):
+        analyze_bugs.load_sweep_state(path)
+
+
+def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_sweep_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    base = _commit_file(repo, "python/larch/issue/a.py", "A = 1\n", "seed", when=1_700_000_000)
+    _set_origin_main(repo, base)
+
+    flush = _commit_file(repo, "larch-logs/run/x.md", "log\n", "chore(larch-logs): flush", when=1_700_000_100)
+    release = _commit_file(repo, "VERSION", "1.0.0\n", "Release v1.0.0", when=1_700_000_200)
+    logs_only = _commit_file(repo, "larch-logs/other.md", "more\n", "docs: logs only", when=1_700_000_300)
+    real_one = _commit_file(repo, "python/larch/issue/a.py", "A = 2\n", "fix: real one", when=1_700_000_400)
+    real_two = _commit_file(repo, "python/larch/core/b.py", "B = 1\n", "fix: real two", when=1_700_000_500)
+    tip = _set_origin_main(repo)
+
+    run_dir = tmp_path / "run"
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", encoding="utf-8")
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(
+            last_sweep_sha=base,
+            last_sweep_at="2026-01-01T00:00:00Z",
+            schema_version=1,
+            pending_shas=(),
+        ),
+    )
+
+    result = analyze_bugs.sweep_enumeration(
+        runner=ProcRunner(),
+        ledger_path=ledger,
+        run_dir=run_dir,
+        repo="o/r",
+        sweep_max=20,
+        pinned_tip=tip,
+    )
+
+    selected = {commit.merge_sha for commit in result.selected}
+    assert selected == {real_one, real_two}
+    assert flush not in selected
+    assert release not in selected
+    assert logs_only not in selected
+    assert result.skipped_count == 0
+
+
+def test_sweep_enumeration_first_run_window_and_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_sweep_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    old = _commit_file(repo, "python/old.py", "X = 1\n", "old commit", when=1_000_000_000)
+    recent = _commit_file(repo, "python/new.py", "Y = 1\n", "recent commit", when=1_800_000_000)
+    tip = _set_origin_main(repo)
+    run_dir = tmp_path / "run"
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", encoding="utf-8")
+
+    result = analyze_bugs.sweep_enumeration(
+        runner=ProcRunner(),
+        ledger_path=ledger,
+        run_dir=run_dir,
+        repo="o/r",
+        sweep_max=20,
+        pinned_tip=tip,
+        now=1_800_000_000 + 3_600,
+    )
+    assert [commit.merge_sha for commit in result.selected] == [recent]
+    assert old not in {commit.merge_sha for commit in result.selected}
+
+    # Far enough after the tip that the 48-hour first-run window is empty.
+    empty = analyze_bugs.sweep_enumeration(
+        runner=ProcRunner(),
+        ledger_path=ledger,
+        run_dir=run_dir,
+        repo="o/r",
+        sweep_max=20,
+        pinned_tip=tip,
+        now=1_800_000_000 + analyze_bugs.SWEEP_INITIAL_WINDOW_SECONDS + 10,
+    )
+    assert empty.selected == ()
+    assert empty.pending_shas == ()
+    assert empty.skipped_count == 0
+
+
+def test_sweep_enumeration_reachability_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_sweep_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    tip = _commit_file(repo, "python/a.py", "A = 1\n", "tip", when=1_700_000_000)
+    _set_origin_main(repo, tip)
+    other = tmp_path / "other"
+    other.mkdir()
+    _git(other, "init", "-q", "-b", "main")
+    _git(other, "config", "user.email", "sweep@example.com")
+    _git(other, "config", "user.name", "sweep-test")
+    foreign = _commit_file(other, "x.py", "1\n", "foreign", when=1_700_000_100)
+
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", encoding="utf-8")
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(
+            last_sweep_sha=foreign,
+            last_sweep_at="2026-01-01T00:00:00Z",
+            schema_version=1,
+            pending_shas=(),
+        ),
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match=r"last_sweep_sha .* not reachable"):
+        analyze_bugs.sweep_enumeration(
+            runner=ProcRunner(),
+            ledger_path=ledger,
+            run_dir=tmp_path / "run",
+            repo="o/r",
+            sweep_max=20,
+            pinned_tip=tip,
+        )
+
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(
+            last_sweep_sha=tip,
+            last_sweep_at="2026-01-01T00:00:00Z",
+            schema_version=1,
+            pending_shas=(foreign,),
+        ),
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match=r"pending SHA .* not reachable"):
+        analyze_bugs.sweep_enumeration(
+            runner=ProcRunner(),
+            ledger_path=ledger,
+            run_dir=tmp_path / "run",
+            repo="o/r",
+            sweep_max=20,
+            pinned_tip=tip,
+        )
+
+
+def test_sweep_first_parent_merge_evidence_and_symbols(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_sweep_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _commit_file(repo, "python/larch/issue/mod.py", "VALUE = 1\n\ndef helper():\n    return VALUE\n", "base", when=1_700_000_000)
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _commit_file(
+        repo,
+        "python/larch/issue/mod.py",
+        "VALUE = 2\n\ndef helper():\n    return VALUE\n\ndef planted():\n    return VALUE\n",
+        "feature change",
+        when=1_700_000_100,
+    )
+    _git(repo, "checkout", "-q", "main")
+    mainline = _commit_file(repo, "python/larch/issue/consumer.py", "from python.larch.issue.mod import planted\n", "mainline consumer", when=1_700_000_150)
+    _git(repo, "merge", "--no-ff", "-q", "-m", "Merge feature into main", "feature")
+    merge_sha = _git(repo, "rev-parse", "HEAD")
+    tip = _set_origin_main(repo)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", encoding="utf-8")
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(last_sweep_sha=mainline, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=()),
+    )
+
+    result = analyze_bugs.sweep_prepare(
+        runner=ProcRunner(),
+        run_dir=tmp_path / "run",
+        ledger_path=ledger,
+        repo="o/r",
+        sweep_max=20,
+        pinned_tip=tip,
+    )
+    assert result["SELECTED_COUNT"] == 1
+    selected = json.loads(Path(str(result["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
+    row = selected["selected"][0]
+    assert row["merge_sha"] == merge_sha
+    assert row["base_sha"] == mainline
+    assert "python/larch/issue/mod.py" in row["touched_paths"]
+    assert "python/larch/issue/consumer.py" not in row["touched_paths"]
+    bundle_text = Path(row["bundle_path"]).read_text(encoding="utf-8")
+    assert "def planted" in bundle_text
+    assert "planted" in bundle_text
+    assert "changed_symbols: planted" in bundle_text or "planted" in bundle_text
+
+
+def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_sweep_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    now = int(time.time())
+    base = _commit_file(repo, "README.md", "root\n", "seed", when=now - 1_000)
+    # Non-chronic but large diff.
+    big = "Z = '" + ("x" * 4000) + "'\n"
+    non_chronic = _commit_file(repo, "docs/guide.md", big, "docs: large non-chronic", when=now - 300)
+    # Chronic zone, smaller diff.
+    chronic = _commit_file(repo, "python/larch/issue/shared.py", "SHARED = 1\n", "fix: chronic small", when=now - 200)
+    later = _commit_file(repo, "scripts/tool.sh", "echo hi\n", "scripts: later", when=now - 100)
+    tip = _set_origin_main(repo)
+
+    ledger = tmp_path / "ledger.jsonl"
+    _write_chronic_ledger(ledger, now=now)
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(last_sweep_sha=base, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=()),
+    )
+
+    capped = analyze_bugs.sweep_prepare(
+        runner=ProcRunner(),
+        run_dir=tmp_path / "run1",
+        ledger_path=ledger,
+        repo="o/r",
+        sweep_max=1,
+        pinned_tip=tip,
+        now=now,
+    )
+    assert capped["SELECTED_COUNT"] == 1
+    assert capped["SKIPPED_COUNT"] == 2
+    assert capped["COVERAGE_INCOMPLETE"] == "true"
+    assert set(capped["PENDING_SHAS"]) == {non_chronic, later}
+    selected = json.loads(Path(str(capped["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
+    assert selected["selected"][0]["merge_sha"] == chronic
+    assert selected["selected"][0]["is_chronic"] is True
+    # Prepare must not mutate durable sweep state.
+    durable = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
+    assert durable is not None
+    assert durable.pending_shas == ()
+    assert durable.last_sweep_sha == base
+
+    # Hand-written state carries pending SHAs; ranking still prefers chronic/pending over new lower-priority work.
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(
+            last_sweep_sha=tip,
+            last_sweep_at="2026-01-02T00:00:00Z",
+            schema_version=1,
+            pending_shas=(non_chronic, later),
+        ),
+    )
+    _commit_file(repo, "README.md", "root2\n", "chore: tiny readme", when=now + 50)
+    new_tip = _set_origin_main(repo)
+    resumed = analyze_bugs.sweep_enumeration(
+        runner=ProcRunner(),
+        ledger_path=ledger,
+        run_dir=tmp_path / "run2",
+        repo="o/r",
+        sweep_max=1,
+        pinned_tip=new_tip,
+        now=now + 100,
+    )
+    assert resumed.selected[0].merge_sha == non_chronic
+    assert later in resumed.pending_shas
+    assert resumed.skipped_count >= 1
+
+
+def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _init_sweep_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    base = _commit_file(repo, "python/a.py", "A = 1\n", "seed", when=1_700_000_000)
+    _commit_file(repo, "python/a.py", "A = 2\n", "change", when=1_700_000_100)
+    tip = _set_origin_main(repo)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", encoding="utf-8")
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(last_sweep_sha=base, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=()),
+    )
+    run_dir = tmp_path / "run"
+    monkeypatch.setattr(analyze_bugs, "_runner", ProcRunner)
+    monkeypatch.setattr(analyze_bugs, "resolve_repo", lambda _runner, explicit="": explicit or "o/r")
+
+    rc = analyze_bugs.sweep_main(
+        ["prepare", "--run-dir", str(run_dir), "--ledger-path", str(ledger), "--repo", "o/r", "--sweep-max", "20"]
+    )
+    assert rc == 0
+    assert (run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME).is_file()
+    assert (run_dir / analyze_bugs.SWEEP_BUNDLE_MANIFEST_NAME).is_file()
+    help_result = run_cli("analyze-bugs", "sweep", "--help")
+    assert help_result.returncode == 0
+    assert "prepare" in help_result.stdout
+
+    # Invalid state fails closed.
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(last_sweep_sha="f" * 40, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=()),
+    )
+    # Force an unreachable watermark by writing a valid-looking but foreign SHA after replacing tip pin.
+    foreign_repo = tmp_path / "foreign"
+    foreign_repo.mkdir()
+    _git(foreign_repo, "init", "-q", "-b", "main")
+    _git(foreign_repo, "config", "user.email", "sweep@example.com")
+    _git(foreign_repo, "config", "user.name", "sweep-test")
+    foreign = _commit_file(foreign_repo, "z.py", "1\n", "foreign", when=1_700_000_200)
+    bad_state = analyze_bugs.SweepState(last_sweep_sha=foreign, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=())
+    analyze_bugs.write_sweep_state(analyze_bugs.sweep_state_path(ledger), bad_state)
+    rc_bad = analyze_bugs.sweep_main(
+        ["prepare", "--run-dir", str(tmp_path / "run-bad"), "--ledger-path", str(ledger), "--repo", "o/r"]
+    )
+    assert rc_bad == 1
+    assert tip
+
+
+def test_non_sweep_verbs_do_not_touch_sweep_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    state_path = analyze_bugs.sweep_state_path(ledger)
+    assert not state_path.exists()
+    manifest = _single_manifest(run_dir, issue=1, cache_key="k1", mechanical="WONTFIX")
+    manifest["ledger_path"] = str(ledger)
+    _write_json(run_dir / "manifest.json", manifest)
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result("")))
+
+    summary = analyze_bugs.ledger_compute(
+        run_dir=run_dir,
+        ledger_path=ledger,
+        manifest_path=run_dir / "manifest.json",
+        refresh=False,
+        sample=0,
+        deep_max=0,
+        deep_model="sonnet",
+        batch_size=10,
+    )
+    assert "TRIAGE_BATCH_PATHS" in summary or "DEEP_QUEUE_PATH" in summary or summary
+    assert not state_path.exists()
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+    assert "Analyze Bugs Report" in report
+    assert not state_path.exists()
