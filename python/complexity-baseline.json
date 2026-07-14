@@ -6237,7 +6237,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_run_absorbed_continue_tail",
-    "metric": 24
+    "metric": 26
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6261,7 +6261,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0911",
     "qualified_symbol": "_run_absorbed_continue_tail",
-    "metric": 9
+    "metric": 10
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6309,7 +6309,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_absorbed_continue_tail",
-    "metric": 24
+    "metric": 26
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6345,7 +6345,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_absorbed_continue_tail",
-    "metric": 63
+    "metric": 69
   },
   {
     "file": "larch/state/bootstrap.py",

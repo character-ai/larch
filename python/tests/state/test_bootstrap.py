@@ -1355,6 +1355,8 @@ def _run_phase_infra_for_progress(
     opts_run_id: str = "",
     setup_session_id: str = "setup-run-id",
     activate_returncode: int = 0,
+    self_review_requested: str = "false",
+    self_implement_requested: str = "false",
 ) -> tuple[bootstrap.BootstrapState, list[tuple[str, ...]]]:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
@@ -1374,7 +1376,14 @@ def _run_phase_infra_for_progress(
         return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra", run_id=opts_run_id))
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(
+            up_to_phase="infra",
+            run_id=opts_run_id,
+            self_review_requested=self_review_requested,
+            self_implement_requested=self_implement_requested,
+        )
+    )
     bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
     return st, calls
 
@@ -1433,6 +1442,25 @@ def test_phase_infra_progress_activate_failure_is_best_effort(
     assert any(call[:2] == ("progress", "activate") for call in calls)
     assert any(call[:2] == ("session", "write-implement-env") for call in calls)
     assert "STEP_FAILED=" not in captured.out
+
+
+def test_phase_infra_self_subagents_skip_external_tool_health_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _st, calls = _run_phase_infra_for_progress(
+        tmp_path,
+        monkeypatch,
+        opts_run_id="self-subagent-run",
+        setup_session_id="setup-run-id",
+        self_review_requested="true",
+        self_implement_requested="true",
+    )
+
+    setup_call = next(call for call in calls if call[:2] == ("session", "setup"))
+    assert "--skip-codex-probe" in setup_call
+    assert "--skip-cursor-probe" in setup_call
+    assert not any(call[:2] == ("agent", "check-reviewers") for call in calls)
 
 
 @pytest.mark.parametrize("reserved_run_id", ["current", ".", ".."])
@@ -1642,6 +1670,33 @@ def test_invoke_absorbed_degraded_gate_healthy_tools_do_not_prompt(tmp_path: Pat
     assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
     assert tail.routing.get("ROUTE") == "continue"
     assert tail.routing.get("CHECKPOINT_NEXT") == "continue"
+
+
+def test_self_review_and_self_implement_skip_external_tool_health_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        calls.append(args)
+        raise AssertionError("combined self-subagent mode must not validate external tools")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path, CODEX_PRESENT="false", CURSOR_PRESENT="false"),
+        opts=bootstrap.BootstrapOptions(
+            up_to_phase="coder",
+            self_review_requested="true",
+            self_implement_requested="true",
+        ),
+        non_interactive=True,
+    )
+
+    assert calls == []
+    assert tail.contract_failure is False
+    assert tail.routing["DEGRADED"] == "false"
+    assert tail.routing["DEGRADED_PROMPT_REQUIRED"] == "false"
+    assert tail.routing["ROUTE"] == "continue"
 
 
 def test_invoke_absorbed_degraded_gate_one_down_interactive_requires_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
