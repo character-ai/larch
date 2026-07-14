@@ -38,6 +38,7 @@ from larch.design import design_publish
 from larch.core import logging_util
 from larch.core.proc import CommandResult
 from larch.report import progress_file
+from tests.support.design_wire import plan_body, run_params_json, write_result_env
 from larch.core import proc as proc_module
 from larch.state import session_env
 from larch.state import stall_recovery
@@ -124,11 +125,18 @@ def _step0_wrapper_args(env_path: Path) -> list[str]:
 
 
 def _write_ok_init_result(design: Path, *, brainstorm_requested: bool = False) -> None:
-    (design / ".design-init-runparams-result.env").write_text(
-        "INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH=" + str(design / "run-params.json") + "\n",
+    write_result_env(
+        design / ".design-init-runparams-result.env",
+        {
+            "INIT_STATUS": "ok",
+            "RENAMED": "false",
+            "RUN_PARAMS_PATH": str(design / "run-params.json"),
+        },
+    )
+    (design / "run-params.json").write_text(
+        run_params_json(overrides={"brainstorm_requested": brainstorm_requested}),
         encoding="utf-8",
     )
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": brainstorm_requested}), encoding="utf-8")
 
 
 def _fake_best_effort(**_kwargs: object) -> None:
@@ -383,7 +391,7 @@ def test_design_route_malformed_plan_is_not_already_planned(
 def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 5\n", encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=5), encoding="utf-8")
     actions = tmp_path / "actions.txt"
     _ = actions.write_text("ACTION=EMIT_PLAN\nACTION=FINALIZE\n", encoding="utf-8")
     first = subprocess.run(
@@ -394,7 +402,7 @@ def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
     )
     assert first.returncode == 0
     assert "STEP_COMPLETED=FINALIZE" in first.stdout
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 9\n", encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=9), encoding="utf-8")
     second = subprocess.run(
         [sys.executable, str(CLI), "design", "driver", "--design-tmpdir", str(design), "--action-file", str(actions)],
         capture_output=True,
@@ -920,7 +928,14 @@ def test_step0_init_preserves_spaced_issue_title(tmp_path: Path, monkeypatch: py
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
 
     def fake_init(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH=" + str(design / "run-params.json") + "\n", encoding="utf-8")
+        write_result_env(
+            design / ".design-init-runparams-result.env",
+            {
+                "INIT_STATUS": "ok",
+                "RENAMED": "false",
+                "RUN_PARAMS_PATH": str(design / "run-params.json"),
+            },
+        )
         (design / "run-params.json").write_text("{}", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
 
@@ -941,7 +956,14 @@ def test_step0_init_skips_feature_write_when_route_result_differs(tmp_path: Path
     env_path = _write_session_env(tmp_path, design, monkeypatch)
 
     def fake_init(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH=" + str(design / "run-params.json") + "\n", encoding="utf-8")
+        write_result_env(
+            design / ".design-init-runparams-result.env",
+            {
+                "INIT_STATUS": "ok",
+                "RENAMED": "false",
+                "RUN_PARAMS_PATH": str(design / "run-params.json"),
+            },
+        )
         (design / "run-params.json").write_text("{}", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -1513,7 +1535,7 @@ def test_step1d7_brainstorm_off_writes_result_envs_without_pause(
 ) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
 
     assert design_lifecycle.step1d7_main([*_step0_wrapper_args(env_path)]) == 0
@@ -1530,7 +1552,7 @@ def test_step1d7_brainstorm_off_pause_writes_result_envs_before_pause(
 ) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     (design / ".pause-requested").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
 
@@ -1557,7 +1579,7 @@ def test_step1d7_brainstorm_off_pause_ok_false_aborts(
 ) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     (design / ".pause-requested").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
 
@@ -1581,7 +1603,7 @@ def test_step1d7_brainstorm_on_does_not_write_step1d5(
 ) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": True}), encoding="utf-8")
     completed = design / ".completed"
     completed.mkdir()
     for name in ("step-1c", "step-1d"):
@@ -2323,7 +2345,7 @@ def test_step0_init_wrapper_stdout_stays_clean(tmp_path: Path, monkeypatch: pyte
 def test_step1d5_entry_disabled_skip_writes_completion_and_directives(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
     monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
 
@@ -2339,7 +2361,7 @@ def test_step1d5_entry_disabled_skip_writes_completion_and_directives(tmp_path: 
 def test_step1d5_entry_already_complete_precedes_disabled_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     (design / ".brainstorm-done").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
     monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
@@ -2355,7 +2377,7 @@ def test_step1d5_entry_already_complete_precedes_disabled_skip(tmp_path: Path, m
 def test_step1d5_entry_requested_with_done_skips_already_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": True}), encoding="utf-8")
     (design / ".brainstorm-done").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
     monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
@@ -2367,7 +2389,7 @@ def test_step1d5_entry_requested_with_done_skips_already_complete(tmp_path: Path
 def test_step1d5_entry_requested_without_done_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": True}), encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
     monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
 
@@ -2381,7 +2403,7 @@ def test_step1d5_entry_requested_without_done_runs(tmp_path: Path, monkeypatch: 
 def test_step1d5_entry_disabled_pause_hides_directives(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     (design / ".pause-requested").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
 
@@ -2459,7 +2481,7 @@ def test_bash_quoted_env_round_trips_non_ascii_verbal(tmp_path: Path) -> None:
 
 
 def test_step2a_repairs_result_envs_without_plugin_root(tmp_path: Path) -> None:
-    (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
+    (tmp_path / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
     assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
     assert (tmp_path / "contested-decisions.md").read_text(encoding="utf-8") == "NO_CONTESTED_DECISIONS\n"
@@ -2469,7 +2491,7 @@ def test_step2a_repairs_result_envs_without_plugin_root(tmp_path: Path) -> None:
 
 
 def test_step2a_skips_step1d5_when_brainstorm_requested(tmp_path: Path) -> None:
-    (tmp_path / "run-params.json").write_text('{"brainstorm_requested": true}\n', encoding="utf-8")
+    (tmp_path / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": True}), encoding="utf-8")
     assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
     assert not (tmp_path / ".completed" / "step-1d.5").exists()
 
@@ -2985,7 +3007,7 @@ def test_step2a_accepts_result_env_without_trailing_newline(tmp_path: Path) -> N
 
 
 def test_step2a_accepts_legacy_result_env_with_newline(tmp_path: Path) -> None:
-    (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
+    (tmp_path / "run-params.json").write_text(run_params_json(overrides={"brainstorm_requested": False}), encoding="utf-8")
     (tmp_path / "approach-synthesis.txt").write_text("NO_SKETCHES_CLASSIFIED_SIMPLE\n", encoding="utf-8")
     assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
     assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
@@ -3068,7 +3090,7 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
         if args[2:4] == ["agent", f"launch-{vendor}-drafter"]:
             captured.append(args)
-            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("STATUS=ok\nPLAN_WRITTEN=true\n", encoding="utf-8")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -4793,7 +4815,7 @@ def test_step5c_auto_compose_basic(tmp_path: Path) -> None:
 def test_step5c_auto_compose_noop_when_file_exists(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    existing = "## Plan\n\nexisting content\n\ndiff_lines: 1\n"
+    existing = plan_body(body="existing content", diff_lines=1)
     (design / "composed-plan.md").write_text(existing, encoding="utf-8")
     design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
     assert (design / "composed-plan.md").read_text(encoding="utf-8") == existing
@@ -4802,7 +4824,7 @@ def test_step5c_auto_compose_noop_when_file_exists(tmp_path: Path) -> None:
 def test_step5c_auto_compose_fallback_acceptance_when_no_testing_strategy(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "plan.txt").write_text("## Approach\n\nBody.\n\ndiff_lines: 3\n", encoding="utf-8")
+    (design / "plan.txt").write_text(plan_body(header="## Approach", body="Body.", diff_lines=3), encoding="utf-8")
     design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
     composed = (design / "composed-plan.md").read_text(encoding="utf-8")
     assert "## Acceptance" in composed
@@ -4820,7 +4842,7 @@ def test_step5c_auto_compose_strips_leading_plan_header(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
     (design / "plan.txt").write_text(
-        "## Plan\n\n## Approach\n\nDo the thing.\n\n## Testing strategy\n\nRun tests.\n\ndiff_lines: 5\n",
+        plan_body(body="## Approach\n\nDo the thing.\n\n## Testing strategy\n\nRun tests.", diff_lines=5),
         encoding="utf-8",
     )
     design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
@@ -6197,7 +6219,7 @@ def _patch_successful_codex_drafter(monkeypatch: pytest.MonkeyPatch, design: Pat
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
         if args[2:4] == ["agent", "launch-codex-drafter"]:
-            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
         if args[2:4] == ["plan-review", "preview"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
@@ -6325,7 +6347,7 @@ def test_step2b_drafter_postplan_rc11_pause_after_predrafter_checkpoint(
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
         if args[2:4] == ["agent", "launch-codex-drafter"]:
-            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".pause-requested").write_text("", encoding="utf-8")
         if args[2:4] == ["plan-review", "preview"]:
@@ -6421,7 +6443,7 @@ def test_step2b_drafter_promotes_only_after_postplan_rc_zero(
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
         if args[2:4] == ["agent", "launch-codex-drafter"]:
-            (design / "plan.txt").write_text("## Plan\n\nUse SQLite.\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "plan.txt").write_text(plan_body(body="Use SQLite.", diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".dialectic-raw-pending.json").write_text(raw_payload, encoding="utf-8")
         if args[2:4] == ["design", "dialectic-promote-candidates"]:
@@ -6481,7 +6503,7 @@ def test_step2b_drafter_warns_when_dialectic_promotion_fails(
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
         if args[2:4] == ["agent", "launch-codex-drafter"]:
-            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".dialectic-raw-pending.json").write_text('{"decisions": []}', encoding="utf-8")
         if args[2:4] == ["design", "dialectic-promote-candidates"]:
@@ -6562,7 +6584,7 @@ def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
     def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
-        (design / "plan.txt").write_text("## Final\n\nUse SQLite for storage.\n\ndiff_lines: 2\n", encoding="utf-8")
+        (design / "plan.txt").write_text(plan_body(header="## Final", body="Use SQLite for storage.", diff_lines=2), encoding="utf-8")
         postplan_plan.append(design_dialectic.plan_fingerprint(design))
         design_dialectic.clear_stale(design, reason="plan-rewrite")
         return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
@@ -6677,7 +6699,7 @@ def test_step2b_drafter_emits_dirty_tree_recovery(
         if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[2:4] == ["agent", "launch-codex-drafter"]:
-            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / "step2b-drafter-status.txt.dirty-tree").write_text("STATUS=dirty\nMODE=baseline-delta\n", encoding="utf-8")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")

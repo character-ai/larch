@@ -14,6 +14,7 @@ import pytest
 
 from larch.calibration import difficulty
 from larch.design import design_postplan, design_step5c
+from tests.support.design_wire import plan_body, run_params_json
 
 
 def _write_fake_cli(path: Path) -> None:
@@ -49,8 +50,8 @@ def test_postplan_with_plan_size_returns_pause_code(tmp_path: Path) -> None:
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     design.mkdir()
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "run-params.json").write_text(run_params_json(overrides={"partition_requested": False}), encoding="utf-8")
     _ = (design / ".pause-requested").write_text("", encoding="utf-8")
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
@@ -71,8 +72,8 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     design.mkdir()
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "run-params.json").write_text(run_params_json(overrides={"partition_requested": False}), encoding="utf-8")
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -92,7 +93,7 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
 def test_postplan_with_plan_size_writes_design_difficulty_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     _postplan_fixture(design, partition_requested=False)
-    _ = (design / "plan.txt").write_text("## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(body="body", difficulty="MODERATE", diff_lines=1), encoding="utf-8")
     _patch_postplan_cli(
         monkeypatch,
         tmp_path,
@@ -114,9 +115,11 @@ def _completed(args: Sequence[str], *, rc: int = 0, stdout: str = "", stderr: st
 
 def _postplan_fixture(design: Path, *, partition_requested: bool) -> None:
     design.mkdir()
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    partition = "true" if partition_requested else "false"
-    _ = (design / "run-params.json").write_text(f'{{"partition_requested": {partition}}}\n', encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "run-params.json").write_text(
+        run_params_json(overrides={"partition_requested": partition_requested}),
+        encoding="utf-8",
+    )
 
 
 def _patch_postplan_cli(
@@ -289,8 +292,8 @@ def test_postplan_check_size_failure_self_logs(tmp_path: Path) -> None:
     _write_check_size_failure_cli(plugin_root / "python" / "cli.py", calls_file)
     design = tmp_path / "design"
     design.mkdir()
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "run-params.json").write_text(run_params_json(overrides={"partition_requested": False}), encoding="utf-8")
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -353,8 +356,8 @@ def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: 
     _ = subprocess.run(["git", "init", "-q", str(consumer)], check=True)
     design = consumer / "design"
     design.mkdir()
-    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "run-params.json").write_text(run_params_json(overrides={"partition_requested": False}), encoding="utf-8")
 
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()

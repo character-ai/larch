@@ -26,6 +26,13 @@ from test_support import (
     write_session_env,
 )
 from tests.support import repo_contract, session
+from tests.support.design_wire import (
+    diff_lines_trailer,
+    plan_body,
+    result_env_lines,
+    run_params_json,
+    write_result_env,
+)
 from tests.support.review_wire import (
     ballot_snippet,
     make_finding_block,
@@ -36,6 +43,7 @@ from tests.support.review_wire import (
     slot_manifest_ndjson,
     vote_lines,
 )
+from tests.support.session import run_params_text
 
 
 def test_review_wire_builders_preserve_canonical_fixture_shapes(tmp_path: Path) -> None:
@@ -99,6 +107,73 @@ def test_review_wire_builders_preserve_canonical_fixture_shapes(tmp_path: Path) 
         "vendor": 'vendor "β"\\path',
     }
     assert slot_manifest_ndjson([]) == ""
+
+
+def test_design_wire_builders_preserve_canonical_fixture_shapes(tmp_path: Path) -> None:
+    assert plan_body(sections=[("NEW", "a.py"), ("UPDATED", "b.py")], body="body", diff_lines=1) == (
+        "## Plan\n"
+        "### NEW: a.py\n"
+        "### UPDATED: b.py\n"
+        "body\n"
+        "diff_lines: 1\n"
+    )
+    assert plan_body(body="Do the thing.", diff_lines=3, difficulty="MODERATE") == (
+        "## Plan\n"
+        "\n"
+        "Do the thing.\n"
+        "difficulty: MODERATE\n"
+        "diff_lines: 3\n"
+    )
+    assert plan_body(header="# Plan", diff_lines=1) == "# Plan\n\ndiff_lines: 1\n"
+    assert diff_lines_trailer(12, diff_added=10, diff_deleted=2, mechanical_churn=False) == (
+        "diff_added: 10\n"
+        "diff_deleted: 2\n"
+        "mechanical_churn: false\n"
+        "diff_lines: 12\n"
+    )
+    for path in ("", "\n", "a\nb", "a\rb"):
+        with pytest.raises(ValueError, match="invalid plan section path"):
+            _ = plan_body(sections=[("UPDATED", path)])
+
+    spaced = tmp_path / "dir with spaces"
+    spaced.mkdir()
+    env_path = spaced / "result.env"
+    text = result_env_lines({"ROUTE": "proceed", "RUN_PARAMS_PATH": str(spaced / "run-params.json")})
+    assert text == (
+        "ROUTE=proceed\n"
+        f"RUN_PARAMS_PATH={spaced / 'run-params.json'}\n"
+    )
+    written = write_result_env(env_path, [("INIT_STATUS", "ok"), ("OUTPUT", str(spaced / "β-out.txt"))])
+    assert written.read_text(encoding="utf-8") == f"INIT_STATUS=ok\nOUTPUT={spaced / 'β-out.txt'}\n"
+    ordered_rows = [("Z_LAST", "last"), ("A_FIRST", "first")]
+    assert result_env_lines(ordered_rows) == "Z_LAST=last\nA_FIRST=first\n"
+    assert write_result_env(env_path, ordered_rows).read_text(encoding="utf-8") == "Z_LAST=last\nA_FIRST=first\n"
+
+    defaults = run_params_json()
+    assert defaults == run_params_text()
+    design = make_design_tmpdir(tmp_path, run_params=True)
+    assert defaults == (design / "run-params.json").read_text(encoding="utf-8")
+    overridden = run_params_json(overrides={"brainstorm_requested": True, "partition_requested": True})
+    assert '"brainstorm_requested": true' in overridden
+    assert '"partition_requested": true' in overridden
+    assert overridden.endswith("\n")
+    # Overrides must not mutate the shared default payload.
+    assert json.loads(run_params_json())["brainstorm_requested"] is False
+
+    with pytest.raises(ValueError, match="invalid environment key"):
+        _ = result_env_lines({"bad-key": "x"})
+    with pytest.raises(ValueError, match="unsafe environment value"):
+        _ = result_env_lines({"ROUTE": "a\nb"})
+    with pytest.raises(ValueError, match="unsafe environment value"):
+        _ = result_env_lines({"ROUTE": "a\rb"})
+    with pytest.raises(ValueError, match="unsafe environment value"):
+        _ = result_env_lines({"ROUTE": "a\x00b"})
+    link = tmp_path / "link.env"
+    target = tmp_path / "target.env"
+    _ = target.write_text("OLD=1\n", encoding="utf-8")
+    link.symlink_to(target)
+    with pytest.raises(OSError, match="symlink"):
+        _ = write_result_env(link, {"ROUTE": "proceed"})
 
 
 def test_ok_normalizes_arguments_and_preserves_stdout() -> None:

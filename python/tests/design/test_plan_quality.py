@@ -13,6 +13,7 @@ from larch.design import design_pause
 from larch.core import logging_util
 from larch.design import plan_quality
 from larch.core import config
+from tests.support.design_wire import plan_body
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -34,7 +35,7 @@ def _write_executable(path: Path, text: str) -> Path:
 
 def _revise_base(tmp_path: Path, plan_text: str | None = None) -> tuple[Path, Path, Path]:
     plan = tmp_path / "plan.txt"
-    plan.write_text(plan_text or "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    plan.write_text(plan_text or plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1), encoding="utf-8")
     findings = tmp_path / "findings.txt"
     findings.write_text("finding\n", encoding="utf-8")
     feature = tmp_path / "feature-description.txt"
@@ -390,7 +391,7 @@ def test_compose_plan_goals_test_extracts_testing_section(tmp_path: Path) -> Non
 
 def test_auto_fix_unavailable_contract(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("## Plan\nbody\ndiff_lines: 1\n")
+    plan.write_text(plan_body(body="body", diff_lines=1))
     cp = run_cli(
         "plan",
         "auto-fix-commands",
@@ -411,7 +412,7 @@ def test_auto_fix_unavailable_contract(tmp_path: Path) -> None:
 
 def test_validator_autofix_calls_helper_in_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    plan.write_text(plan_body(body="body", diff_lines=1), encoding="utf-8")
     calls: list[list[str]] = []
 
     def fake_auto_fix(argv: list[str]) -> int:
@@ -436,7 +437,7 @@ def test_validator_autofix_calls_helper_in_process(tmp_path: Path, monkeypatch: 
 
 def test_validator_autofix_cycle_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    plan.write_text(plan_body(body="body", diff_lines=1), encoding="utf-8")
     log = tmp_path / "validate.log"
     log.write_text("defect\n", encoding="utf-8")
 
@@ -624,7 +625,7 @@ def test_validator_autofix_rejects_relative_design_tmpdir(monkeypatch: pytest.Mo
 
 def test_validator_autofix_captures_emit_kv_with_quiet_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    plan.write_text(plan_body(body="body", diff_lines=1), encoding="utf-8")
 
     def fake_auto_fix(_argv: list[str]) -> int:
         logging_util.emit_kv(key="AUTOFIX_STATUS", value="ok")
@@ -645,7 +646,7 @@ def test_validator_autofix_captures_emit_kv_with_quiet_active(tmp_path: Path, mo
 
 def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n")
+    plan.write_text(plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1))
     findings = tmp_path / "findings.txt"
     findings.write_text("finding\n")
     feature = tmp_path / "feature-description.txt"
@@ -685,7 +686,7 @@ def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> N
 
 
 def test_revise_waterfall_restores_when_emit_plan_gate_fails(tmp_path: Path) -> None:
-    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    original = plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1)
     plan, findings, feature = _revise_base(tmp_path, original)
     fake = _write_executable(
         tmp_path / "fake-launch.sh",
@@ -718,7 +719,7 @@ PLAN
 
 
 def test_revise_waterfall_restores_after_unified_patch_apply_failure(tmp_path: Path) -> None:
-    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    original = plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1)
     plan, findings, feature = _revise_base(tmp_path, original)
     fake = _write_executable(
         tmp_path / "fake-launch.sh",
@@ -796,7 +797,7 @@ fi
 
 
 def test_revise_waterfall_refreshes_oversize_override_authority_on_success(tmp_path: Path) -> None:
-    original = "## Plan\n### UPDATED: file.txt\nbody\noversize_override: operator\ndiff_lines: 1\n"
+    original = plan_body(sections=[("UPDATED", "file.txt")], body="body", oversize_override="operator", diff_lines=1)
     plan, findings, feature = _revise_base(tmp_path, original)
     assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
     fake = _write_executable(
@@ -1172,7 +1173,7 @@ def test_compose_revise_prompt_preserves_optional_heading_type(tmp_path: Path) -
 
 
 def test_revise_waterfall_heading_guard_restores_replacement(tmp_path: Path) -> None:
-    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    original = plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1)
     plan, findings, feature = _revise_base(tmp_path, original)
     fake = _write_executable(
         tmp_path / "fake-launch.sh",
@@ -1444,7 +1445,7 @@ def test_revise_waterfall_rejects_disallowed_design_tmpdir(tmp_path: Path) -> No
 
 def test_auto_fix_rejects_disallowed_design_tmpdir(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("## Plan\nbody\ndiff_lines: 1\n")
+    plan.write_text(plan_body(body="body", diff_lines=1))
     disallowed = Path.home() / "larch-autofix-disallowed-test"
     cp = run_cli(
         "plan",
@@ -1983,7 +1984,7 @@ def test_revise_waterfall_default_design_driver_is_split_argv(tmp_path: Path, mo
     # properly-split argv list (argv[0] == sys.executable), not a single
     # space-joined string passed as argv[0] (which execve cannot resolve, so the
     # gate raised FileNotFoundError and the waterfall always bailed).
-    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    original = plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1)
     plan, findings, feature = _revise_base(tmp_path, original)
     design_driver_cmds: list[list[str]] = []
     real_run = subprocess.run
@@ -2292,7 +2293,7 @@ def test_validate_commands_defaults_plugin_root_without_repo_root(tmp_path: Path
 
 
 def test_revise_waterfall_restores_plan_after_failed_round(tmp_path: Path) -> None:
-    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    original = plan_body(sections=[("UPDATED", "file.txt")], body="body", diff_lines=1)
     plan, findings, feature = _revise_base(tmp_path, original)
     fake = _write_executable(
         tmp_path / "fake-launch.sh",
