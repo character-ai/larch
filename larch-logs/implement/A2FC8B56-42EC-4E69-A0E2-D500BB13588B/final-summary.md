@@ -73,11 +73,19 @@ Exec Issues (0):
 Warnings (1):
   1. Step 7a.1 — 41 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/core/test_kv_cli.py, python/tests/design/test_design_router.py, pyth...
 
+## Architectural invariants
+
+The changed code introduces a `kv-codec` ratchet lint, extends `larch.io` with a `DuplicatePolicy` API, migrates ad-hoc `KEY=value` readers in nine Python modules and six shell scripts to `larch_io` helpers, and registers the new lint entry in `cli.py`. None of the changed code touches gate disarming inputs, pause snapshot contents, persisted result identity or validation, run-log flush artifacts, committed run-log field content, outcome label writes, panel slot accounting, agent verdict backing, or PR mutation guards. All nine invariants remain unaffected by this diff.
+
+## Architectural guidelines
+
+All changed code in this diff is consistent with the architectural guidelines.
+
 ## /implement run A2FC8B56-42EC-4E69-A0E2-D500BB13588B: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:10:29
-- **Cost**: 💰 TOTAL ~$28.64: Claude $2.29, Codex-5.6 $17.24, Codex-mini $0.10, Cursor $8.29 (Composer $8.29, Grok $0.00), Claude (subprocess) $0.72  |  Tokens: 38761k
+- **Cost**: 💰 TOTAL ~$30.49: Claude $4.11, Codex-5.6 $17.24, Codex-mini $0.10, Cursor $8.29 (Composer $8.29, Grok $0.00), Claude (subprocess) $0.75  |  Tokens: 40895k
 - **Issue**: #6999: https://github.com/character-ai/larch/issues/6999
 - **Plan review**: N/A
 - **Plan coverage**: 30/62 firm headings; band: high; disposition: proceed-partial; todos_left: 2; follow-up #7340
