@@ -1,0 +1,15 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate prior OOS observation.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The ladder only makes a final assessment authoritative after reassessment.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan explicitly excludes Step 2b completion semantics for the Gate C site.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The publish plan explicitly requires fail-closed sibling publish consumers before log publication.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The required behavior is a fail-closed publish refusal, not a new guideline cancellation outcome.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan defines Gate C validator actions and clean-settle-only reassessment; this duplicates prior OOS evidence.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_10: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Duplicate prior OOS scope-reduction observation.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate prior rejected observation.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate prior OOS observation.
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate prior OOS observation.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate prior OOS observation.

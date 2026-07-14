@@ -1,0 +1,1 @@
+Add a bounded, fail-closed Gate C plan-fix ladder. A plan reviser acts first, then the main agent. Fresh assessors re-judge every revision. Invariant failures cancel; guideline exceptions require a validated block.

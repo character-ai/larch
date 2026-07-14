@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17456	4364	13915	3479	3541	886		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17316	4329	13775	3444	3541	886		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	25656	6414	14085	3522	11571	2893		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	25774	6444	14203	3551	11571	2893		0	0
+design Step 3	phase1	1	dyn-codex-plan-dyn-gatec-ladder	plan-review	codex	dyn-codex-plan-dyn-gatec-ladder.txt	17625	4407	13650	3413	3975	994		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17338	4335	13797	3450	3541	886		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	25634	6409	14063	3516	11571	2893		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	25658	6415	14087	3522	11571	2893		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17340	4335	13799	3450	3541	886		0	0
+design Step 3	phase1	1	dyn-cursor-plan-dyn-gatec-ladder	plan-review	cursor	dyn-cursor-plan-dyn-gatec-ladder.txt	25943	6486	13938	3485	12005	3002		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	51545	12887	4601	1151	46944	11736	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14835	3709	9131	2283	5704	1426		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14835	3709	9131	2283	5704	1426		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14835	3709	9131	2283	5704	1426		0	0

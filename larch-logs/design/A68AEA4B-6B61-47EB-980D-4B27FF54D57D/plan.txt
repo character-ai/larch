@@ -1,0 +1,173 @@
+## Plan
+
+## Approach
+
+Implement independent, persisted two-tier Gate C ladders for invariants and guidelines. A scoped `MODE=plan-revise` subagent gets one tier-1 attempt per kind; the main agent gets one tier-2 attempt per kind. Persist and atomically consume each tier-2 round before the main agent repairs or declines, so pause, re-entry, and failed-settle recovery cannot obtain another attempt.
+
+Every successful revision must settle through an explicit Gate C postplan site before a fresh assessor re-judges the current `plan.txt`. Invariant violations never publish. A guideline deviation publishes only with one validated active exception line. Publish and final-summary rendering must use the same fence-aware validation boundary, and rendered exception disclosures must pass through secret redaction before presentation or issue publication.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+- Register `MODE=plan-revise` as the second approved Gate C subagent carve-out.
+- Route adverse Gate C outcomes through the reference-owned per-kind ladder and Gate C settle dispatch.
+- Require invariant cancellation after exhausted tier 2: skip approval, Step 5, publication, and waiver paths.
+- Present redacted, validated guideline exceptions before approval and include them in the `--skip-approve` terminal-summary path.
+- Add the invariant-violation and invalid-guideline-deviation publish refusal tokens to the Step 5c Return-to-Gate-C / Cancel branches.
+
+### UPDATED: skills/design/references/approval-gates-gate-c.md
+
+- Replace the inline invariant remediation loop with independent invariant and guideline ladders, preserving invariant-first assessment persistence and accepted-findings audit ordering.
+- Persist separate tier-1 and tier-2 counters per kind under `$DESIGN_TMPDIR`; consume tier 1 on revised, no-progress, or bail.
+- Atomically mark a tier-2 round consumed before the main agent begins an invariant repair, guideline repair, or guideline decline. A failed settle may retry only settlement for that already-consumed action; pause, resume, and Gate C re-entry must honor the persisted exhausted state and cannot start another tier-2 action.
+- Define tier 1’s `larch:claude-implementer` prompt: `MODE=plan-revise`, plan path, relevant assessment path, and only the named violation or deviation.
+- Define tier 2: the main agent attempts one invariant repair; for a guideline it chooses exactly one repair or decline action. A failed guideline repair exhausts tier 2 and cannot later convert into a decline.
+- After every plan change, invoke `design-step35-settle.sh --site gate-c`; require its `SETTLE_NEXT_ACTION` contract and re-enter `resume@4b` only on the clean Gate C action.
+- Require a fresh `larch:arch-assessor` spawn after every fix and forbid a reviser from judging its own revision.
+- On a guideline decline, append exactly one active `Exception: <rationale> (author: main-agent, date: YYYY-MM-DD)` line to the assessor note and persist it only with `--allow-exception`.
+- Show the persisted exception through the standard secret-redaction path in Gate C presentation; reject malformed, fenced-only, or duplicated active exception lines.
+
+### UPDATED: skills/design/scripts/design-step35-settle.sh
+
+- Accept `--site gate-c`, map it to `design step2b-postplan --site gate-c`, and retain existing dedup and stale-dialectic clearing behavior.
+- Require one anchored `POSTPLAN_RC` and delegate Gate C action selection to `design settle-next-action`.
+- Emit the Gate C action envelope without Gate B marker or snapshot behavior.
+
+### UPDATED: skills/design/scripts/design-step35-settle.md
+
+- Document `gate-c` as a caller and its postplan-site mapping.
+- Define the Gate C clean contract: `POSTPLAN_RC=0`, one `SETTLE_NEXT_ACTION=gate-c-return`, matching `SETTLE_EXIT_RC=0`, then `resume@4b`.
+- Document validator, pause, size, split, and failed-settle recovery as repair/terminal branches that must not re-assess until a subsequent clean Gate C settle.
+
+### UPDATED: skills/design/references/settle-rc-dispatch.md
+
+- Add Gate C to consumers and branch table.
+- Route `gate-c-return` exclusively to `resume@4b`; add Gate C validator, size, split, dedup-revise, and pause handling without rc fallback routing.
+
+### UPDATED: python/larch/design/design_session.py
+
+- Extend `settle_next_action_for` and CLI validation with Gate C actions and matching exit codes.
+
+### UPDATED: python/larch/design/design_step2b.py
+
+- Accept `gate-c` as a non-initial postplan site so it emits the normal postplan KVs and validates/re-emits the revised plan without Step 2b completion semantics.
+
+### UPDATED: agents/claude-implementer.md
+
+- Add `MODE=plan-revise`.
+- In this mode, read only the named plan and assessment evidence, make the smallest scoped edit to `plan.txt`, and prohibit repository edits, staging, commits, pushes, issue changes, and unrelated tmpdir writes.
+- Define a strict final trailer for `revised`, `no-progress`, and `bail`.
+- Preserve `step8-fix` and `step2-plan` contracts unchanged.
+
+### UPDATED: agents/_implementer-base.md
+
+- Add shared plan-revise trust-boundary and mode-specific scope rules.
+- Ensure manifest, repository-edit, and implementation side effects do not apply to plan revision, while preserving Cursor and Codex implementation behavior.
+
+### UPDATED: agents/codex-implementer.md
+
+- Regenerate the Codex external implementer prompt from `_implementer-base.md` so it includes the plan-revise contract.
+
+### UPDATED: agents/cursor-implementer.md
+
+- Regenerate the Cursor external implementer prompt from `_implementer-base.md` so it includes the plan-revise contract.
+
+### UPDATED: AGENTS.md
+
+- Register Gate C plan revision through `larch:claude-implementer` as the second operator-approved `/design` inline-only exception.
+- Keep assessment authoring exclusive to `larch:arch-assessor` and state that the reviser never judges.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+- Add guideline-only `--allow-exception` support to `persist-design-assessment`.
+- Reject the flag for invariants, clean/absent/invalid paths, non-file sources, and ordinary persistence of an active exception.
+- Add a shared fence-aware helper that recognizes exactly one active exception with non-empty rationale, `author: main-agent`, and a real calendar date.
+- Preserve no-follow reads, atomic writes, stale-artifact removal, and machine result lines.
+
+### UPDATED: python/larch/design/design_publish.py
+
+- Safely read and classify both persisted invariant and guideline assessments before any redaction, plan write, issue mutation, log publication, or rename.
+- Allow only canonical clean invariant notes; refuse invariant violation notes with a stable Gate-C repair reason.
+- Allow canonical clean guideline notes or a deviation with the shared validated exception; refuse bare or malformed deviations with a stable Gate-C repair reason.
+- Preserve missing, symlink, non-regular, absent-guideline, and non-approved-outcome behavior, including fail-closed sibling publish consumers.
+
+### UPDATED: python/larch/design/design_step5c.py
+
+- Preserve the new publish refusal reasons in the Step 5c status/result environment.
+- Classify invariant-violation and invalid-guideline-deviation refusals as Gate C preconditions rather than generic validator defects.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+- Document the new refusal reasons and warnings.
+- Route both through Return to Gate C / Cancel, mirroring missing-assessment recovery; Return re-runs Gate C presentation and only then retries `design-step5c.sh --fresh-attempt`.
+
+### UPDATED: python/larch/design/design_summary.py
+
+- Safely read the persisted guideline assessment during final-summary rendering.
+- Append a secret-redacted validated active exception disclosure to approved terminal summaries, including `--skip-approve`, before any issue upsert or other publication.
+- Reuse the repository’s established secret-redaction path rather than publishing the raw rationale; omit malformed, fenced-only, or unsafe assessment artifacts.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+- Cover accepted `--allow-exception` persistence and rejected missing, malformed, empty-rationale, wrong-author, impossible-date, duplicate, and fenced-only cases.
+- Verify ordinary guideline persistence and invariant, clean, absent, invalid, and non-file paths reject `--allow-exception`.
+- Update Gate C prompt-contract assertions for tiers, atomic per-kind counters, fresh reassessment, cancellation, Gate C settle, exception disclosure, and generated implementer synchronization.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+- Cover the Gate C settle-site/action matrix, required postplan/action KVs, and `resume@4b` clean re-entry.
+- Cover tier-2 consumption before repair or decline, including pause/resume, Gate C re-entry, and failed-settle recovery without a second tier-2 attempt.
+- Cover Step 5c propagation and Return-to-Gate-C classification for invariant-violation and invalid-guideline-deviation refusals.
+
+### UPDATED: python/tests/design/test_design_publish.py
+
+- Verify clean notes and a valid guideline deviation exception pass the publish gate.
+- Verify bare, malformed, fenced-only, wrong-author, invalid-date guideline notes and invariant violations refuse before publication.
+- Assert refusal reasons and result-environment state while retaining existing missing-assessment, `--skip-validate`, and approved-partition coverage.
+
+### UPDATED: python/tests/design/test_design_summary.py
+
+- Verify terminal summaries disclose a validated persisted exception, including the skip-approve/approved path.
+- Verify a valid exception rationale containing secret-shaped text is redacted before final-summary and issue-upsert output.
+- Verify malformed, fenced-only, and unsafe assessment artifacts do not render a disclosure.
+
+### UPDATED: python/tests/design/test_design_pause.py
+
+- Restore per-kind tier counters and persisted guideline exception assessments through snapshots.
+- Confirm a restored consumed tier-2 counter cannot authorize another repair or decline after pause/resume.
+- Confirm regular top-level artifacts and `.completed/` provenance remain preserved on resume.
+
+### UPDATED: python/tests/skills/skill_structure_pins.py
+
+- Replace obsolete inline-remediation pins with needles for tier 1/tier 2 per-kind counters, atomic tier-2 consumption, `MODE=plan-revise`, Gate C settle/re-entry, fresh assessor judgment, cancellation, redacted exception disclosure, and generated implementer prompts.
+- Add pins for the new Step 5c refusal-routing contract.
+
+## Edge cases
+
+- Process simultaneous invariant and guideline adverse outcomes independently in canonical order.
+- A tier-1 no-progress or bail consumes that kind’s tier-1 attempt.
+- A tier-2 repair or decline is consumed before it begins; failed settle recovery retries no repair or decline and cannot reset that bound.
+- Failed settle or postplan validation stops before fresh assessment.
+- Pause, resume, and repeated Gate C entry cannot reuse an old verdict or reset counters.
+- Exception-looking text inside backtick or tilde fences has no authority.
+- A valid guideline exception cannot waive an invariant violation.
+- Secret-shaped values in a valid exception rationale remain persisted for validation but are redacted in Gate C and final-summary publication surfaces.
+
+## Testing strategy
+
+- `python3 -m pytest python/tests/core/test_architectural_guidelines.py`
+- `python3 -m pytest python/tests/design/test_design_publish.py python/tests/design/test_design_summary.py python/tests/design/test_design_pause.py python/tests/design/test_design_lifecycle.py`
+- `python3 -m pytest python/tests/skills/skill_structure_pins.py`
+- `python3 python/cli.py generate codex-implementer`
+- `python3 python/cli.py generate cursor-implementer`
+- `python3 python/cli.py generate check`
+- Run changed-file Python lint and generated-prompt checks.
+- Finish with `make lint` and `make py-test`.
+
+difficulty: HARD
+diff_added: 525
+diff_deleted: 130
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 655

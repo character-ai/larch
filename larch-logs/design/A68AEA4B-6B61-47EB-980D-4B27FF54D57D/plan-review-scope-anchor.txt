@@ -1,0 +1,54 @@
+Partition piece 2 of 2 split from #7196 (operator-directed split; this piece still requires its own /design).
+
+**Scope**: Add the fix ladder for adverse Gate C outcomes (operator policy, 2026-07-12; the /design mirror of the #7193 ladder, applied to the PLAN, not code), per kind, independently. Tier 1, reviser: the existing autonomous plan-revision machinery (the plan-review apply lane) applies a scoped plan fix for the named `violation` or `deviation` and nothing else; exact re-entry wiring is resolved during /design of this piece; the revise lane stays autonomous per the standing operator decision (#6496, #6498). Re-judge: after any fix, a FRESH `larch:arch-assessor` spawn re-assesses the revised plan; the persist verbs revalidate fail-closed; the judge never evaluates its own fix. Tier 2, main agent: for invariants (`violation`) the main agent MUST attempt the plan fix, and if the re-judge still reports `violation`, Gate C must not approve and the run ends through the existing cancellation outcome with nothing published, no waiver. For guidelines (`deviation`) the main agent chooses: fix the plan, or decline and record a documented exception in the persisted Gate C assessment note (mandatory machine-checkable block: an `Exception:` line with rationale, author `main-agent`, and date), surfaced in the Gate C approval presentation and, under `--skip-approve`, in the final summary. Publish-gate rules mirror #7193: `violation` is never publishable; `deviation` publishes ONLY when the note carries the exception block; a bare `deviation` after ladder exhaustion fails closed. Bounds: one tier-1 round and at most one tier-2 round per kind.
+
+**Firm headings**: skills/design/SKILL.md
+
+**Acceptance**:
+
+Fix ladder, reviser tier: a forced invariant violation in the plan is fixed by the plan-revision tier, a fresh assessor re-judges clean, and Gate C proceeds. Fix ladder, hard fail: with reviser and main-agent plan fixes both failing an invariant violation, Gate C does not approve and the run ends via the existing cancellation outcome with nothing published. Fix ladder, guideline exception: with the reviser fix failing and the main agent declining, the persisted Gate C note carries state `deviation` plus the exception block, the exception appears in the Gate C presentation (and in the final summary under `--skip-approve`), and the publish gate accepts it; the same note without the block fails the gate. /design structure tests pass; `make lint` and `make py-test` green for changed files.
+
+**Dependencies (from split)**: blocked-by Piece 1
+
+```
+```
+
+**Original feature context (excerpt)**:
+
+Parent #7196. Adverse outcomes follow the same fix ladder as #7193, applied to the plan: the plan reviser tries first, then the main agent; a guideline deviation may end in a documented exception; an unresolved invariant violation hard-fails the run. Non-goals: /design plan review, drafters, and voting stay untouched (this issue only routes scoped Gate C fixes through the existing plan-revise lane); /implement assessments are #7193; what Gate C assesses does not change. The parent was blocked by #7193 (now closed), which ships the shared `agents/arch-assessor.md` definition and its output contract.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add a two-tier fix ladder for adverse Gate C outcomes (`violation`/`deviation`) in `/design`, mirroring the #7193 ladder for `/implement`.
+- Implement the reviser tier as `MODE=plan-revise` in `larch:claude-implementer` (second operator-approved Gate C carve-out).
+- Add guideline exception block machinery: `--allow-exception` flag on `persist-design-assessment` (persist-time) and publish-gate check in `design_publish.py`.
+
+### Non-goals
+- Changing what Gate C assesses (invariant/guideline scope and criteria unchanged).
+- Changing plan-review, drafters, voting, or any step other than Gate C and its direct callers.
+- `/implement` architectural assessments (covered by #7193/#7216).
+
+### Approach sketch
+- Extend `approval-gates-gate-c.md`: after assessor authoring, on adverse outcome run tier-1 subagent (plan-revise mode) → re-assess → if still adverse, run tier-2 main agent → re-assess → hard-stop (invariant) or exception-block persist (guideline).
+- Add `MODE=plan-revise` to `agents/claude-implementer.md` and `agents/_implementer-base.md`; register in `AGENTS.md` as second operator-approved Gate C carve-out.
+- Add `--allow-exception` flag to `_persist_design_assessment_main` in `architectural_guidelines.py` + tests; parser must track fenced-code-block state when scanning for `Exception:` lines (G-Md-3).
+- Check `deviation + no exception block` in `design_publish.py` and add tests in `test_design_publish.py`.
+- Update pause snapshot allowlist in `test_design_pause.py` to include new tier-counter and exception-block session files (I-Pause-1).
+- Update `skills/design/SKILL.md` step 4b with new ladder reference prose.
+
+### Surfaces in scope
+- `skills/design/SKILL.md` (firm)
+- `skills/design/references/approval-gates-gate-c.md`
+- `agents/claude-implementer.md`
+- `agents/_implementer-base.md`
+- `AGENTS.md`
+- `python/larch/core/architectural_guidelines.py`
+- `python/tests/core/test_architectural_guidelines.py`
+- `python/larch/design/design_publish.py`
+- `python/tests/design/test_design_publish.py`
+- `python/tests/design/test_design_pause.py` (pause snapshot allowlist for new session artifacts)
+
+### Open questions
+- None.
