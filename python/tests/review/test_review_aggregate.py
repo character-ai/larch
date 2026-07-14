@@ -1661,7 +1661,7 @@ def test_prune_nit_security_rows_stay_out_of_public_audit(tmp_path: Path) -> Non
 
 ### FINDING_2: [OUT_OF_SCOPE] Security nit
 - **Severity**: nit
-- **Concern**: focus-area=security keep private
+- **Focus area**: security
 """,
         encoding="utf-8",
     )

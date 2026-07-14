@@ -36,4 +36,7 @@ oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
 
 `oos-disposition-checkpoint.sh` invokes this gate from `skills/implement/SKILL.md` Step 8+ and owns exit-code mapping plus `run-log append-failure` logging. Orchestrator readers should use `oos-disposition-checkpoint.md` for the checkpoint exit contract and logging sites. After checkpoint exit **0**, `run-statistics`, `OOS_PENDING=false`, and re-invoke `step-8-ship.sh` without resume-phase (Python reads scoped state internally) remain orchestrator-owned per `skills/implement/SKILL.md`; on checkpoint non-zero, the orchestrator must not perform those post-pass steps.
 
-Harness: `skills/implement/scripts/test-oos-disposition-gate.sh`.
+## Test authority
+
+- **Behavioral authority**: `python/tests/issue/test_file_oos.py` (`make test-oos-disposition-gate` → pytest `-k disposition_gate`), covering gate and checkpoint behavior.
+- **Delegation smoke**: `skills/implement/scripts/test-oos-disposition-gate.sh` covers only thin-wrapper plugin-root selection, CLI routing, argv forwarding, exit-status forwarding, and stdout/stderr passthrough for both `oos-disposition-gate.sh` and `oos-disposition-checkpoint.sh`.

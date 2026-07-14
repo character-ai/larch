@@ -127,7 +127,7 @@ def test_count_non_security_blocks_excludes_bare_finding() -> None:
         "### OOS_1: public\nbody\n"
         "### FINDING_2: [OOS] tagged\nbody\n"
         "### FINDING_3: bare in-scope\nbody\n"
-        "### OOS_4: focus-area=security\nbody\n"
+        "### OOS_4: [security] private\nbody\n"
     )
     assert count_non_security_blocks(text) == 2
 

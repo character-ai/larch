@@ -143,7 +143,6 @@ def test_neutralization_uses_canonical_whitespace_heading() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "### FINDING_1: one\nThe affected block uses focus-area=security metadata.\n",
         "### FINDING_1: one\n- **Focus-Area**: security\n",
         "### OOS_1: Some finding\n- **Focus area**: security\n",
     ],
@@ -157,6 +156,13 @@ def test_is_security_block_text_non_security_returns_false() -> None:
         "### OOS_1: Some finding\n"
         "- **Description**: something\n"
         "- **Focus area**: correctness\n"
+    )
+
+
+def test_is_security_block_text_ignores_description_prose() -> None:
+    assert not voting.is_security_block_text(
+        "### OOS_1: Some finding\n"
+        "- **Description**: The affected block uses focus-area=security metadata.\n"
     )
 
 

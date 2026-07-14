@@ -430,7 +430,8 @@ def test_plan_review_tally_classifies_security_from_restored_attribution(
     tmp_path: Path,
 ) -> None:
     attributed = """### OOS_1: Deferred security follow-up
-- **Reviewer**: Cursor-Security focus-area=security
+- **Reviewer**: Cursor-Security
+- **Focus area**: security
 - **Concern**: Private hardening detail.
 - **Suggested revision**: Route privately.
 """
