@@ -1,0 +1,13 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Shared serialization is desirable but current feature scope remains deliverable without it.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Other heading kinds are explicitly outside this bounded NEW/UPDATED migration.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The stated allowlist failure is speculative and no required fixture path is shown blocked.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- A single diff_lines fixture helper need not delegate to the broader production composer.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Fixed heading formatting does not create malformed heading spacing or syntax.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already limits tmpdir-builder use where its extra layout does not alter tests.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- run_params_json is explicitly within the anchored scope.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The anchored scope explicitly includes the named design cluster and rendering plan writers.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Removing the scoped run_params_json factory is not justified.
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The scope-reduction premise is false because run_params_json is a specified deliverable.
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Result-env writers and lifecycle migration are explicitly in scope.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The proposed reduction conflicts with the specified run_params_json deliverable.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- It is a duplicate, speculative future-drift observation.
