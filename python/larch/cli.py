@@ -463,6 +463,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "em-dash-output"): ("larch.lint.lint_em_dash_output", "main"),
     ("lint", "gh-body-inline"): ("larch.lint.lint_gh_body_inline", "main"),
     ("lint", "complexity-baseline"): ("larch.lint.lint_complexity_baseline", "main"),
+    ("lint", "complexity-debt"): ("larch.lint.lint_complexity_debt", "main"),
     ("lint", "agent-tool-contract"): ("larch.lint.lint_agent_tool_contract", "main"),
     ("lint", "keyword-only"): ("larch.lint.lint_keyword_only", "main"),
     ("lint", "subprocess-via-runner"): ("larch.lint.lint_subprocess_via_runner", "main"),

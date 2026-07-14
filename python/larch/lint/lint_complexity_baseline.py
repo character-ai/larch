@@ -20,9 +20,8 @@ Committed baselines carry a nine-field schema: the four identity fields plus
 ``added_at`` and ``history`` (required), and optional ``source_issue``,
 ``reason``, and ``operator_override``. ``--migrate`` grandfathers legacy or
 partially migrated records in place by adding only the missing ``added_at``
-and ``history`` fields. Until a metadata-preserving writer lands, ``--write``
-refuses to overwrite any baseline that already carries extended metadata, so
-the unchanged four-field writer never clobbers migration history.
+and ``history`` fields. ``--write --reason TEXT`` merges live findings with
+stored metadata, preserving operator-authored overrides without creating them.
 """
 
 from __future__ import annotations
@@ -35,16 +34,18 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 COMPLEXITY_CODES = ("C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915")
 TOOL_FAILURE_EXIT = 2
+REPEAT_BUMP_DAYS = 14
 IDENTITY_KEYS = frozenset({"file", "code", "qualified_symbol", "metric"})
 STRICT_REQUIRED_KEYS = IDENTITY_KEYS | {"added_at", "history"}
 OPTIONAL_KEYS = frozenset({"source_issue", "reason", "operator_override"})
 ALL_KEYS = STRICT_REQUIRED_KEYS | OPTIONAL_KEYS
-EXTENDED_ONLY_KEYS = ALL_KEYS - IDENTITY_KEYS
 HISTORY_ENTRY_KEYS = frozenset({"date", "metric"})
 OPERATOR_OVERRIDE_KEYS = frozenset({"reason", "issue"})
 FIELD_ORDER = (
@@ -111,6 +112,16 @@ class RuffResult:
     returncode: int
     stdout: str
     stderr: str
+
+
+@dataclass(frozen=True)
+class HistoryEvent:
+    """One metric-increase event attributed to a baseline record."""
+
+    event_date: date
+    record: Record
+    history_index: int
+    metric: int
 
 
 def normalize_file_path(raw: str) -> str:
@@ -251,6 +262,7 @@ def _validate_history(
     if not isinstance(history, list):
         raise BaselineError(f"{source}: record {index} has invalid history")
     entries: list[HistoryEntry] = []
+    previous_date: date | None = None
     for entry in cast("list[object]", history):
         if not isinstance(entry, dict):
             raise BaselineError(f"{source}: record {index} has malformed history entry")
@@ -259,8 +271,13 @@ def _validate_history(
             raise BaselineError(f"{source}: record {index} has malformed history entry")
         date = entry_map["date"]
         entry_metric = entry_map["metric"]
-        if not isinstance(date, str) or not date:
+        if not isinstance(date, str):
             raise BaselineError(f"{source}: record {index} has invalid history date")
+        parsed_date = _parse_baseline_date(date, field="history date", index=index, source=source)
+        if previous_date is not None and parsed_date < previous_date:
+            raise BaselineError(
+                f"{source}: record {index} has date-decreasing history"
+            )
         if (
             not isinstance(entry_metric, int)
             or isinstance(entry_metric, bool)
@@ -268,6 +285,7 @@ def _validate_history(
         ):
             raise BaselineError(f"{source}: record {index} has invalid history metric")
         entries.append({"date": date, "metric": entry_metric})
+        previous_date = parsed_date
     return entries
 
 
@@ -281,7 +299,7 @@ def _validate_operator_override(
         raise BaselineError(f"{source}: record {index} has invalid operator_override")
     reason = value_map["reason"]
     issue = value_map["issue"]
-    if not isinstance(reason, str) or not reason:
+    if not isinstance(reason, str) or not reason or reason != reason.strip():
         raise BaselineError(
             f"{source}: record {index} has invalid operator_override reason"
         )
@@ -313,8 +331,10 @@ def _check_record_keys(
 
 
 def _validate_added_at(value: object, *, index: int, source: Path) -> str:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str):
         raise BaselineError(f"{source}: record {index} has invalid added_at")
+    if value != "legacy":
+        _ = _parse_baseline_date(value, field="added_at", index=index, source=source)
     return value
 
 
@@ -325,9 +345,27 @@ def _validate_source_issue(value: object, *, index: int, source: Path) -> int:
 
 
 def _validate_reason(value: object, *, index: int, source: Path) -> str:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value or value != value.strip():
         raise BaselineError(f"{source}: record {index} has invalid reason")
     return value
+
+
+def utc_today() -> date:
+    """Return the current UTC calendar date through a testable seam."""
+    return datetime.now(UTC).date()
+
+
+def _parse_baseline_date(
+    value: str, *, field: str, index: int, source: Path
+) -> date:
+    """Parse one strict UTC date and reject future values."""
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise BaselineError(f"{source}: record {index} has invalid {field}") from exc
+    if parsed.isoformat() != value or parsed > utc_today():
+        raise BaselineError(f"{source}: record {index} has invalid {field}")
+    return parsed
 
 
 def _validate_record(
@@ -562,6 +600,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
         ),
     )
     _ = parser.add_argument(
+        "--reason",
+        help="Required for a new baseline row or metric increase during --write.",
+    )
+    _ = parser.add_argument(
         "--migrate",
         action="store_true",
         help=(
@@ -662,65 +704,108 @@ def migrate_baseline(path: Path) -> int:
     return migrated_count
 
 
-def _first_extended_metadata_reason(
-    items: list[object], *, baseline_path: Path
-) -> str | None:
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            return f"{baseline_path}: record {index} is not an object"
-        item_map = cast("Mapping[str, object]", item)
-        extended = set(item_map) & EXTENDED_ONLY_KEYS
-        if extended:
-            return (
-                f"{baseline_path}: record {index} carries migrated metadata "
-                f"{sorted(extended)}"
+def _required_metadata(record: Record) -> tuple[str, list[HistoryEntry]]:
+    """Return strict metadata or fail closed when a caller passed a live row."""
+    added_at = record.get("added_at")
+    history = record.get("history")
+    if added_at is None or history is None:
+        raise BaselineError("baseline record is missing required metadata")
+    return added_at, history
+
+
+def _copy_preserved_metadata(*, record: Record, stored: Record) -> Record:
+    """Build one live row while retaining metadata only from its stored match."""
+    added_at, stored_history = _required_metadata(stored)
+    merged: Record = {
+        "file": record["file"],
+        "code": record["code"],
+        "qualified_symbol": record["qualified_symbol"],
+        "metric": record["metric"],
+        "added_at": added_at,
+        "history": [
+            {"date": entry["date"], "metric": entry["metric"]}
+            for entry in stored_history
+        ],
+    }
+    if "source_issue" in stored:
+        merged["source_issue"] = stored["source_issue"]
+    if "reason" in stored:
+        merged["reason"] = stored["reason"]
+    if "operator_override" in stored:
+        override = stored["operator_override"]
+        merged["operator_override"] = {
+            "reason": override["reason"],
+            "issue": override["issue"],
+        }
+    return merged
+
+
+def merge_baseline(
+    *,
+    live_records: list[Record],
+    stored_records: list[Record],
+    reason: str | None,
+    today: date,
+    source: Path,
+) -> list[Record]:
+    """Merge live results with trusted metadata, rejecting unreasoned growth."""
+    duplicates = find_duplicate_keys(stored_records)
+    if duplicates:
+        raise BaselineError("duplicate baseline complexity identities:\n" + "\n".join(duplicates))
+    stored_by_key: dict[tuple[str, str, str], Record] = {
+        _record_key(record): record for record in stored_records
+    }
+    merged: list[Record] = []
+    for live_record in live_records:
+        stored = stored_by_key.get(_record_key(live_record))
+        if stored is None:
+            if reason is None:
+                raise BaselineError("--reason is required for a new baseline row")
+            merged.append(
+                {
+                    **live_record,
+                    "added_at": today.isoformat(),
+                    "history": [{"date": today.isoformat(), "metric": live_record["metric"]}],
+                    "reason": reason,
+                }
             )
-    return None
+            continue
+        next_record = _copy_preserved_metadata(record=live_record, stored=stored)
+        if live_record["metric"] > stored["metric"]:
+            if reason is None:
+                raise BaselineError("--reason is required for a metric increase")
+            _, history = _required_metadata(next_record)
+            history.append(
+                {"date": today.isoformat(), "metric": live_record["metric"]}
+            )
+            next_record["reason"] = reason
+        merged.append(next_record)
+    validated = [
+        _validate_record(record, index=index, source=source, strict=True)
+        for index, record in enumerate(merged)
+    ]
+    if find_duplicate_keys(validated):
+        raise BaselineError("duplicate merged complexity identities")
+    return validated
 
 
-def _write_guard_blocks(baseline_path: Path) -> tuple[bool, str | None]:
-    """Return ``(blocked, reason)`` for the fail-closed ``--write`` pre-check.
-
-    A nonexistent baseline is a genuine bootstrap and is never blocked. Any
-    existing baseline that already carries extended metadata (fully or
-    partially migrated) blocks the unchanged four-field writer, since it
-    cannot preserve that metadata.
-    """
-    if not baseline_path.exists():
-        return False, None
-    try:
-        data = json.loads(baseline_path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        return True, f"cannot read {baseline_path}: {exc}"
-    except json.JSONDecodeError as exc:
-        return True, f"{baseline_path}: cannot parse existing baseline: {exc}"
-    if not isinstance(data, list):
-        return True, f"{baseline_path}: existing baseline must be a top-level JSON array"
-    reason = _first_extended_metadata_reason(
-        cast("list[object]", data), baseline_path=baseline_path
-    )
-    if reason is not None:
-        return True, reason
-    return False, None
-
-
-def _run_write( *,python_dir: Path, baseline_path: Path) -> int:
-    blocked, reason = _write_guard_blocks(baseline_path)
-    if blocked:
-        print(
-            f"lint-complexity-baseline: {reason}; baseline regeneration is "
-            "disabled until Piece 2's metadata-preserving writer lands",
-            file=sys.stderr,
-        )
-        return 2
+def _run_write(*, python_dir: Path, baseline_path: Path, reason: str | None) -> int:
     try:
         live_records = _collect_live_records(python_dir)
+        stored_records = load_baseline(baseline_path) if baseline_path.exists() else []
+        merged_records = merge_baseline(
+            live_records=live_records,
+            stored_records=stored_records,
+            reason=reason,
+            today=utc_today(),
+            source=baseline_path,
+        )
     except BaselineError as exc:
         print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
         return 2
-    write_baseline(path=baseline_path, records=live_records)
+    write_baseline(path=baseline_path, records=merged_records)
     print(
-        f"lint-complexity-baseline: wrote {len(live_records)} "
+        f"lint-complexity-baseline: wrote {len(merged_records)} "
         f"records to {baseline_path}",
         file=sys.stderr,
     )
@@ -741,6 +826,70 @@ def _run_migrate( *,baseline_path: Path) -> int:
     return 0
 
 
+def history_events(records: list[Record]) -> dict[tuple[str, str], list[HistoryEvent]]:
+    """Return deterministic metric-growth events grouped by file and symbol."""
+    grouped: dict[tuple[str, str], list[HistoryEvent]] = {}
+    for record in records:
+        added_at, history = _required_metadata(record)
+        start = 0 if added_at == "legacy" else 1
+        for history_index, entry in enumerate(history[start:], start=start):
+            event = HistoryEvent(
+                event_date=date.fromisoformat(entry["date"]),
+                record=record,
+                history_index=history_index,
+                metric=entry["metric"],
+            )
+            symbol_key = (record["file"], record["qualified_symbol"])
+            grouped.setdefault(symbol_key, []).append(event)
+    for events in grouped.values():
+        events.sort(
+            key=lambda event: (
+                event.event_date,
+                *_record_key(event.record),
+                event.history_index,
+            )
+        )
+    return grouped
+
+
+def _format_event(event: HistoryEvent) -> str:
+    return (
+        f"{event.event_date.isoformat()} [{event.record['code']}] "
+        f"metric {event.metric}"
+    )
+
+
+def repeat_bump_failures(records: list[Record]) -> list[str]:
+    """Return every unoverridden second bump inside the inclusive 14-day window."""
+    failures: list[str] = []
+    for (file_name, symbol), events in sorted(history_events(records).items()):
+        for previous, current in pairwise(events):
+            if (current.event_date - previous.event_date).days > REPEAT_BUMP_DAYS:
+                continue
+            if "operator_override" in current.record:
+                continue
+            failures.append(
+                f"repeat complexity bumps for {file_name}:{symbol}: "
+                f"{_format_event(previous)}; {_format_event(current)}. "
+                "Simplify the function, split it, or add an operator override."
+            )
+    return failures
+
+
+def active_overrides(records: list[Record]) -> list[str]:
+    """Render all active manual override records in canonical identity order."""
+    lines: list[str] = []
+    for record in sorted(records, key=_record_key):
+        override = record.get("operator_override")
+        if override is None:
+            continue
+        lines.append(
+            f"active operator override: {record['file']}:{record['qualified_symbol']} "
+            f"[{record['code']}] issue #{override['issue']}: {override['reason']}"
+        )
+    return lines
+
+
 def _run_check( *,python_dir: Path, baseline_path: Path) -> int:
     try:
         live_records = _collect_live_records(python_dir)
@@ -755,10 +904,29 @@ def _run_check( *,python_dir: Path, baseline_path: Path) -> int:
         print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
         return 2
 
-    regressions = find_regressions(live_records=live_records, baseline_index=index_baseline(baseline_records))
+    failures = repeat_bump_failures(baseline_records)
+    regressions = find_regressions(
+        live_records=live_records, baseline_index=index_baseline(baseline_records)
+    )
     for regression in regressions:
         print(regression, file=sys.stderr)
-    return 1 if regressions else 0
+    for failure in failures:
+        print(failure, file=sys.stderr)
+    for override in active_overrides(baseline_records):
+        print(override, file=sys.stderr)
+    return 1 if regressions or failures else 0
+
+
+def _validated_write_reason(parsed: argparse.Namespace) -> tuple[str | None, str | None]:
+    """Return a normalized writer reason or the one mode-validation error."""
+    if parsed.migrate and parsed.write:
+        return None, "--migrate and --write are incompatible"
+    reason = parsed.reason
+    if reason is None:
+        return None, None
+    if not parsed.write or parsed.migrate or not reason.strip():
+        return None, "--reason is a nonblank --write-only option"
+    return reason.strip(), None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -775,10 +943,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     baseline_path = python_dir / "complexity-baseline.json"
+    reason, mode_error = _validated_write_reason(parsed)
+    if mode_error is not None:
+        print(f"lint-complexity-baseline: {mode_error}", file=sys.stderr)
+        return 2
     if parsed.migrate:
         return _run_migrate(baseline_path=baseline_path)
     if parsed.write:
-        return _run_write(python_dir=python_dir, baseline_path=baseline_path)
+        return _run_write(python_dir=python_dir, baseline_path=baseline_path, reason=reason)
     return _run_check(python_dir=python_dir, baseline_path=baseline_path)
 
 

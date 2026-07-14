@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from larch import cli
 from larch.lint import lint_complexity_baseline as lcb
+from larch.lint import lint_complexity_debt as lcd
 from larch.lint.lint_complexity_baseline import BaselineError, Record, RuffResult
 
 
@@ -723,16 +727,22 @@ def test_write_mode_regenerates_baseline_from_live(
             ruff_item("./proc.py", "PLR0911", "Too many return statements (18 > 6)", 2),
         ],
     )
-    assert lcb.main(["--root", str(tmp_path), "--write"]) == 0, capsys.readouterr().err
+    assert lcb.main(["--root", str(tmp_path), "--write", "--reason", "new debt"]) == 0, capsys.readouterr().err
     baseline_file = tmp_path / "python" / "complexity-baseline.json"
     written = json.loads(baseline_file.read_text(encoding="utf-8"))
     assert written == [
-        {"file": "proc.py", "code": "PLR0911", "qualified_symbol": "run", "metric": 18},
+        {
+            "file": "proc.py", "code": "PLR0911", "qualified_symbol": "run", "metric": 18,
+            "added_at": lcb.utc_today().isoformat(), "history": [{"date": lcb.utc_today().isoformat(), "metric": 18}], "reason": "new debt",
+        },
         {
             "file": "proc.py",
             "code": "PLR0915",
             "qualified_symbol": "ProcRunner.run",
             "metric": 52,
+            "added_at": lcb.utc_today().isoformat(),
+            "history": [{"date": lcb.utc_today().isoformat(), "metric": 52}],
+            "reason": "new debt",
         },
     ]
     text = baseline_file.read_text(encoding="utf-8")
@@ -740,7 +750,7 @@ def test_write_mode_regenerates_baseline_from_live(
     assert text.endswith("\n")
 
 
-def test_write_then_migrate_then_check_passes(
+def test_write_then_check_passes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_project(tmp_path, baseline=[])
@@ -748,13 +758,9 @@ def test_write_then_migrate_then_check_passes(
         monkeypatch,
         [ruff_item("proc.py", "PLR0911", "Too many return statements (18 > 6)", 2)],
     )
-    assert lcb.main(["--root", str(tmp_path), "--write"]) == 0, capsys.readouterr().err
+    assert lcb.main(["--root", str(tmp_path), "--write", "--reason", "new debt"]) == 0, capsys.readouterr().err
     baseline_path = tmp_path / "python" / "complexity-baseline.json"
-    # A fresh --write emits legacy four-field records; strict loading requires
-    # migration first, since committed baselines load only in the extended schema.
-    with pytest.raises(BaselineError):
-        _ = lcb.load_baseline(baseline_path)
-    assert lcb.main(["--root", str(tmp_path), "--migrate"]) == 0, capsys.readouterr().err
+    assert lcb.load_baseline(baseline_path)
     assert lcb.main(["--root", str(tmp_path)]) == 0, capsys.readouterr().err
 
 
@@ -766,10 +772,10 @@ def test_write_mode_allows_empty_array_bootstrap_baseline(
         monkeypatch,
         [ruff_item("proc.py", "PLR0911", "Too many return statements (18 > 6)", 2)],
     )
-    assert lcb.main(["--root", str(tmp_path), "--write"]) == 0, capsys.readouterr().err
+    assert lcb.main(["--root", str(tmp_path), "--write", "--reason", "new debt"]) == 0, capsys.readouterr().err
 
 
-def test_write_mode_refuses_migrated_baseline_without_modifying_it(
+def test_write_mode_preserves_migrated_baseline_metadata(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     migrated: list[dict[str, object]] = [
@@ -788,11 +794,8 @@ def test_write_mode_refuses_migrated_baseline_without_modifying_it(
         [ruff_item("proc.py", "PLR0911", "Too many return statements (18 > 6)", 2)],
     )
     baseline_path = tmp_path / "python" / "complexity-baseline.json"
-    before = baseline_path.read_text(encoding="utf-8")
-    assert lcb.main(["--root", str(tmp_path), "--write"]) == 2
-    assert "disabled until Piece 2" in capsys.readouterr().err
-    assert baseline_path.read_text(encoding="utf-8") == before
-    # The refused-but-unchanged baseline still passes strict lint.
+    assert lcb.main(["--root", str(tmp_path), "--write"]) == 0, capsys.readouterr().err
+    assert json.loads(baseline_path.read_text(encoding="utf-8")) == migrated
     assert lcb.main(["--root", str(tmp_path)]) == 0, capsys.readouterr().err
 
 
@@ -849,3 +852,155 @@ def test_write_mode_fails_closed_on_unparseable_violation(
     )
     assert lcb.main(["--root", str(tmp_path), "--write"]) == 2
     assert "cannot parse violation" in capsys.readouterr().err
+
+
+def test_write_requires_nonblank_reason_for_new_or_growing_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_project(tmp_path, baseline=[])
+    patch_ruff(
+        monkeypatch,
+        [ruff_item("proc.py", "PLR0911", "Too many return statements (18 > 6)", 2)],
+    )
+    assert lcb.main(["--root", str(tmp_path), "--write"]) == 2
+    assert "--reason is required" in capsys.readouterr().err
+    assert lcb.main(["--root", str(tmp_path), "--write", "--reason", "   "]) == 2
+
+
+def test_write_growth_appends_history_and_preserves_manual_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stored = [
+        base_record(
+            metric=17,
+            history=[{"date": "2026-07-01", "metric": 17}],
+            reason="first growth",
+            source_issue=7156,
+            operator_override={"reason": "approved exception", "issue": 9001},
+        )
+    ]
+    write_project(tmp_path, baseline=stored)
+    patch_ruff(
+        monkeypatch,
+        [ruff_item("proc.py", "PLR0913", "Too many arguments (18 > 5)", 8)],
+    )
+    assert lcb.main(["--root", str(tmp_path), "--write", "--reason", "urgent API"]) == 0
+    written = lcb.load_baseline(tmp_path / "python" / "complexity-baseline.json")
+    written_record = written[0]
+    assert written_record.get("added_at") == "2026-07-12"
+    history = written_record.get("history")
+    assert history is not None
+    assert history[-1] == {"date": lcb.utc_today().isoformat(), "metric": 18}
+    assert written_record.get("reason") == "urgent API"
+    assert written_record.get("source_issue") == 7156
+    assert written_record.get("operator_override") == {
+        "reason": "approved exception",
+        "issue": 9001,
+    }
+    assert capsys.readouterr().err
+
+
+def test_repeat_gate_uses_cross_code_events_and_only_later_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    baseline = [
+        base_record(
+            code="PLR0911",
+            added_at="legacy",
+            history=[{"date": "2026-07-01", "metric": 9}],
+        ),
+        base_record(
+            code="PLR0912",
+            added_at="legacy",
+            history=[{"date": "2026-07-13", "metric": 10}],
+        ),
+    ]
+    write_project(tmp_path, baseline=baseline)
+    patch_ruff(monkeypatch, [])
+    assert lcb.main(["--root", str(tmp_path)]) == 1
+    assert "[PLR0911]" in capsys.readouterr().err
+    baseline[1]["operator_override"] = {"reason": "operator approved", "issue": 7156}
+    _ = (tmp_path / "python" / "complexity-baseline.json").write_text(
+        json.dumps(baseline), encoding="utf-8"
+    )
+    assert lcb.main(["--root", str(tmp_path)]) == 0, capsys.readouterr().err
+
+
+def test_dated_seed_is_not_a_bump_and_equal_dates_are_deterministic() -> None:
+    records = [
+        base_record(
+            code="PLR0911",
+            added_at="2026-07-01",
+            history=[
+                {"date": "2026-07-01", "metric": 8},
+                {"date": "2026-07-10", "metric": 9},
+            ],
+        ),
+        base_record(
+            code="PLR0912",
+            added_at="legacy",
+            history=[{"date": "2026-07-10", "metric": 11}],
+        ),
+    ]
+    validated: list[Record] = [cast("Record", record) for record in records]
+    failures = lcb.repeat_bump_failures(validated)
+    assert len(failures) == 1
+    assert "[PLR0911] metric 9; 2026-07-10 [PLR0912] metric 11" in failures[0]
+
+
+def test_debt_report_has_all_sections_and_cli_registration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_project(
+        tmp_path,
+        baseline=[
+            base_record(
+                metric=22,
+                history=[
+                    {"date": "2026-07-01", "metric": 20},
+                    {"date": "2026-07-10", "metric": 22},
+                ],
+                operator_override={"reason": "tracked debt", "issue": 7156},
+            )
+        ],
+    )
+    assert cli.main(["lint", "complexity-debt", "--root", str(tmp_path), "--report"]) == 0
+    report = capsys.readouterr().out
+    assert "Total entries: 1" in report
+    assert "Age buckets:" in report
+    assert "Top 10 by metric:" in report
+    assert "Symbols with at least two bumps in the last 30 days:" in report
+    assert "Active operator overrides:" in report
+    assert cli.main(["lint", "complexity-debt", "--root", str(tmp_path)]) == 2
+
+
+def test_debt_report_golden_output_keeps_long_labels_untruncated() -> None:
+    records: list[Record] = [
+        {
+            "file": "a/path/that/is/intentionally/longer/than/the/report/column/expectation.py",
+            "code": "PLR0915",
+            "qualified_symbol": "DeeplyNestedClassName.WithAnExtremelyLongMethodName.run",
+            "metric": 55,
+            "added_at": "legacy",
+            "history": [],
+        }
+    ]
+    assert lcd.render_report(records, today=date(2026, 7, 14)) == (
+        "Complexity debt report\n"
+        "Total entries: 1\n"
+        "\n"
+        "Age buckets:\n"
+        "  under 14 days: 0\n"
+        "  14 through 90 days: 0\n"
+        "  over 90 days: 0\n"
+        "  legacy: 1\n"
+        "\n"
+        "Top 10 by metric:\n"
+        "  55 | a/path/that/is/intentionally/longer/than/the/report/column/expectation.py | PLR0915 | DeeplyNestedClassName.WithAnExtremelyLongMethodName.run\n"
+        "\n"
+        "Symbols with at least two bumps in the last 30 days:\n"
+        "  (none)\n"
+        "\n"
+        "Active operator overrides:\n"
+        "  (none)\n"
+    )
