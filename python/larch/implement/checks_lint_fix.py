@@ -827,9 +827,10 @@ def _exhausted_outcome(
     *, site: str, reason: str, ledger_path: Path,
     stderr_tail_path: str = "", failure_detail_log: str = ""
 ) -> FixOutcome:
-    # Pre-ship sites and ship-pr-ci-initial stall without escalation; carry
-    # ledger metadata for diagnostics but do NOT set ledger_ready so the
-    # repair-loop consumer routes to stall, not stall-recovery record-escalation.
+    # Preserve the redacted failure log for the repair loop to validate before it
+    # decides whether this terminal outcome can escalate. Pre-ship outcomes do
+    # not set ledger_ready here: _repair_loop_action owns that decision after
+    # containment-checking the log it will hand to the ci-fixer.
     if _is_pre_ship_site(site) or site == "ship-pr-ci-initial":
         return FixOutcome(
             status="failed", delta_paths=(), failure_reason=reason, commit_sha=None,
@@ -1965,6 +1966,11 @@ def _handle_fix_outcome(
         loop.coder_log_path = fix.coder_log_path
         return False
     if fix.status == "failed":
+        # A delegated waterfall can fail before re-running checks, so there is
+        # no later capture to populate final_redacted_checks_log. Keep its
+        # redacted input as the candidate; _repair_loop_action validates it
+        # against the session root before using it for an escalation.
+        loop.final_redacted_checks_log = fix.ledger_failure_detail_log
         if fix.failure_reason in _PRE_SHIP_NON_STRUCTURAL_REASONS:
             loop.status = "exhausted"
         elif fix.failure_reason == "head-changed-after-dispatch":
