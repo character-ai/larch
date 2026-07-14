@@ -30,4 +30,4 @@ Fresh foreground launch clears stale handoff sidecars, removes stale canonical b
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md`, `step-8-seed-initial.md`, `skills/implement/references/ship-pr-exit-matrix.md`, and `skills/implement/scripts/test-step-8-ship.sh` when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `step-8-seed-initial.md`, `skills/implement/references/ship-pr-exit-matrix.md`, and `python/tests/implement/test_implement_shell_scripts.py` (Step 8 static pins, seeder argv, rejoin, handoff, guard, merge-result fail-closed, and symlink-rejection nodes) when this contract or argv changes.

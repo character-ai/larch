@@ -111,12 +111,9 @@ skills/implement/scripts/test-architectural-guidelines-step.sh
 skills/implement/scripts/test-cleanup.sh
 skills/implement/scripts/test-flush-execution-issues.sh
 skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
-skills/implement/scripts/test-implement-review-token-propagation.sh
 skills/implement/scripts/test-oos-disposition-gate.sh
 skills/implement/scripts/test-refresh-execution-issues.sh
-skills/implement/scripts/test-step-18.sh
 skills/implement/scripts/test-step-7a.sh
-skills/implement/scripts/test-step-8-ship.sh
 skills/implement/scripts/test-write-final-report.sh
 skills/implement/scripts/write-final-report.sh
 skills/pause/scripts/test-pause-skill.sh

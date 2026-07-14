@@ -1351,3 +1351,7 @@ skills/implement/scripts/oos-accumulated-seq-seed.awk	#4970
 skills/implement/scripts/oos-has-legacy-finding-block-opener.awk	#4970
 skills/implement/scripts/step-2-entry.sh	#5563
 skills/implement/scripts/step-2-entry.md	#5563
+skills/implement/scripts/test-step-5-review.sh	#7063
+skills/implement/scripts/test-step-8-ship.sh	#7063
+skills/implement/scripts/test-step-18.sh	#7063
+skills/implement/scripts/test-implement-review-token-propagation.sh	#7063
