@@ -30,6 +30,7 @@ from larch.agents import _review_launcher
 from larch.agents import _drafter
 from larch.agents import _claude_runner
 from larch.design import plan_grammar
+from test_support import completed, ok
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -58,7 +59,7 @@ class IngestRunner:
         call = tuple(argv)
         self.calls.append(call)
         self.envs.append(env)
-        return CommandResult(call, 0, "", "", 0.01)
+        return ok(call)
 
 
 def test_parse_launcher_exit_text() -> None:
@@ -552,7 +553,7 @@ def test_read_claude_model_main_unknown_fallback(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     def fake_run(*_args: object, **_kwargs: object) -> agents.CommandResult:
-        return agents.CommandResult((), 0, "", "", 0.0)
+        return ok(())
 
     monkeypatch.setattr(agents.proc, "run", fake_run)
     rc = agents.read_claude_model_main([])
@@ -758,7 +759,7 @@ def test_launch_claude_subprocess_records_model_with_usage(tmp_path: Path, monke
 
     def fake_run(argv: list[str], **_kwargs: object) -> agents.CommandResult:
         calls.append(list(argv))
-        return agents.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(agents.proc, "run", fake_run)
     prompt = tmp_path / "prompt.md"
@@ -2298,11 +2299,11 @@ def test_run_negotiation_round_codex_success_paths_and_args(
         stdout = kwargs["stdout"]
         stdout.write('{"type":"token_usage","input_tokens":2,"cached_input_tokens":1,"output_tokens":3}\n')
         Path(output).write_text("ok\n", encoding="utf-8")
-        return agents.subprocess.CompletedProcess(cmd, 0)
+        return completed(cmd)
 
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: agents.CommandResult((), 0, "", "", 0.0))
+    monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: ok(()))
     rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
     assert rc == 0
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
@@ -2358,7 +2359,7 @@ def test_run_negotiation_round_cursor_preflight_failure_and_success(
     def fake_run(cmd: object, **kwargs: object) -> agents.subprocess.CompletedProcess[str]:
         seen["cmd"] = cmd
         kwargs["stdout"].write("cursor ok\n")
-        return agents.subprocess.CompletedProcess(cmd, 0)
+        return completed(cmd)
 
     monkeypatch.setenv("CURSOR_API_KEY", "crsr-secret")
     monkeypatch.setattr(_drafter, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
@@ -2402,14 +2403,14 @@ def test_run_negotiation_round_startup_lock_before_spawn(
             stdout = kwargs.get("stdout")
             if stdout is not None:
                 stdout.write("cursor ok\n")
-        return agents.subprocess.CompletedProcess(cmd, 0)
+        return completed(cmd)
 
     monkeypatch.setattr(_drafter, "external_startup_lock_acquire", fake_lock)
     monkeypatch.setattr(_drafter, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     if tool == "codex":
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: agents.CommandResult((), 0, "", "", 0.0))
+        monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: ok(()))
     else:
         monkeypatch.setattr(
             agents,
@@ -2658,7 +2659,7 @@ def test_cursor_auth_preflight_passes_when_keychain_read_succeeds(monkeypatch: p
     _cursor_auth_unlock(monkeypatch)
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(list(argv), 0, stdout="crsr_from_keychain\n")
+        return completed(list(argv), "crsr_from_keychain\n")
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     verdict = agents.cursor_auth_preflight(caller="test")
@@ -3018,7 +3019,7 @@ def test_launch_codex_exec_default_workdir_resolves_before_launch(
         return agents.RunExternalAgentResult(0, output_path)
 
     def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+        return ok(tuple(str(arg) for arg in argv))
 
     monkeypatch.chdir(raw_cwd)
     monkeypatch.setattr(_drafter, "_resolve_review_codex_workdir", fake_resolve)
@@ -3064,7 +3065,7 @@ def test_launch_codex_exec_explicit_workdir_is_not_resolved(
         return agents.RunExternalAgentResult(0, output_path)
 
     def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+        return ok(tuple(str(arg) for arg in argv))
 
     monkeypatch.chdir(raw_cwd)
     monkeypatch.setattr(_drafter, "_resolve_review_codex_workdir", fail_resolve)
@@ -3233,7 +3234,7 @@ def test_review_append_launch_failure_threads_custom_site(tmp_path: Path, monkey
         a = [str(x) for x in argv]
         if "append-failure" in a:
             captured["site"] = a[a.index("--site") + 1]
-        return CommandResult((), 0, "", "", 0.0)
+        return ok(())
 
     monkeypatch.setattr(agents.proc, "run", fake_run)
     agents._review_append_launch_failure(output=output, tool="codex", exit_code=1, site="design Step 3")  # pylint: disable=protected-access
@@ -3330,7 +3331,7 @@ def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
 
     def fake_run(_argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        return completed([])
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
@@ -3353,7 +3354,7 @@ def test_append_implement_launch_failure_merges_sidecar_into_existing_failure_di
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
 
     def fake_run(_argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        return completed([])
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
@@ -3376,7 +3377,7 @@ def test_append_implement_launch_failure_uses_retry_failure_diag_and_auth_verdic
         if "append-failure" in argv:
             captured["source"] = argv[argv.index("--output-file") + 1]
             captured["verdict"] = argv[argv.index("--verdict") + 1]
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        return completed([])
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
@@ -3405,7 +3406,7 @@ def test_append_implement_launch_failure_uses_descriptive_site_label(
         a = [str(x) for x in argv]
         if "append-failure" in a:
             captured["site"] = a[a.index("--site") + 1]
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        return completed([])
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     parts_dir = tmp_path / "vendor-failure-diagnostics.parts"
@@ -3615,7 +3616,7 @@ def test_launch_codex_ci_resolves_consumer_workdir(
         return agents.RunExternalAgentResult(0, output_path)
 
     def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+        return ok(tuple(str(arg) for arg in argv))
 
     monkeypatch.chdir(raw_cwd)
     monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", fake_resolve)
@@ -4019,7 +4020,7 @@ def test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_chan
         return agents.RunExternalAgentResult(0, output_path)
 
     def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+        return ok(tuple(str(arg) for arg in argv))
 
     monkeypatch.chdir(raw_cwd)
     monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", fake_resolve)
@@ -4086,7 +4087,7 @@ def test_launch_cursor_ci_fix_uses_resolved_cursor_model(
 
     monkeypatch.setattr(_ci_launcher, "resolve_model_args", fake_resolve)
     monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run)
-    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: ok(tuple(str(arg) for arg in argv)))
     monkeypatch.setattr(_ci_launcher, "_append_ci_failure", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
 
@@ -4149,7 +4150,7 @@ def test_launch_cursor_implement_selects_model_by_difficulty(
     monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", fake_record_usage)
     monkeypatch.setattr(_ci_launcher, "_append_implement_launch_failure", lambda **_kwargs: None)
     monkeypatch.setattr(_ci_launcher, "_emit_implement_launcher_envelope", lambda **_kwargs: None)
-    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: ok(tuple(str(arg) for arg in argv)))
 
     rc = agents.launch_cursor_implement_main(
         [
@@ -4432,7 +4433,7 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.setattr(_ci_launcher, "_append_implement_launch_failure", fake_append_failure)
     monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
     monkeypatch.setattr(_ci_launcher, "_emit_implement_launcher_envelope", fake_emit)
-    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: ok(tuple(str(arg) for arg in argv)))
 
     rc = agents.launch_codex_implement_main(
         [
@@ -4532,7 +4533,7 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.setattr(_ci_launcher, "_append_implement_launch_failure", fake_append_failure)
     monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
     monkeypatch.setattr(_ci_launcher, "_emit_implement_launcher_envelope", fake_emit)
-    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: ok(tuple(str(arg) for arg in argv)))
 
     rc = agents.launch_cursor_implement_main(
         [
@@ -4908,7 +4909,7 @@ def test_stall_kill_terminates_children_before_parent(monkeypatch: pytest.Monkey
 
     def fake_run(argv: list[str], **_kwargs: object) -> agents.CommandResult:
         assert argv == ["pgrep", "-P", "100"]
-        return agents.CommandResult(tuple(argv), 0, "200\n201\n", "", 0.0)
+        return ok(tuple(argv), "200\n201\n")
 
     def fake_kill(pid: int, sig: int) -> None:
         calls.append((pid, sig))
@@ -5601,7 +5602,7 @@ def test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success(
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
-        return agents.CommandResult((), 0, "", "", 0.0)
+        return ok(())
 
     monkeypatch.setattr(_drafter, "_launch_codex_exec_inprocess", fake_exec)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
@@ -5690,7 +5691,7 @@ def test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail(
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
-        return agents.CommandResult((), 0, "", "", 0.0)
+        return ok(())
 
     monkeypatch.setattr(_drafter, "_launch_codex_exec_inprocess", fake_exec)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
@@ -5737,7 +5738,7 @@ def test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet(
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
-        return agents.CommandResult((), 0, "", "", 0.0)
+        return ok(())
 
     monkeypatch.setattr(_drafter, "launch_codex_exec_main", fake_launch_codex_exec_main)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
@@ -5816,7 +5817,7 @@ def test_launch_claude_drafter_uses_exact_argv_without_timeout_wrapper(
 
     monkeypatch.setattr(agents.shutil, "which", fake_which)
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: agents.CommandResult((), 0, "", "", 0.0))
+    monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: ok(()))
     rc = agents.launch_claude_drafter(
         model="claude-test",
         prompt_file=str(prompt),
@@ -5874,7 +5875,7 @@ def test_launch_claude_drafter_timeout_wrapper_maps_timeout_status(
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
         _ = (cmd, kwargs)
-        return agents.CommandResult((), 0, "", "", 0.0)
+        return ok(())
 
     monkeypatch.setattr(agents.shutil, "which", fake_which)
     monkeypatch.setattr(agents.subprocess, "run", fake_run)

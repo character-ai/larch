@@ -22,7 +22,7 @@ from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
 from larch.report import run_log_flush
 from larch.report import run_logs
-from test_support import make_run_context
+from test_support import make_run_context, ok
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -79,7 +79,7 @@ class RecordingRunner:
             if key[: len(prefix)] == prefix:
                 return result
         if key[:3] == ("git", "commit", "--file"):
-            return _cr(key, 0)
+            return ok(key)
         msg = f"unexpected argv: {argv}"
         raise AssertionError(msg)
 
@@ -109,7 +109,7 @@ def test_default_launch_fn_uses_python_agent_launcher(
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     runner = RecordingRunner()
     runner.prefix_responses.append(
-        ((sys.executable,), _cr((sys.executable,), stdout="LAUNCHER_EXIT=0\n")),
+        ((sys.executable,), ok((sys.executable,), "LAUNCHER_EXIT=0\n")),
     )
     logs = ci_monitor.LogCollectResult(text="", state="ready")
     launch_fn = ci_monitor._make_default_launch_fn(
@@ -142,7 +142,7 @@ def test_default_launch_fn_reads_launcher_done_sidecar_when_fd3_missing(
             _ = output.write_text("tool prose\n", encoding="utf-8")
             _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
             self.calls.append(tuple(argv))
-            return _cr(argv, 0, stdout="", stderr="")
+            return ok(argv)
 
     runner = DoneRunner()
     logs = ci_monitor.LogCollectResult(text="", state="ready")
@@ -173,7 +173,7 @@ def test_default_launch_fn_prefers_done_sentinel_over_stdout_launcher_exit(
             _ = output.write_text("tool prose\n", encoding="utf-8")
             _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
             self.calls.append(tuple(argv))
-            return _cr(argv, 0, stdout="LAUNCHER_EXIT=0\n", stderr="")
+            return ok(argv, "LAUNCHER_EXIT=0\n")
 
     runner = DoneRunner()
     logs = ci_monitor.LogCollectResult(text="", state="ready")
@@ -252,11 +252,8 @@ def _status(
             [{"name": "lint", "state": "SUCCESS", "bucket": "pass", "link": ""}],
         )
     return {
-        ("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus"): _cr(
-            ("gh", "pr", "view"),
-            stdout=pr_json,
-        ),
-        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus"): ok(("gh", "pr", "view"), pr_json),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
         (
             "gh",
             "pr",
@@ -266,19 +263,10 @@ def _status(
             "o/r",
             "--json",
             "name,state,bucket,link",
-        ): _cr(("gh", "pr", "checks"), stdout=checks),
-        ("gh", "pr", "checks", "1", "--repo", "o/r"): _cr(
-            ("gh", "pr", "checks", "text"),
-            stdout="",
-        ),
-        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(
-            ("git", "rev-list", "--count"),
-            stdout=f"{behind}\n",
-        ),
-        ("git", "log", "--format=%s", "HEAD..origin/main"): _cr(
-            ("git", "log"),
-            stdout="",
-        ),
+        ): ok(("gh", "pr", "checks"), checks),
+        ("gh", "pr", "checks", "1", "--repo", "o/r"): ok(("gh", "pr", "checks", "text")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list", "--count"), f"{behind}\n"),
+        ("git", "log", "--format=%s", "HEAD..origin/main"): ok(("git", "log")),
     }
 
 
@@ -300,10 +288,7 @@ def test_default_launch_fn_ingests_external_token_sidecar(
         return True
 
     monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
-    runner.responses[("launch", "codex")] = _cr(
-        ("launch", "codex"),
-        stdout=f"LAUNCHER_EXIT=0\nTOKEN_RECORD={tmp_path / 'codex.token-record'}\n",
-    )
+    runner.responses[("launch", "codex")] = ok(("launch", "codex"), f"LAUNCHER_EXIT=0\nTOKEN_RECORD={tmp_path / 'codex.token-record'}\n")
     launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
         runner,
         run_id="run",
@@ -345,7 +330,7 @@ def test_default_launch_fn_gates_output_fallback_by_tier(
         return False
 
     monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
-    runner.responses[("launch", tier)] = _cr(("launch", tier), stdout="LAUNCHER_EXIT=0\n")
+    runner.responses[("launch", tier)] = ok(("launch", tier), "LAUNCHER_EXIT=0\n")
     launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
         runner,
         run_id="run",
@@ -407,10 +392,7 @@ def test_default_launch_fn_clears_fallback_sidecar_before_codex_launch(
     runner = FreshnessRunner()
     output = tmp_path / "ci-fix-codex.out"
     _ = Path(f"{output}.token-record").write_text("stale\n", encoding="utf-8")
-    runner.responses[("launch", "codex", "--output", str(output))] = _cr(
-        ("launch", "codex"),
-        stdout="LAUNCHER_EXIT=0\n",
-    )
+    runner.responses[("launch", "codex", "--output", str(output))] = ok(("launch", "codex"), "LAUNCHER_EXIT=0\n")
     launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
         runner,
         run_id="run",
@@ -455,10 +437,7 @@ def test_default_launch_fn_dedups_repeated_external_token_sidecar(
         return True
 
     monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
-    runner.responses[("launch", "codex")] = _cr(
-        ("launch", "codex"),
-        stdout=f"LAUNCHER_EXIT=1\nTOKEN_RECORD={token_record}\n",
-    )
+    runner.responses[("launch", "codex")] = ok(("launch", "codex"), f"LAUNCHER_EXIT=1\nTOKEN_RECORD={token_record}\n")
     launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
         runner,
         run_id="run",
@@ -754,10 +733,7 @@ def test_checks_rollup_empty_pending_json_is_not_empty() -> None:
 
 def test_checks_rollup_empty_uses_empty_text_fallback_after_empty_json() -> None:
     responses = _status(status="empty")
-    responses[("gh", "pr", "checks", "1", "--repo", "o/r")] = _cr(
-        ("gh", "pr", "checks", "text"),
-        stdout="  \n",
-    )
+    responses[("gh", "pr", "checks", "1", "--repo", "o/r")] = ok(("gh", "pr", "checks", "text"), "  \n")
     runner = RecordingRunner(responses)
 
     assert ci_monitor._checks_rollup_empty(  # pylint: disable=protected-access
@@ -805,10 +781,7 @@ def test_resolve_checks_observation_derives_empty_rollup_without_rollup_probe(
 
 def test_resolve_checks_observation_uses_same_text_fallback_for_non_empty_rollup() -> None:
     responses = _status(status="empty")
-    responses[("gh", "pr", "checks", "1", "--repo", "o/r")] = _cr(
-        ("gh", "pr", "checks", "text"),
-        stdout="lint\tpass\thttps://github.com/o/r/actions/runs/42\n",
-    )
+    responses[("gh", "pr", "checks", "1", "--repo", "o/r")] = ok(("gh", "pr", "checks", "text"), "lint\tpass\thttps://github.com/o/r/actions/runs/42\n")
     runner = RecordingRunner(responses)
 
     observation = ci_monitor._resolve_checks_observation(  # pyright: ignore[reportPrivateUsage]
@@ -828,10 +801,7 @@ def test_resolve_checks_observation_uses_same_text_fallback_for_non_empty_rollup
 
 def test_gather_status_squash_merge_race() -> None:
     responses = _status(status="pass", behind=2)
-    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = _cr(
-        ("git", "log"),
-        stdout="Squash feature (#1)\n",
-    )
+    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = ok(("git", "log"), "Squash feature (#1)\n")
     runner = RecordingRunner(responses)
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
     assert status.status == "merged"
@@ -940,13 +910,8 @@ def test_poll_ci_startup_deadline_clears_when_checks_appear() -> None:
         "--json",
         "name,state,bucket,link",
     )
-    empty = _cr(("gh", "pr", "checks"), stdout="[]")
-    pending = _cr(
-        ("gh", "pr", "checks"),
-        stdout=json.dumps(
-            [{"name": "lint", "state": "IN_PROGRESS", "bucket": "pending", "link": ""}],
-        ),
-    )
+    empty = ok(("gh", "pr", "checks"), "[]")
+    pending = ok(("gh", "pr", "checks"), json.dumps([{"name": "lint", "state": "IN_PROGRESS", "bucket": "pending", "link": ""}]))
     runner = RecordingRunner(responses)
     runner.sequential[json_key] = [empty, empty, pending, empty, empty]
     now = {"value": 0.0}
@@ -1180,12 +1145,12 @@ def test_poll_ci_startup_deadline_accumulates_when_behind_probe_fails() -> None:
 def test_poll_ci_fetch_failure_does_not_clear_startup_deadline_accounting() -> None:
     responses = _status(status="empty")
     fetch_key = ("git", "fetch", "origin", "main", "--quiet")
-    responses[fetch_key] = _cr(("git", "fetch"), 0)
+    responses[fetch_key] = ok(("git", "fetch"))
     runner = RecordingRunner(responses)
     runner.sequential[fetch_key] = [
-        _cr(("git", "fetch"), 0),
+        ok(("git", "fetch")),
         _cr(("git", "fetch"), 1),
-        _cr(("git", "fetch"), 0),
+        ok(("git", "fetch")),
     ]
     now = {"value": 0.0}
 
@@ -1553,10 +1518,7 @@ def test_collect_failed_logs_redacts_tail() -> None:
     log_body = f"failed step\n{secret}\n"
     runner = RecordingRunner(
         {
-            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
-                ("gh", "run", "view"),
-                stdout=log_body,
-            ),
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): ok(("gh", "run", "view"), log_body),
         },
     )
     result = ci_monitor.collect_failed_logs(runner, run_id="42", repo="o/r")
@@ -1628,15 +1590,12 @@ def test_read_failed_jobs_error_empty() -> None:
 def test_rerun_failed_submitted_and_already_running() -> None:
     runner = RecordingRunner(
         {
-            ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed"): _cr(
-                ("gh", "run", "rerun"),
-                0,
-            ),
+            ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed"): ok(("gh", "run", "rerun")),
         },
     )
-    ok = ci_monitor.rerun_failed(runner, run_id="42", repo="o/r")
-    assert ok.submitted is True
-    assert ok.already_running is False
+    submitted = ci_monitor.rerun_failed(runner, run_id="42", repo="o/r")
+    assert submitted.submitted is True
+    assert submitted.already_running is False
 
     runner2 = RecordingRunner(
         {
@@ -1673,8 +1632,8 @@ def test_per_job_command_table(
 def test_verify_job_locally_rc() -> None:
     runner = RecordingRunner(
         {
-            ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 0),
-            ("make", "py-typecheck"): _cr(("make", "py-typecheck"), 0),
+            ("make", "py-lint-main"): ok(("make", "py-lint-main")),
+            ("make", "py-typecheck"): ok(("make", "py-typecheck")),
         },
     )
     assert ci_monitor.verify_job_locally(runner=runner, name="python-lint", shard="", cwd="/tmp") is True
@@ -1689,13 +1648,10 @@ def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], 
         "python-lint-duplicate-code": ("pylint",),
     }
     responses: dict[tuple[str, ...], CommandResult] = {
-        ("python3", "-m", "pip", "install", "-q", "-r", req_dev): _cr(
-            ("python3", "-m", "pip", "install"),
-            0,
-        ),
+        ("python3", "-m", "pip", "install", "-q", "-r", req_dev): ok(("python3", "-m", "pip", "install")),
     }
     for tool in tools_by_name[name]:
-        responses[("command", "-v", tool)] = _cr(("command", "-v", tool), 0)
+        responses[("command", "-v", tool)] = ok(("command", "-v", tool))
     return responses
 
 
@@ -1719,13 +1675,13 @@ def test_prepare_python_toolchain_split_tools(
 
 def _baseline_responses(head: str = "abc123") -> dict[tuple[str, ...], CommandResult]:
     out: dict[tuple[str, ...], CommandResult] = {
-        ("git", "diff", "--name-only"): _cr(("git", "diff"), stdout=""),
-        ("git", "ls-files", "--others", "--exclude-standard"): _cr(("git", "ls-files"), stdout=""),
-        ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout=f"{head}\n"),
-        ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
-        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
+        ("git", "diff", "--name-only"): ok(("git", "diff")),
+        ("git", "ls-files", "--others", "--exclude-standard"): ok(("git", "ls-files")),
+        ("git", "diff", "--name-only", "--cached"): ok(("git", "diff")),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), f"{head}\n"),
+        ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "0\n"),
     }
     out.update(_python_toolchain_stubs())
     return out
@@ -1747,30 +1703,24 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
     new_head = "cafebabe" * 5
     responses = _baseline_responses(baseline_head)
     del responses[("git", "rev-parse", "HEAD")]
-    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    responses[("git", "add", "--", "fixed.py")] = ok(("git", "add"))
     commit_script = "cli.py git commit"
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
-        (commit_script,),
-        0,
-    )
-    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
-        ("git", "symbolic-ref"),
-        stdout="feature\n",
-    )
-    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), 0)
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = ok(("git", "symbolic-ref"), "feature\n")
+    responses[("git", "push", "origin", "feature")] = ok(("git", "push"))
+    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
 
     runner = RecordingRunner(responses)
     # baseline captured before vendor runs (empty); vendor adds fixed.py; delta sees it
     runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),           # _capture_baseline tracked
-        _cr(("git", "diff"), stdout="fixed.py\n"), # _delta_paths tracked_now
+        ok(("git", "diff")),           # _capture_baseline tracked
+        ok(("git", "diff"), "fixed.py\n"), # _delta_paths tracked_now
     ]
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
     ]
 
     classified = ci_monitor.classify_failed_jobs(
@@ -1796,27 +1746,24 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
 def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> None:
     commit_script = "cli.py git commit"
     responses = {
-        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="1\n"),
-        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "add", "--", "fixed.py"): ok(("git", "add")),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): ok((commit_script,)),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "1\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
         ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"): _cr(("git", "merge-base"), rc=1),
-        ("git", "rebase", "origin/main"): _cr(("git", "rebase"), 0),
-        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 0),
-        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
-            ("git", "ls-remote"),
-            stdout="remote\trefs/heads/feature\n",
-        ),
-        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
+        ("git", "rebase", "origin/main"): ok(("git", "rebase")),
+        ("make", "py-lint-main"): ok(("make", "py-lint-main")),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "remote\trefs/heads/feature\n"),
+        ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
+        ("git", "status", "--porcelain", "--untracked-files=all"): ok(("git", "status")),
         (
             "git",
             "push",
             "--force-with-lease=refs/heads/feature:remote",
             "origin",
-        ): _cr(("git", "push"), 0),
+        ): ok(("git", "push")),
     }
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -1841,12 +1788,12 @@ def test_stage_and_push_warning_refreshes_before_normal_push(
 ) -> None:
     commit_script = "cli.py git commit"
     responses = {
-        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
+        ("git", "add", "--", "fixed.py"): ok(("git", "add")),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): ok((commit_script,)),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "0\n"),
     }
     order: list[str] = []
 
@@ -1856,7 +1803,7 @@ def test_stage_and_push_warning_refreshes_before_normal_push(
 
     def fake_push(*_args: object, **_kwargs: object) -> CommandResult:
         order.append("push")
-        return _cr(("git", "push"), 0)
+        return ok(("git", "push"))
 
     def callback() -> bool:
         order.append("callback")
@@ -1887,12 +1834,12 @@ def test_stage_and_push_warning_refresh_skip_blocks_push(
 ) -> None:
     commit_script = "cli.py git commit"
     responses = {
-        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
+        ("git", "add", "--", "fixed.py"): ok(("git", "add")),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): ok((commit_script,)),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "0\n"),
     }
     order: list[str] = []
 
@@ -1902,7 +1849,7 @@ def test_stage_and_push_warning_refresh_skip_blocks_push(
 
     def fake_push(*_args: object, **_kwargs: object) -> CommandResult:
         order.append("push")
-        return _cr(("git", "push"), 0)
+        return ok(("git", "push"))
 
     def callback() -> bool:
         order.append("callback")
@@ -1932,12 +1879,9 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
     tmp_path: Any,
 ) -> None:
     responses = {
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
-            ("git", "ls-remote"),
-            stdout="abc123\trefs/heads/feature\n",
-        ),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "abc123\trefs/heads/feature\n"),
     }
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -1953,7 +1897,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         *_args: object,
         **_kwargs: object,
     ) -> CommandResult:
-        return _cr(("git", "commit"))
+        return ok(("git", "commit"))
 
     def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
         return True
@@ -1975,7 +1919,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
         batch = run_dir / "execution-issues.ndjson"
         assert batch.is_file()
-        assert "architectural-guidelines warning" in batch.read_text(encoding="utf-8")
+        assert "architectural-guidelines" in batch.read_text(encoding="utf-8")
         assert (tmp_path / ".execution-issues-flushed.sha").is_file()
         return ci_monitor.git.ForcePushResult(pushed=True, status="ok")
 
@@ -2005,12 +1949,9 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
     tmp_path: Any,
 ) -> None:
     responses = {
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
-            ("git", "ls-remote"),
-            stdout="abc123\trefs/heads/feature\n",
-        ),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "abc123\trefs/heads/feature\n"),
     }
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -2048,8 +1989,8 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
 
 def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
     responses = {
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
         ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 1),
     }
     classified = ci_monitor.classify_failed_jobs(
@@ -2071,8 +2012,8 @@ def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
 
 def test_pending_retry_verifies_pyright_before_force_push(tmp_path: Any) -> None:
     responses = {
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
         ("make", "py-typecheck"): _cr(("make", "py-typecheck"), 1),
     }
     classified = ci_monitor.classify_failed_jobs(
@@ -2095,9 +2036,9 @@ def test_pending_retry_verifies_pyright_before_force_push(tmp_path: Any) -> None
 
 def test_pending_retry_missing_remote_oid_preserves_pending(tmp_path: Any) -> None:
     responses = {
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
         ("git", "rev-parse", "origin/feature"): _cr(("git", "rev-parse"), rc=1),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(("git", "ls-remote"), rc=2),
     }
@@ -2116,16 +2057,13 @@ def test_pending_retry_missing_remote_oid_preserves_pending(tmp_path: Any) -> No
 
 def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: Any) -> None:
     responses = {
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 0),
-        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
-            ("git", "ls-remote"),
-            stdout="remoteoid\trefs/heads/feature\n",
-        ),
-        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
-        ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin"): _cr(("git", "push"), 0),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("make", "py-lint-main"): ok(("make", "py-lint-main")),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "remoteoid\trefs/heads/feature\n"),
+        ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
+        ("git", "status", "--porcelain", "--untracked-files=all"): ok(("git", "status")),
+        ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin"): ok(("git", "push")),
     }
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -2152,17 +2090,11 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
     monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = {
-        ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
-            ("gh", "run", "view"),
-            stdout="FAIL\n",
-        ),
-        ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
-        ("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs"): _cr(
-            ("gh", "run", "view"),
-            stdout=jobs_json,
-        ),
-        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): ok(("gh", "run", "view"), "FAIL\n"),
+        ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
+        ("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs"): ok(("gh", "run", "view"), jobs_json),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
         ("make", "py-lint-main"): _cr(("make", "py-lint-main"), rc=1),
     }
     runner = RecordingRunner(responses)
@@ -2245,30 +2177,24 @@ def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
         )
 
     responses = _baseline_responses(head)
-    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
+    responses[("git", "add", "--", "fixed.py")] = ok(("git", "add"))
+    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
     commit_script = "cli.py git commit"
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
-        (commit_script,),
-        0,
-    )
-    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
-        ("git", "symbolic-ref"),
-        stdout="feature\n",
-    )
-    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), 0)
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = ok(("git", "symbolic-ref"), "feature\n")
+    responses[("git", "push", "origin", "feature")] = ok(("git", "push"))
 
     runner = RecordingRunner(responses)
     # empty baseline, vendor adds fixed.py; HEAD stays same after push → first-fixer-non-health
     runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),           # _capture_baseline tracked
-        _cr(("git", "diff"), stdout="fixed.py\n"), # _delta_paths tracked_now
+        ok(("git", "diff")),           # _capture_baseline tracked
+        ok(("git", "diff"), "fixed.py\n"), # _delta_paths tracked_now
     ]
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{head}\n"),
     ]
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -2400,7 +2326,7 @@ def test_wait_for_ci_ready_polls_until_ready() -> None:
         rc=3,
         stderr="is still in progress; logs will be available",
     )
-    ready_log = _cr(("gh", "run", "view"), stdout="FAIL AssertionError\n")
+    ready_log = ok(("gh", "run", "view"), "FAIL AssertionError\n")
     runner = RecordingRunner({})
     # sleep → poll sequence: one in_progress, then ready on the second poll
     runner.sequential[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = [
@@ -2436,11 +2362,8 @@ def test_wait_for_ci_ready_polls_until_ready() -> None:
 def test_evaluate_failure_deterministic_no_rerun() -> None:
     runner = RecordingRunner(
         {
-            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
-            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
-                ("gh", "run", "view"),
-                stdout="FAIL AssertionError: expected True\n",
-            ),
+            ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): ok(("gh", "run", "view"), "FAIL AssertionError: expected True\n"),
             (
                 "gh",
                 "run",
@@ -2478,14 +2401,8 @@ def test_evaluate_failure_deterministic_no_rerun() -> None:
 def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
     responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
     launch_calls: list[str] = []
 
@@ -2517,14 +2434,8 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
 def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
     responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
     launch_calls: list[str] = []
 
@@ -2557,15 +2468,12 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
 def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> None:
     jobs_json = json.dumps({"jobs": []})
     log_responses = [
-        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
-        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
-        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+        ok(("gh", "run", "view"), "FAIL test\n"),
+        ok(("gh", "run", "view"), "FAIL test\n"),
+        ok(("gh", "run", "view"), "FAIL test\n"),
     ]
     responses = _baseline_responses()
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
     runner = RecordingRunner(responses)
     runner.sequential[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = log_responses
     fix = ci_monitor.evaluate_failure(
@@ -2594,14 +2502,8 @@ def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> 
 def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -2637,35 +2539,23 @@ def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
     baseline_head = "deadbeef" * 5
     jobs_json = json.dumps({"jobs": []})
     responses = _baseline_responses(baseline_head)
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
-    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
+    responses[("git", "add", "--", "fixed.py")] = ok(("git", "add"))
     commit_script = "cli.py git commit"
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
-        (commit_script,),
-        0,
-    )
-    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
-        ("git", "symbolic-ref"),
-        stdout="feature\n",
-    )
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = ok(("git", "symbolic-ref"), "feature\n")
     responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
 
     runner = RecordingRunner(responses)
     runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout="fixed.py\n"),
+        ok(("git", "diff")),
+        ok(("git", "diff"), "fixed.py\n"),
     ]
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
     ]
 
     fix = ci_monitor.evaluate_failure(
@@ -2696,36 +2586,24 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     baseline_head = "deadbeef" * 5
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses(baseline_head)
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
-    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
+    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
+    responses[("git", "add", "--", "fixed.py")] = ok(("git", "add"))
     commit_script = "cli.py git commit"
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
-        (commit_script,),
-        0,
-    )
-    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
-        ("git", "symbolic-ref"),
-        stdout="feature\n",
-    )
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = ok((commit_script,))
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = ok(("git", "symbolic-ref"), "feature\n")
     responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
 
     runner = RecordingRunner(responses)
     runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout="fixed.py\n"),
+        ok(("git", "diff")),
+        ok(("git", "diff"), "fixed.py\n"),
     ]
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
     ]
 
     fix = ci_monitor.evaluate_failure(
@@ -2753,14 +2631,8 @@ def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     log_tail = "ruff check failed on foo.py:42\nE501 line too long in bar.py\n"
     responses = _baseline_responses()
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout=log_tail,
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), log_tail)
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
     responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
 
     runner = RecordingRunner(responses)
@@ -2792,14 +2664,8 @@ def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
 def test_evaluate_failure_launcher_exhausted_stalls() -> None:
     jobs_json = json.dumps({"jobs": []})
     responses = _baseline_responses()
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = ok(("gh", "run", "view"), "FAIL test\n")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = ok(("gh", "run", "view"), jobs_json)
     runner = RecordingRunner(responses)
     fix = ci_monitor.evaluate_failure(
         runner,
@@ -2828,11 +2694,8 @@ def test_evaluate_failure_jobs_in_progress_defers_vendor() -> None:
 
     runner = RecordingRunner(
         {
-            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
-            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
-                ("gh", "run", "view"),
-                stdout="FAIL test\n",
-            ),
+            ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): ok(("gh", "run", "view"), "FAIL test\n"),
             (
                 "gh",
                 "run",
@@ -2877,7 +2740,7 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
 
     runner = RecordingRunner(
         {
-            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+            ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
             ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
                 ("gh", "run", "view"),
                 rc=1,
@@ -2985,11 +2848,11 @@ def test_run_ci_fix_non_pending_head_changed_fails_closed() -> None:
         return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
 
     responses = _baseline_responses()
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
+    responses[("make", "py-lint-main")] = ok(("make", "py-lint-main"))
     runner = RecordingRunner(responses)
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
     ]
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -3060,46 +2923,42 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
 
     commit_script = "cli.py git commit"
     responses: dict[tuple[str, ...], CommandResult] = {
-        ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
-        ("gh", "run", "view", "77", "--repo", "o/r", "--log-failed"): _cr(
-            ("gh", "run", "view"), stdout="log"
-        ),
-        ("gh", "run", "view", "77", "--repo", "o/r", "--json", "jobs"): _cr(
-            ("gh", "run", "view"), stdout=jobs_json
-        ),
-        ("git", "ls-files", "--others", "--exclude-standard"): _cr(("git", "ls-files"), stdout=""),
-        ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
-        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
-        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feat\n"),
-        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
-        ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
+        ("git", "symbolic-ref", "--quiet", "HEAD"): ok(("git", "symbolic-ref")),
+        ("gh", "run", "view", "77", "--repo", "o/r", "--log-failed"): ok(("gh", "run", "view"), "log"),
+        ("gh", "run", "view", "77", "--repo", "o/r", "--json", "jobs"): ok(("gh", "run", "view"), jobs_json),
+        ("git", "ls-files", "--others", "--exclude-standard"): ok(("git", "ls-files")),
+        ("git", "diff", "--name-only", "--cached"): ok(("git", "diff")),
+        ("git", "add", "--", "fixed.py"): ok(("git", "add")),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feat\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "0\n"),
+        ("git", "push", "origin", "feat"): ok(("git", "push")),
         # both attempts use codex (always first tier, #3994)
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): ok((commit_script,)),
     }
     responses.update(_python_toolchain_stubs())
 
     runner = RecordingRunner(responses)
     # git diff --name-only: a1 baseline, a1 rollback-tracked, a2 baseline, a2 delta
     runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout="fixed.py\n"),
+        ok(("git", "diff")),
+        ok(("git", "diff")),
+        ok(("git", "diff")),
+        ok(("git", "diff"), "fixed.py\n"),
     ]
     # git rev-parse HEAD: a1 baseline, a1 head-check, a2 baseline, a2 head-check, a2 post-commit, a2 post-push
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{baseline_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
+        ok(("git", "rev-parse", "HEAD"), f"{new_head}\n"),
     ]
     # make py-lint-main: fail on attempt 1, pass on attempt 2
     runner.sequential[("make", "py-lint-main")] = [
         _cr(("make", "py-lint-main"), rc=1),
-        _cr(("make", "py-lint-main"), rc=0),
+        ok(("make", "py-lint-main")),
     ]
 
     sleeps: list[float] = []
@@ -3152,7 +3011,7 @@ def test_checks_status_required_true_is_checks_only_and_uses_required_json() -> 
             "--json",
             "name,state,bucket,link",
             "--required",
-        ): _cr(("gh", "pr", "checks"), stdout=json.dumps([{"name": "ci", "bucket": "pass"}])),
+        ): ok(("gh", "pr", "checks"), json.dumps([{"name": "ci", "bucket": "pass"}])),
     }
     runner = RecordingRunner(responses)
     status, run_id = ci_monitor.checks_status(runner, pr=1, repo="o/r", required=True)
@@ -3187,7 +3046,7 @@ def test_gather_status_required_true_passes_required_to_json_checks() -> None:
             "name,state,bucket,link",
             "--required",
         )
-    ] = _cr(("gh", "pr", "checks"), stdout=json.dumps([{"name": "ci", "bucket": "pass"}]))
+    ] = ok(("gh", "pr", "checks"), json.dumps([{"name": "ci", "bucket": "pass"}]))
     runner = RecordingRunner(responses)
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r", required=True)
     assert status.status == "pass"
@@ -3218,7 +3077,7 @@ def test_poll_ci_required_true_forwards_required_to_gather() -> None:
             "name,state,bucket,link",
             "--required",
         )
-    ] = _cr(("gh", "pr", "checks"), stdout=json.dumps([{"name": "ci", "bucket": "pass"}]))
+    ] = ok(("gh", "pr", "checks"), json.dumps([{"name": "ci", "bucket": "pass"}]))
     runner = RecordingRunner(responses)
     status, decision = ci_monitor.poll_ci(
         runner,
@@ -3250,10 +3109,7 @@ def test_required_text_fallback_invokes_gh_required_not_public_helper() -> None:
             "name,state,bucket,link",
             "--required",
         ): _cr(("gh", "pr", "checks"), rc=1),
-        ("gh", "pr", "checks", "1", "--repo", "o/r", "--required"): _cr(
-            ("gh", "pr", "checks"),
-            stdout="all required checks passed",
-        ),
+        ("gh", "pr", "checks", "1", "--repo", "o/r", "--required"): ok(("gh", "pr", "checks"), "all required checks passed"),
     }
     runner = RecordingRunner(responses)
     status, _ = ci_monitor.checks_status(runner, pr=1, repo="o/r", required=True)
@@ -3538,7 +3394,7 @@ def test_verify_job_locally_uses_run_aware_breadcrumb(
     monkeypatch.setattr(ci_monitor, "per_job_command", fake_per_job)
 
     fake_runner = RecordingRunner(
-        responses={("true",): _cr(("true",), 0)},
+        responses={("true",): ok(("true",))},
     )
     result = ci_monitor.verify_job_locally(
         runner=fake_runner, name="py-test", shard="1", cwd=str(tmp_path)
@@ -3573,7 +3429,7 @@ def test_verify_job_locally_skips_breadcrumb_without_run_id(
     monkeypatch.setattr(ci_monitor, "per_job_command", fake_per_job_cmd)
 
     fake_runner = RecordingRunner(
-        responses={("true",): _cr(("true",), 0)},
+        responses={("true",): ok(("true",))},
     )
     _ = ci_monitor.verify_job_locally(
         runner=fake_runner, name="py-test", shard="1", cwd=str(tmp_path)
@@ -3586,7 +3442,7 @@ def test_prepare_failure_evidence_distinguishes_ready_and_error() -> None:
     runner = RecordingRunner({})
     key = ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")
     runner.sequential[key] = [
-        CommandResult(key, 0, "failure body\n", "", 0.01),
+        ok(key, "failure body\n"),
         CommandResult(key, 1, "", "gh auth failed", 0.01),
     ]
     ready = ci_monitor.prepare_failure_evidence(runner, run_id="42", repo="o/r")
@@ -3599,8 +3455,8 @@ def test_resolve_failed_run_id_once_requires_failed_snapshot() -> None:
     runner = RecordingRunner({})
     key = ("gh", "pr", "checks", "7", "--repo", "o/r", "--json", "name,state,bucket,link")
     runner.sequential[key] = [
-        CommandResult(key, 0, '[{"name":"CI","bucket":"pending","link":"https://github.com/o/r/actions/runs/41"}]', "", 0.01),
-        CommandResult(key, 0, '[{"name":"CI","bucket":"fail","link":"https://github.com/o/r/actions/runs/42"}]', "", 0.01),
+        ok(key, '[{"name":"CI","bucket":"pending","link":"https://github.com/o/r/actions/runs/41"}]'),
+        ok(key, '[{"name":"CI","bucket":"fail","link":"https://github.com/o/r/actions/runs/42"}]'),
     ]
     assert ci_monitor.resolve_failed_run_id_once(runner, pr=7, repo="o/r") is None
     assert ci_monitor.resolve_failed_run_id_once(runner, pr=7, repo="o/r") == "42"
@@ -3611,7 +3467,7 @@ def test_prepare_failure_evidence_waits_for_in_progress_result() -> None:
     key = ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")
     runner.sequential[key] = [
         CommandResult(key, 1, "", "run is still in progress; logs will be available", 0.01),
-        CommandResult(key, 0, "failure body\n", "", 0.01),
+        ok(key, "failure body\n"),
     ]
     now = [0.0]
 

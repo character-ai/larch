@@ -64,6 +64,10 @@ Tests are exempt through the existing `"test_*.py"` block. Pytest harness module
 
 When a production file is simplified, remove matching per-file ignore codes from `python/ruff.toml`, remove the corresponding `(file, code, qualified_symbol)` rows from `python/complexity-baseline.json`, and remove the whole per-file entry when no ignored codes remain.
 
+### Python test assertion convention
+
+Prefer stable machine tokens over full human-facing warning strings. Assert exit codes, argv evidence, structured `KEY=value` lines, finding IDs, status enums, and artifact basenames. Pinning complete prose makes legitimate wording changes fail the suite without improving coverage.
+
 ### SKILL.md closure growth ratchet
 
 `python3 python/cli.py skill-closure report` prints `design`, `implement`, `review`, and `panel-tier` separately. For skills, it reports each `SKILL.md` size plus direct always-loaded prompt-source closure. For `panel-tier`, it reports the fixed prompt-source set: `agents/*.md`, `skills/shared/reviewer-templates.md`, and `skills/shared/voting-protocol.md`.

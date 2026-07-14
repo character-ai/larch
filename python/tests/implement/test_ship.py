@@ -25,7 +25,7 @@ from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
 
-from test_support import RecordingRunner, make_run_context
+from test_support import RecordingRunner, make_run_context, ok
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
@@ -1193,7 +1193,7 @@ def test_straight_merge_post_ensure_committed_snapshot(
     monkeypatch.setattr(
         run_logs,
         "_commit_run",
-        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),
+        lambda *_a, **_k: ok(("git", "commit"), "a" * 40 + "\n"),
     )
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
@@ -1262,7 +1262,7 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
     monkeypatch.setattr(
         run_logs,
         "_commit_run",
-        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),
+        lambda *_a, **_k: ok(("git", "commit"), "a" * 40 + "\n"),
     )
 
     real_flush = _REAL_FLUSH_LOGS_PRE
@@ -1416,7 +1416,7 @@ def _prepare_recovered_stalled_log(
         return {"cost_unavailable": True}
 
     def fake_commit(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+        return ok(("git", "commit"), "a" * 40 + "\n")
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
@@ -1540,13 +1540,7 @@ def test_committed_summary_heading_scans_prelude() -> None:
     summary = "Prelude line\n\n## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n"
     runner = RecordingRunner(
         responses=[
-            CommandResult(
-                ("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"),
-                0,
-                summary,
-                "",
-                0.0,
-            ),
+            ok(("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"), summary),
         ],
         strict=True,
     )
@@ -1559,13 +1553,7 @@ def test_committed_summary_heading_outcome_bullet_without_heading_is_not_stalled
     summary = "Prelude line\n\n- **Outcome**: stalled\n"
     runner = RecordingRunner(
         responses=[
-            CommandResult(
-                ("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"),
-                0,
-                summary,
-                "",
-                0.0,
-            ),
+            ok(("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"), summary),
         ],
         strict=True,
     )
@@ -2027,13 +2015,7 @@ def test_no_checks_dirty_pr_writes_phase14_reship_flag(
     monkeypatch.setattr(
         ship.gh,
         "pr_merge_state_read",
-        lambda *_a, **_k: CommandResult(
-            ("gh", "pr", "view"),
-            0,
-            '{"mergeStateStatus":"DIRTY","headRefOid":"h0"}',
-            "",
-            0.01,
-        ),
+        lambda *_a, **_k: ok(("gh", "pr", "view"), '{"mergeStateStatus":"DIRTY","headRefOid":"h0"}'),
     )
 
     result = ship.run_ship(
@@ -4747,13 +4729,7 @@ def test_ship_postmerge_push_watch_reruns_first_failure_once(
     rerun_calls: list[tuple[str, str]] = []
 
     def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(
-            ("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"),
-            0,
-            '{"mergeCommit":{"oid":"merge-sha"}}',
-            "",
-            0.01,
-        )
+        return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}')
 
     def wait_main_health(
         _runner: RecordingRunner,
@@ -4833,13 +4809,7 @@ def test_ship_postmerge_push_watch_rerun_failure_enters_emergency_repair(
     monkeypatch.setattr(
         ship.gh,
         "pr_view_field_read",
-        lambda *_a, **_k: CommandResult(
-            ("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"),
-            0,
-            '{"mergeCommit":{"oid":"merge-sha"}}',
-            "",
-            0.01,
-        ),
+        lambda *_a, **_k: ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}'),
     )
     monkeypatch.setattr(
         ship.main_health,
@@ -4902,7 +4872,7 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
 
     def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
         calls.append("mergeCommit")
-        return CommandResult(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), 0, '{"mergeCommit":{"oid":"merge-sha"}}', "", 0.01)
+        return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}')
 
     def wait_main_health(
         _runner: RecordingRunner,
@@ -4962,7 +4932,7 @@ def test_ship_postmerge_push_watch_skip_continues_to_finalize(
 
     def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
         calls.append("mergeCommit")
-        return CommandResult(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), 0, '{"mergeCommit":{"oid":"merge-sha"}}', "", 0.01)
+        return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}')
 
     def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
         calls.append("watch")
@@ -5015,7 +4985,7 @@ def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_m
 
     def fetch(*_args: object, **_kwargs: object) -> CommandResult:
         calls.append("fetch")
-        return CommandResult(("git", "fetch", "origin", "main"), 0, "", "", 0.01)
+        return ok(("git", "fetch", "origin", "main"))
 
     def try_rev_parse(*args: object, **kwargs: object) -> str:
         ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))
@@ -5024,7 +4994,7 @@ def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_m
 
     def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
         calls.append("mergeCommit")
-        return CommandResult(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), 0, '{"mergeCommit":null}', "", 0.01)
+        return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":null}')
 
     def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
         calls.append("watch")
@@ -5233,7 +5203,7 @@ def test_premerge_main_health_gate_uses_commit_scoped_head_sha(
     observed: dict[str, str] = {}
 
     def fetch(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("git", "fetch", "origin", "main"), 0, "", "", 0.01)
+        return ok(("git", "fetch", "origin", "main"))
 
     def try_rev_parse(*args: object, **kwargs: object) -> str:
         ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))
@@ -5280,7 +5250,7 @@ def test_premerge_main_health_gate_skip_continues(
     counters = ship.ShipReconciliationCounters(iteration=1, rebase_count=2, fix_attempts=3, transient_retries=4)
 
     def fetch(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("git", "fetch", "origin", "main"), 0, "", "", 0.01)
+        return ok(("git", "fetch", "origin", "main"))
 
     def try_rev_parse(*args: object, **kwargs: object) -> str:
         ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))

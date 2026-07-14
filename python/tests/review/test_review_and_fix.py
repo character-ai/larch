@@ -23,6 +23,7 @@ from larch.review import coder_runner
 from larch.review import round_runner
 from larch.review import snapshot
 from _pytest.mark.structures import Mark, MarkDecorator
+from test_support import ok
 
 
 def _mark(name: str) -> MarkDecorator:
@@ -112,7 +113,6 @@ def _step5_round_result(
 
 
 def test_review_core_capture_captures_stdout_emit_and_restores_env(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", "old")
     env_path = tmp_path / "round-1" / "review-core.env"
 
@@ -133,7 +133,6 @@ def test_review_core_capture_captures_stdout_emit_and_restores_env(tmp_path, mon
 
 @MARK_PARSERS
 def test_step5_single_emits_round_kvs_without_review_core_leak(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_core(argv: list[str]) -> int:
@@ -161,7 +160,6 @@ def test_step5_single_emits_round_kvs_without_review_core_leak(tmp_path, monkeyp
 
 @MARK_LOOP_TIMING
 def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_core(argv: list[str]) -> int:
@@ -187,7 +185,6 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
 
 @MARK_LOOP_TIMING
 def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_core(argv: list[str]) -> int:
@@ -221,7 +218,6 @@ def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsy
 
 @MARK_STEP5
 def test_step5_loop_preflight_failure_writes_result_env(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "plan.txt").unlink()
 
@@ -239,7 +235,6 @@ def test_step5_loop_preflight_failure_writes_result_env(tmp_path, monkeypatch, c
 
 @MARK_DISPATCH
 def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     findings = tmp_path / "findings.md"
     findings.write_text("", encoding="utf-8")
     rc = review_and_fix.apply_findings(["--findings-file", str(findings), "--review-tmpdir", str(tmp_path / "review")])
@@ -251,7 +246,6 @@ def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
 
 @MARK_CHECK_CHANGES
 def test_check_changes_parse_error_stable_kvs(monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     rc = review_and_fix.check_changes(["--bogus"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -264,7 +258,6 @@ def test_check_changes_parse_error_stable_kvs(monkeypatch, capsys):
 
 @MARK_WRITE_REJECTED
 def test_write_rejected_counts_and_copies(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     (impl / "rejected-findings.md").write_text("### [Code Review] One\nbody\n", encoding="utf-8")
@@ -339,7 +332,7 @@ def test_run_coder_codex_exports_resolved_timing_ledger(tmp_path: Path, monkeypa
     def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
         seen_argv[:] = argv
         seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+        return ok(tuple(argv), "LAUNCHER_EXIT=0\n")
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
 
@@ -366,7 +359,7 @@ def test_run_coder_codex_overrides_stale_implement_tmpdir_in_env(
 
     def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
         seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+        return ok(tuple(argv), "LAUNCHER_EXIT=0\n")
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
 
@@ -388,7 +381,7 @@ def test_run_coder_claude_uses_write_capable_review_fix_launcher(tmp_path: Path,
         seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
         output = Path(argv[argv.index("--output") + 1])
         output.write_text("APPLIED: FINDING_1\n", encoding="utf-8")
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+        return ok(tuple(argv), "LAUNCHER_EXIT=0\n")
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
 
@@ -439,7 +432,6 @@ def test_step5_python_exports_validated_dynamic_cap_before_python_call() -> None
 
 @MARK_STEP5
 def test_step5_new_process_group_invokes_setsid(monkeypatch, tmp_path):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     called = []
     monkeypatch.setattr(review_and_fix.os, "setsid", lambda: called.append("setsid"))
@@ -450,7 +442,6 @@ def test_step5_new_process_group_invokes_setsid(monkeypatch, tmp_path):
 
 @MARK_STEP5
 def test_step5_new_process_group_unavailable_exits_2(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     monkeypatch.delattr(review_and_fix.os, "setsid", raising=False)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--new-process-group", "--orphan-timeout-s", "1"])
@@ -460,7 +451,6 @@ def test_step5_new_process_group_unavailable_exits_2(monkeypatch, tmp_path, caps
 
 @MARK_STEP5
 def test_step5_new_process_group_oserror_exits_2(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def failing_setsid() -> None:
@@ -482,7 +472,6 @@ def test_step5_invalid_orphan_timeout_fails_closed(tmp_path, capsys):
 
 @MARK_STEP5
 def test_step5_orphan_timeout_emits_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     marker = impl / ".step5-wrapper-detached"
     old_epoch = time.time() - 10
@@ -561,14 +550,13 @@ def test_post_dispatch_submodule_revert_restores_tracked_path_with_trailing_slas
     round_dir.mkdir()
     monkeypatch.setattr(coder_runner, "_capture_round_tracked_paths", lambda: ["vendor/tracked.txt"])
     monkeypatch.setattr(coder_runner, "_capture_round_untracked_paths", list)
-    monkeypatch.setattr(coder_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))  # type: ignore[arg-type]
+    monkeypatch.setattr(coder_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))  # type: ignore[arg-type]
     count = coder_runner._post_dispatch_submodule_revert(round_dir=round_dir, submodules=["vendor"])
     assert count == 1
 
 
 @MARK_STEP5
 def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
@@ -594,7 +582,6 @@ def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch,
 
 @MARK_STEP5
 def test_round_runner_maps_zero_survivor_panel_failed_to_self_review_required(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -633,7 +620,6 @@ def test_round_runner_maps_zero_survivor_panel_failed_to_self_review_required(tm
 
 @MARK_STEP5
 def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     events: list[str] = []
     timing_calls: list[list[str]] = []
@@ -689,7 +675,6 @@ def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, 
 
 @MARK_STEP5
 def test_step5_static_panel_failed_still_stalls(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
@@ -715,7 +700,6 @@ def test_step5_static_panel_failed_still_stalls(tmp_path, monkeypatch, capsys):
 
 @MARK_STARTING_ROUND
 def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "3", "--round-cap", "2",
@@ -728,7 +712,6 @@ def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch,
 
 @MARK_STARTING_ROUND
 def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     prior = impl / "round-2" / "review-and-fix.env"
     prior.parent.mkdir(parents=True)
@@ -743,7 +726,6 @@ def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys
 
 @MARK_STEP5
 def test_mav_apply_writes_full_pre_coder_snapshot(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     findings = impl / "accepted.md"
     findings.write_text("### FINDING_1: x\n- **Severity**: nit\n", encoding="utf-8")
@@ -764,7 +746,6 @@ def test_mav_apply_writes_full_pre_coder_snapshot(tmp_path, monkeypatch):
 
 @MARK_WRITE_REJECTED
 def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     secret = "sk-" + "a" * 40
@@ -1028,7 +1009,6 @@ def test_surface_dropped_reviewer_warning_dynamic_straggler_backstop_warns(
 
 @MARK_STEP5
 def test_step5_loop_preflight_empty_plan_emits_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "plan.txt").write_text("", encoding="utf-8")
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
@@ -1040,7 +1020,6 @@ def test_step5_loop_preflight_empty_plan_emits_stall(tmp_path, monkeypatch, caps
 
 @MARK_STEP5
 def test_step5_mav_apply_missing_findings_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl), "--mode", "mav-apply", "--round-num", "1",
@@ -1051,7 +1030,6 @@ def test_step5_mav_apply_missing_findings_file(tmp_path, monkeypatch):
 
 @MARK_STEP5
 def test_step5_main_agent_vote_emits_ledger_kvs(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
@@ -1083,7 +1061,6 @@ def test_step5_handoff_restages_difficulty_record(
     capsys: pytest.CaptureFixture[str],
     handoff_status: str,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     record = impl / "difficulty-rating.json"
     record.write_text(json.dumps({"audit_evaluated": True}), encoding="utf-8")
@@ -1119,7 +1096,7 @@ def test_step5_handoff_restages_difficulty_record(
         if "run-log" in argv and "write" in argv and "--batch" in argv and argv[argv.index("--batch") + 1] == "difficulty-rating":
             events.append("restage")
             run_log_calls.append(argv)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
     monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
@@ -1155,7 +1132,6 @@ def test_step5_handoff_restages_difficulty_record(
 
 @MARK_STEP5
 def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
@@ -1180,7 +1156,6 @@ def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, 
 
 @MARK_LOOP_TIMING
 def test_step5_handoff_persists_round_start_before_normal_round_returns(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     timing_calls: list[list[str]] = []
     round_entered = threading.Event()
@@ -1262,7 +1237,6 @@ def test_persist_round_start_tolerates_write_failure(tmp_path: Path, monkeypatch
 
 @MARK_STEP5
 def test_step5_invalid_dynamic_archetypes_emits_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", "9")
     impl = _tmp_impl(tmp_path)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
@@ -1345,7 +1319,7 @@ def test_fix_applied_not_rewritten_to_converged_before_gates(tmp_path, monkeypat
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
-    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -1385,7 +1359,7 @@ def test_run_round_tally_flush_failure_becomes_stall_status(tmp_path, monkeypatc
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: False)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
-    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -1406,7 +1380,6 @@ def test_run_round_tally_flush_failure_becomes_stall_status(tmp_path, monkeypatc
 
 @MARK_CONVERGENCE
 def test_step5_stalls_when_round_tally_flush_fails(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
     round_dir.mkdir(parents=True)
@@ -1420,7 +1393,7 @@ def test_step5_stalls_when_round_tally_flush_fails(tmp_path, monkeypatch, capsys
     )
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: result)
     monkeypatch.setattr(review_and_fix, "record_round_timing", lambda *_a, **_k: 0)
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: ok(tuple(argv)))
 
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl),
@@ -1442,7 +1415,6 @@ def test_step5_stalls_when_round_tally_flush_fails(tmp_path, monkeypatch, capsys
 
 @pytest.mark.record_timing
 def test_record_round_timing_writes_ledger_row(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
     round_dir.mkdir()
@@ -1455,7 +1427,6 @@ def test_record_round_timing_writes_ledger_row(tmp_path, monkeypatch):
 
 
 def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     rc = review_and_fix.write_self_review_tally([
@@ -1478,7 +1449,6 @@ def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
 
 
 def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     (impl / "self-review-accepted.md").write_text(
@@ -1524,7 +1494,6 @@ def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
 
 
 def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     (impl / "self-review-accepted.md").write_text("### [Code Review] Self-review accepted\n", encoding="utf-8")
@@ -1541,7 +1510,7 @@ def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_
             dest = log_root / "implement" / run_id / f"{batch}.jsonl"
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, dest)
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+            return ok(tuple(argv))
         raise AssertionError(argv)
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
@@ -1561,7 +1530,7 @@ def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_
     assert "tally stderr" in sidecar_text
     assert "tally stdout" in sidecar_text
     warning_text = (impl / "execution-issues.md").read_text(encoding="utf-8")
-    assert warning_text.count("`code-review-tally` write failed") == 1
+    assert warning_text.count("code-review-tally.flush.err") == 1
     assert "larch-logs/implement/run-sr/code-review-tally.flush.err" in warning_text
     rows = [json.loads(line) for line in (run_dir / "review-findings-full.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [row["id"] for row in rows] == ["SELF_REVIEW_ACCEPTED_1", "SELF_REVIEW_REJECTED_1"]
@@ -1596,12 +1565,11 @@ def _fake_review_batch_run(argv: list[str], *, tally_result: review_and_fix.proc
         dest = log_root / "implement" / run_id / f"{batch}{suffix}"
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, dest)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
     raise AssertionError(argv)
 
 
 def test_flush_review_batches_nonzero_tally_writes_sidecars_and_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     findings_source = tmp_path / "findings.jsonl"
@@ -1635,7 +1603,7 @@ def test_flush_review_batches_success_removes_stale_tally_sidecars(tmp_path: Pat
     (run_dir / "code-review-tally.flush.err").write_text("stale", encoding="utf-8")
     findings_source = tmp_path / "findings.jsonl"
     findings_source.write_text(json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"}) + "\n", encoding="utf-8")
-    result = review_and_fix.proc.CommandResult(("python3",), 0, "", "", 0.0)
+    result = ok(("python3",))
     monkeypatch.setattr(batch_report, "_run", lambda argv, **_kwargs: _fake_review_batch_run(argv, tally_result=result))
 
     assert batch_report.flush_review_batches(impl_tmpdir=impl, run_id="run-flush", rounds=1, _accepted=1, _rejected=0, composed_findings_source=findings_source)
@@ -1666,7 +1634,6 @@ def test_flush_review_batches_tally_warning_append_is_fail_open(tmp_path: Path, 
 def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     run_id = "run-flush"
@@ -1729,9 +1696,8 @@ def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header
 
 @pytest.mark.commit_fixes
 def test_commit_fixes_emits_committed_kv(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(_tmp_impl(tmp_path)))
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: ok(tuple(argv)))
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
     rc = review_and_fix.commit_fixes(["--message", "fix review"])
     out = capsys.readouterr().out
@@ -1745,7 +1711,6 @@ def test_commit_fixes_emits_committed_kv(tmp_path, monkeypatch, capsys):
 @pytest.mark.commit_fixes
 def test_commit_fixes_marks_token_and_timing(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     (impl / "session-env.sh").write_text(
         "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n",
@@ -1756,7 +1721,7 @@ def test_commit_fixes_marks_token_and_timing(tmp_path, monkeypatch):
     def fake_run(argv, **kwargs):
         env = kwargs.get("env", {})
         calls.append((list(argv), dict(env) if env else {}))
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
@@ -1774,7 +1739,6 @@ def test_commit_fixes_marks_token_and_timing(tmp_path, monkeypatch):
 @pytest.mark.commit_fixes
 def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "")
     monkeypatch.setenv("LARCH_TIMING_LEDGER", "")
@@ -1787,7 +1751,7 @@ def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
     def fake_run(argv, **kwargs):
         env = kwargs.get("env", {})
         calls.append((list(argv), dict(env) if env else {}))
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
@@ -1801,9 +1765,8 @@ def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
 @pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_clean_tree_noops(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: ok(tuple(argv)))
     rc = review_and_fix.commit_fixes(["--stage-all"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -1827,16 +1790,15 @@ def test_porcelain_dirty_paths_preserves_ordinary_arrow_filename():
 def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch, capsys):
     # Dirty tree with no review-delta paths is benign — pre-existing dirt (issue #5715).
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: [])  # type: ignore[arg-type]
     committed_calls: list[list[str]] = []
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M unrelated.py\n", "", 0.0)
+            return ok(tuple(argv), " M unrelated.py\n")
         committed_calls.append(argv)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all"])
@@ -1852,7 +1814,6 @@ def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch
 def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatch, capsys):
     # Nonempty collected set that is fully clean while unrelated dirt remains (#7073).
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
         review_and_fix,
@@ -1863,15 +1824,9 @@ def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatc
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(
-                tuple(argv),
-                0,
-                " M python/markdown-heading-fence-state-baseline.json\n",
-                "",
-                0.0,
-            )
+            return ok(tuple(argv), " M python/markdown-heading-fence-state-baseline.json\n")
         committed_calls.append(argv)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
         review_and_fix, "_run", fake_run
@@ -1890,7 +1845,6 @@ def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatc
 @pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
@@ -1901,10 +1855,10 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
     def fake_run(argv, **_kwargs):
         calls.append(list(argv))
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, pre_status, "", 0.0)
+            return ok(tuple(argv), pre_status)
         if argv == _POST_COMMIT_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, post_status, "", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+            return ok(tuple(argv), post_status)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
@@ -1931,17 +1885,16 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
 def test_commit_fixes_stage_all_dirty_after_success_nonfatal(tmp_path, monkeypatch, capsys):
     # Residual dirty state outside the --only pathspec is non-fatal (issue #5678).
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
+            return ok(tuple(argv), " M a.py\n")
         if argv == _POST_COMMIT_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M unrelated.py\n", "", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+            return ok(tuple(argv), " M unrelated.py\n")
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
@@ -1955,17 +1908,16 @@ def test_commit_fixes_stage_all_dirty_after_success_nonfatal(tmp_path, monkeypat
 @pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_post_commit_status_probe_failure_fails(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
+            return ok(tuple(argv), " M a.py\n")
         if argv == _POST_COMMIT_STATUS:
             return review_and_fix.proc.CommandResult(tuple(argv), 128, "", "fatal status", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
@@ -1980,13 +1932,12 @@ def test_commit_fixes_stage_all_post_commit_status_probe_failure_fails(tmp_path,
 @pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_pre_commit_status_probe_failure_fails(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
             return review_and_fix.proc.CommandResult(tuple(argv), 128, "", "fatal status", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
@@ -2001,16 +1952,15 @@ def test_commit_fixes_stage_all_pre_commit_status_probe_failure_fails(tmp_path, 
 @pytest.mark.commit_fixes
 def test_commit_fixes_failure_error_token_does_not_change_outcome(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
+            return ok(tuple(argv), " M a.py\n")
         if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
             return review_and_fix.proc.CommandResult(tuple(argv), 1, "", "fatal COMMIT_OUTCOME=ok nope", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
@@ -2264,7 +2214,6 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
 def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
     repo_root = str(tmp_path / "repo")
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["python/a.py"])  # type: ignore[arg-type]
@@ -2273,14 +2222,14 @@ def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, c
 
     def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M python/a.py\n", "", 0.0)
+            return ok(tuple(argv), " M python/a.py\n")
         if argv == _POST_COMMIT_STATUS:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+            return ok(tuple(argv))
         if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
+            return ok(tuple(argv), f"{repo_root}\n")
         if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
             captured_cwds.append(cwd)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
@@ -2300,7 +2249,6 @@ def test_commit_fixes_stage_all_git_fixture_clean_collected_noops(tmp_path, monk
     repo = _mk_git_repo(tmp_path)
     impl = _tmp_impl(tmp_path)
     monkeypatch.chdir(repo)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     (repo / "fix.py").write_text("committed\n", encoding="utf-8")
@@ -2328,7 +2276,6 @@ def test_commit_fixes_stage_all_git_fixture_partial_dirty_commits_subset(tmp_pat
     repo = _mk_git_repo(tmp_path)
     impl = _tmp_impl(tmp_path)
     monkeypatch.chdir(repo)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     (repo / "clean.py").write_text("clean\n", encoding="utf-8")
@@ -2366,7 +2313,6 @@ def test_commit_fixes_stage_all_git_fixture_untracked_nested_file(tmp_path, monk
     repo = _mk_git_repo(tmp_path)
     impl = _tmp_impl(tmp_path)
     monkeypatch.chdir(repo)
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     nested = repo / "nested"
@@ -2413,7 +2359,7 @@ def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
     def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
             captured_cwds.append(cwd)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
     result = coder_runner._stage_and_commit_round(round_num=1, round_dir=round_dir)
@@ -2465,7 +2411,6 @@ def test_apply_findings_uses_flat_review_tmpdir_timing_ledger_without_session_le
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
     findings = tmp_path / "findings.md"
     findings.write_text("### FINDING_1: apply me\n- Suggested revision: change file.\n", encoding="utf-8")
@@ -2568,7 +2513,7 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
         run_calls.append((argv, kwargs))
         stdout = "wrapped prompt" if "cursor-wrap-prompt" in argv else ""
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, stdout, "", 0.0)
+        return ok(tuple(argv), stdout)
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
     assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is True
@@ -2606,7 +2551,7 @@ def test_run_coder_cursor_uses_composer_default_model(tmp_path, monkeypatch):
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         run_calls.append(argv)
         stdout = "wrapped prompt" if "cursor-wrap-prompt" in argv else ""
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, stdout, "", 0.0)
+        return ok(tuple(argv), stdout)
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
 
@@ -2662,10 +2607,10 @@ def test_run_coder_cursor_records_failure_vendor_task(tmp_path, monkeypatch):
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         run_calls.append(argv)
         if "cursor-wrap-prompt" in argv:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, "wrapped prompt", "", 0.0)
+            return ok(tuple(argv), "wrapped prompt")
         if "run-external-agent" in argv:
             return review_and_fix.proc.CommandResult(tuple(argv), 7, "", "failed", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(coder_runner, "_run", fake_run)
 
@@ -2752,7 +2697,7 @@ def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
-    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -2811,7 +2756,7 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", track_flush)
     monkeypatch.setattr(round_runner.progress_report, "write_implement_round_meta", failing_meta)
-    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -2868,7 +2813,7 @@ def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch)
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
-    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: ok(tuple(argv)))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "2", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -2888,7 +2833,6 @@ def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch)
 
 @MARK_STEP5
 def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
@@ -2927,7 +2871,6 @@ def test_step5_terminal_flushes_review_batches_with_counts(
     gate_status: str,
     expected_status: str,
 ):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     flush_calls: list[dict[str, object]] = []
     events: list[str] = []
@@ -2989,7 +2932,6 @@ def test_step5_terminal_restages_resolved_difficulty_record(
     gate_status: str,
     expected_status: str,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     record = impl / "difficulty-rating.json"
     record.write_text(json.dumps({"audit_evaluated": True, "audit_upgrade": False}), encoding="utf-8")
@@ -3001,7 +2943,7 @@ def test_step5_terminal_restages_resolved_difficulty_record(
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if "run-log" in argv and "write" in argv and "--batch" in argv and argv[argv.index("--batch") + 1] == "difficulty-rating":
             run_log_calls.append(argv)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
     if gate_status:
@@ -3044,14 +2986,13 @@ def test_step5_difficulty_restage_warning_preserves_success(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "difficulty-rating.json").write_text(json.dumps({"audit_evaluated": True}), encoding="utf-8")
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if "run-log" in argv and "write" in argv:
             return review_and_fix.proc.CommandResult(tuple(argv), 1, "", "write boom", 0.0)
-        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return ok(tuple(argv))
 
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status="complete"))
     monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
@@ -3093,7 +3034,6 @@ def test_step5_complete_flush_warning_preserves_success(
     capsys,
     append_raises: bool,
 ):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fail_flush(**_kwargs):
@@ -3134,7 +3074,6 @@ def test_step5_loop_prune_skipped_converges_below_cap(tmp_path, monkeypatch, cap
     # #5255: a prune-to-empty round (every reviewer pruned, zero findings) must
     # converge the loop immediately rather than advancing toward the round-2
     # backup pass.
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
@@ -3165,7 +3104,6 @@ def test_step5_fix_applied_records_round_timing_after_post_round_gates(
     monkeypatch,
     capsys,
 ):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     events: list[str] = []
     timing_calls: list[list[str]] = []
@@ -3221,7 +3159,6 @@ def test_step5_fix_applied_gate_continue_records_before_next_round(
     monkeypatch,
     capsys,
 ):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     events: list[str] = []
     timing_calls: list[list[str]] = []
@@ -3297,7 +3234,6 @@ def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
     monkeypatch,
     capsys,
 ):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     timing_calls: list[list[str]] = []
     now = {"value": 399}
@@ -3342,7 +3278,6 @@ def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
 
 @MARK_STEP5
 def test_step5_loop_preflight_failure_touches_progress_done(tmp_path, monkeypatch):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "plan.txt").write_text("", encoding="utf-8")
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
@@ -3956,7 +3891,6 @@ def test_apply_findings_with_coder_head_untracked_failed_cleans_new_untracked(
 
 @MARK_CHECK_CHANGES
 def test_check_changes_clean_tree_no_baseline(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
     monkeypatch.chdir(repo)
     rc = review_and_fix.check_changes([])
@@ -3968,7 +3902,6 @@ def test_check_changes_clean_tree_no_baseline(tmp_path, monkeypatch, capsys):
 
 @MARK_CHECK_CHANGES
 def test_check_changes_preexisting_untracked_with_baseline(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
     (repo / "stray.txt").write_text("x\n", encoding="utf-8")
     ls = review_and_fix._run(
@@ -3987,7 +3920,6 @@ def test_check_changes_preexisting_untracked_with_baseline(tmp_path, monkeypatch
 
 @MARK_CHECK_CHANGES
 def test_check_changes_head_baseline_detects_commit_movement(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
     head_bl = repo / "pre-review-head.txt"
     review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=repo)
@@ -4004,7 +3936,6 @@ def test_check_changes_head_baseline_detects_commit_movement(tmp_path, monkeypat
 
 @MARK_CHECK_CHANGES
 def test_check_changes_strict_promotes_probe_failure(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     sandbox = tmp_path / "not-a-git-repo"
     sandbox.mkdir()
     monkeypatch.chdir(sandbox)
@@ -4074,7 +4005,6 @@ def test_core_args_for_round_threads_implement_step5_site(tmp_path):
 
 @MARK_STEP5
 def test_step5_preflight_missing_session_env_emits_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "session-env.sh").unlink()
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
@@ -4142,7 +4072,6 @@ def test_preflight_mav_apply_clears_pre_scouted_manifest(tmp_path):
 
 @MARK_STEP5
 def test_step5_preflight_missing_feature_file_emits_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "feature-description.txt").unlink()
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
@@ -4154,7 +4083,6 @@ def test_step5_preflight_missing_feature_file_emits_stall(tmp_path, monkeypatch,
 
 @MARK_STEP5
 def test_step5_preflight_invalid_codex_present_emits_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     (impl / "session-env.sh").write_text("CODEX_PRESENT=maybe\nCURSOR_PRESENT=false\n", encoding="utf-8")
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
@@ -4165,7 +4093,6 @@ def test_step5_preflight_invalid_codex_present_emits_stall(tmp_path, monkeypatch
 
 @MARK_STEP5
 def test_step5_unresolved_run_id_preflight_stall(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
     (impl / "session-env.sh").write_text("CODEX_PRESENT=false\nCURSOR_PRESENT=false\n", encoding="utf-8")
@@ -4241,9 +4168,7 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
         seen_env.append(os.environ.get("CURSOR_API_KEY"))
 
     monkeypatch.setattr(coder_runner.agents, "cursor_auth_export_env", capture_export)
-    monkeypatch.setattr(coder_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(
-        argv, 0, "wrapped prompt", "", 0.0,
-    ))
+    monkeypatch.setattr(coder_runner, "_run", lambda argv, **_kw: ok(argv, "wrapped prompt"))
     assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is True
     assert seen_env == ["key-with-padding"]
 
@@ -4340,7 +4265,6 @@ def test_nit_count_keeps_interior_heading_segment_semantics(tmp_path: Path) -> N
 
 
 def test_degraded_retry_preserves_attempt_1_when_retry_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -4391,7 +4315,6 @@ def test_degraded_retry_preserves_attempt_1_when_retry_succeeds(tmp_path: Path, 
 
 
 def test_degraded_retry_skips_zero_findings_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -4446,7 +4369,6 @@ def test_degraded_retry_preserves_attempt_1_and_2_when_retry_stays_degraded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -4496,7 +4418,6 @@ def test_degraded_retry_preserves_attempt_1_and_2_when_retry_stays_degraded(
 
 def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Issue #5334: successful degraded-panel retry must not leave a stale under-quorum warning."""
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -4569,7 +4490,6 @@ def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path,
 
 
 def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     scope_file = impl / "scope-files.txt"
     scope_file.write_text("python/example.py\n", encoding="utf-8")
@@ -4657,13 +4577,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
             encoding="utf-8",
         )
         voter_2.write_text("FINDING_1: NO -- targeted direct\n", encoding="utf-8")
-        return review_and_fix.proc.CommandResult(
-            tuple(str(item) for item in argv),
-            0,
-            f"VOTER_1_PATH={voter_1}\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={voter_2}\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={revote_dir / 'missing.txt'}\nVOTER_3_TOOL=codex-pragmatism\n",
-            "",
-            0.0,
-        )
+        return ok(tuple(str(item) for item in argv), f"VOTER_1_PATH={voter_1}\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={voter_2}\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={revote_dir / 'missing.txt'}\nVOTER_3_TOOL=codex-pragmatism\n")
 
     def fake_tally(*, command: str, review_name: str, args, runner=None):
         del command, review_name, runner
@@ -4674,25 +4588,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         classification.write_text("finding_id\treviewer_slots\tvoting_result\nFINDING_1\tcorrectness\taccepted\n", encoding="utf-8")
         tally_file = round_dir / "review-tally.env"
         tally_file.write_text("TALLY_STATUS=ok\n", encoding="utf-8")
-        return review_and_fix.proc.CommandResult(
-            tuple(str(item) for item in args),
-            0,
-            "TALLY_STATUS=ok\n"
-            "ACCEPTED_COUNT=0\n"
-            "REJECTED_COUNT=0\n"
-            "EXONERATED_COUNT=0\n"
-            "NEUTRAL_COUNT=0\n"
-            "UNDER_QUORUM_COUNT=0\n"
-            "UNDER_QUORUM_ITEMS=\n"
-            "PARSE_FAILED_COUNT=0\n"
-            "VOTER_COUNT=3\n"
-            f"ACCEPTED_FINDINGS_FILE={round_dir / 'accepted-findings.md'}\n"
-            f"TALLY_FILE={tally_file}\n"
-            f"VOTING_TALLY_FILE={round_dir / 'voting-tally.md'}\n"
-            f"FINDINGS_CLASSIFICATION_TSV_FILE={classification}\n",
-            "",
-            0.0,
-        )
+        return ok(tuple(str(item) for item in args), "TALLY_STATUS=ok\n" "ACCEPTED_COUNT=0\n" "REJECTED_COUNT=0\n" "EXONERATED_COUNT=0\n" "NEUTRAL_COUNT=0\n" "UNDER_QUORUM_COUNT=0\n" "UNDER_QUORUM_ITEMS=\n" "PARSE_FAILED_COUNT=0\n" "VOTER_COUNT=3\n" f"ACCEPTED_FINDINGS_FILE={round_dir / 'accepted-findings.md'}\n" f"TALLY_FILE={tally_file}\n" f"VOTING_TALLY_FILE={round_dir / 'voting-tally.md'}\n" f"FINDINGS_CLASSIFICATION_TSV_FILE={classification}\n")
 
     def fake_emit(*, commands, args, out_file, runner=None):
         del commands, runner
@@ -4785,7 +4681,6 @@ def test_under_quorum_mixed_degradation_falls_back_to_full_retry(
     banner: str,
     extra_file: str,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -4854,7 +4749,6 @@ def test_under_quorum_mixed_degradation_falls_back_to_full_retry(
 
 
 def test_under_quorum_targeted_setup_failure_runs_full_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -4922,7 +4816,6 @@ def test_run_round_reentry_with_degraded_retry_done_reloads_settled_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
     round_dir.mkdir()
@@ -4970,7 +4863,6 @@ def test_dropped_reviewer_warning_persists_after_successful_degraded_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -5033,7 +4925,6 @@ def test_dropped_reviewer_warning_persists_after_successful_degraded_retry(
 
 def test_parse_failed_warning_surfaces_after_still_degraded_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Issue #5345: still-degraded retry must surface parse-failed warning from final core KVs."""
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -5085,7 +4976,6 @@ def test_parse_failed_warning_surfaces_after_still_degraded_retry(tmp_path: Path
 
 def test_no_spurious_parse_failed_warning_after_successful_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Issue #5345: successful degraded-panel retry must not leave a stale parse-failed warning."""
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     call_count = 0
 
@@ -5147,7 +5037,6 @@ def test_run_round_reentry_clears_stale_dropped_reviewer_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Stale dropped-reviewer-attempts.env from a prior _run_round must not inflate warnings on re-entry."""
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     run_count = 0
 
@@ -5219,7 +5108,6 @@ def test_run_round_dynamic_straggler_warn_count_reaches_count_load_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
     def fake_core(argv: list[str]) -> int:
@@ -5273,7 +5161,6 @@ def test_run_round_dynamic_straggler_warn_count_reaches_count_load_result(
 
 @MARK_STEP5
 def test_step5_escalates_before_lower_tier_cap(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     calls: list[int] = []
 
