@@ -340,6 +340,76 @@ def _step5b_argv() -> list[str]:
     return ["--plugin-root", _plugin_root()]
 
 
+@pytest.fixture(autouse=True)
+def _isolate_step5b_architectural_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Keep Step 5b orchestration tests independent of this checkout's policy files."""
+    monkeypatch.setenv("REPO_ROOT", str(tmp_path))
+
+
+def test_step5b_prepare_refuses_before_oos_when_gatec_assessments_are_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _ = (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Gate C assessment required\n", encoding="utf-8")
+    _ = (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("# Guidelines\n", encoding="utf-8")
+    design = tmp_path / "design"
+    design.mkdir()
+    source_env = tmp_path / "source-env.sh"
+    _ = source_env.write_text(f"export DESIGN_TMPDIR={design}\nexport REPO_ROOT={repo}\n", encoding="utf-8")
+
+    def unexpected_prepare(_argv: Sequence[str]) -> int:
+        raise AssertionError("OOS prepare must not run without required Gate C assessments")
+
+    monkeypatch.setattr(design_step5b.design_oos, "file_oos_prepare_main", unexpected_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main([*_step5b_argv(), "--session-env-path", str(source_env)])
+    out = capsys.readouterr().out
+
+    assert rc == 4
+    assert "architectural-invariant-assessment.md" in out
+    assert "architectural-guideline-assessment.md" in out
+    assert "return to Gate C" in out
+    assert not (design / ".completed" / "step-4b").exists()
+    assert not (design / "oos-filing-prepare.env").exists()
+
+
+def test_step5b_prepare_allows_regular_gatec_assessments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _ = (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Gate C assessment required\n", encoding="utf-8")
+    _ = (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("# Guidelines\n", encoding="utf-8")
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "architectural-invariant-assessment.md").write_text("clean\n", encoding="utf-8")
+    _ = (design / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
+    source_env = tmp_path / "source-env.sh"
+    _ = source_env.write_text(f"export DESIGN_TMPDIR={design}\nexport REPO_ROOT={repo}\n", encoding="utf-8")
+    called = False
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        nonlocal called
+        called = True
+        print("FILE_DESIGN_OOS_STATUS=skip-no-items")
+        return 0
+
+    monkeypatch.setattr(design_step5b.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main([*_step5b_argv(), "--session-env-path", str(source_env)])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert called
+    assert "STEP5B_STATUS=skip-no-items" in out
+    assert (design / ".completed" / "step-4b").is_file()
+
+
 def test_step5b_prepare_ready_orchestration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)

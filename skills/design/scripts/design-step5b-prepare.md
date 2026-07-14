@@ -16,6 +16,7 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 - The `DESIGN_TMPDIR` guard rejects only an empty value, matching the retired Bash prelude.
 - The prepare entrypoint creates `$DESIGN_TMPDIR/.completed` before writing `.completed/step-4b`.
 - The prepare entrypoint returns immediately through pause-save when `.pause-requested` exists.
+- Before it writes `.completed/step-4b` or starts OOS filing, the prepare entrypoint refuses Step 5 when a present, non-empty architectural source lacks its required regular Gate C assessment artifact. It reports invariants before guidelines and uses the persisted `REPO_ROOT` when available; wrapper rehydration retains that key.
 - It marks `design Step 5 — finalize` timing after the pause check.
 - It captures OOS prepare stdout to `oos-filing-prepare.env` and stderr to `oos-filing-prepare.stderr.log`.
 - It emits `NEXT_ACTION=skip-pipeline|file-issues|label-only` on stdout for deterministic Step 5b routing. Every skip status (`skip-sentinel`, `skip-already-filed-sentinel`, `skip-no-items`, `skip-all-security`) emits `NEXT_ACTION=skip-pipeline`. `ready` emits `NEXT_ACTION=file-issues`. `label-only-retry` emits `NEXT_ACTION=label-only`.

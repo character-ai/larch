@@ -10,7 +10,9 @@ import sys
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
+from larch.core import architectural_guidelines
 from larch.design import design_oos
+from larch.git.repo_roots import consumer_repo_root
 
 from larch.design.design_core import _append_failure
 from larch.design.design_router import _parse_stdout_kv
@@ -63,6 +65,41 @@ def _step5b_annotate_sequencing_error(oos_issue_stdout: Path) -> bool:
         return not oos_issue_stdout.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return True
+
+
+def _step5b_missing_gatec_assessments(*, design_tmpdir: Path, repo_root: Path) -> list[str]:
+    """Return required Gate C assessment artifacts that are not regular files."""
+    invariant_result = architectural_guidelines.read_invariants(repo_root=repo_root)
+    guideline_result = architectural_guidelines.read_guidelines(repo_root=repo_root)
+    required_artifacts: list[str] = []
+    if invariant_result.status == "present" and invariant_result.content.strip():
+        required_artifacts.append(architectural_guidelines.INVARIANT_DESIGN_ASSESSMENT)
+    if guideline_result.status == "present":
+        required_artifacts.append(architectural_guidelines.DESIGN_ASSESSMENT)
+    return [
+        artifact
+        for artifact in required_artifacts
+        if not (design_tmpdir / artifact).is_file() or (design_tmpdir / artifact).is_symlink()
+    ]
+
+
+def _step5b_gatec_assessment_precheck(*, design_tmpdir: Path, repo_root: Path) -> int:
+    missing = _step5b_missing_gatec_assessments(design_tmpdir=design_tmpdir, repo_root=repo_root)
+    if not missing:
+        return 0
+    artifacts = " and ".join(missing)
+    print(
+        f"**⚠ 5b: finalize refused: missing {artifacts}; return to Gate C to persist required assessment artifacts before Step 5.**",
+        flush=True,
+    )
+    return 4
+
+
+def _step5b_prepare_prelude(*, env: Mapping[str, str], design_tmpdir: Path, plugin_root: Path) -> int:
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _call_pause_save(design_tmpdir=design_tmpdir)
+    repo_root = Path(env["REPO_ROOT"]) if env.get("REPO_ROOT") else consumer_repo_root() or plugin_root
+    return _step5b_gatec_assessment_precheck(design_tmpdir=design_tmpdir, repo_root=repo_root)
 
 
 _STEP5B_SKIP_BREADCRUMBS = {
@@ -143,11 +180,12 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
         return req
     plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
     design_tmpdir = _require_design_tmpdir_nonempty(env=env, site="prepare")
+    prelude_rc = _step5b_prepare_prelude(env=env, design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    if prelude_rc != 0:
+        return prelude_rc
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     (completed / "step-4b").touch()
-    if (design_tmpdir / ".pause-requested").is_file():
-        return _call_pause_save(design_tmpdir=design_tmpdir)
     _maybe_timing_mark(label="design Step 5 — finalize")
 
     stderr_path = design_tmpdir / "oos-filing-prepare.stderr.log"
