@@ -1,0 +1,30 @@
+Reviewing the plan against the codebase: tracing writer, gate, and report handling for operator overrides and malformed history.
+Checking how migrate preserves overrides and whether the write path documents merge validation.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/lint/lint_complexity_baseline.py:652-653	Merge plan drops operator_override on regeneration	Writer text says never copy or create operator_override and tests require regeneration never emit it even when the stored row has one; migrate_baseline already preserves operator_override at 652-653, so a literal implementation strips manual overrides on the next --write and acceptance override silences gate breaks after any regen touching that identity	In the UPDATED writer bullets, require pass-through of stored operator_override unchanged on identity match; restrict never create to live/--reason paths; change the test bullet to prove the writer never fabricates operator_override on rows that lacked one while still preserving operator-authored overrides across merge
+1	in_scope	major	correctness	python/larch/lint/lint_complexity_baseline.py:707-721	--write still replaces baseline without merged validation today	_run_write writes live_records directly at 721; Piece 2 must merge, run repeat-bump on the prospective history, validate dates/reason, and only then replace the file, or a failed regen can erase metadata and committed overrides before the gate fires	Spell out in the lint_complexity_baseline.py UPDATED section that --write builds the merged array in memory, runs the same fail-closed validators and repeat-bump gate used by check on that snapshot, and calls write_baseline only after success; add an explicit test that a rejected repeat-bump or invalid merged row leaves complexity-baseline.json byte-unchanged
+1	in_scope	minor	correctness	python/larch/lint/lint_complexity_baseline.py:248-318	ISO date validation is unspecified for policy math	_validate_added_at and _validate_history currently accept any non-empty string (315-318, 262-263); without pinned calendar-date parsing, values like 2026/07/12 or datetimes make 14/30-day windows nondeterministic and can let malformed history affect gate or debt buckets	Pin added_at/history dates to UTC calendar YYYY-MM-DD (legacy only for added_at), reject future and unparsable values at load, and cover exact 14-day and 30-day inclusive boundaries in the listed tests
+1	in_scope	minor	risk-integration	Makefile:89-92	regen-complexity-baseline has no REASON forwarding	After --reason is required for new rows or metric growth, the existing target still runs --write with no reason (89-92); operators following current make guidance hit exit 2 with no documented recovery	Document and wire REASON= (or an equivalent make variable) through regen-complexity-baseline to --write --reason, mirroring the conditional bootstrap pattern used by regen-subprocess-via-runner-baseline at 98-106
+1	out_of_scope	minor	architecture	python/larch/lint/lint_complexity_debt.py:1	Shared date/window helper not required in plan	14-day gate logic and 30-day debt bumps could drift if implemented twice; not required for acceptance and adds surface area	Defer unless duplication appears during implementation; extract one helper only if both modules duplicate window math
+
+### 1. [correctness] `operator_override` preservation vs regeneration wording (`python/larch/lint/lint_complexity_baseline.py:652-653`)
+
+The plan’s writer bullets say to never copy or create `operator_override` during regeneration, and the test plan says regeneration must never emit `operator_override` even when the input row contains one. `migrate_baseline` already preserves operator overrides at lines 652–653. A literal reading of the plan would strip manual overrides on the next `--write`, which breaks acceptance criterion “override silences gate” and I-Gate-1’s intent (writer must not fabricate overrides, not erase operator edits).
+
+**Suggested revision:** Require pass-through of stored `operator_override` on identity match; forbid creation from `--reason` or live rows only; update the test bullet to prove no fabrication while overrides survive merge.
+
+### 2. [correctness] `--write` must validate merged snapshot before disk replace (`python/larch/lint/lint_complexity_baseline.py:707-721`)
+
+Current `_run_write` writes live four-field rows directly at line 721. Piece 2’s merge/repeat-bump work must not replace the committed file until the merged snapshot passes validation and the repeat gate. Failure modes mention this, but the UPDATED writer section should make the ordering explicit and tests should assert byte-stable baseline on rejected writes.
+
+### 3. [correctness] Pin calendar-date validation before window policy (`python/larch/lint/lint_complexity_baseline.py:248-318`)
+
+History and `added_at` validators today accept any non-empty string. The plan adds ISO validation but should pin `YYYY-MM-DD` UTC calendar dates (with `legacy` only on `added_at`) so 14/30-day boundaries and malformed history fail closed before gate or debt calculations.
+
+### 4. [risk-integration] Makefile regen needs `REASON` wiring (`Makefile:89-92`)
+
+`regen-complexity-baseline` still invokes `--write` without `--reason`. After Piece 2, any regen that adds rows or increases metrics needs a nonblank reason; the Makefile target should forward `REASON=` like other ratchet regen targets do for bootstrap reasons.
+
+### [OUT_OF_SCOPE] Shared window helper between gate and debt report
+
+Extracting shared date-window logic is reasonable hygiene but not required for the stated acceptance criteria; defer unless implementation duplicates the math.

@@ -1,0 +1,94 @@
+## Approach
+
+Extend the migrated schema into a metadata-preserving writer, repeat-bump gate, and read-only debt report. Keep the report outside CI. Preserve the manual-only override invariant.
+
+### UPDATED: python/larch/lint/lint_complexity_baseline.py
+
+- Add `--reason TEXT` for `--write`. Reject blank reasons and incompatible mode combinations.
+- Replace the temporary metadata guard with a strict merge:
+  - Match live and stored rows by `(file, code, qualified_symbol)`.
+  - Preserve `added_at`, `history`, `source_issue`, and prior rationale where applicable.
+  - Stamp new rows with the current UTC date and the supplied reason.
+  - On metric growth, require a reason, append `{date, metric}` to `history`, and record the new rationale.
+  - Allow unchanged metrics, decreases, and stale-row removal without a new reason.
+  - Never copy or create `operator_override` during regeneration.
+  - Keep canonical row and field ordering.
+- Validate `added_at` as `legacy` or an ISO UTC date. Validate every history date before policy calculations.
+- Add repeat-bump detection from `history` alone. Fail when two increases fall within a 14-day window unless the row has a valid manual override.
+- Print each failure with the symbol, relevant history, and the three exits: simplify, split, or add an operator override.
+- List every active override on each successful or failing check so suppressions remain visible.
+- Keep malformed baselines, duplicate identities, ruff failures, and invalid overrides fail-closed.
+
+### NEW: python/larch/lint/lint_complexity_debt.py
+
+- Add a module-level `main(argv) -> int` with required `--report` and a testable `--root`.
+- Reuse the baseline loader and validation rather than defining a second schema.
+- Compute report dates from UTC.
+- Print deterministic sections for:
+  - Total entry count.
+  - Age buckets: under 14 days, 14 through 90 days, over 90 days, and legacy rows.
+  - Top 10 rows by metric, with stable identity tie-breaking.
+  - Symbols with at least two history bumps in the last 30 days.
+  - All active operator overrides with reason and linked issue.
+- Print empty sections explicitly. Return a distinct argument or data error instead of a partial report when the baseline is unreadable or malformed.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("lint", "complexity-debt")` to dispatch to the new module’s `main`.
+- Preserve the existing table-driven CLI contract with no script shim.
+
+### UPDATED: python/tests/lint/test_lint_complexity_baseline.py
+
+- Replace the temporary writer-refusal tests with writer merge coverage.
+- Test new-entry creation, UTC dates, stable `added_at`, metadata preservation, metric decreases, stale-row removal, history appends, canonical ordering, and byte-stable rewrites.
+- Test that new rows and increases require a nonblank `--reason`, while unchanged or reduced rows do not.
+- Prove regeneration never emits `operator_override`, including when the input row contains one.
+- Cover first-bump pass, second bump inside 14 days failure, boundary and outside-window passes, and histories with multiple windows.
+- Verify valid overrides silence the repeat gate but remain listed. Verify missing reason, invalid issue, malformed dates, and malformed history fail closed.
+- Test the failure text names the symbol, history, and all three remediation paths.
+- Exercise the debt report through its `main`: all sections, age boundaries, legacy and empty buckets, top-10 truncation and tie order, 30-day bump boundaries, active overrides, malformed input, and required `--report`.
+- Assert the new dispatcher registration.
+
+### UPDATED: docs/linting.md
+
+- Document the extended baseline schema and manual-only `operator_override`.
+- Explain `--write --reason TEXT`, metadata preservation, history updates, UTC dates, and when a reason is mandatory.
+- Describe the repeat-bump rule, 14-day boundary, override visibility, and remediation choices.
+- Document `python3 python/cli.py lint complexity-debt --report`, its five report sections, age buckets, and operator-facing, non-CI role.
+- Correct the old four-field baseline and unconditional metric-growth wording.
+
+### UPDATED: Makefile
+
+- Update `regen-complexity-baseline` guidance and invocation so callers provide a reason when regeneration introduces a row or metric increase.
+- Add a phony `lint-complexity-debt` target that runs the report.
+- Keep the debt report outside `lint`, `py-lint`, and CI aggregation.
+
+## Edge cases
+
+- Treat exactly 14 days as inside the repeat-bump window and exactly 30 days as inside the debt-report window.
+- Keep `legacy` rows out of dated age buckets and report them separately.
+- Use full identity keys where equal symbol names occur in different files or lint codes.
+- Do not let future, malformed, duplicate, or non-increasing history entries produce misleading gate results.
+- Preserve the existing first-extension workflow: an unrecorded live regression still requires explicit regeneration, but its first recorded increase does not trigger the repeat gate.
+
+## Failure modes
+
+- Exit without writing if ruff collection, baseline loading, identity matching, date parsing, or reason validation fails.
+- Validate the full merged result before replacing the baseline so a failed write cannot partially discard metadata.
+- Keep overrides operator-authored only. Writer input must never turn an override into writer-authored gate suppression.
+- Fail the debt report as a whole when its source cannot be trusted.
+
+## Testing strategy
+
+- Run `pytest python/tests/lint/test_lint_complexity_baseline.py`.
+- Run `python3 python/cli.py lint complexity-baseline`.
+- Run `python3 python/cli.py lint complexity-debt --report`.
+- Run `make lint-complexity-debt`.
+- Run `make py-lint`.
+- Run `make lint`.
+
+Confidence: high. The approved outline fixes the scope, and Piece 1 already provides the schema, migration, validation, and serialization seams.
+
+difficulty: HARD
+oversize_override: operator
+diff_lines: 720
