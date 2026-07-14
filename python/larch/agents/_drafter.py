@@ -297,6 +297,58 @@ def _claude_drafter_execute(
             return VendorProcessResult(exit_code=127)
 
 
+def _codex_drafter_run(
+    *,
+    raw: Path,
+    prompt: Path,
+    trusted: Path,
+    timeout: str,
+    repo: Path,
+    stderr_path: Path,
+    timing_task_kind: str,
+    prog: str,
+) -> int:
+    try:
+        model_args = tuple(resolve_model_args("codex").argv)
+    except ValueError as exc:
+        _err(f"{prog}: model args failed: {exc}")
+        return 1
+    prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
+    with tempfile.TemporaryDirectory(prefix="larch-codex-drafter-home-", dir=tempfile.gettempdir()) as home:
+        prep_rc, prep_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
+        if prep_rc != 0:
+            reason = prep_msg or f"codex auth setup failed (exit {prep_rc})"
+            _write_preflight_bundle(output=raw, timeout=timeout, launcher_exit=prep_rc, failure_reason=reason)
+            return 1
+        events = raw.with_suffix(raw.suffix + ".events.jsonl")
+        sidecar = raw.with_suffix(raw.suffix + ".sidecar")
+        env: dict[str, str] = dict(os.environ)
+        env["CODEX_HOME"] = home
+        start_holder: list[float] = []
+        drafter_request = VendorLaunchRequest(
+            workdir=str(repo),
+            output=str(raw),
+            prompt=prompt_text,
+            model_args=model_args,
+            add_dirs=(str(repo),),
+            timing_task_kind=timing_task_kind,
+        )
+        drafter_hooks = VendorFamilyHooks(
+            execute=functools.partial(_codex_external_agent_execute, output=raw, timeout=timeout, env=env, cwd=str(repo), stdout_path=events, stderr_path=stderr_path, start_holder=start_holder),
+            mirror_quota=functools.partial(_codex_events_mirror_quota, events=events, sidecar=sidecar),
+            record_timing=functools.partial(_codex_record_vendor_timing, timing_task_kind=timing_task_kind, output=raw, start_holder=start_holder),
+            record_usage=functools.partial(_codex_record_vendor_usage, events=events, sidecar=sidecar, label="codex_plan_draft", token_record=raw.with_suffix(raw.suffix + ".token-record")),
+        )
+        drafter_outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            drafter_request,
+            hooks=drafter_hooks,
+            use_config_context=False,
+        )
+        return drafter_outcome.process_result.exit_code if drafter_outcome.process_result is not None else 1
+
+
 def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | Path, workspace: str | Path) -> int:
     if tool not in {"codex", "cursor"}:
         _err(f"agent run-negotiation-round: ERROR: --tool must be 'codex' or 'cursor' (got: {tool})")
@@ -897,46 +949,16 @@ def launch_codex_drafter(
                 path.unlink()
         _write(path=trusted, text=_CODEX_DRAFTER_TRUSTED_INSTRUCTIONS)
         launched = True
-        try:
-            model_args = tuple(resolve_model_args("codex").argv)
-        except ValueError as exc:
-            _err(f"{prog}: model args failed: {exc}")
-            return 1
-        prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
-        launcher_exit = 1
-        with tempfile.TemporaryDirectory(prefix="larch-codex-drafter-home-", dir=tempfile.gettempdir()) as home:
-            prep_rc, prep_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
-            if prep_rc != 0:
-                reason = prep_msg or f"codex auth setup failed (exit {prep_rc})"
-                _write_preflight_bundle(output=raw, timeout=timeout, launcher_exit=prep_rc, failure_reason=reason)
-            else:
-                events = raw.with_suffix(raw.suffix + ".events.jsonl")
-                sidecar = raw.with_suffix(raw.suffix + ".sidecar")
-                env: dict[str, str] = dict(os.environ)
-                env["CODEX_HOME"] = home
-                start_holder: list[float] = []
-                drafter_request = VendorLaunchRequest(
-                    workdir=str(repo),
-                    output=str(raw),
-                    prompt=prompt_text,
-                    model_args=model_args,
-                    add_dirs=(str(repo),),
-                    timing_task_kind=timing_task_kind,
-                )
-                drafter_hooks = VendorFamilyHooks(
-                    execute=functools.partial(_codex_external_agent_execute, output=raw, timeout=timeout, env=env, cwd=str(repo), stdout_path=events, stderr_path=paths.stderr, start_holder=start_holder),
-                    mirror_quota=functools.partial(_codex_events_mirror_quota, events=events, sidecar=sidecar),
-                    record_timing=functools.partial(_codex_record_vendor_timing, timing_task_kind=timing_task_kind, output=raw, start_holder=start_holder),
-                    record_usage=functools.partial(_codex_record_vendor_usage, events=events, sidecar=sidecar, label="codex_plan_draft", token_record=raw.with_suffix(raw.suffix + ".token-record")),
-                )
-                drafter_outcome = run_vendor_launch(
-                    CODEX_DESCRIPTOR,
-                    "read-only",
-                    drafter_request,
-                    hooks=drafter_hooks,
-                    use_config_context=False,
-                )
-                launcher_exit = drafter_outcome.process_result.exit_code if drafter_outcome.process_result is not None else 1
+        launcher_exit = _codex_drafter_run(
+            raw=raw,
+            prompt=prompt,
+            trusted=trusted,
+            timeout=timeout,
+            repo=repo,
+            stderr_path=paths.stderr,
+            timing_task_kind=timing_task_kind,
+            prog=prog,
+        )
         token_src = raw.with_suffix(raw.suffix + ".token-record")
         if token_src.is_file() and token_src.stat().st_size > 0:
             shutil.copyfile(token_src, paths.token_record)
