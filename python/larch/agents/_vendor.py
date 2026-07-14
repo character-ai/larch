@@ -457,7 +457,7 @@ def check_token_budget_cap(
 @contextlib.contextmanager
 def cursor_config_context() -> Iterator[Path]:
     """Isolate Cursor config under a temp dir; restore ``CURSOR_CONFIG_DIR`` on exit."""
-    cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-"))
+    cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=tempfile.gettempdir()))
     old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
     os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
     user_cfg = Path.home() / ".cursor" / "cli-config.json"
@@ -474,7 +474,7 @@ def cursor_config_context() -> Iterator[Path]:
             os.environ["CURSOR_CONFIG_DIR"] = old_cfg
 
 
-def parse_claude_envelope(raw: str) -> VendorParsedResult:  # noqa: PLR0911
+def parse_claude_envelope(raw: str) -> VendorParsedResult:  # noqa: PLR0911 - seven envelope statuses are distinct outcomes
     """Parse a Claude JSON envelope into a typed postprocess outcome."""
     try:
         obj: object = json.loads(raw)
@@ -563,7 +563,7 @@ def _invoke_execute(
     raise TypeError("hooks.execute must return VendorProcessResult or int")
 
 
-def _execute_with_retries(  # noqa: PLR0913
+def _execute_with_retries(  # noqa: PLR0913 - launch context fields stay explicit for callers
     *,
     family: VendorFamilyHooks,
     argv: list[str],
@@ -597,7 +597,7 @@ def _execute_with_retries(  # noqa: PLR0913
     return _execute_once()
 
 
-def _run_post_execution_hooks(  # noqa: PLR0913
+def _run_post_execution_hooks(  # noqa: PLR0913 - lifecycle hook kwargs stay explicit
     *,
     family: VendorFamilyHooks,
     process_result: VendorProcessResult,
@@ -625,7 +625,7 @@ def _run_post_execution_hooks(  # noqa: PLR0913
         family.promote_completion(**hook_kwargs)
 
 
-def run_vendor_launch(  # noqa: PLR0913
+def run_vendor_launch(  # noqa: PLR0913 - injectable seams are independent lifecycle parameters
     descriptor: VendorDescriptor,
     profile: str,
     request: VendorLaunchRequest,
