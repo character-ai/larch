@@ -1,34 +1,53 @@
-# pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
-"""Tests for inactive vendor descriptors, argv builders, and model extraction."""
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false
+"""Tests for inactive vendor descriptors, argv builders, and launch lifecycle."""
 
 from __future__ import annotations
 
 import ast
+import json
 import os
 from collections.abc import Iterable
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from larch.agents import _vendor
 from larch.agents._run_external import _codex_auth_args, _trust_config_arg
+from larch.agents._types import _PY_CLI
 from larch.agents._vendor import (
+    CAP_HIT_PAYLOAD,
     CLAUDE_DESCRIPTOR,
+    CLAUDE_ENVELOPE_EMPTY_RESULT,
+    CLAUDE_ENVELOPE_IS_ERROR,
+    CLAUDE_ENVELOPE_MALFORMED_JSON,
+    CLAUDE_ENVELOPE_MISSING_RESULT,
+    CLAUDE_ENVELOPE_NON_OBJECT,
+    CLAUDE_ENVELOPE_NON_STRING_RESULT,
+    CLAUDE_ENVELOPE_OK,
     CODEX_DESCRIPTOR,
     CURSOR_DESCRIPTOR,
     REQUIRED_CAPABILITIES,
     VENDOR_DESCRIPTORS,
+    VendorCapCheckResult,
     VendorDescriptor,
     VendorFamilyHooks,
     VendorLaunchRequest,
     VendorParsedResult,
     VendorProcessResult,
+    VendorRetryPolicy,
+    build_check_budget_argv,
     build_claude_argv,
     build_codex_argv,
     build_cursor_argv,
     build_vendor_registry,
+    check_token_budget_cap,
+    cursor_config_context,
     extract_model_from_argv,
+    parse_claude_envelope,
+    run_vendor_launch,
+    run_with_vendor_retries,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -512,9 +531,11 @@ class TestModelExtraction:
         assert CODEX_DESCRIPTOR.extract_model(["-m", "m3"]) == "m3"
 
 
-def test_module_exports_inactive_surface() -> None:
-    # Lifecycle helpers must not exist yet (piece 2).
-    assert not hasattr(_vendor, "run_vendor_launch")
+def test_module_exports_lifecycle_surface() -> None:
+    assert hasattr(_vendor, "run_vendor_launch")
+    assert hasattr(_vendor, "check_token_budget_cap")
+    assert hasattr(_vendor, "cursor_config_context")
+    assert hasattr(_vendor, "parse_claude_envelope")
     assert "VENDOR_DESCRIPTORS" in dir(_vendor)
     # Pure argv builders must not mutate environment.
     before = os.environ.get("OPENAI_API_KEY")
@@ -530,3 +551,561 @@ def test_module_exports_inactive_surface() -> None:
             os.environ.pop("OPENAI_API_KEY", None)
         else:
             os.environ["OPENAI_API_KEY"] = before
+
+
+# ---------------------------------------------------------------------------
+# Piece 2 lifecycle coverage
+# ---------------------------------------------------------------------------
+
+
+class _BudgetResult:
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+
+
+def _base_request(**kwargs: Any) -> VendorLaunchRequest:
+    defaults: dict[str, Any] = {
+        "workdir": "/repo",
+        "output": "/tmp/out.txt",
+        "prompt": "do the thing",
+        "timing_task_kind": "codex-review",
+    }
+    defaults.update(kwargs)
+    return VendorLaunchRequest(**defaults)
+
+
+class TestTokenCapCheck:
+    def test_positive_cap_builds_argv_and_preserves_payload(self) -> None:
+        seen: list[tuple[str, ...]] = []
+
+        def runner(argv: Any) -> _BudgetResult:
+            seen.append(tuple(argv))
+            return _BudgetResult("STATUS=cap_hit TOTAL=99 CAP=10\n")
+
+        result = check_token_budget_cap(cap="10", step="codex-review", runner=runner)
+        assert result.hit is True
+        assert result.payload == CAP_HIT_PAYLOAD
+        assert result.payload == "STATUS=cap_hit\n"
+        expected = tuple(build_check_budget_argv(cap="10", step="codex-review"))
+        assert result.argv == expected
+        assert seen == [expected]
+        assert expected[:4] == (sys_executable := __import__("sys").executable, str(_PY_CLI), "token", "check-budget")
+        assert expected[4:] == ("--cap", "10", "--step", "codex-review")
+        assert sys_executable  # pin presence
+
+    def test_under_cap_is_not_a_hit(self) -> None:
+        result = check_token_budget_cap(
+            cap="10",
+            step="step",
+            runner=lambda _argv: _BudgetResult("STATUS=under_cap TOTAL=1 CAP=10\n"),
+        )
+        assert result.hit is False
+        assert result.payload == ""
+
+    @pytest.mark.parametrize("cap", ["", "0", "-1", "abc", "1.5"])
+    def test_invalid_caps_skip_command(self, cap: str) -> None:
+        calls: list[object] = []
+
+        def runner(argv: object) -> _BudgetResult:
+            calls.append(argv)
+            return _BudgetResult("STATUS=cap_hit\n")
+
+        result = check_token_budget_cap(cap=cap, step="step", runner=runner)
+        assert result.hit is False
+        assert not calls
+
+
+class TestCursorConfigContext:
+    @staticmethod
+    def _patch_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+        def _home(_cls: type[Path] = Path) -> Path:
+            return home
+
+        monkeypatch.setattr(Path, "home", classmethod(_home))
+
+    def test_copies_config_sets_and_restores_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        cursor_dir = home / ".cursor"
+        cursor_dir.mkdir(parents=True)
+        (cursor_dir / "cli-config.json").write_text('{"approvalMode":"allow"}\n', encoding="utf-8")
+        monkeypatch.setenv("HOME", str(home))
+        self._patch_home(monkeypatch, home)
+        monkeypatch.delenv("CURSOR_CONFIG_DIR", raising=False)
+
+        with cursor_config_context() as cfg_tmp:
+            assert os.environ["CURSOR_CONFIG_DIR"] == str(cfg_tmp)
+            copied = cfg_tmp / "cli-config.json"
+            assert copied.is_file()
+            assert copied.read_text(encoding="utf-8") == '{"approvalMode":"allow"}\n'
+            assert cfg_tmp.is_dir()
+        assert "CURSOR_CONFIG_DIR" not in os.environ
+        assert not cfg_tmp.exists()
+
+    def test_missing_source_config_still_isolates(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home.mkdir()
+        self._patch_home(monkeypatch, home)
+        monkeypatch.setenv("CURSOR_CONFIG_DIR", "/preexisting")
+        with cursor_config_context() as cfg_tmp:
+            assert os.environ["CURSOR_CONFIG_DIR"] == str(cfg_tmp)
+            assert not (cfg_tmp / "cli-config.json").exists()
+        assert os.environ["CURSOR_CONFIG_DIR"] == "/preexisting"
+
+    def test_copy_failure_is_suppressed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        cursor_dir = home / ".cursor"
+        cursor_dir.mkdir(parents=True)
+        src = cursor_dir / "cli-config.json"
+        src.write_text("{}\n", encoding="utf-8")
+        self._patch_home(monkeypatch, home)
+        monkeypatch.delenv("CURSOR_CONFIG_DIR", raising=False)
+
+        def boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError("copy failed")
+
+        monkeypatch.setattr(_vendor.shutil, "copyfile", boom)
+        with cursor_config_context() as cfg_tmp:
+            assert os.environ["CURSOR_CONFIG_DIR"] == str(cfg_tmp)
+            assert not (cfg_tmp / "cli-config.json").exists()
+        assert "CURSOR_CONFIG_DIR" not in os.environ
+
+    def test_cleanup_after_exception(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home.mkdir()
+        self._patch_home(monkeypatch, home)
+        monkeypatch.delenv("CURSOR_CONFIG_DIR", raising=False)
+        cfg_holder: dict[str, Path] = {}
+
+        def _raise_inside() -> None:
+            with cursor_config_context() as cfg:
+                cfg_holder["cfg"] = cfg
+                raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            _raise_inside()
+        cfg_tmp = cfg_holder["cfg"]
+        assert not cfg_tmp.exists()
+        assert "CURSOR_CONFIG_DIR" not in os.environ
+
+
+class TestClaudeEnvelope:
+    def test_valid_result(self) -> None:
+        raw = json.dumps({"result": "hello", "is_error": False})
+        parsed = parse_claude_envelope(raw)
+        assert parsed == VendorParsedResult(status=CLAUDE_ENVELOPE_OK, text="hello", raw=raw)
+
+    def test_explicit_error(self) -> None:
+        raw = json.dumps({"result": "x", "is_error": True})
+        parsed = parse_claude_envelope(raw)
+        assert parsed.status == CLAUDE_ENVELOPE_IS_ERROR
+        assert parsed.is_error is True
+        assert parsed.text == ""
+
+    def test_empty_result(self) -> None:
+        raw = json.dumps({"result": ""})
+        assert parse_claude_envelope(raw).status == CLAUDE_ENVELOPE_EMPTY_RESULT
+
+    def test_missing_result(self) -> None:
+        raw = json.dumps({"is_error": False})
+        assert parse_claude_envelope(raw).status == CLAUDE_ENVELOPE_MISSING_RESULT
+
+    def test_non_string_result(self) -> None:
+        raw = json.dumps({"result": 42})
+        assert parse_claude_envelope(raw).status == CLAUDE_ENVELOPE_NON_STRING_RESULT
+
+    def test_malformed_json(self) -> None:
+        raw = "{not-json"
+        assert parse_claude_envelope(raw).status == CLAUDE_ENVELOPE_MALFORMED_JSON
+
+    def test_non_object_json(self) -> None:
+        raw = json.dumps(["result"])
+        assert parse_claude_envelope(raw).status == CLAUDE_ENVELOPE_NON_OBJECT
+
+
+class TestVendorRetries:
+    def test_auth_retry_success(self) -> None:
+        attempts = {"n": 0}
+
+        def execute() -> VendorProcessResult:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                return VendorProcessResult(exit_code=1, stderr="auth")
+            return VendorProcessResult(exit_code=0, stdout="ok")
+
+        result = run_with_vendor_retries(
+            execute,
+            policy=VendorRetryPolicy(
+                is_auth_failure=lambda r: r.exit_code != 0 and "auth" in r.stderr,
+                max_auth_retries=2,
+            ),
+        )
+        assert result.exit_code == 0
+        assert attempts["n"] == 2
+
+    def test_auth_retry_exhaustion(self) -> None:
+        attempts = {"n": 0}
+
+        def execute() -> VendorProcessResult:
+            attempts["n"] += 1
+            return VendorProcessResult(exit_code=1, stderr="auth")
+
+        result = run_with_vendor_retries(
+            execute,
+            policy=VendorRetryPolicy(
+                is_auth_failure=lambda _r: True,
+                max_auth_retries=1,
+            ),
+        )
+        assert result.exit_code == 1
+        assert attempts["n"] == 2  # initial + 1 retry
+
+    def test_transient_retry_success(self) -> None:
+        attempts = {"n": 0}
+
+        def execute() -> VendorProcessResult:
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                return VendorProcessResult(exit_code=1, stderr="transient")
+            return VendorProcessResult(exit_code=0)
+
+        result = run_with_vendor_retries(
+            execute,
+            policy=VendorRetryPolicy(
+                is_transient_failure=lambda r: r.exit_code != 0,
+                max_transient_retries=5,
+            ),
+        )
+        assert result.exit_code == 0
+        assert attempts["n"] == 3
+
+    def test_empty_response_retry_and_exhaustion(self) -> None:
+        attempts = {"n": 0}
+
+        def execute() -> VendorProcessResult:
+            attempts["n"] += 1
+            return VendorProcessResult(exit_code=0, stdout="")
+
+        result = run_with_vendor_retries(
+            execute,
+            policy=VendorRetryPolicy(
+                is_empty_response=lambda r: r.exit_code == 0 and not r.stdout,
+                max_empty_retries=2,
+            ),
+        )
+        assert result.stdout == ""
+        assert attempts["n"] == 3  # initial + 2 retries
+
+
+class TestRunVendorLaunchOrdering:
+    def _ordered_hooks(self, events: list[str], *, exit_code: int = 0) -> VendorFamilyHooks:
+        def preflight(**_kwargs: object) -> bool:
+            events.append("preflight")
+            return True
+
+        def execute(**_kwargs: object) -> VendorProcessResult:
+            events.append("execute")
+            return VendorProcessResult(exit_code=exit_code, stdout="out")
+
+        def mirror_quota(**_kwargs: object) -> None:
+            events.append("quota")
+
+        def record_timing(**_kwargs: object) -> None:
+            events.append("timing")
+
+        def postprocess(**_kwargs: object) -> None:
+            events.append("postprocess")
+
+        def record_usage(**_kwargs: object) -> None:
+            events.append("usage")
+
+        def promote_completion(**_kwargs: object) -> None:
+            events.append("promote")
+
+        return VendorFamilyHooks(
+            preflight=preflight,
+            execute=execute,
+            mirror_quota=mirror_quota,
+            record_timing=record_timing,
+            postprocess=postprocess,
+            record_usage=record_usage,
+            promote_completion=promote_completion,
+        )
+
+    def test_cap_precedes_preflight_and_full_order_zero_exit(self) -> None:
+        events: list[str] = []
+        budget_calls: list[tuple[str, ...]] = []
+
+        def budget_runner(argv: Any) -> _BudgetResult:
+            events.append("cap")
+            budget_calls.append(tuple(argv))
+            return _BudgetResult("STATUS=under_cap TOTAL=1\n")
+
+        def resolve_model(req: VendorLaunchRequest) -> VendorLaunchRequest:
+            events.append("resolve_model")
+            return req
+
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            _base_request(token_cap="10"),  # noqa: S106  # token budget cap, not a password
+            hooks=self._ordered_hooks(events, exit_code=0),
+            resolve_model=resolve_model,
+            budget_runner=budget_runner,
+            use_config_context=False,
+        )
+        assert outcome.status == "completed"
+        assert outcome.process_result is not None
+        assert outcome.process_result.exit_code == 0
+        assert events == [
+            "cap",
+            "preflight",
+            "resolve_model",
+            "execute",
+            "quota",
+            "timing",
+            "postprocess",
+            "usage",
+            "promote",
+        ]
+        assert budget_calls[0][4:] == ("--cap", "10", "--step", "codex-review")
+
+    def test_nonzero_exit_still_mirrors_quota_and_promotes(self) -> None:
+        events: list[str] = []
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            _base_request(),
+            hooks=self._ordered_hooks(events, exit_code=7),
+            use_config_context=False,
+        )
+        assert outcome.status == "completed"
+        assert outcome.process_result is not None
+        assert outcome.process_result.exit_code == 7
+        assert events == [
+            "preflight",
+            "execute",
+            "quota",
+            "timing",
+            "postprocess",
+            "usage",
+            "promote",
+        ]
+
+    def test_cap_hit_skips_preflight_and_launch(self) -> None:
+        events: list[str] = []
+        artifacts: list[str] = []
+
+        def budget_runner(_argv: Any) -> _BudgetResult:
+            events.append("cap")
+            return _BudgetResult("STATUS=cap_hit TOTAL=50 CAP=10\n")
+
+        def emit_cap(**kwargs: object) -> None:
+            events.append("cap_artifact")
+            artifacts.append(str(kwargs.get("payload", "")))
+
+        def preflight(**_kwargs: object) -> bool:
+            events.append("preflight")
+            return True
+
+        def execute(**_kwargs: object) -> VendorProcessResult:
+            events.append("execute")
+            return VendorProcessResult(exit_code=0)
+
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            _base_request(token_cap="10"),  # noqa: S106  # token budget cap, not a password
+            hooks=VendorFamilyHooks(
+                preflight=preflight,
+                execute=execute,
+                emit_cap_hit_artifact=emit_cap,
+                promote_completion=lambda **_k: events.append("promote"),
+            ),
+            budget_runner=budget_runner,
+            use_config_context=False,
+        )
+        assert outcome.status == "cap_hit"
+        assert outcome.cap_check is not None
+        assert outcome.cap_check.payload == CAP_HIT_PAYLOAD
+        assert artifacts == [CAP_HIT_PAYLOAD]
+        assert events == ["cap", "cap_artifact"]
+
+    @pytest.mark.parametrize("cap", ["", "0", "-3", "nope"])
+    def test_invalid_cap_skips_command_but_runs_lifecycle(self, cap: str) -> None:
+        events: list[str] = []
+        calls: list[object] = []
+
+        def budget_runner(argv: object) -> _BudgetResult:
+            calls.append(argv)
+            return _BudgetResult("STATUS=cap_hit\n")
+
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            _base_request(token_cap=cap),
+            hooks=self._ordered_hooks(events),
+            budget_runner=budget_runner,
+            use_config_context=False,
+        )
+        assert outcome.status == "completed"
+        assert not calls
+        assert events[0] == "preflight"
+        assert "execute" in events
+        assert "promote" in events
+
+    def test_preflight_refusal_skips_execution(self) -> None:
+        events: list[str] = []
+
+        def preflight(**_kwargs: object) -> bool:
+            events.append("preflight")
+            return False
+
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            _base_request(),
+            hooks=VendorFamilyHooks(
+                preflight=preflight,
+                execute=lambda **_k: events.append("execute") or VendorProcessResult(exit_code=0),
+                promote_completion=lambda **_k: events.append("promote"),
+            ),
+            use_config_context=False,
+        )
+        assert outcome.status == "preflight_refused"
+        assert events == ["preflight"]
+
+    @pytest.mark.parametrize(
+        "fail_hook",
+        ["timing", "postprocess", "usage"],
+    )
+    @pytest.mark.parametrize("exit_code", [0, 3])
+    def test_lifecycle_failure_blocks_promotion(self, fail_hook: str, exit_code: int) -> None:
+        events: list[str] = []
+
+        def maybe_fail(name: str) -> None:
+            events.append(name)
+            if name == fail_hook:
+                raise RuntimeError(f"{name} failed")
+
+        hooks = VendorFamilyHooks(
+            preflight=lambda **_k: True,
+            execute=lambda **_k: VendorProcessResult(exit_code=exit_code),
+            mirror_quota=lambda **_k: events.append("quota"),
+            record_timing=lambda **_k: maybe_fail("timing"),
+            postprocess=lambda **_k: maybe_fail("postprocess"),
+            record_usage=lambda **_k: maybe_fail("usage"),
+            promote_completion=lambda **_k: events.append("promote"),
+        )
+        with pytest.raises(RuntimeError, match=fail_hook):
+            run_vendor_launch(
+                CODEX_DESCRIPTOR,
+                "read-only",
+                _base_request(),
+                hooks=hooks,
+                use_config_context=False,
+            )
+        assert "promote" not in events
+        assert fail_hook in events
+
+    def test_cursor_postprocess_precedes_usage(self) -> None:
+        events: list[str] = []
+        hooks = VendorFamilyHooks(
+            execute=lambda **_k: VendorProcessResult(exit_code=0, stdout='{"result":null}'),
+            postprocess=lambda **_k: events.append("postprocess"),
+            record_usage=lambda **_k: events.append("usage"),
+            promote_completion=lambda **_k: events.append("promote"),
+            record_timing=lambda **_k: events.append("timing"),
+            mirror_quota=lambda **_k: events.append("quota"),
+        )
+        run_vendor_launch(
+            CURSOR_DESCRIPTOR,
+            "review-ask",
+            _base_request(model_args=("--model", "m"), timing_task_kind="cursor-review"),
+            hooks=hooks,
+            use_config_context=False,
+        )
+        assert events.index("postprocess") < events.index("usage")
+        assert events.index("usage") < events.index("promote")
+
+    def test_config_context_exits_after_lifecycle_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home.mkdir()
+        TestCursorConfigContext._patch_home(monkeypatch, home)
+        monkeypatch.delenv("CURSOR_CONFIG_DIR", raising=False)
+        seen_cfg: list[str] = []
+
+        def execute(**_kwargs: object) -> VendorProcessResult:
+            seen_cfg.append(os.environ.get("CURSOR_CONFIG_DIR", ""))
+            return VendorProcessResult(exit_code=0)
+
+        def boom(**_kwargs: object) -> None:
+            raise RuntimeError("postprocess failed")
+
+        with pytest.raises(RuntimeError, match="postprocess failed"):
+            run_vendor_launch(
+                CURSOR_DESCRIPTOR,
+                "review-ask",
+                _base_request(model_args=("--model", "m"), timing_task_kind="cursor-review"),
+                hooks=VendorFamilyHooks(execute=execute, postprocess=boom),
+                use_config_context=True,
+            )
+        assert seen_cfg
+        assert seen_cfg[0]
+        assert Path(seen_cfg[0]).exists() is False
+        assert "CURSOR_CONFIG_DIR" not in os.environ
+
+    def test_retry_hook_exhaustion_still_promotes(self) -> None:
+        events: list[str] = []
+        attempts = {"n": 0}
+
+        def execute(**_kwargs: object) -> VendorProcessResult:
+            attempts["n"] += 1
+            events.append(f"execute-{attempts['n']}")
+            return VendorProcessResult(exit_code=1, stderr="auth")
+
+        def retry(run_once: Any, **_kwargs: object) -> VendorProcessResult:
+            events.append("retry")
+            return run_with_vendor_retries(
+                run_once,
+                policy=VendorRetryPolicy(
+                    is_auth_failure=lambda r: r.exit_code != 0,
+                    max_auth_retries=1,
+                ),
+            )
+
+        outcome = run_vendor_launch(
+            CODEX_DESCRIPTOR,
+            "read-only",
+            _base_request(),
+            hooks=VendorFamilyHooks(
+                execute=execute,
+                retry=retry,
+                mirror_quota=lambda **_k: events.append("quota"),
+                record_timing=lambda **_k: events.append("timing"),
+                postprocess=lambda **_k: events.append("postprocess"),
+                record_usage=lambda **_k: events.append("usage"),
+                promote_completion=lambda **_k: events.append("promote"),
+            ),
+            use_config_context=False,
+        )
+        assert outcome.status == "completed"
+        assert outcome.process_result is not None
+        assert outcome.process_result.exit_code == 1
+        assert attempts["n"] == 2
+        assert events[-5:] == ["quota", "timing", "postprocess", "usage", "promote"]
+
+
+def test_cap_check_result_frozen() -> None:
+    result = VendorCapCheckResult(hit=False)
+    with pytest.raises(FrozenInstanceError):
+        result.hit = True  # type: ignore[misc]
