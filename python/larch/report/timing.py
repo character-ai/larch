@@ -12,7 +12,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 from collections.abc import Mapping
 
 from larch.core import config as _larch_config
@@ -49,6 +49,67 @@ TIMING_VENDOR_MIN_COLS = 13
 TIMING_LOCK_TIMEOUT_S = 5.0
 TIMING_VENDORS_ALLOWED: frozenset[str] = frozenset({"codex", "cursor", "claude"})
 _TASK_KIND_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+
+
+@dataclass(frozen=True)
+class TimingMarkResult:
+    """Outcome of a timing step mark."""
+
+    ledger_path: Path | None
+    marked: bool
+
+
+@dataclass(frozen=True)
+class VendorTaskRequest:
+    """Inputs for recording one vendor task in a timing ledger."""
+
+    vendor: str
+    task_kind: str
+    start_s: float
+    end_s: float
+    output: str
+    exit_code: int = 0
+    status: str = "complete"
+    skill: str = "implement"
+
+
+@dataclass(frozen=True)
+class VendorTaskResult:
+    """Outcome of writing a vendor-task timing row."""
+
+    ledger_path: Path | None
+    recorded: bool
+
+
+@dataclass(frozen=True)
+class RoundRequest:
+    """Inputs for recording one timing review round."""
+
+    skill: str
+    step: str
+    round_n: int
+    start_s: float
+    end_s: float
+    accepted: int
+    rejected: int
+    oos: int | None = None
+
+
+@dataclass(frozen=True)
+class RoundResult:
+    """Outcome of writing a timing round row."""
+
+    ledger_path: Path | None
+    recorded: bool
+
+
+@dataclass(frozen=True)
+class TimingReportResult:
+    """Rendered timing report and its ledger availability."""
+
+    ledger_path: Path | None
+    rendered: str | None
+    status: Literal["rendered", "unavailable"]
 
 
 @dataclass(frozen=True)
@@ -367,6 +428,88 @@ def resolve_timing_ledger_path(*, ledger: str | None = None, env: Mapping[str, s
     return None
 
 
+def mark(
+    *,
+    label: str,
+    ledger: str | None = None,
+    skill: str = "implement",
+    if_latest_differs: bool = False,
+    env: Mapping[str, str] | None = None,
+) -> TimingMarkResult:
+    """Record a timing mark, optionally suppressing a duplicate latest label."""
+    path = resolve_timing_ledger_path(ledger=ledger, env=env)
+    if path is None:
+        return TimingMarkResult(ledger_path=None, marked=False)
+    if if_latest_differs:
+        skill_marks = [item for item in _parse_rows(path)[0] if item.skill == skill]
+        if skill_marks and skill_marks[-1].step == label:
+            return TimingMarkResult(ledger_path=path, marked=False)
+    TimingLedger(path, skill=skill).mark(label)
+    return TimingMarkResult(ledger_path=path, marked=True)
+
+
+def record_vendor_task(
+    *,
+    request: VendorTaskRequest,
+    ledger: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> VendorTaskResult:
+    """Record one vendor task, or return a typed skipped-ledger outcome."""
+    path = resolve_timing_ledger_path(ledger=ledger, env=env)
+    if path is None:
+        return VendorTaskResult(ledger_path=None, recorded=False)
+    TimingLedger(path, skill=request.skill).record_vendor_task(
+        vendor=request.vendor,
+        task_kind=request.task_kind,
+        start_s=request.start_s,
+        end_s=request.end_s,
+        output=request.output,
+        exit_code=request.exit_code,
+        status=request.status,
+    )
+    return VendorTaskResult(ledger_path=path, recorded=True)
+
+
+def record_round(
+    *,
+    request: RoundRequest,
+    ledger: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> RoundResult:
+    """Record one round, or return a typed skipped-ledger outcome."""
+    path = resolve_timing_ledger_path(ledger=ledger, env=env)
+    if path is None:
+        return RoundResult(ledger_path=None, recorded=False)
+    TimingLedger(path).record_round(
+        skill=request.skill,
+        step=request.step,
+        round_n=request.round_n,
+        start_s=request.start_s,
+        end_s=request.end_s,
+        accepted=request.accepted,
+        rejected=request.rejected,
+        oos=request.oos,
+    )
+    return RoundResult(ledger_path=path, recorded=True)
+
+
+def render_report(
+    *,
+    mode: str,
+    fmt: str = "markdown",
+    ledger: str | None = None,
+    append_timing_section: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> TimingReportResult:
+    """Render a report from a resolved ledger without CLI argument handling."""
+    path = resolve_timing_ledger_path(ledger=ledger, env=env)
+    if path is None:
+        return TimingReportResult(ledger_path=None, rendered=None, status="unavailable")
+    rendered = TimingReport(path).render(mode=mode, fmt=fmt, append_timing_section=append_timing_section, env=env)
+    status: Literal["rendered", "unavailable"] = "unavailable" if rendered.startswith("Timing report unavailable:") else "rendered"
+    return TimingReportResult(ledger_path=path, rendered=rendered, status=status)
+
+
 def harness_mark(*, label: str, argv: list[str]) -> int:
     start = time.time()
     rc = 127
@@ -400,7 +543,7 @@ def step_telemetry_mark(*, implement_tmpdir: Path, label: str) -> int:
     try:
         ledger = tokens.resolve_token_ledger_path(env=env)
         if ledger is not None:
-            tokens.TokenLedger(ledger).mark(label)
+            _ = tokens.TokenLedger(ledger).mark(label)
     except Exception as exc:
         print(f"timing telemetry-mark: token mark skipped: {exc}", file=sys.stderr)
     try:
@@ -713,28 +856,17 @@ def timing_mark_main(argv: list[str] | None = None) -> int:
     if not args:
         print("timing mark requires <step>", file=sys.stderr)
         return 1
-    try:
-        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
-    except ValueError as exc:
-        print(f"timing mark: {exc}", file=sys.stderr)
-        return 1
-    if ledger is None:
-        return 0
-    if if_latest_differs:
-        skill = os.environ.get("LARCH_TIMING_SKILL", "implement")
-        skill_marks = [m for m in _parse_rows(ledger)[0] if m.skill == skill]
-        if skill_marks and skill_marks[-1].step == args[0]:
-            return 0
     skill = os.environ.get("LARCH_TIMING_SKILL", "implement")
     try:
-        TimingLedger(ledger, skill=skill).mark(args[0])
+        result = mark(label=args[0], ledger=raw_ledger, skill=skill, if_latest_differs=if_latest_differs)
     except ValueError as exc:
         print(f"timing mark: {exc}", file=sys.stderr)
         return 1
     except OSError as exc:
         print(f"timing mark: WARNING: ledger write skipped: {exc}", file=sys.stderr)
         return 0
-    _append_progress_mark(skill=skill, label=args[0])
+    if result.marked:
+        _append_progress_mark(skill=skill, label=args[0])
     return 0
 
 
@@ -742,21 +874,18 @@ def timing_record_vendor_task_main(argv: list[str] | None = None) -> int:
     args, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
     opts = _flag_map(args)
     try:
-        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
-    except ValueError as exc:
-        print(f"timing record-vendor-task: {exc}", file=sys.stderr)
-        return 1
-    if ledger is None:
-        return 0
-    try:
-        TimingLedger(ledger, skill=os.environ.get("LARCH_TIMING_SKILL", "implement")).record_vendor_task(
-            vendor=opts["--vendor"],
-            task_kind=opts["--task-kind"],
-            start_s=float(opts["--start-s"]),
-            end_s=float(opts["--end-s"]),
-            output=opts["--output"],
-            exit_code=int(opts.get("--exit-code", "0") or "0"),
-            status=opts.get("--status", "complete") or "complete",
+        _ = record_vendor_task(
+            request=VendorTaskRequest(
+                vendor=opts["--vendor"],
+                task_kind=opts["--task-kind"],
+                start_s=float(opts["--start-s"]),
+                end_s=float(opts["--end-s"]),
+                output=opts["--output"],
+                exit_code=int(opts.get("--exit-code", "0") or "0"),
+                status=opts.get("--status", "complete") or "complete",
+                skill=os.environ.get("LARCH_TIMING_SKILL", "implement"),
+            ),
+            ledger=raw_ledger,
         )
     except (KeyError, ValueError) as exc:
         print(f"timing record-vendor-task: {exc}", file=sys.stderr)
@@ -771,17 +900,13 @@ def timing_record_round_main(argv: list[str] | None = None) -> int:
     args, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
     opts = _flag_map(args)
     try:
-        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
-    except ValueError as exc:
-        print(f"timing record-round: {exc}", file=sys.stderr)
-        return 1
-    if ledger is None:
-        return 0
-    try:
-        TimingLedger(ledger).record_round(
-            skill=opts["--skill"], step=opts["--step"], round_n=int(opts["--round"]),
-            start_s=float(opts["--start-s"]), end_s=float(opts["--end-s"]),
-            accepted=int(opts["--accepted"]), rejected=int(opts["--rejected"]), oos=int(opts.get("--oos", "0") or "0"),
+        _ = record_round(
+            request=RoundRequest(
+                skill=opts["--skill"], step=opts["--step"], round_n=int(opts["--round"]),
+                start_s=float(opts["--start-s"]), end_s=float(opts["--end-s"]),
+                accepted=int(opts["--accepted"]), rejected=int(opts["--rejected"]), oos=int(opts.get("--oos", "0") or "0"),
+            ),
+            ledger=raw_ledger,
         )
     except (KeyError, ValueError) as exc:
         print(f"timing record-round: {exc}", file=sys.stderr)
@@ -840,10 +965,10 @@ def timing_report_main(argv: list[str] | None = None) -> int:
             raise ValueError("missing report mode")
         if fmt not in {"json", "markdown"}:
             raise ValueError(f"unknown format: {fmt}")
-        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
-        if ledger is None:
+        result = render_report(mode=mode, fmt=fmt, ledger=raw_ledger, append_timing_section=append)
+        if result.rendered is None:
             raise ValueError("ledger path unavailable")
-        rendered = TimingReport(ledger).render(mode=mode, fmt=fmt, append_timing_section=append)
+        rendered = result.rendered
         text = rendered + "\n"
         if mode == "full" and output is not None:
             tmp = output.with_name(output.name + ".tmp")

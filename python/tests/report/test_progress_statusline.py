@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import time
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,20 @@ from larch.report import statusline
 from larch.report import statusline_install
 from larch.report import timing
 from larch import cli
+
+
+def test_resolve_persisted_run_returns_frozen_named_fields(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _ = (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=design-20260714.1\n", encoding="utf-8")
+    _ = (tmp_path / "source-env.sh").write_text(f"REPO_ROOT={repo}\n", encoding="utf-8")
+
+    result = progress_file.resolve_persisted_run(tmpdir=tmp_path, env={})
+
+    assert result.run_id == "design-20260714.1"
+    assert result.repo_root == repo.resolve()
+    with pytest.raises(FrozenInstanceError):
+        result.run_id = "other"  # type: ignore[misc]
 
 
 def test_progress_path_uses_repo_realpath_and_short_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1004,7 +1019,9 @@ def test_install_statusline_creates_settings_and_launcher(tmp_path: Path, monkey
     _ = (plugin / "python" / "cli.py").write_text("", encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
 
-    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    result = statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    assert result.installed
+    assert result.reason == ""
 
     settings = json.loads((repo / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
     assert settings["statusLine"]["refreshInterval"] == 2
@@ -1025,7 +1042,9 @@ def test_install_statusline_preserves_local_non_larch_entry(tmp_path: Path, monk
     _ = settings_path.write_text(original, encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
 
-    assert not statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    result = statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    assert not result.installed
+    assert result.reason == "custom-statusline"
     assert settings_path.read_text(encoding="utf-8") == original
 
 

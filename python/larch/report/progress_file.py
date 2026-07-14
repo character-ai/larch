@@ -13,6 +13,7 @@ import stat
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -33,6 +34,14 @@ _C1_CONTROL_MIN = 0x80
 _C1_CONTROL_MAX = 0x9F
 _RUN_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _CLONE_HASH_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9a-f]{16}")
+
+
+@dataclass(frozen=True)
+class PersistedRunResult:
+    """Session-owned run identity recovered from persisted environment files."""
+
+    run_id: str | None
+    repo_root: Path | None
 
 
 def _cache_home() -> Path:
@@ -129,6 +138,14 @@ def resolve_persisted_repo_root(*, tmpdir: str | Path) -> Path | None:
                         with contextlib.suppress(OSError):
                             return candidate.resolve()
     return None
+
+
+def resolve_persisted_run(*, tmpdir: str | Path, env: dict[str, str] | None = None) -> PersistedRunResult:
+    """Resolve the persisted run ID and consumer root without using an active pointer."""
+    return PersistedRunResult(
+        run_id=resolve_owned_run_id(tmpdir=tmpdir, env=env),
+        repo_root=resolve_persisted_repo_root(tmpdir=tmpdir),
+    )
 
 
 def progress_clone_dir(repo_root: str | Path) -> Path:

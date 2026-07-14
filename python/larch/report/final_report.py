@@ -425,7 +425,7 @@ def _issue_load_result_for_run(
     return run_dir, load_result, exec_count, warn_count
 
 
-def _merge_line_count_state(*, ship: Path, pr_number: str, lines: Mapping[str, object]) -> None:
+def _merge_line_count_state(*, ship: Path, pr_number: str, lines: tokens.PrLineCountResult) -> None:
     if not ship.is_file() or ship.is_symlink() or not os.access(ship, os.W_OK):
         return
     preserved: list[str] = []
@@ -437,7 +437,7 @@ def _merge_line_count_state(*, ship: Path, pr_number: str, lines: Mapping[str, o
     tmp.write_text(
         "".join(f"{line}\n" for line in preserved)
         + f"LINES_PR_NUMBER={pr_number or '0'}\n"
-        + "".join(f"{key}={lines[key]}\n" for key in ("LINES_STATUS", "CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED") if key in lines),
+        + "".join(f"{key}={value}\n" for key, value in lines.kv_items() if key != "REASON"),
         encoding="utf-8",
     )
     tmp.replace(ship)
@@ -452,14 +452,14 @@ def _derive_pr_line_counts(*, repo: str, repo_unavailable: bool, pr_number: str,
         if all(value.isdigit() for value in (ca, cd, la, ld)):
             return ca, cd, la, ld
     result = tokens.compute_pr_line_counts(pr_number=int(pr_number), repo=repo or None)
-    if result.get("LINES_STATUS") == "ok":
+    if result.status == "ok":
         with contextlib.suppress(OSError):
             _merge_line_count_state(ship=ship, pr_number=pr_number, lines=result)
         return (
-            str(result.get("CODE_ADDED", "")),
-            str(result.get("CODE_DELETED", "")),
-            str(result.get("LOGS_ADDED", "")),
-            str(result.get("LOGS_DELETED", "")),
+            str(result.code_added),
+            str(result.code_deleted),
+            str(result.logs_added),
+            str(result.logs_deleted),
         )
     return "", "", "", ""
 
