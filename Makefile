@@ -933,6 +933,7 @@ test-flush-execution-issues:
 
 test-step-7a:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_step_7a.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-7a.sh
 
 
 test-step-8-oos-checkpoint:

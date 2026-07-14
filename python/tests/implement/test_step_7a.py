@@ -9,6 +9,19 @@ from larch.implement import step_7a
 from larch.report.run_log_manifest import RefreshSkip
 
 
+def _no_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
+    _ = (base_remote, base_ref)
+    return False
+
+
+def _successful_log_flush(*_args: object, **_kwargs: object) -> str:
+    return "ok"
+
+
+def _successful_subprocess(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess([], 0, "", "")
+
+
 def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     merge_env = tmp_path / "bgjob" / "implement-step7a.merge.env"
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
@@ -176,14 +189,6 @@ def test_step7a_skips_run_log_commit_after_preterminal_refresh_skip(
 
     assert status == "degraded"
     assert ("run-log", "commit") not in [call[:2] for call in calls]
-
-
-def test_step7a_main_rejects_unknown_flags(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = step_7a.main(["--implement-tmpdir", "/tmp/x", "--unknown-flag", "1"])
-
-    assert rc == 2
-    out = capsys.readouterr().out
-    assert "STEP_7A_BAIL_REASON=argv" in out
 
 
 def test_step7a_main_empty_tmpdir_argv_falls_back_to_env(
@@ -429,4 +434,208 @@ def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.
 
     assert rc == 0
     assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out
+
+
+def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=owner/repo\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+    events: list[str] = []
+
+    def fake_generate(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+        assert (base_remote, base_ref) == ("origin", "main")
+        events.append("generate")
+        diagram = implement_tmpdir / "code-flow-diagram.md"
+        _ = diagram.write_text("## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n", encoding="utf-8")
+        return 0, "ok", str(diagram), ""
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ("diagrams", "upsert"):
+            return subprocess.CompletedProcess(args, 0, "UPSERT_STATUS=ok\nCOMMENT_URL=https://example.test/comment/1\n", "")
+        if args[:2] == ("push", "checkpoint-probe"):
+            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\nROUTE=continue\nCHECKPOINT_NEXT=continue\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
+    monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
+
+    rc = step_7a.run_step7a(tmp_path, issue_number="42")
+
+    assert rc == 0
+    assert calls[0] == ("token", "mark", "Step 7a — pre-ship")
+    assert events == ["generate"]
+    assert calls[1] == (
+        "diagrams",
+        "upsert",
+        "--issue",
+        "42",
+        "--code-flow-file",
+        str(tmp_path / "code-flow-section.md"),
+        "--repo",
+        "owner/repo",
+    )
+    assert calls[2] == ("push", "checkpoint-probe", "7a.r", "diagrams", "--base-remote", "origin", "--base-ref", "main")
+    assert (tmp_path / "code-flow-section.md").read_text(encoding="utf-8") == (
+        "## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n"
+    )
+    output = capsys.readouterr().out
+    assert "COMMENT_URL=https://example.test/comment/1" in output
+    assert "REBASE_OUTCOME=ok" in output
+    assert "CHECKPOINT_NEXT=continue" in output
+
+
+def test_step7a_rehydrates_fork_target_for_generation_and_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text(
+        "LARCH_FORKED_TARGET=true\nREPO=owner/repo\nUPSTREAM_REPO=upstream/repo\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, ...]] = []
+    generation_target: list[tuple[str, str]] = []
+
+    def fake_generate(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+        generation_target.append((base_remote, base_ref))
+        diagram = implement_tmpdir / "code-flow-diagram.md"
+        _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
+        return 0, "ok", str(diagram), ""
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ("diagrams", "upsert"):
+            return subprocess.CompletedProcess(args, 0, "UPSERT_STATUS=ok\nCOMMENT_URL=https://example.test/comment/1\n", "")
+        if args[:2] == ("push", "checkpoint-probe"):
+            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
+    monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
+
+    assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
+    assert generation_target == [("upstream", "main")]
+    assert ("diagrams", "upsert", "--issue", "42", "--code-flow-file", str(tmp_path / "code-flow-section.md"), "--repo", "upstream/repo") in calls
+    assert ("push", "checkpoint-probe", "7a.r", "diagrams", "--base-remote", "upstream", "--base-ref", "main") in calls
+
+
+@pytest.mark.parametrize(("status", "reason"), [("skipped", "br-in-participant-alias"), ("skipped", "dollar-in-participant-alias"), ("skipped", "unclosed-frontmatter")])
+def test_step7a_sanitizer_skip_clears_stale_artifacts_and_omits_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    reason: str,
+) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")
+    _ = (tmp_path / "code-flow-section.md").write_text("stale\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ("push", "checkpoint-probe"):
+            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    def fake_generate(*_args: object, **_kwargs: object) -> tuple[int, str, str, str]:
+        return 0, status, "", reason
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
+    monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
+
+    assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
+    assert not (tmp_path / "code-flow-diagram.md").exists()
+    assert not (tmp_path / "code-flow-section.md").exists()
+    assert not any(call[:2] == ("diagrams", "upsert") for call in calls)
+    assert not (tmp_path / "execution-issues.md").exists()
+
+
+def test_step7a_upsert_failure_keeps_checkpoint_and_exit_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_generate(implement_tmpdir: Path, **_kwargs: str) -> tuple[int, str, str, str]:
+        diagram = implement_tmpdir / "code-flow-diagram.md"
+        _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
+        return 0, "ok", str(diagram), ""
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ("diagrams", "upsert"):
+            return subprocess.CompletedProcess(args, 1, "", "upsert failed\n")
+        if args[:2] == ("push", "checkpoint-probe"):
+            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
+    monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
+
+    assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
+    assert any(call[:2] == ("push", "checkpoint-probe") for call in calls)
+    assert "COMMENT_URL=\n" in capsys.readouterr().out
+
+
+def test_step7a_empty_issue_number_skips_upsert_but_runs_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_generate(implement_tmpdir: Path, **_kwargs: str) -> tuple[int, str, str, str]:
+        diagram = implement_tmpdir / "code-flow-diagram.md"
+        _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
+        return 0, "ok", str(diagram), ""
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ("push", "checkpoint-probe"):
+            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
+    monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
+
+    assert step_7a.run_step7a(tmp_path) == 0
+    assert not any(call[:2] == ("diagrams", "upsert") for call in calls)
+    assert any(call[:2] == ("push", "checkpoint-probe") for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("argv", "reason"),
+    [([], "missing-implement-tmpdir"), (["--implement-tmpdir", "/tmp/x", "--unknown-flag", "1"], "argv")],
+)
+def test_step7a_argument_failures_emit_terminal_contract(
+    argv: list[str],
+    reason: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert step_7a.main(argv) == 2
+    output = capsys.readouterr().out
+    assert f"STEP_7A_BAIL_REASON={reason}" in output
+    assert "REBASE_OUTCOME=skipped" in output
 # pyright: reportPrivateUsage=false
