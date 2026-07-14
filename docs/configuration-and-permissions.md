@@ -160,7 +160,7 @@ These checks are verified immediately before any merge attempt — the script do
 
 ## Selecting the Step 2 implementer (`--coder`)
 
-The default Step 2 order depends on the implementation difficulty: **TRIVIAL** uses **Codex→Cursor→Claude**; **MODERATE** uses **Cursor (`cursor-grok-4.5-high`)→Codex (`gpt-5.6-sol`)→Claude**; and **HARD** uses **Codex→Cursor→Claude**. A MODERATE run therefore falls back to Codex `gpt-5.6-sol` when Cursor is unavailable.
+The default Step 2 order depends on the implementation difficulty: **TRIVIAL** uses **Cursor→Codex→Claude**; **MODERATE** uses **Cursor (`cursor-grok-4.5-high`)→Codex (`gpt-5.6-terra`)→Claude**; and **HARD** uses **Codex→Cursor→Claude**. A MODERATE run therefore falls back to Codex `gpt-5.6-terra` when Cursor is unavailable.
 
 `--coder codex` and `--coder cursor` are external-tool overrides: the selected external tool is first, the other external tool remains the next fallback, and Claude remains last. `--coder claude` selects Claude directly and does not retain the external tools as fallbacks.
 
@@ -191,12 +191,12 @@ The model name to pass to Cursor's `--model` flag (for example, `composer-2.5`).
 
 **When set:**
 - Cursor invocations use this model unless a reviewer-panel manifest row pins a per-slot `cursor_model`
-- This explicit environment or plugin configuration overrides the role default, including the Step 2 MODERATE default of `cursor-grok-4.5-high`
+- This explicit environment or plugin configuration overrides the role default, including the Step 2 TRIVIAL and MODERATE default of `cursor-grok-4.5-high`
 - The model flag is injected by `python3 python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - The global Cursor default is `composer-2.5` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
-- Step 2 `/implement` uses a difficulty-specific map instead: MODERATE uses `cursor-grok-4.5-high`; TRIVIAL and HARD use `composer-2.5`
+- Step 2 `/implement` uses a difficulty-specific map instead: TRIVIAL and MODERATE use `cursor-grok-4.5-high`; HARD uses `composer-2.5`
 - Cursor review prompts are wrapped with `/max-mode on.` unconditionally by `_review_launch_cursor` regardless of diff classification or `--risk`. Codex review effort is not risk-gated; `--with-effort` is always passed to Codex review launchers regardless of diff classification.
 - `composer-2.5` remains the global fallback for roles without the difficulty-specific Step 2 map, including voter, fix/coder, and review-panel uses. Callers may still supply an explicit per-slot `cursor_model` override, and retry replay preserves that override.
 
@@ -258,7 +258,7 @@ Role-specific Codex model keys for cheaper review, voting, and fix application.
 - `LARCH_CODEX_VOTE_MODEL`: `gpt-5.6-terra` for Codex voting slots unless tier routing supplies TRIVIAL `gpt-5.6-luna`.
 - `LARCH_CODEX_FIX_MODEL`: `gpt-5.6-terra` for Codex CI recovery, plan revision, plan autofix, and review-fix application.
 
-Codex specialist reviewer panel rows use the review role with tier defaults: TRIVIAL Cursor-down rows use `gpt-5.6-luna`, MODERATE uses `gpt-5.6-luna`, and HARD uses `gpt-5.6-terra`. `LARCH_CODEX_REVIEW_MODEL` still wins over those defaults.
+Codex specialist reviewer panel rows use the review role with tier defaults: TRIVIAL Cursor-down rows use `gpt-5.6-luna`, MODERATE uses `gpt-5.6-terra`, and HARD uses `gpt-5.6-terra`. `LARCH_CODEX_REVIEW_MODEL` still wins over those defaults.
 
 These roles ignore `LARCH_CODEX_MODEL`, `codex_model`, and `--default-model`. Blank, whitespace-only, or control-character values fail in the Codex probe or launcher preflight before panel launch.
 
@@ -332,7 +332,7 @@ Codex reasoning effort applies at launch sites that pass `--with-effort` or use 
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 
-HARD reviewer panels can set Codex model roles per archetype. Plan review uses the default Codex role only for `pragmatic` and `requirements`; code review uses it only for `correctness` and `edge-cases`. Other Codex reviewer rows, including dynamic rows, stay on the `review` role. Manifest `resolved_model` is derived from each row's `model_role`, so mixed HARD panels can contain both the default Codex model and `CODEX_REVIEW_MODEL_DEFAULT`.
+All Codex reviewer rows use the `review` role at every tier and for every archetype, including dynamic rows; there is no per-archetype or HARD-tier default-role override. Manifest `resolved_model` is derived from each row's `model_role` and the tier-aware `CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY` default, so HARD panels resolve Codex rows the same way MODERATE does.
 
 ### `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`
 
