@@ -1,0 +1,174 @@
+### Schema update and tolerant validators
+
+Partition piece 1 of 2 split from #7155.
+
+**Scope**: Extend `Record` TypedDict with all 9 fields using `NotRequired`. Update `_validate_record` to allow but not require `added_at`/`history` (tolerate legacy 4-field records). Update `serialize_baseline` for stable field ordering. Update tests for new schema (no migration yet).
+
+**Firm headings**: python/larch/lint/lint_complexity_baseline.py, python/tests/lint/test_lint_complexity_baseline.py
+
+**Acceptance**:
+
+`make lint` green; `python3 python/cli.py lint complexity-baseline` passes on unmigrated file; tests pass.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# Schema extension and baseline migration
+
+Partition piece 1 of 2 split from #6969.
+
+**Scope**: Update `Record` TypedDict, `BASELINE_KEYS`, and `_validate_record` in `python/larch/lint/lint_complexity_baseline.py` to accept the extended schema (required: `added_at`, `history`; optional: `source_issue`, `reason`, `operator_override`). Migrate all 1,136 entries in `python/complexity-baseline.json` to `added_at: "legacy"`, `history: []`. Add stable field ordering for new fields in `serialize_baseline`. Update `load_baseline` to handle the new schema. The writer and gate logic are not changed in this piece.
+
+**Firm headings**: python/larch/lint/lint_complexity_baseline.py, python/complexity-baseline.json
+
+**Acceptance**:
+
+`make lint` green; `python3 python/cli.py lint complexity-baseline` passes on migrated file; migration round-trip test passes; no existing identities or metrics changed.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# bug-treadmill [FEATURE] Complexity-baseline debt ratchet: repeat-bump gate + debt report
+
+​#### Problem
+
+28 fix commits extended `python/complexity-baseline.json` between 2026-07-08 and 2026-07-11. The pattern: the complexity lint fires on a fix, the fix baselines it away, and the same functions keep growing. Entries added in this window include `launch_codex_implement_main` and `launch_cursor_implement_main` at metrics in the 50s, sibling launcher entries at 77 and 82, and `_launch_slot` branch entries. The guardrail yields every time, so dispatch hot spots accrete a lane or guard branch per fix and never get refactored.
+
+A hard ban on baseline extensions was considered and rejected: it would block urgent fixes at the worst moment. This design never blocks a first extension. It binds only on repeat accretion, which is where the evidence shows the pathology.
+
+​#### Required design
+
+1. Schema. Extend complexity-baseline entries to:
+
+   ```json
+   {
+     "file": "larch/x.py",
+     "code": "PLR0915",
+     "qualified_symbol": "f",
+     "metric": 55,
+     "added_at": "2026-07-12",
+     "source_issue": 1234,
+     "reason": "<one sentence>",
+     "history": [{"date": "2026-07-12", "metric": 55}],
+     "operator_override": {"reason": "<one sentence>", "issue": 1240}
+   }
+   ```
+
+   `source_issue`, `reason` metadata, and `operator_override` are optional keys; `operator_override` is absent by default. Grandfather existing entries with a one-shot migration: `added_at: "legacy"`, `history: []`.
+2. Writer. The `--write-baseline` path in `larch/lint/lint_complexity_baseline.py`:
+   - keeps `added_at` stable across rewrites,
+   - appends `{date, metric}` to `history` on any metric increase,
+   - requires a non-empty `reason` for any new entry or metric increase,
+   - stamps dates as UTC dates,
+   - never emits `operator_override`. Per invariant I-Gate-1 (a gate never disarms on data authored by the gated entity), the override enters only by manual operator edit.
+3. Gate (repeat-bump rule, enforced by the same lint that validates the baseline):
+   - First-ever entry, or first metric increase for a symbol: allowed. Urgent fixes always ship.
+   - A second metric increase for the same `qualified_symbol` within 14 days (computed from `history` dates only, no git archaeology, so it works in shallow CI clones): FAIL. The failure message names the function, its bump history, and the three exits: simplify the function, split it, or add an operator override.
+   - An `operator_override` with a non-empty reason and a positive linked `issue` silences the gate for that entry. The lint still lists all active overrides in its output so they stay visible.
+4. Debt report. `python3 python/cli.py lint complexity-debt --report` prints: entry count, entries by age bucket, top 10 by metric, symbols with 2 or m
+
+### Baseline migration and strict validators
+
+Partition piece 2 of 2 split from #7155.
+
+**Scope**: Migrate `python/complexity-baseline.json` to add `added_at: "legacy"`, `history: []` to all 1,135 entries. Tighten `_validate_record` to require `added_at` and `history`. Update tests to require new schema.
+
+**Firm headings**: python/complexity-baseline.json, python/larch/lint/lint_complexity_baseline.py, python/tests/lint/test_lint_complexity_baseline.py
+
+**Acceptance**:
+
+`make lint` green; migration round-trip test passes; no existing identities or metrics changed.
+
+**Dependencies (from proposal)**: blocked-by Piece 1
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# Schema extension and baseline migration
+
+Partition piece 1 of 2 split from #6969.
+
+**Scope**: Update `Record` TypedDict, `BASELINE_KEYS`, and `_validate_record` in `python/larch/lint/lint_complexity_baseline.py` to accept the extended schema (required: `added_at`, `history`; optional: `source_issue`, `reason`, `operator_override`). Migrate all 1,136 entries in `python/complexity-baseline.json` to `added_at: "legacy"`, `history: []`. Add stable field ordering for new fields in `serialize_baseline`. Update `load_baseline` to handle the new schema. The writer and gate logic are not changed in this piece.
+
+**Firm headings**: python/larch/lint/lint_complexity_baseline.py, python/complexity-baseline.json
+
+**Acceptance**:
+
+`make lint` green; `python3 python/cli.py lint complexity-baseline` passes on migrated file; migration round-trip test passes; no existing identities or metrics changed.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# bug-treadmill [FEATURE] Complexity-baseline debt ratchet: repeat-bump gate + debt report
+
+​#### Problem
+
+28 fix commits extended `python/complexity-baseline.json` between 2026-07-08 and 2026-07-11. The pattern: the complexity lint fires on a fix, the fix baselines it away, and the same functions keep growing. Entries added in this window include `launch_codex_implement_main` and `launch_cursor_implement_main` at metrics in the 50s, sibling launcher entries at 77 and 82, and `_launch_slot` branch entries. The guardrail yields every time, so dispatch hot spots accrete a lane or guard branch per fix and never get refactored.
+
+A hard ban on baseline extensions was considered and rejected: it would block urgent fixes at the worst moment. This design never blocks a first extension. It binds only on repeat accretion, which is where the evidence shows the pathology.
+
+​#### Required design
+
+1. Schema. Extend complexity-baseline entries to:
+
+   ```json
+   {
+     "file": "larch/x.py",
+     "code": "PLR0915",
+     "qualified_symbol": "f",
+     "metric": 55,
+     "added_at": "2026-07-12",
+     "source_issue": 1234,
+     "reason": "<one sentence>",
+     "history": [{"date": "2026-07-12", "metric": 55}],
+     "operator_override": {"reason": "<one sentence>", "issue": 1240}
+   }
+   ```
+
+   `source_issue`, `reason` metadata, and `operator_override` are optional keys; `operator_override` is absent by default. Grandfather existing entries with a one-shot migration: `added_at: "legacy"`, `history: []`.
+2. Writer. The `--write-baseline` path in `larch/lint/lint_complexity_baseline.py`:
+   - keeps `added_at` stable across rewrites,
+   - appends `{date, metric}` to `history` on any metric increase,
+   - requires a non-empty `reason` for any new entry or metric increase,
+   - stamps dates as UTC dates,
+   - never emits `operator_override`. Per invariant I-Gate-1 (a gate never disarms on data authored by the gated entity), the override enters only by manual operator edit.
+3. Gate (repeat-bump rule, enforced by the same lint that validates the baseline):
+   - First-ever entry, or first metric increase for a symbol: allowed. Urgent fixes always ship.
+   - A second metric increase for the same `qualified_symbol` within 14 days (computed from `history` dates only, no git archaeology, so it works in shallow CI clones): FAIL. The failure message names the function, its bump history, and the three exits: simplify the function, split it, or add an operator override.
+   - An `operator_override` with a non-empty reason and a positive linked `issue` silences the gate for that entry. The lint still lists all active overrides in its output so they stay visible.
+4. Debt report. `python3 python/cli.py lint complexity-debt --report` prints: entry count, entries by age bucket, top 10 by metric, symbols with 2 or m
+

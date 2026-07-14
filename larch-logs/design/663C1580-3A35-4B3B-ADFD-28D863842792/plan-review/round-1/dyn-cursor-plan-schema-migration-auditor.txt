@@ -1,0 +1,34 @@
+Reviewing the plan against the current codebase: reading the baseline module, tests, and CLI wiring.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	minor	correctness	python/tests/lint/test_lint_complexity_baseline.py	Planned migration coverage only round-trips the already-migrated checked-in baseline, not legacy four-field input through migrate_baseline/--migrate	A broken migrate_baseline (or main --migrate wiring) can still pass CI if python/complexity-baseline.json is migrated out-of-band and tests only do load_baseline→serialize_baseline byte equality on that post-migration artifact; acceptance "no existing identities or metrics changed" is then unguarded for the one-shot migration path	Add an explicit test that writes a synthetic legacy four-field baseline, runs migrate_baseline (or main --migrate), asserts every row gains added_at="legacy" and history=[], and compares before/after (file,code,qualified_symbol)→metric projections for equality
+1	in_scope	minor	correctness	python/larch/lint/lint_complexity_baseline.py:migrate_baseline	Plan does not state that migrate_baseline must parse pre-migration JSON without calling strict load_baseline	After Piece 1, load_baseline rejects four-field rows (current _validate_record at 186-217 enforces exact BASELINE_KEYS). Wiring migrate through load_baseline makes --migrate fail on the legacy file it is meant to upgrade, blocking the PR migration step	In the migrate_baseline plan bullet, add one line: parse raw JSON (or a legacy-only helper), never call load_baseline on the pre-migration file
+
+## Findings
+
+### 1. [correctness] Legacy migration path is not covered by the planned tests
+**Location:** `python/tests/lint/test_lint_complexity_baseline.py` (planned coverage); `python/larch/lint/lint_complexity_baseline.py:migrate_baseline`
+
+The plan’s testing strategy describes migration round-trip as loading and reserializing the **already migrated** checked-in `python/complexity-baseline.json`. That validates `serialize_baseline` canonical ordering and metadata preservation on the post-migration artifact, but it does **not** exercise `migrate_baseline` or `--migrate` on legacy four-field rows.
+
+Because the PR depends on a one-shot `--migrate` run (`Approach` / `UPDATED: python/complexity-baseline.json`), a broken migration implementation could be masked if the committed JSON is migrated manually while CI only runs the post-migration round-trip. That weakens the acceptance criterion that identities and metrics are unchanged across migration.
+
+**Suggested revision:** Add a dedicated test on a synthetic legacy fixture that calls `migrate_baseline` (or `main --migrate`), checks grandfather fields on every row, and asserts unchanged `(file, code, qualified_symbol) → metric` projections.
+
+### 2. [correctness] `migrate_baseline` must bypass strict `load_baseline`
+**Location:** `python/larch/lint/lint_complexity_baseline.py:migrate_baseline` (planned); current `_validate_record` at ```186:217:python/larch/lint/lint_complexity_baseline.py```
+
+The plan says migration “reads the existing baseline JSON,” which implies the right behavior, but it never states the constraint explicitly. Today `_validate_record` requires exactly `BASELINE_KEYS` (four fields). After Piece 1, strict load will reject legacy shapes. If an implementer routes migration through `load_baseline`, `--migrate` will fail on the file it is supposed to upgrade.
+
+**Suggested revision:** Add one explicit plan line: `migrate_baseline` parses raw JSON (or a legacy-only helper) and must not call `load_baseline` on the pre-migration file.
+
+---
+
+## Plan alignment (no additional in-scope gaps)
+
+- **Strict load vs writer boundary:** The plan correctly extends validation/load/serialize, keeps `_run_write` four-field (`440:447:python/larch/lint/lint_complexity_baseline.py`), and calls out revising `test_write_then_check_passes` (```357:367:python/tests/lint/test_lint_complexity_baseline.py```), which would cross into Piece 2 if left unchanged.
+- **Metadata preservation:** The plan requires `_validate_record` to return all validated fields (fixing today’s four-field projection at ```212:217:python/larch/lint/lint_complexity_baseline.py```) and optional-field round-trip tests.
+- **Canonical ordering:** `serialize_baseline` today dumps dicts as-is (```429:432:python/larch/lint/lint_complexity_baseline.py```); the planned explicit canonical rebuild plus shuffled-key test is the right contract.
+- **Record count:** Plan says 1,135 rows; the checked-in file currently has 1,135 (`python/complexity-baseline.json`).
+- **Piece 2 scope:** No repeat-bump/gate tests are planned; writer tests stay pinned to four-field output.
+
+[OUT_OF_SCOPE] `docs/linting.md:59` still documents the four-field `{file, code, qualified_symbol, metric}` schema. Piece 1 firm files do not include docs; update in a follow-up or Piece 2 doc pass.
