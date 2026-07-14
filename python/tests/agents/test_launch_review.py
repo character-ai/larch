@@ -16,6 +16,7 @@ import pytest
 
 from larch.agents import agents
 from larch.agents import _review_launcher
+from larch.agents._vendor import VendorCapCheckResult
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
@@ -154,16 +155,22 @@ def test_codex_sentinel_hash_mismatch_fails_closed(tmp_path: Path, monkeypatch: 
 
 def test_token_budget_cap_from_env_writes_done_and_skips_vendor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "out.txt"
+    calls: list[tuple[str, str]] = []
 
-    def fake_run(argv: list[str], **_kwargs: object) -> object:
-        assert argv[2:4] == ["token", "check-budget"]
-        return type("R", (), {"stdout": "STATUS=cap_hit TOTAL=42\n", "returncode": 0})()
+    def fake_cap_check(*, cap: str, step: str, **_kwargs: object) -> VendorCapCheckResult:
+        calls.append((cap, step))
+        return VendorCapCheckResult(hit=True, stdout="STATUS=cap_hit TOTAL=42\n")
+
+    def prompt_must_not_render(_args: argparse.Namespace) -> tuple[int, str, int]:
+        raise AssertionError("cap hit must skip prompt rendering")
 
     monkeypatch.setenv("LARCH_TOKEN_BUDGET_CAP_REVIEW", "10")
-    monkeypatch.setattr(agents.proc, "run", fake_run)
+    monkeypatch.setattr(_review_launcher, "check_token_budget_cap", fake_cap_check)
+    monkeypatch.setattr(_review_launcher, "_review_resolve_prompt", prompt_must_not_render)
     args = argparse.Namespace(token_budget_cap="")
     assert agents._review_effective_token_cap(args) == 10
-    assert agents._review_check_budget_or_write_cap_hit(output=output, cap=10, timing_kind="codex-review")
+    assert agents.launch_review_main(["--tool", "codex", "--output", str(output), "--timeout", "1", "--prompt", "hi"]) == 0
+    assert calls == [("10", "codex-review")]
     assert output.read_text(encoding="utf-8") == "STATUS=cap_hit\n"
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "0\n"
 
@@ -954,12 +961,6 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
         _ = caller
         return agents.AuthVerdict(ok=True, rc=0, message="")
 
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        return None
-
     def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
         _ = workdir
         return tmp_path / "baseline"
@@ -980,8 +981,6 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
     monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
     monkeypatch.setattr(_review_launcher, "_review_cursor_postprocess", cursor_postprocess)
@@ -1006,12 +1005,6 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
         _ = caller
         return agents.AuthVerdict(ok=True, rc=0, message="")
-
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        return None
 
     def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
         _ = workdir
@@ -1042,8 +1035,6 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_ok)
@@ -1220,12 +1211,6 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         _ = caller
         return agents.AuthVerdict(ok=True, rc=0, message="")
 
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        return None
-
     def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
         _ = workdir
         return tmp_path / "baseline"
@@ -1249,8 +1234,6 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_capture)
@@ -1384,12 +1367,6 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
         _ = caller
         return agents.AuthVerdict(ok=True, rc=0, message="")
 
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        return None
-
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
         _ = (with_effort, default_model)
         return agents.ModelArgResult(())
@@ -1403,8 +1380,6 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     args = argparse.Namespace(
@@ -1551,6 +1526,34 @@ def test_codex_quota_failure_skips_transient_retry(tmp_path: Path, monkeypatch: 
     assert transient_attempt == 1
 
 
+def test_codex_success_mirrors_quota_before_retry_classification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    mirrors: list[tuple[Path, Path]] = []
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        events.write_text('{"type":"message"}\n', encoding="utf-8")
+        output.write_text("ok\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output)
+
+    def mirror_quota(*, events: Path, sidecar: Path) -> None:
+        mirrors.append((events, sidecar))
+
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "_mirror_codex_quota_from_events", mirror_quota)
+    result, _auth_attempt, _transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    assert result.exit_code == 0
+    assert mirrors == [(events, sidecar)]
+
+
 def test_cursor_empty_result_integration_retries_stub_binary(tmp_path: Path) -> None:
     state = tmp_path / "attempts"
     state.write_text("0", encoding="utf-8")
@@ -1651,12 +1654,6 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
         _ = caller
         return agents.AuthVerdict(ok=True, rc=0, message="")
 
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        return None
-
     def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
         _ = workdir
         return tmp_path / "baseline"
@@ -1671,8 +1668,6 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
     monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
     monkeypatch.setattr(_review_launcher, "_review_cursor_postprocess", track_postprocess)
@@ -2007,12 +2002,6 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(**_kwargs: object) -> None:
-        return None
-
     def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
         _ = workdir
         return tmp_path / "baseline"
@@ -2024,8 +2013,6 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
         return None
 
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
     monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
     monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_fail)
@@ -2067,12 +2054,6 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
     monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
-    def setup_cursor_config_dir() -> tuple[Path, str | None]:
-        return (tmp_path / "cfg", None)
-
-    def cleanup_cursor_config_dir(**_kwargs: object) -> None:
-        return None
-
     def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
         _ = workdir
         return tmp_path / "baseline"
@@ -2084,8 +2065,6 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
         return None
 
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
     monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
     monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
     monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_fail)

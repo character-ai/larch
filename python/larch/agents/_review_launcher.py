@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -21,10 +22,16 @@ from pathlib import Path
 from larch.state import dirty_tree
 from larch.review import findings_ledger
 from larch.git import git
+from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
-from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, read_panel_payload_bytes, _panel_logging_enabled
+from larch.report.tokens import (
+    append_panel_prompt_size,
+    panel_prompt_size_artifact_for_output,
+    read_panel_payload_bytes,
+    _panel_logging_enabled,
+)
 
 from larch.agents._types import (
     _CTRL_RE,
@@ -59,8 +66,6 @@ from larch.agents._run_external import (
     external_auth_verdict,
     external_startup_lock_acquire,
     external_startup_lock_release_after,
-    _codex_auth_args,
-    _trust_config_arg,
     _prepare_codex_home,
     _resolve_review_codex_workdir,
     _temporary_env,
@@ -86,6 +91,16 @@ from larch.agents._auth import (
     cursor_auth_export_env,
     _probe_tmpdir,
 )
+from larch.agents._vendor import (
+    CODEX_DESCRIPTOR,
+    CURSOR_DESCRIPTOR,
+    VendorFamilyHooks,
+    VendorLaunchRequest,
+    VendorProcessResult,
+    check_token_budget_cap,
+    run_vendor_launch,
+)
+
 
 def _review_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py agent launch-review")
@@ -106,12 +121,16 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--feature-file", default="")
     parser.add_argument("--session-env-path", default="")
-    parser.add_argument("--timing-task-kind", default=os.environ.get("LARCH_TIMING_TASK_KIND", ""))
+    parser.add_argument(
+        "--timing-task-kind", default=os.environ.get("LARCH_TIMING_TASK_KIND", "")
+    )
     parser.add_argument("--token-budget-cap", default="")
     parser.add_argument("--risk", default="")
     parser.add_argument("--stderr-sink", default="")
     parser.add_argument("--site", default="review Step 2")
-    parser.add_argument("--model-role", choices=("default", "review", "vote", "fix"), default="default")
+    parser.add_argument(
+        "--model-role", choices=("default", "review", "vote", "fix"), default="default"
+    )
     parser.add_argument("--default-model", default="")
     parser.add_argument("--cursor-model", default=None)
     parser.add_argument("--difficulty", default="")
@@ -125,24 +144,34 @@ def _review_coerce_risk(risk: str) -> str:
 def _review_validate_args(args: argparse.Namespace) -> int:
     if not _validate_meta_path(label="--output", value=args.output):
         return 1
-    if args.stderr_sink and not _validate_meta_path(label="--stderr-sink", value=args.stderr_sink):
+    if args.stderr_sink and not _validate_meta_path(
+        label="--stderr-sink", value=args.stderr_sink
+    ):
         return 1
     if args.risk and _CTRL_RE.search(args.risk):
         _err("agent launch-review: --risk must not contain control characters")
         return 2
     if args.timing_task_kind and _CTRL_RE.search(args.timing_task_kind):
-        _err("agent launch-review: --timing-task-kind must not contain control characters")
+        _err(
+            "agent launch-review: --timing-task-kind must not contain control characters"
+        )
         return 2
     if not _is_positive_int(args.timeout):
         if args.tool == "codex":
-            _err(f"agent launch-review: --timeout must be a positive integer (seconds), got '{args.timeout}'")
+            _err(
+                f"agent launch-review: --timeout must be a positive integer (seconds), got '{args.timeout}'"
+            )
         elif args.timeout.isdigit():
             _err("agent launch-review: --timeout must be >= 1")
         else:
             _err("agent launch-review: --timeout must be a positive integer")
         return 2
-    if args.timing_task_kind and (not args.timing_task_kind.strip() or args.timing_task_kind.startswith("--")):
-        _err("agent launch-review: --timing-task-kind requires a non-empty, non-flag-like value")
+    if args.timing_task_kind and (
+        not args.timing_task_kind.strip() or args.timing_task_kind.startswith("--")
+    ):
+        _err(
+            "agent launch-review: --timing-task-kind requires a non-empty, non-flag-like value"
+        )
         return 2
     if args.token_budget_cap and not _is_positive_int(args.token_budget_cap):
         _err("agent launch-review: --token-budget-cap requires a positive integer")
@@ -155,7 +184,9 @@ def _review_validate_args(args: argparse.Namespace) -> int:
             _err("agent launch-review: --cursor-model requires a non-empty value")
             return 2
         if _CTRL_RE.search(args.cursor_model):
-            _err("agent launch-review: --cursor-model must not contain control characters")
+            _err(
+                "agent launch-review: --cursor-model must not contain control characters"
+            )
             return 2
     if not args.site.strip() or args.site.startswith("--"):
         _err("agent launch-review: --site requires a non-empty, non-flag-like value")
@@ -167,12 +198,21 @@ def _review_validate_args(args: argparse.Namespace) -> int:
 
 
 def _review_session_env_path(args: argparse.Namespace) -> str:
-    return getattr(args, "session_env_path", "") or os.environ.get("SESSION_ENV_PATH", "")
+    return getattr(args, "session_env_path", "") or os.environ.get(
+        "SESSION_ENV_PATH", ""
+    )
 
 
-def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[str, str] | None = None) -> list[str]:
+def _review_specialist_render_args(
+    args: argparse.Namespace, *, sentinel: dict[str, str] | None = None
+) -> list[str]:
     if sentinel is not None:
-        render_args = ["--agent-file", sentinel.get("AGENT_FILE", ""), "--mode", sentinel.get("MODE", "")]
+        render_args = [
+            "--agent-file",
+            sentinel.get("AGENT_FILE", ""),
+            "--mode",
+            sentinel.get("MODE", ""),
+        ]
         mapping = (
             ("SCOPE_FILES", "--scope-files"),
             ("COMPETITION_NOTICE_FILE", "--competition-notice-file"),
@@ -209,7 +249,9 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
     session_env_path = _review_session_env_path(args)
     if getattr(args, "output", ""):
         ledger_file = findings_ledger.ledger_path(
-            findings_ledger.ledger_root(Path(args.output).parent, session_env_path=session_env_path)
+            findings_ledger.ledger_root(
+                Path(args.output).parent, session_env_path=session_env_path
+            )
         )
         render_args.extend(["--findings-ledger-file", str(ledger_file)])
     if session_env_path:
@@ -222,11 +264,15 @@ def _review_env_payload_bytes() -> int:
     return int(raw) if re.fullmatch(r"[0-9]+", raw) else 0
 
 
-def _review_render_specialist_prompt_with_payload(args: argparse.Namespace) -> tuple[int, str, int]:
+def _review_render_specialist_prompt_with_payload(
+    args: argparse.Namespace,
+) -> tuple[int, str, int]:
     output_value = getattr(args, "output", "")
     output_parent = Path(output_value).parent if output_value else Path.cwd()
     output_parent.mkdir(parents=True, exist_ok=True)
-    fd, sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(output_parent))
+    fd, sidecar_name = tempfile.mkstemp(
+        prefix=".larch-render-payload.", dir=str(output_parent)
+    )
     os.close(fd)
     sidecar = Path(sidecar_name)
     with contextlib.suppress(OSError):
@@ -247,7 +293,11 @@ def _review_render_specialist_prompt_with_payload(args: argparse.Namespace) -> t
     with contextlib.suppress(OSError):
         sidecar.unlink()
     if result.returncode != 0:
-        _err(result.stderr or result.stdout or "agent launch-review: render specialist failed")
+        _err(
+            result.stderr
+            or result.stdout
+            or "agent launch-review: render specialist failed"
+        )
         return result.returncode if result.returncode != 0 else 1, "", 0
     return 0, result.stdout, payload_bytes
 
@@ -269,7 +319,9 @@ def _review_codex_compact_sentinel_offset(text: str) -> int | None:
     if text.startswith("LARCH_PROMPT_SENTINEL=1\n"):
         return 0
     header = _COLLECTOR_NS_STRONG_HEADER
-    if text.startswith(header) and text[len(header) :].startswith("LARCH_PROMPT_SENTINEL=1\n"):
+    if text.startswith(header) and text[len(header) :].startswith(
+        "LARCH_PROMPT_SENTINEL=1\n"
+    ):
         return len(header)
     return None
 
@@ -293,21 +345,40 @@ def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
             continue
         key, value = line.split("=", 1)
         values[key] = value
-    if values.get("KIND") != "specialist" or not values.get("AGENT_FILE") or not values.get("MODE") or not values.get("HASH"):
-        _err(f"agent launch-review: malformed prompt sentinel in {path} (missing or empty KIND/AGENT_FILE/MODE/HASH)")
+    if (
+        values.get("KIND") != "specialist"
+        or not values.get("AGENT_FILE")
+        or not values.get("MODE")
+        or not values.get("HASH")
+    ):
+        _err(
+            f"agent launch-review: malformed prompt sentinel in {path} (missing or empty KIND/AGENT_FILE/MODE/HASH)"
+        )
         return 1, ""
     fake_args = argparse.Namespace()
     result = proc.run(
-        [sys.executable, str(_PY_CLI), "render", "specialist", *_review_specialist_render_args(fake_args, sentinel=values)],
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "render",
+            "specialist",
+            *_review_specialist_render_args(fake_args, sentinel=values),
+        ],
         check=False,
     )
     if result.returncode != 0:
-        _err(result.stderr or result.stdout or "agent launch-review: render specialist failed")
+        _err(
+            result.stderr
+            or result.stdout
+            or "agent launch-review: render specialist failed"
+        )
         return 1, ""
     prompt = result.stdout
     digest = hashlib.sha256(prompt.encode()).hexdigest()
     if digest != values["HASH"]:
-        _err(f"agent launch-review: prompt reconstruction hash mismatch (sentinel={values['HASH']} reconstructed={digest})")
+        _err(
+            f"agent launch-review: prompt reconstruction hash mismatch (sentinel={values['HASH']} reconstructed={digest})"
+        )
         return 1, ""
     if prefix:
         prompt = f"{prefix}{prompt}"
@@ -330,7 +401,9 @@ def _review_resolve_prompt(args: argparse.Namespace) -> tuple[int, str, int]:
     return 2, "", 0
 
 
-def _review_write_codex_prompt_sidecar(*, output: Path, prompt: str, args: argparse.Namespace) -> Path:
+def _review_write_codex_prompt_sidecar(
+    *, output: Path, prompt: str, args: argparse.Namespace
+) -> Path:
     sidecar = LauncherPaths.from_output(output).prompt
     if args.agent_file and not args.description_text:
         digest = hashlib.sha256(prompt.encode()).hexdigest()
@@ -357,7 +430,9 @@ def _review_write_codex_prompt_sidecar(*, output: Path, prompt: str, args: argpa
             lines.append(f"FEATURE_FILE={args.feature_file}")
         session_env_path = _review_session_env_path(args)
         ledger_file = findings_ledger.ledger_path(
-            findings_ledger.ledger_root(output.parent, session_env_path=session_env_path)
+            findings_ledger.ledger_root(
+                output.parent, session_env_path=session_env_path
+            )
         )
         if "\n" not in str(ledger_file):
             lines.append(f"FINDINGS_LEDGER_FILE={ledger_file}")
@@ -386,7 +461,11 @@ def _review_apply_session_token_env() -> None:
         session = Path(root) / "session-id"
         if not session.is_file() or session.stat().st_size == 0:
             continue
-        text = session.read_text(encoding="utf-8", errors="replace").replace("\r", "").replace("\n", "")
+        text = (
+            session.read_text(encoding="utf-8", errors="replace")
+            .replace("\r", "")
+            .replace("\n", "")
+        )
         if text:
             os.environ["LARCH_TOKEN_SESSION_ID"] = text
             return
@@ -410,34 +489,40 @@ def _review_effective_token_cap(args: argparse.Namespace) -> int | None:
     return None
 
 
-def _review_check_budget_or_write_cap_hit(*, output: Path, cap: int | None, timing_kind: str) -> bool:
-    if cap is None:
-        return False
-    result = proc.run(
-        [sys.executable, str(_PY_CLI), "token", "check-budget", "--cap", str(cap), "--step", timing_kind],
-        check=False,
-    )
-    status = ""
+def _review_write_cap_hit_artifacts(*, output: Path, cap: int, stdout: str) -> None:
     total = ""
-    for token in result.stdout.split():
-        if token.startswith("STATUS="):
-            status = token.split("=", 1)[1]
-        elif token.startswith("TOTAL="):
+    for token in stdout.split():
+        if token.startswith("TOTAL="):
             total = token.split("=", 1)[1]
-    if status != "cap_hit":
-        return False
-    _err(f"⚠ agent launch-review: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external reviewer fan-out skipped")
+            break
+    _err(
+        f"⚠ agent launch-review: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external reviewer fan-out skipped"
+    )
     _write(path=output, text="STATUS=cap_hit\n")
-    _write(path=output.with_suffix(output.suffix + ".cap-hit"), text=f"STATUS=cap_hit\n{result.stdout.rstrip()}\n")
-    if os.environ.get("IMPLEMENT_TMPDIR"):
+    _write(
+        path=output.with_suffix(output.suffix + ".cap-hit"),
+        text=f"STATUS=cap_hit\n{stdout.rstrip()}\n",
+    )
+    implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if implement_tmpdir:
         with contextlib.suppress(OSError):
-            _write(path=Path(os.environ["IMPLEMENT_TMPDIR"]) / "step-budget-cap-hit.env", text=f"STATUS=cap_hit\n{result.stdout.rstrip()}\n")
+            _write(
+                path=Path(implement_tmpdir) / "step-budget-cap-hit.env",
+                text=f"STATUS=cap_hit\n{stdout.rstrip()}\n",
+            )
     _write(path=output.with_suffix(output.suffix + ".done"), text="0\n")
-    return True
 
 
-def _review_record_timing(*, vendor: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
-    _record_launch_timing(tool=vendor, task_kind=task_kind, start_s=start_s, output=output, exit_code=exit_code)
+def _review_record_timing(
+    *, vendor: str, task_kind: str, start_s: float, output: Path, exit_code: int
+) -> None:
+    _record_launch_timing(
+        tool=vendor,
+        task_kind=task_kind,
+        start_s=start_s,
+        output=output,
+        exit_code=exit_code,
+    )
 
 
 def _review_append_outer_meta(
@@ -470,13 +555,19 @@ def _review_append_outer_meta(
 
 
 def _review_write_clean_readonly_dirty_tree(output: Path) -> None:
-    _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text="STATUS=clean\nMODE=baseline\nREASON=codex-sandbox-read-only\n")
+    _write(
+        path=output.with_suffix(output.suffix + ".dirty-tree"),
+        text="STATUS=clean\nMODE=baseline\nREASON=codex-sandbox-read-only\n",
+    )
 
 
 def _review_write_unknown_dirty_tree(*, output: Path, reason: str) -> None:
     baseline = output.with_suffix(output.suffix + ".untracked-baseline")
     state = "present" if baseline.is_file() else "missing"
-    _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text=f"STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE={state}\nREASON={reason}\n")
+    _write(
+        path=output.with_suffix(output.suffix + ".dirty-tree"),
+        text=f"STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE={state}\nREASON={reason}\n",
+    )
 
 
 def _review_capture_cursor_dirty_baseline(output: Path, *, workdir: str = "") -> Path:
@@ -494,23 +585,43 @@ def _review_capture_cursor_dirty_baseline(output: Path, *, workdir: str = "") ->
     return baseline
 
 
-def _review_write_cursor_dirty_tree_from_baseline(*, output: Path, baseline: Path, workdir: str = "") -> None:
+def _review_write_cursor_dirty_tree_from_baseline(
+    *, output: Path, baseline: Path, workdir: str = ""
+) -> None:
     baseline_workdir = workdir or _resolve_review_codex_workdir(str(Path.cwd()))
-    lines = dirty_tree.baseline(baseline_path=str(baseline), sidecar=str(output.with_suffix(output.suffix + ".dirty-tree")), cwd=baseline_workdir)
-    _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text="\n".join(lines) + "\n")
+    lines = dirty_tree.baseline(
+        baseline_path=str(baseline),
+        sidecar=str(output.with_suffix(output.suffix + ".dirty-tree")),
+        cwd=baseline_workdir,
+    )
+    _write(
+        path=output.with_suffix(output.suffix + ".dirty-tree"),
+        text="\n".join(lines) + "\n",
+    )
 
 
 def _review_failure_source(output: Path, *, sink: str = "") -> Path:
-    return resolve_failure_diagnostic_source(output, sink=sink) or output.with_suffix(output.suffix + ".diag")
+    return resolve_failure_diagnostic_source(output, sink=sink) or output.with_suffix(
+        output.suffix + ".diag"
+    )
 
 
 def _review_brainstorm_failure_uses_sink(*, timing_kind: str, stderr_sink: str) -> bool:
-    return bool(stderr_sink) and timing_kind in ("codex-brainstorm", "cursor-brainstorm")
+    return bool(stderr_sink) and timing_kind in (
+        "codex-brainstorm",
+        "cursor-brainstorm",
+    )
 
 
-def _review_write_failure_sink(*, output: Path, stderr_sink: str, launcher_exit: int) -> None:
+def _review_write_failure_sink(
+    *, output: Path, stderr_sink: str, launcher_exit: int
+) -> None:
     diag = output.with_suffix(output.suffix + ".diag")
-    content = diag.read_text(encoding="utf-8", errors="replace") if diag.is_file() else f"STATUS=FAILED\nLAUNCHER_EXIT={launcher_exit}\n"
+    content = (
+        diag.read_text(encoding="utf-8", errors="replace")
+        if diag.is_file()
+        else f"STATUS=FAILED\nLAUNCHER_EXIT={launcher_exit}\n"
+    )
     if "LAUNCHER_EXIT=" not in content:
         content += f"LAUNCHER_EXIT={launcher_exit}\n"
     _write(path=Path(stderr_sink), text=content)
@@ -533,7 +644,12 @@ def _review_append_launch_failure(
     failure = classify_launch_failure(
         launcher_exit=exit_code,
         sidecar=source,
-        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output=output, source=source, stderr_sink=stderr_sink)),
+        auth_verdict=external_auth_verdict(
+            tool,
+            *_review_failure_auth_paths(
+                output=output, source=source, stderr_sink=stderr_sink
+            ),
+        ),
         tool=tool,
         output_file=output,
     )
@@ -567,7 +683,9 @@ def _review_append_launch_failure(
             ],
             check=False,
         )
-    _append_vendor_failure_diagnostics(source, site=f"{site} {tool}-review", exit_code=exit_code)
+    _append_vendor_failure_diagnostics(
+        source, site=f"{site} {tool}-review", exit_code=exit_code
+    )
 
 
 def _review_run_test_trap_after_inner_done_if_enabled() -> None:
@@ -596,17 +714,32 @@ def _review_retry_delay(attempt: int) -> None:
 
 def _review_stream_reset(*, path: Path, history: Path, label: str) -> None:
     if path.is_file() and path.stat().st_size > 0:
-        _append(path=history, text=f"===== {label} =====\n{path.read_text(encoding='utf-8', errors='replace')}\n")
+        _append(
+            path=history,
+            text=f"===== {label} =====\n{path.read_text(encoding='utf-8', errors='replace')}\n",
+        )
     with contextlib.suppress(OSError):
         path.unlink()
 
 
 def _review_reset_retry_artifacts(output: Path, *, tool: str, label: str) -> None:
     history = output.with_suffix(output.suffix + ".sidecar.history")
-    _review_stream_reset(path=output.with_suffix(output.suffix + ".sidecar"), history=history, label=label)
-    _review_stream_reset(path=output.with_suffix(output.suffix + ".diag"), history=history, label=f"{label} diag")
+    _review_stream_reset(
+        path=output.with_suffix(output.suffix + ".sidecar"),
+        history=history,
+        label=label,
+    )
+    _review_stream_reset(
+        path=output.with_suffix(output.suffix + ".diag"),
+        history=history,
+        label=f"{label} diag",
+    )
     if tool == "codex":
-        _review_stream_reset(path=output.with_suffix(output.suffix + ".events.jsonl"), history=history, label=f"{label} events.jsonl")
+        _review_stream_reset(
+            path=output.with_suffix(output.suffix + ".events.jsonl"),
+            history=history,
+            label=f"{label} events.jsonl",
+        )
 
 
 def _review_run_wrapper_attempt(
@@ -681,10 +814,12 @@ def _review_run_with_retries(
             stderr_path=stderr_path,
             stderr_sink=stderr_sink,
         )
-        if tool == "codex" and result.exit_code != 0 and stdout_path is not None and stderr_path is not None:
+        if tool == "codex" and stdout_path is not None and stderr_path is not None:
             _mirror_codex_quota_from_events(events=stdout_path, sidecar=stderr_path)
         if tool == "codex":
-            auth_sidecars = [stderr_path or output.with_suffix(output.suffix + ".sidecar")]
+            auth_sidecars = [
+                stderr_path or output.with_suffix(output.suffix + ".sidecar")
+            ]
             quota_sidecars = [
                 *auth_sidecars,
                 output.with_suffix(output.suffix + ".diag"),
@@ -701,12 +836,27 @@ def _review_run_with_retries(
             quota_sidecars = auth_sidecars
         verdict = external_auth_verdict(tool, *auth_sidecars)
         auth_failure = verdict == "auth"
-        quota_failure = any(is_quota_failure(tool=tool, sidecar=p) for p in quota_sidecars)
-        transient_failure = is_transient_infra_failure(tool=tool, exit_code=result.exit_code, output_file=output)
-        empty_cursor = tool == "cursor" and result.exit_code == 0 and _review_is_cursor_empty_result(output)
-        retryable_response = (result.exit_code != 0 and transient_failure) or empty_cursor
+        quota_failure = any(
+            is_quota_failure(tool=tool, sidecar=p) for p in quota_sidecars
+        )
+        transient_failure = is_transient_infra_failure(
+            tool=tool, exit_code=result.exit_code, output_file=output
+        )
+        empty_cursor = (
+            tool == "cursor"
+            and result.exit_code == 0
+            and _review_is_cursor_empty_result(output)
+        )
+        retryable_response = (
+            result.exit_code != 0 and transient_failure
+        ) or empty_cursor
         retry_budget_remaining = transient_attempt <= _REVIEW_MAX_TRANSIENT_RETRIES
-        if retryable_response and retry_budget_remaining and not auth_failure and not quota_failure:
+        if (
+            retryable_response
+            and retry_budget_remaining
+            and not auth_failure
+            and not quota_failure
+        ):
             transient_attempt += 1
             _review_retry_delay(transient_attempt)
             _review_reset_retry_artifacts(output, tool=tool, label="attempt")
@@ -714,7 +864,9 @@ def _review_run_with_retries(
         if (
             result.exit_code != 0
             and not unclassified_empty_retried
-            and _is_unclassified_empty_startup_failure(exit_code=result.exit_code, verdict=verdict)
+            and _is_unclassified_empty_startup_failure(
+                exit_code=result.exit_code, verdict=verdict
+            )
             and not auth_failure
             and not quota_failure
         ):
@@ -736,14 +888,21 @@ def _review_run_with_retries(
         return result, auth_attempt, transient_attempt
 
 
-def _review_emit_launcher_result(*, output: Path, tool: str, launcher_exit: int, stderr_sink: str = "") -> None:
+def _review_emit_launcher_result(
+    *, output: Path, tool: str, launcher_exit: int, stderr_sink: str = ""
+) -> None:
     if launcher_exit != 0:
         _compose_failure_diag(output, sink=stderr_sink)
     sidecar = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
         launcher_exit=launcher_exit,
         sidecar=sidecar,
-        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output=output, source=sidecar, stderr_sink=stderr_sink)),
+        auth_verdict=external_auth_verdict(
+            tool,
+            *_review_failure_auth_paths(
+                output=output, source=sidecar, stderr_sink=stderr_sink
+            ),
+        ),
         tool=tool,
         output_file=output,
     )
@@ -763,13 +922,18 @@ def _review_write_preflight_bundle(
     prompt_sidecar: Path | None = None,
 ) -> None:
     _write(path=output, text="")
-    _write(path=output.with_suffix(output.suffix + ".diag"), text=f"STATUS=FAILED\nFAILURE_REASON={failure_reason}\n")
-    _write(path=output.with_suffix(output.suffix + ".sidecar"), text=f"{failure_reason}\n")
+    _write(
+        path=output.with_suffix(output.suffix + ".diag"),
+        text=f"STATUS=FAILED\nFAILURE_REASON={failure_reason}\n",
+    )
+    _write(
+        path=output.with_suffix(output.suffix + ".sidecar"), text=f"{failure_reason}\n"
+    )
     meta = output.with_suffix(output.suffix + ".meta")
     _write(
         path=meta,
         text=f"TOOL={tool}\nTIMEOUT={args.timeout}\nCAPTURE_STDOUT=false\n"
-        f"CAPTURE_STDOUT_ONLY={str(capture_stdout_only).lower()}\nOUTPUT_FILE={output}\nCMD_JSON=[]\n"
+        f"CAPTURE_STDOUT_ONLY={str(capture_stdout_only).lower()}\nOUTPUT_FILE={output}\nCMD_JSON=[]\n",
     )
     if prompt_sidecar is not None:
         _review_append_outer_meta(
@@ -794,6 +958,159 @@ def _review_atomic_write_text(*, path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+def _review_codex_preflight(  # noqa: PLR0913, RUF100 - lifecycle callback inputs are independent
+    *,
+    home: str,
+    instr_path: Path,
+    output: Path,
+    args: argparse.Namespace,
+    prompt_sidecar: Path,
+    timing_kind: str,
+    **_kwargs: object,
+) -> bool:
+    auth_rc, auth_msg = _prepare_codex_home(
+        Path(home), trusted_instructions_file=str(instr_path)
+    )
+    if auth_rc == 0:
+        return True
+    reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
+    _review_write_preflight_bundle(
+        output=output,
+        args=args,
+        failure_reason=reason,
+        tool="codex",
+        prompt_sidecar=prompt_sidecar,
+    )
+    _review_write_clean_readonly_dirty_tree(output)
+    _review_write_preflight_done(output=output, launcher_exit=auth_rc)
+    if _review_brainstorm_failure_uses_sink(
+        timing_kind=timing_kind, stderr_sink=args.stderr_sink
+    ):
+        _review_write_failure_sink(
+            output=output, stderr_sink=args.stderr_sink, launcher_exit=auth_rc
+        )
+    _review_emit_launcher_result(
+        output=output, tool="codex", launcher_exit=auth_rc, stderr_sink=args.stderr_sink
+    )
+    return False
+
+
+def _review_codex_resolve_model(
+    request: VendorLaunchRequest, *, args: argparse.Namespace
+) -> VendorLaunchRequest:
+    try:
+        model_args = tuple(
+            resolve_model_args(
+                "codex",
+                with_effort=True,
+                default_model=getattr(args, "default_model", ""),
+                codex_role=getattr(args, "model_role", "default"),
+            ).argv
+        )
+    except TypeError:
+        model_args = tuple(resolve_model_args("codex", with_effort=True).argv)
+    return VendorLaunchRequest(
+        workdir=request.workdir,
+        output=request.output,
+        prompt=request.prompt,
+        timing_task_kind=request.timing_task_kind,
+        model_args=model_args,
+        add_dirs=request.add_dirs,
+        token_cap=request.token_cap,
+    )
+
+
+def _review_lifecycle_retry(  # noqa: PLR0913, RUF100 - lifecycle callback inputs are independent
+    _execute: object,
+    *,
+    tool: str,
+    output: Path,
+    timeout_seconds: int,
+    state: dict[str, int],
+    argv: Sequence[str],
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    stderr_sink: str = "",
+    capture_stdout_only: bool = False,
+    jitter: bool = False,
+    **_kwargs: object,
+) -> VendorProcessResult:
+    if jitter:
+        _review_cursor_jitter()
+    result, auth_attempt, transient_attempt = _review_run_with_retries(
+        tool=tool,
+        output=output,
+        timeout_seconds=timeout_seconds,
+        cmd=argv,
+        capture_stdout_only=capture_stdout_only,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        stderr_sink=stderr_sink,
+    )
+    state["auth_attempt"] = auth_attempt
+    state["transient_attempt"] = transient_attempt
+    return VendorProcessResult(exit_code=result.exit_code)
+
+
+def _review_cursor_preflight(
+    *,
+    output: Path,
+    args: argparse.Namespace,
+    prompt_sidecar: Path,
+    state: dict[str, int],
+    **_kwargs: object,
+) -> bool:
+    verdict = cursor_auth_preflight(caller="agent launch-review")
+    if not verdict.ok:
+        state["preflight_rc"] = verdict.rc
+        _err(verdict.message)
+        _review_write_preflight_bundle(
+            output=output,
+            args=args,
+            failure_reason="cursor-auth-preflight: CURSOR_API_KEY unset/empty and cursor-user keychain entry missing on Darwin; see docs/installation-and-setup.md (Cursor section)",
+            tool="cursor",
+            capture_stdout_only=True,
+            prompt_sidecar=prompt_sidecar,
+        )
+        _review_write_unknown_dirty_tree(
+            output=output, reason="preflight-short-circuit-no-agent-ran"
+        )
+        _review_write_preflight_done(output=output, launcher_exit=verdict.rc)
+        _review_emit_launcher_result(
+            output=output,
+            tool="cursor",
+            launcher_exit=verdict.rc,
+            stderr_sink=args.stderr_sink,
+        )
+        return False
+    if not cursor_preread_service_token():
+        state["preflight_rc"] = CURSOR_PREREAD_FAIL_RC
+        _err(CURSOR_PREREAD_FAIL_MSG)
+        _review_write_preflight_bundle(
+            output=output,
+            args=args,
+            failure_reason="cursor-preread-service-token: keychain -w read returned no token on Darwin; see docs/installation-and-setup.md (Cursor section)",
+            tool="cursor",
+            capture_stdout_only=True,
+            prompt_sidecar=prompt_sidecar,
+        )
+        _review_write_unknown_dirty_tree(
+            output=output, reason="preflight-short-circuit-no-agent-ran"
+        )
+        _review_write_preflight_done(
+            output=output, launcher_exit=CURSOR_PREREAD_FAIL_RC
+        )
+        _review_emit_launcher_result(
+            output=output,
+            tool="cursor",
+            launcher_exit=CURSOR_PREREAD_FAIL_RC,
+            stderr_sink=args.stderr_sink,
+        )
+        return False
+    cursor_auth_export_env()
+    return True
+
+
 def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
     output = Path(args.output)
     paths = LauncherPaths.from_output(output)
@@ -801,16 +1118,24 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
     site = getattr(args, "site", "review Step 2")
     trusted_preamble = _CODEX_REVIEW_STRICT_PREAMBLE
     if "'''" in trusted_preamble:
-        _err("agent launch-review: hardening preamble contains TOML triple-single-quote delimiter")
+        _err(
+            "agent launch-review: hardening preamble contains TOML triple-single-quote delimiter"
+        )
         return 2
     try:
         sandbox_dir = output.parent.resolve(strict=True)
     except FileNotFoundError:
-        _err(f"agent launch-review: output parent directory does not exist: {output.parent}")
+        _err(
+            f"agent launch-review: output parent directory does not exist: {output.parent}"
+        )
         return 2
     start = time.time()
-    prompt_sidecar = _review_write_codex_prompt_sidecar(output=output, prompt=prompt, args=args)
-    with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-", dir=str(_probe_tmpdir())) as home:
+    prompt_sidecar = _review_write_codex_prompt_sidecar(
+        output=output, prompt=prompt, args=args
+    )
+    with tempfile.TemporaryDirectory(
+        prefix="larch-codex-review-home-", dir=str(_probe_tmpdir())
+    ) as home:
         home_path = Path(home).resolve()
         try:
             output_parent = output.parent.resolve(strict=True)
@@ -821,68 +1146,97 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
             pass
         instr_path = Path(home) / "trusted-instructions.txt"
         instr_path.write_text(trusted_preamble, encoding="utf-8")
-        auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(instr_path))
-        if auth_rc != 0:
-            reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
-            _review_write_preflight_bundle(output=output, args=args, failure_reason=reason, tool="codex", prompt_sidecar=prompt_sidecar)
-            _review_write_clean_readonly_dirty_tree(output)
-            _review_write_preflight_done(output=output, launcher_exit=auth_rc)
-            if _review_brainstorm_failure_uses_sink(timing_kind=timing_kind, stderr_sink=args.stderr_sink):
-                _review_write_failure_sink(output=output, stderr_sink=args.stderr_sink, launcher_exit=auth_rc)
-            _review_emit_launcher_result(output=output, tool="codex", launcher_exit=auth_rc, stderr_sink=args.stderr_sink)
-            return 0
-        try:
-            try:
-                model_args = list(resolve_model_args("codex", with_effort=True, default_model=getattr(args, "default_model", ""), codex_role=getattr(args, "model_role", "default")).argv)
-            except TypeError:
-                model_args = list(resolve_model_args("codex", with_effort=True).argv)
-        except ValueError as exc:
-            _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
-            _review_write_preflight_bundle(output=output, args=args, failure_reason=f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
-            _review_write_unknown_dirty_tree(output=output, reason="model-args-preflight-no-agent-ran")
-            _review_write_preflight_done(output=output, launcher_exit=1)
-            _review_emit_launcher_result(output=output, tool="codex", launcher_exit=1, stderr_sink=args.stderr_sink)
-            return 1
-        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
-        add_dirs = [str(sandbox_dir)]
-        add_dir_args = [value for directory in add_dirs for value in ("--add-dir", directory)]
-        cmd = [
-            "codex",
-            "exec",
-            "--sandbox",
-            "read-only",
-            "-C",
-            workdir,
-            *add_dir_args,
-            *model_args,
-            "-c",
-            _trust_config_arg(workdir),
-            *_codex_auth_args(),
-            "--output-last-message",
-            str(output),
-            "--json",
-            "--",
-            prompt,
-        ]
-        with _temporary_env(name="CODEX_HOME", value=home):
-            result, auth_attempt, transient_attempt = _review_run_with_retries(
+        launch_state: dict[str, int] = {"auth_attempt": 1, "transient_attempt": 1}
+
+        request = VendorLaunchRequest(
+            workdir=_resolve_review_codex_workdir(str(Path.cwd())),
+            output=str(output),
+            prompt=prompt,
+            timing_task_kind=timing_kind,
+            add_dirs=(str(sandbox_dir),),
+        )
+        hooks = VendorFamilyHooks(
+            preflight=functools.partial(
+                _review_codex_preflight,
+                home=home,
+                instr_path=instr_path,
+                output=output,
+                args=args,
+                prompt_sidecar=prompt_sidecar,
+                timing_kind=timing_kind,
+            ),
+            retry=functools.partial(
+                _review_lifecycle_retry,
                 tool="codex",
                 output=output,
                 timeout_seconds=int(args.timeout),
-                cmd=cmd,
+                state=launch_state,
                 stdout_path=paths.events,
                 stderr_path=paths.sidecar,
                 stderr_sink=args.stderr_sink,
+            ),
+        )
+        try:
+            with _temporary_env(name="CODEX_HOME", value=home):
+                outcome = run_vendor_launch(
+                    CODEX_DESCRIPTOR,
+                    "read-only",
+                    request,
+                    hooks=hooks,
+                    resolve_model=functools.partial(
+                        _review_codex_resolve_model, args=args
+                    ),
+                    use_config_context=False,
+                )
+        except ValueError as exc:
+            _review_record_timing(
+                vendor="codex",
+                task_kind=timing_kind,
+                start_s=start,
+                output=output,
+                exit_code=1,
             )
+            _review_write_preflight_bundle(
+                output=output,
+                args=args,
+                failure_reason=f"agent model-args failed (exit 1): {exc}",
+                tool="codex",
+                prompt_sidecar=prompt_sidecar,
+            )
+            _review_write_unknown_dirty_tree(
+                output=output, reason="model-args-preflight-no-agent-ran"
+            )
+            _review_write_preflight_done(output=output, launcher_exit=1)
+            _review_emit_launcher_result(
+                output=output,
+                tool="codex",
+                launcher_exit=1,
+                stderr_sink=args.stderr_sink,
+            )
+            return 1
+    if outcome.status == "preflight_refused":
+        return 0
+    result = outcome.process_result
+    if result is None:
+        raise RuntimeError("Codex review lifecycle completed without a process result")
     events = paths.events
     if not events.is_file() or events.stat().st_size == 0:
         _write(path=events, text="{}\n")
     sidecar = paths.sidecar
     if result.exit_code != 0:
-        _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
-        _review_append_launch_failure(output=output, tool="codex", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt, site=site)
+        _review_append_launch_failure(
+            output=output,
+            tool="codex",
+            exit_code=result.exit_code,
+            stderr_sink=args.stderr_sink,
+            auth_attempt=launch_state["auth_attempt"],
+            transient_attempt=launch_state["transient_attempt"],
+            site=site,
+        )
     elif sidecar.is_file():
-        _append(path=sidecar, text="codex-status: ok (no stderr emitted during agent run)\n")
+        _append(
+            path=sidecar, text="codex-status: ok (no stderr emitted during agent run)\n"
+        )
     _review_append_outer_meta(
         paths.meta,
         prompt_sidecar=prompt_sidecar,
@@ -892,42 +1246,43 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
         site=site,
         model_role=getattr(args, "model_role", "default"),
     )
-    _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
-    model = ""
-    for i, value in enumerate(model_args):
-        if value == "-m" and i + 1 < len(model_args):
-            model = model_args[i + 1]
-            break
+    _review_record_timing(
+        vendor="codex",
+        task_kind=timing_kind,
+        start_s=start,
+        output=output,
+        exit_code=result.exit_code,
+    )
+    model = outcome.model
     token_record_path = paths.token_record
-    _record_usage_from_events(events=events, sidecar=sidecar, label="codex_review", token_record=token_record_path, model=model)
+    _record_usage_from_events(
+        events=events,
+        sidecar=sidecar,
+        label="codex_review",
+        token_record=token_record_path,
+        model=model,
+    )
     if token_record_path.is_file():
         proc.run(
-            [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record_path)],
+            [
+                sys.executable,
+                str(_PY_CLI),
+                "token",
+                "record-vendor-sidecar",
+                "--input",
+                str(token_record_path),
+            ],
             check=False,
         )
     _review_write_clean_readonly_dirty_tree(output)
     _promote_inner_done(output)
-    _review_emit_launcher_result(output=output, tool="codex", launcher_exit=result.exit_code, stderr_sink=args.stderr_sink)
+    _review_emit_launcher_result(
+        output=output,
+        tool="codex",
+        launcher_exit=result.exit_code,
+        stderr_sink=args.stderr_sink,
+    )
     return result.exit_code
-
-
-def _review_setup_cursor_config_dir() -> tuple[Path, str | None]:
-    cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-"))
-    old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
-    os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
-    user_cfg = Path.home() / ".cursor" / "cli-config.json"
-    if user_cfg.is_file():
-        with contextlib.suppress(OSError):
-            shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
-    return cfg_tmp, old_cfg
-
-
-def _review_cleanup_cursor_config_dir(*, cfg_tmp: Path, old_cfg: str | None) -> None:
-    shutil.rmtree(cfg_tmp, ignore_errors=True)
-    if old_cfg is None:
-        os.environ.pop("CURSOR_CONFIG_DIR", None)
-    else:
-        os.environ["CURSOR_CONFIG_DIR"] = old_cfg
 
 
 def _review_cursor_jitter() -> None:
@@ -988,7 +1343,11 @@ def _review_cursor_normalize_no_issues(text: str) -> str:
                 obj = None
             if isinstance(obj, dict) and obj.get("no_issues_found") is True:
                 return '{"no_issues_found": true}\n'
-    sentinel_count = sum(1 for line in text.splitlines() if line.strip() == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(line))
+    sentinel_count = sum(
+        1
+        for line in text.splitlines()
+        if line.strip() == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(line)
+    )
     if sentinel_count == 1:
         return '{"no_issues_found": true}\n'
     return text
@@ -1031,16 +1390,26 @@ def _review_cursor_result_is_no_issues(text: str) -> bool:
     non_empty = [line.strip() for line in text.splitlines() if line.strip()]
     if len(non_empty) != 1:
         return False
-    return non_empty[0] == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(non_empty[0])
+    return non_empty[0] == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(
+        non_empty[0]
+    )
 
 
-def _review_write_cursor_degraded_diag(*, output: Path, obj: object, reason: str) -> None:
-    usage = obj.get("usage") if isinstance(obj, dict) and isinstance(obj.get("usage"), dict) else {}
+def _review_write_cursor_degraded_diag(
+    *, output: Path, obj: object, reason: str
+) -> None:
+    usage = (
+        obj.get("usage")
+        if isinstance(obj, dict) and isinstance(obj.get("usage"), dict)
+        else {}
+    )
     if isinstance(usage, dict):
         for key in ("inputTokens", "cacheReadTokens", "outputTokens"):
             if key in usage:
                 reason += f" usage.{key}={usage[key]}"
-    diag_text = redact.redact_secrets_only(redact.redact_tmpdir_paths(f"TOOL=cursor\nFAILURE_REASON={reason}\n"))
+    diag_text = redact.redact_secrets_only(
+        redact.redact_tmpdir_paths(f"TOOL=cursor\nFAILURE_REASON={reason}\n")
+    )
     _write(path=output.with_suffix(output.suffix + ".diag"), text=diag_text)
 
 
@@ -1065,22 +1434,45 @@ def _review_cursor_write_result(*, output: Path, result: str, obj: object) -> No
     collector does not score them as clean.
     """
     result_bytes = len(result.encode())
-    if _review_cursor_result_is_no_issues(result) and _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR:
+    if (
+        _review_cursor_result_is_no_issues(result)
+        and _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR
+    ):
         _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
         _review_write_cursor_no_work_diag(output=output, obj=obj)
         return
-    if _cursor_output_tokens(obj) > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR and result_bytes < _CURSOR_DEGRADED_RESULT_BYTES_CEILING:
+    if (
+        _cursor_output_tokens(obj) > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
+        and result_bytes < _CURSOR_DEGRADED_RESULT_BYTES_CEILING
+    ):
         tmp = output.with_suffix(output.suffix + ".extract.tmp")
         _write(path=tmp, text=result)
-        ok = proc.run([sys.executable, str(_PY_CLI), "eval", "validate-research-output", "--validation-mode", str(tmp)], check=False).returncode == 0
+        ok = (
+            proc.run(
+                [
+                    sys.executable,
+                    str(_PY_CLI),
+                    "eval",
+                    "validate-research-output",
+                    "--validation-mode",
+                    str(tmp),
+                ],
+                check=False,
+            ).returncode
+            == 0
+        )
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
-        _review_atomic_write_text(path=output, text=result if ok else "CURSOR_DEGRADED_RESPONSE\n")
+        _review_atomic_write_text(
+            path=output, text=result if ok else "CURSOR_DEGRADED_RESPONSE\n"
+        )
         return
     _review_atomic_write_text(path=output, text=result)
 
 
-def _review_cursor_postprocess(*, output: Path, transient_attempt: int, model: str = "") -> None:
+def _review_cursor_postprocess(
+    *, output: Path, transient_attempt: int, model: str = ""
+) -> None:
     if not output.is_file() or output.stat().st_size == 0:
         return
     raw = output.read_bytes()
@@ -1098,7 +1490,9 @@ def _review_cursor_postprocess(*, output: Path, transient_attempt: int, model: s
     if isinstance(result, str) and result:
         result = _review_cursor_normalize_no_issues(result)
         _review_cursor_write_result(output=output, result=result, obj=obj)
-    _record_cursor_usage_from_output(output=json_sidecar, label="cursor_review", model=model)
+    _record_cursor_usage_from_output(
+        output=json_sidecar, label="cursor_review", model=model
+    )
     token_record = json_sidecar.with_suffix(json_sidecar.suffix + ".token-record")
     if token_record.is_file():
         token_record.replace(output.with_suffix(output.suffix + ".token-record"))
@@ -1109,14 +1503,23 @@ def _review_cursor_postprocess(*, output: Path, transient_attempt: int, model: s
             "TOOL=cursor",
             f"FAILURE_REASON=cursor-empty-result: exit 0, .result empty/null after {max(transient_attempt - 1, 0)} transient retries (shared exit-code and empty-result budget)",
         ]
-        for key in ("type", "subtype", "is_error", "duration", "request_id", "requestId"):
+        for key in (
+            "type",
+            "subtype",
+            "is_error",
+            "duration",
+            "request_id",
+            "requestId",
+        ):
             if key in obj:
                 fields[-1] += f" {key}={str(obj[key]).replace(chr(10), ' ')[:200]}"
         if isinstance(usage, dict):
             for key in ("inputTokens", "outputTokens"):
                 if key in usage:
                     fields[-1] += f" usage.{key}={usage[key]}"
-        diag_text = redact.redact_secrets_only(redact.redact_tmpdir_paths("\n".join(fields) + "\n"))
+        diag_text = redact.redact_secrets_only(
+            redact.redact_tmpdir_paths("\n".join(fields) + "\n")
+        )
         _write(path=output.with_suffix(output.suffix + ".diag"), text=diag_text)
 
 
@@ -1125,12 +1528,24 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
     timing_kind = args.timing_task_kind or "cursor-review"
     site = getattr(args, "site", "review Step 2")
     start = time.time()
-    prompt_sidecar = _review_write_cursor_prompt_sidecar(output=output, original_prompt=original_prompt)
+    prompt_sidecar = _review_write_cursor_prompt_sidecar(
+        output=output, original_prompt=original_prompt
+    )
     try:
         cursor_model = getattr(args, "cursor_model", "") or ""
-        model_args = ["--model", cursor_model] if cursor_model else list(resolve_model_args("cursor", with_effort=True).argv)
+        model_args = (
+            ["--model", cursor_model]
+            if cursor_model
+            else list(resolve_model_args("cursor", with_effort=True).argv)
+        )
     except ValueError as exc:
-        _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
+        _review_record_timing(
+            vendor="cursor",
+            task_kind=timing_kind,
+            start_s=start,
+            output=output,
+            exit_code=1,
+        )
         _review_write_preflight_bundle(
             output=output,
             args=args,
@@ -1139,81 +1554,84 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
             capture_stdout_only=True,
             prompt_sidecar=prompt_sidecar,
         )
-        _review_write_unknown_dirty_tree(output=output, reason="model-args-preflight-no-agent-ran")
+        _review_write_unknown_dirty_tree(
+            output=output, reason="model-args-preflight-no-agent-ran"
+        )
         _review_write_preflight_done(output=output, launcher_exit=1)
-        _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=1, stderr_sink=args.stderr_sink)
+        _review_emit_launcher_result(
+            output=output, tool="cursor", launcher_exit=1, stderr_sink=args.stderr_sink
+        )
         return 1
     baseline_workdir = ""
     baseline = _review_capture_cursor_dirty_baseline(output, workdir=baseline_workdir)
-    verdict = cursor_auth_preflight(caller="agent launch-review")
-    if not verdict.ok:
-        _err(verdict.message)
-        _review_write_preflight_bundle(
-            output=output,
-            args=args,
-            failure_reason="cursor-auth-preflight: CURSOR_API_KEY unset/empty and cursor-user keychain entry missing on Darwin; see docs/installation-and-setup.md (Cursor section)",
-            tool="cursor",
-            capture_stdout_only=True,
-            prompt_sidecar=prompt_sidecar,
-        )
-        _review_write_unknown_dirty_tree(output=output, reason="preflight-short-circuit-no-agent-ran")
-        _review_write_preflight_done(output=output, launcher_exit=verdict.rc)
-        _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=verdict.rc, stderr_sink=args.stderr_sink)
-        return verdict.rc
-    if not cursor_preread_service_token():
-        _err(CURSOR_PREREAD_FAIL_MSG)
-        _review_write_preflight_bundle(
-            output=output,
-            args=args,
-            failure_reason="cursor-preread-service-token: keychain -w read returned no token on Darwin; see docs/installation-and-setup.md (Cursor section)",
-            tool="cursor",
-            capture_stdout_only=True,
-            prompt_sidecar=prompt_sidecar,
-        )
-        _review_write_unknown_dirty_tree(output=output, reason="preflight-short-circuit-no-agent-ran")
-        _review_write_preflight_done(output=output, launcher_exit=CURSOR_PREREAD_FAIL_RC)
-        _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=CURSOR_PREREAD_FAIL_RC, stderr_sink=args.stderr_sink)
-        return CURSOR_PREREAD_FAIL_RC
-    cursor_auth_export_env()
     prompt = f"{_CURSOR_REVIEW_STRICT_PREAMBLE}\n\n{original_prompt}"
     wrapped = f" /max-mode on. Prompt: {prompt}"
-    cfg_tmp, old_cfg = _review_setup_cursor_config_dir()
-    _review_cursor_jitter()
     sidecar_path = paths.sidecar
     _write(path=sidecar_path, text="")
-    try:
-        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
-        cmd = [
-            "cursor",
-            "agent",
-            "-p",
-            "--trust",
-            "--mode",
-            "ask",
-            "--output-format",
-            "json",
-            *model_args,
-            "--workspace",
-            workdir,
-            wrapped,
-        ]
-        result, auth_attempt, transient_attempt = _review_run_with_retries(
+    launch_state: dict[str, int] = {
+        "auth_attempt": 1,
+        "preflight_rc": 0,
+        "transient_attempt": 1,
+    }
+
+    request = VendorLaunchRequest(
+        workdir=_resolve_review_codex_workdir(str(Path.cwd())),
+        output=str(output),
+        prompt=wrapped,
+        timing_task_kind=timing_kind,
+        model_args=tuple(model_args),
+    )
+    hooks = VendorFamilyHooks(
+        preflight=functools.partial(
+            _review_cursor_preflight,
+            output=output,
+            args=args,
+            prompt_sidecar=prompt_sidecar,
+            state=launch_state,
+        ),
+        retry=functools.partial(
+            _review_lifecycle_retry,
             tool="cursor",
             output=output,
             timeout_seconds=int(args.timeout),
-            cmd=cmd,
+            state=launch_state,
             capture_stdout_only=True,
             stderr_sink=args.stderr_sink,
-        )
-    finally:
-        _review_cleanup_cursor_config_dir(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
+            jitter=True,
+        ),
+    )
+    outcome = run_vendor_launch(
+        CURSOR_DESCRIPTOR, "review-ask", request, hooks=hooks, use_config_context=True
+    )
+    if outcome.status == "preflight_refused":
+        return launch_state["preflight_rc"]
+    result = outcome.process_result
+    if result is None:
+        raise RuntimeError("Cursor review lifecycle completed without a process result")
     if result.exit_code != 0:
-        if _review_brainstorm_failure_uses_sink(timing_kind=timing_kind, stderr_sink=args.stderr_sink):
-            _review_write_failure_sink(output=output, stderr_sink=args.stderr_sink, launcher_exit=result.exit_code)
+        if _review_brainstorm_failure_uses_sink(
+            timing_kind=timing_kind, stderr_sink=args.stderr_sink
+        ):
+            _review_write_failure_sink(
+                output=output,
+                stderr_sink=args.stderr_sink,
+                launcher_exit=result.exit_code,
+            )
         else:
-            _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt, site=site)
+            _review_append_launch_failure(
+                output=output,
+                tool="cursor",
+                exit_code=result.exit_code,
+                stderr_sink=args.stderr_sink,
+                auth_attempt=launch_state["auth_attempt"],
+                transient_attempt=launch_state["transient_attempt"],
+                site=site,
+            )
     else:
-        _append(path=sidecar_path, text="cursor-status: ok (no stderr emitted during agent run)\n")
+        _append(
+            path=sidecar_path,
+            text="cursor-status: ok (no stderr emitted during agent run)\n",
+        )
     _review_append_outer_meta(
         paths.meta,
         prompt_sidecar=prompt_sidecar,
@@ -1225,20 +1643,40 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         cursor_model=getattr(args, "cursor_model", "") or "",
     )
     _review_run_test_trap_after_inner_done_if_enabled()
-    resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
     if result.exit_code == 0:
-        _review_cursor_postprocess(output=output, transient_attempt=transient_attempt, model=resolved_model)
-    _review_write_cursor_dirty_tree_from_baseline(output=output, baseline=baseline, workdir=baseline_workdir)
-    _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
+        _review_cursor_postprocess(
+            output=output,
+            transient_attempt=launch_state["transient_attempt"],
+            model=outcome.model,
+        )
+    _review_write_cursor_dirty_tree_from_baseline(
+        output=output, baseline=baseline, workdir=baseline_workdir
+    )
+    _review_record_timing(
+        vendor="cursor",
+        task_kind=timing_kind,
+        start_s=start,
+        output=output,
+        exit_code=result.exit_code,
+    )
     _promote_inner_done(output)
-    _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=result.exit_code, stderr_sink=args.stderr_sink)
+    _review_emit_launcher_result(
+        output=output,
+        tool="cursor",
+        launcher_exit=result.exit_code,
+        stderr_sink=args.stderr_sink,
+    )
     return result.exit_code
 
 
-def _review_log_panel_prompt_size(*, args: argparse.Namespace, output: Path, prompt: str, payload_bytes: int = 0) -> None:
+def _review_log_panel_prompt_size(
+    *, args: argparse.Namespace, output: Path, prompt: str, payload_bytes: int = 0
+) -> None:
     if not _panel_logging_enabled():
         return
-    artifact = panel_prompt_size_artifact_for_output(output=output, site=getattr(args, "site", ""))
+    artifact = panel_prompt_size_artifact_for_output(
+        output=output, site=getattr(args, "site", "")
+    )
     append_panel_prompt_size(
         artifact_path=artifact,
         output=output,
@@ -1265,12 +1703,22 @@ def launch_review_main(argv: list[str] | None = None) -> int:
     _review_apply_session_token_env()
     _review_apply_claude_source_env()
     output = Path(args.output)
-    if _review_check_budget_or_write_cap_hit(output=output, cap=_review_effective_token_cap(args), timing_kind=args.timing_task_kind):
+    token_cap = _review_effective_token_cap(args)
+    cap_check = check_token_budget_cap(
+        cap=str(token_cap or ""),
+        step=args.timing_task_kind,
+    )
+    if cap_check.hit:
+        _review_write_cap_hit_artifacts(
+            output=output, cap=token_cap or 0, stdout=cap_check.stdout
+        )
         return 0
     prompt_rc, prompt, payload_bytes = _review_resolve_prompt(args)
     if prompt_rc != 0:
         return prompt_rc
-    _review_log_panel_prompt_size(args=args, output=output, prompt=prompt, payload_bytes=payload_bytes)
+    _review_log_panel_prompt_size(
+        args=args, output=output, prompt=prompt, payload_bytes=payload_bytes
+    )
     if args.tool == "codex":
         return _review_launch_codex(args=args, prompt=prompt)
     return _review_launch_cursor(args=args, original_prompt=prompt)
