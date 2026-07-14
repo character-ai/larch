@@ -24,7 +24,7 @@ skills/implement/scripts/step-7a.sh \
 | `COMMENT_URL` | Tracking issue comment URL, or empty when upsert is gated, skipped, or failed |
 | `SESSION_TRANSCRIPT_STATUS` | Relayed `run-log capture-transcript` status lines, when emitted |
 | `LOG_FLUSH_STATUS` | `ok`, `degraded`, or `skipped-no-logs-commit`; rebase failure emits the same real flush status as success paths |
-| `STEP_7A_BAIL_REASON` | Empty on non-argv paths; `argv` on usage errors |
+| `STEP_7A_BAIL_REASON` | Empty on non-argument paths; `argv`, `missing-implement-tmpdir`, or `invalid-implement-tmpdir` on argument validation errors |
 
 The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
 
@@ -40,7 +40,7 @@ The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log captu
 
 ## Bail Reasons
 
-`argv` is the only current bail reason. Diagram generation, comment upsert, rebase probe, and log flush degradation do not set a bail reason; they append warnings or tool failures and continue.
+Argument validation may emit `argv`, `missing-implement-tmpdir`, or `invalid-implement-tmpdir`. Diagram generation, comment upsert, rebase probe, and log flush degradation do not set a bail reason; they append warnings or tool failures and continue.
 
 ## Invariants
 
@@ -71,6 +71,7 @@ Keep this file aligned with:
 
 - `skills/implement/SKILL.md` Step 7a
 - `skills/implement/scripts/test-step-7a.sh`
+- `python/tests/implement/test_step_7a.py` (behavioral authority)
 
 ## Vendor failure-diagnostics flush (#3713)
 
