@@ -1,0 +1,27 @@
+### FINDING_1: Whitespace-only reasons are accepted
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: `--reason` and stored `reason` values may accept whitespace-only text, weakening the required audit trail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Strip and reject whitespace-only --reason before write; update _validate_reason to use not value.strip() and add matching tests alongside the accepted override whitespace cases
+
+### FINDING_2: Metric decreases can leave invalid or stale history
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: Decreasing a metric does not define how history is updated, potentially leaving history above the current metric or causing pre-shrink bumps to trigger later gates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Specify shrink behavior in the writer merge: on metric decrease, rewrite history to a single UTC seed at the new metric (or truncate trailing entries above the new metric) without requiring --reason. Add a test that shrink-only regen stays load-valid and that a later first increase is not treated as a second bump inside 14 days of pre-shrink history.
+
+### FINDING_3: Repeat-bump failures omit the file
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: Failure messages naming only the qualified symbol are ambiguous when the same symbol exists in multiple files.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Include normalized file path in each repeat-bump failure line (for example file:qualified_symbol) while keeping code-tagged history and the three remediation exits.
+
+### FINDING_4: History ordering for rebounds and same-day events is underspecified
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The proposed strict history ordering may reject valid post-decrease rebounds or make same-date cross-code events and override handling nondeterministic.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Validate chronological append order without requiring metrics or dates to be strictly increasing, treat post-seed records as bumps, and define deterministic same-date cross-code event and override handling; cover both cases in tests.
