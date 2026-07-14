@@ -80,6 +80,10 @@ Warnings (37):
   36. G-Cfg-1 guidance: "build token sets from prior sets rather than re-listing." A future grammar addition to `plan_grammar.py` would require a matching update to `design_wire.py`; a mismatch would be...
   37. Exception: Python's type system does not support narrowing a `Literal` type from another without re-listing the values. `PlanHeadingKind = Literal["NEW", "UPDATED"]` is the single canonical definit...
 
+## Architectural invariants
+
+The diff is confined to test support infrastructure and test fixtures; no production gate logic, pause/resume machinery, persisted step result paths, run-log flush or commit paths, panel slot accounting, agent dispatch, or ship recovery routing is touched.
+
 ## Architectural guidelines
 
 ## Summary
@@ -108,7 +112,7 @@ Exception: Python's type system does not support narrowing a `Literal` type from
 
 - **Outcome**: shipping
 - **Duration**: 00:28:31
-- **Cost**: 💰 TOTAL ~$18.53: Claude $4.61, Codex-5.6 $5.24, Codex-mini $0.02, Cursor $8.46 (Composer $4.81, Grok $3.65), Claude (subprocess) $0.20  |  Tokens: 26705k
+- **Cost**: 💰 TOTAL ~$19.16: Claude $5.24, Codex-5.6 $5.24, Codex-mini $0.02, Cursor $8.46 (Composer $4.81, Grok $3.65), Claude (subprocess) $0.20  |  Tokens: 27880k
 - **Issue**: #7026: https://github.com/character-ai/larch/issues/7026
 - **Plan review**: N/A
 - **Plan coverage**: 7/8 firm headings; band: advisory; disposition: none; todos_left: 0
