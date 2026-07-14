@@ -324,24 +324,14 @@ def _write_result_env(
     *,
     ctx: RunContext,
     path: Path,
-    payload: dict[str, Any],
-    ci_errors_file: str,
-    ci_errors_distill_class: str,
-    failed_jobs_count: int,
+    rows: tuple[tuple[str, str], ...],
 ) -> None:
     validated = validate_ship_result_env_path(tmpdir=ctx.tmpdir, path=path)
-    text = larch_io.format_kvs(
-        _result_env_rows(
-            payload=payload,
-            ci_errors_file=ci_errors_file,
-            ci_errors_distill_class=ci_errors_distill_class,
-            failed_jobs_count=failed_jobs_count,
-        ),
-    )
+    text = larch_io.format_kvs(rows)
     larch_io.trusted_atomic_write(validated, text, root=ctx.tmpdir, mode=0o600)
 
 
-def emit_result(
+def emit_result(  # noqa: PLR0913 - result-env sink is an optional peer to the CI digest kwargs
     *,
     ctx: RunContext,
     result: ShipResult,
@@ -369,10 +359,12 @@ def emit_result(
         _write_result_env(
             ctx=ctx,
             path=result_env_path,
-            payload=payload,
-            ci_errors_file=ci_errors_file,
-            ci_errors_distill_class=ci_errors_distill_class,
-            failed_jobs_count=failed_jobs_count,
+            rows=_result_env_rows(
+                payload=payload,
+                ci_errors_file=ci_errors_file,
+                ci_errors_distill_class=ci_errors_distill_class,
+                failed_jobs_count=failed_jobs_count,
+            ),
         )
     stream = logging_util.contract_stream()
     try:

@@ -5810,7 +5810,7 @@ def test_main_result_env_preflight_rejects_unsafe_paths(
             str(raw_path),
         ],
     )
-    assert called == []
+    assert not called
     assert rc == config.EXIT_INTERNAL_ERROR
     captured = capsys.readouterr()
     assert json.loads(captured.out)["outcome"] == "INTERNAL_ERROR"
@@ -5845,7 +5845,7 @@ def test_main_result_env_preflight_rejects_symlink_destination(
             str(link),
         ],
     )
-    assert called == []
+    assert not called
     assert rc == config.EXIT_INTERNAL_ERROR
     assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
 
@@ -5879,7 +5879,7 @@ def test_main_result_env_preflight_rejects_symlink_parent(
             str(sink),
         ],
     )
-    assert called == []
+    assert not called
     assert rc == config.EXIT_INTERNAL_ERROR
     assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
 
