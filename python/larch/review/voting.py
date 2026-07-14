@@ -25,7 +25,13 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
-from larch.review.review_types import JudgeSeverity, ReviewVote, is_security_block_text
+from larch.review.review_types import (
+    JudgeSeverity,
+    ParsedBlock,
+    ReviewVote,
+    is_security_block_text,
+    parse_blocks,
+)
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"
 SHORT_EXTS = "lock|env|txt|c|h|m|r"
@@ -585,45 +591,43 @@ def _safe_tsv_cell(value: str) -> str:
     return re.sub(r"[\t\r\n]+", " ", value).strip()
 
 
+def _parsed_ballot_blocks(text: str) -> list[ParsedBlock]:
+    """Parse ballot items with the shared canonical reviewer-item grammar."""
+    return parse_blocks(text, boundary="item-heading")
+
+
 def _ballot_blocks(text: str) -> dict[str, str]:
     blocks: dict[str, str] = {}
-    current_id = ""
-    current_lines: list[str] = []
-    for raw in text.splitlines(keepends=True):
-        match = BALLOT_HEADING_RE.match(raw.rstrip("\n"))
-        if match:
-            if current_id:
-                blocks[current_id] = "".join(current_lines)
-            current_id = match.group(1)
-            if current_id in blocks:
-                raise ValueError(f"duplicate ballot heading {current_id}")
-            current_lines = [raw]
-        elif current_id:
-            current_lines.append(raw)
-    if current_id:
-        blocks[current_id] = "".join(current_lines)
+    for parsed in _parsed_ballot_blocks(text):
+        if parsed.item_id in blocks:
+            raise ValueError(f"duplicate ballot heading {parsed.item_id}")
+        blocks[parsed.item_id] = parsed.block
     return blocks
 
 
 def neutralize_reviewer_attribution(*, text: str, token: str = "anonymous") -> str:  # noqa: S107
-    lines: list[str] = []
-    in_block = False
-    block_attribution_done = False
-    for raw in text.splitlines(keepends=True):
-        line = raw.removesuffix("\n")
-        newline = "\n" if raw.endswith("\n") else ""
-        if BALLOT_HEADING_RE.match(line):
-            in_block = True
-            block_attribution_done = False
-            lines.append(raw)
-            continue
-        match = REVIEWER_ATTRIBUTION_RE.match(line)
-        if in_block and match and not block_attribution_done:
-            lines.append(f"{match.group('prefix')}{token}{match.group('trailing')}{newline}")
-            block_attribution_done = True
-        else:
-            lines.append(raw)
-    return "".join(lines)
+    def neutralize_block(block: str) -> str:
+        lines: list[str] = []
+        attribution_done = False
+        for raw in block.splitlines(keepends=True):
+            line = raw.removesuffix("\n")
+            newline = "\n" if raw.endswith("\n") else ""
+            match = REVIEWER_ATTRIBUTION_RE.match(line)
+            if match and not attribution_done:
+                lines.append(f"{match.group('prefix')}{token}{match.group('trailing')}{newline}")
+                attribution_done = True
+            else:
+                lines.append(raw)
+        return "".join(lines)
+
+    output: list[str] = []
+    cursor = 0
+    for parsed in _parsed_ballot_blocks(text):
+        output.append(text[cursor : parsed.start])
+        output.append(neutralize_block(parsed.block))
+        cursor = parsed.end
+    output.append(text[cursor:])
+    return "".join(output)
 
 
 def _ballot_sha256(text: str) -> str:
@@ -707,17 +711,12 @@ def _is_neutral_reviewer(value: str) -> bool:
 
 
 def ballot_text_is_neutralized(text: str) -> bool:
-    in_block = False
-    for line in text.splitlines():
-        if BALLOT_HEADING_RE.match(line):
-            in_block = True
-            continue
-        if not in_block:
-            continue
-        match = REVIEWER_ATTRIBUTION_RE.match(line)
-        if match:
-            value = match.group("value").replace("*", "").strip().lower()
-            return value == "anonymous"
+    for parsed in _parsed_ballot_blocks(text):
+        for line in parsed.block.splitlines():
+            match = REVIEWER_ATTRIBUTION_RE.match(line)
+            if match:
+                value = match.group("value").replace("*", "").strip().lower()
+                return value == "anonymous"
     return False
 
 
@@ -813,10 +812,13 @@ def restore_reviewer_attribution(*, block_text: str, reviewer_line: str) -> str:
             if _is_neutral_reviewer(_normalize_reviewer_value(match.group("value"))):
                 lines[idx] = reviewer_line + newline
             return "".join(lines)
-    for idx, raw in enumerate(lines):
-        if BALLOT_HEADING_RE.match(raw.rstrip("\n")):
-            lines.insert(idx + 1, reviewer_line + "\n")
-            return "".join(lines)
+    parsed = _parsed_ballot_blocks(block_text)
+    if parsed:
+        first = parsed[0]
+        heading_end = block_text.find("\n", first.start)
+        if heading_end >= 0:
+            return block_text[: heading_end + 1] + reviewer_line + "\n" + block_text[heading_end + 1 :]
+        return block_text + "\n" + reviewer_line + "\n"
     return reviewer_line + "\n" + block_text
 
 
@@ -912,23 +914,14 @@ def panel_tier_main(argv: list[str]) -> int:
 def split_ballot(*, ballot_file: str | Path, out_dir: str | Path) -> None:
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    seen: set[str] = set()
-    current: Path | None = None
-    with Path(ballot_file).open(encoding="utf-8", errors="replace") as handle:
-        for raw in handle:
-            line = raw.rstrip("\n")
-            match = BALLOT_HEADING_RE.match(line)
-            if match:
-                item_id = match.group(1)
-                if item_id in seen:
-                    print(f"duplicate ballot heading {item_id}", file=sys.stderr)
-                    raise SystemExit(1)
-                seen.add(item_id)
-                current = out_path / f"{item_id}.md"
-                current.write_text(raw, encoding="utf-8")
-            elif current is not None:
-                with current.open("a", encoding="utf-8") as output:
-                    output.write(raw)
+    text = Path(ballot_file).read_text(encoding="utf-8", errors="replace")
+    try:
+        blocks = _ballot_blocks(text)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1) from exc
+    for item_id, block in blocks.items():
+        (out_path / f"{item_id}.md").write_text(block, encoding="utf-8")
 
 
 def split_ballot_main(argv: list[str]) -> int:
