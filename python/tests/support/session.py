@@ -200,7 +200,7 @@ def seed_feature_description(
 
 def run_params_text(*, overrides: Mapping[str, object] | None = None) -> str:
     """Return schema-v3 ``run-params.json`` text matching ``write_run_params_main`` defaults."""
-    payload = dict(_RUN_PARAMS_SCHEMA_V3)
+    payload: dict[str, object] = dict(_RUN_PARAMS_SCHEMA_V3)
     if overrides:
         payload.update(overrides)
     return json.dumps(payload, indent=2, sort_keys=False) + "\n"

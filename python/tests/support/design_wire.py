@@ -69,7 +69,7 @@ def diff_lines_trailer(  # noqa: PLR0913 - trailer fields map directly to the wi
         "oversize_override": oversize_override,
         "diff_lines": diff_lines,
     }
-    lines = compose_trailer_lines(values)
+    lines: tuple[str, ...] = compose_trailer_lines(values)
     return "\n".join(lines) + "\n"
 
 
