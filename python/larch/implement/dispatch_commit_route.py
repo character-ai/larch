@@ -1161,7 +1161,7 @@ def _step4_noop(reason: str) -> tuple[CommitRouteOutcome, str]:
     commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
     if commit.returncode == 0 and commit.stdout.strip():
         commit_sha = commit.stdout.strip()
-    print(f"⏩ 4: commit (impl) status=skip reason={reason} sha={commit_sha} elapsed=0s", file=sys.stderr)
+    print(f"⏩ 4: commit (impl) status=skip reason={reason} sha={commit_sha} elapsed=0s")
     return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
 
 

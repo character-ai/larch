@@ -1514,6 +1514,8 @@ def test_baseline_component_lstat_errors_return_scan_error(
         ("missing/baseline.json", None, "parent does not exist"),
         ("not-a-directory/baseline.json", "file", "parent is not a directory"),
         ("linked.json", "symlink", "symlinked"),
+        ("linked-parent/baseline.json", "symlink-parent", "symlinked"),
+        ("directory.json", "directory", "not a regular file"),
     ],
 )
 def test_write_baseline_rejects_unsafe_or_invalid_destination(
@@ -1529,6 +1531,12 @@ def test_write_baseline_rejects_unsafe_or_invalid_destination(
         target = tmp_path / "target.json"
         _ = target.write_text("[]", encoding="utf-8")
         (tmp_path / "linked.json").symlink_to(target)
+    if setup == "symlink-parent":
+        target = tmp_path / "target-parent"
+        target.mkdir()
+        (tmp_path / "linked-parent").symlink_to(target, target_is_directory=True)
+    if setup == "directory":
+        (tmp_path / "directory.json").mkdir()
 
     code, out, err = _invoke(
         _rule(),
@@ -1537,6 +1545,158 @@ def test_write_baseline_rejects_unsafe_or_invalid_destination(
         baseline_path=baseline_path,
         write_baseline=True,
         initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert needle in err
+
+
+def test_write_baseline_creates_empty_destination(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+
+    code, out, err = _invoke(
+        _rule(detect=lambda _source: []),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+    assert baseline.read_text(encoding="utf-8") == "[]\n"
+
+
+def test_write_baseline_cleans_up_temporary_artifact_after_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+
+    def fail_fsync(_fd: int) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(lint_engine.larch_io.os, "fsync", fail_fsync)
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "failed to write baseline" in err
+    assert not list(tmp_path.glob(".baseline.json.*.tmp"))
+
+
+def test_baseline_check_rejects_missing_file(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "missing.json"
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "file does not exist" in err
+    assert not baseline.exists()
+
+
+def test_baseline_rejects_mixed_row_shapes(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [
+            _baseline_row("a.py"),
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "function",
+                "metric": 1,
+                "reason": "known",
+            },
+        ],
+    )
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "mixed baseline row shapes" in err
+
+
+@pytest.mark.parametrize(
+    ("row", "needle"),
+    [
+        (
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "metric": 1,
+                "reason": "known",
+            },
+            "unsupported keys",
+        ),
+        (
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "",
+                "metric": 1,
+                "reason": "known",
+            },
+            "invalid qualified_symbol",
+        ),
+        (
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "outer\ninner",
+                "metric": 1,
+                "reason": "known",
+            },
+            "invalid qualified_symbol",
+        ),
+        (
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": 1,
+                "metric": 1,
+                "reason": "known",
+            },
+            "invalid qualified_symbol",
+        ),
+    ],
+)
+def test_symbol_metric_baseline_rejects_malformed_qualified_symbol(
+    tmp_path: Path, row: dict[str, object], needle: str
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [row])
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
     )
 
     assert code == EXIT_ERROR
@@ -1656,6 +1816,40 @@ def test_write_baseline_readback_error_fails_without_rollback(
     assert code == EXIT_ERROR
     assert out == ""
     assert "failed to read back baseline" in err
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+        [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
+    )
+
+
+def test_write_baseline_readback_parse_failure_fails_without_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("removed.py", reason="old")])
+    original_parse = lint_engine._parse_baseline_text  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def malformed_parse(*args: object, **kwargs: object) -> list[lint_engine.BaselineRow]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise lint_engine.ScanError("invalid JSON baseline: expected value")
+        return original_parse(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(lint_engine, "_parse_baseline_text", malformed_parse)
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "read-back validation failed" in err
     assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
         [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
     )

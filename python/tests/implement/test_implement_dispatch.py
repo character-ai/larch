@@ -5077,8 +5077,7 @@ def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
     captured = capsys.readouterr()
     assert outcome == "noop"
     assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
-    assert "dispatcher-committed" in captured.err
-    assert "dispatcher-committed" not in captured.out
+    assert "dispatcher-committed" in captured.out
 
 
 def test_run_step4_commit_leg_dispatcher_committed_commits_later_dirty_paths(
@@ -5166,8 +5165,7 @@ def test_run_step4_commit_leg_already_committed_by_main_agent_short_circuits_noo
     captured = capsys.readouterr()
     assert outcome == "noop"
     assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
-    assert "already-committed" in captured.err
-    assert "already-committed" not in captured.out
+    assert "already-committed" in captured.out
     assert not calls
 
 
