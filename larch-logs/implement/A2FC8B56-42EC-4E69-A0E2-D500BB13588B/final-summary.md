@@ -85,7 +85,7 @@ All changed code is consistent with the architectural guidelines.
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:10:29
-- **Cost**: 💰 TOTAL ~$34.17: Claude $7.75, Codex-5.6 $17.24, Codex-mini $0.10, Cursor $8.29 (Composer $8.29, Grok $0.00), Claude (subprocess) $0.79  |  Tokens: 48540k
+- **Cost**: 💰 TOTAL ~$34.79: Claude $8.36, Codex-5.6 $17.24, Codex-mini $0.10, Cursor $8.29 (Composer $8.29, Grok $0.00), Claude (subprocess) $0.80  |  Tokens: 50229k
 - **Issue**: #6999: https://github.com/character-ai/larch/issues/6999
 - **PR**: #7344: https://github.com/character-ai/larch/pull/7344
 - **Plan review**: N/A
