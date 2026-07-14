@@ -4,14 +4,17 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest  # noqa: TC002
 
+from larch.core import config
 from larch.design import design_summary
 from larch.design import design_lifecycle
 from larch.report import progress_report
+from larch.report import report_tokens_cost
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
 
 
@@ -824,6 +827,34 @@ def test_difficulty_summary_line_prefers_record(tmp_path: Path) -> None:
     line = design_summary._difficulty_summary_line(tmp_path)  # pyright: ignore[reportPrivateUsage]
 
     assert line == "predicted MODERATE; applied HARD; floor raised"
+
+
+def test_read_token_report_splits_cursor_grok_from_composer(tmp_path: Path) -> None:
+    """/design prices cursor grok tokens at grok rates, not composer (issue #7257)."""
+    report = {
+        "cursor": {"totals": {"total": 6180000}},
+        "BUCKETS_cursor": {"input": 150000, "cache_read": 6000000, "output": 30000, "total": 6180000},
+        "BUCKETS_cursor_by_model": {
+            config.CURSOR_DEFAULT_MODEL: {"input": 100000, "cache_read": 4000000, "output": 20000, "total": 4120000},
+            config.CURSOR_GROK_4_5_HIGH_MODEL: {"input": 50000, "cache_read": 2000000, "output": 10000, "total": 2060000},
+        },
+    }
+    _ = (tmp_path / "token-report-final.json").write_text(json.dumps(report), encoding="utf-8")
+
+    buckets = design_summary._read_token_report(tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    # Composer lane keeps only the composer-2.5 counts; grok routes to its own lane.
+    assert (buckets["U_IN"], buckets["U_CR"], buckets["U_OUT"]) == (100000, 4000000, 20000)
+    assert (buckets["U_GROK_IN"], buckets["U_GROK_CR"], buckets["U_GROK_OUT"]) == (50000, 2000000, 10000)
+
+    cost_args = design_summary._build_cost_args(buckets)  # pyright: ignore[reportPrivateUsage]
+    assert "--cursor-grok-cache-read-tokens" in cost_args
+    assert cost_args[cost_args.index("--cursor-grok-cache-read-tokens") + 1] == "2000000"
+
+    # Grok cache read prices at $0.50/M (grok), not $0.45/M (composer): 2M -> $1.00,
+    # plus 50k input * $2.00/M + 10k output * $6.00/M = $1.16.
+    cost_kv = report_tokens_cost.token_cost_from_args(cost_args)
+    assert "CURSOR_GROK_COST=1.16" in cost_kv.splitlines()
 
 
 def test_render_final_summary_persists_difficulty_record_before_render(
