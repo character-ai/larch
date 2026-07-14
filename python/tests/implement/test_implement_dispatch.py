@@ -4615,12 +4615,12 @@ def test_checks_commit_route_emit_step7_breadcrumb_goes_to_stderr(
     def fake_7r(_forked_target: str) -> int:
         return 0
 
-    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
-    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
-    monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fake_commit)
-    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", fake_commit)
-    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fake_7r)
-    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", fake_7r)
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fake_commit)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", fake_commit)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fake_7r)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", fake_7r)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
 
     rc = implement_dispatch.checks_commit_route_main(
         ["--checks-site", "step6", "--commit-site", "step7", "--emit-step7-breadcrumb", "--rebase-checkpoint-7r"]
