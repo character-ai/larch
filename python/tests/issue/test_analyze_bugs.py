@@ -1394,8 +1394,8 @@ def test_sweep_enumeration_first_run_window_and_empty(tmp_path: Path, monkeypatc
         pinned_tip=tip,
         now=1_800_000_000 + analyze_bugs.SWEEP_INITIAL_WINDOW_SECONDS + 10,
     )
-    assert empty.selected == ()
-    assert empty.pending_shas == ()
+    assert not empty.selected
+    assert not empty.pending_shas
     assert empty.skipped_count == 0
 
 
@@ -1529,14 +1529,14 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     assert capped["SELECTED_COUNT"] == 1
     assert capped["SKIPPED_COUNT"] == 2
     assert capped["COVERAGE_INCOMPLETE"] == "true"
-    assert set(capped["PENDING_SHAS"]) == {non_chronic, later}
+    assert set(cast("tuple[str, ...]", capped["PENDING_SHAS"])) == {non_chronic, later}
     selected = json.loads(Path(str(capped["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
     assert selected["selected"][0]["merge_sha"] == chronic
     assert selected["selected"][0]["is_chronic"] is True
     # Prepare must not mutate durable sweep state.
     durable = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
     assert durable is not None
-    assert durable.pending_shas == ()
+    assert not durable.pending_shas
     assert durable.last_sweep_sha == base
 
     # Hand-written state carries pending SHAs; ranking still prefers chronic/pending over new lower-priority work.
@@ -1579,7 +1579,7 @@ def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.Mo
     )
     run_dir = tmp_path / "run"
     monkeypatch.setattr(analyze_bugs, "_runner", ProcRunner)
-    monkeypatch.setattr(analyze_bugs, "resolve_repo", lambda _runner, explicit="": explicit or "o/r")
+    monkeypatch.setattr(analyze_bugs, "resolve_repo", lambda _runner, explicit="": explicit or "o/r")  # pyright: ignore[reportUnknownLambdaType]  # test stub
 
     rc = analyze_bugs.sweep_main(
         ["prepare", "--run-dir", str(run_dir), "--ledger-path", str(ledger), "--repo", "o/r", "--sweep-max", "20"]

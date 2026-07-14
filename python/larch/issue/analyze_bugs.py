@@ -2578,7 +2578,7 @@ def _write_sweep_prepare_artifacts(
     _write_json(selected_path, selected_payload)
     _write_json(bundle_manifest_path, bundle_payload)
     _write_json(summary_path, summary_payload)
-    return summary_payload
+    return cast("dict[str, object]", summary_payload)
 
 
 def sweep_prepare(
