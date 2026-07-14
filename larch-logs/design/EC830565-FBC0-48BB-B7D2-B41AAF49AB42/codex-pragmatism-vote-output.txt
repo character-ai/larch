@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan already requires typed occurrence identity projection through the occurrence codec.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The rewritten test plan already mandates injected-runner main coverage.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The plan already requires full-discovery write handling and strict stale exit behavior.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan explicitly adds and selects an occurrence-baseline codec outside generic projection.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The plan mandates stable occurrence serialization and a byte-identical no-op rewrite test.
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already requires injected-runner coverage; naming a shared helper is optional implementation detail.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior-round OOS observation.
