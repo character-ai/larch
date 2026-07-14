@@ -164,7 +164,6 @@ from larch.report.run_log_flush import (
     _capture_transcript_emit,
     _capture_transcript_redact_stderr,
     _check_preterminal_outcome_label,
-    _execution_issue_record,
     _load_refresh_session_env,
     _parse_preterminal_outcome_label,
     _parse_preterminal_outcome_label_from_run_dir,

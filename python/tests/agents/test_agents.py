@@ -1224,6 +1224,18 @@ def test_compose_failure_diag_orders_failure_carriers(tmp_path: Path) -> None:
     assert carrier.index("===== sink =====") < carrier.index("===== sidecar =====") < carrier.index("===== diag =====")
 
 
+def test_compose_failure_diag_dedupes_identical_additional_diagnostics(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    _ = output.with_suffix(output.suffix + ".diag").write_text("diag body\n", encoding="utf-8")
+
+    agents._compose_failure_diag(output)  # pylint: disable=protected-access
+    agents._compose_failure_diag(output)  # pylint: disable=protected-access
+
+    carrier = output.with_suffix(output.suffix + ".failure-diag").read_text(encoding="utf-8")
+    assert carrier.count("===== diag =====") == 1
+    assert "===== additional failure diagnostics =====" not in carrier
+
+
 def test_run_external_agent_missing_child_is_post_validation_failure(tmp_path: Path) -> None:
     output = tmp_path / "missing.out"
     result = agents.run_external_agent(
