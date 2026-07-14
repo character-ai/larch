@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 from larch.lint import lint_kv_codec
 from larch.lint.engine import SourceFile
 
@@ -68,13 +71,28 @@ def test_detects_quoted_shell_delimiters_without_option_false_positives() -> Non
         path="scripts/example.sh",
         text="cut -d '=' -f 2 \"$env_file\"\n",
     )
-    unrelated_cut = _source(
+    unlabelled_cut = _source(
         path="scripts/example.sh",
         text="cut -d '=' -f 2 options.txt\n",
     )
     assert [item.line for item in lint_kv_codec.detect(quoted_awk)] == [1]
     assert [item.line for item in lint_kv_codec.detect(quoted_cut)] == [1]
-    assert not lint_kv_codec.detect(unrelated_cut)
+    assert [item.line for item in lint_kv_codec.detect(unlabelled_cut)] == [1]
+
+
+def test_detects_key_prefix_grep_and_cut_without_filename_keywords() -> None:
+    grep = _source(
+        path="scripts/example.sh",
+        text='value=$(grep "^${key}=" "$file" | tail -n 1)\n',
+    )
+    cut = _source(
+        path="scripts/example.sh",
+        text="cut -d= -f2 values.txt\n",
+    )
+
+    assert [item.line for item in lint_kv_codec.detect(grep)] == [1]
+    assert [item.line for item in lint_kv_codec.detect(cut)] == [1]
+    assert lint_kv_codec.detect(grep)[0].anchor
 
 
 def test_ignores_shell_harnesses() -> None:
@@ -84,3 +102,30 @@ def test_ignores_shell_harnesses() -> None:
     )
 
     assert not lint_kv_codec.detect(source)
+
+
+def test_main_enforces_new_stale_and_malformed_baselines(tmp_path: Path) -> None:
+    source = tmp_path / "scripts" / "reader.sh"
+    source.parent.mkdir(parents=True)
+    source.write_text("cut -d= -f2 values.txt\n", encoding="utf-8")
+    (tmp_path / "python" / "larch").mkdir(parents=True)
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "python" / "kv-codec-baseline.json").write_text("[]\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "scripts/reader.sh"], cwd=tmp_path, check=True)
+
+    assert lint_kv_codec.main(["--root", str(tmp_path)]) == 1
+    assert (
+        lint_kv_codec.main(
+            ["--root", str(tmp_path), "--write", "--initial-reason", "coverage"]
+        )
+        == 0
+    )
+    assert lint_kv_codec.main(["--root", str(tmp_path)]) == 0
+
+    source.write_text("printf 'not a reader\\n'\n", encoding="utf-8")
+    assert lint_kv_codec.main(["--root", str(tmp_path)]) == 2
+
+    baseline = tmp_path / "python" / "kv-codec-baseline.json"
+    baseline.write_text("{not-json}\n", encoding="utf-8")
+    assert lint_kv_codec.main(["--root", str(tmp_path)]) == 2

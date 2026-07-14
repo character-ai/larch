@@ -23,19 +23,31 @@ printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/
 
 mkdir -p "$TMP/no-jq/bin"
 ln -s /bin/cat "$TMP/no-jq/bin/cat"
+ln -s "$(command -v dirname)" "$TMP/no-jq/bin/dirname"
 ln -s /bin/bash "$TMP/no-jq/bin/bash"
 out=$(payload | PATH="$TMP/no-jq/bin" "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 
 mkdir -p "$TMP/no-python/bin"
+ln -s "$(command -v cat)" "$TMP/no-python/bin/cat"
+ln -s "$(command -v dirname)" "$TMP/no-python/bin/dirname"
 ln -s "$(command -v jq)" "$TMP/no-python/bin/jq"
 out=$(payload | PATH="$TMP/no-python/bin" "$(command -v bash)" "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 
 mkdir -p "$TMP/kv-fail/bin"
+ln -s "$(command -v cat)" "$TMP/kv-fail/bin/cat"
+ln -s "$(command -v dirname)" "$TMP/kv-fail/bin/dirname"
 ln -s "$(command -v jq)" "$TMP/kv-fail/bin/jq"
 ln -s "$(command -v bash)" "$TMP/kv-fail/bin/bash"
-ln -s "$(command -v false)" "$TMP/kv-fail/bin/python3"
+cat >"$TMP/kv-fail/bin/python3" <<EOF
+#!/bin/bash
+if [ "\$2" = "kv" ] && [ "\$3" = "get" ]; then
+  exit 1
+fi
+exec "$(command -v python3)" "\$@"
+EOF
+chmod +x "$TMP/kv-fail/bin/python3"
 out=$(payload | PATH="$TMP/kv-fail/bin" "$(command -v bash)" "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 

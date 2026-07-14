@@ -129,22 +129,6 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 833,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/clarify.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=ccb82c555b56cfb985a07d1efe10199322a9a0a5ea06e7db3648f5a44032ed9c",
-    "line": 1257,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/clarify.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
     "line": 322,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/design/design_log_publish_flow.py",
@@ -300,46 +284,6 @@
     "line": 320,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/design/design_summary.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=3b88c4f0128d7c63e8c837cf7b23dc7a1c92cb31d1b25c44c20c37d690d58e95",
-    "line": 95,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_terminal.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=6d8f96cf0c89e5f71c3330c0391d5cf9034d559d7ce367825b16be5d50b9d691",
-    "line": 167,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_terminal.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=73879ff6b80412c58c97f623bd0ba49c10ef6095c7b3b37ab80ca73050b805f5",
-    "line": 70,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_terminal.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=a46fca1b9fdf9739c559937a6424b15fb06487f0549a53686871feefd9215c98",
-    "line": 1154,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_terminal.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=b2a7d1042333cecd39cd41e249f3faf489a1d402a404ffffc97d4c0f1d3de37d",
-    "line": 462,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_terminal.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
     "rule_id": "kv-codec"
   },
@@ -712,27 +656,7 @@
     "rule_id": "kv-codec"
   },
   {
-    "line": 169,
-    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
-    "path": "scripts/sessionstart-health.sh",
-    "reason": "legacy or bootstrap reader pending migration to shared codec",
-    "rule_id": "kv-codec"
-  },
-  {
-    "line": 170,
-    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
-    "path": "scripts/sessionstart-health.sh",
-    "reason": "legacy or bootstrap reader pending migration to shared codec",
-    "rule_id": "kv-codec"
-  },
-  {
-    "line": 171,
-    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
-    "path": "scripts/sessionstart-health.sh",
-    "reason": "legacy or bootstrap reader pending migration to shared codec",
-    "rule_id": "kv-codec"
-  },
-  {
+    "anchor": "shell=0428f347225f40408c743827f948f175bbf8878ac34711b7f1e5701359f18d8d",
     "line": 300,
     "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
     "path": "skills/design/scripts/design-step3-mav.sh",
@@ -740,6 +664,7 @@
     "rule_id": "kv-codec"
   },
   {
+    "anchor": "shell=c158ceeb60de26eac2ecfb40d5b6e3f907f2fee182ee0385cf2128e2bd67b731",
     "line": 125,
     "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
     "path": "skills/implement/scripts/post-tracking-issue.sh",
@@ -747,6 +672,7 @@
     "rule_id": "kv-codec"
   },
   {
+    "anchor": "shell=49d840ea52ce28e9feb0515900059c130c47e78b0a0cd1e07431c7dfd4b49294",
     "line": 115,
     "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
     "path": "skills/implement/scripts/step-18.sh",

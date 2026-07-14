@@ -54,11 +54,10 @@ read_session_key() {
 }
 
 read_kv_file() {
-  local file=$1 key=$2 line
+  local file=$1 key=$2 value
   if [ -f "$file" ]; then
-    line=$(grep "^${key}=" "$file" 2>/dev/null | head -n 1 || true)
-    if [ -n "$line" ]; then
-      printf '%s\n' "${line#*=}"
+    if value=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null); then
+      printf '%s\n' "$value"
       return 0
     fi
   fi
@@ -66,12 +65,14 @@ read_kv_file() {
 }
 
 read_sentinel_key() {
-  local key=$1 sentinel out line
+  local key=$1 sentinel out value
   sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
   if [ -f "$sentinel" ]; then
     out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue read --sentinel "$sentinel" 2>/dev/null || true)
-    line=$(printf '%s\n' "$out" | grep "^${key}=" | head -n 1 || true)
-    [ -n "$line" ] && printf '%s\n' "${line#*=}" && return 0
+    if value=$(printf '%s\n' "$out" | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --key "$key" --match first 2>/dev/null); then
+      printf '%s\n' "$value"
+      return 0
+    fi
   fi
   printf '\n'
 }

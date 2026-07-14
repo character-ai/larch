@@ -42,16 +42,15 @@ def test_parse_kv_comments_and_strip_value() -> None:
 
 def test_parse_kv_cr_strip_modes() -> None:
     text = "A=\rvalue\r\n"
-    assert larch_io.parse_kv(text, cr_strip="none")["A"] == ""
-    assert larch_io.parse_kv(text, cr_strip="suffix")["A"] == ""
-    assert larch_io.parse_kv(text, cr_strip="rstrip")["A"] == ""
-    assert larch_io.parse_kv(text, cr_strip="strip")["A"] == ""
+    assert larch_io.parse_kv(text, cr_strip="none")["A"] == "\rvalue"
+    assert larch_io.parse_kv(text, cr_strip="suffix")["A"] == "\rvalue"
+    assert larch_io.parse_kv(text, cr_strip="rstrip")["A"] == "\rvalue"
+    assert larch_io.parse_kv(text, cr_strip="strip")["A"] == "value"
 
 
-def test_parse_kv_lone_cr_separates_rows() -> None:
+def test_parse_kv_lone_cr_is_value_data() -> None:
     assert larch_io.parse_kv("PHASE=one\rRUN_ID=two\r") == {
-        "PHASE": "one",
-        "RUN_ID": "two",
+        "PHASE": "one\rRUN_ID=two\r",
     }
 
 
@@ -119,6 +118,17 @@ def test_missing_and_error_defaults(tmp_path: Path) -> None:
     )
     with pytest.raises(UnicodeDecodeError):
         _ = larch_io.read_kv(path=bad, key="A", errors="strict")
+
+
+def test_read_kvs_preserves_defaults_after_partial_read(tmp_path: Path) -> None:
+    path = tmp_path / "partial.env"
+    _ = path.write_text("PRESENT=override\n", encoding="utf-8")
+
+    assert larch_io.read_kvs(
+        path,
+        default={"PRESENT": "fallback", "MISSING": "fallback"},
+        duplicate_policy="last-non-empty",
+    ) == {"PRESENT": "override", "MISSING": "fallback"}
 
 
 def test_format_kvs_ordering() -> None:

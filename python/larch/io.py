@@ -300,7 +300,17 @@ def _strip_cr(*, value: str, mode: str) -> str:
 
 
 def _line_iter(text: str) -> list[str]:
-    return text.splitlines()
+    """Split the KEY=value wire format on LF without treating lone CR as a row.
+
+    The format accepts CRLF input, so the single CR immediately before an LF is
+    framing rather than value data.  A lone CR, however, is part of the value
+    and must not create a synthetic second record.
+    """
+    lines = text.split("\n")
+    return [
+        line.removesuffix("\r") if index < len(lines) - 1 else line
+        for index, line in enumerate(lines)
+    ]
 
 
 def _read_utf8(path: Path, *, errors: str) -> str:
@@ -530,7 +540,7 @@ def read_kvs(
 def read_kvs(
     path: str | Path,
     *,
-    duplicate_policy: Literal["first", "last"] | None = None,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
     default: Mapping[str, str] | None = None,
     first_wins: bool | None = None,
     cr_strip: str = "none",
@@ -577,7 +587,7 @@ def read_kvs(
     if reject_cr and "\r" in text:
         msg = f"carriage return not allowed in {p}"
         raise ValueError(msg)
-    return parse_kv(
+    parsed = parse_kv(
         text,
         duplicate_policy=duplicate_policy,
         first_wins=first_wins,
@@ -587,6 +597,16 @@ def read_kvs(
         key_pattern=key_pattern,
         allowed_keys=allowed_keys,
     )
+    # ``default`` supplies per-key recovery values, not merely the result for
+    # an unreadable file.  Preserve omitted defaults after a successful partial
+    # read while allowing parsed records to override their matching keys.
+    if duplicate_policy == "all":
+        list_fallback = cast("dict[str, list[str]]", fallback)
+        list_fallback.update(cast("dict[str, list[str]]", parsed))
+        return list_fallback
+    scalar_fallback = cast("dict[str, str]", fallback)
+    scalar_fallback.update(cast("dict[str, str]", parsed))
+    return scalar_fallback
 
 
 def format_kvs(values: KvRows, *, sort_keys: bool = False) -> str:

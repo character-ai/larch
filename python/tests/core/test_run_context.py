@@ -68,3 +68,13 @@ def test_from_env_uses_last_duplicate_state_value(tmp_path: Path) -> None:
     _ = state.write_text("CI_FIX_REBASE_PENDING=false\nCI_FIX_REBASE_PENDING=true\n", encoding="utf-8")
     ctx = run_context.RunContext.from_env(env={"SHIP_PR_STATE_FILE": str(state)})
     assert ctx.ci_fix_rebase_pending is True
+
+
+def test_from_env_state_codec_preserves_embedded_equals_and_lone_cr(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_bytes(b"STALL_STEP=one=two\rCI_FIX_REBASE_PENDING=true\r")
+
+    ctx = run_context.RunContext.from_env(env={"SHIP_PR_STATE_FILE": str(state)})
+
+    assert ctx.stall_step == "one=two\rCI_FIX_REBASE_PENDING=true\r"
+    assert ctx.ci_fix_rebase_pending is False

@@ -827,11 +827,7 @@ def _stage_failed_clarify(
 
 
 def _parse_publish_value(text: str, key: str) -> str:
-    value = ""
-    for line in text.splitlines():
-        if line.startswith(f"{key}="):
-            value = line.split("=", 1)[1]
-    return value
+    return larch_io.kv_value(text=text, key=key, duplicate_policy="last")
 
 
 def _publish_clarify_log_and_summary(
@@ -1252,9 +1248,11 @@ def _handle_design_clarify_publish(
             stderr_path=design_tmpdir / "clarify-rename.stderr",
         )
         if rename.returncode == 0:
-            for line in rename.stdout.splitlines():
-                if line.startswith("RENAMED="):
-                    renamed = line.split("=", 1)[1]
+            renamed = larch_io.kv_value(
+                text=rename.stdout,
+                key="RENAMED",
+                duplicate_policy="last",
+            )
         else:
             renamed = "false"
             _append_clarify_failure(

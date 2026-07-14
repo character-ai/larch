@@ -84,9 +84,18 @@ _AWK_EQUALS_RE = re.compile(
     r"\bawk\b(?=[^\n]*(?:\$1|index\(\$0\)))[^\n]*-F\s*(?:=|['\"]=['\"]?)"
 )
 _CUT_EQUALS_RE = re.compile(
-    r"\bcut\b(?=[^\n]*(?:env|state|result|kv))(?=[^\n]*-f\s*\d)[^\n]*-d\s*(?:=|['\"]=['\"]?)",
+    r"\bcut\b(?=[^\n]*-f\s*\d)[^\n]*-d\s*(?:=|['\"]=['\"]?)",
     re.IGNORECASE,
 )
+_GREP_KEY_EQUALS_RE = re.compile(
+    r"\bgrep\b(?!\s+-)[^\n]*[\"']\^[A-Za-z_${][^\"']*=[^\"']*[\"']",
+)
+
+
+def _shell_anchor(*, line: str, occurrence: int) -> str:
+    normalized = " ".join(line.split())
+    digest = hashlib.sha256(f"{normalized}:{occurrence}".encode()).hexdigest()
+    return f"shell={digest}"
 
 
 def _shell_findings(source: SourceFile) -> list[Finding]:
@@ -97,14 +106,21 @@ def _shell_findings(source: SourceFile) -> list[Finding]:
     ):
         return []
     findings: list[Finding] = []
+    occurrence = 0
     for number, line in enumerate(source.lines, start=1):
-        if _AWK_EQUALS_RE.search(line) or _CUT_EQUALS_RE.search(line):
+        if (
+            _AWK_EQUALS_RE.search(line)
+            or _CUT_EQUALS_RE.search(line)
+            or _GREP_KEY_EQUALS_RE.search(line)
+        ):
+            occurrence += 1
             findings.append(
                 Finding(
                     path=source.path,
                     line=number,
                     rule_id=RULE_ID,
                     message="ad-hoc shell KEY=value reader; use cli.py kv get",
+                    anchor=_shell_anchor(line=line, occurrence=occurrence),
                 )
             )
     return findings

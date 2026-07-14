@@ -29,13 +29,14 @@ rehydrate_plugin_root() {
 }
 
 read_state_key() {
-  local key=$1 default_value=$2 line state_file
+  local key=$1 default_value=$2 state_file value
   state_file="$IMPLEMENT_TMPDIR/ship-pr-state.sh"
   if [ -f "$state_file" ]; then
-    line=$(grep "^${key}=" "$state_file" 2>/dev/null | tail -n 1 || true)
-if [ -n "$line" ]; then
-      printf '%s\n' "${line#*=}"
-      return 0
+    if value=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --file "$state_file" --key "$key" --match last 2>/dev/null); then
+      if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
     fi
   fi
   printf '%s\n' "$default_value"

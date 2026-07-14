@@ -89,13 +89,39 @@ def test_patch_ship_state_rejects_unknown_key(tmp_path: Path) -> None:
         )
 
 
-def test_read_existing_ship_state_uses_last_value_and_lone_cr_rows(tmp_path: Path) -> None:
+def test_read_existing_ship_state_preserves_lone_cr_value_data(tmp_path: Path) -> None:
     state = tmp_path / "ship.env"
     _ = state.write_bytes(b"PHASE=first\rPHASE=last\rRUN_ID=run-1\r")
     assert ship_state._read_existing_ship_state(state) == {  # pyright: ignore[reportPrivateUsage]
-        "PHASE": "last",
-        "RUN_ID": "run-1",
+        "PHASE": "first\rPHASE=last\rRUN_ID=run-1\r",
     }
+
+
+def test_read_existing_ship_state_filters_keys_and_keeps_embedded_equals(tmp_path: Path) -> None:
+    state = tmp_path / "ship.env"
+    _ = state.write_text(
+        "REPO=owner/repo=mirror\nUNKNOWN=ignored\nREPO=owner/repo=final\n",
+        encoding="utf-8",
+    )
+
+    assert ship_state._read_existing_ship_state(state) == {  # pyright: ignore[reportPrivateUsage]
+        "REPO": "owner/repo=final",
+    }
+
+
+def test_read_existing_ship_state_wraps_codec_read_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "ship.env"
+    _ = state.write_text("PHASE=initial\n", encoding="utf-8")
+
+    def fail_read(*_args: object, **_kwargs: object) -> dict[str, str]:
+        raise OSError("read failed")
+
+    monkeypatch.setattr(ship_state.larch_io, "read_kvs", fail_read)
+
+    with pytest.raises(ship_state.ShipError, match="cannot read existing ship state"):
+        _ = ship_state._read_existing_ship_state(state)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_progress_note_uses_run_aware_breadcrumb(
