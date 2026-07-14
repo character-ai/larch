@@ -11,7 +11,7 @@ Output ONLY the raw JSON object — no markdown code fences, no backticks, no pr
 
 The "rationale" field must be a single line with no embedded newlines.
 
-Use short lowercase slug names with hyphens. Do not duplicate static slugs or names the outer wrapper reserves (arch, architectural-compliance, edge, innovation, pragmatic, requirements, generic, structure, correctness, testing, security, edge-cases, plan-fidelity, code-reviewer, reviewer-*).
+Use short lowercase slug names with hyphens. Do not duplicate static slugs or names the outer wrapper reserves (arch, edge, innovation, pragmatic, requirements, generic, structure, correctness, testing, security, edge-cases, plan-fidelity, code-reviewer, reviewer-*).
 
 The "prompt_body" field must be 2-6 sentences describing what plan-vs-evidence angle to investigate for this archetype.
 

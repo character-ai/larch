@@ -1187,7 +1187,7 @@ def test_phase_coder_override_precedes_prior(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("difficulty_value", "cursor_available", "expected_coder"),
     [
-        ("TRIVIAL", "true", "codex"),
+        ("TRIVIAL", "true", "cursor"),
         ("MODERATE", "false", "codex"),
         ("HARD", "true", "codex"),
         ("", "true", "codex"),

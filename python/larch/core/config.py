@@ -320,14 +320,9 @@ DIFFICULTY_TIER_CEILINGS: Final[dict[str, int]] = {
 DIFFICULTY_CODEX_MODEL_ROLES: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: "review",
     DIFFICULTY_TIER_MODERATE: "review",
-    DIFFICULTY_TIER_HARD: "default",
+    DIFFICULTY_TIER_HARD: "review",
 }
-DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES: Final[dict[str, dict[str, str]]] = {
-    "design.plan_review_panel": {
-        "pragmatic": "default",
-        "requirements": "default",
-    },
-}
+DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES: Final[dict[str, dict[str, str]]] = {}
 DIFFICULTY_THRESHOLD_PANEL_TOKENS: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: "simple",
     DIFFICULTY_TIER_MODERATE: "hard",
@@ -345,12 +340,12 @@ CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
 # the MODERATE implement lane. Do not use `-fast` variants; they are pricier.
 CURSOR_GROK_4_5_HIGH_MODEL: Final = "cursor-grok-4.5-high"
 CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
-    DIFFICULTY_TIER_TRIVIAL: ("codex", "cursor", "claude"),
+    DIFFICULTY_TIER_TRIVIAL: ("cursor", "codex", "claude"),
     DIFFICULTY_TIER_MODERATE: ("cursor", "codex", "claude"),
     DIFFICULTY_TIER_HARD: ("codex", "cursor", "claude"),
 }
 CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
-    DIFFICULTY_TIER_TRIVIAL: CURSOR_DEFAULT_MODEL,
+    DIFFICULTY_TIER_TRIVIAL: CURSOR_GROK_4_5_HIGH_MODEL,
     DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
     DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
 }
@@ -419,13 +414,12 @@ class RoleDefault:
     doc_fallback: str = ""
 
 
-# The four specialists per vendor cover correctness, edge/failure behavior,
-# testing, and compliance with supplied architectural policy.
+# three specialists per vendor: correctness, edge/failure behavior, and testing.
+# Architectural invariants/guidelines compliance is owned by Step 8 arch-assessment.
 _CODE_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = (
     "correctness",
     "edge-cases",
     "testing",
-    "architectural-compliance",
 )
 _PLAN_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = ("arch", "innovation", "pragmatic", "requirements")
 _DECOMPOSE_ARCHETYPES: Final[tuple[str, ...]] = ("decomposition-specialist", "dependency-analyst", "scope-minimalist", "risk-isolation")
@@ -436,7 +430,7 @@ def _waterfall_role(role_id: str, *, order: tuple[ToolName, ...], doc_phase: str
 
 
 ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
-    "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick Cursor first for MODERATE and Codex first for TRIVIAL or HARD; --coder reorders the two external tools, then Claude."),
+    "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick Cursor first for TRIVIAL or MODERATE and Codex first for HARD; --coder reorders the two external tools, then Claude."),
     "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
     "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("codex", "cursor", "claude"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M."),
     "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
@@ -477,7 +471,7 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_phase="Code review panel",
         doc_role="Review code changes",
         doc_skills="/review, /implement Step 5",
-        doc_fallback="TRIVIAL emits Cursor Composer 2.5 singles when Cursor is available, else Codex review singles. MODERATE emits Cursor Composer 2.5 plus Codex gpt-5.6-luna pairs. HARD emits Cursor Composer 2.5 plus Codex gpt-5.6-terra pairs. Reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
+        doc_fallback="TRIVIAL emits Cursor Composer 2.5 singles when Cursor is available, else Codex review singles. MODERATE emits Cursor Composer 2.5 plus Codex gpt-5.6-terra pairs. HARD emits Cursor Composer 2.5 plus Codex gpt-5.6-terra pairs. Reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
     ),
     "design.plan_review_panel": RoleDefault(
         role_id="design.plan_review_panel",
@@ -489,19 +483,19 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
                     tool=tool,
                     output=(f"codex-primary-plan-{archetype}-output.txt" if tool == "codex" else f"cursor-plan-{archetype}-output.txt"),
                     focus_area=archetype,
-                    model_role="default" if tool == "codex" else "",
+                    model_role="review" if tool == "codex" else "",
                     archetype=archetype,
                 )
                 for archetype in _PLAN_REVIEW_ARCHETYPES
                 for tool in ("cursor", "codex")
             ),
-            SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic-output.txt", focus_area="code-quality", model_role="default", archetype="generic"),
+            SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic-output.txt", focus_area="code-quality", model_role="review", archetype="generic"),
         ),
         dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
         doc_phase="Plan review panel",
         doc_role="Review implementation plans",
         doc_skills="/design",
-        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor reviewer rows resolve to Composer 2.5 by default when Cursor is available; Codex rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
+        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor reviewer rows resolve to Composer 2.5 by default when Cursor is available; Codex rows emit when Codex is available with the review role and a tier-resolved --default-model; no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
     ),
     "design.decompose_panel": RoleDefault(
         role_id="design.decompose_panel",
@@ -767,16 +761,17 @@ CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
 CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.6-luna"
 CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.6-terra"
 CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.6-terra"
+CODEX_TERRA_MODEL: Final = "gpt-5.6-terra"
 CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC: Final = 5
 CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
-    DIFFICULTY_TIER_TRIVIAL: "gpt-5.6-terra",
-    DIFFICULTY_TIER_MODERATE: CODEX_DEFAULT_MODEL,
-    DIFFICULTY_TIER_HARD: CODEX_DEFAULT_MODEL,
+    DIFFICULTY_TIER_TRIVIAL: CODEX_TERRA_MODEL,
+    DIFFICULTY_TIER_MODERATE: CODEX_TERRA_MODEL,
+    DIFFICULTY_TIER_HARD: CODEX_TERRA_MODEL,
 }
 CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: "",
-    DIFFICULTY_TIER_MODERATE: CODEX_REVIEW_MODEL_DEFAULT,
-    DIFFICULTY_TIER_HARD: "gpt-5.6-terra",
+    DIFFICULTY_TIER_MODERATE: CODEX_TERRA_MODEL,
+    DIFFICULTY_TIER_HARD: CODEX_TERRA_MODEL,
 }
 CODEX_VOTE_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: CODEX_REVIEW_MODEL_DEFAULT,

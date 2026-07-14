@@ -4100,7 +4100,7 @@ def test_launch_cursor_ci_fix_uses_resolved_cursor_model(
 @pytest.mark.parametrize(
     ("difficulty_tier", "expected_model"),
     [
-        (config.DIFFICULTY_TIER_TRIVIAL, config.CURSOR_DEFAULT_MODEL),
+        (config.DIFFICULTY_TIER_TRIVIAL, config.CURSOR_GROK_4_5_HIGH_MODEL),
         (config.DIFFICULTY_TIER_MODERATE, config.CURSOR_GROK_4_5_HIGH_MODEL),
         (config.DIFFICULTY_TIER_HARD, config.CURSOR_DEFAULT_MODEL),
     ],
