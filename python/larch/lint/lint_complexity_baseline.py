@@ -15,6 +15,14 @@ the same fail-closed collection as the check -- a ruff tool failure, an
 unparseable finding, or a duplicate live identity aborts before any write -- and
 the emitted rows are sorted canonically so an unchanged tree regenerates
 byte-identically.
+
+Committed baselines carry a nine-field schema: the four identity fields plus
+``added_at`` and ``history`` (required), and optional ``source_issue``,
+``reason``, and ``operator_override``. ``--migrate`` grandfathers legacy or
+partially migrated records in place by adding only the missing ``added_at``
+and ``history`` fields. Until a metadata-preserving writer lands, ``--write``
+refuses to overwrite any baseline that already carries extended metadata, so
+the unchanged four-field writer never clobbers migration history.
 """
 
 from __future__ import annotations
@@ -28,11 +36,28 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 COMPLEXITY_CODES = ("C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915")
 TOOL_FAILURE_EXIT = 2
-BASELINE_KEYS = frozenset({"file", "code", "qualified_symbol", "metric"})
+IDENTITY_KEYS = frozenset({"file", "code", "qualified_symbol", "metric"})
+STRICT_REQUIRED_KEYS = IDENTITY_KEYS | {"added_at", "history"}
+OPTIONAL_KEYS = frozenset({"source_issue", "reason", "operator_override"})
+ALL_KEYS = STRICT_REQUIRED_KEYS | OPTIONAL_KEYS
+EXTENDED_ONLY_KEYS = ALL_KEYS - IDENTITY_KEYS
+HISTORY_ENTRY_KEYS = frozenset({"date", "metric"})
+OPERATOR_OVERRIDE_KEYS = frozenset({"reason", "issue"})
+FIELD_ORDER = (
+    "file",
+    "code",
+    "qualified_symbol",
+    "metric",
+    "added_at",
+    "history",
+    "source_issue",
+    "reason",
+    "operator_override",
+)
 EXEMPT_FILENAMES = frozenset(
     {"conftest.py", "test_support.py", "review_test_support.py"}
 )
@@ -51,11 +76,26 @@ RUFF_ARGS = (
 )
 
 
+class HistoryEntry(TypedDict):
+    date: str
+    metric: int
+
+
+class OperatorOverride(TypedDict):
+    reason: str
+    issue: int
+
+
 class Record(TypedDict):
     file: str
     code: str
     qualified_symbol: str
     metric: int
+    added_at: NotRequired[str]
+    history: NotRequired[list[HistoryEntry]]
+    source_issue: NotRequired[int]
+    reason: NotRequired[str]
+    operator_override: NotRequired[OperatorOverride]
 
 
 BaselineIndex = dict[tuple[str, str, str], int]
@@ -183,16 +223,9 @@ def parse_violation_record(
     }
 
 
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(
-            f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}"
-        )
-    record = cast("Mapping[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(
-            f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}"
-        )
+def _validate_identity(
+    record: Mapping[str, object], *, index: int, source: Path
+) -> tuple[str, str, str, int]:
     file_name = record["file"]
     code = record["code"]
     qualified_symbol = record["qualified_symbol"]
@@ -209,12 +242,136 @@ def _validate_record(item: object, *, index: int, source: Path) -> Record:
         raise BaselineError(f"{source}: record {index} has invalid qualified_symbol")
     if not isinstance(metric, int) or isinstance(metric, bool) or metric < 0:
         raise BaselineError(f"{source}: record {index} has invalid metric")
-    return {
+    return file_name, code, qualified_symbol, metric
+
+
+def _validate_history(
+    history: object, *, index: int, source: Path
+) -> list[HistoryEntry]:
+    if not isinstance(history, list):
+        raise BaselineError(f"{source}: record {index} has invalid history")
+    entries: list[HistoryEntry] = []
+    for entry in cast("list[object]", history):
+        if not isinstance(entry, dict):
+            raise BaselineError(f"{source}: record {index} has malformed history entry")
+        entry_map = cast("Mapping[str, object]", entry)
+        if set(entry_map) != set(HISTORY_ENTRY_KEYS):
+            raise BaselineError(f"{source}: record {index} has malformed history entry")
+        date = entry_map["date"]
+        entry_metric = entry_map["metric"]
+        if not isinstance(date, str) or not date:
+            raise BaselineError(f"{source}: record {index} has invalid history date")
+        if (
+            not isinstance(entry_metric, int)
+            or isinstance(entry_metric, bool)
+            or entry_metric < 0
+        ):
+            raise BaselineError(f"{source}: record {index} has invalid history metric")
+        entries.append({"date": date, "metric": entry_metric})
+    return entries
+
+
+def _validate_operator_override(
+    value: object, *, index: int, source: Path
+) -> OperatorOverride:
+    if not isinstance(value, dict):
+        raise BaselineError(f"{source}: record {index} has invalid operator_override")
+    value_map = cast("Mapping[str, object]", value)
+    if set(value_map) != set(OPERATOR_OVERRIDE_KEYS):
+        raise BaselineError(f"{source}: record {index} has invalid operator_override")
+    reason = value_map["reason"]
+    issue = value_map["issue"]
+    if not isinstance(reason, str) or not reason:
+        raise BaselineError(
+            f"{source}: record {index} has invalid operator_override reason"
+        )
+    if not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0:
+        raise BaselineError(
+            f"{source}: record {index} has invalid operator_override issue"
+        )
+    return {"reason": reason, "issue": issue}
+
+
+def _check_record_keys(
+    keys: set[str], *, index: int, source: Path, strict: bool
+) -> None:
+    unknown = keys - ALL_KEYS
+    if unknown:
+        raise BaselineError(f"{source}: record {index} has unknown fields {sorted(unknown)}")
+    missing_identity = IDENTITY_KEYS - keys
+    if missing_identity:
+        raise BaselineError(
+            f"{source}: record {index} missing identity fields {sorted(missing_identity)}"
+        )
+    if not strict:
+        return
+    missing_required = STRICT_REQUIRED_KEYS - keys
+    if missing_required:
+        raise BaselineError(
+            f"{source}: record {index} missing required fields {sorted(missing_required)}"
+        )
+
+
+def _validate_added_at(value: object, *, index: int, source: Path) -> str:
+    if not isinstance(value, str) or not value:
+        raise BaselineError(f"{source}: record {index} has invalid added_at")
+    return value
+
+
+def _validate_source_issue(value: object, *, index: int, source: Path) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise BaselineError(f"{source}: record {index} has invalid source_issue")
+    return value
+
+
+def _validate_reason(value: object, *, index: int, source: Path) -> str:
+    if not isinstance(value, str) or not value:
+        raise BaselineError(f"{source}: record {index} has invalid reason")
+    return value
+
+
+def _validate_record(
+    item: object, *, index: int, source: Path, strict: bool
+) -> Record:
+    """Validate one raw baseline record.
+
+    ``strict`` requires the committed ``added_at``/``history`` fields (used
+    by ``load_baseline``); non-strict validates whatever fields are present
+    without requiring them (used by ``migrate_baseline`` on legacy or
+    partially migrated input). Both reject unknown fields and missing
+    identity fields.
+    """
+    if not isinstance(item, dict):
+        raise BaselineError(f"{source}: record {index} must be an object")
+    record = cast("Mapping[str, object]", item)
+    keys = set(record)
+    _check_record_keys(keys, index=index, source=source, strict=strict)
+    file_name, code, qualified_symbol, metric = _validate_identity(
+        record, index=index, source=source
+    )
+    result: Record = {
         "file": file_name,
         "code": code,
         "qualified_symbol": qualified_symbol,
         "metric": metric,
     }
+    if "added_at" in keys:
+        result["added_at"] = _validate_added_at(
+            record["added_at"], index=index, source=source
+        )
+    if "history" in keys:
+        result["history"] = _validate_history(record["history"], index=index, source=source)
+    if "source_issue" in keys:
+        result["source_issue"] = _validate_source_issue(
+            record["source_issue"], index=index, source=source
+        )
+    if "reason" in keys:
+        result["reason"] = _validate_reason(record["reason"], index=index, source=source)
+    if "operator_override" in keys:
+        result["operator_override"] = _validate_operator_override(
+            record["operator_override"], index=index, source=source
+        )
+    return result
 
 
 def load_baseline(path: Path | str) -> list[Record]:
@@ -228,7 +385,7 @@ def load_baseline(path: Path | str) -> list[Record]:
         raise BaselineError(f"{baseline_path}: baseline must be a top-level JSON array")
     items = cast("list[object]", data)
     return [
-        _validate_record(item, index=index, source=baseline_path)
+        _validate_record(item, index=index, source=baseline_path, strict=True)
         for index, item in enumerate(items)
     ]
 
@@ -404,6 +561,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
             "instead of checking against it."
         ),
     )
+    _ = parser.add_argument(
+        "--migrate",
+        action="store_true",
+        help=(
+            "Grandfather legacy or partially migrated baseline records in "
+            "place instead of checking or writing."
+        ),
+    )
     try:
         return parser.parse_args(argv)
     except SystemExit as exc:
@@ -426,10 +591,16 @@ def _collect_live_records(python_dir: Path) -> list[Record]:
     return live_records
 
 
+def _canonical_record(record: Record) -> dict[str, object]:
+    mapping = cast("Mapping[str, object]", record)
+    return {key: mapping[key] for key in FIELD_ORDER if key in mapping}
+
+
 def serialize_baseline(records: list[Record]) -> str:
     """Return canonical baseline JSON: key-sorted, 2-space, trailing newline."""
     ordered = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
+    canonical = [_canonical_record(record) for record in ordered]
+    return json.dumps(canonical, indent=2) + "\n"
 
 
 def write_baseline( *,path: Path, records: list[Record]) -> None:
@@ -437,7 +608,111 @@ def write_baseline( *,path: Path, records: list[Record]) -> None:
     _ = path.write_text(serialize_baseline(records), encoding="utf-8")
 
 
+def migrate_baseline(path: Path) -> int:
+    """Grandfather legacy or partially migrated records in ``path`` in place.
+
+    Adds only the missing ``added_at: "legacy"`` and ``history: []`` fields;
+    every other identity and optional field is preserved verbatim. Fails
+    closed on unknown fields, missing identity fields, or a changed
+    ``(file, code, qualified_symbol) -> metric`` projection. Returns the
+    count of records that gained migration metadata.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BaselineError(f"{path}: cannot load baseline: {exc}") from exc
+    if not isinstance(data, list):
+        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
+    items = cast("list[object]", data)
+    validated = [
+        _validate_record(item, index=index, source=path, strict=False)
+        for index, item in enumerate(items)
+    ]
+    before_projection = {_record_key(record): record["metric"] for record in validated}
+
+    migrated_count = 0
+    migrated: list[Record] = []
+    for record in validated:
+        added_at = record.get("added_at")
+        history = record.get("history")
+        if added_at is None or history is None:
+            migrated_count += 1
+        new_record: Record = {
+            "file": record["file"],
+            "code": record["code"],
+            "qualified_symbol": record["qualified_symbol"],
+            "metric": record["metric"],
+            "added_at": added_at if added_at is not None else "legacy",
+            "history": history if history is not None else [],
+        }
+        if "source_issue" in record:
+            new_record["source_issue"] = record["source_issue"]
+        if "reason" in record:
+            new_record["reason"] = record["reason"]
+        if "operator_override" in record:
+            new_record["operator_override"] = record["operator_override"]
+        migrated.append(new_record)
+
+    after_projection = {_record_key(record): record["metric"] for record in migrated}
+    if before_projection != after_projection:
+        raise BaselineError(
+            f"{path}: migration would change the identity-to-metric projection"
+        )
+    write_baseline(path=path, records=migrated)
+    return migrated_count
+
+
+def _first_extended_metadata_reason(
+    items: list[object], *, baseline_path: Path
+) -> str | None:
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            return f"{baseline_path}: record {index} is not an object"
+        item_map = cast("Mapping[str, object]", item)
+        extended = set(item_map) & EXTENDED_ONLY_KEYS
+        if extended:
+            return (
+                f"{baseline_path}: record {index} carries migrated metadata "
+                f"{sorted(extended)}"
+            )
+    return None
+
+
+def _write_guard_blocks(baseline_path: Path) -> tuple[bool, str | None]:
+    """Return ``(blocked, reason)`` for the fail-closed ``--write`` pre-check.
+
+    A nonexistent baseline is a genuine bootstrap and is never blocked. Any
+    existing baseline that already carries extended metadata (fully or
+    partially migrated) blocks the unchanged four-field writer, since it
+    cannot preserve that metadata.
+    """
+    if not baseline_path.exists():
+        return False, None
+    try:
+        data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return True, f"cannot read {baseline_path}: {exc}"
+    except json.JSONDecodeError as exc:
+        return True, f"{baseline_path}: cannot parse existing baseline: {exc}"
+    if not isinstance(data, list):
+        return True, f"{baseline_path}: existing baseline must be a top-level JSON array"
+    reason = _first_extended_metadata_reason(
+        cast("list[object]", data), baseline_path=baseline_path
+    )
+    if reason is not None:
+        return True, reason
+    return False, None
+
+
 def _run_write( *,python_dir: Path, baseline_path: Path) -> int:
+    blocked, reason = _write_guard_blocks(baseline_path)
+    if blocked:
+        print(
+            f"lint-complexity-baseline: {reason}; baseline regeneration is "
+            "disabled until Piece 2's metadata-preserving writer lands",
+            file=sys.stderr,
+        )
+        return 2
     try:
         live_records = _collect_live_records(python_dir)
     except BaselineError as exc:
@@ -447,6 +722,20 @@ def _run_write( *,python_dir: Path, baseline_path: Path) -> int:
     print(
         f"lint-complexity-baseline: wrote {len(live_records)} "
         f"records to {baseline_path}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _run_migrate( *,baseline_path: Path) -> int:
+    try:
+        migrated_count = migrate_baseline(baseline_path)
+    except BaselineError as exc:
+        print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"lint-complexity-baseline: migrated {migrated_count} "
+        f"records in {baseline_path}",
         file=sys.stderr,
     )
     return 0
@@ -486,6 +775,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     baseline_path = python_dir / "complexity-baseline.json"
+    if parsed.migrate:
+        return _run_migrate(baseline_path=baseline_path)
     if parsed.write:
         return _run_write(python_dir=python_dir, baseline_path=baseline_path)
     return _run_check(python_dir=python_dir, baseline_path=baseline_path)
