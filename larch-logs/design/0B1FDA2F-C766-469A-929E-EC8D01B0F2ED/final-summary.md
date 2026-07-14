@@ -1,0 +1,88 @@
+## Review Phase Detail
+
+| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |
+|--:|--:|--:|--:|--:|:--|--:|--:|
+| 1 | 7 | 3 | 0 | 0 | 7m 50s | $8.31 | 10 |
+| 2 | 1 | 0 | 0 | 0 | 6m 47s | $5.49 | 8 |
+| **Total (round-sum)** | **8** | **3** | **0** | **0** | **14m 37s** | **$13.80** | **18** |
+
+_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._
+
+### Round 1 reviewer timing
+
+```
+Round 1 reviewer timing  ·  window 0:00-7:50 (470s)
+                                                     0:00                       7:50
+                                                    ┌───────────────────────────────┐
+codex/codex-plan-innovation                         │██                             │  23s
+codex/codex-plan-requirements                       │███                            │  39s
+codex/codex-plan-pragmatic                          │███                            │  46s
+codex/dyn-codex-plan-typed-contract-compatibility   │███                            │  47s
+codex/codex-plan-arch                               │███                            │  50s
+cursor/cursor-plan-innovation                       │████████                       │ 119s
+cursor/cursor-plan-pragmatic                        │█████████                      │ 130s
+cursor/dyn-cursor-plan-typed-contract-compatibility │███████████                    │ 158s
+cursor/cursor-plan-arch                             │███████████                    │ 168s
+cursor/cursor-plan-requirements                     │███████████████                │ 230s
+reviewer-collect                                    │               █               │   2s
+aggregator                                          │                █              │  10s
+voter-dispatch-prep                                 │                ███████████    │ 158s
+codex/pragmatism-vote                               │                           ██  │  25s
+codex/plan-fidelity-vote                            │                           ███ │  40s
+codex/validity-vote                                 │                           ███ │  47s
+codex/apply                                         │                              █│  11s
+gate-b/apply                                        │                              █│   2s
+                                                    └───────────────────────────────┘
+```
+
+### Round 2 reviewer timing
+
+```
+Round 2 reviewer timing  ·  window 0:00-6:47 (407s)
+                                 0:00                                           6:47
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-pragmatic      │ ████                                              │  38s
+codex/codex-plan-arch           │ ██████                                            │  50s
+codex/codex-plan-innovation     │ ██████                                            │  50s
+codex/codex-plan-requirements   │ ███████                                           │  58s
+cursor/cursor-plan-requirements │ ████████████                                      │  96s
+cursor/cursor-plan-pragmatic    │ ██████████████                                    │ 115s
+cursor/cursor-plan-arch         │ █████████████████                                 │ 140s
+cursor/cursor-plan-innovation   │ █████████████████████                             │ 170s
+reviewer-collect                │                      █                            │   2s
+voter-dispatch-prep             │                       ███████████████████████████ │ 215s
+codex/plan-fidelity-vote        │                                                  █│   7s
+codex/pragmatism-vote           │                                                  █│   8s
+codex/validity-vote             │                                                  █│   8s
+                                └───────────────────────────────────────────────────┘
+```
+
+**Top reviewers** (by per-round accepted-point score, whole run):
+1. Cursor-Innovation: 3
+2. Cursor-Requirements: 3
+3. Cursor-dyn-Typed Contract Compatibility: 3
+4. Codex-Arch: 2
+5. Codex-Innovation: 2
+6. Codex-Pragmatic: 2
+7. Codex-Requirements: 2
+
+**Reviewer slot failures**: 0
+
+## /design run 0B1FDA2F-C766-469A-929E-EC8D01B0F2ED: failed-plan-write
+
+- **Outcome**: failed-plan-write
+- **Duration**: 00:34:59
+- **Cost**: 💰 TOTAL ~$20.88: Claude $6.46, Codex-5.6 $5.47, Codex-mini $0.02, Cursor $8.93 (Composer $8.93, Grok $0.00), Claude (subprocess) $0.00  |  Tokens: 36981k
+- **Issue**: #7306: https://github.com/character-ai/larch/issues/7306
+- **Plan review**: complete (2 rounds)
+- **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD escalated-high-accepted
+- **Dynamic archetypes**: static-only, drafter filter_failed
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/0B1FDA2F-C766-469A-929E-EC8D01B0F2ED/`
+- **Main agent model**: claude-sonnet-4-6
+- **Effort**: max
+- **Larch version**: 53.1.3
+
+<!-- larch:run-summary v=1 -->
