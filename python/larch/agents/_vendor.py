@@ -14,10 +14,10 @@ import os
 import shutil
 import sys
 import tempfile
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from larch.core import proc
 
@@ -441,7 +441,11 @@ def check_token_budget_cap(
     if not _is_positive_int(cap):
         return VendorCapCheckResult(hit=False)
     argv = tuple(build_check_budget_argv(cap=cap, step=step))
-    run = runner if runner is not None else (lambda cmd: proc.run(list(cmd), check=False))
+
+    def _default_runner(cmd: Sequence[str]) -> Any:
+        return proc.run(list(cmd), check=False)
+
+    run = runner if runner is not None else _default_runner
     result = run(argv)
     stdout = str(getattr(result, "stdout", "") or "")
     status = ""
@@ -455,7 +459,7 @@ def check_token_budget_cap(
 
 
 @contextlib.contextmanager
-def cursor_config_context() -> Iterator[Path]:
+def cursor_config_context() -> Generator[Path]:
     """Isolate Cursor config under a temp dir; restore ``CURSOR_CONFIG_DIR`` on exit."""
     cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=tempfile.gettempdir()))
     old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
@@ -463,13 +467,13 @@ def cursor_config_context() -> Iterator[Path]:
     user_cfg = Path.home() / ".cursor" / "cli-config.json"
     if user_cfg.is_file():
         with contextlib.suppress(OSError):
-            shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
+            _ = shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
     try:
         yield cfg_tmp
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
         if old_cfg is None:
-            os.environ.pop("CURSOR_CONFIG_DIR", None)
+            _ = os.environ.pop("CURSOR_CONFIG_DIR", None)
         else:
             os.environ["CURSOR_CONFIG_DIR"] = old_cfg
 
@@ -482,11 +486,12 @@ def parse_claude_envelope(raw: str) -> VendorParsedResult:  # noqa: PLR0911 - se
         return VendorParsedResult(status=CLAUDE_ENVELOPE_MALFORMED_JSON, raw=raw)
     if not isinstance(obj, dict):
         return VendorParsedResult(status=CLAUDE_ENVELOPE_NON_OBJECT, raw=raw)
-    if obj.get("is_error"):
+    payload = cast("dict[str, object]", obj)
+    if payload.get("is_error"):
         return VendorParsedResult(status=CLAUDE_ENVELOPE_IS_ERROR, raw=raw, is_error=True)
-    if "result" not in obj:
+    if "result" not in payload:
         return VendorParsedResult(status=CLAUDE_ENVELOPE_MISSING_RESULT, raw=raw)
-    value = obj.get("result")
+    value = payload.get("result")
     if not isinstance(value, str):
         return VendorParsedResult(status=CLAUDE_ENVELOPE_NON_STRING_RESULT, raw=raw)
     if not value:
@@ -518,7 +523,11 @@ def run_with_vendor_retries(
             policy.is_transient_failure is not None and policy.is_transient_failure(result)
         )
         is_empty = policy.is_empty_response is not None and policy.is_empty_response(result)
-        sleeper = policy.sleep if policy.sleep is not None else (lambda _seconds: None)
+
+        def _noop_sleep(_seconds: float) -> None:
+            return None
+
+        sleeper: Callable[[float], None] = policy.sleep if policy.sleep is not None else _noop_sleep
         if is_auth and auth_retries < policy.max_auth_retries:
             auth_retries += 1
             if policy.delay_seconds > 0:

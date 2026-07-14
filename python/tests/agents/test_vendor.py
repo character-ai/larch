@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false
 """Tests for inactive vendor descriptors, argv builders, and launch lifecycle."""
 
 from __future__ import annotations
