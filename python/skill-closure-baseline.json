@@ -38,9 +38,9 @@
     "skill_md_lines": 690
   },
   {
-    "closure_content_estimated_tokens": 47612,
-    "closure_estimated_tokens": 47735,
-    "closure_lines": 1367,
+    "closure_content_estimated_tokens": 48153,
+    "closure_estimated_tokens": 48276,
+    "closure_lines": 1370,
     "conditional_content_estimated_tokens": 23231,
     "conditional_estimated_tokens": 23286,
     "conditional_files": [
@@ -68,14 +68,14 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 34580,
-    "skill_md_estimated_tokens": 34663,
-    "skill_md_lines": 869
+    "skill_md_content_estimated_tokens": 35395,
+    "skill_md_estimated_tokens": 35478,
+    "skill_md_lines": 881
   },
   {
-    "closure_content_estimated_tokens": 50715,
-    "closure_estimated_tokens": 50921,
-    "closure_lines": 2781,
+    "closure_content_estimated_tokens": 52622,
+    "closure_estimated_tokens": 52837,
+    "closure_lines": 2884,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,
     "conditional_files": [],
@@ -85,6 +85,7 @@
       "agents/arch-assessor.md",
       "agents/ci-fixer.md",
       "agents/claude-implementer.md",
+      "agents/claude-self-reviewer.md",
       "agents/code-reviewer.md",
       "agents/codex-implementer.md",
       "agents/cursor-implementer.md",
@@ -107,8 +108,8 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 10291,
-    "closure_estimated_tokens": 10326,
+    "closure_content_estimated_tokens": 10307,
+    "closure_estimated_tokens": 10342,
     "closure_lines": 406,
     "conditional_content_estimated_tokens": 3497,
     "conditional_estimated_tokens": 3508,

@@ -286,3 +286,4 @@ Shortcut skills shipped with the plugin. Each alias forwards to an existing skil
 | Alias | Equivalent |
 |---|---|
 | [`/im`](docs/skills.md#im) | `/implement --merge` (same public flags as `/implement`; requires positional `<issue-N>`) |
+| [`/f`](docs/skills.md#f) | `/implement --force --self-review --self-implement` (same public flags as `/implement`; requires positional `<issue-N>`) |

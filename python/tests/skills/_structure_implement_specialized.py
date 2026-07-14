@@ -140,6 +140,8 @@ def run(repo_root: Path) -> list[str]:
         require(skill, "`--force` and `-f` both set `force_requested=true`", "SKILL -f alias parse rule")
         require(skill, "`--force` / `-f` and `--draft` together", "SKILL -f draft mutex wording")
         require("skills/im/SKILL.md", "`--force`, `-f`", "im SKILL forwards -f alias")
+        require("skills/f/SKILL.md", "--force --self-review --self-implement", "f SKILL preset flags")
+        require("skills/f/SKILL.md", 'args: --force --self-review --self-implement $ARGUMENTS', "f SKILL forwards preset args")
         require("python/tests/state/test_bootstrap.py", "test_invoke_refuses_symlinked_bootstrap_routing_env", "bootstrap refusal-path test")
         require("python/tests/state/test_bootstrap.py", "BOOTSTRAP_NEXT=cleanup", "bootstrap refusal-path emits directive")
         require("python/tests/state/test_bootstrap.py", "BOOTSTRAP_NEXT=step2", "bootstrap invoke emits step2 directive")
@@ -731,8 +733,24 @@ def run(repo_root: Path) -> list[str]:
                 "CODER_RESULT=pushed|no-progress|bail",
                 "CODER_COMMIT=<sha or empty>",
                 "CODER_SUMMARY=<one line>",
+                "MODE=step2-plan",
+                "CODER_RESULT=complete|needs_qa|bail|no-progress",
             ]:
                 require_text(agent_text, needle, "agents/claude-implementer.md contract")
+        claude_self_reviewer_agent = Path("agents/claude-self-reviewer.md")
+        if not claude_self_reviewer_agent.is_file():
+            checks.append("missing agents/claude-self-reviewer.md")
+        else:
+            agent_text = claude_self_reviewer_agent.read_text()
+            for needle in [
+                "name: claude-self-reviewer",
+                "SELF_REVIEW_RESULT=complete|bail",
+                "SELF_REVIEW_FIXES=true|false",
+                "SELF_REVIEW_SUMMARY=<one line>",
+                "### [Code Review] Self-review accepted",
+                "write-pre-self-review-snapshot",
+            ]:
+                require_text(agent_text, needle, "agents/claude-self-reviewer.md contract")
         write_final_ref = Path("skills/implement/scripts/write-final-report.md")
         if write_final_ref.is_file():
             write_final_text = write_final_ref.read_text()
@@ -915,7 +933,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0)", "SKILL verbose degraded-prompt table prose moved to bootstrap-recovery.md")
         forbid(skill, "Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`", "SKILL verbose dirty-recovery table prose moved to bootstrap-recovery.md")
         forbid(skill, 'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review"', "SKILL self-review telemetry fence moved to self-review.md")
-        forbid(skill, "python/cli.py review-and-fix write-pre-self-review-snapshot", "SKILL self-review snapshot fence moved to self-review.md")
+        forbid(skill, "python/cli.py review-and-fix write-pre-self-review-snapshot", "SKILL self-review snapshot fence moved to claude-self-reviewer agent")
         forbid(skill, "checks-commit-route --checks-site step5-self-review", "SKILL self-review composite fence moved to self-review.md")
         forbid(skill, "python/cli.py review-and-fix write-self-review-tally", "SKILL self-review tally fence moved to self-review.md")
         forbid(skill, "set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent", "SKILL self-review invalid-envelope prose moved to self-review.md")
@@ -957,7 +975,8 @@ def run(repo_root: Path) -> list[str]:
         self_review_text = Path(self_review_ref).read_text()
         for needle in [
             'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true',
-            "python/cli.py review-and-fix write-pre-self-review-snapshot",
+            "larch:claude-self-reviewer",
+            "self-review mode (Claude subagent)",
             "skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review",
             "python/cli.py review-and-fix write-self-review-tally",
             "set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18",
@@ -965,22 +984,21 @@ def run(repo_root: Path) -> list[str]:
             "re-run this same composite launcher with identical argv",
             "parse exactly one line-anchored composite `NEXT_ACTION=` record",
             "$IMPLEMENT_TMPDIR/plan.txt",
-            'git diff "$(git merge-base HEAD origin/main)"..HEAD',
-            "execution-issues-tracking.md",
-            "correctness: logic errors",
-            "security: injection",
-            "OOS triage policy",
-            "### [Code Review] Self-review accepted",
-            "rejected-findings.md",
             "> **Continue after bgjob `DONE`.**",
             "Checks Failure Entry Macro",
             "--site step5-self-review",
-            "$IMPLEMENT_TMPDIR/self-review-accepted.md",
+            "SELF_REVIEW_RESULT=complete",
+            "Claude subagent review complete",
         ]:
             if needle not in self_review_text:
                 checks.append(f"self-review.md missing relocated authority {needle!r}")
         if old_inline_combo.search(self_review_text):
             checks.append("self-review.md must invoke the Checks Failure Entry Macro instead of restating REDACTED_LOG_FILE and checks-repair-loop.md")
+        # Review judgment + fix artifacts live in the subagent definition, not the orchestrator reference.
+        forbid(self_review_ref, 'git diff "$(git merge-base HEAD origin/main)"..HEAD', "self-review.md must not inline the review diff capture (subagent owns it)")
+        require(skill, "larch:claude-self-reviewer", "SKILL documents --self-review Claude subagent")
+        require(skill, "larch:claude-implementer", "SKILL documents --self-implement Claude subagent")
+        require(skill, "Implementing with Claude subagent (--self-implement", "SKILL self-implement subagent banner")
 
         # Step 4 skip prose must reference implement commit, not git-commit.sh.
         require(skill, "Skip the `implement commit` invocation.", "Step 4 skip prose references implement commit")
@@ -1019,4 +1037,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 358
+LEGACY_ASSERTION_LABEL_COUNT = 366
