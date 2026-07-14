@@ -285,7 +285,7 @@ def test_scrub_log_secrets_returns_frozen_result_with_named_fields() -> None:
     assert scrubbed == result.scrubbed
     assert findings == result.findings
     with pytest.raises(FrozenInstanceError):
-        result.scrubbed = "mutated"  # type: ignore[misc]
+        result.scrubbed = "mutated"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_scrub_log_directory_returns_frozen_result_with_named_fields(tmp_path: Path) -> None:

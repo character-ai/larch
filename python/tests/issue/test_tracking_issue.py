@@ -1242,7 +1242,7 @@ def test_read_sentinel_returns_frozen_result_with_named_fields(tmp_path: Path) -
     assert result.run_id == "run-1"
     assert result.adopted == "true"
     with pytest.raises(FrozenInstanceError):
-        result.issue_number = "6"  # type: ignore[misc]
+        result.issue_number = "6"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_read_sentinel_preserves_empty_valid_fields(tmp_path: Path) -> None:
@@ -1302,7 +1302,7 @@ def test_read_direct_renders_task_and_returns_frozen_output(tmp_path: Path) -> N
     assert output.task_file == str(tmp_path / "task.md")
     assert (tmp_path / "task.md").read_text(encoding="utf-8").startswith(tracking_issue.ISSUE_READ_PREAMBLE)
     with pytest.raises(FrozenInstanceError):
-        output.issue_number = "10"  # type: ignore[misc]
+        output.issue_number = "10"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_create_issue_direct_returns_frozen_output(tmp_path: Path) -> None:
@@ -1316,7 +1316,7 @@ def test_create_issue_direct_returns_frozen_output(tmp_path: Path) -> None:
     assert result.issue_number == "7"
     assert result.issue_url == "https://github.com/o/r/issues/7"
     with pytest.raises(FrozenInstanceError):
-        result.issue_number = "8"  # type: ignore[misc]
+        result.issue_number = "8"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_append_comment_result_direct_returns_frozen_output() -> None:
@@ -1336,7 +1336,7 @@ def test_append_comment_result_direct_returns_frozen_output() -> None:
     assert result.comment_id == "99"
     assert result.comment_url == "https://github.com/o/r/issues/1#issuecomment-99"
     with pytest.raises(FrozenInstanceError):
-        result.comment_id = "100"  # type: ignore[misc]
+        result.comment_id = "100"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_append_comment_result_validates_lifecycle_marker() -> None:

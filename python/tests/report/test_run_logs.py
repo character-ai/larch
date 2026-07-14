@@ -4079,7 +4079,7 @@ def test_log_init_creates_manifest_then_reports_unchanged(tmp_path: Path) -> Non
     assert second.unchanged is True
     assert second.path == first.path
     with pytest.raises(FrozenInstanceError):
-        first.written = False  # type: ignore[misc]
+        first.written = False  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_log_init_rejects_nonnumeric_issue(tmp_path: Path) -> None:

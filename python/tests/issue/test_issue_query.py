@@ -64,7 +64,7 @@ def test_issue_context_writes_files(tmp_path: Path) -> None:
     assert context.body_file.name == "upstream-issue-body.txt"
     assert not context.title_file.with_suffix(".txt.tmp").exists()
     with pytest.raises(FrozenInstanceError):
-        context.title_file = tmp_path / "other.txt"  # type: ignore[misc]
+        context.title_file = tmp_path / "other.txt"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_issue_context_failures(tmp_path: Path) -> None:
