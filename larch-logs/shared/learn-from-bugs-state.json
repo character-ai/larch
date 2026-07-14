@@ -1,11 +1,11 @@
 {
-  "highest_closed_issue_number_scanned": 7111,
+  "highest_closed_issue_number_scanned": 7257,
   "proposals": [
     {
       "filed_issue": 7145,
       "id": "origin-marker-writer-surface",
       "run_date": "2026-07-12T20:41:35Z",
-      "status": "proposed",
+      "status": "adopted",
       "target": "fix:origin-marker-writer-surface",
       "type": "fix"
     },
@@ -13,16 +13,40 @@
       "filed_issue": 7146,
       "id": "learn-from-bugs-out-path-symlink-refusal",
       "run_date": "2026-07-12T20:41:35Z",
-      "status": "proposed",
+      "status": "adopted",
       "target": "fix:learn-from-bugs-out-path-symlink-refusal",
       "type": "fix"
+    },
+    {
+      "filed_issue": 7296,
+      "id": "doc-canonical-pointer-existence-lint",
+      "run_date": "2026-07-14T08:18:13Z",
+      "status": "proposed",
+      "target": "module:python/larch/lint/lint_doc_pointer_paths.py",
+      "type": "lint"
+    },
+    {
+      "filed_issue": 7296,
+      "id": "security-md-dead-pointer-sweep",
+      "run_date": "2026-07-14T08:18:13Z",
+      "status": "proposed",
+      "target": "fix:security-md-dead-pointer-sweep",
+      "type": "fix"
+    },
+    {
+      "filed_issue": 7297,
+      "id": "tmpdir-arg-env-fallback-lint",
+      "run_date": "2026-07-14T08:18:13Z",
+      "status": "proposed",
+      "target": "module:python/larch/lint/lint_tmpdir_arg_env_fallback.py",
+      "type": "lint"
     }
   ],
   "repo": "character-ai/larch",
-  "run_date": "2026-07-12T20:41:35Z",
-  "scan_started_at": "2026-07-12T20:25:35Z",
+  "run_date": "2026-07-14T08:18:13Z",
+  "scan_started_at": "2026-07-14T08:08:19Z",
   "schema_version": 2,
   "search": "[BUG] in:title",
-  "selected_count": 10,
+  "selected_count": 174,
   "state": "closed"
 }
