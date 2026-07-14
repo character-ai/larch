@@ -441,12 +441,11 @@ def _validate_implement_common(args: argparse.Namespace, *, tool: str) -> tuple[
         if not Path(getattr(args, name)).is_file():
             _err(f"{prefix}: {name.replace('_', '-')} not found: {getattr(args, name)}")
             return False, 2
-    if args.answers_file and not Path(args.answers_file).is_file():
-        _err(f"{prefix}: --answers-file given but path does not exist: {args.answers_file}")
-        return False, 2
-    if args.completion_retry_file and not Path(args.completion_retry_file).is_file():
-        _err(f"{prefix}: --completion-retry-file given but path does not exist: {args.completion_retry_file}")
-        return False, 2
+    for name in ("answers_file", "completion_retry_file"):
+        value = getattr(args, name)
+        if value and not Path(value).is_file():
+            _err(f"{prefix}: --{name.replace('_', '-')} given but path does not exist: {value}")
+            return False, 2
     if not _is_positive_int(args.timeout):
         _err(f"{prefix}: --timeout must be a positive integer (seconds), got '{args.timeout}'")
         return False, 2

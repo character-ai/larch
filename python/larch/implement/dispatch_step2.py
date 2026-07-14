@@ -298,8 +298,9 @@ def _launcher_args(st: DispatchState) -> list[str]:
         args.extend(["--difficulty", st.difficulty])
     if st.answers_file is not None:
         args.extend(["--answers-file", str(st.answers_file)])
-    if st.completion_retry_feedback_file.is_file():
-        args.extend(["--completion-retry-file", str(st.completion_retry_feedback_file)])
+    completion_retry_feedback = getattr(st, "completion_retry_feedback_file", None)
+    if completion_retry_feedback is not None and completion_retry_feedback.is_file():
+        args.extend(["--completion-retry-file", str(completion_retry_feedback)])
     return args
 
 

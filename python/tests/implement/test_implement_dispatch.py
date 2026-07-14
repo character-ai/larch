@@ -7544,8 +7544,6 @@ def test_step2_dispatch_completion_retries_exhaust_before_partial_disposition(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
-    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
-    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
 
     assert _run_step2(tmp) == 0
     out = capsys.readouterr().out
