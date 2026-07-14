@@ -128,7 +128,7 @@ def test_cursor_implement_model_by_difficulty() -> None:
     assert set(config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY) == set(config.DIFFICULTY_TIERS)
     assert (
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_TRIVIAL]
-        == config.CURSOR_DEFAULT_MODEL
+        == config.CURSOR_GROK_4_5_HIGH_MODEL
     )
     assert (
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD]
@@ -138,3 +138,16 @@ def test_cursor_implement_model_by_difficulty() -> None:
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE]
         == "cursor-grok-4.5-high"
     )
+
+
+def test_coder_and_codex_implement_routing_by_difficulty() -> None:
+    assert config.CODER_TOOL_ORDER_BY_DIFFICULTY[config.DIFFICULTY_TIER_TRIVIAL] == (
+        "cursor",
+        "codex",
+        "claude",
+    )
+    assert config.CODEX_DEFAULT_MODEL == "gpt-5.6-sol"
+    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE] == config.CODEX_TERRA_MODEL
+    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD] == config.CODEX_TERRA_MODEL
+    assert config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE] == config.CODEX_TERRA_MODEL
+    assert config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD] == config.CODEX_TERRA_MODEL

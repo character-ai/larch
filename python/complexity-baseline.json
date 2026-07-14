@@ -5247,7 +5247,7 @@
     "file": "larch/review/plan_review_panel.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
-    "metric": 65
+    "metric": 69
   },
   {
     "file": "larch/review/plan_review_round.py",

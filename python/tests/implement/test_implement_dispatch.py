@@ -8699,7 +8699,7 @@ def test_resolve_implement_rater_model_uses_moderate_cursor_default(
         ("codex", difficulty.MODERATE, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE]),
         ("codex", difficulty.HARD, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.HARD]),
         ("codex", "", config.CODEX_DEFAULT_MODEL),
-        ("cursor", difficulty.TRIVIAL, config.CURSOR_DEFAULT_MODEL),
+        ("cursor", difficulty.TRIVIAL, config.CURSOR_GROK_4_5_HIGH_MODEL),
         ("cursor", difficulty.MODERATE, config.CURSOR_GROK_4_5_HIGH_MODEL),
         ("cursor", difficulty.HARD, config.CURSOR_DEFAULT_MODEL),
         ("cursor", "", config.CURSOR_DEFAULT_MODEL),
@@ -8767,7 +8767,7 @@ def test_resolve_implement_rater_model_cursor_larch_env_wins_over_plugin(
     ) == "cursor-env-wins"
 
 
-def test_resolve_implement_rater_model_moderate_codex_fallback_stays_sol(
+def test_resolve_implement_rater_model_moderate_codex_uses_terra(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -8778,5 +8778,5 @@ def test_resolve_implement_rater_model_moderate_codex_fallback_stays_sol(
         tool="codex",
         session_env=tmp / "session-env.sh",
         difficulty_tier=difficulty.MODERATE,
-    ) == "gpt-5.6-sol"
-    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE] == "gpt-5.6-sol"
+    ) == "gpt-5.6-terra"
+    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE] == "gpt-5.6-terra"

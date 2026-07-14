@@ -323,9 +323,10 @@ def test_panel_dispatch_moderate_uses_pairs_and_review_codex_role(tmp_path: Path
     assert proc.returncode == 0, proc.stderr + proc.stdout
     _assert_design_pair_shape(rows, codex_role="review")
     assert _argval(waterfall_args, "--model-role") == "review"
+    assert _argval(waterfall_args, "--default-model") == "gpt-5.6-terra"
 
 
-def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
+def test_panel_dispatch_hard_uses_pairs_and_review_codex_role(tmp_path: Path) -> None:
     proc, _design, rows, waterfall_args = _dispatch_design_panel_for_tier(tmp_path, "HARD")
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert len(rows) == 8
@@ -343,11 +344,12 @@ def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -
     assert roles_by_focus == {
         "arch": "review",
         "innovation": "review",
-        "pragmatic": "default",
-        "requirements": "default",
+        "pragmatic": "review",
+        "requirements": "review",
     }
     resolved_by_focus = {str(row["focus_area"]): str(row.get("resolved_model")) for row in codex_rows}
     expected_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY["HARD"]
+    assert expected_model == "gpt-5.6-terra"
     assert resolved_by_focus == {
         "arch": expected_model,
         "innovation": expected_model,
@@ -358,7 +360,8 @@ def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -
     assert all("cursor_model" not in row for row in cursor_rows)
     assert all(row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL for row in cursor_rows)
     assert len({str(row["focus_area"]) for row in codex_rows}) == len(codex_rows)
-    assert _argval(waterfall_args, "--model-role") == "default"
+    assert _argval(waterfall_args, "--model-role") == "review"
+    assert _argval(waterfall_args, "--default-model") == "gpt-5.6-terra"
 
 
 def test_panel_dispatch_omits_generic_codex_all_rounds(tmp_path: Path) -> None:

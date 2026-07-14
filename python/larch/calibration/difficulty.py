@@ -182,11 +182,8 @@ def codex_review_model_role(tier: str) -> str:
 
 
 def codex_review_model_role_for_archetype(panel_role_id: str, archetype: str, tier: str) -> str:
-    normalized = normalize_tier(tier, MODERATE)
-    if normalized != HARD:
-        return "review"
-    overrides: dict[str, str] = config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES.get(panel_role_id, {})
-    return overrides.get(archetype, "review")
+    del panel_role_id, archetype, tier
+    return "review"
 
 
 def panel_shape_for_tier(tier: str) -> str:

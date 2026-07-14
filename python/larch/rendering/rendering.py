@@ -985,12 +985,7 @@ def render_specialist_main(argv: list[str]) -> int:
     try:
         args = _parse_specialist(argv)
         effective_diff_mode = _effective_diff_mode(args)
-        agent_base = Path(args.agent_file).stem
-        architectural_guidelines_section = (
-            _architectural_guidelines_review_section(difficulty_value=args.difficulty)
-            if agent_base == "reviewer-architectural-compliance"
-            else ""
-        )
+        architectural_guidelines_section = ""
         cache_dir = os.environ.get("LARCH_RENDER_CACHE_DIR", "")
         if cache_dir:
             try:

@@ -38,15 +38,30 @@ def test_review_mode_does_not_reserve_plan_static_slug() -> None:
 
 
 @pytest.mark.parametrize("mode", ["review", "plan-review"])
-def test_architectural_compliance_slug_is_reserved_for_both_scout_modes(mode: str) -> None:
+def test_architectural_compliance_slug_is_allowed_as_dynamic(mode: str) -> None:
     result = plan_scout.validate_dynamic_manifest(
         {"archetypes": [_row("architectural-compliance")]},
         max_archetypes=1,
         mode=mode,
     )
 
-    assert result.manifest == {"archetypes": []}
-    assert "reserved archetype name: architectural-compliance" in result.warnings
+    assert result.manifest["archetypes"][0]["name"] == "architectural-compliance"
+    assert not any("reserved archetype name: architectural-compliance" in w for w in result.warnings)
+
+
+def test_scout_prompt_authorities_do_not_reserve_architectural_compliance() -> None:
+    prompt_files = [
+        plan_scout.PLUGIN_ROOT / "skills/design/scripts/scout-plan-archetypes-prompt.txt",
+        plan_scout.PLUGIN_ROOT / "skills/implement/SKILL.md",
+    ]
+
+    for prompt_file in prompt_files:
+        reserved_slug_lines = [
+            line
+            for line in prompt_file.read_text(encoding="utf-8").splitlines()
+            if "outer wrapper reserves" in line or "avoid static/reserved slugs" in line
+        ]
+        assert all("architectural-compliance" not in line for line in reserved_slug_lines)
 
 
 def test_validate_rejects_unsafe_and_bad_shapes() -> None:
@@ -166,7 +181,7 @@ def test_dynamic_diff_mode_stages_large_diff_and_emits_warning(tmp_path: Path, m
     assert staged_diff.stat().st_size > plan_scout.MAX_CONTEXT_BYTES
     prompt = (out.parent / "staged-context" / "scout-dynamic-archetypes-prompt.md").read_text(encoding="utf-8")
     assert str(staged_diff) in prompt
-    assert "active static reviewers: correctness, edge-cases, testing, architectural-compliance" in prompt
+    assert "active static reviewers: correctness, edge-cases, testing" in prompt
     assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "api-contract"
     assert not list(tmp_path.rglob("panel-prompt-sizes.tsv"))
 
