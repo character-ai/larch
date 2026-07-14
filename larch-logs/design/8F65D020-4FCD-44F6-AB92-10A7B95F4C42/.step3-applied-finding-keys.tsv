@@ -1,0 +1,1 @@
+1	the isolation regression test does not seed ambient `claude_plugin_root` and `larch_claude_plugin_root`, so a scrub regression could go undetected.

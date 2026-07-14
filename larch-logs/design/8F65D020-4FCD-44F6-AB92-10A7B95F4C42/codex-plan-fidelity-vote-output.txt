@@ -1,0 +1,10 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Existing requested-directory symlinks can provide the required Python layout without a generated delegate.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Containment is defensive hardening for test-authored inputs, not required by this feature.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already anchors paths and requires an unrelated-cwd regression test.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan specifies structured per-argv JSON and strict decoding; broader schema pinning is optional.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Shell implementation choice is unnecessary where the plan already requires shell-free exact argv preservation.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The rejection behavior is planned, but extra invalid-name tests are not necessary to ship the fixture feature.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The Pyright exclusion is real, but refining the typing boundary is not feature-critical.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This is pre-existing isolation-test broadening, not a necessary new feature-path test.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The plan adds no runtime root environment wire and already resolves checkout sources through repo_root().
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- This is speculative future-author guidance without a concrete current trigger.

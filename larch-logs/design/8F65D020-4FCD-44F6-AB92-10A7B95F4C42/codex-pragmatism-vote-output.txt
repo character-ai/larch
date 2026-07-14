@@ -1,0 +1,10 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Requested checkout directories can include the Python layout, satisfying real-script dispatch without a generated delegate contract.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Fixture source paths are test-author-controlled checkout inputs, not a feature security boundary.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The tmp_path-based fixtures and unrelated-cwd test already require paths that remain effective outside the fixture cwd.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Structured JSON argv records meet the required unambiguous logging; a migration-stable schema is not required here.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly requires preserving argv without shell parsing, so shell quoting failures would violate the existing plan.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Additional invalid-name tests are useful but not necessary to ship the specified fixture behavior.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The exclusion limits conftest checking, but typed checked helpers and consuming tests still satisfy the feature.
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan does not introduce the proposed runtime environment wire.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The observation is speculative and supplies no concrete duplication trigger or actionable remedy.
