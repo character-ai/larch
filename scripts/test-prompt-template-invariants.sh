@@ -7,6 +7,17 @@
 
 set -euo pipefail
 
+isolation_probe=false
+if [[ "${1:-}" == "--session-isolation-probe" ]]; then
+    isolation_probe=true
+fi
+
+# This harness deliberately triggers malformed agent outputs. Do not let its
+# expected diagnostics append to a caller's live session artifacts.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH LARCH_TOKEN_LEDGER
+unset LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-prompt-template-invariants.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -22,6 +33,33 @@ assert_not_contains() {
         fail "$label: unexpectedly found '$needle'"
     fi
 }
+
+if [[ "$isolation_probe" != "true" ]]; then
+    live_session="$TMP/live-session"
+    mkdir -p "$live_session"
+    printf 'sentinel\n' > "$live_session/execution-issues.md"
+    printf 'token sentinel\n' > "$live_session/tokens.jsonl"
+    printf 'timing sentinel\n' > "$live_session/timing.tsv"
+    env \
+        IMPLEMENT_TMPDIR="$live_session" \
+        DESIGN_TMPDIR="$live_session" \
+        REVIEW_TMPDIR="$live_session" \
+        RESEARCH_TMPDIR="$live_session" \
+        SESSION_TMPDIR="$live_session" \
+        LARCH_EXECUTION_ISSUES_LOG="$live_session/execution-issues.md" \
+        SESSION_ENV_PATH="$live_session/session-env.sh" \
+        LARCH_TOKEN_LEDGER="$live_session/tokens.jsonl" \
+        LARCH_TIMING_LEDGER="$live_session/timing.tsv" \
+        bash "$0" --session-isolation-probe >/dev/null
+    cmp -s <(printf 'sentinel\n') "$live_session/execution-issues.md" \
+        || fail "poisoned session execution issues changed"
+    [[ ! -e "$live_session/vendor-failure-diagnostics.parts" ]] \
+        || fail "poisoned session vendor diagnostics changed"
+    cmp -s <(printf 'token sentinel\n') "$live_session/tokens.jsonl" \
+        || fail "poisoned session token ledger changed"
+    cmp -s <(printf 'timing sentinel\n') "$live_session/timing.tsv" \
+        || fail "poisoned session timing ledger changed"
+fi
 
 plan_file="$TMP/plan.txt"
 feature_file="$TMP/feature.txt"
