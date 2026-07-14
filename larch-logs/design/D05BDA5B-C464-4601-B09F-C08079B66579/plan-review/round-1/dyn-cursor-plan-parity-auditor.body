@@ -1,0 +1,1 @@
+Map every removed Bash assertion to a specific pytest assertion. Check exact statuses, counts, NDJSON metadata, failure handling, source-log disposition, wrapper argv, streams, and exit code. Cite file paths and symbols for every finding. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

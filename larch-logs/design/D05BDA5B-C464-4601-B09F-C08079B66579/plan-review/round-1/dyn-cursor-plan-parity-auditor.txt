@@ -1,0 +1,29 @@
+Reviewing the plan against the current Bash harness, pytest suite, and flush implementation to map assertion parity.
+Checking whether the Bash failure assertions match the Python implementation and scanning for delegation-smoke patterns in related migrations.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/issue/execution_issues.py:151-152	skills/implement/scripts/test-flush-execution-issues.sh:254-255	The Bash failure case asserts issue-log substrings run-log failed and simulated larch-log failure, but flush_execution_issues calls _append_failure with site flush-execution-issues and message run-log exited N; stderr from the failed run-log append is written only to APPEND_LOG_FILE, not execution-issues.md. Pytest that copies those Bash strings will fail against real behavior (and the Bash case is not CI-run today because make test-flush-execution-issues only runs pytest).	Pin the new flush_execution_issues_main failure test to _append_failure output: issue log still contains original content plus - **flush-execution-issues**: run-log exited 1; capsys has FLUSH_STATUS=failed and RECORDS=0; APPEND_LOG_FILE is readable and contains simulated stderr when subprocess.run is stubbed to return rc=1. Do not assert simulated larch-log failure inside execution-issues.md.
+1	in_scope	major	correctness	python/tests/issue/test_execution_issues.py:73-85	skills/implement/scripts/test-flush-execution-issues.sh:205-208	Removed Bash idempotent assertions include wrapper stdout RECORDS=0 and unchanged NDJSON batch line count; preserved pytest idempotent coverage calls flush_execution_issues directly, never asserts records==0, and never checks batch line count.	Extend idempotent parity via flush_execution_issues_main (capsys FLUSH_STATUS=already-flushed, RECORDS=0) and assert implement/run-id/execution-issues.ndjson line count is unchanged across the second call, matching Bash before==after at lines 196-208.
+1	in_scope	major	correctness	python/tests/issue/test_execution_issues.py:88-110	skills/implement/scripts/test-flush-execution-issues.sh:228-235	Batch-only already-flushed rerun (per-section-probe) asserts RECORDS=0 and no duplicate NDJSON lines; normalized-section pytest covers status and log clearing but not RECORDS=0 from main or batch line-count idempotency.	Add flush_execution_issues_main coverage for the batch_matches path with RECORDS=0 and unchanged execution-issues.ndjson line count after rerun, matching Bash lines 228-235.
+1	in_scope	minor	correctness	python/larch/issue/execution_issues.py:238-239	skills/implement/scripts/test-flush-execution-issues.sh:158-159	Plan requires readable APPEND_LOG_FILE on success but does not require parsing APPEND_LOG_FILE from stdout KV output; Bash used kv_value on wrapper stdout.	In the successful single-section flush_execution_issues_main test, parse APPEND_LOG_FILE from capsys stdout and assert the path exists and is readable, not only that batch NDJSON was written.
+
+## Findings
+
+### 1. code-quality / correctness — Failure recording contract (`python/larch/issue/execution_issues.py:151-152`, `skills/implement/scripts/test-flush-execution-issues.sh:254-255`)
+
+The Bash harness records failure in `execution-issues.md` with substrings `run-log failed` and `simulated larch-log failure`. The real flush path uses `_append_failure` with site `flush-execution-issues` and message `run-log exited {proc.returncode}`; failed append stderr lands in `APPEND_LOG_FILE` only (`execution_issues.py:146-152`).
+
+Because `make test-flush-execution-issues` runs only `pytest -k flush` (`Makefile:931-932`), those Bash strings were never CI-gated. New pytest must follow `_append_failure`, not the stale Bash expectations.
+
+### 2. correctness — Idempotent wrapper KV and batch line count (`python/tests/issue/test_execution_issues.py:73-85`, `skills/implement/scripts/test-flush-execution-issues.sh:205-208`)
+
+Bash idempotent rerun asserts `RECORDS=0` on wrapper stdout and unchanged NDJSON batch line count. Preserved `test_flush_execution_issues_idempotent_when_sentinel_matches` calls `flush_execution_issues` directly, checks `already-flushed`, and omits `records == 0` and batch line-count checks.
+
+Plan text “preserve existing idempotency … tests” conflicts with “cover every behavioral assertion removed from Bash” unless those tests are extended via `flush_execution_issues_main`.
+
+### 3. correctness — Per-section batch idempotency (`python/tests/issue/test_execution_issues.py:88-110`, `skills/implement/scripts/test-flush-execution-issues.sh:228-235`)
+
+Per-section-probe rerun after sentinel removal asserts `RECORDS=0` and `before == after` on batch lines. `test_flush_execution_issues_already_flushed_when_batch_contains_normalized_sections` hits the same `batch_matches` branch but does not assert main stdout `RECORDS=0` or NDJSON line-count stability.
+
+### 4. correctness — `APPEND_LOG_FILE` KV on success (`python/larch/issue/execution_issues.py:238-239`, `skills/implement/scripts/test-flush-execution-issues.sh:158-159`)
+
+Plan lists readable `APPEND_LOG_FILE` for the success case. Bash parsed `APPEND_LOG_FILE=` from wrapper stdout via `kv_value`. New pytest should parse that KV from `flush_execution_issues_main` stdout, not infer append success only from batch file presence.
