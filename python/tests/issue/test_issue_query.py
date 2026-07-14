@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 import pytest
 
@@ -55,12 +56,15 @@ def test_issue_info_state_url_and_failures() -> None:
 
 def test_issue_context_writes_files(tmp_path: Path) -> None:
     runner = RecordingRunner(responses=[_result(stdout=json.dumps({"title": "T", "body": "B"}))])
-    title, body = issue_query.issue_context(runner, "1", repo="o/r", tmpdir=tmp_path / "missing")
-    assert title.read_text(encoding="utf-8") == "T"
-    assert body.read_text(encoding="utf-8") == "B"
-    assert title.name == "upstream-issue-title.txt"
-    assert body.name == "upstream-issue-body.txt"
-    assert not title.with_suffix(".txt.tmp").exists()
+    context = issue_query.issue_context(runner, "1", repo="o/r", tmpdir=tmp_path / "missing")
+    assert isinstance(context, issue_query.IssueContextResult)
+    assert context.title_file.read_text(encoding="utf-8") == "T"
+    assert context.body_file.read_text(encoding="utf-8") == "B"
+    assert context.title_file.name == "upstream-issue-title.txt"
+    assert context.body_file.name == "upstream-issue-body.txt"
+    assert not context.title_file.with_suffix(".txt.tmp").exists()
+    with pytest.raises(FrozenInstanceError):
+        context.title_file = tmp_path / "other.txt"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_issue_context_failures(tmp_path: Path) -> None:
@@ -135,7 +139,11 @@ def test_issue_context_cli_emit_kv(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     emitted: list[tuple[str, str]] = []
     monkeypatch.setattr(issue_query.logging_util, "quiet_init", lambda **_: None)
     monkeypatch.setattr(issue_query.logging_util, "emit_kv", lambda key, value: emitted.append((key, value)))
-    monkeypatch.setattr(issue_query, "issue_context", lambda *_args, **_kwargs: (tmp_path / "t", tmp_path / "b"))
+    monkeypatch.setattr(
+        issue_query,
+        "issue_context",
+        lambda *_args, **_kwargs: issue_query.IssueContextResult(tmp_path / "t", tmp_path / "b"),
+    )
     assert issue_query.issue_context_main(["--issue", "1", "--repo", "o/r", "--tmpdir", str(tmp_path)]) == 0
     assert emitted == [("TITLE_FILE", str(tmp_path / "t")), ("BODY_FILE", str(tmp_path / "b"))]
 

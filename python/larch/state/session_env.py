@@ -248,11 +248,86 @@ def require_plugin_root() -> int:
 
 
 @dataclass(frozen=True)
+class WriteEnvResult:
+    """Result of :func:`write_env`.
+
+    ``output`` is the session-env file written (``None`` for ``/dev/null`` or a
+    plugin-root-only invocation). ``plugin_root_env`` is the optional
+    ``plugin-root.env`` sidecar path.
+    """
+
+    output: Path | None
+    wrote: bool
+    plugin_root_only: bool = False
+    plugin_root_env: Path | None = None
+
+
+@dataclass(frozen=True)
+class WriteImplementEnvResult:
+    """Result of :func:`write_implement_env`: pointer/run-script paths and inputs."""
+
+    pointer: Path
+    run_script: Path
+    implement_tmpdir: Path
+    repo_cwd: str
+
+
+@dataclass(frozen=True)
+class WriteIdResult:
+    """Result of :func:`write_id`: the id file, its value, and whether it was written."""
+
+    output: Path
+    session_id: str
+    wrote: bool
+
+
+@dataclass(frozen=True)
+class ReadKeyResult:
+    """Result of :func:`read_key`: the resolved value (default-substituted)."""
+
+    value: str
+
+
+@dataclass(frozen=True)
+class SetupEmission:
+    """One ordered setup stdout action: a ``KEY=value`` pair (``kind='kv'``) or a
+    literal non-KV line (``kind='line'``, value in ``key``).
+    """
+
+    kind: str
+    key: str
+    value: str = ""
+
+
+@dataclass(frozen=True)
 class SessionSetupResult:
     session_tmpdir: Path
     session_id: str
+    render_cache_dir: Path
+    claude_binary_found: str
+    exit_code: int = 0
+    repo_checked: bool = False
     repo: str = ""
     repo_unavailable: str = "false"
+    reviewers_checked: bool = False
+    codex_present: str = ""
+    cursor_present: str = ""
+    codex_binary_found: str = ""
+    cursor_binary_found: str = ""
+    token_session_id: str = ""
+    claude_source_file: str = ""
+    write_env_result: WriteEnvResult | None = None
+    stdout_emissions: tuple[SetupEmission, ...] = ()
+    stderr_diagnostics: tuple[str, ...] = ()
+
+
+class _SetupPreflightExit(Exception):
+    """Internal signal: setup preflight failed and must short-circuit the wrapper."""
+
+    def __init__(self, *, returncode: int, output: str) -> None:
+        super().__init__(output)
+        self.returncode = returncode
+        self.output = output
 
 
 @dataclass(frozen=True)
@@ -740,6 +815,147 @@ def _safe_timing_ledger_path(*, path: str, caller_env_dir: str) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class WriteEnvParams:
+    output: str
+    repo_unavailable: str | None
+    repo: str = ""
+    repo_root: str = ""
+    codex_present: str = ""
+    cursor_present: str = ""
+    codex_available: str = ""
+    cursor_available: str = ""
+    claude_binary_found: str = ""
+    codex_binary_found: str = ""
+    cursor_binary_found: str = ""
+    auto_mode: str = ""
+    forked_target: str = "false"
+    timing_ledger: str = ""
+    token_session_id: str = ""
+    claude_source_file: str = ""
+    prev_implement_tmpdir: str = ""
+    dynamic_archetypes: str = ""
+    run_id: str = ""
+    live_mutation_ok: str = ""
+    plugin_root_only: bool = False
+    value: str = ""
+
+
+def write_env(params: WriteEnvParams) -> WriteEnvResult:
+    """Validate and atomically write a session-env file.
+
+    Owns every validation, path-confinement, and filesystem side effect the CLI
+    wrapper previously performed inline. Raises ``ValueError``/``OSError`` on
+    invalid input or unwritable targets; the wrapper maps those to exit 1.
+    """
+    output = params.output or ""
+    if not output:
+        raise ValueError("Missing required arguments: --output, --repo-unavailable")
+    out_path = Path(output)
+    if params.plugin_root_only:
+        if not _validate_plugin_root_value(params.value):
+            return WriteEnvResult(output=None, wrote=False, plugin_root_only=True)
+        _write_plugin_root_env(output=out_path, value=params.value)
+        return WriteEnvResult(output=out_path, wrote=True, plugin_root_only=True, plugin_root_env=out_path)
+    if params.repo_unavailable is None:
+        raise ValueError("Missing required arguments: --output, --repo-unavailable")
+    for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "claude_binary_found", "codex_binary_found", "cursor_binary_found", "auto_mode", "live_mutation_ok"):
+        value = getattr(params, flag)
+        if value:
+            _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
+    _parse_bool_arg(value=params.forked_target, flag="--forked-target")
+    if params.token_session_id and not _SAFE_ID_RE.match(params.token_session_id):
+        raise ValueError("Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$")
+    for flag, value in (("--claude-source-file", params.claude_source_file), ("--timing-ledger", params.timing_ledger)):
+        _validate_path_arg_value(value=value, flag=flag)
+    if params.prev_implement_tmpdir:
+        if len(params.prev_implement_tmpdir) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(params.prev_implement_tmpdir):
+            raise ValueError("Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$")
+        if not params.prev_implement_tmpdir.startswith("/"):
+            raise ValueError("Invalid --prev-implement-tmpdir: must be an absolute path")
+    plugin_root = os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, "")
+    if plugin_root and not _validate_plugin_root_value(plugin_root):
+        raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
+    if params.dynamic_archetypes and params.dynamic_archetypes not in {"0", "1"}:
+        raise ValueError("Invalid --dynamic-archetypes: must be an integer from 0 to 1")
+    if params.run_id and not _SAFE_RUN_ID_RE.match(params.run_id):
+        raise ValueError("Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$")
+    repo_root = _resolve_write_env_repo_root(params.repo_root)
+    data: dict[str, str] = {
+        "REPO": params.repo,
+        "REPO_UNAVAILABLE": params.repo_unavailable,
+        "FORKED_TARGET": params.forked_target,
+        "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": _external_timeout(),
+    }
+    if params.claude_binary_found:
+        data["CLAUDE_BINARY_FOUND"] = params.claude_binary_found
+    if params.codex_binary_found:
+        data["CODEX_BINARY_FOUND"] = params.codex_binary_found
+    if params.cursor_binary_found:
+        data["CURSOR_BINARY_FOUND"] = params.cursor_binary_found
+    if params.auto_mode:
+        data["LARCH_AUTO_MODE"] = params.auto_mode
+    if params.timing_ledger:
+        data["LARCH_TIMING_LEDGER"] = params.timing_ledger
+    if params.token_session_id:
+        data["LARCH_TOKEN_SESSION_ID"] = params.token_session_id
+    if params.claude_source_file:
+        data["LARCH_CLAUDE_SOURCE_FILE"] = params.claude_source_file
+    if params.prev_implement_tmpdir:
+        data["PREV_IMPLEMENT_TMPDIR"] = params.prev_implement_tmpdir
+    if params.dynamic_archetypes:
+        data["LARCH_DYNAMIC_ARCHETYPES_MAX"] = params.dynamic_archetypes
+    if params.run_id:
+        data["LARCH_RUN_ID"] = params.run_id
+    if params.live_mutation_ok:
+        data["LARCH_LIVE_MUTATION_OK"] = params.live_mutation_ok
+    if repo_root:
+        data["REPO_ROOT"] = repo_root
+    if plugin_root:
+        data["LARCH_CLAUDE_PLUGIN_ROOT"] = plugin_root
+    _validate_writer_keys(data=data, allowed=WRITE_ENV_KEYS)
+    _validate_no_newlines(data)
+    if output == "/dev/null":
+        return WriteEnvResult(output=None, wrote=False)
+    if not _writer_target_allowed(out_path):
+        raise ValueError(f"output path not under allowed session root: {output}")
+    if not _safe_output_parent(out_path):
+        raise OSError(f"output parent is not a writable directory: {out_path.parent}")
+    _atomic_write(path=out_path, text=_kv_text(data))
+    plugin_root_env: Path | None = None
+    if plugin_root:
+        plugin_root_env = out_path.parent / "plugin-root.env"
+        _write_plugin_root_env(output=plugin_root_env, value=plugin_root)
+    return WriteEnvResult(output=out_path, wrote=True, plugin_root_env=plugin_root_env)
+
+
+def _write_env_params_from_args(args: argparse.Namespace) -> WriteEnvParams:
+    return WriteEnvParams(
+        output=args.output or "",
+        repo_unavailable=args.repo_unavailable,
+        repo=args.repo,
+        repo_root=args.repo_root,
+        codex_present=args.codex_present,
+        cursor_present=args.cursor_present,
+        codex_available=args.codex_available,
+        cursor_available=args.cursor_available,
+        claude_binary_found=args.claude_binary_found,
+        codex_binary_found=args.codex_binary_found,
+        cursor_binary_found=args.cursor_binary_found,
+        auto_mode=args.auto_mode,
+        forked_target=args.forked_target,
+        timing_ledger=args.timing_ledger,
+        token_session_id=args.token_session_id,
+        claude_source_file=args.claude_source_file,
+        prev_implement_tmpdir=args.prev_implement_tmpdir,
+        dynamic_archetypes=args.dynamic_archetypes,
+        run_id=args.run_id,
+        live_mutation_ok=args.live_mutation_ok,
+        plugin_root_only=args.plugin_root_only,
+        value=args.value,
+    )
+
+
 def write_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-env", add_help=False)
     parser.add_argument("--output")
@@ -770,82 +986,7 @@ def write_env_main(argv: list[str]) -> int:
         return 1
     logging_util.quiet_init(argv0="write-session-env.sh")
     try:
-        output = args.output or ""
-        if not output:
-            raise ValueError("Missing required arguments: --output, --repo-unavailable")
-        out_path = Path(output)
-        if args.plugin_root_only:
-            if not _validate_plugin_root_value(args.value):
-                return 0
-            _write_plugin_root_env(output=out_path, value=args.value)
-            return 0
-        if args.repo_unavailable is None:
-            raise ValueError("Missing required arguments: --output, --repo-unavailable")
-        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "claude_binary_found", "codex_binary_found", "cursor_binary_found", "auto_mode", "live_mutation_ok"):
-            value = getattr(args, flag)
-            if value:
-                _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
-        _parse_bool_arg(value=args.forked_target, flag="--forked-target")
-        if args.token_session_id and not _SAFE_ID_RE.match(args.token_session_id):
-            raise ValueError("Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$")
-        for flag, value in (("--claude-source-file", args.claude_source_file), ("--timing-ledger", args.timing_ledger)):
-            _validate_path_arg_value(value=value, flag=flag)
-        if args.prev_implement_tmpdir:
-            if len(args.prev_implement_tmpdir) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(args.prev_implement_tmpdir):
-                raise ValueError("Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$")
-            if not args.prev_implement_tmpdir.startswith("/"):
-                raise ValueError("Invalid --prev-implement-tmpdir: must be an absolute path")
-        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-        if plugin_root and not _validate_plugin_root_value(plugin_root):
-            raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
-        if args.dynamic_archetypes and args.dynamic_archetypes not in {"0", "1"}:
-            raise ValueError("Invalid --dynamic-archetypes: must be an integer from 0 to 1")
-        if args.run_id and not _SAFE_RUN_ID_RE.match(args.run_id):
-            raise ValueError("Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$")
-        repo_root = _resolve_write_env_repo_root(args.repo_root)
-        data: dict[str, str] = {
-            "REPO": args.repo,
-            "REPO_UNAVAILABLE": args.repo_unavailable,
-            "FORKED_TARGET": args.forked_target,
-            "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": _external_timeout(),
-        }
-        if args.claude_binary_found:
-            data["CLAUDE_BINARY_FOUND"] = args.claude_binary_found
-        if args.codex_binary_found:
-            data["CODEX_BINARY_FOUND"] = args.codex_binary_found
-        if args.cursor_binary_found:
-            data["CURSOR_BINARY_FOUND"] = args.cursor_binary_found
-        if args.auto_mode:
-            data["LARCH_AUTO_MODE"] = args.auto_mode
-        if args.timing_ledger:
-            data["LARCH_TIMING_LEDGER"] = args.timing_ledger
-        if args.token_session_id:
-            data["LARCH_TOKEN_SESSION_ID"] = args.token_session_id
-        if args.claude_source_file:
-            data["LARCH_CLAUDE_SOURCE_FILE"] = args.claude_source_file
-        if args.prev_implement_tmpdir:
-            data["PREV_IMPLEMENT_TMPDIR"] = args.prev_implement_tmpdir
-        if args.dynamic_archetypes:
-            data["LARCH_DYNAMIC_ARCHETYPES_MAX"] = args.dynamic_archetypes
-        if args.run_id:
-            data["LARCH_RUN_ID"] = args.run_id
-        if args.live_mutation_ok:
-            data["LARCH_LIVE_MUTATION_OK"] = args.live_mutation_ok
-        if repo_root:
-            data["REPO_ROOT"] = repo_root
-        if plugin_root:
-            data["LARCH_CLAUDE_PLUGIN_ROOT"] = plugin_root
-        _validate_writer_keys(data=data, allowed=WRITE_ENV_KEYS)
-        _validate_no_newlines(data)
-        if output == "/dev/null":
-            return 0
-        if not _writer_target_allowed(out_path):
-            raise ValueError(f"output path not under allowed session root: {output}")
-        if not _safe_output_parent(out_path):
-            raise OSError(f"output parent is not a writable directory: {out_path.parent}")
-        _atomic_write(path=out_path, text=_kv_text(data))
-        if plugin_root:
-            _write_plugin_root_env(output=out_path.parent / "plugin-root.env", value=plugin_root)
+        write_env(_write_env_params_from_args(args))
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")
@@ -1239,6 +1380,50 @@ def write_design_env_main(argv: list[str]) -> int:
         return 1
 
 
+def write_implement_env(*, claude_pid: str, implement_tmpdir: str, cwd: str) -> WriteImplementEnvResult:
+    """Write the per-PID implement current-env pointer and run-script.
+
+    Owns validation, path confinement, symlink checks, and the atomic writes.
+    Raises ``ValueError``/``OSError`` on invalid input or unsafe targets.
+    """
+    _validate_claude_pid(claude_pid)
+    tmpdir = Path(implement_tmpdir)
+    cwd_path = Path(cwd)
+    if not tmpdir.is_absolute() or not tmpdir.is_dir():
+        raise ValueError("Invalid --implement-tmpdir: must be an existing absolute directory")
+    if not is_allowed_session_tmpdir(tmpdir):
+        raise ValueError(
+            f"implement-tmpdir: path must be under /tmp/, /private/tmp/, /var/folders/, or {cleanup_cache_sessions_root()}/"
+        )
+    if not cwd_path.is_absolute():
+        raise ValueError("Invalid --cwd: must be an absolute path")
+    try:
+        repo_cwd = str(cwd_path.resolve())
+    except OSError:
+        repo_cwd = str(cwd_path)
+    data = {
+        "IMPLEMENT_TMPDIR": str(tmpdir),
+        "REPO_CWD": repo_cwd,
+        "SKILL_KIND": "implement",
+    }
+    _validate_no_newlines(data)
+    target = _implement_pointer_path(claude_pid)
+    expected_parent = Path.home() / ".cache" / "larch" / "sessions"
+    if target.parent != expected_parent:
+        raise ValueError(f"implement current-env path mismatch: {target}")
+    larch_io.assert_no_symlink_path_or_ancestors(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    larch_io.assert_no_symlink_path_or_ancestors(target)
+    _atomic_write(path=target, text=_kv_text(data), create_parent=False)
+    _write_implement_run_sh(claude_pid)
+    return WriteImplementEnvResult(
+        pointer=target,
+        run_script=_implement_run_path(claude_pid),
+        implement_tmpdir=tmpdir,
+        repo_cwd=repo_cwd,
+    )
+
+
 def write_implement_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-implement-env", add_help=False)
     parser.add_argument("--claude-pid", default="")
@@ -1250,36 +1435,7 @@ def write_implement_env_main(argv: list[str]) -> int:
         return 1
     logging_util.quiet_init(argv0="write-implement-current-env.sh")
     try:
-        _validate_claude_pid(args.claude_pid)
-        tmpdir = Path(args.implement_tmpdir)
-        cwd = Path(args.cwd)
-        if not tmpdir.is_absolute() or not tmpdir.is_dir():
-            raise ValueError("Invalid --implement-tmpdir: must be an existing absolute directory")
-        if not is_allowed_session_tmpdir(tmpdir):
-            raise ValueError(
-                f"implement-tmpdir: path must be under /tmp/, /private/tmp/, /var/folders/, or {cleanup_cache_sessions_root()}/"
-            )
-        if not cwd.is_absolute():
-            raise ValueError("Invalid --cwd: must be an absolute path")
-        try:
-            repo_cwd = str(cwd.resolve())
-        except OSError:
-            repo_cwd = str(cwd)
-        data = {
-            "IMPLEMENT_TMPDIR": str(tmpdir),
-            "REPO_CWD": repo_cwd,
-            "SKILL_KIND": "implement",
-        }
-        _validate_no_newlines(data)
-        target = _implement_pointer_path(args.claude_pid)
-        expected_parent = Path.home() / ".cache" / "larch" / "sessions"
-        if target.parent != expected_parent:
-            raise ValueError(f"implement current-env path mismatch: {target}")
-        larch_io.assert_no_symlink_path_or_ancestors(target)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        larch_io.assert_no_symlink_path_or_ancestors(target)
-        _atomic_write(path=target, text=_kv_text(data), create_parent=False)
-        _write_implement_run_sh(args.claude_pid)
+        write_implement_env(claude_pid=args.claude_pid, implement_tmpdir=args.implement_tmpdir, cwd=args.cwd)
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")
@@ -1308,6 +1464,46 @@ def clear_implement_pointer_main(argv: list[str]) -> int:
         return 1
 
 
+def read_key(*, file: str | None, key: str, default: str | None, file_flag_present: bool) -> ReadKeyResult:
+    """Resolve one ``key`` from a KV file, applying ``default`` fallbacks.
+
+    Raises ``ValueError`` (carrying the exact wrapper diagnostic) for a missing
+    ``--key``, a missing ``--file`` without a usable default, an unreadable file
+    without a default, or carriage-return injection. Preserves first-key-wins and
+    empty-value-to-default behavior.
+    """
+    if not key:
+        raise ValueError("read-session-env-key.sh: --key is required")
+    if file is None or file == "":
+        if file_flag_present and default is not None:
+            return ReadKeyResult(value=default)
+        raise ValueError("read-session-env-key.sh: --file is required")
+    path = Path(file)
+    if not path.is_file():
+        if default is not None:
+            return ReadKeyResult(value=default)
+        raise ValueError(f"read-session-env-key.sh: cannot read {file}")
+    try:
+        lines = _read_kv_file_text(path).splitlines()
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    except OSError as exc:
+        if default is not None:
+            return ReadKeyResult(value=default)
+        raise ValueError(f"read-session-env-key.sh: cannot read {file}") from exc
+    value = ""
+    found = False
+    prefix = f"{key}="
+    for line in lines:
+        if line.startswith(prefix):
+            value = line[len(prefix):]
+            found = True
+            break
+    if (not found or value == "") and default is not None:
+        value = default
+    return ReadKeyResult(value=value)
+
+
 def read_key_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session read-key", add_help=False)
     parser.add_argument("--file", default=None)
@@ -1318,45 +1514,12 @@ def read_key_main(argv: list[str]) -> int:
     except SystemExit:
         return 1
     logging_util.quiet_init(argv0="read-session-env-key.sh")
-    if not args.key:
-        _err("read-session-env-key.sh: --key is required")
-        return 1
-    file_set = "--file" in argv
-    if args.file is None or args.file == "":
-        if file_set and args.default is not None:
-            _emit(args.default)
-            return 0
-        _err("read-session-env-key.sh: --file is required")
-        return 1
-    path = Path(args.file)
-    if not path.is_file():
-        if args.default is not None:
-            _emit(args.default)
-            return 0
-        _err(f"read-session-env-key.sh: cannot read {args.file}")
-        return 1
-    value = ""
-    found = False
-    prefix = f"{args.key}="
     try:
-        lines = _read_kv_file_text(path).splitlines()
+        result = read_key(file=args.file, key=args.key, default=args.default, file_flag_present="--file" in argv)
     except ValueError as exc:
         _err(str(exc))
         return 1
-    except OSError:
-        if args.default is not None:
-            _emit(args.default)
-            return 0
-        _err(f"read-session-env-key.sh: cannot read {args.file}")
-        return 1
-    for line in lines:
-        if line.startswith(prefix):
-            value = line[len(prefix):]
-            found = True
-            break
-    if (not found or value == "") and args.default is not None:
-        value = args.default
-    _emit(value)
+    _emit(result.value)
     return 0
 
 
@@ -1436,6 +1599,28 @@ def _uuid_or_basename(parent: Path) -> str:
     return parent.name
 
 
+def write_id(*, output: Path) -> WriteIdResult:
+    """Idempotently write a session-id file under an allowed session root.
+
+    Preserves a pre-existing non-empty id (``wrote=False``); otherwise writes a
+    fresh uuid/basename id. Raises ``OSError`` on disallowed or unwritable targets.
+    """
+    if not _writer_target_allowed(output):
+        raise OSError(f"output path not under allowed session root: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not _safe_output_parent(output):
+        raise OSError(f"output parent is not a writable directory: {output.parent}")
+    if output.is_file() and output.stat().st_size > 0:
+        existing = ""
+        with suppress(OSError):
+            lines = output.read_text(encoding="utf-8", errors="replace").splitlines()
+            existing = lines[0] if lines else ""
+        return WriteIdResult(output=output, session_id=existing, wrote=False)
+    session_id = _uuid_or_basename(output.parent)
+    _atomic_write(path=output, text=session_id + "\n")
+    return WriteIdResult(output=output, session_id=session_id, wrote=True)
+
+
 def write_id_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-id", add_help=False)
     parser.add_argument("--output", default="")
@@ -1451,16 +1636,8 @@ def write_id_main(argv: list[str]) -> int:
         _emit_kv(key="FAILED", value="true")
         _emit_kv(key="ERROR", value="--output is required")
         return 1
-    out = Path(args.output)
     try:
-        if not _writer_target_allowed(out):
-            raise OSError(f"output path not under allowed session root: {out}")
-        out.parent.mkdir(parents=True, exist_ok=True)
-        if not _safe_output_parent(out):
-            raise OSError(f"output parent is not a writable directory: {out.parent}")
-        if out.is_file() and out.stat().st_size > 0:
-            return 0
-        _atomic_write(path=out, text=_uuid_or_basename(out.parent) + "\n")
+        write_id(output=Path(args.output))
         return 0
     except OSError as exc:
         _emit_kv(key="FAILED", value="true")
@@ -1694,28 +1871,55 @@ def entry_gate_main(argv: list[str]) -> int:
     for flag, was_supplied in supplied.items():
         if not was_supplied:
             return fail(f"missing required flag {flag}")
-    if args.mode not in {"implement", "design"}:
-        return fail(f"invalid mode: {args.mode}")
-    if not args.user_prefix:
-        return fail("--user-prefix must be non-empty")
-    if not _is_bool(args.is_main):
-        return fail(f"invalid value for --is-main: {args.is_main}")
-    if not _is_bool(args.is_user_branch):
-        return fail(f"invalid value for --is-user-branch: {args.is_user_branch}")
-    if args.mode == "implement" and args.branch_info_supplied is not None:
-        return fail("--branch-info-supplied not allowed for mode=implement")
-    branch_info = args.branch_info_supplied or "false"
-    if not _is_bool(branch_info):
-        return fail(f"invalid value for --branch-info-supplied: {branch_info}")
-    entry_gate = "strict"
-    skip_branch_check = "false"
-    if (args.mode == "design" and branch_info == "true") or args.is_user_branch == "true":
-        entry_gate = "continue"
-        skip_branch_check = "true"
+    try:
+        result = entry_gate(
+            mode=args.mode,
+            is_main=args.is_main,
+            is_user_branch=args.is_user_branch,
+            user_prefix=args.user_prefix,
+            branch_info_supplied=args.branch_info_supplied,
+        )
+    except ValueError as exc:
+        return fail(str(exc))
     logging_util.quiet_init(argv0="session-entry-gate.sh")
-    _emit_kv(key="ENTRY_GATE", value=entry_gate)
-    _emit_kv(key="SKIP_BRANCH_CHECK", value=skip_branch_check)
+    _emit_kv(key="ENTRY_GATE", value=result.entry_gate)
+    _emit_kv(key="SKIP_BRANCH_CHECK", value=result.skip_branch_check)
     return 0
+
+
+def entry_gate(
+    *,
+    mode: str,
+    is_main: str,
+    is_user_branch: str,
+    user_prefix: str,
+    branch_info_supplied: str | None,
+) -> GateResult:
+    """Resolve the entry-gate decision from validated branch inputs.
+
+    Raises ``ValueError`` (carrying the exact ``GATE_ERROR`` message) for an
+    invalid mode, empty user prefix, non-boolean flag, or a
+    ``--branch-info-supplied`` misused under ``mode=implement``.
+    """
+    if mode not in {"implement", "design"}:
+        raise ValueError(f"invalid mode: {mode}")
+    if not user_prefix:
+        raise ValueError("--user-prefix must be non-empty")
+    if not _is_bool(is_main):
+        raise ValueError(f"invalid value for --is-main: {is_main}")
+    if not _is_bool(is_user_branch):
+        raise ValueError(f"invalid value for --is-user-branch: {is_user_branch}")
+    if mode == "implement" and branch_info_supplied is not None:
+        raise ValueError("--branch-info-supplied not allowed for mode=implement")
+    branch_info = branch_info_supplied or "false"
+    if not _is_bool(branch_info):
+        raise ValueError(f"invalid value for --branch-info-supplied: {branch_info}")
+    resolved_gate = "strict"
+    skip_branch_check = "false"
+    if (mode == "design" and branch_info == "true") or is_user_branch == "true":
+        resolved_gate = "continue"
+        skip_branch_check = "true"
+    return GateResult(entry_gate=resolved_gate, skip_branch_check=skip_branch_check)
 
 
 def _repo_from_gh_or_git(runner: Runner) -> str:
@@ -1758,6 +1962,212 @@ def _ignore_placeholder_run_dirs(_: str, names: list[str]) -> set[str]:  # lint-
     return {name for name in names if _PLACEHOLDER_RUN_DIR_RE.match(name)}
 
 
+def _setup_write_env_params(  # noqa: PLR0913 - session-env inputs stay explicit seams for one caller
+    *,
+    write_session_env: str,
+    caller: dict[str, str],
+    caller_env: str,
+    repo_value: str,
+    repo_unavailable: str,
+    final_codex: str,
+    final_cursor: str,
+    final_claude_bin: str,
+    final_codex_bin: str,
+    final_cursor_bin: str,
+) -> tuple[WriteEnvParams, list[str]]:
+    """Build the session-env :class:`WriteEnvParams` for :func:`setup`.
+
+    Pre-filters caller-supplied dynamic-archetypes and timing-ledger values,
+    returning the parameters plus any ordered stderr diagnostics for rejected
+    caller-env values (matching the wrapper's warnings).
+    """
+    diagnostics: list[str] = []
+    dyn = caller.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "")
+    dynamic_archetypes = ""
+    if dyn:
+        if dyn in {"0", "1"}:
+            dynamic_archetypes = dyn
+        else:
+            diagnostics.append("session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..1)")
+    ledger = caller.get("LARCH_TIMING_LEDGER", "")
+    timing_ledger = ""
+    if ledger:
+        caller_dir = str(Path(caller_env).parent.resolve()) if caller_env else ""
+        if _safe_timing_ledger_path(path=ledger, caller_env_dir=caller_dir):
+            timing_ledger = ledger
+        else:
+            diagnostics.append("session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)")
+    params = WriteEnvParams(
+        output=write_session_env,
+        repo_unavailable=repo_unavailable,
+        repo=repo_value,
+        codex_present=final_codex,
+        cursor_present=final_cursor,
+        claude_binary_found=final_claude_bin,
+        codex_binary_found=final_codex_bin,
+        cursor_binary_found=final_cursor_bin,
+        token_session_id=caller.get("LARCH_TOKEN_SESSION_ID", ""),
+        claude_source_file=caller.get("LARCH_CLAUDE_SOURCE_FILE", ""),
+        dynamic_archetypes=dynamic_archetypes,
+        timing_ledger=timing_ledger,
+    )
+    return params, diagnostics
+
+
+def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip seams
+    *,
+    prefix: str,
+    skip_preflight: bool = False,
+    skip_branch_check: bool = False,
+    skip_repo_check: bool = False,
+    check_reviewers: bool = False,
+    skip_codex_probe: bool = False,
+    skip_cursor_probe: bool = False,
+    write_session_env: str = "",
+    caller_env: str = "",
+) -> SessionSetupResult:
+    """Own the full session-setup side effects and return an ordered emission envelope.
+
+    Performs preflight/stale-plugin probes, session tmpdir/identity creation,
+    optional prior-log carry-forward, repo resolution, reviewer probes, and
+    optional session-env writing (via :func:`write_env`, never the CLI wrapper).
+    Preflight failure raises :class:`_SetupPreflightExit`; other outcomes return a
+    :class:`SessionSetupResult` whose ``stdout_emissions``/``stderr_diagnostics``
+    reproduce the wrapper's exact successful output without re-probing.
+    """
+    runner = proc
+    emissions: list[SetupEmission] = []
+    diagnostics: list[str] = []
+    caller = _parse_key_value_file(caller_env)
+    if not skip_preflight:
+        cmd = [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "admission", "preflight"]
+        if skip_branch_check:
+            cmd.append("--skip-branch-check")
+        preflight = runner.run(cmd)
+        if preflight.returncode != 0:
+            raise _SetupPreflightExit(returncode=preflight.returncode, output=preflight.stdout + preflight.stderr)
+        stale = runner.run([str(_scripts_dir() / "check-stale-plugin.sh")])
+        if stale.returncode != 0:
+            diagnostics.append(f"session-setup.sh: warning: stale plugin check failed (rc={stale.returncode}): {stale.stdout}{stale.stderr}")
+        elif "STALE_PLUGIN_CHECK=working-tree-ahead" in stale.stdout:
+            data = _parse_text_kv(stale.stdout)
+            emissions.append(SetupEmission(kind="line", key=f"**⚠ larch: installed plugin version ({data.get('STALE_PLUGIN_INSTALLED_VERSION','')}) is behind the working tree ({data.get('STALE_PLUGIN_WORKING_TREE_VERSION','')}). Reinstall or refresh the plugin from this checkout before the next run to pick up the latest fixes. Continuing with the cached version.**"))
+    tmpdir = _make_session_tmpdir(prefix)
+    session_id = _uuid_or_basename(tmpdir)
+    _write_session_identity(tmpdir=tmpdir, session_id=session_id)
+    render_cache_dir = tmpdir / "render-cache"
+    emissions.append(SetupEmission(kind="kv", key="SESSION_TMPDIR", value=str(tmpdir)))
+    emissions.append(SetupEmission(kind="kv", key="SESSION_ID", value=session_id))
+    emissions.append(SetupEmission(kind="kv", key="LARCH_RENDER_CACHE_DIR", value=str(render_cache_dir)))
+    prev = caller.get("PREV_IMPLEMENT_TMPDIR", "")
+    if prev and (Path(prev) / "larch-logs").is_dir():
+        with suppress(OSError):
+            shutil.copytree(
+                Path(prev) / "larch-logs",
+                tmpdir / "larch-logs",
+                dirs_exist_ok=True,
+                ignore=_ignore_placeholder_run_dirs,
+            )
+    if not os.environ.get(config.ENV_LARCH_CURSOR_MODEL) and os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL):
+        os.environ[config.ENV_LARCH_CURSOR_MODEL] = os.environ[config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL]
+    if not os.environ.get(config.ENV_LARCH_CODEX_MODEL) and os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL):
+        os.environ[config.ENV_LARCH_CODEX_MODEL] = os.environ[config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL]
+    repo_value = ""
+    repo_unavailable = "false"
+    repo_checked = not skip_repo_check
+    if repo_checked:
+        if caller.get("REPO") or caller.get("REPO_UNAVAILABLE"):
+            repo_value = caller.get("REPO", "")
+            repo_unavailable = caller.get("REPO_UNAVAILABLE", "false")
+        else:
+            repo_value = _repo_from_gh_or_git(runner)
+            repo_unavailable = "false" if repo_value else "true"
+        emissions.append(SetupEmission(kind="kv", key="REPO", value=repo_value))
+        emissions.append(SetupEmission(kind="kv", key="REPO_UNAVAILABLE", value=repo_unavailable))
+    final_codex = ""
+    final_cursor = ""
+    final_claude_bin = caller.get("CLAUDE_BINARY_FOUND", "")
+    final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
+    final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
+    if final_claude_bin not in _BOOL:
+        final_claude_bin = "true" if shutil.which("claude") else "false"
+    if check_reviewers:
+        # agents.check_reviewers is a real module-level function (see agents.py);
+        # a newer pyright misresolves this cross-module attribute while the
+        # repo-pinned pyright is clean. Suppress the false positive (#4439).
+        reviewer = agents.check_reviewers(  # pyright: ignore[reportAttributeAccessIssue]
+            skip_codex_probe=skip_codex_probe or bool(final_codex),
+            skip_cursor_probe=skip_cursor_probe or bool(final_cursor),
+        )
+        probed = reviewer.kv()
+        emissions.extend(
+            SetupEmission(kind="kv", key=key, value=probed[key])
+            for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND")
+            if probed.get(key)
+        )
+        final_codex = probed.get("CODEX_PRESENT", "")
+        final_cursor = probed.get("CURSOR_PRESENT", "")
+        final_codex_bin = probed.get("CODEX_BINARY_FOUND", "")
+        final_cursor_bin = probed.get("CURSOR_BINARY_FOUND", "")
+    else:
+        if final_codex_bin not in _BOOL and final_codex in _BOOL:
+            final_codex_bin = final_codex
+        if final_cursor_bin not in _BOOL and final_cursor in _BOOL:
+            final_cursor_bin = final_cursor
+        if final_codex_bin in _BOOL:
+            emissions.append(SetupEmission(kind="kv", key="CODEX_BINARY_FOUND", value=final_codex_bin))
+        if final_cursor_bin in _BOOL:
+            emissions.append(SetupEmission(kind="kv", key="CURSOR_BINARY_FOUND", value=final_cursor_bin))
+    emissions.append(SetupEmission(kind="kv", key="CLAUDE_BINARY_FOUND", value=final_claude_bin))
+    token_session_id = caller.get("LARCH_TOKEN_SESSION_ID", "")
+    claude_source_file = caller.get("LARCH_CLAUDE_SOURCE_FILE", "")
+    if token_session_id:
+        emissions.append(SetupEmission(kind="kv", key="LARCH_TOKEN_SESSION_ID", value=token_session_id))
+    if claude_source_file:
+        emissions.append(SetupEmission(kind="kv", key="LARCH_CLAUDE_SOURCE_FILE", value=claude_source_file))
+    write_env_result: WriteEnvResult | None = None
+    exit_code = 0
+    if write_session_env:
+        params, write_diagnostics = _setup_write_env_params(
+            write_session_env=write_session_env,
+            caller=caller,
+            caller_env=caller_env,
+            repo_value=repo_value,
+            repo_unavailable=repo_unavailable,
+            final_codex=final_codex,
+            final_cursor=final_cursor,
+            final_claude_bin=final_claude_bin,
+            final_codex_bin=final_codex_bin,
+            final_cursor_bin=final_cursor_bin,
+        )
+        diagnostics.extend(write_diagnostics)
+        try:
+            write_env_result = write_env(params)
+        except (OSError, ValueError) as exc:
+            diagnostics.append(f"ERROR={exc}")
+            exit_code = 1
+    return SessionSetupResult(
+        session_tmpdir=tmpdir,
+        session_id=session_id,
+        render_cache_dir=render_cache_dir,
+        claude_binary_found=final_claude_bin,
+        exit_code=exit_code,
+        repo_checked=repo_checked,
+        repo=repo_value,
+        repo_unavailable=repo_unavailable,
+        reviewers_checked=check_reviewers,
+        codex_present=final_codex,
+        cursor_present=final_cursor,
+        codex_binary_found=final_codex_bin,
+        cursor_binary_found=final_cursor_bin,
+        token_session_id=token_session_id,
+        claude_source_file=claude_source_file,
+        write_env_result=write_env_result,
+        stdout_emissions=tuple(emissions),
+        stderr_diagnostics=tuple(diagnostics),
+    )
+
+
 def setup_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session setup", add_help=False)
     parser.add_argument("--prefix", default="")
@@ -1774,127 +2184,32 @@ def setup_main(argv: list[str]) -> int:
     except SystemExit:
         return 4
     logging_util.quiet_init(argv0="session-setup.sh")
-    runner = proc
     if not args.prefix:
         _err("session-setup.sh: --prefix is required")
         return 4
-    caller = _parse_key_value_file(args.caller_env)
-    if not args.skip_preflight:
-        cmd = [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "admission", "preflight"]
-        if args.skip_branch_check:
-            cmd.append("--skip-branch-check")
-        preflight = runner.run(cmd)
-        if preflight.returncode != 0:
-            _emit(preflight.stdout + preflight.stderr)
-            return preflight.returncode
-        stale = runner.run([str(_scripts_dir() / "check-stale-plugin.sh")])
-        if stale.returncode != 0:
-            _err(f"session-setup.sh: warning: stale plugin check failed (rc={stale.returncode}): {stale.stdout}{stale.stderr}")
-        elif "STALE_PLUGIN_CHECK=working-tree-ahead" in stale.stdout:
-            data = _parse_text_kv(stale.stdout)
-            _emit(f"**⚠ larch: installed plugin version ({data.get('STALE_PLUGIN_INSTALLED_VERSION','')}) is behind the working tree ({data.get('STALE_PLUGIN_WORKING_TREE_VERSION','')}). Reinstall or refresh the plugin from this checkout before the next run to pick up the latest fixes. Continuing with the cached version.**")
-    tmpdir = _make_session_tmpdir(args.prefix)
-    session_id = _uuid_or_basename(tmpdir)
-    _write_session_identity(tmpdir=tmpdir, session_id=session_id)
-    _emit_kv(key="SESSION_TMPDIR", value=str(tmpdir))
-    _emit_kv(key="SESSION_ID", value=session_id)
-    _emit_kv(key="LARCH_RENDER_CACHE_DIR", value=str(tmpdir / "render-cache"))
-    prev = caller.get("PREV_IMPLEMENT_TMPDIR", "")
-    if prev and (Path(prev) / "larch-logs").is_dir():
-        with suppress(OSError):
-            shutil.copytree(
-                Path(prev) / "larch-logs",
-                tmpdir / "larch-logs",
-                dirs_exist_ok=True,
-                ignore=_ignore_placeholder_run_dirs,
-            )
-    if not os.environ.get("LARCH_CURSOR_MODEL") and os.environ.get("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"):
-        os.environ["LARCH_CURSOR_MODEL"] = os.environ["CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"]
-    if not os.environ.get("LARCH_CODEX_MODEL") and os.environ.get("CLAUDE_PLUGIN_OPTION_CODEX_MODEL"):
-        os.environ["LARCH_CODEX_MODEL"] = os.environ["CLAUDE_PLUGIN_OPTION_CODEX_MODEL"]
-    repo_value = ""
-    repo_unavailable = "false"
-    if not args.skip_repo_check:
-        if caller.get("REPO") or caller.get("REPO_UNAVAILABLE"):
-            repo_value = caller.get("REPO", "")
-            repo_unavailable = caller.get("REPO_UNAVAILABLE", "false")
-        else:
-            repo_value = _repo_from_gh_or_git(runner)
-            repo_unavailable = "false" if repo_value else "true"
-        _emit_kv(key="REPO", value=repo_value)
-        _emit_kv(key="REPO_UNAVAILABLE", value=repo_unavailable)
-    final_codex = ""
-    final_cursor = ""
-    final_claude_bin = caller.get("CLAUDE_BINARY_FOUND", "")
-    final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
-    final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
-    if final_claude_bin not in _BOOL:
-        final_claude_bin = "true" if shutil.which("claude") else "false"
-    if args.check_reviewers:
-        # agents.check_reviewers is a real module-level function (see agents.py);
-        # a newer pyright misresolves this cross-module attribute while the
-        # repo-pinned pyright is clean. Suppress the false positive (#4439).
-        reviewer = agents.check_reviewers(  # pyright: ignore[reportAttributeAccessIssue]
-            skip_codex_probe=args.skip_codex_probe or bool(final_codex),
-            skip_cursor_probe=args.skip_cursor_probe or bool(final_cursor),
+    try:
+        result = setup(
+            prefix=args.prefix,
+            skip_preflight=args.skip_preflight,
+            skip_branch_check=args.skip_branch_check,
+            skip_repo_check=args.skip_repo_check,
+            check_reviewers=args.check_reviewers,
+            skip_codex_probe=args.skip_codex_probe,
+            skip_cursor_probe=args.skip_cursor_probe,
+            write_session_env=args.write_session_env,
+            caller_env=args.caller_env,
         )
-        probed = reviewer.kv()
-        for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND"):
-            if probed.get(key):
-                _emit_kv(key=key, value=probed[key])
-        final_codex = probed.get("CODEX_PRESENT", "")
-        final_cursor = probed.get("CURSOR_PRESENT", "")
-        final_codex_bin = probed.get("CODEX_BINARY_FOUND", "")
-        final_cursor_bin = probed.get("CURSOR_BINARY_FOUND", "")
-    else:
-        if final_codex_bin not in _BOOL and final_codex in _BOOL:
-            final_codex_bin = final_codex
-        if final_cursor_bin not in _BOOL and final_cursor in _BOOL:
-            final_cursor_bin = final_cursor
-        if final_codex_bin in _BOOL:
-            _emit_kv(key="CODEX_BINARY_FOUND", value=final_codex_bin)
-        if final_cursor_bin in _BOOL:
-            _emit_kv(key="CURSOR_BINARY_FOUND", value=final_cursor_bin)
-    _emit_kv(key="CLAUDE_BINARY_FOUND", value=final_claude_bin)
-    if caller.get("LARCH_TOKEN_SESSION_ID"):
-        _emit_kv(key="LARCH_TOKEN_SESSION_ID", value=caller["LARCH_TOKEN_SESSION_ID"])
-    if caller.get("LARCH_CLAUDE_SOURCE_FILE"):
-        _emit_kv(key="LARCH_CLAUDE_SOURCE_FILE", value=caller["LARCH_CLAUDE_SOURCE_FILE"])
-    if args.write_session_env:
-        wargs = ["--output", args.write_session_env, "--repo-unavailable", repo_unavailable]
-        if repo_value:
-            wargs.extend(["--repo", repo_value])
-        if final_codex:
-            wargs.extend(["--codex-present", final_codex])
-        if final_cursor:
-            wargs.extend(["--cursor-present", final_cursor])
-        if final_claude_bin:
-            wargs.extend(["--claude-binary-found", final_claude_bin])
-        if final_codex_bin:
-            wargs.extend(["--codex-binary-found", final_codex_bin])
-        if final_cursor_bin:
-            wargs.extend(["--cursor-binary-found", final_cursor_bin])
-        if caller.get("LARCH_TOKEN_SESSION_ID"):
-            wargs.extend(["--token-session-id", caller["LARCH_TOKEN_SESSION_ID"]])
-        if caller.get("LARCH_CLAUDE_SOURCE_FILE"):
-            wargs.extend(["--claude-source-file", caller["LARCH_CLAUDE_SOURCE_FILE"]])
-        dyn = caller.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "")
-        if dyn:
-            if dyn in {"0", "1"}:
-                wargs.extend(["--dynamic-archetypes", dyn])
-            else:
-                _err("session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..1)")
-        ledger = caller.get("LARCH_TIMING_LEDGER", "")
-        if ledger:
-            caller_dir = str(Path(args.caller_env).parent.resolve()) if args.caller_env else ""
-            if _safe_timing_ledger_path(path=ledger, caller_env_dir=caller_dir):
-                wargs.extend(["--timing-ledger", ledger])
-            else:
-                _err("session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)")
-        rc = write_env_main(wargs)
-        if rc != 0:
-            return rc
-    return 0
+    except _SetupPreflightExit as exc:
+        _emit(exc.output)
+        return exc.returncode
+    for emission in result.stdout_emissions:
+        if emission.kind == "kv":
+            _emit_kv(key=emission.key, value=emission.value)
+        else:
+            _emit(emission.key)
+    for line in result.stderr_diagnostics:
+        _err(line)
+    return result.exit_code
 
 
 def _parse_text_kv(text: str) -> dict[str, str]:

@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -1230,6 +1231,121 @@ def test_cli_registry_tracking_issue_read_sentinel(tmp_path: Path, capsys: pytes
     out = capsys.readouterr().out
     assert rc == 0
     assert "ISSUE_NUMBER=5" in out
+
+
+def test_read_sentinel_returns_frozen_result_with_named_fields(tmp_path: Path) -> None:
+    path = tmp_path / "sentinel.md"
+    path.write_text("\ufeffISSUE_NUMBER=5\nRUN_ID=run-1\nADOPTED=true\n", encoding="utf-8")
+    result = tracking_issue.read_sentinel(str(path))
+    assert isinstance(result, tracking_issue.SentinelReadResult)
+    assert result.issue_number == "5"
+    assert result.run_id == "run-1"
+    assert result.adopted == "true"
+    with pytest.raises(FrozenInstanceError):
+        result.issue_number = "6"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
+
+
+def test_read_sentinel_preserves_empty_valid_fields(tmp_path: Path) -> None:
+    path = tmp_path / "sentinel.md"
+    path.write_text("ISSUE_NUMBER=\nRUN_ID=\nADOPTED=\n", encoding="utf-8")
+    result = tracking_issue.read_sentinel(str(path))
+    assert (result.issue_number, result.run_id, result.adopted) == ("", "", "")
+
+
+def test_read_sentinel_first_value_wins(tmp_path: Path) -> None:
+    path = tmp_path / "sentinel.md"
+    path.write_text("ISSUE_NUMBER=5\nISSUE_NUMBER=9\n", encoding="utf-8")
+    assert tracking_issue.read_sentinel(str(path)).issue_number == "5"
+
+
+def test_read_sentinel_missing_file_raises(tmp_path: Path) -> None:
+    with pytest.raises(tracking_issue.CliFailure) as exc:
+        tracking_issue.read_sentinel(str(tmp_path / "missing.md"))
+    assert exc.value.exit_code == 1
+    assert "sentinel file not found" in exc.value.message
+
+
+@pytest.mark.parametrize(
+    ("content", "needle"),
+    [
+        ("ISSUE_NUMBER=abc\n", "invalid ISSUE_NUMBER"),
+        ("RUN_ID=bad id\n", "invalid RUN_ID"),
+        ("ADOPTED=maybe\n", "invalid ADOPTED"),
+    ],
+)
+def test_read_sentinel_rejects_malformed_values(tmp_path: Path, content: str, needle: str) -> None:
+    path = tmp_path / "sentinel.md"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(tracking_issue.CliFailure) as exc:
+        tracking_issue.read_sentinel(str(path))
+    assert exc.value.exit_code == 1
+    assert needle in exc.value.message
+
+
+def test_read_direct_renders_task_and_returns_frozen_output(tmp_path: Path) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "api"), 0, "issue body\n", "", 0.01),
+            CommandResult(("gh", "api"), 0, '{"id":11,"body":"kept comment"}\n', "", 0.01),
+        ],
+    )
+    output = tracking_issue.read(
+        runner,
+        issue="9",
+        repo="o/r",
+        prompt=None,
+        out_dir=str(tmp_path),
+    )
+    assert isinstance(output, tracking_issue.ReadOutput)
+    assert output.issue_number == "9"
+    assert output.task_source == "issue-only"
+    assert output.task_file == str(tmp_path / "task.md")
+    assert (tmp_path / "task.md").read_text(encoding="utf-8").startswith(tracking_issue.ISSUE_READ_PREAMBLE)
+    with pytest.raises(FrozenInstanceError):
+        output.issue_number = "10"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
+
+
+def test_create_issue_direct_returns_frozen_output(tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "create"), 0, "https://github.com/o/r/issues/7", "", 0.01)],
+    )
+    result = tracking_issue.create_issue(runner, title="title", body_file=str(body), repo="o/r")
+    assert isinstance(result, tracking_issue.CreateIssueOutput)
+    assert result.issue_number == "7"
+    assert result.issue_url == "https://github.com/o/r/issues/7"
+    with pytest.raises(FrozenInstanceError):
+        result.issue_number = "8"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
+
+
+def test_append_comment_result_direct_returns_frozen_output() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "issue", "comment", "1"),
+                0,
+                "https://github.com/o/r/issues/1#issuecomment-99",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    result = tracking_issue.append_comment_result(runner, issue="1", body="note", repo="o/r")
+    assert isinstance(result, tracking_issue.AppendCommentOutput)
+    assert result.comment_id == "99"
+    assert result.comment_url == "https://github.com/o/r/issues/1#issuecomment-99"
+    with pytest.raises(FrozenInstanceError):
+        result.comment_id = "100"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
+
+
+def test_append_comment_result_validates_lifecycle_marker() -> None:
+    runner = RecordingRunner()
+    with pytest.raises(tracking_issue.CliFailure):
+        tracking_issue.append_comment_result(
+            runner, issue="1", body="note", repo="o/r", lifecycle_marker="bad--marker"
+        )
+    assert not runner.calls
 
 
 @pytest.mark.parametrize(

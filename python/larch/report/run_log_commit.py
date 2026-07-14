@@ -186,10 +186,12 @@ def _scrub_run_tree(directory: Path) -> tuple[int, int]:
             original = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        scrubbed, findings = redact.scrub_log_secrets(original)
+        scrub_result = redact.scrub_log_secrets(original)
+        scrubbed = scrub_result.scrubbed
+        findings = scrub_result.findings
         if not findings:
             continue
-        _, residual = redact.scrub_log_secrets(scrubbed)
+        residual = redact.scrub_log_secrets(scrubbed).findings
         if residual:
             msg = f"secret survived scrubbing in {path}"
             raise ShipError(msg)

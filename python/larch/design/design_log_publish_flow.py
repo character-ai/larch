@@ -222,12 +222,14 @@ def _copy_tree_redacted(
                 f"redact tmpdir-paths failed for {source}: {red.stderr.strip()}"
             )
         try:
-            scrubbed, findings = redact.scrub_log_secrets(red.stdout)
+            scrub_result = redact.scrub_log_secrets(red.stdout)
         except Exception as exc:
             raise SecretScrubFailure(f"secret scrubber failed for {source}") from exc
+        scrubbed = scrub_result.scrubbed
+        findings = scrub_result.findings
         if findings:
             try:
-                _, residual = redact.scrub_log_secrets(scrubbed)
+                residual = redact.scrub_log_secrets(scrubbed).findings
             except Exception as exc:
                 raise SecretScrubFailure(
                     f"secret scrubber failed for {source}"

@@ -81,6 +81,19 @@ class UpsertSummaryOutput:
     updated: bool
 
 
+@dataclass(frozen=True)
+class SentinelReadResult:
+    issue_number: str
+    run_id: str
+    adopted: str
+
+
+@dataclass(frozen=True)
+class AppendCommentOutput:
+    comment_id: str
+    comment_url: str
+
+
 class RedactionFailure(ShipError):
     """Compose-time redaction failed closed."""
 
@@ -316,6 +329,39 @@ def _append_comment_cli(
     if parsed is None:
         raise CliFailure(_redact_gh_error(f"gh issue comment did not emit a URL {result.stderr}"), 2)
     return parsed
+
+
+def create_issue(
+    runner: Runner,
+    *,
+    title: str,
+    body_file: str,
+    repo: str | None,
+    cwd: str | None = None,
+) -> CreateIssueOutput:
+    """Create a tracking issue and return its frozen number/URL result."""
+    return _create_issue_cli(runner, title=title, body_file=body_file, repo=repo, cwd=cwd)
+
+
+def append_comment_result(
+    runner: Runner,
+    *,
+    issue: str,
+    body: str,
+    repo: str,
+    lifecycle_marker: str | None = None,
+    cwd: str | None = None,
+) -> AppendCommentOutput:
+    """Append a comment and return its frozen id/URL result."""
+    comment_id, comment_url = _append_comment_cli(
+        runner,
+        issue=issue,
+        body=body,
+        repo=repo,
+        lifecycle_marker=lifecycle_marker,
+        cwd=cwd,
+    )
+    return AppendCommentOutput(comment_id=comment_id, comment_url=comment_url)
 
 
 def rename_with_details(
@@ -559,6 +605,12 @@ def _read_sentinel(path: str) -> tuple[str, str, str]:
     return issue_number, run_id, adopted
 
 
+def read_sentinel(path: str) -> SentinelReadResult:
+    """Parse an adoption sentinel into a frozen result with named fields."""
+    issue_number, run_id, adopted = _read_sentinel(path)
+    return SentinelReadResult(issue_number=issue_number, run_id=run_id, adopted=adopted)
+
+
 def _parse_read_argv(argv: Sequence[str]) -> dict[str, object]:
     values: dict[str, object] = {
         "issue": None,
@@ -736,6 +788,32 @@ def _render_issue_task(
     )
 
 
+def read(
+    runner: Runner,
+    *,
+    issue: str,
+    repo: str,
+    prompt: str | None,
+    out_dir: str,
+    max_body_chars: int = READ_DEFAULT_MAX_BODY_CHARS,
+    max_comments: int = READ_DEFAULT_MAX_COMMENTS,
+    max_total_chars: int = READ_DEFAULT_MAX_TOTAL_CHARS,
+    cwd: str | None = None,
+) -> ReadOutput:
+    """Render an issue task file into ``out_dir`` and return its frozen result."""
+    return _render_issue_task(
+        runner,
+        issue=issue,
+        repo=repo,
+        prompt=prompt,
+        out_dir=out_dir,
+        max_body_chars=max_body_chars,
+        max_comments=max_comments,
+        max_total_chars=max_total_chars,
+        cwd=cwd,
+    )
+
+
 def read_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="tracking-issue-read")
     runner: Runner = proc
@@ -751,10 +829,10 @@ def read_main(argv: list[str]) -> int:
     try:
         sentinel = cast("str | None", values["sentinel"])
         if sentinel is not None:
-            issue_number, run_id, adopted = _read_sentinel(sentinel)
-            _emit_kv(key="ISSUE_NUMBER", value=issue_number)
-            _emit_kv(key="RUN_ID", value=run_id)
-            _emit_kv(key="ADOPTED", value=adopted)
+            sentinel_result = read_sentinel(sentinel)
+            _emit_kv(key="ISSUE_NUMBER", value=sentinel_result.issue_number)
+            _emit_kv(key="RUN_ID", value=sentinel_result.run_id)
+            _emit_kv(key="ADOPTED", value=sentinel_result.adopted)
             return 0
         out_dir = cast("str", values["out_dir"])
         if not Path(out_dir).is_dir():
@@ -782,7 +860,7 @@ def read_main(argv: list[str]) -> int:
             except (CliFailure, RedactionFailure) as exc:
                 nested = exc.message if isinstance(exc, CliFailure) else "redaction failed"
                 raise CliFailure(f"append-comment failed: {nested}", 2) from exc
-        output = _render_issue_task(
+        output = read(
             runner,
             issue=issue,
             repo=repo,
@@ -822,7 +900,7 @@ def create_issue_main(argv: list[str]) -> int:
     if args is None:
         return 1
     try:
-        result = _create_issue_cli(proc, title=args.title, body_file=args.body_file, repo=args.repo)
+        result = create_issue(proc, title=args.title, body_file=args.body_file, repo=args.repo)
         _emit_kv(key="ISSUE_NUMBER", value=result.issue_number)
         _emit_kv(key="ISSUE_URL", value=result.issue_url)
         return 0
@@ -852,15 +930,15 @@ def append_comment_main(argv: list[str]) -> int:
             _validate_lifecycle_marker(args.lifecycle_marker)
         body = _read_text_file(args.body_file, label="body", require_nonempty=True)
         repo = _resolve_repo_or_fail(proc, args.repo)
-        comment_id, comment_url = _append_comment_cli(
+        comment = append_comment_result(
             proc,
             issue=args.issue,
             body=body,
             repo=repo,
             lifecycle_marker=args.lifecycle_marker,
         )
-        _emit_kv(key="COMMENT_ID", value=comment_id)
-        _emit_kv(key="COMMENT_URL", value=comment_url)
+        _emit_kv(key="COMMENT_ID", value=comment.comment_id)
+        _emit_kv(key="COMMENT_URL", value=comment.comment_url)
         return 0
     except RedactionFailure as exc:
         _emit_failure(f"redaction: {exc}")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -273,6 +274,31 @@ def test_scrub_log_secrets_backstops_github_token() -> None:
     assert findings == {"github-token": 1}
 
 
+def test_scrub_log_secrets_returns_frozen_result_with_named_fields() -> None:
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789AB"
+    result = redact.scrub_log_secrets(f"token {token} end\n")
+    assert isinstance(result, redact.ScrubLogSecretsResult)
+    assert token not in result.scrubbed
+    assert result.findings == {"github-token": 1}
+    # Two-value unpacking stays supported for out-of-partition callers.
+    scrubbed, findings = result
+    assert scrubbed == result.scrubbed
+    assert findings == result.findings
+    with pytest.raises(FrozenInstanceError):
+        result.scrubbed = "mutated"  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
+
+
+def test_scrub_log_directory_returns_frozen_result_with_named_fields(tmp_path: Path) -> None:
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789AB"
+    _ = (tmp_path / "log.md").write_text(f"token {token} end\n", encoding="utf-8")
+    result = redact.scrub_log_directory(tmp_path)
+    assert isinstance(result, redact.ScrubLogDirectoryResult)
+    assert result.total == 1
+    assert result.files == 1
+    total, files = result
+    assert (total, files) == (result.total, result.files)
+
+
 @pytest.mark.skipif(
     not GATE_SH.is_file() or shutil.which("bash") is None,
     reason="scrub-log-secrets.sh unavailable",
@@ -440,3 +466,24 @@ def test_scrub_submodule_paths_preserves_intervening_oos_without_duplication(
         "### OOS_1: private\n"
         "- **Concern**: vendor/libfoo must not survive\n"
     )
+
+
+def test_scrub_submodule_paths_returns_frozen_result_with_named_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
+    input_path = tmp_path / "findings.md"
+    output_path = tmp_path / "scrubbed.md"
+    log_path = tmp_path / "audit.log"
+    _ = input_path.write_text(
+        "### FINDING_1:\n- **Location**: vendor/libfoo:120\n",
+        encoding="utf-8",
+    )
+
+    result = redact.scrub_submodule_paths(input_path=input_path, output_path=output_path, log_path=log_path)
+
+    assert isinstance(result, redact.ScrubSubmodulePathsResult)
+    assert result.count == 1
+    assert result.ok is True
+    count, ok = result
+    assert (count, ok) == (result.count, result.ok)

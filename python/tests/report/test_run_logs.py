@@ -6,6 +6,7 @@ import contextlib
 import json
 import subprocess
 from collections.abc import Mapping, Sequence
+from dataclasses import FrozenInstanceError
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -2451,8 +2452,10 @@ def test_scrub_run_tree_fail_closed_on_residual(
         encoding="utf-8",
     )
 
-    def _never_scrubs(text: str) -> tuple[str, dict[str, int]]:
-        return text, {"cursor-api-key": 1}
+    def _never_scrubs(text: str) -> run_logs.redact.ScrubLogSecretsResult:
+        return run_logs.redact.ScrubLogSecretsResult(
+            scrubbed=text, findings={"cursor-api-key": 1}
+        )
 
     monkeypatch.setattr(run_logs.redact, "scrub_log_secrets", _never_scrubs)
     with pytest.raises(ShipError, match="secret survived scrubbing"):
@@ -4064,4 +4067,182 @@ def test_synthesize_v2_main_model_unknown_fallback(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(run_logs.tokens, "read_main_model", lambda: "")
     data = run_logs.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
     assert data["model_roster"]["main"] == "unknown"
+
+
+def test_log_init_creates_manifest_then_reports_unchanged(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    first = run_logs.log_init(log_root=log_root, skill="implement", run_id="run-abc", issue="42")
+    assert isinstance(first, run_logs.LogInitResult)
+    assert first.written is True
+    assert first.unchanged is False
+    assert first.path.is_file()
+    second = run_logs.log_init(log_root=log_root, skill="implement", run_id="run-abc")
+    assert second.written is False
+    assert second.unchanged is True
+    assert second.path == first.path
+    with pytest.raises(FrozenInstanceError):
+        first.written = False  # type: ignore[misc]  # assign to frozen field to assert FrozenInstanceError
+
+
+def test_log_init_rejects_nonnumeric_issue(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="invalid issue"):
+        run_logs.log_init(log_root=tmp_path / "larch-logs", skill="implement", run_id="run-abc", issue="abc")
+
+
+def test_log_init_rejects_invalid_parent_skill(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="invalid parent-skill"):
+        run_logs.log_init(
+            log_root=tmp_path / "larch-logs",
+            skill="implement",
+            run_id="run-abc",
+            parent_skill="Bad Skill",
+        )
+
+
+def test_log_write_creates_then_reports_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    log_root = tmp_path / "larch-logs"
+    source = tmp_path / "token-report.json"
+    _ = source.write_text("token report\n", encoding="utf-8")
+    first = run_logs.log_write(
+        log_root=log_root, skill="implement", run_id="run-abc", batch="token-report", input_file=str(source)
+    )
+    assert isinstance(first, run_logs.LogWriteResult)
+    assert first.written is True
+    assert first.unchanged is False
+    assert first.path.read_text(encoding="utf-8") == "token report\n"
+    second = run_logs.log_write(
+        log_root=log_root, skill="implement", run_id="run-abc", batch="token-report", input_file=str(source)
+    )
+    assert second.written is False
+    assert second.unchanged is True
+
+
+def test_log_write_rejects_unknown_batch(tmp_path: Path) -> None:
+    source = tmp_path / "payload.json"
+    _ = source.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown batch"):
+        run_logs.log_write(
+            log_root=tmp_path / "larch-logs", skill="implement", run_id="run-abc", batch="nope", input_file=str(source)
+        )
+
+
+def test_log_append_appends_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    log_root = tmp_path / "larch-logs"
+    record = tmp_path / "execution-issue-record.ndjson"
+    _ = record.write_text('{"message":"ok"}\n', encoding="utf-8")
+    result = run_logs.log_append(
+        log_root=log_root, skill="implement", run_id="run-abc", batch="execution-issues", record_file=str(record)
+    )
+    assert isinstance(result, run_logs.LogAppendResult)
+    assert result.written is True
+    assert result.unchanged is False
+    assert result.path.read_text(encoding="utf-8") == '{"message":"ok"}\n'
+
+
+def test_log_exists_reports_missing_then_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    log_root = tmp_path / "larch-logs"
+    missing = run_logs.log_exists(log_root=log_root, skill="implement", run_id="run-abc", batch="token-report")
+    assert isinstance(missing, run_logs.LogExistsResult)
+    assert missing.exists is False
+    source = tmp_path / "token-report.json"
+    _ = source.write_text("token report\n", encoding="utf-8")
+    _ = run_logs.log_write(
+        log_root=log_root, skill="implement", run_id="run-abc", batch="token-report", input_file=str(source)
+    )
+    present = run_logs.log_exists(log_root=log_root, skill="implement", run_id="run-abc", batch="token-report")
+    assert present.exists is True
+    assert present.path == missing.path
+
+
+def test_log_exists_rejects_unknown_batch(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unknown batch"):
+        run_logs.log_exists(log_root=tmp_path / "larch-logs", skill="implement", run_id="run-abc", batch="nope")
+
+
+def test_log_append_failure_appends_formatted_entry(tmp_path: Path) -> None:
+    log_path = tmp_path / "execution-issues.md"
+    output = tmp_path / "tool.failure.log"
+    _ = output.write_text("boom diagnostics\n", encoding="utf-8")
+    result = run_logs.log_append_failure(
+        log=log_path,
+        site="Step 5",
+        tool="pytest",
+        exit_code="1",
+        category="Tool Failures",
+        output_file=output,
+    )
+    assert isinstance(result, run_logs.LogAppendFailureResult)
+    assert result.appended is True
+    assert result.log == log_path
+    text = log_path.read_text(encoding="utf-8")
+    assert "pytest failed (exit 1)" in text
+    assert "boom diagnostics" in text
+
+
+def test_log_append_failure_uses_fallback_diagnostic_text(tmp_path: Path) -> None:
+    log_path = tmp_path / "execution-issues.md"
+    result = run_logs.log_append_failure(
+        log=log_path,
+        site="Step 5",
+        tool="pytest",
+        exit_code="7",
+        category="Tool Failures",
+        output_file=tmp_path / "missing.log",
+    )
+    assert result.appended is True
+    assert "no diagnostics captured (exit 7)" in log_path.read_text(encoding="utf-8")
+
+
+def test_log_append_failure_rejects_unknown_category(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unsupported category"):
+        run_logs.log_append_failure(
+            log=tmp_path / "x.md",
+            site="s",
+            tool="t",
+            exit_code="1",
+            category="Nope",
+            output_file=tmp_path / "o.log",
+        )
+
+
+def test_log_append_failure_rejects_malformed_exit_code(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="--exit-code must be a non-negative integer"):
+        run_logs.log_append_failure(
+            log=tmp_path / "x.md",
+            site="s",
+            tool="t",
+            exit_code="x",
+            category="Warnings",
+            output_file=tmp_path / "o.log",
+        )
+
+
+def test_log_append_failure_sanitizes_diagram_capture(tmp_path: Path) -> None:
+    output = tmp_path / "architecture-diagram-sanitizer.failure.log"
+    _ = output.write_text(
+        "stderr\nparticipant A as Alice\nA->>B: hi\nsubgraph group\n",
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "execution-issues.md"
+    result = run_logs.log_append_failure(
+        log=log_path,
+        site="design Step 5b.5",
+        tool="mermaid sanitize",
+        exit_code="1",
+        category="Warnings",
+        output_file=output,
+    )
+    assert result.appended is True
+    text = log_path.read_text(encoding="utf-8")
+    assert "participant" not in text
+    assert "->>" not in text
+    assert "subgraph" not in text
+    assert "stderr" in text
 # pyright: reportUnusedCallResult=false

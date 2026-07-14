@@ -27,6 +27,12 @@ class IssueState:
     is_pr: bool
 
 
+@dataclass(frozen=True)
+class IssueContextResult:
+    title_file: Path
+    body_file: Path
+
+
 
 def _flat(text: str) -> str:
     redacted = redact.redact(text)
@@ -77,7 +83,7 @@ def issue_info(runner: Runner, issue: str, field: str, *, repo: str | None) -> s
         return ""
 
 
-def issue_context(runner: Runner, issue: str, *, repo: str, tmpdir: str | Path) -> tuple[Path, Path]:
+def issue_context(runner: Runner, issue: str, *, repo: str, tmpdir: str | Path) -> IssueContextResult:
     result = gh.issue_view_title_body_read(runner, issue, repo=repo)
     _raise_gh_failure(result)
     try:
@@ -101,7 +107,7 @@ def issue_context(runner: Runner, issue: str, *, repo: str, tmpdir: str | Path) 
         body_tmp.replace(body_file)
     except OSError as exc:
         raise ShipError(f"issue context write failed: {exc}") from exc
-    return title_file, body_file
+    return IssueContextResult(title_file=title_file, body_file=body_file)
 
 
 def _parse_state_args(argv: list[str]) -> tuple[str, str | None, str | None]:
@@ -224,7 +230,7 @@ def issue_context_main(argv: list[str]) -> int:
         return _CONTEXT_USAGE_RC
     logging_util.quiet_init(argv0="get-issue-context.sh")
     try:
-        title_file, body_file = issue_context(
+        context = issue_context(
             proc,
             values["issue"],
             repo=values["repo"],
@@ -233,6 +239,6 @@ def issue_context_main(argv: list[str]) -> int:
     except ShipError as exc:
         _emit_failed(_flat(str(exc)))
         return 1
-    logging_util.emit_kv(key="TITLE_FILE", value=str(title_file))
-    logging_util.emit_kv(key="BODY_FILE", value=str(body_file))
+    logging_util.emit_kv(key="TITLE_FILE", value=str(context.title_file))
+    logging_util.emit_kv(key="BODY_FILE", value=str(context.body_file))
     return 0
