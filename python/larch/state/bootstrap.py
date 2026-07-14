@@ -452,6 +452,28 @@ def _restore_resume_progress(st: BootstrapState) -> None:
         _cli("progress", "activate", "--repo-root", str(Path.cwd()), "--run-id", st.run_id)
 
 
+def _self_subagents_only(opts: BootstrapOptions) -> bool:
+    return opts.self_review_requested == "true" and opts.self_implement_requested == "true"
+
+
+def _refresh_reviewer_state(st: BootstrapState) -> None:
+    if _self_subagents_only(st.opts):
+        return
+    reviewer_args = ["agent", "check-reviewers"]
+    if st.opts.skip_codex_probe:
+        reviewer_args.append("--skip-codex-probe")
+    if st.opts.skip_cursor_probe:
+        reviewer_args.append("--skip-cursor-probe")
+    reviewer = _cli(*reviewer_args)
+    reviewer_kv = _parse_kv(reviewer.stdout)
+    if reviewer.returncode == 0:
+        st.codex_present = reviewer_kv.get("CODEX_PRESENT", st.codex_present)
+        st.cursor_present = reviewer_kv.get("CURSOR_PRESENT", st.cursor_present)
+        st.codex_binary_found = reviewer_kv.get("CODEX_BINARY_FOUND", st.codex_binary_found)
+        st.cursor_binary_found = reviewer_kv.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+        _write_base_session_env(st)
+
+
 def _phase_infra(st: BootstrapState) -> None:
     _cli("progress", "clear", "--repo-root", str(Path.cwd()))
     branch = _cli("pr", "create-branch", "--check")
@@ -497,11 +519,12 @@ def _phase_infra(st: BootstrapState) -> None:
         _ensure_plugin_root_env(st)
     else:
         setup_args = ["session", "setup", "--prefix", "claude-implement"]
+        skip_external_tool_probes = _self_subagents_only(st.opts)
         if st.skip_branch_check == "true":
             setup_args.append("--skip-branch-check")
-        if st.opts.skip_codex_probe:
+        if st.opts.skip_codex_probe or skip_external_tool_probes:
             setup_args.append("--skip-codex-probe")
-        if st.opts.skip_cursor_probe:
+        if st.opts.skip_cursor_probe or skip_external_tool_probes:
             setup_args.append("--skip-cursor-probe")
         if st.opts.caller_env:
             setup_args.extend(["--caller-env", st.opts.caller_env])
@@ -532,19 +555,7 @@ def _phase_infra(st: BootstrapState) -> None:
         _cli("token", "mark", "Step 0 — preflight")
         env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
         _cli("timing", "mark", "Step 0 — preflight", env=env)
-        reviewer_args = ["agent", "check-reviewers"]
-        if st.opts.skip_codex_probe:
-            reviewer_args.append("--skip-codex-probe")
-        if st.opts.skip_cursor_probe:
-            reviewer_args.append("--skip-cursor-probe")
-        reviewer = _cli(*reviewer_args)
-        reviewer_kv = _parse_kv(reviewer.stdout)
-        if reviewer.returncode == 0:
-            st.codex_present = reviewer_kv.get("CODEX_PRESENT", st.codex_present)
-            st.cursor_present = reviewer_kv.get("CURSOR_PRESENT", st.cursor_present)
-            st.codex_binary_found = reviewer_kv.get("CODEX_BINARY_FOUND", st.codex_binary_found)
-            st.cursor_binary_found = reviewer_kv.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
-            _write_base_session_env(st)
+        _refresh_reviewer_state(st)
     _install_statusline_best_effort()
     if st.implement_tmpdir and not _write_larch_run_sh(st.implement_tmpdir):
         st.emit_step_failed("larch-run")
@@ -1720,6 +1731,17 @@ def _run_absorbed_continue_tail(
     st.cursor_present = data.get("CURSOR_PRESENT", st.cursor_present)
     st.codex_binary_found = data.get("CODEX_BINARY_FOUND", st.codex_binary_found)
     st.cursor_binary_found = data.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+    if _self_subagents_only(opts):
+        probe_routing, advisory, _probe_rc = _run_1r_probe(st, forked_target=opts.forked_target)
+        routing = {
+            "DEGRADED": "false",
+            "BOTH_DOWN": "false",
+            "DEGRADED_PROMPT_REQUIRED": "false",
+        }
+        routing.update({key: value for key, value in probe_routing.items() if value})
+        if _step2_blockers({**data, **routing}):
+            routing.pop("ROUTE", None)
+        return ContinueTailResult(routing=routing, advisory_lines=advisory)
     probe_failed = _refresh_gate_probe(st)
     if probe_failed:
         return ContinueTailResult(contract_failure=True, step_failed=probe_failed)
