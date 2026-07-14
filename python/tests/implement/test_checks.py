@@ -4703,17 +4703,20 @@ def test_checks_repair_loop_main_all_tiers_no_delta_escalates_to_main_agent(
     session = _checks_session(tmp_path, monkeypatch)
     checks_log = session / "initial.redacted.log"
     checks_log.write_text("initial failure\n", encoding="utf-8")
-    final_failure_log = session / "final.redacted.log"
-    final_failure_log.write_text("pyright failure\n", encoding="utf-8")
 
-    def fake_run_check_fix_loop(**_kwargs: object) -> checks.LoopResult:
-        return checks.LoopResult(
-            status="exhausted",
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="failed",
+            delta_paths=(),
             failure_reason="lint-fix-all-tiers-no-useful-delta",
-            final_redacted_checks_log=str(final_failure_log),
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+            tier_ledger_path=str(session / "lint-fix-tier-ledger.tsv"),
+            ledger_failure_detail_log=str(checks_log),
         )
 
-    monkeypatch.setattr(_clf, "run_check_fix_loop", fake_run_check_fix_loop)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -4737,7 +4740,7 @@ def test_checks_repair_loop_main_all_tiers_no_delta_escalates_to_main_agent(
     assert f"LINT_FIX_LEDGER_PHASE={phase}" in out
     assert "LINT_FIX_LEDGER_DISPATCHER=lint-fix-loop" in out
     assert "LINT_FIX_LEDGER_EXIT_CODE=1" in out
-    assert f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={final_failure_log.resolve()}" in out
+    assert f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={checks_log.resolve()}" in out
 
 
 @pytest.mark.parametrize("final_log", ["", "outside.redacted.log"])
@@ -5280,7 +5283,7 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
     assert outcome.coder_tool == "claude"
 
 
-def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
+def test_run_lint_fix_all_three_tiers_report_exhaustion_for_repair_loop(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
