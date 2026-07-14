@@ -4101,7 +4101,7 @@ def test_launch_cursor_ci_fix_uses_resolved_cursor_model(
     ("difficulty_tier", "expected_model"),
     [
         (config.DIFFICULTY_TIER_TRIVIAL, config.CURSOR_DEFAULT_MODEL),
-        (config.DIFFICULTY_TIER_MODERATE, "grok-4.5"),
+        (config.DIFFICULTY_TIER_MODERATE, config.CURSOR_GROK_4_5_HIGH_MODEL),
         (config.DIFFICULTY_TIER_HARD, config.CURSOR_DEFAULT_MODEL),
     ],
 )
@@ -4520,8 +4520,8 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
     def fake_resolve_model_args(_tool: str, **kwargs: object) -> agents.ModelArgResult:
-        assert kwargs["default_model"] == "grok-4.5"
-        return agents.ModelArgResult(("--model", "grok-4.5"))
+        assert kwargs["default_model"] == config.CURSOR_GROK_4_5_HIGH_MODEL
+        return agents.ModelArgResult(("--model", config.CURSOR_GROK_4_5_HIGH_MODEL))
 
     monkeypatch.setattr(_ci_launcher, "resolve_model_args", fake_resolve_model_args)
     monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
