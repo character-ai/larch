@@ -44,11 +44,30 @@ codex/apply                              │                                    
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (11):
+  1. One deviation is present in the changed code.
+  2. G-Py-11 — Bare `# type: ignore[operator]` suppressions without inline reasons
+  3. In `python/tests/implement/test_implement_shell_scripts.py`, the function `test_step18_restore_stall_step_mismatch` contains four suppression lines with no inline reason comment:
+  4. ```python
+  5. assert mark_line < flush_line, "closing mark must precede execution-issues safety net" # type: ignore[operator]
+  6. assert flush_line < capture_line, "execution-issues safety net must precede transcript safety net" # type: ignore[operator]
+  7. assert capture_line < restore_line, "transcript safety net must precede restore-finalize-state" # type: ignore[operator]
+  8. assert restore_line < teardown_line, "restore-finalize-state must precede teardown" # type: ignore[operator]
+  9. ```
+  10. G-Py-11 requires the form `# type: ignore[code] # reason`. The contextual reason is clear (the preceding `all(...is not None...)` assertion establishes at runtime that these values are `int`, but p...
+  11. No other deviations were found. The Python module follows the stub-and-subprocess test pattern already established in the codebase. The migration sweep of prose consumers (`SKILL.md`, contract `.md...
+
+## Architectural guidelines
+
+The diff retires four Bash harness scripts and replaces them with a new pytest module at `python/tests/implement/test_implement_shell_scripts.py`. Supporting surface changes update Makefile `.PHONY` declarations and shard lists, `scripts/residual-bash-paths.txt`, `agent-lint.toml`, `python/migrated-scripts.tsv`, `python/skill-closure-baseline.json`, prose references in `skills/implement/SKILL.md`, `docs/linting.md`, `skills/implement/scripts/step-18.md`, `skills/implement/scripts/step-5-review.md`, `skills/implement/scripts/step-8-ship.md`, `skills/implement/scripts/test-implement-review-token-propagation.md`, and two plan-fidelity-calibration fixture diffs. The new Python module uses `subprocess`, `pathlib`, and injectable stub binaries and operates under `set -euo pipefail` in its spawned Bash subprocesses. All prose consumers of the retired script names are swept in the same change. The migration records the four retired paths in `python/migrated-scripts.tsv` under issue `#7063`. No architectural guideline is deviated from in these changes.
+
 ## /implement run FE830B7C-9D51-4836-A50C-39ABD7E58FDC: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:38:09
-- **Cost**: 💰 TOTAL ~$17.36: Claude $0.97, Codex-5.6 $6.28, Codex-mini $0.03, Cursor $8.91 (Composer $5.60, Grok $3.31), Claude (subprocess) $1.17  |  Tokens: 25543k
+- **Cost**: 💰 TOTAL ~$20.45: Claude $4.06, Codex-5.6 $6.28, Codex-mini $0.03, Cursor $8.91 (Composer $5.60, Grok $3.31), Claude (subprocess) $1.17  |  Tokens: 29074k
 - **Issue**: #7063: https://github.com/character-ai/larch/issues/7063
 - **Plan review**: N/A
 - **Plan coverage**: 20/20 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -58,7 +77,7 @@ codex/apply                              │                                    
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 11
 - **Run logs**: `larch-logs/implement/FE830B7C-9D51-4836-A50C-39ABD7E58FDC/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
