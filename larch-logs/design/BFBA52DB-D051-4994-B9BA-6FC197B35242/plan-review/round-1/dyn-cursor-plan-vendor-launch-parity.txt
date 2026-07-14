@@ -1,0 +1,40 @@
+Reviewing migrated launcher contracts against the plan: reading `_drafter.py`, `_vendor.py`, and related tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/tests/agents/test_vendor.py:193-196	Plan omits flipping the production import guard after _drafter adopts _vendor	test_production_launchers_do_not_import_vendor still forbids larch.agents._vendor in _drafter.py; the migration import makes default CI fail before parity tests run	Add an explicit plan step to update test_vendor.py (remove _drafter.py from the no-import list or invert the assertion for migrated launchers only)
+1	in_scope	major	correctness	python/larch/agents/_vendor.py:677-681; skills/plan:[SCOPE-REDUCTION] Cursor negotiation must not auto-enter cursor_config_context	Plan tells negotiation migration to let run_vendor_launch own Cursor config isolation, but run_negotiation_round today never sets CURSOR_CONFIG_DIR (python/larch/agents/_drafter.py:164-208)	Default use_config_context=False for negotiation-write, or document and test the new isolation; do not rely on the cursor descriptor default
+1	in_scope	major	correctness	python/larch/agents/_drafter.py:257-267; python/larch/agents/_run_external.py:980-1006; python/larch/agents/_vendor.py:671-674	launch_codex_exec auth/model preflight is not equivalent to run_vendor_launch preflight_refused	Auth or model-arg failure must call _write_preflight_bundle, emit LAUNCHER_EXIT/OUTPUT, return 0 from launch_codex_exec_main, and skip execution hooks; mapping to preflight_refused alone drops .diag/.meta/.done and breaks the exit-zero envelope	Pin that trusted-instruction auth and model-arg resolution stay outside run_vendor_launch (or in a pre-launch branch that always writes the preflight bundle before any shared-runner call)
+1	in_scope	major	correctness	python/larch/agents/_drafter.py:304-307; python/larch/agents/_vendor.py:618-634	Codex exec event fallback must run before quota mirroring	Shared runner calls mirror_quota before postprocess; if event fallback moves to postprocess, _mirror_codex_quota_from_events can run on an empty .events.jsonl and drop quota sidecars	Run event fallback inside mirror_quota (or an equivalent pre-quota hook) so ordering matches today's launch_codex_exec_main
+1	in_scope	major	correctness	python/larch/agents/_drafter.py:153-155; python/larch/agents/_vendor.py:625-626	Codex negotiation mirrors quota only on non-zero exit	Unconditional mirror_quota hooks would change quota sidecar behavior on successful negotiation rounds	Keep conditional mirroring in the negotiation mirror_quota hook (mirror only when process_result.exit_code != 0)
+1	in_scope	major	correctness	python/tests/agents/test_agents.py:5606-5742	Plan removes _launch_codex_exec_inprocess but keeps test_agents patches on it	Three codex-drafter tests monkeypatch _launch_codex_exec_inprocess or launch_codex_exec_main; deleting the helper breaks CI even if test_external_dispatch.py gains new cases	Extend the testing strategy to repoint or replace these test_agents.py cases to spy on run_vendor_launch (same contract as the new external_dispatch parity tests)
+
+## Findings
+
+### 1. Production import guard not in plan (correctness)
+`test_production_launchers_do_not_import_vendor` in `python/tests/agents/test_vendor.py` still requires every production launcher file, including `_drafter.py`, to have zero `_vendor` imports. Piece 2 necessarily adds that import. The firm plan files only touch `_drafter.py` and `test_external_dispatch.py`, so CI will fail on the import guard before the new parity tests matter.
+
+**Suggested revision:** Add an explicit `### MAY_UPDATE:` (or firm) step for `python/tests/agents/test_vendor.py` to allow `_drafter.py` to import `_vendor` after migration.
+
+### 2. [SCOPE-REDUCTION] Cursor negotiation config isolation (correctness)
+The plan instructs negotiation migration to “let the shared lifecycle own Cursor configuration isolation.” `run_vendor_launch` defaults `use_config_context=True` for cursor descriptors (`python/larch/agents/_vendor.py:677-681`). Current `run_negotiation_round` for cursor (`python/larch/agents/_drafter.py:164-208`) never creates a temp `CURSOR_CONFIG_DIR` or copies `cli-config.json`. That is a behavioral change relative to today’s launcher and the acceptance bar to preserve capture modes and envelopes.
+
+**Suggested revision:** Pass `use_config_context=False` for negotiation-write unless a deliberate behavior change is documented and covered by tests.
+
+### 3. `launch_codex_exec` preflight bundle vs shared `preflight_refused` (correctness)
+Auth setup and model-arg failures in `launch_codex_exec_main` (`python/larch/agents/_drafter.py:257-267`) call `_write_preflight_bundle` (`python/larch/agents/_run_external.py:980-1006`), which writes `.diag`, `.meta`, `.done`, emits `LAUNCHER_EXIT`, and returns **0** from the outer main. `run_vendor_launch`’s `preflight_refused` path (`python/larch/agents/_vendor.py:671-674`) skips execution and all post-hooks with no bundle writer. The edge-case note about keeping preflight inside the exit-zero envelope is not wired into the migration steps.
+
+**Suggested revision:** State explicitly that codex-exec auth/model preflight stays **before** `run_vendor_launch`, always calling `_write_preflight_bundle`, and never mapping those failures to bare `preflight_refused` without the bundle.
+
+### 4. Codex exec event fallback vs quota mirror hook order (correctness)
+Today, `launch_codex_exec_main` seeds an empty `{}` events file when missing (`python/larch/agents/_drafter.py:304-307`) **before** `_mirror_codex_quota_from_events`. `run_vendor_launch` runs `mirror_quota` → `record_timing` → `postprocess` → `record_usage` → `promote_completion` (`python/larch/agents/_vendor.py:618-634`). Placing event fallback in `postprocess` would mirror quota against an empty file.
+
+**Suggested revision:** Pin event fallback to run at the start of `mirror_quota` (or a dedicated pre-quota hook), not in `postprocess`.
+
+### 5. Codex negotiation conditional quota mirror (correctness)
+Codex negotiation only mirrors quota when `codex_rc != 0` (`python/larch/agents/_drafter.py:153-155`). The shared runner always invokes `mirror_quota` when the hook is set (`python/larch/agents/_vendor.py:625-626`). An unconditional hook changes sidecar output on success paths.
+
+**Suggested revision:** Guard the negotiation `mirror_quota` hook with `process_result.exit_code != 0`.
+
+### 6. `test_agents.py` codex-drafter mocks target removed symbols (correctness)
+The plan deletes `_launch_codex_exec_inprocess` and routes the codex drafter through `run_vendor_launch`, but `python/tests/agents/test_agents.py` still patches `_launch_codex_exec_inprocess` (lines 5606, 5695) and `launch_codex_exec_main` (line 5742). Those tests will fail once the helper is removed. The testing strategy says to run `test_agents.py` for drift, yet only `test_external_dispatch.py` is listed as a deliverable.
+
+**Suggested revision:** Add a plan step to repoint these three tests to spy on `run_vendor_launch` (or fold them into the new `test_external_dispatch.py` parity cases and delete the stale mocks).

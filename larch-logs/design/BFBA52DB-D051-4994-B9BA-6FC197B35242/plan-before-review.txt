@@ -1,0 +1,67 @@
+## Approach
+
+Use the descriptors and lifecycle from `python/larch/agents/_vendor.py`. Keep family-specific prompt handling, plan processing, status reporting, and public adapters in `_drafter.py`.
+
+Confidence: high. The approved outline and current launcher boundaries are direct.
+
+### UPDATED: python/larch/agents/_drafter.py
+
+- Import `CODEX_DESCRIPTOR`, `CURSOR_DESCRIPTOR`, `CLAUDE_DESCRIPTOR`, `VendorLaunchRequest`, `VendorProcessResult`, `VendorFamilyHooks`, `parse_claude_envelope`, and `run_vendor_launch`.
+- Migrate `run_negotiation_round`:
+  - Build descriptor requests for Codex and Cursor without changing prompt text, workspace selection, output paths, or model resolution.
+  - Express Codex auth setup, stdin capture, startup locking, quota mirroring, and usage recording through family hooks.
+  - Express Cursor auth preflight, environment export, merged output capture, and startup locking through family hooks. Let the shared lifecycle own Cursor configuration isolation.
+  - Map shared preflight refusal and process results back to the existing return codes and `RESPONSE_FILE` output.
+- Migrate `launch_codex_exec_main`:
+  - Preserve argument parsing, default workdir resolution, prompt sidecars, trusted-instruction handling, and the wrapper’s exit-zero contract.
+  - Build the Codex request with the current sandbox, add directories, resolved model arguments, prompt transport, usage label, and timing kind.
+  - Use hooks for auth preparation, `_run_external_agent_with_auth_retries`, event fallback creation, quota mirroring, timing, token recording, metadata append, and done-file promotion.
+  - Preserve `LAUNCHER_EXIT`, `OUTPUT`, preflight bundles, failure diagnostics, retry behavior, capture files, and model attribution.
+- Migrate `launch_codex_drafter` directly to the Codex descriptor and shared runner.
+  - Preserve trusted prompt construction, read-only sandboxing, token-record copying, launcher failure mapping, delimiter parsing, plan and summary promotion, scout filtering, dialectic pending data, status files, completion files, dirty-tree reporting, and temporary artifact cleanup.
+  - Remove the obsolete in-process Codex wrapper helper after its behavior is covered through the shared launch path.
+- Migrate `launch_claude_drafter`:
+  - Build a `drafter-read` request with the existing model, repository access, stdin prompt, timeout execution shape, and capture files.
+  - Use `parse_claude_envelope` in postprocessing instead of local JSON-envelope unwrapping.
+  - Keep Claude usage recording, plan parsing, status and timing output, failure diagnostics, dirty-tree reporting, completion files, and cleanup local.
+- Remove superseded local argv builders, model scans, Cursor configuration setup, Claude envelope parsing, and imports that become unused.
+- Keep `run_negotiation_round_main`, `launch_codex_exec_main`, `launch_codex_drafter_main`, `launch_claude_drafter_main`, their CLI arguments, and the `agents.py` re-export surface unchanged.
+
+## Edge cases
+
+- Preserve missing prompt, invalid model, invalid timeout, unsafe path, symlink, and out-of-root refusals.
+- Keep Codex trusted-instruction preflight failures inside the existing successful outer wrapper envelope.
+- Preserve Cursor auth refusal separately from a non-zero Cursor execution.
+- Keep Codex event and sidecar paths stable for quota, usage, and stderr-tail consumers.
+- Preserve timeout status only when the timeout wrapper returns `config.EXIT_TIMEOUT`.
+- Treat malformed, error, missing, non-string, or empty Claude results as the existing parse failure.
+- Do not promote plan, summary, scout, dialectic, or completion artifacts after a failed lifecycle stage.
+
+## Failure modes
+
+- A hook-order change can record usage before postprocessing or promote completion after a failed hook.
+- A descriptor request mismatch can alter vendor argv, prompt transport, sandbox mode, or capture mode.
+- Incorrect outcome translation can change public exit codes or omit `LAUNCHER_EXIT` and status KVs.
+- Moving cleanup into hooks can leak temporary Codex homes or Cursor configuration, especially after preflight or execution failures.
+- Direct Codex drafter migration can lose nested-wrapper metadata, diagnostics, or token sidecars unless each artifact is asserted.
+
+### UPDATED: python/tests/agents/test_external_dispatch.py
+
+- Add parity tests that spy on or delegate through `run_vendor_launch`, proving each migrated path selects the expected descriptor, profile, request, and family hooks.
+- Cover Codex negotiation success, auth refusal, model failure, and non-zero execution. Assert exact argv, stdin prompt, workspace, events, sidecar, usage label, response KV, cleanup, and exit code.
+- Cover Cursor negotiation success, auth refusal, and non-zero execution. Assert the max-mode prompt, exact argv, merged capture, configuration context, response KV, and exit code.
+- Cover `launch_codex_exec_main` with representative prompt-file and direct-prompt cases. Assert sandbox and add-dir argv, workdir resolution, model attribution, retries, timing arguments, event fallback, quota and token records, metadata, done promotion, and `LAUNCHER_EXIT`.
+- Cover Codex preflight refusal and non-zero execution through the shared runner. Assert their existing outer return code, diagnostic bundle, completion file, and envelope.
+- Cover Codex drafter success and failure. Assert trusted instructions, read-only request, prompt preservation, token sidecar copying, parsed plan artifacts, scout and dialectic status, dirty-tree sidecar, completion file, cleanup, and emitted KVs.
+- Cover Claude drafter success, timeout, non-zero execution, and malformed envelope. Assert exact argv, stdin capture, shared envelope parsing, usage recording, timing label, status and completion files, diagnostics, exit codes, and parsed plan artifacts.
+- Retain explicit adapter checks so CLI arguments and wrapper-only flag rejection remain unchanged.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/agents/test_external_dispatch.py`.
+- Run the existing drafter and negotiation coverage in `python/tests/agents/test_agents.py` to detect contract drift.
+- Run Python lint and type checks for the two changed files.
+- Confirm tests use fake executors and filesystem fixtures. They must not require live vendor credentials or network access.
+
+difficulty: HARD
+diff_lines: 1100
