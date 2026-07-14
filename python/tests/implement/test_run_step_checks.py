@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import os
+import types
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -68,6 +69,56 @@ def test_step3_composite_preserves_site_budget_and_flags(
     assert spec.initial_merge_rows == tuple(launch.as_rows())
     assert "--commit-site" in spec.command
     assert "--rebase-checkpoint-4r" in spec.command
+
+
+def test_relay_scope_coverage_passes_none_manifest_when_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """claude_fallback / --self-implement runs have no manifest.json by design.
+
+    The scope relay must pass manifest_path=None when no manifest is present so
+    resolve_implement_manifest searches and returns None instead of raising on
+    an explicit missing path (issue #7197).
+    """
+    impl, repo = _session(tmp_path, monkeypatch)
+    _ = (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
+    _ = (impl / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+    _ = (impl / "repo-root.txt").write_text(f"{repo}\n", encoding="utf-8")
+    assert not (impl / "manifest.json").exists()
+
+    seen: list[tuple[str, object]] = []
+
+    def fake_compute(
+        *, tmpdir: Path, manifest_path: object, **_: object
+    ) -> object:
+        seen.append(("compute", manifest_path))
+        return types.SimpleNamespace(
+            total=0,
+            touched=0,
+            untouched=0,
+            untouched_percent=0,
+            band="advisory",
+            coverage_file=str(tmpdir / "plan-coverage.json"),
+            untouched_file="",
+            todos_left_count=0,
+            todos_file="",
+            disposition_required=False,
+            plan_fidelity_forced=False,
+        )
+
+    def fake_invalidate(
+        *, manifest_path: object, **_: object
+    ) -> object:
+        seen.append(("invalidate", manifest_path))
+        return types.SimpleNamespace(reason="")
+
+    monkeypatch.setattr(route.scope_disposition, "compute_and_write_coverage", fake_compute)
+    monkeypatch.setattr(route.scope_disposition, "invalidate_stale_disposition", fake_invalidate)
+
+    assert route._relay_scope_coverage(impl) == 0  # pyright: ignore[reportPrivateUsage]
+    assert ("compute", None) in seen
+    assert ("invalidate", None) in seen
 
 
 def test_self_review_uses_distinct_step_and_budget(

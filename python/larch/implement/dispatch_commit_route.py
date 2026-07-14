@@ -362,11 +362,14 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
     if not repo_root.is_dir():
         print("scope-disposition: persisted repository root is not a directory", file=sys.stderr)
         return 2
-    manifest_path = implement_tmpdir / "manifest.json"
+    # claude_fallback / --self-implement runs have no implementer manifest.json by
+    # design (Steps 9a/9a.1 consume an in-memory equivalent). Pass None when no
+    # manifest is present so resolve_implement_manifest searches and returns None
+    # instead of raising on an explicit missing path (issue #7197).
+    manifest_path: Path | None = implement_tmpdir / "manifest.json"
     if not manifest_path.is_file():
         codex_manifest = implement_tmpdir / "codex-step2-out" / "manifest.json"
-        if codex_manifest.is_file():
-            manifest_path = codex_manifest
+        manifest_path = codex_manifest if codex_manifest.is_file() else None
     try:
         coverage = scope_disposition.compute_and_write_coverage(
             tmpdir=implement_tmpdir,
