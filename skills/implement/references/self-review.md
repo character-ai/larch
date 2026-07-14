@@ -4,7 +4,7 @@
 **Contract**: Authoritative body for Claude-subagent self-review (`larch:claude-self-reviewer`).
 **When to load**: **MANDATORY: READ ENTIRE FILE** when `self_review=true` or `STEP5_REVIEW_STATUS=self-review-required`.
 
-Entry conditions: this reference is used for explicit `--self-review` and runtime zero-survivor fallback when `STEP5_REVIEW_STATUS=self-review-required`. The same artifacts remain authoritative: `self-review-accepted.md`, `rejected-findings.md`, `oos-accepted-main-agent.md`, self-review tally, and the checks-commit route.
+Entry conditions: this reference is used for explicit `--self-review` and runtime zero-survivor fallback when `STEP5_REVIEW_STATUS=self-review-required`. The same artifacts remain authoritative: `$IMPLEMENT_TMPDIR/self-review-accepted.md`, `$IMPLEMENT_TMPDIR/rejected-findings.md`, `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`, self-review tally, and the checks-commit route. The `larch:claude-self-reviewer` subagent writes the accepted/rejected/OOS artifact files; this reference owns dispatch, the composite route, and tally reconciliation.
 
 When `self_review=true` (or after `self-review-required` fallback), self-review runs via a Claude Agent-tool subagent. First, mark Step 5 telemetry best-effort, then print the Step 5 banner.
 
