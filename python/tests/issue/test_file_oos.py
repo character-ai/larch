@@ -1688,11 +1688,17 @@ def _disposition_gate_write_oos(path: Path, body: str) -> Path:
 
 
 def _disposition_gate_inline_zero(monkeypatch: pytest.MonkeyPatch) -> None:
-    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)
+    def _inline_zero(_range: str) -> int:
+        return 0
+
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", _inline_zero)
 
 
 def _disposition_gate_inline_n(monkeypatch: pytest.MonkeyPatch, count: int) -> None:
-    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: count)
+    def _inline_n(_range: str) -> int:
+        return count
+
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", _inline_n)
 
 
 def _disposition_gate_run_main(
