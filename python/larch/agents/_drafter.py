@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import json
 import os
 import re
@@ -84,6 +85,218 @@ def _negotiation_base(output: Path) -> Path:
     return output
 
 
+# ---------------------------------------------------------------------------
+# Vendor launch hook helpers (lifted from inlined closures so the enclosing
+# launch functions shed the closure statements and recover prior complexity).
+# Each helper threads the formerly captured state through explicit parameters;
+# ``**_kwargs`` absorbs the extra lifecycle kwargs ``run_vendor_launch`` passes.
+# ---------------------------------------------------------------------------
+
+
+def _emit_response_file(*, output_path: Path, **_kwargs: object) -> None:
+    _emit_kv(key="RESPONSE_FILE", value=str(output_path))
+
+
+def _negotiation_codex_preflight(*, prep_rc: int, prep_msg: str, sidecar: Path, **_kwargs: object) -> bool:
+    if prep_rc != 0:
+        if prep_msg:
+            _write(path=sidecar, text=prep_msg + "\n")
+        return False
+    return True
+
+
+def _negotiation_codex_execute(
+    *,
+    argv: list[str],
+    prompt: Path,
+    events: Path,
+    sidecar: Path,
+    workdir: Path,
+    env: dict[str, str],
+    **_kwargs: object,
+) -> VendorProcessResult:
+    state = external_startup_lock_acquire(tool="codex")
+    external_startup_lock_release_after(state=state)
+    with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
+        try:
+            with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
+                # lint-subprocess-via-runner: ok requires stdin, stdout, stderr file handles; proc.run only captures to pipes
+                proc_obj = subprocess.run(
+                    argv,
+                    stdin=input_handle,
+                    stdout=out_handle,
+                    stderr=err_handle,
+                    cwd=str(workdir),
+                    env=env,
+                    text=True,
+                    check=False,
+                )
+            codex_rc = proc_obj.returncode
+        except FileNotFoundError:
+            codex_rc = 127
+            _append(path=sidecar, text="Failed to launch child: codex\n")
+    return VendorProcessResult(exit_code=codex_rc)
+
+
+def _negotiation_codex_mirror_quota(*, result: VendorProcessResult, events: Path, sidecar: Path, **_kwargs: object) -> None:
+    if result.exit_code != 0:
+        _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
+
+
+def _negotiation_codex_record_usage(*, events: Path, sidecar: Path, **_kwargs: object) -> None:
+    _record_usage_from_events(events=events, sidecar=sidecar, label="codex_negotiation")
+
+
+def _negotiation_cursor_preflight(**_kwargs: object) -> bool:
+    verdict = cursor_auth_preflight(caller="agent run-negotiation-round")
+    if not verdict.ok:
+        _err(verdict.message)
+        return False
+    cursor_auth_export_env()
+    return True
+
+
+def _negotiation_cursor_execute(*, argv: list[str], output_path: Path, workdir: Path, **_kwargs: object) -> VendorProcessResult:
+    state = external_startup_lock_acquire(tool="cursor")
+    external_startup_lock_release_after(state=state)
+    try:
+        with output_path.open("w", encoding="utf-8") as handle:
+            # lint-subprocess-via-runner: ok requires stdout file handle; proc.run only captures to pipes
+            result = subprocess.run(
+                argv,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                cwd=str(workdir),
+                env=dict(os.environ),
+                text=True,
+                check=False,
+            )
+        cursor_rc = result.returncode
+    except FileNotFoundError:
+        _write(path=output_path, text="Failed to launch child: cursor\n")
+        cursor_rc = 127
+    return VendorProcessResult(exit_code=cursor_rc)
+
+
+def _codex_external_agent_execute(
+    *,
+    argv: list[str],
+    output: Path,
+    timeout: str,
+    env: dict[str, str],
+    cwd: str,
+    stdout_path: Path,
+    stderr_path: Path,
+    start_holder: list[float],
+    **_kwargs: object,
+) -> VendorProcessResult:
+    start_holder.append(time.time())
+    result = _run_external_agent_with_auth_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=int(timeout, 10),
+        cmd=argv,
+        env=env,
+        cwd=cwd,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
+    return VendorProcessResult(exit_code=result.exit_code)
+
+
+def _codex_events_mirror_quota(*, events: Path, sidecar: Path, **_kwargs: object) -> None:
+    if not events.is_file() or events.stat().st_size == 0:
+        _write(path=events, text="{}\n")
+    _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
+
+
+def _codex_record_vendor_timing(*, result: VendorProcessResult, timing_task_kind: str, output: Path, start_holder: list[float], **_kwargs: object) -> None:
+    end = time.time()
+    start = start_holder[0] if start_holder else end
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "codex",
+            "--task-kind",
+            timing_task_kind,
+            "--start-s",
+            str(int(start)),
+            "--end-s",
+            str(int(end)),
+            "--output",
+            str(output),
+            "--exit-code",
+            str(result.exit_code),
+            "--status",
+            "complete" if result.exit_code == 0 else "signal",
+        ],
+        check=False,
+    )
+
+
+def _codex_record_vendor_usage(*, model: str, events: Path, sidecar: Path, label: str, token_record: Path, **_kwargs: object) -> None:
+    _record_usage_from_events(events=events, sidecar=sidecar, label=label, token_record=token_record, model=model)
+
+
+def _codex_exec_promote(
+    *,
+    output: Path,
+    prompt_sidecar: Path,
+    workdir: Path,
+    sandbox: str,
+    with_effort: bool,
+    model_role: str,
+    usage_label: str,
+    timing_task_kind: str,
+    add_dirs: list[str],
+    **_kwargs: object,
+) -> None:
+    _append(
+        path=output.with_suffix(output.suffix + ".meta"),
+        text="\n".join(
+            [
+                "OUTER_LAUNCHER=agent launch-codex-exec",
+                f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
+                f"OUTER_LAUNCHER_WORKDIR={workdir}",
+                "OUTER_LAUNCHER_KIND=codex-exec",
+                f"OUTER_LAUNCHER_SANDBOX={sandbox}",
+                f"OUTER_LAUNCHER_WITH_EFFORT={str(with_effort).lower()}",
+                f"OUTER_LAUNCHER_MODEL_ROLE={model_role}",
+                f"OUTER_LAUNCHER_USAGE_LABEL={usage_label}",
+                f"OUTER_LAUNCHER_TIMING_KIND={timing_task_kind}",
+                f"OUTER_LAUNCHER_ADD_DIRS_JSON={_json_array(add_dirs)}",
+            ]
+        )
+        + "\n",
+    )
+    _promote_inner_done(output)
+
+
+def _claude_drafter_execute(
+    *,
+    argv: list[str],
+    timeout_bin: str | None,
+    timeout: str,
+    json_tmp: Path,
+    stderr_path: Path,
+    prompt_text: str,
+    **_kwargs: object,
+) -> VendorProcessResult:
+    run_cmd = [timeout_bin, timeout, *argv] if timeout_bin else argv
+    with json_tmp.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
+        try:
+            # lint-subprocess-via-runner: ok requires input string and stdout/stderr file handles; proc.run only captures to pipes
+            completed = subprocess.run(run_cmd, input=prompt_text, text=True, stdout=out, stderr=err, check=False)
+            return VendorProcessResult(exit_code=completed.returncode)
+        except FileNotFoundError:
+            err.write("Failed to launch child: claude\n")
+            return VendorProcessResult(exit_code=127)
+
+
 def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | Path, workspace: str | Path) -> int:
     if tool not in {"codex", "cursor"}:
         _err(f"agent run-negotiation-round: ERROR: --tool must be 'codex' or 'cursor' (got: {tool})")
@@ -118,46 +331,6 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
             env: dict[str, str] = dict(os.environ)
             env["CODEX_HOME"] = str(codex_home)
 
-            def _codex_preflight(**_kwargs: object) -> bool:
-                if prep_rc != 0:
-                    if prep_msg:
-                        _write(path=sidecar, text=prep_msg + "\n")
-                    return False
-                return True
-
-            def _codex_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
-                state = external_startup_lock_acquire(tool="codex")
-                external_startup_lock_release_after(state=state)
-                with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
-                    try:
-                        with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
-                            # lint-subprocess-via-runner: ok requires stdin, stdout, stderr file handles; proc.run only captures to pipes
-                            proc_obj = subprocess.run(
-                                argv,
-                                stdin=input_handle,
-                                stdout=out_handle,
-                                stderr=err_handle,
-                                cwd=str(workdir),
-                                env=env,
-                                text=True,
-                                check=False,
-                            )
-                        codex_rc = proc_obj.returncode
-                    except FileNotFoundError:
-                        codex_rc = 127
-                        _append(path=sidecar, text="Failed to launch child: codex\n")
-                return VendorProcessResult(exit_code=codex_rc)
-
-            def _codex_mirror_quota(*, result: VendorProcessResult, **_kwargs: object) -> None:
-                if result.exit_code != 0:
-                    _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
-
-            def _codex_record_usage(**_kwargs: object) -> None:
-                _record_usage_from_events(events=events, sidecar=sidecar, label="codex_negotiation")
-
-            def _codex_promote(**_kwargs: object) -> None:
-                _emit_kv(key="RESPONSE_FILE", value=str(output_path))
-
             request = VendorLaunchRequest(
                 workdir=str(workdir),
                 output=str(output_path),
@@ -167,11 +340,11 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
                 timing_task_kind="codex_negotiation",
             )
             hooks = VendorFamilyHooks(
-                preflight=_codex_preflight,
-                execute=_codex_execute,
-                mirror_quota=_codex_mirror_quota,
-                record_usage=_codex_record_usage,
-                promote_completion=_codex_promote,
+                preflight=functools.partial(_negotiation_codex_preflight, prep_rc=prep_rc, prep_msg=prep_msg, sidecar=sidecar),
+                execute=functools.partial(_negotiation_codex_execute, prompt=prompt, events=events, sidecar=sidecar, workdir=workdir, env=env),
+                mirror_quota=functools.partial(_negotiation_codex_mirror_quota, events=events, sidecar=sidecar),
+                record_usage=functools.partial(_negotiation_codex_record_usage, events=events, sidecar=sidecar),
+                promote_completion=functools.partial(_emit_response_file, output_path=output_path),
             )
             outcome = run_vendor_launch(
                 CODEX_DESCRIPTOR,
@@ -196,35 +369,6 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
         return 1
     wrapped = f" /max-mode on. Prompt: Read the negotiation prompt from {prompt} and respond to it."
 
-    def _cursor_preflight(**_kwargs: object) -> bool:
-        verdict = cursor_auth_preflight(caller="agent run-negotiation-round")
-        if not verdict.ok:
-            _err(verdict.message)
-            return False
-        cursor_auth_export_env()
-        return True
-
-    def _cursor_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
-        state = external_startup_lock_acquire(tool="cursor")
-        external_startup_lock_release_after(state=state)
-        try:
-            with output_path.open("w", encoding="utf-8") as handle:
-                # lint-subprocess-via-runner: ok requires stdout file handle; proc.run only captures to pipes
-                result = subprocess.run(  # lint-subprocess-via-runner: ok requires stdout file handle; proc.run only captures to pipes
-                    argv,
-                    stdout=handle,
-                    stderr=subprocess.STDOUT,
-                    cwd=str(workdir),
-                    env=dict(os.environ),
-                    text=True,
-                    check=False,
-                )
-            cursor_rc = result.returncode
-        except FileNotFoundError:
-            _write(path=output_path, text="Failed to launch child: cursor\n")
-            cursor_rc = 127
-        return VendorProcessResult(exit_code=cursor_rc)
-
     cursor_request = VendorLaunchRequest(
         workdir=str(workdir),
         output=str(output_path),
@@ -233,9 +377,9 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
         timing_task_kind="cursor_negotiation",
     )
     cursor_hooks = VendorFamilyHooks(
-        preflight=_cursor_preflight,
-        execute=_cursor_execute,
-        promote_completion=lambda **_kwargs: _emit_kv(key="RESPONSE_FILE", value=str(output_path)),  # type: ignore[reportUnknownLambdaType]  # targets the VendorFamilyHooks.promote_completion Callable[..., Any] seam pyright cannot narrow
+        preflight=_negotiation_cursor_preflight,
+        execute=functools.partial(_negotiation_cursor_execute, output_path=output_path, workdir=workdir),
+        promote_completion=functools.partial(_emit_response_file, output_path=output_path),
     )
     cursor_outcome = run_vendor_launch(
         CURSOR_DESCRIPTOR,
@@ -314,77 +458,6 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         env: dict[str, str] = dict(os.environ)
         env["CODEX_HOME"] = home
         start_holder: list[float] = []
-
-        def _exec_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
-            start_holder.append(time.time())
-            result = _run_external_agent_with_auth_retries(
-                tool="codex",
-                output=output,
-                timeout_seconds=int(args.timeout, 10),
-                cmd=argv,
-                env=env,
-                cwd=str(workdir),
-                stdout_path=events,
-                stderr_path=sidecar,
-            )
-            return VendorProcessResult(exit_code=result.exit_code)
-
-        def _exec_mirror_quota(**_kwargs: object) -> None:
-            if not events.is_file() or events.stat().st_size == 0:
-                _write(path=events, text="{}\n")
-            _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
-
-        def _exec_record_timing(*, result: VendorProcessResult, **_kwargs: object) -> None:
-            end = time.time()
-            start = start_holder[0] if start_holder else end
-            proc.run(
-                [
-                    sys.executable,
-                    str(_PY_CLI),
-                    "timing",
-                    "record-vendor-task",
-                    "--vendor",
-                    "codex",
-                    "--task-kind",
-                    args.timing_task_kind,
-                    "--start-s",
-                    str(int(start)),
-                    "--end-s",
-                    str(int(end)),
-                    "--output",
-                    str(output),
-                    "--exit-code",
-                    str(result.exit_code),
-                    "--status",
-                    "complete" if result.exit_code == 0 else "signal",
-                ],
-                check=False,
-            )
-
-        def _exec_record_usage(*, model: str, **_kwargs: object) -> None:
-            _record_usage_from_events(events=events, sidecar=sidecar, label=args.usage_label, token_record=output.with_suffix(output.suffix + ".token-record"), model=model)
-
-        def _exec_promote(**_kwargs: object) -> None:
-            _append(
-                path=output.with_suffix(output.suffix + ".meta"),
-                text="\n".join(
-                    [
-                        "OUTER_LAUNCHER=agent launch-codex-exec",
-                        f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
-                        f"OUTER_LAUNCHER_WORKDIR={workdir}",
-                        "OUTER_LAUNCHER_KIND=codex-exec",
-                        f"OUTER_LAUNCHER_SANDBOX={args.sandbox}",
-                        f"OUTER_LAUNCHER_WITH_EFFORT={str(args.with_effort).lower()}",
-                        f"OUTER_LAUNCHER_MODEL_ROLE={args.model_role}",
-                        f"OUTER_LAUNCHER_USAGE_LABEL={args.usage_label}",
-                        f"OUTER_LAUNCHER_TIMING_KIND={args.timing_task_kind}",
-                        f"OUTER_LAUNCHER_ADD_DIRS_JSON={_json_array(add_dirs)}",
-                    ]
-                )
-                + "\n"
-            )
-            _promote_inner_done(output)
-
         exec_request = VendorLaunchRequest(
             workdir=str(workdir),
             output=str(output),
@@ -394,11 +467,11 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             timing_task_kind=args.timing_task_kind,
         )
         exec_hooks = VendorFamilyHooks(
-            execute=_exec_execute,
-            mirror_quota=_exec_mirror_quota,
-            record_timing=_exec_record_timing,
-            record_usage=_exec_record_usage,
-            promote_completion=_exec_promote,
+            execute=functools.partial(_codex_external_agent_execute, output=output, timeout=args.timeout, env=env, cwd=str(workdir), stdout_path=events, stderr_path=sidecar, start_holder=start_holder),
+            mirror_quota=functools.partial(_codex_events_mirror_quota, events=events, sidecar=sidecar),
+            record_timing=functools.partial(_codex_record_vendor_timing, timing_task_kind=args.timing_task_kind, output=output, start_holder=start_holder),
+            record_usage=functools.partial(_codex_record_vendor_usage, events=events, sidecar=sidecar, label=args.usage_label, token_record=output.with_suffix(output.suffix + ".token-record")),
+            promote_completion=functools.partial(_codex_exec_promote, output=output, prompt_sidecar=prompt_sidecar, workdir=workdir, sandbox=args.sandbox, with_effort=args.with_effort, model_role=args.model_role, usage_label=args.usage_label, timing_task_kind=args.timing_task_kind, add_dirs=add_dirs),
         )
         outcome = run_vendor_launch(
             CODEX_DESCRIPTOR,
@@ -842,56 +915,6 @@ def launch_codex_drafter(
                 env: dict[str, str] = dict(os.environ)
                 env["CODEX_HOME"] = home
                 start_holder: list[float] = []
-
-                def _drafter_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
-                    start_holder.append(time.time())
-                    result = _run_external_agent_with_auth_retries(
-                        tool="codex",
-                        output=raw,
-                        timeout_seconds=int(timeout, 10),
-                        cmd=argv,
-                        env=env,
-                        cwd=str(repo),
-                        stdout_path=events,
-                        stderr_path=paths.stderr,
-                    )
-                    return VendorProcessResult(exit_code=result.exit_code)
-
-                def _drafter_mirror_quota(**_kwargs: object) -> None:
-                    if not events.is_file() or events.stat().st_size == 0:
-                        _write(path=events, text="{}\n")
-                    _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
-
-                def _drafter_record_timing(*, result: VendorProcessResult, **_kwargs: object) -> None:
-                    end = time.time()
-                    start = start_holder[0] if start_holder else end
-                    proc.run(
-                        [
-                            sys.executable,
-                            str(_PY_CLI),
-                            "timing",
-                            "record-vendor-task",
-                            "--vendor",
-                            "codex",
-                            "--task-kind",
-                            timing_task_kind,
-                            "--start-s",
-                            str(int(start)),
-                            "--end-s",
-                            str(int(end)),
-                            "--output",
-                            str(raw),
-                            "--exit-code",
-                            str(result.exit_code),
-                            "--status",
-                            "complete" if result.exit_code == 0 else "signal",
-                        ],
-                        check=False,
-                    )
-
-                def _drafter_record_usage(*, model: str, **_kwargs: object) -> None:
-                    _record_usage_from_events(events=events, sidecar=sidecar, label="codex_plan_draft", token_record=raw.with_suffix(raw.suffix + ".token-record"), model=model)
-
                 drafter_request = VendorLaunchRequest(
                     workdir=str(repo),
                     output=str(raw),
@@ -901,10 +924,10 @@ def launch_codex_drafter(
                     timing_task_kind=timing_task_kind,
                 )
                 drafter_hooks = VendorFamilyHooks(
-                    execute=_drafter_execute,
-                    mirror_quota=_drafter_mirror_quota,
-                    record_timing=_drafter_record_timing,
-                    record_usage=_drafter_record_usage,
+                    execute=functools.partial(_codex_external_agent_execute, output=raw, timeout=timeout, env=env, cwd=str(repo), stdout_path=events, stderr_path=paths.stderr, start_holder=start_holder),
+                    mirror_quota=functools.partial(_codex_events_mirror_quota, events=events, sidecar=sidecar),
+                    record_timing=functools.partial(_codex_record_vendor_timing, timing_task_kind=timing_task_kind, output=raw, start_holder=start_holder),
+                    record_usage=functools.partial(_codex_record_vendor_usage, events=events, sidecar=sidecar, label="codex_plan_draft", token_record=raw.with_suffix(raw.suffix + ".token-record")),
                 )
                 drafter_outcome = run_vendor_launch(
                     CODEX_DESCRIPTOR,
@@ -1079,23 +1102,11 @@ def launch_claude_drafter(
         launched = True
         prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
         timeout_bin = shutil.which("timeout")
-
-        def _claude_execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
-            run_cmd = [timeout_bin, timeout, *argv] if timeout_bin else argv
-            with json_tmp.open("w", encoding="utf-8") as out, paths.stderr.open("w", encoding="utf-8") as err:
-                try:
-                    # lint-subprocess-via-runner: ok requires input string and stdout/stderr file handles; proc.run only captures to pipes
-                    completed = subprocess.run(run_cmd, input=prompt_text, text=True, stdout=out, stderr=err, check=False)
-                    return VendorProcessResult(exit_code=completed.returncode)
-                except FileNotFoundError:
-                    err.write("Failed to launch child: claude\n")
-                    return VendorProcessResult(exit_code=127)
-
         claude_outcome = run_vendor_launch(
             CLAUDE_DESCRIPTOR,
             "drafter-read",
             claude_request,
-            hooks=VendorFamilyHooks(execute=_claude_execute),
+            hooks=VendorFamilyHooks(execute=functools.partial(_claude_drafter_execute, timeout_bin=timeout_bin, timeout=timeout, json_tmp=json_tmp, stderr_path=paths.stderr, prompt_text=prompt_text)),
             use_config_context=False,
         )
         exit_code = claude_outcome.process_result.exit_code if claude_outcome.process_result is not None else 127
