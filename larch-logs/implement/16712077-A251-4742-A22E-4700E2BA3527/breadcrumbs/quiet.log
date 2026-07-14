@@ -10,8 +10,12 @@ append-execution-issue.sh: error: the following arguments are required: --log, -
 === larch-quiet-cli.py-81113.log ===
 === larch-quiet-cli.py-95931.log ===
 === larch-quiet-scout-plan-archetypes-wrapper.sh-81085.log ===
+=== larch-quiet-sessionstart-health.sh-16138.log ===
+=== larch-quiet-sessionstart-health.sh-17108.log ===
 === larch-quiet-sessionstart-health.sh-1775.log ===
 === larch-quiet-sessionstart-health.sh-205.log ===
+=== larch-quiet-sessionstart-health.sh-55198.log ===
+=== larch-quiet-sessionstart-health.sh-56339.log ===
 === larch-quiet-sessionstart-health.sh-83235.log ===
 === larch-quiet-sessionstart-health.sh-8424.log ===
 === larch-quiet-sessionstart-health.sh-93830.log ===
