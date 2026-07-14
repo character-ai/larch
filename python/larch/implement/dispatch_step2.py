@@ -49,7 +49,7 @@ from larch.implement.dispatch_helpers import (
     _SAFE_CODERS,
 )
 from larch.implement.dispatch_ship_seed import _clear_external_dispatch_seed
-from larch.implement import scope_disposition
+from larch.implement import dispatch_helpers, scope_disposition
 from larch.errors import ShipError
 from larch.implement.dispatch_manifest import (
     DispatchState,
@@ -67,7 +67,6 @@ from larch.implement.dispatch_manifest import (
     _write_prelaunch_baseline,
 )
 from larch.implement.dispatch_recovery import RecoveryPorcelainInputs, compute_recovery_paths
-from larch.implement.dispatch_helpers import _capture_postlaunch_porcelain
 
 _ASCII_CONTROL_MAX = 31
 _ASCII_DELETE = 127
@@ -531,7 +530,9 @@ def _prior_attempt_unfinalized(st: DispatchState) -> bool:
     """
     if st.answers_file is not None or not st.prelaunch_porcelain.is_file() or not st.prelaunch_digests.is_file():
         return False
-    if _capture_postlaunch_porcelain(repo_root=st.repo_root, implement_tmpdir=st.tmpdir) != 0:
+    if dispatch_helpers._capture_postlaunch_porcelain(  # noqa: SLF001 - shared dispatcher recovery snapshot helper
+        repo_root=st.repo_root, implement_tmpdir=st.tmpdir
+    ) != 0:
         return True
     try:
         return compute_recovery_paths(

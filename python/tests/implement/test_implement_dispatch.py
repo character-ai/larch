@@ -28,6 +28,7 @@ from larch.implement import implement_dispatch
 from larch.implement import (
     checks_result_identity,
     dispatch_commit_route,
+    dispatch_helpers,
     dispatch_leg,
     dispatch_manifest,
     dispatch_ship,
@@ -3256,7 +3257,7 @@ def test_step2_dispatch_fails_closed_when_prior_attempt_delta_cannot_be_captured
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     _ = (tmp / "step2-prelaunch-porcelain.nul").write_bytes(b"")
     _ = (tmp / "step2-prelaunch-content-digests.txt").write_text("", encoding="utf-8")
-    monkeypatch.setattr(dispatch_step2, "_capture_postlaunch_porcelain", lambda **_kwargs: 1)
+    monkeypatch.setattr(dispatch_helpers, "_capture_postlaunch_porcelain", lambda **_kwargs: 1)
 
     assert dispatch_step2.step2_dispatch_main([
         "--tmpdir",
