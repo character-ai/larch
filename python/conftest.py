@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from pathlib import Path
 
 import pytest
 from larch.core import config
 from larch.core import logging_util
 import pytest_sharding
+
+from tests.support import shell_fixtures as _shell_fixtures
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +108,38 @@ def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
         pass
 
     monkeypatch.setattr(time, "sleep", noop)
+
+
+@pytest.fixture
+def fake_bin_dir(tmp_path: Path) -> _shell_fixtures.FakeBinDirFactory:
+    """Return a function-scoped factory for fail-closed external-command fakes."""
+    count = 0
+
+    def make() -> _shell_fixtures.FakeBinDir:
+        nonlocal count
+        count += 1
+        return _shell_fixtures.make_fake_bin_dir(tmp_path / f"fake-bin-{count}")
+
+    return make
+
+
+@pytest.fixture
+def subprocess_env() -> _shell_fixtures.SubprocessEnvFactory:
+    """Return a function-scoped factory for controlled subprocess environments."""
+    return _shell_fixtures.make_subprocess_env
+
+
+@pytest.fixture
+def fake_plugin_tree(tmp_path: Path) -> _shell_fixtures.PluginTreeFactory:
+    """Return a function-scoped factory for minimal symlinked plugin trees."""
+    count = 0
+
+    def make(sources: Sequence[_shell_fixtures.PluginSource]) -> Path:
+        nonlocal count
+        count += 1
+        return _shell_fixtures.make_fake_plugin_tree(tmp_path / f"plugin-{count}", sources)
+
+    return make
 
 
 def pytest_configure(config: pytest.Config) -> None:

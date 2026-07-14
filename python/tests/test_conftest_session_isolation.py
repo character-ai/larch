@@ -34,6 +34,8 @@ _SESSION_ROUTING_VARS = (
     "REVIEW_TMPDIR",
     "SESSION_ENV_PATH",
     "LARCH_EXECUTION_ISSUES_LOG",
+    "CLAUDE_PLUGIN_ROOT",
+    "LARCH_CLAUDE_PLUGIN_ROOT",
 )
 
 
@@ -56,6 +58,8 @@ def _ambient_live_session(
     os.environ["REVIEW_TMPDIR"] = str(session_dir)
     os.environ["SESSION_ENV_PATH"] = str(session_dir / "session-env.sh")
     os.environ["LARCH_EXECUTION_ISSUES_LOG"] = str(session_dir / "execution-issues.md")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(session_dir / "plugin-root")
+    os.environ["LARCH_CLAUDE_PLUGIN_ROOT"] = str(session_dir / "larch-plugin-root")
     try:
         yield session_dir
     finally:
