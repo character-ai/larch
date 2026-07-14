@@ -44,11 +44,19 @@ Exec Issues (4):
 Warnings (1):
   1. Step 5 — coder-produced dynamic-archetype manifest missing (producer_sidecar_absent); static reviewers only.
 
+## Architectural invariants
+
+The changes are limited to test files and `docs/linting.md`; no production code paths are modified, so all architectural invariants hold.
+
+## Architectural guidelines
+
+The change mechanically adopts shared test helpers, reduces boilerplate across test files, and adds a short assertion-convention note to `docs/linting.md`; all guidelines are satisfied.
+
 ## /implement run D3364C52-818F-4A4A-AA67-B5E1A614D847: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:55:48
-- **Cost**: 💰 TOTAL ~$11.32: Claude $3.63, Codex-5.6 $3.44, Codex-mini $0.01, Cursor $3.20 (Composer $3.20, Grok $0.00), Claude (subprocess) $1.04  |  Tokens: 18390k
+- **Cost**: 💰 TOTAL ~$12.98: Claude $5.29, Codex-5.6 $3.44, Codex-mini $0.01, Cursor $3.20 (Composer $3.20, Grok $0.00), Claude (subprocess) $1.04  |  Tokens: 21366k
 - **Issue**: #7027: https://github.com/character-ai/larch/issues/7027
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
