@@ -83,6 +83,61 @@ def test_reviewer_security_and_split_ballot(tmp_path: Path) -> None:
     assert "duplicate ballot heading FINDING_1" in result.stderr
 
 
+def test_ballot_blocks_use_canonical_parser_and_exact_item_slices(tmp_path: Path) -> None:
+    ballot_text = (
+        "Preamble stays outside ballot blocks.\n"
+        "```markdown\n"
+        "### FINDING_99: fenced heading\n"
+        "```\n"
+        "###   FINDING_1: spaced heading\n"
+        "- **Reviewer**: Codex-Structure\n"
+        "body one\n"
+        "###\tOOS_2:\ttab heading\n"
+        "- **Reviewer**: Cursor-Testing\n"
+        "body two\n"
+    )
+    expected = {
+        "FINDING_1": "###   FINDING_1: spaced heading\n- **Reviewer**: Codex-Structure\nbody one\n",
+        "OOS_2": "###\tOOS_2:\ttab heading\n- **Reviewer**: Cursor-Testing\nbody two\n",
+    }
+
+    assert voting._ballot_blocks(ballot_text) == expected
+    parsed_ids = [block.item_id for block in voting._parsed_ballot_blocks(ballot_text)]
+    assert parsed_ids == ["FINDING_1", "OOS_2"]
+    assert voting.proposer_map_from_ballot(ballot_text) == {
+        "FINDING_1": ("Codex-Structure", "- **Reviewer**: Codex-Structure"),
+        "OOS_2": ("Cursor-Testing", "- **Reviewer**: Cursor-Testing"),
+    }
+
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text(ballot_text, encoding="utf-8")
+    out_dir = tmp_path / "blocks"
+    voting.split_ballot(ballot_file=ballot, out_dir=out_dir)
+    assert (out_dir / "FINDING_1.md").read_text(encoding="utf-8") == expected["FINDING_1"]
+    assert (out_dir / "OOS_2.md").read_text(encoding="utf-8") == expected["OOS_2"]
+
+
+def test_ballot_parser_rejects_canonical_whitespace_duplicate_and_missing_proposer() -> None:
+    duplicate = "### FINDING_1: one\n### \tFINDING_1: duplicate\n"
+    with pytest.raises(ValueError, match="duplicate ballot heading FINDING_1"):
+        voting._ballot_blocks(duplicate)
+
+    missing_proposer = "### \tFINDING_1: one\n- **Concern**: missing reviewer\n"
+    with pytest.raises(ValueError, match="proposer map missing item"):
+        voting.validate_proposer_map_coverage(
+            ballot_text=missing_proposer,
+            proposer_map=voting.proposer_map_from_ballot(missing_proposer),
+        )
+
+
+def test_neutralization_uses_canonical_whitespace_heading() -> None:
+    ballot = "### \tFINDING_1: one\n- **Reviewer**: Codex-Structure\n"
+    neutral = voting.neutralize_reviewer_attribution(text=ballot)
+
+    assert neutral == "### \tFINDING_1: one\n- **Reviewer**: anonymous\n"
+    assert voting.ballot_text_is_neutralized(neutral)
+
+
 @pytest.mark.parametrize(
     "text",
     [
