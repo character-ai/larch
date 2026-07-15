@@ -181,44 +181,6 @@ def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
     return ",".join(files)
 
 
-def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
-    if result.skipped_already_pushed:
-        logging_util.emit_kv(key="SKIPPED_ALREADY_PUSHED", value="true")
-    if result.skipped_already_fresh:
-        logging_util.emit_kv(key="SKIPPED_ALREADY_FRESH", value="true")
-    if result.conflict_files:
-        logging_util.emit_kv(key="CONFLICT_FILES", value=result.conflict_files)
-    if result.rebase_error and result.exit_code != _REBASE_FAILED_EXIT:
-        logging_util.emit_kv(key="REBASE_ERROR", value=_rebase_sanitize(result.rebase_error))
-
-    if result.exit_code == 0:
-        if result.skipped_already_pushed or result.skipped_already_fresh:
-            logging_util.emit_kv(key="REBASE_OUTCOME", value="skipped")
-        else:
-            logging_util.emit_kv(key="REBASE_OUTCOME", value="ok")
-        logging_util.emit_kv(key="ROUTE", value="continue")
-        logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-        return 0
-    if result.exit_code == 1:
-        logging_util.emit_kv(key="REBASE_OUTCOME", value="conflict")
-        logging_util.emit_kv(key="CONFLICT_FILES", value=_conflict_files_csv(result))
-        logging_util.emit_kv(key="ROUTE", value="conflict")
-        logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-        return 1
-    if result.exit_code == _REBASE_FAILED_EXIT:
-        logging_util.emit_kv(key="REBASE_OUTCOME", value="failed")
-        err = result.rebase_error or "rebase-failed"
-        logging_util.emit_kv(key="REBASE_ERROR", value=_rebase_sanitize(err))
-        logging_util.emit_kv(key="ROUTE", value="bail")
-        logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-        return 3
-    logging_util.emit_kv(key="REBASE_OUTCOME", value="failed")
-    logging_util.emit_kv(key="REBASE_ERROR", value=f"unexpected-rc-{result.exit_code}")
-    logging_util.emit_kv(key="ROUTE", value="bail")
-    logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-    return result.exit_code
-
-
 def _is_trivial_conflict_file(path: str) -> bool:
     return path.startswith("larch-logs/")
 

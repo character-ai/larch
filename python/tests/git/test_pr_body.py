@@ -1371,13 +1371,18 @@ def test_post_tracking_issue_uses_unknown_version_when_plugin_metadata_is_unavai
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
-    monkeypatch.setattr(
-        pr_body.tracking_issue,
-        "upsert_marker_summary",
-        lambda *_args, **_kwargs: pr_body.tracking_issue.UpsertSummaryOutput(
-            comment_id="1", comment_url="", updated=False
-        ),
-    )
+    def fake_upsert(
+        _runner: object,
+        *,
+        issue: str,
+        marker: str,
+        content_file: Path,
+        repo: str,
+    ) -> pr_body.tracking_issue.UpsertSummaryOutput:
+        _ = (issue, marker, content_file, repo)
+        return pr_body.tracking_issue.UpsertSummaryOutput(comment_id="1", comment_url="", updated=False)
+
+    monkeypatch.setattr(pr_body.tracking_issue, "upsert_marker_summary", fake_upsert)
     monkeypatch.setattr(pr_body.config, "PLUGIN_JSON_PATH", "missing-plugin.json")
     result = pr_body.post_tracking_issue(tmp_path)
 

@@ -293,7 +293,6 @@ def test_resume_plan_tail_appends_force_bypass_before_flags(tmp_path, monkeypatc
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: order.append("bypass") or True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: order.append("flags") or True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "BRANCH=feature\n", ""))  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_publish_plan_review_tally", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_upsert_plan_summary", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     _ = seed_feature_description(tmp_path, "Title\n")
@@ -523,19 +522,16 @@ def test_strip_plan_provenance_headers_requires_terminal_trailers() -> None:
 
 
 def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> None:
-    calls: list[list[str]] = []
     preflight = tmp_path / "preflight"
     preflight.mkdir()
     (preflight / "plan-from-issue.txt").write_text("plan", encoding="utf-8")
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
 
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        calls.append(list(argv))
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    def unexpected_issue_view(*_args: object, **_kwargs: object) -> CommandResult:
+        raise AssertionError("forked-plan validation must fail before reading the issue")
 
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", unexpected_issue_view)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", forked_target="true", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(tmp_path),
@@ -545,7 +541,6 @@ def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> 
         bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
     assert exc_info.value.code == 2
     assert st.implement_bail_reason == ""
-    assert not any(call[:3] == ["gh", "issue", "view"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_path, monkeypatch) -> None:
@@ -568,7 +563,6 @@ def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_pa
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "BRANCH=feature\n", ""))  # pyright: ignore[reportPrivateUsage]
 
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(
@@ -1277,19 +1271,6 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
     assert st.implement_bail_reason == ""
     assert calls == ["rename", "init", "post"]
     assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")
-
-
-def _phase_infra_setup_stdout(tmp_path: Path, *, session_id: str) -> str:
-    return (
-        f"SESSION_TMPDIR={tmp_path}\n"
-        f"SESSION_ID={session_id}\n"
-        "REPO=owner/repo\n"
-        "REPO_UNAVAILABLE=false\n"
-        "CODEX_PRESENT=false\n"
-        "CURSOR_PRESENT=false\n"
-        "CODEX_BINARY_FOUND=false\n"
-        "CURSOR_BINARY_FOUND=false\n"
-    )
 
 
 def _run_phase_infra_for_progress(

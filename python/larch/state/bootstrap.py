@@ -88,13 +88,6 @@ def _err(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def _run(argv: list[str], *, env: dict[str, str] | None = None, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-    try:
-        return subprocess.run(argv, capture_output=True, text=True, errors="replace", env=env, cwd=cwd, check=False)
-    except OSError as exc:
-        return subprocess.CompletedProcess(argv, 127, "", f"{exc}\n")
-
-
 def _install_statusline_best_effort() -> None:
     _ = statusline_install.install_statusline(
         plugin_root=_REPO_ROOT,
@@ -475,6 +468,7 @@ def _phase_infra(st: BootstrapState) -> None:
         )
     except ValueError:
         st.emit_step_failed("session-entry-gate")
+        return
     st.entry_gate = gate.entry_gate
     st.skip_branch_check = gate.skip_branch_check
 
@@ -501,8 +495,10 @@ def _phase_infra(st: BootstrapState) -> None:
             )
         except (OSError, ValueError, session_env.SessionSetupError):
             st.emit_step_failed("session-setup")
+            return
         if setup.exit_code != 0:
             st.emit_step_failed("session-setup")
+            return
         st.implement_tmpdir = str(setup.session_tmpdir)
         os.environ["IMPLEMENT_TMPDIR"] = st.implement_tmpdir
         st.session_id = setup.session_id
@@ -622,6 +618,7 @@ def _adopt_tracking_issue(st: BootstrapState) -> None:
         state = issue_query.issue_state(proc, st.opts.issue_number, repo=None)
     except Exception:
         st.emit_step_failed("get-issue-state")
+        return
     if state.is_pr:
         st.implement_bail_reason = "adopted-issue-is-pr"
         return
@@ -630,6 +627,7 @@ def _adopt_tracking_issue(st: BootstrapState) -> None:
         return
     if state.state != "OPEN":
         st.emit_step_failed("get-issue-state")
+        return
     dirty_lines = dirty_tree.checkpoint()
     if _checkpoint_status(dirty_lines) in {"dirty", "unknown"}:
         st.implement_bail_reason = "dirty-tree"
@@ -713,8 +711,11 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         )
         if current_title.returncode != 0:
             raise OSError(current_title.stderr)
+        repo = st.repo or gh.resolve_repo(proc)
+        if not repo:
+            raise OSError("repository unavailable for tracking issue rename")
         _ = tracking_issue.rename_with_details(
-            proc, st.issue_number_resolved, "implementing", repo=st.repo or gh.resolve_repo(proc),
+            proc, st.issue_number_resolved, "implementing", repo=repo,
             current_title=current_title.stdout.strip(),
         )
     except Exception as exc:
@@ -753,7 +754,7 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
 
 def _append_execution_issue_entry(*, log: Path, category: str, entry: str) -> bool:
     try:
-        run_logs.append_execution_issue(log, category=category, entry=entry)
+        run_logs.append_execution_issue(log_file=log, category=category, entry=entry)
     except OSError:
         return False
     return True
@@ -1403,25 +1404,6 @@ def _parent_invocation_non_interactive() -> bool:
     return False
 
 
-def _relay_gate_stderr(stderr: str, *, force_all: bool = False) -> None:
-    if not stderr.strip():
-        return
-    if force_all:
-        for line in stderr.splitlines():
-            if line.strip():
-                _err(line)
-        return
-    for line in stderr.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped in {"DEGRADED_EXPLANATION_BEGIN", "DEGRADED_EXPLANATION_END"}:
-            continue
-        if any(stripped.startswith(prefix) for prefix in _GATE_STDERR_KV_PREFIXES):
-            continue
-        _err(line)
-
-
 def _resolve_non_interactive(
     *, explicit: str,
     env: Mapping[str, str] | None = None,
@@ -1443,23 +1425,6 @@ def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     print("true" if _resolve_non_interactive(explicit=args.explicit) else "false")
     return 0
-
-
-def _resolve_probe_cwd() -> Path:
-    git = shutil.which("git")
-    if git is None:
-        return _REPO_ROOT
-    result = subprocess.run(
-        [git, "rev-parse", "--show-toplevel"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        top = result.stdout.strip()
-        if top:
-            return Path(top)
-    return _REPO_ROOT
 
 
 def _continue_predicate(data: dict[str, str]) -> bool:
@@ -1509,28 +1474,6 @@ class ContinueTailResult:
     contract_failure: bool = False
     step_failed: str = ""
     failure_detail: str = ""
-
-
-def _parse_gate_output(text: str) -> tuple[dict[str, str], list[str], str]:
-    routing: dict[str, str] = {}
-    explanation: list[str] = []
-    in_explanation = False
-    for line in text.splitlines():
-        if line == "DEGRADED_EXPLANATION_BEGIN":
-            in_explanation = True
-            continue
-        if line == "DEGRADED_EXPLANATION_END":
-            in_explanation = False
-            continue
-        if in_explanation:
-            explanation.append(line)
-            continue
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in {"DEGRADED", "BOTH_DOWN", "DEGRADED_HARD_FAIL", "CODEX_STATE", "CURSOR_STATE", "PRESENCE_INPUT_EMPTY"}:
-            routing[key] = value
-    return routing, explanation, "\n".join(explanation).strip()
 
 
 def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
