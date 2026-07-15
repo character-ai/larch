@@ -242,7 +242,9 @@ def create_branch(
     fetch = with_transient_retry(attempt_fetch).value
     if fetch.returncode != 0:
         return CreateBranchResult("fetch_failed", branch, base, exit_code=2)
-    result = runner.run(["git", "checkout", "-b", branch, base], cwd=cwd)
+    result = runner.run(
+        ["git", "checkout", "-b", branch, "--no-track", base], cwd=cwd
+    )
     if result.returncode != 0:
         return CreateBranchResult("create_failed", branch, base, exit_code=2)
     return CreateBranchResult(
