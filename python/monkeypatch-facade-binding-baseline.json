@@ -3268,6 +3268,15 @@
   },
   {
     "file": "tests/implement/test_checks.py",
+    "qualified_symbol": "test_checks_repair_loop_merge_result_env_captures_terminal_kvs",
+    "facade_module": "larch.implement.checks_lint_fix",
+    "attribute": "run_relevant_checks",
+    "defining_module": "larch.implement.checks_run_relevant",
+    "occurrence": 2,
+    "reason": "repair-loop merge-env test patches consuming binding like sibling repair-loop tests"
+  },
+  {
+    "file": "tests/implement/test_checks.py",
     "qualified_symbol": "test_repair_loop_heartbeat_fires_during_blocking_lint_fix",
     "facade_module": "larch.implement.checks_lint_fix",
     "attribute": "run_relevant_checks",
@@ -10374,15 +10383,6 @@
     "attribute": "flush_review_batches",
     "defining_module": "larch.review.batch_report",
     "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_and_fix.py",
-    "qualified_symbol": "test_under_quorum_retry_revotes_only_targeted_items",
-    "facade_module": "larch.review.review_core_body",
-    "attribute": "_call_maybe_override",
-    "defining_module": "larch.review.review_pipeline_shared",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
