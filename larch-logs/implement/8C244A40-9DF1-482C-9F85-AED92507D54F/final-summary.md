@@ -50,19 +50,20 @@ The changed code introduces no violation of any architectural invariant. The sch
 
 The changed code is clean against all architectural guidelines. The schema evolution preserves byte-compatibility for existing ledger readers while adding the new fields only for current-schema rows, satisfying additive-schema and multi-consumer sweep expectations. Both producer agents and all parser, ledger, and report consumers are updated in the same diff. The `NO_INTRODUCED_RISK` and `SIBLING_SITE_RE` constants are module-local Finals consistent with the established pattern of other same-module constants such as `SCAN_OK`, `SCAN_FAILED`, and `EVIDENCE_TOKEN_LABEL`, which fall under the module-private deviate clause. The `_markdown_table` helper performs no column alignment or label truncation, so the hostile-width golden-test requirement of the report-renderer guidance is not triggered. All pyright suppressions in the test file carry inline reasons and are narrowly scoped per line. The new test suite covers legacy-schema preservation, schema-rejection paths, and the full report rendering path for the new sections.
 
-## /implement run 8C244A40-9DF1-482C-9F85-AED92507D54F: shipping
+## /implement run 8C244A40-9DF1-482C-9F85-AED92507D54F: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 00:19:59
-- **Cost**: 💰 TOTAL ~$12.11: Claude $2.58, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 14756k
+- **Cost**: 💰 TOTAL ~$12.73: Claude $3.20, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 16250k
 - **Issue**: #7212: https://github.com/character-ai/larch/issues/7212
+- **PR**: #7414: https://github.com/character-ai/larch/pull/7414
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +365/-11, larch-logs +680/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
