@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -25,6 +26,8 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS, _MARKDOWN_HEADING_RE  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]  # re-export: lint consumers import _MARKDOWN_HEADING_RE from this module
 from larch.errors import ShipError
+
+_LOG = logging.getLogger(__name__)
 
 GUIDELINES_FILENAME = GUIDELINES.filename
 INVARIANTS_FILENAME = INVARIANTS.filename
@@ -1049,15 +1052,34 @@ def _snapshot_matches(*, snapshot_path: Path, covered_fingerprint: str) -> bool:
     return diff_fingerprint(snapshot_text) == covered_fingerprint
 
 
+def _same_resolved_path(left: str | Path, right: Path) -> bool:
+    """Compare paths after resolving symlinks so /tmp and /private/tmp forms match."""
+    try:
+        return Path(left).resolve() == Path(right).resolve()
+    except OSError:
+        return False
+
+
+def _reject_note_metadata(reason: str) -> None:
+    _LOG.debug("architectural note metadata rejected: %s", reason)
+
+
+def _reject_coverage_advance(reason: str) -> bool:
+    _LOG.debug("architectural coverage advance rejected: %s", reason)
+    return False
+
+
 def _validated_note_metadata(  # noqa: PLR0911 - fail-closed metadata validator has distinct early exits per invariant check
     *,
     metadata: dict[str, str],
     expected_snapshot: Path,
 ) -> tuple[str, str, str, str] | None:
     if metadata.get("STATUS") != "present":
+        _reject_note_metadata("STATUS is not present")
         return None
     identity = _note_identity(metadata)
     if identity is None:
+        _reject_note_metadata("note identity missing or incomplete")
         return None
     note_state, authored_fingerprint, covered_fingerprint = identity
     base_ref = metadata.get("BASE_REF", "").strip()
@@ -1067,9 +1089,18 @@ def _validated_note_metadata(  # noqa: PLR0911 - fail-closed metadata validator 
     prior_format = not metadata.get("NOTE_STATE") and not metadata.get("AUTHORED_DIFF_FINGERPRINT") and not metadata.get("COVERED_DIFF_FINGERPRINT")
     if prior_format:
         return note_state, authored_fingerprint, covered_fingerprint, base_ref
-    if not declared_snapshot or Path(declared_snapshot) != expected_snapshot:
+    if not declared_snapshot:
+        _reject_note_metadata("DIFF_SNAPSHOT missing")
+        return None
+    # Resolve both sides: callers disagree on $IMPLEMENT_TMPDIR form (raw vs
+    # resolve()), and on macOS /tmp and /private/tmp coexist for the same file.
+    if not _same_resolved_path(declared_snapshot, expected_snapshot):
+        _reject_note_metadata(
+            f"DIFF_SNAPSHOT path mismatch declared={declared_snapshot!r} expected={expected_snapshot!r}"
+        )
         return None
     if not _snapshot_matches(snapshot_path=expected_snapshot, covered_fingerprint=covered_fingerprint):
+        _reject_note_metadata("snapshot fingerprint does not match COVERED_DIFF_FINGERPRINT")
         return None
     return note_state, authored_fingerprint, covered_fingerprint, base_ref
 
@@ -1086,13 +1117,13 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
     stored_head = metadata.get("HEAD_SHA", "").strip()
     identity = _note_identity(metadata)
     if identity is None:
-        return False
+        return _reject_coverage_advance("note identity missing or incomplete")
     note_state, authored_fingerprint, covered_fingerprint = identity
     if note_state == config.NOTE_STATE_UNAVAILABLE:
-        return False
+        return _reject_coverage_advance("NOTE_STATE is unavailable")
     snapshot_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
     if not _valid_commit(repo_root=repo_root, revision=stored_head):
-        return False
+        return _reject_coverage_advance(f"stored HEAD_SHA is not a valid commit: {stored_head}")
     remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
     try:
         stored_diff = _materialize_implementation_diff_for_head(
@@ -1101,20 +1132,20 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
             base_remote=remote,
             base_ref=ref,
         )
-    except (OSError, RuntimeError):
-        return False
+    except (OSError, RuntimeError) as exc:
+        return _reject_coverage_advance(f"could not materialize stored-head diff: {exc}")
     if diff_fingerprint(stored_diff) != covered_fingerprint or not _snapshot_matches(
         snapshot_path=snapshot_path,
         covered_fingerprint=covered_fingerprint,
     ):
-        return False
+        return _reject_coverage_advance("stored-head diff or snapshot fingerprint mismatch")
     if not _incremental_paths_out_of_scope(repo_root=repo_root, old_head=stored_head, new_head=head_sha):
-        return False
+        return _reject_coverage_advance("incremental paths include in-scope files")
     if _current_head(repo_root, verify_commit=True) != head_sha:
-        return False
+        return _reject_coverage_advance("HEAD drifted before live rematerialize")
     live_diff = _materialize_live_diff(repo_root=repo_root, resolved_base=base_ref)
     if live_diff is None or _current_head(repo_root, verify_commit=True) != head_sha:
-        return False
+        return _reject_coverage_advance("live rematerialize failed or HEAD drifted")
     diff_text, covered_fingerprint = live_diff
     refreshed = dict(metadata)
     refreshed["NOTE_STATE"] = note_state
@@ -1141,7 +1172,7 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
             encoding="utf-8",
         )
         if diff_fingerprint(snapshot_tmp.read_text(encoding="utf-8")) != covered_fingerprint:
-            return False
+            return _reject_coverage_advance("coverage tmp snapshot fingerprint mismatch")
         snapshot_tmp.replace(snapshot_path)
         try:
             meta_tmp.replace(meta_path)
@@ -1160,9 +1191,9 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
                 restored = False
             if not restored:
                 raise RuntimeError("could not restore architectural assessment coverage artifacts") from None
-            return False
-    except (OSError, UnicodeDecodeError):
-        return False
+            return _reject_coverage_advance("metadata replace failed; prior artifacts restored")
+    except (OSError, UnicodeDecodeError) as exc:
+        return _reject_coverage_advance(f"coverage artifact write failed: {exc}")
     finally:
         with suppress(OSError):
             snapshot_tmp.unlink()

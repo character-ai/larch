@@ -2970,6 +2970,101 @@ def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_
     assert loaded.needs_assessment is False
 
 
+def _symlinked_tmpdir_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """Return (unresolved, resolved) paths to the same implement tmpdir via a /tmp-style symlink."""
+    real_parent = tmp_path / "private" / "tmp"
+    real_parent.mkdir(parents=True)
+    link_parent = tmp_path / "tmp"
+    link_parent.symlink_to(real_parent, target_is_directory=True)
+    unresolved = link_parent / "implement"
+    unresolved.mkdir()
+    resolved = unresolved.resolve()
+    assert unresolved != resolved
+    assert unresolved.resolve() == resolved
+    return unresolved, resolved
+
+
+def _rewrite_durable_diff_snapshot(tmpdir: Path, *, kind: AssessmentKind, snapshot: Path) -> None:
+    meta_path = tmpdir / (ag.INVARIANT_DURABLE_NOTE_ENV if kind.is_invariant else ag.DURABLE_NOTE_ENV)
+    lines = [
+        f"DIFF_SNAPSHOT={snapshot}" if line.startswith("DIFF_SNAPSHOT=") else line
+        for line in meta_path.read_text(encoding="utf-8").splitlines()
+    ]
+    meta_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_note_consumable_accepts_resolved_diff_snapshot_path_forms(tmp_path: Path) -> None:
+    """Ship gate may record DIFF_SNAPSHOT unresolved while materialize checks resolved (#7404)."""
+    unresolved, resolved = _symlinked_tmpdir_pair(tmp_path)
+    repo = _repo(tmp_path)
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    head = _git_head(repo)
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=unresolved,
+        head_sha=head,
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    declared = unresolved / ag.MATERIALIZED_DIFF
+    assert Path(ag.durable_note_metadata(unresolved)["DIFF_SNAPSHOT"]) == declared
+    assert Path(ag.durable_note_metadata(unresolved)["DIFF_SNAPSHOT"]) != resolved / ag.MATERIALIZED_DIFF
+
+    assert ag.note_consumable(
+        implement_tmpdir=resolved, head_sha=head, base_ref="origin/main", repo_root=repo
+    )
+    assert ag._validated_note_metadata(
+        metadata=ag.durable_note_metadata(resolved),
+        expected_snapshot=resolved / ag.MATERIALIZED_DIFF,
+    ) is not None
+
+
+def test_coverage_advancement_logs_only_survives_mixed_tmpdir_path_forms(tmp_path: Path) -> None:
+    """Larch-log-only HEAD advance must reuse the note when checker and recorder disagree on tmpdir form."""
+    unresolved, resolved = _symlinked_tmpdir_pair(tmp_path)
+    repo = _repo(tmp_path)
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=unresolved,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"),
+    )
+    # Simulate ship-gate recording the unresolved form while a later materialize
+    # caller passes the resolved implement_tmpdir.
+    _rewrite_durable_diff_snapshot(
+        unresolved, kind=GUIDELINES, snapshot=unresolved / ag.MATERIALIZED_DIFF
+    )
+
+    (repo / "larch-logs").mkdir()
+    (repo / "larch-logs" / "run.log").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs/run.log")
+    _git(repo, "commit", "-m", "logs only")
+    h2 = _git_head(repo)
+
+    assert ag.note_consumable(
+        implement_tmpdir=resolved, head_sha=h2, base_ref="origin/main", repo_root=repo
+    )
+    prepared = ag.prepare_compose_assessment(
+        implement_tmpdir=resolved, repo_root=repo, expected_head_sha=h2
+    )
+    assert prepared.status == "current"
+    loaded = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(resolved),
+        head_sha=h2,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+    assert loaded.needs_assessment is False
+
+
 def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     tmpdir = tmp_path / "implement"
