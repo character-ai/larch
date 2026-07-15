@@ -129,7 +129,7 @@ CALLER_ENV_KEYS = frozenset({
     "PREV_IMPLEMENT_TMPDIR",
     "LARCH_DYNAMIC_ARCHETYPES_MAX",
 })
-# Shared /design wrapper-env defaults. design_lifecycle and plan_quality both
+# Shared /design wrapper-env defaults. design_step2b and plan_quality both
 # build wrapper-env dicts that overlap on this common core; defining it once
 # keeps the two literals from re-introducing a duplicate-code run (R0801).
 COMMON_DESIGN_ENV_DEFAULTS: dict[str, str] = {
@@ -159,7 +159,7 @@ VALIDATOR_STATUS_ENV_DEFAULTS: dict[str, str] = {
     "_validator_target_file": "",
 }
 # CLI flag -> attribute/key name map shared by the design step2 wrapper parser
-# (design_lifecycle) and the validator wrapper parser (plan_quality).
+# (design_step2b) and the validator wrapper parser (plan_quality).
 WRAPPER_VALUE_FLAGS: dict[str, str] = {
     "--session-env-path": "session_env_path",
     "--claude-pid": "claude_pid",

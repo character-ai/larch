@@ -917,27 +917,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
-    "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=cyclic-import,unused-import",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "suppression_kind": "pyright-report",
-    "text": "pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedImport=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "suppression_kind": "ruff-noqa",
-    "text": "ruff: noqa: F401",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/design/design_log_publish_flow.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLC0415",
@@ -1312,13 +1291,6 @@
     "file": "larch/design/design_step6.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_summary.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },

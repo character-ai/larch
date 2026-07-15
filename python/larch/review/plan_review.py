@@ -26,7 +26,7 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.core import config
 from larch.report import progress_file
-from larch.design.design_lifecycle import (
+from larch.design.design_terminal import (
     json_get_bool_main as design_json_get_bool_main,
     phase_driver_read_result_env,
     phase_driver_write_result_env,

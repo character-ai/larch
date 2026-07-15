@@ -362,8 +362,8 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
 
 def _drift_baseline_write_once(*, design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
     # Invoke the drift-baseline CLI verb instead of importing plan_review, to avoid the
-    # design_lifecycle -> plan_quality -> plan_review import cycle (#4632 adds
-    # plan_review -> design_lifecycle; main added design_lifecycle -> plan_quality).
+    # design_step2b -> plan_quality -> plan_review import cycle (#4632 adds
+    # plan_review -> design_terminal; main added design_step2b -> plan_quality).
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     proc = subprocess.run(
         [

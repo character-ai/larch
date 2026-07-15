@@ -12,7 +12,7 @@ import pytest
 
 from larch.core import config
 from larch.design import design_summary
-from larch.design import design_lifecycle
+from larch.design import design_terminal
 from larch.report import progress_report
 from larch.report import report_tokens_cost
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
@@ -500,7 +500,7 @@ def test_failure_report_gate_uses_in_process_core(tmp_path: Path, monkeypatch: p
         print("DESIGN_FAILURE_REPORT_DECISION=skip")
         return 0, []
 
-    monkeypatch.setattr(design_lifecycle, "failure_report_core", fake_core)
+    monkeypatch.setattr(design_terminal, "failure_report_core", fake_core)
     design_summary._run_design_failure_report_gate(design_tmpdir=tmp_path, phase="post", outcome="approved", repo="o/r", issue="42", run_id="run-1")  # pyright: ignore[reportPrivateUsage]
     assert calls
     assert "--outcome" in calls[0]

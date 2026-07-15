@@ -9,7 +9,6 @@ from collections.abc import Sequence
 
 import pytest
 
-from larch.design import design_lifecycle
 from larch.design import design_step5b
 from larch.design import design_oos
 from larch.design import design_pause
@@ -365,7 +364,7 @@ def test_step5b_prepare_refuses_before_oos_when_gatec_assessments_are_missing(
 
     monkeypatch.setattr(design_step5b.design_oos, "file_oos_prepare_main", unexpected_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main([*_step5b_argv(), "--session-env-path", str(source_env)])
+    rc = design_step5b.step5b_prepare_main([*_step5b_argv(), "--session-env-path", str(source_env)])
     out = capsys.readouterr().out
 
     assert rc == 4
@@ -401,7 +400,7 @@ def test_step5b_prepare_allows_regular_gatec_assessments(
 
     monkeypatch.setattr(design_step5b.design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main([*_step5b_argv(), "--session-env-path", str(source_env)])
+    rc = design_step5b.step5b_prepare_main([*_step5b_argv(), "--session-env-path", str(source_env)])
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -422,9 +421,9 @@ def test_step5b_prepare_ready_orchestration(tmp_path: Path, monkeypatch: pytest.
         print(f"FILE_DESIGN_OOS_DEPS_TSV={tmp_path / 'oos-intra-batch-deps.tsv'}")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -458,9 +457,9 @@ def test_step5b_prepare_skip_marks_complete(
         print(f"FILE_DESIGN_OOS_STATUS={status}")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -488,9 +487,9 @@ def test_step5b_prepare_already_filed_sentinel_routes_annotation_by_issue_stdout
         print("WARN=already filed recovery warning")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -517,9 +516,9 @@ def test_step5b_prepare_unknown_status_fails_closed(
         print("FILE_DESIGN_OOS_STATUS=unrecognized-future-status")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 2
@@ -544,9 +543,9 @@ def test_step5b_prepare_unknown_status_env_parseable_on_nonzero_rc(
         print("FILE_DESIGN_OOS_STATUS=legacy-unmapped-status")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     _ = capsys.readouterr()
     env_text = (tmp_path / "oos-filing-prepare.env").read_text(encoding="utf-8")
 
@@ -569,9 +568,9 @@ def test_step5b_prepare_next_action_disagreement_fails_closed(
         print("NEXT_ACTION=skip-pipeline")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
     env_text = (tmp_path / "oos-filing-prepare.env").read_text(encoding="utf-8")
 
@@ -607,10 +606,10 @@ def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, mon
         appended.append((tool, exit_code, output_file))
         return True
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
     monkeypatch.setattr(design_step5b, "_append_failure", fake_append)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -641,9 +640,9 @@ def test_step5b_prepare_allows_relative_missing_tmpdir(
         print("FILE_DESIGN_OOS_STATUS=skip-no-items")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -666,10 +665,10 @@ def test_step5b_prepare_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch:
         _ = design_tmpdir, ctx
         return 7
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
     monkeypatch.setattr(design_step5b, "_call_pause_save", fake_pause)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
 
     assert rc == 7
     assert not called
@@ -683,9 +682,9 @@ def test_step5b_prepare_callable_crash_continues(tmp_path: Path, monkeypatch: py
     def fake_prepare(_argv: Sequence[str]) -> int:
         raise RuntimeError("prepare boom")
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
 
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -701,9 +700,9 @@ def test_step5b_annotate_success_marks_complete(tmp_path: Path, monkeypatch: pyt
         print("FILE_DESIGN_OOS_STATUS=annotate-complete")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -720,9 +719,9 @@ def test_step5b_annotate_failure_does_not_mark_complete(tmp_path: Path, monkeypa
         print("annotate failed", file=sys.stderr)
         return 3
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 3
@@ -747,9 +746,9 @@ def test_step5b_annotate_failure_with_partial_issue_stdout(
         print("annotate failed", file=sys.stderr)
         return 4
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 4
@@ -772,9 +771,9 @@ def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
         print("annotate failed", file=sys.stderr)
         return 3
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 3
@@ -801,9 +800,9 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
         print("WARN=empty issue stdout")
         return 1
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    rc_first = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc_first = design_step5b.step5b_annotate_main(_step5b_argv())
     first = capsys.readouterr().out
 
     assert rc_first == 1
@@ -813,7 +812,7 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     assert not (tmp_path / ".completed" / "step-5b").exists()
     assert "status unclear" in first
 
-    rc_second = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc_second = design_step5b.step5b_annotate_main(_step5b_argv())
     second = capsys.readouterr().out
 
     assert rc_second == 1
@@ -821,7 +820,7 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     assert "after retry sentinel" in second
 
     _ = (tmp_path / "oos-issue.stdout.txt").write_text("ISSUES_CREATED=1\nISSUES_FAILED=0\n", encoding="utf-8")
-    rc_third = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc_third = design_step5b.step5b_annotate_main(_step5b_argv())
     third = capsys.readouterr().out
 
     assert rc_third == 0
@@ -998,9 +997,9 @@ def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: 
         print("annotate failed", file=sys.stderr)
         return 4
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    _ = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    _ = design_step5b.step5b_annotate_main(_step5b_argv())
 
     assert (tmp_path / ".completed" / "step-5b").is_file()
     assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
@@ -1022,10 +1021,10 @@ def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch
         _ = design_tmpdir, ctx
         return 9
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
     monkeypatch.setattr(design_step5b, "_call_pause_save", fake_pause)
 
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
 
     assert rc == 9
     assert not called
@@ -1042,9 +1041,9 @@ def test_step5b_annotate_callable_crash_fails_without_completion(
     def fake_annotate(_argv: Sequence[str]) -> int:
         raise RuntimeError("annotate boom")
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
 
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 1
@@ -1234,8 +1233,8 @@ def test_step5b_label_only_retry_forwards_label_only_and_waits_for_completion(
         print("NEXT_ACTION=label-only")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
-    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    monkeypatch.setattr(design_oos, "file_oos_prepare_main", fake_prepare)
+    rc = design_step5b.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 0
@@ -1251,8 +1250,8 @@ def test_step5b_label_only_retry_forwards_label_only_and_waits_for_completion(
         print("FILE_DESIGN_OOS_STATUS=annotate-label-complete")
         return 0
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
-    rc_annotate = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
+    rc_annotate = design_step5b.step5b_annotate_main(_step5b_argv())
 
     assert rc_annotate == 0
     assert seen_label_only
@@ -1272,8 +1271,8 @@ def test_step5b_annotate_label_failed_does_not_mark_complete(
         print("FILE_DESIGN_OOS_STATUS=annotate-label-failed")
         return 1
 
-    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
-    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    monkeypatch.setattr(design_oos, "file_oos_annotate_main", fake_annotate)
+    rc = design_step5b.step5b_annotate_main(_step5b_argv())
     out = capsys.readouterr().out
 
     assert rc == 1

@@ -833,7 +833,7 @@ def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
 
 
 def _resolve_design_calibration_repo_root(design_tmpdir: Path) -> Path | None:
-    # Inline design_lifecycle._resolve_working_tree_root to avoid cyclic import.
+    # Inline design_terminal._resolve_working_tree_root to avoid cyclic import.
     resolved = _session_env_value(session=design_tmpdir / "source-env.sh", key="REPO_ROOT")
     if not resolved:
         _r = proc.run(["git", "rev-parse", "--show-toplevel"])

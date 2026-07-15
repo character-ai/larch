@@ -15,11 +15,11 @@ from collections.abc import Sequence
 
 from larch.core import logging_util
 from larch.core.config import BGJOB_RC_KEY, STEP3_ESCALATION_FAILURE_STATUSES
-from larch.design.design_lifecycle import (
-    capture_contract_stream_to_paths,
+from larch.design.design_core import capture_contract_stream_to_paths
+from larch.design.design_step0_env import load_bash_quoted_env
+from larch.design.design_terminal import (
     _classify_input,  # pyright: ignore[reportPrivateUsage]
     _replay_warn_error,  # pyright: ignore[reportPrivateUsage]
-    load_bash_quoted_env,
     phase_driver_write_result_env,
     read_result_env_main,
     stage_terminal_state_core,

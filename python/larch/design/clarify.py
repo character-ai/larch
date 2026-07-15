@@ -14,7 +14,10 @@ from typing import NamedTuple, NoReturn, cast
 
 from larch.calibration import difficulty
 from larch.design import design_publish
-from larch.design import design_lifecycle
+from larch.design import design_core
+from larch.design import design_step0
+from larch.design import design_step0_env
+from larch.design import design_terminal
 from larch.design import design_pause
 from larch.design import design_summary
 from larch.git import gh
@@ -712,7 +715,7 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
 def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Path]:
     env: dict[str, str] = {key: os.environ[key] for key in CLARIFY_ENV_ALLOW if key in os.environ}
     env.update(
-        design_lifecycle._load_source_env(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        design_step0_env._load_source_env(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
             path=args.session_env_path,
             allow_keys=CLARIFY_ENV_ALLOW,
             claude_pid=args.claude_pid,
@@ -720,7 +723,7 @@ def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Pa
     )
     if not env.get("CLAUDE_PLUGIN_ROOT"):
         env["CLAUDE_PLUGIN_ROOT"] = str(_plugin_root())
-    design_tmpdir = design_lifecycle._require_design_tmpdir(env=env)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    design_tmpdir = design_step0._require_design_tmpdir(env=env)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     env["DESIGN_TMPDIR"] = str(design_tmpdir)
     env["ISSUE_NUMBER"] = args.issue
     return env, design_tmpdir, Path(env["CLAUDE_PLUGIN_ROOT"])
@@ -740,7 +743,7 @@ def _read_result_env(*, path: str | Path, allow_keys: frozenset[str]) -> dict[st
     source = Path(path)
     if source.is_symlink() or not source.is_file():
         raise OSError(f"result env is not a regular file: {source}")
-    return dict(design_lifecycle.phase_driver_read_result_env(path=source, allow_keys=allow_keys))
+    return dict(design_terminal.phase_driver_read_result_env(path=source, allow_keys=allow_keys))
 
 
 def _load_route_state_repo(*, env: dict[str, str], design_tmpdir: Path) -> bool:
@@ -789,7 +792,7 @@ def _append_clarify_failure(
     exit_code: int,
     output_file: Path,
 ) -> None:
-    # Single-line argv mirrors design_lifecycle._append_failure to avoid R0801
+    # Single-line argv mirrors design_core._append_failure to avoid R0801
     # duplicate-code collision with decompose._append_failure's multi-line form.
     _ = _run_cli(plugin_root, env, "run-log", "append-failure", "--log", str(design_tmpdir / "execution-issues.md"), "--site", site, "--tool", tool, "--exit-code", str(exit_code), "--category", "Warnings", "--output-file", str(output_file), "--redact")
 
@@ -808,8 +811,8 @@ def _stage_failed_clarify(
     # Single-line argv avoids an R0801 duplicate-code collision with
     # test_design_lifecycle._stage_args's multi-line form (mirrors the
     # _append_clarify_failure single-line convention above).
-    rc = design_lifecycle.capture_contract_stream_to_paths(
-        design_lifecycle.stage_terminal_state_core,
+    rc = design_core.capture_contract_stream_to_paths(
+        design_terminal.stage_terminal_state_core,
         stdout_log,
         stderr_log,
         ["--design-tmpdir", str(design_tmpdir), "--outcome", "failed-clarify", "--step", "clarify", "--phase", "clarify-loop", "--site", "clarify-loop", "--trigger", "failed", "--bail-reason", "clarify-hard-halt", "--exit-code", str(exit_code), "--source-script", "clarify-loop", "--summary-outcome", "failed-clarify", "--failure-detail-log", str(detail_log)],

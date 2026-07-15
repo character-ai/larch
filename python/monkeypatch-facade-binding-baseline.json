@@ -2592,15 +2592,6 @@
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
-    "file": "tests/design/test_design_summary.py",
-    "qualified_symbol": "test_failure_report_gate_uses_in_process_core",
-    "facade_module": "larch.design.design_lifecycle",
-    "attribute": "failure_report_core",
-    "defining_module": "larch.design.design_terminal",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
     "file": "tests/git/test_check_main_sync.py",
     "qualified_symbol": "test_check_main_sync_cli_blocked_exit_one",
     "facade_module": "larch.git.git",
