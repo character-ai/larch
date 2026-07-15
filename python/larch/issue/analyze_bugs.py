@@ -77,6 +77,9 @@ SWEEP_INITIAL_WINDOW_SECONDS: Final = 48 * 60 * 60
 SWEEP_DIFF_CAP: Final = DEFAULT_DIFF_CAP
 SWEEP_SYMBOL_CAP: Final = 40
 SWEEP_CONSUMER_CAP: Final = 40
+PREFETCH_CONSUMER_CAP: Final = SWEEP_CONSUMER_CAP
+CONSUMER_EXCLUDED_PATHS: Final = ("larch-logs",)
+GIT_LOG_PATHSPEC_BYTES_CAP: Final = 32_768
 SWEEP_STATE_FILENAME: Final = "sweep-state.json"
 SWEEP_FINDER_RAW_NAME: Final = "sweep-finder.jsonl"
 SWEEP_REFUTER_RAW_NAME: Final = "sweep-refuter.jsonl"
@@ -169,6 +172,7 @@ class BundleRecord:
     changed_symbols: tuple[str, ...] = ()
     consumer_paths: tuple[str, ...] = ()
     consumer_references: tuple[str, ...] = ()
+    consumers_truncated: bool = False
     scan_files: tuple[str, ...] = ()
     diff_scan_status: str = SCAN_OK
     diff_scan_reason: str = ""
@@ -920,27 +924,79 @@ def _touched_files(runner: Runner, *, fix_sha: str) -> tuple[str, ...]:
     return tuple(files)
 
 
-def _later_history(runner: Runner, *, fix_sha: str, evidence_ref: str, files: Sequence[str]) -> ScanResult:
+def _pathspec_batches(files: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    """Split pathspecs into argv-safe batches without losing input order."""
+    batches: list[tuple[str, ...]] = []
+    batch: list[str] = []
+    batch_bytes = 0
+    for path in dict.fromkeys(files):
+        path_bytes = len(path.encode()) + 1
+        if batch and batch_bytes + path_bytes > GIT_LOG_PATHSPEC_BYTES_CAP:
+            batches.append(tuple(batch))
+            batch = []
+            batch_bytes = 0
+        batch.append(path)
+        batch_bytes += path_bytes
+    if batch:
+        batches.append(tuple(batch))
+    return tuple(batches)
+
+
+def _history_scan(
+    runner: Runner,
+    *,
+    fix_sha: str,
+    evidence_ref: str,
+    files: Sequence[str],
+    description: str,
+    revert_only: bool = False,
+) -> ScanResult:
     if not fix_sha:
         return ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
     if not files:
         return ScanResult(status=SCAN_OK)
-    return _required_git_scan(
+    batches = _pathspec_batches(files)
+    if len(batches) == 1:
+        argv = ["git", "log", f"{fix_sha}..{evidence_ref}"]
+        if revert_only:
+            argv.extend(("--regexp-ignore-case", "--grep", "revert"))
+        argv.extend(("--format=%H:%s", "--", *batches[0]))
+        return _required_git_scan(runner, argv, description=description)
+    output_lines: list[str] = []
+    seen_lines: set[str] = set()
+    for batch in batches:
+        argv = ["git", "log", f"{fix_sha}..{evidence_ref}"]
+        if revert_only:
+            argv.extend(("--regexp-ignore-case", "--grep", "revert"))
+        argv.extend(("--format=%H:%s", "--", *batch))
+        scan = _required_git_scan(runner, argv, description=description)
+        if not scan.complete:
+            return scan
+        for line in scan.stdout.splitlines():
+            if line not in seen_lines:
+                seen_lines.add(line)
+                output_lines.append(line)
+    return ScanResult(status=SCAN_OK, stdout="\n".join(output_lines) + ("\n" if output_lines else ""))
+
+
+def _later_history(runner: Runner, *, fix_sha: str, evidence_ref: str, files: Sequence[str]) -> ScanResult:
+    return _history_scan(
         runner,
-        ["git", "log", f"{fix_sha}..{evidence_ref}", "--format=%H:%s", "--", *files],
+        fix_sha=fix_sha,
+        evidence_ref=evidence_ref,
+        files=files,
         description="later-history scan failed",
     )
 
 
 def _revert_scan(runner: Runner, *, fix_sha: str, evidence_ref: str, files: Sequence[str]) -> ScanResult:
-    if not fix_sha:
-        return ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
-    if not files:
-        return ScanResult(status=SCAN_OK)
-    return _required_git_scan(
+    return _history_scan(
         runner,
-        ["git", "log", f"{fix_sha}..{evidence_ref}", "--regexp-ignore-case", "--grep", "revert", "--format=%H:%s", "--", *files],
+        fix_sha=fix_sha,
+        evidence_ref=evidence_ref,
+        files=files,
         description="revert scan failed",
+        revert_only=True,
     )
 
 
@@ -972,34 +1028,44 @@ def _cross_language_consumer(path: str) -> bool:
     return path.endswith((".sh", "SKILL.md")) or path.startswith("hooks/")
 
 
-def _find_consumers(runner: Runner, *, evidence_ref: str, symbols: Sequence[str], touched_files: Sequence[str]) -> tuple[ScanResult, tuple[str, ...], tuple[str, ...]]:
+def _excluded_consumer_path(path: str) -> bool:
+    return any(path == excluded or path.startswith(f"{excluded}/") for excluded in CONSUMER_EXCLUDED_PATHS)
+
+
+def _find_consumers(
+    runner: Runner, *, evidence_ref: str, symbols: Sequence[str], touched_files: Sequence[str]
+) -> tuple[ScanResult, tuple[str, ...], tuple[str, ...], bool]:
     if not symbols:
-        return ScanResult(status=SCAN_OK), (), ()
+        return ScanResult(status=SCAN_OK), (), (), False
     touched = set(touched_files)
     references: set[tuple[str, int, str]] = set()
+    excluded_pathspecs = [f":(exclude){path}" for path in CONSUMER_EXCLUDED_PATHS]
     for symbol in symbols:
         scan = _required_git_scan(
             runner,
-            ["git", "grep", "-n", "-F", "-e", symbol, evidence_ref],
+            ["git", "grep", "-n", "-F", "-e", symbol, evidence_ref, "--", ".", *excluded_pathspecs],
             description=f"consumer scan failed for symbol {symbol}",
             no_match_ok=True,
         )
         if not scan.complete:
-            return scan, (), ()
+            return scan, (), (), False
         for line in scan.stdout.splitlines():
             parsed = _consumer_line(line)
             if parsed is None:
                 continue
             path, line_number = parsed
-            if path not in touched:
+            if path not in touched and not _excluded_consumer_path(path):
                 references.add((path, line_number, symbol))
     ordered = tuple(sorted(references))
-    paths = tuple(sorted({path for path, _line_number, _symbol in ordered}))
+    all_paths = tuple(sorted({path for path, _line_number, _symbol in ordered}))
+    paths = all_paths[:PREFETCH_CONSUMER_CAP]
+    retained_paths = set(paths)
     rendered = tuple(
         f"{path}:{line_number}: `{symbol}`" + (" [cross-language]" if _cross_language_consumer(path) else "")
         for path, line_number, symbol in ordered
+        if path in retained_paths
     )
-    return ScanResult(status=SCAN_OK), paths, rendered
+    return ScanResult(status=SCAN_OK), paths, rendered, len(all_paths) > len(paths)
 
 
 def _later_history_hash(
@@ -1079,7 +1145,7 @@ def build_bundle_record(
         )
         symbols = _changed_symbols(diff_scan.stdout) if diff_scan.complete else ()
         if diff_scan.complete:
-            consumer_scan, consumer_paths, consumer_references = _find_consumers(
+            consumer_scan, consumer_paths, consumer_references, consumers_truncated = _find_consumers(
                 runner,
                 evidence_ref=evidence_ref,
                 symbols=symbols,
@@ -1089,12 +1155,14 @@ def build_bundle_record(
             consumer_scan = ScanResult(status=SCAN_FAILED, reason="consumer scan skipped because fix-diff scan failed")
             consumer_paths = ()
             consumer_references = ()
+            consumers_truncated = False
     else:
         diff_scan = ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
         consumer_scan = ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
         symbols = ()
         consumer_paths = ()
         consumer_references = ()
+        consumers_truncated = False
     scan_files = tuple(dict.fromkeys((*touched, *consumer_paths)))
     later_scan = _later_history(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=scan_files)
     revert_scan = _revert_scan(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=scan_files)
@@ -1149,6 +1217,7 @@ def build_bundle_record(
             "\n".join(symbols) or "(none)",
             "",
             *_scan_status_lines(name="Consumers of changed symbols", scan=consumer_scan),
+            f"Notice: consumers truncated to {PREFETCH_CONSUMER_CAP} paths" if consumers_truncated else "",
             "\n".join(consumer_references) or "(none)",
             "",
             "## Later commits touching evidence files",
@@ -1193,6 +1262,7 @@ def build_bundle_record(
         changed_symbols=symbols,
         consumer_paths=consumer_paths,
         consumer_references=consumer_references,
+        consumers_truncated=consumers_truncated,
         scan_files=scan_files,
         diff_scan_status=diff_scan.status,
         diff_scan_reason=diff_scan.reason,
@@ -1313,6 +1383,7 @@ def _bundle_from_mapping(row: Mapping[str, Any]) -> BundleRecord:
         changed_symbols=tuple(str(item) for item in row.get("changed_symbols", []) if isinstance(item, str)),
         consumer_paths=tuple(str(item) for item in row.get("consumer_paths", []) if isinstance(item, str)),
         consumer_references=tuple(str(item) for item in row.get("consumer_references", []) if isinstance(item, str)),
+        consumers_truncated=bool(row.get("consumers_truncated", False)),
         scan_files=tuple(str(item) for item in row.get("scan_files", []) if isinstance(item, str)),
         diff_scan_status=str(row.get("diff_scan_status") or SCAN_OK),
         diff_scan_reason=str(row.get("diff_scan_reason") or ""),
@@ -2887,7 +2958,7 @@ def _first_parent_evidence(runner: Runner, *, merge_sha: str, diff_cap: int) -> 
 def _discover_consumers(runner: Runner, *, symbols: Sequence[str], defining_paths: Sequence[str]) -> tuple[tuple[SweepConsumerHit, ...], bool]:
     hits: list[SweepConsumerHit] = []
     truncated = False
-    exclude_args = [f":(exclude){path}" for path in defining_paths]
+    exclude_args = [f":(exclude){path}" for path in (*defining_paths, *CONSUMER_EXCLUDED_PATHS)]
     for symbol in symbols:
         argv = ["git", "grep", "-n", "-F", "-e", symbol, "--", ".", *exclude_args]
         result = runner.run(argv)
@@ -2905,7 +2976,7 @@ def _discover_consumers(runner: Runner, *, symbols: Sequence[str], defining_path
             if not sep2 or not line_part.isdecimal():
                 continue
             path = path_part.strip()
-            if path in defining_paths:
+            if path in defining_paths or _excluded_consumer_path(path):
                 continue
             if len(hits) >= SWEEP_CONSUMER_CAP:
                 truncated = True
