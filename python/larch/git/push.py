@@ -109,7 +109,10 @@ def push_current_branch(
                 stderr=f"git-push.sh: not on a named branch before attempt {attempt}\n",
                 exit_code=1,
             )
-        result = runner.run(["git", "push"], cwd=cwd)
+        # Explicit refspec so git ignores push.default and never targets the
+        # tracked upstream when a feature branch tracks origin/main (#7405).
+        # -u repairs the tracking so later pushes also resolve to this branch.
+        result = runner.run(["git", "push", "-u", "origin", "HEAD"], cwd=cwd)
         if result.returncode == 0:
             return PushResult(
                 remote="origin",
