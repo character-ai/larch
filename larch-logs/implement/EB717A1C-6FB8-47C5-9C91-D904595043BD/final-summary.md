@@ -69,11 +69,58 @@ codex/apply                             │                                    �
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (44):
+  1. Two deviations in the changed code.
+  2. ## G-Cfg-1: bare exit-code literal in `lint_markdown_heading_fence_state.main()`
+  3. The previous module had `TOOL_FAILURE_EXIT = 2` as a named local constant for the tool-failure exit. The refactored `main()` removes that constant and returns raw `2` in two places:
+  4. ```python ×4
+  5. # lint_markdown_heading_fence_state.py – new main()
+  6. if parsed is None:
+  7. return 2 # ← bare literal; was: return TOOL_FAILURE_EXIT ×2
+  8. ...
+  9. ``` ×4
+  10. `EXIT_ERROR = 2` is the canonical constant for this value, exported by `larch.lint.engine` (the module this file already imports from). G-Cfg-1 requires exit codes to be defined once as named const...
+  11. Suggested fix: add `EXIT_ERROR` to the existing import from `larch.lint.engine` and replace both `return 2` with `return EXIT_ERROR`.
+  12. ---
+  13. ## G-Py-11: bare type-ignore suppressions without reasons in `test_lint_engine_equivalence.py`
+  14. The equivalence test adds two suppressions without explanatory reason suffixes:
+  15. from larch.lint.engine import (
+  16. OccurrenceBaselineRow,
+  17. _occurrence_json_file, # type: ignore[reportPrivateUsage]
+  18. _project_finding, # type: ignore[reportPrivateUsage]
+  19. )
+  20. The established convention in the same test suite includes a reason: `# pyright: ignore[reportPrivateUsage] # accessing internal serialization helper for test assertion` (existing line in `test_lin...
+  21. Suggested fix: append a reason to each suppression, for example `# type: ignore[reportPrivateUsage] # accessing internal helpers for test assertion`.
+  22. Both prior deviations were fixed. One new G-Py-11 deviation was introduced in the same diff.
+  23. ## Prior deviations: resolved
+  24. G-Cfg-1 — fixed.: The refactored `lint_markdown_heading_fence_state.main()` now imports `EXIT_ERROR` from `larch.lint.engine` and uses it in both early-return paths (`parsed is None` and the empty...
+  25. G-Py-11 (test_lint_engine_equivalence.py) — fixed.: The two `# type: ignore[reportPrivateUsage]` suppressions in the `_occurrence_json_file` / `_project_finding` import block now carry the reason s...
+  26. ## Remaining deviation
+  27. ### G-Py-11: three new bare suppressions without reason comments
+  28. `python/tests/lint/test_lint_engine.py`: — newly added `_occurrence_rule` helper:
+  29. **kwargs, # type: ignore[arg-type]
+  30. No reason comment. The new helper introduces a bare pattern.
+  31. `python/tests/lint/test_lint_markdown_heading_fence_state.py`: — newly added imports:
+  32. _git_ok_runner, # type: ignore[reportPrivateUsage]
+  33. _write_files, # type: ignore[reportPrivateUsage]
+  34. Both suppressions have no reason comment.
+  35. Suggested fix: append a reason to each of the three bare suppressions, for example:
+  36. `# type: ignore[arg-type] # kwargs typed as object to forward to _rule without re-declaring every field`
+  37. `# type: ignore[reportPrivateUsage] # importing test-internal helpers from sibling test module`
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+All previously noted issues were resolved: exit codes now use the named constant from `larch.lint.engine`; all type-ignore and noqa suppressions in the changed test files carry inline reason comments. No new bare suppressions appear in the diff. The diff is otherwise clean against the architectural guidelines.
+
 ## /implement run EB717A1C-6FB8-47C5-9C91-D904595043BD: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:03:27
-- **Cost**: 💰 TOTAL ~$31.04: Claude $1.47, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 41939k
+- **Cost**: 💰 TOTAL ~$34.98: Claude $5.41, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 47861k
 - **Issue**: #6989: https://github.com/character-ai/larch/issues/6989
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -83,7 +130,7 @@ codex/apply                             │                                    �
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 44
 - **Run logs**: `larch-logs/implement/EB717A1C-6FB8-47C5-9C91-D904595043BD/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
