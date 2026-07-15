@@ -1265,7 +1265,7 @@ def _run_terminal_publish_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_
 
 
 def _render_final_summary_post_publish(*, design_tmpdir: Path, ctx: Ctx) -> int:
-    # Local import is deliberate to avoid a design_summary <-> design_lifecycle
+    # Local import is deliberate to avoid a design_summary <-> design_terminal
     # top-level import cycle while preserving the in-process port.
     from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
 

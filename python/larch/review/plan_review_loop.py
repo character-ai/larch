@@ -11,7 +11,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from larch.design.design_lifecycle import json_get_bool, phase_driver_write_result_env
+from larch.design.design_terminal import json_get_bool, phase_driver_write_result_env
 from larch.design.plan_quality import sync_oversize_override_authority
 from larch.report.timing import TIMING_VENDOR_MIN_COLS, TimingLedger
 from larch.review import plan_review_round

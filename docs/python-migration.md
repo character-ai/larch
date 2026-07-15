@@ -169,7 +169,7 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 
 - `/design` lifecycle wrappers now call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design <verb>` for argv parsing, routing, run-params init, postplan emission, publish, pause/resume, log publish, final summary, and OOS filing.
 - Pause/resume marker bytes and `docs/issue-anchored-plan.md` payload fields remain compatible with in-progress sessions.
-- `scripts/read-result-env.sh` now delegates allowlisted sourceable output generation to `python/design_lifecycle.py`.
+- `scripts/read-result-env.sh` now delegates allowlisted sourceable output generation to `python/design_terminal.py`.
 
 ### C1a5 waterfall dispatcher
 

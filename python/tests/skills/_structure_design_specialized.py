@@ -81,7 +81,7 @@ def run(repo_root: Path) -> list[str]:
         if f"skills/design/scripts/{name}" not in migrated_text: failures.append(f"migrated-scripts.tsv missing {name}")
 
     lifecycle_paths = (
-        "python/larch/design/design_lifecycle.py", "python/larch/design/design_core.py",
+        "python/larch/design/design_core.py",
         "python/larch/design/design_session.py", "python/larch/design/design_terminal.py",
         "python/larch/design/design_router.py", "python/larch/design/design_step0_env.py",
         "python/larch/design/design_step0.py", "python/larch/design/design_step1.py",
