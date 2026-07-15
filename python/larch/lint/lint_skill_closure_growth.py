@@ -761,7 +761,7 @@ def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRo
 
 def _parse_args(argv: list[str], *, prog: str, allow_write: bool) -> argparse.Namespace | None:
     parser = argparse.ArgumentParser(prog=prog, description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
+    _ = parser.add_argument("--root", default=str(Path.cwd()))
     if allow_write:
         _ = parser.add_argument("--write", action="store_true", help="regenerate the committed baseline")
         _ = parser.add_argument("--skill", choices=RATCHETED_TARGETS, help="check one ratcheted target")
