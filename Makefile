@@ -332,7 +332,7 @@ lint-skill-description-length:
 	python3 python/cli.py lint skill-description-length
 
 lint-bare-grep-probe:
-	bash scripts/lint-bare-grep-probe.sh
+	python3 python/cli.py lint bare-grep-probe
 
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth
@@ -358,7 +358,7 @@ test-lint-flat-tests:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_flat_tests.py -q
 
 lint-awk-multibyte-regex:
-	bash scripts/lint-awk-multibyte-regex.sh
+	python3 python/cli.py lint awk-multibyte-regex
 
 # Bash regression-harness shards (#1294, #1585, #1911, #2080, #2252, #2262, #2291, #2349, #2366,
 # #2386, #5429 — originally 20 shards mixing pytest wrappers with bash scripts; collapsed to 6, then 5
@@ -1288,7 +1288,7 @@ shellcheck:
 	pre-commit run shellcheck --all-files
 
 lint-bash32:
-	bash scripts/lint-bash32.sh
+	python3 python/cli.py lint bash32
 
 lint-gh-body-inline:
 	python3 python/cli.py lint gh-body-inline
