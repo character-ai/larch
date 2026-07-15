@@ -576,5 +576,3 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     if not isinstance(tree, ast.Module):  # type: ignore[reportUnnecessaryIsInstance]  # reason: ast.parse yields ast.Module; defensive guard retained
         return []
     return scan_module(tree, normalized_file=normalized_file, source=source)
-
-
