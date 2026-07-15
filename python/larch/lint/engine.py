@@ -30,7 +30,9 @@ EXIT_FINDINGS = 1
 EXIT_ERROR = 2
 SYNTAX_FAIL_MESSAGE = "unable to parse Python"
 GIT_DIAGNOSTIC_MAX_CHARS = 200
-SyntaxPolicy = Literal["fail", "skip"]
+PYTHON_TREE_PREFIX = "python/"
+SyntaxPolicy = Literal["fail", "skip", "raise"]
+SourceFilter = Callable[[str], bool]
 
 
 class ScanError(Exception):
@@ -65,6 +67,8 @@ class Finding:
     qualified_symbol: str | None = None
     metric: int | None = None
     anchor: str | None = None
+    pattern_name: str | None = None
+    occurrence: int | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,10 @@ class LintRule:
     syntax_policy: SyntaxPolicy
     suppression_token: str
     allow_inline_suppression: bool = True
+    pathspecs: tuple[str, ...] | None = None
+    source_filter: SourceFilter | None = None
+    occurrence_baseline: bool = False
+    stale_baseline_on_clean_scan: bool = False
 
 
 def _is_single_line(value: object) -> bool:
@@ -143,19 +151,33 @@ def _is_exact_bool(value: object) -> bool:
     return isinstance(value, bool)
 
 
-def _validate_rule(rule: LintRule) -> None:
+def _validate_rule(rule: LintRule) -> None:  # noqa: C901 - rule field validation is intentional
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
     if not _is_exact_bool(rule.allow_inline_suppression):
         raise ScanError("lint rule allow_inline_suppression must be a bool")
+    if not _is_exact_bool(rule.occurrence_baseline):
+        raise ScanError("lint rule occurrence_baseline must be a bool")
+    if not _is_exact_bool(rule.stale_baseline_on_clean_scan):
+        raise ScanError("lint rule stale_baseline_on_clean_scan must be a bool")
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
             "lint rule suppression_token must be a non-empty single-line string"
         )
-    if rule.syntax_policy not in ("fail", "skip"):
+    if rule.syntax_policy not in ("fail", "skip", "raise"):
         raise ScanError(
             f"lint rule syntax_policy is unsupported: {rule.syntax_policy!r}"
         )
+    if rule.pathspecs is not None:
+        if not rule.pathspecs:
+            raise ScanError("lint rule pathspecs must be a non-empty tuple when set")
+        for item in rule.pathspecs:
+            if not _is_single_line(item):
+                raise ScanError(
+                    "lint rule pathspecs entries must be non-empty single-line strings"
+                )
+    if rule.source_filter is not None and not callable(rule.source_filter):
+        raise ScanError("lint rule source_filter must be callable when set")
 
 
 def _bounded_git_detail(result: CommandResult) -> str:
@@ -198,6 +220,7 @@ def _discover_tracked_paths(
     runner: Runner,
     *,
     pathspecs: Sequence[str] | None = None,
+    source_filter: SourceFilter | None = None,
 ) -> list[str]:
     # Scope ls-files when callers pass pathspecs so sparse checkouts that omit
     # unrelated trees (for example CI excluding larch-logs/) do not fail
@@ -217,6 +240,14 @@ def _discover_tracked_paths(
     for entry in records:
         if entry == "":
             raise ScanError("git ls-files --cached returned a blank path record")
+        lexical_rel = _normalize_repo_relative_path(
+            entry,
+            root=root,
+            label="discovered path",
+            check_filesystem=False,
+        )
+        if source_filter is not None and not source_filter(lexical_rel):
+            continue
         rel = _normalize_repo_relative_path(entry, root=root, label="discovered path")
         if rel in seen:
             continue
@@ -225,7 +256,13 @@ def _discover_tracked_paths(
     return ordered
 
 
-def _normalize_repo_relative_path(raw: str, *, root: Path, label: str) -> str:
+def _normalize_repo_relative_path(
+    raw: str,
+    *,
+    root: Path,
+    label: str,
+    check_filesystem: bool = True,
+) -> str:
     if not _is_single_line(raw):
         raise ScanError(f"{label} must be a non-empty single-line path")
     candidate = raw
@@ -236,6 +273,9 @@ def _normalize_repo_relative_path(raw: str, *, root: Path, label: str) -> str:
     parts = Path(candidate).parts
     if "." in parts or ".." in parts:
         raise ScanError(f"{label} must not contain '.' or '..': {raw}")
+    lexical = Path(candidate).as_posix()
+    if not check_filesystem:
+        return lexical
     path_in_repo = root / candidate
     if path_in_repo.is_symlink():
         raise ScanError(f"{label} is a symlink: {raw}")
@@ -388,7 +428,7 @@ def _validate_metric(metric: object) -> int | None:
     return metric
 
 
-def _validate_finding(
+def _validate_finding(  # noqa: C901, PLR0912 - finding field validation is intentional
     finding: object, *, source: SourceFile, rule: LintRule
 ) -> Finding:
     if not isinstance(finding, Finding):
@@ -399,6 +439,8 @@ def _validate_finding(
     message = finding.message
     qualified_symbol = finding.qualified_symbol
     anchor = finding.anchor
+    pattern_name = finding.pattern_name
+    occurrence = finding.occurrence
     if path != source.path:
         raise ScanError(f"finding path {path!r} does not match source {source.path!r}")
     if rule_id != rule.rule_id:
@@ -422,6 +464,31 @@ def _validate_finding(
         )
     if anchor is not None and not _is_single_line(anchor):
         raise ScanError("finding anchor must be a non-empty single-line string when present")
+    if pattern_name is not None and not _is_single_line(pattern_name):
+        raise ScanError(
+            "finding pattern_name must be a non-empty single-line string when present"
+        )
+    if occurrence is not None and occurrence < 1:
+        raise ScanError("finding occurrence must be a positive int when present")
+    has_occurrence = pattern_name is not None or occurrence is not None
+    if has_occurrence and (pattern_name is None or occurrence is None):
+        raise ScanError(
+            "finding pattern_name and occurrence must be provided together"
+        )
+    if rule.occurrence_baseline:
+        if not has_occurrence or qualified_symbol is None:
+            raise ScanError(
+                "occurrence-baseline findings require qualified_symbol, "
+                "pattern_name, and occurrence"
+            )
+        if finding.metric is not None:
+            raise ScanError(
+                "occurrence-baseline findings must not set metric"
+            )
+    elif has_occurrence:
+        raise ScanError(
+            "finding pattern_name/occurrence require rule.occurrence_baseline"
+        )
     metric = _validate_metric(finding.metric)
     return Finding(
         path=path,
@@ -431,6 +498,8 @@ def _validate_finding(
         qualified_symbol=qualified_symbol,
         metric=metric,
         anchor=anchor,
+        pattern_name=pattern_name,
+        occurrence=occurrence,
     )
 
 
@@ -503,6 +572,11 @@ def _scan_source(
         if syntax_error is not None:
             if rule.syntax_policy == "skip":
                 return []
+            if rule.syntax_policy == "raise":
+                raise ScanError(
+                    f"{source.path}:{_syntax_finding_line(source, syntax_error)}: "
+                    f"cannot parse source: {syntax_error.msg}"
+                )
             return [
                 Finding(
                     path=source.path,
@@ -534,7 +608,7 @@ def _scan_source(
     )
 
 
-BaselineKind = Literal["generic", "symbol_metric"]
+BaselineKind = Literal["generic", "symbol_metric", "occurrence"]
 
 
 @dataclass(frozen=True)
@@ -570,19 +644,46 @@ class SymbolMetricBaselineRow:
         return (self.path, self.rule_id, self.qualified_symbol)
 
 
-BaselineRow: TypeAlias = GenericBaselineRow | SymbolMetricBaselineRow
+@dataclass(frozen=True)
+class OccurrenceBaselineRow:
+    """Occurrence-keyed baseline row with Python-tree path mapping."""
+
+    path: str
+    qualified_symbol: str
+    pattern_name: str
+    occurrence: int
+    reason: str
+
+    @property
+    def identity(self) -> tuple[str, str, str, int]:
+        return (self.path, self.qualified_symbol, self.pattern_name, self.occurrence)
+
+
+BaselineRow: TypeAlias = (
+    GenericBaselineRow | SymbolMetricBaselineRow | OccurrenceBaselineRow
+)
 
 
 def _baseline_kind(row: BaselineRow) -> BaselineKind:
     if isinstance(row, GenericBaselineRow):
         return "generic"
-    return "symbol_metric"
+    if isinstance(row, SymbolMetricBaselineRow):
+        return "symbol_metric"
+    return "occurrence"
 
 
 def _baseline_sort_key(row: BaselineRow) -> tuple[object, ...]:
     if isinstance(row, GenericBaselineRow):
         return ("generic", row.path, row.rule_id, row.message, row.anchor or "", row.line)
-    return ("symbol_metric", row.path, row.rule_id, row.qualified_symbol)
+    if isinstance(row, SymbolMetricBaselineRow):
+        return ("symbol_metric", row.path, row.rule_id, row.qualified_symbol)
+    return (
+        "occurrence",
+        row.path,
+        row.qualified_symbol,
+        row.pattern_name,
+        row.occurrence,
+    )
 
 
 def _baseline_identity(row: BaselineRow) -> tuple[object, ...]:
@@ -592,7 +693,43 @@ def _baseline_identity(row: BaselineRow) -> tuple[object, ...]:
 def _baseline_row_display(row: BaselineRow) -> str:
     if isinstance(row, GenericBaselineRow):
         return f"{row.path}:{row.line}: {row.rule_id} {row.message}"
-    return f"{row.path}:{row.qualified_symbol}: {row.rule_id} metric {row.metric}"
+    if isinstance(row, SymbolMetricBaselineRow):
+        return f"{row.path}:{row.qualified_symbol}: {row.rule_id} metric {row.metric}"
+    file_name = _occurrence_json_file(row.path)
+    return (
+        f"{file_name}:{row.qualified_symbol} {row.pattern_name}#{row.occurrence}"
+    )
+
+
+def _occurrence_repo_path(file_name: str, *, source: str, index: int) -> str:
+    if not _is_single_line(file_name):
+        raise ScanError(f"{source}: baseline row {index} has invalid file")
+    normalized = file_name.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    if normalized.startswith(PYTHON_TREE_PREFIX):
+        raise ScanError(f"{source}: baseline row {index} has invalid file")
+    parts = Path(normalized).parts
+    malformed = (
+        normalized != file_name
+        or normalized.startswith("/")
+        or not normalized.endswith(".py")
+    )
+    malformed = malformed or "" in normalized.split("/")
+    if malformed or "." in parts or ".." in parts:
+        raise ScanError(f"{source}: baseline row {index} has invalid file")
+    return f"{PYTHON_TREE_PREFIX}{normalized}"
+
+
+def _occurrence_json_file(path: str) -> str:
+    if not path.startswith(PYTHON_TREE_PREFIX):
+        raise ScanError(
+            f"occurrence baseline path must start with {PYTHON_TREE_PREFIX!r}: {path}"
+        )
+    relative = path[len(PYTHON_TREE_PREFIX) :]
+    if not relative or relative.startswith("/") or ".." in relative.split("/"):
+        raise ScanError(f"occurrence baseline path is invalid: {path}")
+    return relative
 
 
 def _nonempty_single_line(value: object) -> bool:
@@ -657,6 +794,38 @@ def _symbol_metric_baseline_row(
     )
 
 
+def _occurrence_baseline_row(
+    record: Mapping[str, object], *, index: int, source: str
+) -> OccurrenceBaselineRow:
+    file_name = record["file"]
+    qualified_symbol = record["qualified_symbol"]
+    pattern_name = record["pattern_name"]
+    occurrence = record["occurrence"]
+    reason = record["reason"]
+    if not isinstance(file_name, str):
+        raise ScanError(f"{source}: baseline row {index} has invalid file")
+    path = _occurrence_repo_path(file_name, source=source, index=index)
+    if not _is_single_line(qualified_symbol):
+        raise ScanError(f"{source}: baseline row {index} has invalid qualified_symbol")
+    if not _is_single_line(pattern_name):
+        raise ScanError(f"{source}: baseline row {index} has invalid pattern_name")
+    if (
+        not isinstance(occurrence, int)
+        or isinstance(occurrence, bool)
+        or occurrence < 1
+    ):
+        raise ScanError(f"{source}: baseline row {index} has invalid occurrence")
+    if not _nonempty_single_line(reason):
+        raise ScanError(f"{source}: baseline row {index} has invalid reason")
+    return OccurrenceBaselineRow(
+        path,
+        cast("str", qualified_symbol),
+        cast("str", pattern_name),
+        occurrence,
+        cast("str", reason),
+    )
+
+
 def _parse_baseline_row(raw: object, *, index: int, source: str) -> BaselineRow:
     if not isinstance(raw, dict):
         raise ScanError(f"{source}: baseline row {index} must be an object")
@@ -664,10 +833,16 @@ def _parse_baseline_row(raw: object, *, index: int, source: str) -> BaselineRow:
     generic_keys = frozenset({"path", "line", "rule_id", "message", "reason"})
     anchored_generic_keys = generic_keys | {"anchor"}
     symbol_keys = frozenset({"path", "rule_id", "qualified_symbol", "metric", "reason"})
-    if frozenset(record) in {generic_keys, anchored_generic_keys}:
+    occurrence_keys = frozenset(
+        {"file", "qualified_symbol", "pattern_name", "occurrence", "reason"}
+    )
+    keys = frozenset(record)
+    if keys in {generic_keys, anchored_generic_keys}:
         return _generic_baseline_row(record, index=index, source=source)
-    if frozenset(record) == symbol_keys:
+    if keys == symbol_keys:
         return _symbol_metric_baseline_row(record, index=index, source=source)
+    if keys == occurrence_keys:
+        return _occurrence_baseline_row(record, index=index, source=source)
     raise ScanError(f"{source}: baseline row {index} has unsupported keys")
 
 
@@ -768,6 +943,22 @@ def _baseline_exists(path: Path, *, root: Path) -> bool:
 
 
 def _project_finding(finding: Finding) -> BaselineRow:
+    if (
+        finding.pattern_name is not None
+        and finding.occurrence is not None
+        and finding.qualified_symbol is not None
+    ):
+        if finding.metric is not None:
+            raise ScanError(
+                "occurrence baseline findings must not set metric"
+            )
+        return OccurrenceBaselineRow(
+            finding.path,
+            finding.qualified_symbol,
+            finding.pattern_name,
+            finding.occurrence,
+            "",
+        )
     if finding.qualified_symbol is None and finding.metric is None:
         return GenericBaselineRow(
             finding.path, finding.line, finding.rule_id, finding.message, "", finding.anchor
@@ -871,7 +1062,7 @@ def _serialized_baseline(rows: Sequence[BaselineRow]) -> str:
                     **({"anchor": row.anchor} if row.anchor is not None else {}),
                 }
             )
-        else:
+        elif isinstance(row, SymbolMetricBaselineRow):
             records.append(
                 {
                     "path": row.path,
@@ -881,6 +1072,19 @@ def _serialized_baseline(rows: Sequence[BaselineRow]) -> str:
                     "reason": row.reason,
                 }
             )
+        else:
+            # Preserve legacy field order and omit sort_keys for byte-stable rewrites.
+            records.append(
+                {
+                    "file": _occurrence_json_file(row.path),
+                    "qualified_symbol": row.qualified_symbol,
+                    "pattern_name": row.pattern_name,
+                    "occurrence": row.occurrence,
+                    "reason": row.reason,
+                }
+            )
+    if rows and isinstance(rows[0], OccurrenceBaselineRow):
+        return json.dumps(records, indent=2) + "\n"
     return json.dumps(records, indent=2, sort_keys=True) + "\n"
 
 
@@ -911,13 +1115,23 @@ def _rows_for_write(
                     row.anchor,
                 )
             )
-        else:
+        elif isinstance(row, SymbolMetricBaselineRow):
             written.append(
                 SymbolMetricBaselineRow(
                     row.path,
                     row.rule_id,
                     row.qualified_symbol,
                     row.metric,
+                    reason,
+                )
+            )
+        else:
+            written.append(
+                OccurrenceBaselineRow(
+                    row.path,
+                    row.qualified_symbol,
+                    row.pattern_name,
+                    row.occurrence,
                     reason,
                 )
             )
@@ -951,15 +1165,27 @@ def _scan_findings(
     runner: Runner,
     paths: Sequence[str | Path] | None,
 ) -> list[Finding]:
-    pathspecs: list[str] | None = None
-    if paths is not None:
+    discovery_pathspecs: Sequence[str] | None = rule.pathspecs
+    if discovery_pathspecs is None and paths is not None:
         # Validate selectors before discovery so bad pathspecs fail closed and
         # git only enumerates in-scope cached paths.
-        pathspecs = [
+        discovery_pathspecs = [
             _validate_requested_path(item, root=root)[0] for item in paths
         ]
-    tracked = _discover_tracked_paths(root, runner, pathspecs=pathspecs)
+    if rule.source_filter is None:
+        tracked = _discover_tracked_paths(
+            root, runner, pathspecs=discovery_pathspecs
+        )
+    else:
+        tracked = _discover_tracked_paths(
+            root,
+            runner,
+            pathspecs=discovery_pathspecs,
+            source_filter=rule.source_filter,
+        )
     selected = _filter_tracked_paths(tracked, root=root, paths=paths)
+    if rule.source_filter is not None:
+        selected = [rel for rel in selected if rule.source_filter(rel)]
     pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s+(\S.*)$")
     empty_pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s*$")
     collected: list[Finding] = []
@@ -1051,7 +1277,7 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
     )
 
 
-def run_rule(  # noqa: PLR0913 - public API preserves direct keyword options.
+def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyword options.
     rule: LintRule,
     root: str | Path,
     runner: Runner,
@@ -1067,6 +1293,7 @@ def run_rule(  # noqa: PLR0913 - public API preserves direct keyword options.
     With no baseline options this preserves the scan-only contract. Baseline
     checks return ``0`` for fully baselined findings, ``1`` for new or grown
     findings, and ``2`` for invalid state, strict stale rows, or I/O failures.
+    Occurrence baselines may be absent when the live scan is clean.
     """
     try:
         _validate_baseline_options(
@@ -1080,21 +1307,53 @@ def run_rule(  # noqa: PLR0913 - public API preserves direct keyword options.
         repo_root = _validate_repo_root(Path(root), runner)
         destination: Path | None = None
         baseline_rows: list[BaselineRow] = []
+        baseline_absent = False
         if baseline_path is not None:
             destination = _validate_baseline_path(
                 baseline_path, root=repo_root, write_mode=write_baseline
             )
             if _baseline_exists(destination, root=repo_root):
                 baseline_rows = _load_baseline(destination, root=repo_root)
+                if rule.occurrence_baseline:
+                    if baseline_rows and _baseline_kind(baseline_rows[0]) != "occurrence":
+                        raise ScanError(
+                            f"baseline {destination}: occurrence rule requires "
+                            "occurrence-shaped rows"
+                        )
+                elif baseline_rows and _baseline_kind(baseline_rows[0]) == "occurrence":
+                    raise ScanError(
+                        f"baseline {destination}: occurrence rows require "
+                        "rule.occurrence_baseline"
+                    )
             elif not write_baseline:
-                raise ScanError(
-                    f"failed to read baseline {destination}: file does not exist"
-                )
+                if rule.occurrence_baseline:
+                    baseline_absent = True
+                else:
+                    raise ScanError(
+                        f"failed to read baseline {destination}: file does not exist"
+                    )
         collected = _scan_findings(rule, root=repo_root, runner=runner, paths=paths)
         if baseline_path is None:
             findings = _dedupe_and_sort(collected)
             result = EXIT_FINDINGS if findings else EXIT_CLEAN
             warnings: list[str] = []
+        elif baseline_absent:
+            assert destination is not None
+            if collected:
+                raise ScanError(f"required baseline missing: {destination}")
+            findings = []
+            result = EXIT_CLEAN
+            warnings = []
+        elif (
+            rule.stale_baseline_on_clean_scan
+            and not write_baseline
+            and not collected
+            and not baseline_rows
+        ):
+            assert destination is not None
+            raise ScanError(
+                f"stale baseline present with zero live findings: {destination}"
+            )
         else:
             assert destination is not None
             result, findings, warnings = _run_with_baseline(
