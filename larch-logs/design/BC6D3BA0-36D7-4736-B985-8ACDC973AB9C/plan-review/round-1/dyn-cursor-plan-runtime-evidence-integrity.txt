@@ -1,0 +1,46 @@
+Reviewing the plan against the codebase: tracing analyze-bugs runtime paths and related contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/issue/analyze_bugs.py:2589-2620	Harness coverage-gap aggregation is tied to per-fix runtime rows only	`render_report` iterates manifest bundles at 2604-2620, but the plan records `uncovered orchestration zones` only inside per-selected-fix `RuntimeResult` rows. With default `--runtime-max 10`, issues outside the budget never contribute `UNVERIFIED_RUNTIME` rows, so acceptance criterion 2 (unmapped orchestration appears in the coverage-gap list) fails for most selected bugs.	Build the `Harness coverage gaps` section from all manifest `BundleRecord.touched_files` (static prefix/orchestration-zone match), independent of runtime budget. Keep runtime rows for executed checks only.
+1	in_scope	major	correctness	python/larch/issue/analyze_bugs.py:2305-2324	Runtime budget eligibility for fixes with nothing executable is undefined	The plan caps by newest `fix_time` among `fix_sha` fixes but only lists "no runtime-relevant files" as an edge case. A docs-only fix can consume a `--runtime-max` slot with absent-only evidence while a newer fix with pytest files is skipped, and absent-only must not promote to `RUNTIME` per the plan.	Define selection pool as `fix_sha` fixes that have at least one executable check (discovered `python/tests/` paths or a mapped harness target on touched paths). Do not count zero-executable fixes toward `SELECTED_COUNT`; keep their static tier without a runtime row.
+1	in_scope	major	correctness	python/larch/core/config.py:155-165	Per-subprocess runtime timeout default is unspecified	The plan adds a shared timeout constant but gives no default seconds. `SUBPROCESS_DEFAULT_TIMEOUT_SEC` is 1800 at 155; reusing it makes each pytest/harness call budget up to 30 minutes and can turn `--runtime-max 10` into multi-hour coordinator work.	Pin an analyze-bugs-specific default (for example 120-300s per invocation) in `config.py`, classify `returncode == config.PROC_TIMEOUT_EXIT_CODE` (124 at 39/808), and test timeout status separately from ordinary nonzero exits.
+1	in_scope	minor	correctness	python/larch/issue/analyze_bugs.py:1751	Deterministic tie-break for equal `fix_time` is not pinned	The plan requires newest-first selection with deterministic ties; analytics already tie-breaks with `(fix_time, issue)` at 1751. Without an explicit secondary key, two fixes with the same commit time can shuffle across runs.	Sort eligible fixes by `(-fix_time, issue_number)` (or document the same `(fix_time, issue_number)` tuple with descending time) before applying `--runtime-max`.
+1	in_scope	minor	correctness	python/larch/issue/analyze_bugs.py:2305-2324	Mapped-harness pass requirement for `RUNTIME` promotion is ambiguous	Integration bullets say "all executed and required discovered checks passing" but do not state that every harness target resolved from touched mapped prefixes must pass when those prefixes match. A fix that touches a mapped orchestration path could promote on pytest alone while skipping a required harness.	Spell out: when touched paths match `HARNESS_MAP`, all deduplicated mapped targets are required; any harness fail/timeout yields `SUSPECT` tier `RUNTIME`; only when no mapped targets apply may pytest-only execution promote.
+1	out_of_scope	minor	risk-integration	.claude/skills/analyze-bugs/SKILL.md:172-181	[SCOPE-REDUCTION] Stage 3 report runs twice (before and after runtime)	The skill already renders a full report at Stage 3; the plan adds runtime then reruns `analyze-bugs report`, doubling `render_report` work including analytics at 2595-2596.	Collapse to one final report: run `analyze-bugs runtime` after Stage 2 deep ingest, then a single Stage 3 `report`.
+1	out_of_scope	nit	code-quality	python/larch/issue/analyze_bugs.py:3365-3377	Path validation helper already exists; plan does not reference it	`_valid_repo_relative_path` at 3365-3377 already enforces bounded in-repo paths for sweep findings. A parallel validator risks drift.	Reuse `_valid_repo_relative_path` for commit-derived pytest paths instead of adding a second validator.
+1	out_of_scope	nit	code-quality	python/larch/issue/analyze_bugs.py:851-851	Evidence tail cap constant already exists	`SCAN_REASON_CAP` (500) and `_scan_failure_reason` at 851 bound failure text for scans. The plan asks for bounded single-line tails without pointing at this existing cap.	Reuse `SCAN_REASON_CAP` / `_scan_failure_reason` (or a shared wrapper) for runtime `SUSPECT` evidence tails.
+
+## Findings
+
+### 1. Harness coverage gaps must be manifest-wide (major, correctness)
+
+The plan stores orchestration gaps per selected fix in `RuntimeResult`, but `render_report` already walks every manifest bundle when building the Issues table (`python/larch/issue/analyze_bugs.py:2604-2620`). With `--runtime-max` default 10, only those fixes get runtime rows. Issues 11–200 with unmapped orchestration touches would never appear in the coverage-gap list, which breaks acceptance criterion 2.
+
+**Suggested revision:** compute `Harness coverage gaps` from all bundles’ `touched_files` at report time; use runtime rows only for executed pytest/harness evidence.
+
+### 2. Budget pool should exclude zero-executable fixes (major, correctness)
+
+The plan sorts by newest `fix_time` among fixes with `fix_sha` but does not exclude fixes with no pytest files and no mapped harness targets. Those fixes would consume budget slots with absent-only evidence while newer executable fixes are skipped, without ever earning `RUNTIME`.
+
+**Suggested revision:** define eligibility as fixes with at least one executable check before applying `--runtime-max`.
+
+### 3. Pin per-invocation timeout default (major, correctness)
+
+`config.py` defines `SUBPROCESS_DEFAULT_TIMEOUT_SEC = 1800` (`python/larch/core/config.py:155`). The plan adds a runtime timeout constant but no numeric default. Inheriting 1800s per pytest/harness call is unsafe for a coordinator running up to 10 fixes.
+
+**Suggested revision:** add a smaller `ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC` (or similar) and classify timeouts via `PROC_TIMEOUT_EXIT_CODE` (124).
+
+### 4. Tie-break key unspecified (minor, correctness)
+
+Analytics already uses `(fix_time, issue)` for deterministic ordering at `python/larch/issue/analyze_bugs.py:1751`. The plan requires deterministic ties but does not name the secondary key for runtime selection.
+
+**Suggested revision:** document `(-fix_time, issue_number)` before truncation.
+
+### 5. Mapped harness required for promotion (minor, correctness)
+
+Promotion text focuses on “discovered checks” but not on required harness targets when mapped prefixes match touched paths. That leaves room to promote on pytest alone while skipping a mapped `make` target.
+
+**Suggested revision:** require all resolved harness targets to pass when any touched path matches `HARNESS_MAP`.
+
+---
+
+**Contracts the plan gets right:** failures/timeouts become `SUSPECT` evidence without aborting later fixes; stale identity via issue/cache key/SHA; path safety with pytest `--` and constant-owned make targets; timeout classification via `PROC_TIMEOUT_EXIT_CODE`; absent/skipped execution must not grant `RUNTIME`; malformed artifacts fail loudly while command failures do not fail the runtime CLI.

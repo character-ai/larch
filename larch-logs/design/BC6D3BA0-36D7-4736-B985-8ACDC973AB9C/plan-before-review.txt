@@ -1,0 +1,113 @@
+## Approach
+
+Add a coordinator-only runtime stage after the existing static report. Select the newest eligible fix commits by `fix_time`, up to `--runtime-max`.
+
+For each selected fix:
+
+- Discover added or modified `python/tests/` files from the fix commit.
+- Run the discovered files together with `python3 -m pytest`, using a timeout and option-safe argv.
+- Resolve touched orchestration paths against a declarative prefix-to-make-target map.
+- Run each deduplicated mapped target with `make` and a timeout.
+- Persist bounded pass, fail, timeout, or absent evidence in `runtime-results.jsonl`.
+
+Bind every result to the manifest issue, cache key, and fix SHA. The report must reject or ignore stale rows whose identity no longer matches the current bundle.
+
+A passing runtime execution promotes the existing static verdict to tier `RUNTIME`. Any test or harness failure produces verdict `SUSPECT` with a bounded, single-line output tail. Absence does not crash the run or claim runtime verification. Unmapped orchestration zones remain at their static tier and appear in a harness coverage-gap section. A fix may retain a coverage-gap annotation even when another runtime source passes.
+
+After runtime verification, rerun the report command so the final rendered report and snapshot include runtime evidence. `--runtime-max 0` disables the stage.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Define the default runtime budget and subprocess timeout as shared `Final` constants.
+- Keep the default `--runtime-max` value at `10`.
+- Reuse the repository timeout exit code when classifying timed-out subprocesses.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("analyze-bugs", "runtime")` to the new `runtime_main` entry point.
+- Preserve the existing prefetch, ledger, report, and sweep command contracts.
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+- Add a frozen `RuntimeResult` data model for issue identity, fix SHA, discovered tests, resolved harness targets, component statuses, bounded evidence, and uncovered orchestration zones.
+- Add a declarative `HARNESS_MAP` whose entries pair repository path prefixes with make targets. Seed it with the existing Step 8 architectural assessment, Bash 3.2, and anti-halt harness authorities.
+- Add an explicit orchestration-zone prefix set so code can distinguish “no applicable harness” from “orchestration code lacks coverage.”
+- Resolve every matching map entry, deduplicate targets, and keep ordering deterministic. Make extending coverage a one-line map edit.
+- Validate commit-derived paths as safe repository-relative paths. Pass pytest paths after an option terminator and execute only constant-owned make targets.
+- Discover only files added or modified by the fix commit under `python/tests/`. Mark deleted or currently missing test paths as absent instead of widening to unrelated tests.
+- Sort eligible fixes by newest `fix_time`, with deterministic tie-breaking. Apply `runtime_max` only to fixes with a resolved SHA, and record the skipped count.
+- Run one pytest invocation per selected fix and one invocation per resolved harness target through the injected `Runner`, with the configured timeout.
+- Treat nonzero exits and timeouts as runtime evidence. Capture a bounded stdout/stderr tail, normalize it for Markdown, and continue processing later fixes.
+- Atomically replace `$RUN_DIR/runtime-results.jsonl` with one result per selected fix. Include manifest identity, cache key, and fix SHA so report consumption cannot reuse stale evidence.
+- Add `runtime_main(argv) -> int` with explicit run-dir, manifest, ledger, and nonnegative runtime-budget arguments. Emit machine-readable result path, selected count, and skipped count KVs.
+- Extend report loading to validate runtime rows against current manifest bundles. Malformed artifacts remain hard errors; individual test or harness failures remain successful runtime-stage outcomes.
+- Update `_final_verdict_with_tier` integration so:
+  - any runtime failure returns verdict `SUSPECT`, tier `RUNTIME`, and the bounded evidence reason;
+  - at least one executed runtime check, with all executed and required discovered checks passing, promotes the existing verdict to tier `RUNTIME`;
+  - absent-only evidence preserves the static verdict and tier;
+  - an unmapped orchestration zone adds `UNVERIFIED_RUNTIME: no harness covers <zone>` without erasing the underlying static verdict.
+- Add a `Harness coverage gaps` report section aggregated by issue and zone.
+- Print the runtime selected and skipped counts in the final report.
+- Ensure verified-issue accounting and run snapshots use the runtime-adjusted final verdict.
+- Preserve prior ledgers and reports. Runtime results are additive and require no historical backfill.
+
+### UPDATED: .claude/skills/analyze-bugs/SKILL.md
+
+- Add `--runtime-max M` to frontmatter, flag parsing, and validation. Document the default of `10` and that `0` disables runtime verification.
+- Keep runtime controls out of prefetch argv.
+- Document `MECH`, `TRIAGE`, `DEEP`, and `RUNTIME` tier semantics.
+- Add the coordinator runtime stage after the existing Stage 3 report.
+- Invoke `analyze-bugs runtime` with the explicit run, manifest, and ledger paths, then rerun `analyze-bugs report` for the final output.
+- State that failures and timeouts downgrade evidence to `SUSPECT` but do not abort the workflow.
+- Document the skip count and `UNVERIFIED_RUNTIME` harness-gap section.
+- Preserve the ban on live GitHub or vendor calls and all agent read-only contracts.
+
+### NEW: python/tests/issue/test_analyze_bugs_runtime.py
+
+- Test test-file discovery from fixture commits, including added, modified, deleted, non-test, unsafe, and currently absent paths.
+- Test harness-map resolution, multiple matching prefixes, target deduplication, deterministic ordering, and unmapped orchestration zones.
+- Test selection of the newest fixes, deterministic ties, `--runtime-max 0`, budget truncation, and emitted skip counts.
+- Use injected runner fixtures to verify exact pytest and make argv, working directory, and timeouts.
+- Test passing pytest and mapped harness evidence promotes the report tier to `RUNTIME`.
+- Test pytest failure, harness failure, and timeout each produce `SUSPECT`, retain a bounded evidence tail, and allow later fixes to run.
+- Test absent-only evidence keeps the prior static tier.
+- Test unmapped orchestration zones render the exact `UNVERIFIED_RUNTIME` annotation and aggregate into the coverage-gap list.
+- Test runtime result identity validation rejects stale cache-key, SHA, or manifest data.
+- Test malformed runtime artifacts fail loudly while ordinary command failures do not make the runtime CLI fail.
+- Test the CLI registry and help surface for `analyze-bugs runtime`.
+- Add golden-style report assertions for runtime tiers, hostile output text, coverage gaps, and selected/skipped counts.
+
+## Edge cases
+
+- A fix has no resolved SHA or no runtime-relevant files.
+- A discovered test was later deleted from `main`.
+- Several touched paths resolve to the same make target.
+- A fix touches both mapped and unmapped orchestration zones.
+- Runtime output contains newlines, pipes, control characters, or excessive text.
+- A prior runtime artifact belongs to another manifest or an older fix SHA.
+- The budget exceeds eligible fixes or is zero.
+
+## Failure modes
+
+- Git discovery or runtime artifact corruption fails loudly because the coordinator cannot trust the evidence.
+- Pytest failures, harness failures, missing tests, and timeouts become recorded evidence rather than coordinator errors.
+- A report never grants `RUNTIME` from absent checks, stale rows, or a skipped fix.
+- Runtime verification performs no GitHub or vendor-CLI calls.
+
+## Testing strategy
+
+Run the new focused test module:
+
+`python3 -m pytest python/tests/issue/test_analyze_bugs_runtime.py -q`
+
+Run the existing analyze-bugs regression suite because verdict selection, report rendering, snapshots, and CLI dispatch change:
+
+`python3 -m pytest python/tests/issue/test_analyze_bugs.py -q`
+
+Run changed-file lint and type checks through the repository’s relevant-checks convention.
+
+difficulty: HARD
+oversize_override: operator
+diff_lines: 720

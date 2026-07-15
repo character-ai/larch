@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Plan explicitly applies the runtime overlay after deep-truncation processing.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Plan already requires every matching map row, target deduplication, and tests for multiple matches.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- A scripts-only harness edit need not be runtime-mapped for the specified feature.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Duplicate of a prior OOS observation.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Duplicate of a prior OOS observation.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior rejected budget-skipped coverage-gap finding.

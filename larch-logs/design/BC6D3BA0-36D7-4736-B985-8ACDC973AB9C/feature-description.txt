@@ -1,0 +1,33 @@
+# bug-treadmill [FEATURE] analyze-bugs: runtime evidence tier for verified fixes
+
+#### Problem
+
+All verification today is reading. Triage and deep verdicts conflate "the diff reads right" with "the behavior is verified". Runtime breaks pass static review: #6946 crashed every `/implement --merge` PR CI-failure route in the affected release, and the fix verdict machinery would have accepted the causing diff. The report cannot distinguish a fix whose tests ran from a fix nobody executed.
+
+#### Required design
+
+Coordinator-side only; the read-only agents stay read-only.
+
+1. For each fix commit under verification, identify test files the commit added or modified (paths under `python/tests/`). Run exactly those files with pytest through the repo's Python conventions, with a per-run timeout. Record pass, fail, or absent.
+2. Harness map: a declarative constant (module-prefix to make-target pairs, e.g. the Step 8 assessment offline harness and the bash32/halt-rate harnesses) maintained in `python/larch/issue/analyze_bugs.py` or a sibling JSON. For a fix touching a mapped module prefix, run the mapped target with a timeout. Extending the map is a one-line change.
+3. Verdict tiers: a fix whose commit tests and mapped harnesses pass gets tier `RUNTIME` in the report's evidence-tier column (which the analytics sibling introduces). A fix in an orchestration zone with no mapped harness is annotated `UNVERIFIED_RUNTIME: no harness covers <zone>`; the report aggregates these into a harness-coverage-gap list (input for the close-criteria sibling).
+4. Budget: `--runtime-max M` (default 10) newest fixes; skipped fixes keep their static tier; log the skip count.
+5. Failures are evidence, not errors: a failing test run downgrades the verdict to `SUSPECT` with the pytest tail in the reason, and never crashes the run.
+
+#### Tests
+
+Harness-map resolution tests; test-file discovery from fixture commits; timeout and failure-downgrade paths; report tier rendering; budget cap with logged skips.
+
+#### Non-goals
+
+No live GitHub or vendor-CLI calls; no authoring of new harnesses (close-criteria sibling drives that); no change to agent read-only contracts.
+
+#### Acceptance criteria
+
+1. A fixture fix commit with a passing test file gets tier `RUNTIME`; with a failing test file it downgrades to `SUSPECT` with evidence.
+2. A fixture fix in an unmapped orchestration zone produces the `UNVERIFIED_RUNTIME` annotation and appears in the coverage-gap list.
+3. `.claude/skills/analyze-bugs/SKILL.md` documents the tier semantics and `--runtime-max`.
+
+#### Backing evidence
+
+The failure domain of this repo's bugs is recovery paths, vendor CLIs, and multi-process orchestration; CI-green carries near-zero signal for that class, and static reading has the same blind spot. Part of the `bug-treadmill` umbrella; blocked by the analytics, verdict-depth, and sweep siblings (file this last; it builds on their report and ledger surfaces).
