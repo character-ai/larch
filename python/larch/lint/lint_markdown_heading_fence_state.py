@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from larch.core import proc
-from larch.lint.engine import Finding, LintRule, SourceFile, run_rule
+from larch.lint.engine import EXIT_ERROR, Finding, LintRule, SourceFile, run_rule
 from larch.lint.markdown_heading_fence_state_detector import (
     SUPPRESSION,
     is_production_source_path,
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint markdown-heading-fence-state``."""
     parsed = _parse_args(argv if argv is not None else sys.argv[1:])
     if parsed is None:
-        return 2
+        return EXIT_ERROR
     root = Path(str(parsed.root)).resolve()
     baseline_path = root / "python" / BASELINE_FILENAME
     initial_reason = parsed.initial_reason
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             "lint-markdown-heading-fence-state: --initial-reason must be non-empty",
             file=sys.stderr,
         )
-        return 2
+        return EXIT_ERROR
     return run_rule(
         RULE,
         root,

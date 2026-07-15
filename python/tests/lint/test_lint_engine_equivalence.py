@@ -23,8 +23,8 @@ from larch.lint import lint_unreachable_branch as lint_ub
 from larch.lint.engine import Finding, SourceFile, render_finding
 from larch.lint.engine import (
     OccurrenceBaselineRow,
-    _occurrence_json_file,  # type: ignore[reportPrivateUsage]
-    _project_finding,  # type: ignore[reportPrivateUsage]
+    _occurrence_json_file,  # type: ignore[reportPrivateUsage]  # accessing internal helpers for test assertion
+    _project_finding,  # type: ignore[reportPrivateUsage]  # accessing internal helpers for test assertion
 )
 from larch.lint.markdown_heading_fence_state_detector import is_production_source_path
 
