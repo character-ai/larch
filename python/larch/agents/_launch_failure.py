@@ -13,6 +13,7 @@ from typing import Literal
 
 from larch.core import config
 from larch.core.ctx import Ctx
+from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 
@@ -29,7 +30,6 @@ from larch.agents._types import (
     ModelArgResult,
     _err,
     _emit,
-    _emit_kv,
     _read_text,
 )
 
@@ -111,14 +111,13 @@ def _fallback_launcher_exit(process_rc: int) -> int:
 
 
 def _parse_launcher_exit_value(text: str) -> int | None:
-    for line in text.splitlines():
-        if line.startswith("LAUNCHER_EXIT="):
-            raw = line.split("=", 1)[1].strip().strip("\r")
-            try:
-                return int(raw)
-            except ValueError:
-                return None
-    return None
+    raw = larch_io.kv_value(text=text, key="LAUNCHER_EXIT", duplicate_policy="first", cr_strip="strip").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def parse_launcher_exit_text(*, text: str, process_rc: int = 0) -> int:
@@ -167,10 +166,12 @@ def read_launcher_exit(*, output_file: str | Path, process_rc: int = 0) -> int:
 
 
 def _launcher_failure_class_from_text(text: str) -> str | None:
-    last = ""
-    for line in text.splitlines():
-        if line.startswith("LAUNCHER_FAILURE_CLASS="):
-            last = line.split("=", 1)[1].strip().strip("\r")
+    last = larch_io.kv_value(
+        text=text,
+        key="LAUNCHER_FAILURE_CLASS",
+        duplicate_policy="last",
+        cr_strip="strip",
+    ).strip()
     if last in ("none", "health", "other"):
         return last
     return None
@@ -333,11 +334,7 @@ def model_args_main(argv: list[str] | None = None) -> int:
 
 def read_claude_model() -> str:
     source = proc.run([sys.executable, str(_PY_CLI), "token", "claude-source"])
-    transcript = ""
-    for line in source.stdout.splitlines():
-        if line.startswith("TRANSCRIPT_PATH="):
-            transcript = line.split("=", 1)[1]
-            break
+    transcript = larch_io.kv_value(text=source.stdout, key="TRANSCRIPT_PATH", duplicate_policy="first")
     if not transcript:
         return "unknown"
     path = Path(transcript)
@@ -357,5 +354,5 @@ def read_claude_model() -> str:
 def read_claude_model_main(argv: list[str] | None = None) -> int:
     _ = argv
     logging_util.quiet_init(argv0="cli.py")
-    _emit_kv(key="CLAUDE_MODEL", value=read_claude_model())
+    logging_util.emit_kv(key="CLAUDE_MODEL", value=read_claude_model())
     return 0

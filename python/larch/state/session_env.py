@@ -344,9 +344,6 @@ def _emit(text: str) -> None:
     logging_util.emit(text)
 
 
-def _emit_kv(*, key: str, value: str) -> None:
-    logging_util.emit_kv(key=key, value=value)
-
 
 def _err(message: str) -> None:
     logging_util.BreadcrumbWriter().emit(message)
@@ -598,13 +595,10 @@ def _read_kv_raw(path: Path) -> dict[str, str]:
 
 
 def _read_first_raw_key(*, path: Path, key: str) -> str | None:
-    for line in _read_kv_file_text(path).splitlines():
-        if "=" not in line:
-            continue
-        found_key, value = line.split("=", 1)
-        if found_key == key:
-            return value
-    return None
+    if not path.is_file():
+        return None
+    parsed = larch_io.parse_kv(_read_kv_file_text(path), duplicate_policy="first")
+    return parsed.get(key) if key in parsed else None
 
 
 def _first_existing_implement_sentinel(candidate: Path) -> Path | None:
@@ -788,14 +782,13 @@ def _parse_bool_arg(*, value: str, flag: str) -> str:
 def _parse_key_value_file(path: str) -> dict[str, str]:
     if not path or not Path(path).is_file():
         return {}
-    data: dict[str, str] = {}
-    for line in _read_kv_file_text(Path(path)).splitlines():
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in CALLER_ENV_KEYS and value:
-            data[key] = value
-    return data
+    parsed = larch_io.parse_kv(
+        _read_kv_file_text(Path(path)),
+        duplicate_policy="last",
+        skip_comments=True,
+        allowed_keys=CALLER_ENV_KEYS,
+    )
+    return {key: value for key, value in parsed.items() if value}
 
 
 def _is_path_under_root(*, path: str, root: str) -> bool:
@@ -1628,20 +1621,20 @@ def write_id_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
     except SystemExit:
         logging_util.quiet_init(argv0="write-session-id.sh")
-        _emit_kv(key="FAILED", value="true")
-        _emit_kv(key="ERROR", value="unknown flag")
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value="unknown flag")
         return 1
     logging_util.quiet_init(argv0="write-session-id.sh")
     if not args.output:
-        _emit_kv(key="FAILED", value="true")
-        _emit_kv(key="ERROR", value="--output is required")
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value="--output is required")
         return 1
     try:
         write_id(output=Path(args.output))
         return 0
     except OSError as exc:
-        _emit_kv(key="FAILED", value="true")
-        _emit_kv(key="ERROR", value=str(exc))
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value=str(exc))
         return 1
 
 
@@ -1735,7 +1728,7 @@ def write_run_params_main(argv: list[str]) -> int:
             "difficulty_override": args.difficulty,
         }
         _atomic_write(path=out, text=json.dumps(payload, indent=2, sort_keys=False) + "\n")
-        _emit_kv(key="RUN_PARAMS_WRITTEN", value=str(out))
+        logging_util.emit_kv(key="RUN_PARAMS_WRITTEN", value=str(out))
         return 0
     except (OSError, ValueError) as exc:
         _err(f"write-run-params.sh: {exc}")
@@ -1882,8 +1875,8 @@ def entry_gate_main(argv: list[str]) -> int:
     except ValueError as exc:
         return fail(str(exc))
     logging_util.quiet_init(argv0="session-entry-gate.sh")
-    _emit_kv(key="ENTRY_GATE", value=result.entry_gate)
-    _emit_kv(key="SKIP_BRANCH_CHECK", value=result.skip_branch_check)
+    logging_util.emit_kv(key="ENTRY_GATE", value=result.entry_gate)
+    logging_util.emit_kv(key="SKIP_BRANCH_CHECK", value=result.skip_branch_check)
     return 0
 
 
@@ -2204,7 +2197,7 @@ def setup_main(argv: list[str]) -> int:
         return exc.returncode
     for emission in result.stdout_emissions:
         if emission.kind == "kv":
-            _emit_kv(key=emission.key, value=emission.value)
+            logging_util.emit_kv(key=emission.key, value=emission.value)
         else:
             _emit(emission.key)
     for line in result.stderr_diagnostics:

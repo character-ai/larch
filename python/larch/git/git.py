@@ -1361,9 +1361,6 @@ def remote_branch_state(
 
 
 # CLI entrypoints migrated from git_cli.py.
-def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key=key, value=str(value))
-
 
 def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
@@ -1447,7 +1444,7 @@ def current_branch_main(argv: list[str]) -> int:
     if not branch:
         print("git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)", file=sys.stderr)
         return 1
-    _emit_kv(key="BRANCH", value=branch)
+    logging_util.emit_kv(key="BRANCH", value=branch)
     return 0
 
 
@@ -1458,8 +1455,8 @@ def branch_info_main(argv: list[str]) -> int:
     info = branch_info(proc)
     if info is None:
         return 1
-    _emit_kv(key="HEAD_SHA", value=info.head_sha)
-    _emit_kv(key="CURRENT_BRANCH", value=info.current_branch)
+    logging_util.emit_kv(key="HEAD_SHA", value=info.head_sha)
+    logging_util.emit_kv(key="CURRENT_BRANCH", value=info.current_branch)
     return 0
 
 
@@ -1472,10 +1469,10 @@ def conflict_files_main(argv: list[str]) -> int:
         sys.stderr.write(result.stderr)
         return result.returncode
     for item in _parse_conflict_file_rows(result.stdout):
-        _emit_kv(key="FILE", value=item.path)
-        _emit_kv(key="STAGE_1", value=str(item.stage_1).lower())
-        _emit_kv(key="STAGE_2", value=str(item.stage_2).lower())
-        _emit_kv(key="STAGE_3", value=str(item.stage_3).lower())
+        logging_util.emit_kv(key="FILE", value=item.path)
+        logging_util.emit_kv(key="STAGE_1", value=str(item.stage_1).lower())
+        logging_util.emit_kv(key="STAGE_2", value=str(item.stage_2).lower())
+        logging_util.emit_kv(key="STAGE_3", value=str(item.stage_3).lower())
         print()
     return 0
 
@@ -1552,7 +1549,7 @@ def sync_local_main_main(argv: list[str]) -> int:
         return 1
     result, rc = sync_local_main(proc, base_remote=args.base_remote, base_ref=args.base_ref)
     if rc == 0:
-        _emit_kv(key="RESULT", value=result)
+        logging_util.emit_kv(key="RESULT", value=result)
     else:
         print(f"cli.py git sync-local-main: {result}", file=sys.stderr)
     return rc
@@ -1565,11 +1562,11 @@ def clean_tree_main(argv: list[str]) -> int:
     if args is None:
         return 2
     result = clean_tree(proc, fail_closed=args.fail_closed)
-    _emit_kv(key="CLEAN", value=result.clean)
+    logging_util.emit_kv(key="CLEAN", value=result.clean)
     if result.dirty_out:
-        _emit_kv(key="DIRTY_OUT", value=result.dirty_out)
+        logging_util.emit_kv(key="DIRTY_OUT", value=result.dirty_out)
     if result.probe_error:
-        _emit_kv(key="PROBE_ERROR", value=result.probe_error)
+        logging_util.emit_kv(key="PROBE_ERROR", value=result.probe_error)
     return result.exit_code
 
 
@@ -1621,11 +1618,11 @@ def check_main_sync_main(argv: list[str]) -> int:
         print(f"check-main-sync.sh: unknown flag: {argv[0]}", file=sys.stderr)
         return 2
     result = check_main_sync(proc)
-    _emit_kv(key="SYNC_STATUS", value=result.status)
+    logging_util.emit_kv(key="SYNC_STATUS", value=result.status)
     if result.ahead_count is not None:
-        _emit_kv(key="AHEAD_COUNT", value=result.ahead_count)
+        logging_util.emit_kv(key="AHEAD_COUNT", value=result.ahead_count)
     if result.error:
-        _emit_kv(key="ERROR", value=result.error)
+        logging_util.emit_kv(key="ERROR", value=result.error)
     return result.exit_code
 
 
@@ -1643,30 +1640,30 @@ def check_remote_branch_main(argv: list[str]) -> int:
             remote = argv[index + 1] if index + 1 < len(argv) else ""
             index += 2
             continue
-        _emit_kv(key="STATE", value="error")
-        _emit_kv(key="RC", value=1)
-        _emit_kv(key="ERROR", value=f"unknown flag: {arg}")
+        logging_util.emit_kv(key="STATE", value="error")
+        logging_util.emit_kv(key="RC", value=1)
+        logging_util.emit_kv(key="ERROR", value=f"unknown flag: {arg}")
         return 0
     if not branch:
-        _emit_kv(key="STATE", value="error")
-        _emit_kv(key="RC", value=1)
-        _emit_kv(key="ERROR", value="--branch is required")
+        logging_util.emit_kv(key="STATE", value="error")
+        logging_util.emit_kv(key="RC", value=1)
+        logging_util.emit_kv(key="ERROR", value="--branch is required")
         return 0
     result = remote_branch_state(proc, branch, remote=remote)
-    _emit_kv(key="STATE", value=result.state)
-    _emit_kv(key="RC", value=result.rc)
+    logging_util.emit_kv(key="STATE", value=result.state)
+    logging_util.emit_kv(key="RC", value=result.rc)
     if result.error:
-        _emit_kv(key="ERROR", value=result.error)
+        logging_util.emit_kv(key="ERROR", value=result.error)
     return 0
 
 
 def _emit_phantom_dirty_result(result: phantom.PhantomDirtyResult) -> None:
-    _emit_kv(key="STATUS", value=result.status)
+    logging_util.emit_kv(key="STATUS", value=result.status)
     if result.reason:
-        _emit_kv(key="REASON", value=result.reason)
+        logging_util.emit_kv(key="REASON", value=result.reason)
     if result.status == "phantom":
-        _emit_kv(key="PHANTOM_COUNT", value=result.count)
-        _emit_kv(key="PHANTOM_PATHS_FILE", value=result.paths_file)
+        logging_util.emit_kv(key="PHANTOM_COUNT", value=result.count)
+        logging_util.emit_kv(key="PHANTOM_PATHS_FILE", value=result.paths_file)
 
 
 def check_phantom_dirty_main(argv: list[str]) -> int:
@@ -1710,13 +1707,13 @@ def check_phantom_dirty_main(argv: list[str]) -> int:
             parse_error = "phantom-paths-dir-required"
 
     if parse_error:
-        _emit_kv(key="STATUS", value="unknown")
-        _emit_kv(key="REASON", value=parse_error)
+        logging_util.emit_kv(key="STATUS", value="unknown")
+        logging_util.emit_kv(key="REASON", value=parse_error)
         return 0
 
     if not re.fullmatch(r"^[A-Za-z0-9_.-]+$", step):
-        _emit_kv(key="STATUS", value="unknown")
-        _emit_kv(key="REASON", value="bad-step")
+        logging_util.emit_kv(key="STATUS", value="unknown")
+        logging_util.emit_kv(key="REASON", value="bad-step")
         return 0
 
     result = phantom.check_phantom_dirty(
@@ -1742,12 +1739,12 @@ def phantom_probe_main(argv: list[str]) -> int:
         step=args.step,
         baseline_file=args.baseline_file,
     )
-    _emit_kv(key="PHANTOM_STATUS", value=result.dirty.status)
+    logging_util.emit_kv(key="PHANTOM_STATUS", value=result.dirty.status)
     if result.dirty.reason:
-        _emit_kv(key="PHANTOM_REASON", value=result.dirty.reason)
+        logging_util.emit_kv(key="PHANTOM_REASON", value=result.dirty.reason)
     if result.dirty.status == "phantom":
-        _emit_kv(key="PHANTOM_COUNT", value=result.dirty.count)
-        _emit_kv(key="PHANTOM_PATHS_FILE", value=result.dirty.paths_file)
+        logging_util.emit_kv(key="PHANTOM_COUNT", value=result.dirty.count)
+        logging_util.emit_kv(key="PHANTOM_PATHS_FILE", value=result.dirty.paths_file)
     if result.append_warn_error:
-        _emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=result.append_warn_error)
+        logging_util.emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=result.append_warn_error)
     return 0

@@ -54,7 +54,6 @@ from larch.agents._types import (  # noqa: F401
     _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR,
     _err,
     _emit,
-    _emit_kv,
     _read_text,
     _write,
     _append,

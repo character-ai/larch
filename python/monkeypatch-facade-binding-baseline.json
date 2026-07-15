@@ -201,15 +201,6 @@
     "file": "tests/agents/test_agents.py",
     "qualified_symbol": "test_launch_codex_ci_finalize_order_and_token_stdout",
     "facade_module": "larch.agents._run_external",
-    "attribute": "_emit_kv",
-    "defining_module": "larch.agents._types",
-    "occurrence": 9,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/agents/test_agents.py",
-    "qualified_symbol": "test_launch_codex_ci_finalize_order_and_token_stdout",
-    "facade_module": "larch.agents._run_external",
     "attribute": "_write",
     "defining_module": "larch.agents._types",
     "occurrence": 4,
@@ -582,15 +573,6 @@
     "attribute": "resolve_model_args",
     "defining_module": "larch.agents._launch_failure",
     "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/agents/test_agents.py",
-    "qualified_symbol": "test_launch_cursor_ci_finalize_order_and_stall_guard",
-    "facade_module": "larch.agents._run_external",
-    "attribute": "_emit_kv",
-    "defining_module": "larch.agents._types",
-    "occurrence": 11,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {

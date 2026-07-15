@@ -112,7 +112,7 @@ _stall_layer_active() {
 
 kv_value() {
     local key=$1 file=$2
-    awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}' "$file" 2>/dev/null
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
 }
 
 append_failure_best_effort() {

@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
+from larch import io as larch_io
 from larch.core import config
+from larch.core import logging_util
 from larch.core import proc
 from larch.git import gh
 from larch.issue import file_oos
@@ -32,9 +34,6 @@ _ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
 _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
 
-
-def _emit_kv(*, key: str, value: str) -> None:
-    print(f"{key}={value}")
 
 
 def _plugin_root() -> Path:
@@ -170,9 +169,9 @@ def _accepted_unfiled_text(accepted: Path) -> str:
 
 
 def _emit_empty_stdout_retry(issue_stdout_file: str) -> int:
-    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-failed-empty-stdout")
-    _emit_kv(key="NEXT_ACTION", value="retry-file-and-annotate")
-    _emit_kv(
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-failed-empty-stdout")
+    logging_util.emit_kv(key="NEXT_ACTION", value="retry-file-and-annotate")
+    logging_util.emit_kv(
         key="WARN",
         value=f"file-design-oos annotate: issue-stdout-file empty or missing ({issue_stdout_file}); oos-issues-created.md not written",
     )
@@ -190,14 +189,14 @@ def _prepare_sentinel_handled(
 ) -> bool:
     if sentinel.is_file() and sentinel.stat().st_size > 0:
         if not _accepted_unfiled_text(accepted).strip():
-            _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
+            logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
             return True
         sentinel.unlink(missing_ok=True)
     created, failed, deduped = _load_issue_sentinel_status(design_tmpdir)
     if failed == 0 and (created + deduped) > 0:
         if not _accepted_unfiled_text(accepted).strip():
-            _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-already-filed-sentinel")
-            _emit_kv(
+            logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-already-filed-sentinel")
+            logging_util.emit_kv(
                 key="WARN",
                 value="file-design-oos prepare: oos-issue-sentinel present "
                 f"(ISSUES_CREATED={created} ISSUES_DEDUPLICATED={deduped}) but "
@@ -230,7 +229,7 @@ def _prepare_sentinel_handled(
             if ok:
                 _ = accepted.write_text(recovered, encoding="utf-8")
                 if not _extract_unfiled_blocks(recovered).strip():
-                    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
+                    logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
                     return True
             sentinel.unlink(missing_ok=True)
             _append_warning_log(
@@ -372,16 +371,17 @@ def _clear_label_retry_pending(*, design_tmpdir: Path, issue_number: str) -> Non
 
 
 def _read_simple_env_value(path: Path, key: str) -> str:
-    if not path.is_file():
-        return ""
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-    for raw in text.splitlines():
-        if raw.startswith(f"{key}="):
-            return raw.split("=", 1)[1].strip().strip("'\"")
-    return ""
+    return (
+        larch_io.read_kv(
+            path=path,
+            key=key,
+            default="",
+            duplicate_policy="first",
+            on_error_default=True,
+        )
+        .strip()
+        .strip("'\"")
+    )
 
 
 def _resolve_filing_repo(*, design_tmpdir: Path, issue_number: str | None) -> str:
@@ -418,19 +418,20 @@ def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
     sentinel = design_tmpdir / "oos-issue-sentinel"
     if not sentinel.is_file():
         return 0, 0, 0
-    created = 0
-    failed = 0
-    deduped = 0
-    for line in sentinel.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("ISSUES_CREATED="):
-            value = line.split("=", 1)[1].strip()
-            created = int(value) if value.isdigit() else 0
-        elif line.startswith("ISSUES_FAILED="):
-            value = line.split("=", 1)[1].strip()
-            failed = int(value) if value.isdigit() else 0
-        elif line.startswith("ISSUES_DEDUPLICATED="):
-            value = line.split("=", 1)[1].strip()
-            deduped = int(value) if value.isdigit() else 0
+    try:
+        values = larch_io.parse_kv(
+            sentinel.read_text(encoding="utf-8", errors="replace"),
+            duplicate_policy="last",
+            strip_value=True,
+        )
+    except OSError:
+        return 0, 0, 0
+    created_raw = values.get("ISSUES_CREATED", "")
+    failed_raw = values.get("ISSUES_FAILED", "")
+    deduped_raw = values.get("ISSUES_DEDUPLICATED", "")
+    created = int(created_raw) if created_raw.isdigit() else 0
+    failed = int(failed_raw) if failed_raw.isdigit() else 0
+    deduped = int(deduped_raw) if deduped_raw.isdigit() else 0
     return created, failed, deduped
 
 
@@ -534,11 +535,11 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
                     path.unlink(missing_ok=True)
     if _label_retry_pending(design_tmpdir=design_tmpdir, issue_number=issue_number):
         _ = _restore_label_retry_sidecars(design_tmpdir=design_tmpdir, issue_number=issue_number)
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="label-only-retry")
-        _emit_kv(key="NEXT_ACTION", value="label-only")
-        _emit_kv(key="STEP5B_NEEDS_ANNOTATE", value="true")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="label-only-retry")
+        logging_util.emit_kv(key="NEXT_ACTION", value="label-only")
+        logging_util.emit_kv(key="STEP5B_NEEDS_ANNOTATE", value="true")
         if args.repo:
-            _emit_kv(key="REPO", value=args.repo)
+            logging_util.emit_kv(key="REPO", value=args.repo)
         return 0
     _promote_aggregate_oos_pool(accepted_path=accepted, pool_path=design_tmpdir / OOS_AGGREGATE_POOL_FILE)
     if _prepare_sentinel_handled(
@@ -550,13 +551,13 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
     ):
         return 0
     if not accepted.is_file() or accepted.stat().st_size == 0:
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     for path in (combined, deps_tsv, order_file):
         path.unlink(missing_ok=True)
     unfiled = _extract_unfiled_blocks(accepted.read_text(encoding="utf-8"))
     if not unfiled.strip():
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     _ = combined.write_text(unfiled, encoding="utf-8")
     headers = [
@@ -566,11 +567,11 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
     ]
     if not headers:
         combined.unlink(missing_ok=True)
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     if _count_non_security_blocks(unfiled) == 0:
         combined.unlink(missing_ok=True)
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-all-security")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-all-security")
         return 0
     _ = order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
     capped = combined.with_suffix(".md.capped.tmp")
@@ -606,13 +607,13 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
             f"file-design-oos: python/cli.py oos file-conflict-deps exit {deps_result.returncode}: graceful-degrade (no caller TSV)",
             file=sys.stderr,
         )
-    _emit_kv(key="FILE_DESIGN_OOS_DEPS_AVAILABLE", value="true" if deps_available else "false")
-    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="ready")
-    _emit_kv(key="FILE_DESIGN_OOS_COMBINED", value=str(combined))
-    _emit_kv(key="FILE_DESIGN_OOS_DEPS_TSV", value=str(deps_tsv))
-    _emit_kv(key="FILE_DESIGN_OOS_ORDER", value=str(order_file))
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_DEPS_AVAILABLE", value="true" if deps_available else "false")
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="ready")
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_COMBINED", value=str(combined))
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_DEPS_TSV", value=str(deps_tsv))
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_ORDER", value=str(order_file))
     if args.repo:
-        _emit_kv(key="REPO", value=args.repo)
+        logging_util.emit_kv(key="REPO", value=args.repo)
     return 0
 
 
@@ -624,7 +625,12 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
     url_by_idx: dict[str, str] = {}
     dup_by_idx: dict[str, str] = {}
     failed: set[str] = set()
-    issues_failed_count = 0
+    issues_failed_raw = larch_io.kv_value(
+        text=stdout_text,
+        key="ISSUES_FAILED",
+        duplicate_policy="last",
+    ).strip()
+    issues_failed_count = int(issues_failed_raw) if issues_failed_raw.isdigit() else 0
     for line in stdout_text.splitlines():
         kv = _ISSUE_URL_KV_RE.match(line)
         if kv:
@@ -640,10 +646,6 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
         if fail:
             failed.add(fail.group(1))
             continue
-        if line.startswith("ISSUES_FAILED="):
-            value = line.split("=", 1)[1].strip()
-            if value.isdigit():
-                issues_failed_count = int(value)
     return url_by_idx, dup_by_idx, failed, issues_failed_count
 
 
@@ -947,7 +949,7 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         combined = design_tmpdir / "oos-combined.md"
         order_file = design_tmpdir / "oos-design-filing-order.txt"
         if not sentinel.is_file() or not combined.is_file():
-            _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-failed")
+            logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-failed")
             print("design file-oos-annotate: label-only retry missing sentinel or combined OOS file", file=sys.stderr)
             return 1
         rc = _apply_priority_labels_only(
@@ -959,7 +961,7 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
             issue_stdout_path=stdout_path if stdout_path.is_file() else None,
             issue_number=issue_number,
         )
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-complete" if rc == 0 else "annotate-label-failed")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-complete" if rc == 0 else "annotate-label-failed")
         return rc
     if not stdout_path.is_file() or stdout_path.stat().st_size == 0:
         return _emit_empty_stdout_retry(issue_stdout_file)
@@ -1009,14 +1011,14 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         issue_number=issue_number,
     )
     if label_rc != 0:
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-failed")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-failed")
         return 1
     if issues_failed_count > 0:
         _ = (design_tmpdir / "oos-issues-created.partial.md").write_text(sentinel_body, encoding="utf-8")
         (design_tmpdir / "oos-issues-created.md").unlink(missing_ok=True)
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-partial-failed")
+        logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-partial-failed")
         return 1
     (design_tmpdir / "oos-issues-created.partial.md").unlink(missing_ok=True)
     _sync_cross_session_cache(design_tmpdir=design_tmpdir, sentinel=complete_sentinel, issue_number=issue_number)
-    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-complete")
+    logging_util.emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-complete")
     return 0

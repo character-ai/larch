@@ -3347,13 +3347,6 @@
   },
   {
     "file": "larch/report/final_report.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: SLF001",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/report/final_report.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
@@ -3364,13 +3357,6 @@
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/report/final_report.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportPrivateUsage]",
-    "occurrence": 3,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {

@@ -77,3 +77,13 @@ def test_step1_log_requires_conventional_plan_file(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert "plan file not found at conventional path" in result.stderr
+
+
+def test_session_get_keeps_first_match_and_empty_default(tmp_path: Path) -> None:
+    from larch.design import design_step_log  # noqa: PLC0415
+
+    path = tmp_path / "session-env.sh"
+    _ = path.write_text("RUN_ID=first\nRUN_ID=second\nEMPTY=\n", encoding="utf-8")
+    assert design_step_log._session_get(path=path, key="RUN_ID") == "first"  # pyright: ignore[reportPrivateUsage]
+    assert design_step_log._session_get(path=path, key="EMPTY", default="fallback") == "fallback"  # pyright: ignore[reportPrivateUsage]
+    assert design_step_log._session_get(path=path, key="MISSING", default="fallback") == "fallback"  # pyright: ignore[reportPrivateUsage]

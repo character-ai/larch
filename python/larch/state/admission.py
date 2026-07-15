@@ -25,10 +25,6 @@ _TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch bootstrap tmpdi
 _transient_retry_sleeper = retry.default_sleeper
 
 
-def _emit_kv(*, key: str, value: str) -> None:
-    logging_util.emit_kv(key=key, value=_single_line(value))
-
-
 def _single_line(value: str) -> str:
     return re.sub(r" +", " ", value.replace("\r", " ").replace("\n", " ")).strip()
 
@@ -88,14 +84,11 @@ def _blockers(*, issue: int, repo: str) -> tuple[int, str]:
     )
     if result.returncode != 0:
         return result.returncode, ""
-    for line in result.stdout.splitlines():
-        if line.startswith("BLOCKERS="):
-            return 0, line.split("=", 1)[1].strip()
-    return 0, ""
+    return 0, larch_io.kv_value(text=result.stdout, key="BLOCKERS", duplicate_policy="first").strip()
 
 
 def _blocker_failure(rc: int) -> int:
-    _emit_kv(key="ADMISSION_ERROR", value=f"blocker check failed (exit {rc})")
+    logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line(f"blocker check failed (exit {rc})"))
     return 2
 
 
@@ -106,12 +99,15 @@ def _read_parent_sentinel(issue: int) -> bool:
     path = Path(tmpdir) / "parent-issue.md"
     if not path.is_file():
         return False
-    data: dict[str, str] = {}
     try:
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if "=" in line:
-                key, value = line.split("=", 1)
-                data[key] = value.strip()
+        data = {
+            key: value.strip()
+            for key, value in larch_io.read_kvs(
+                path,
+                duplicate_policy="last",
+                on_error_default=True,
+            ).items()
+        }
     except OSError:
         return False
     parent_issue = _normal_issue(data.get("ISSUE_NUMBER", ""))
@@ -130,32 +126,32 @@ def gate_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         if int(exc.code or 0) != 0:
-            _emit_kv(key="ADMISSION_ERROR", value="argument validation failed")
+            logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line("argument validation failed"))
             return 2
         return 0
     issue = _normal_issue(args.issue)
     if issue is None:
-        _emit_kv(key="ADMISSION_ERROR", value="--issue must be a positive integer")
+        logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line("--issue must be a positive integer"))
         return 2
     repo = args.repo or (_resolve_repo() or "")
     if not repo:
-        _emit_kv(key="ADMISSION_ERROR", value="could not resolve repo (gh repo view failed)")
+        logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line("could not resolve repo (gh repo view failed)"))
         return 2
     view_rc, raw = _gh_issue_view(issue=issue, repo=repo)
     if view_rc != 0:
         detail = _single_line(raw)
-        _emit_kv(key="ADMISSION_ERROR", value=f"gh issue view failed{': ' + detail if detail else ''}")
+        logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line(f"gh issue view failed{': ' + detail if detail else ''}"))
         return 2
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        _emit_kv(key="ADMISSION_ERROR", value="issue json parse failed (malformed gh issue view response)")
+        logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line("issue json parse failed (malformed gh issue view response)"))
         return 2
     title = str(data.get("title") or "")
     state = str(data.get("state") or "")
     labels = data.get("labels") or []
     if state == "CLOSED":
-        _emit_kv(key="ADMISSION_ERROR", value=f"issue #{issue} is CLOSED")
+        logging_util.emit_kv(key="ADMISSION_ERROR", value=_single_line(f"issue #{issue} is CLOSED"))
         return 2
 
     if _read_parent_sentinel(issue):
@@ -163,40 +159,40 @@ def gate_main(argv: list[str]) -> int:
         if blocker_rc != 0:
             return _blocker_failure(blocker_rc)
         if blockers:
-            _emit_kv(key="ADMISSION_RESULT", value="has-blockers")
-            _emit_kv(key="BLOCKERS", value=blockers)
+            logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("has-blockers"))
+            logging_util.emit_kv(key="BLOCKERS", value=_single_line(blockers))
             return 4
         if _has_report_prefix(title):
-            _emit_kv(key="ADMISSION_RESULT", value="report-title")
-            _emit_kv(key="TITLE", value=title)
+            logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("report-title"))
+            logging_util.emit_kv(key="TITLE", value=_single_line(title))
             return 7
-        _emit_kv(key="ADMISSION_RESULT", value="pass")
-        _emit_kv(key="RESUME", value="true")
+        logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("pass"))
+        logging_util.emit_kv(key="RESUME", value=_single_line("true"))
         return 0
 
     if _has_managed_prefix(title):
-        _emit_kv(key="ADMISSION_RESULT", value="managed-prefix")
-        _emit_kv(key="TITLE", value=title)
+        logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("managed-prefix"))
+        logging_util.emit_kv(key="TITLE", value=_single_line(title))
         return 5
     if _has_report_prefix(title):
-        _emit_kv(key="ADMISSION_RESULT", value="report-title")
-        _emit_kv(key="TITLE", value=title)
+        logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("report-title"))
+        logging_util.emit_kv(key="TITLE", value=_single_line(title))
         return 7
     if any(isinstance(label, dict) and label.get("name") == "audit-report" for label in labels):
-        _emit_kv(key="ADMISSION_RESULT", value="audit-report-label")
+        logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("audit-report-label"))
         return 6
     blocker_rc, blockers = _blockers(issue=issue, repo=repo)
     if blocker_rc != 0:
         return _blocker_failure(blocker_rc)
     if blockers:
-        _emit_kv(key="ADMISSION_RESULT", value="has-blockers")
-        _emit_kv(key="BLOCKERS", value=blockers)
+        logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("has-blockers"))
+        logging_util.emit_kv(key="BLOCKERS", value=_single_line(blockers))
         return 4
     if not _has_designed_prefix(title):
-        _emit_kv(key="ADMISSION_RESULT", value="missing-designed-prefix")
-        _emit_kv(key="TITLE", value=title)
+        logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("missing-designed-prefix"))
+        logging_util.emit_kv(key="TITLE", value=_single_line(title))
         return 5
-    _emit_kv(key="ADMISSION_RESULT", value="pass")
+    logging_util.emit_kv(key="ADMISSION_RESULT", value=_single_line("pass"))
     return 0
 
 
@@ -204,10 +200,7 @@ def _clean_tree() -> str:
     result = _run([sys.executable, str(_PY_CLI), "git", "clean-tree", "--fail-closed"])
     if result.stderr:
         sys.stderr.write(result.stderr)
-    for line in result.stdout.splitlines():
-        if line.startswith("CLEAN="):
-            return line.split("=", 1)[1]
-    return ""
+    return larch_io.kv_value(text=result.stdout, key="CLEAN", duplicate_policy="first")
 
 
 def _stash_check() -> str:
@@ -234,55 +227,52 @@ def preflight_main(argv: list[str]) -> int:
         result = _run(["git", "symbolic-ref", "--short", "HEAD"])
         current = result.stdout.strip() if result.returncode == 0 else ""
         if current != "main":
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value=f"Not on main branch (on '{current}'). Switch to main first, or pass --skip-branch-check.")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line(f"Not on main branch (on '{current}'). Switch to main first, or pass --skip-branch-check."))
             return 1
     if not args.skip_clean_check:
         clean = _clean_tree()
         if clean == "false":
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value="Working tree is not clean. Commit or stash changes first.")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("Working tree is not clean. Commit or stash changes first."))
             return 2
         if clean != "true":
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value="Could not determine working-tree cleanliness (helper produced no CLEAN= line).")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("Could not determine working-tree cleanliness (helper produced no CLEAN= line)."))
             return 2
         stash = _stash_check()
         if stash == "nonempty":
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(
-                key="PREFLIGHT_ERROR",
-                value="Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop.",
-            )
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop."))
             return 2
         if stash != "empty":
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value="Could not determine git stash cleanliness. Inspect git stash list and re-run.")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("Could not determine git stash cleanliness. Inspect git stash list and re-run."))
             return 2
     fetch = _git_fetch_origin_main()
     if fetch.returncode != 0:
-        _emit_kv(key="PREFLIGHT", value="fail")
-        _emit_kv(key="PREFLIGHT_ERROR", value="git fetch origin main failed.")
+        logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+        logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("git fetch origin main failed."))
         return 3
     if not args.skip_branch_check:
         sync = _run([sys.executable, str(_PY_CLI), "git", "check-main-sync"])
-        fields: dict[str, str] = dict(line.split("=", 1) for line in sync.stdout.splitlines() if "=" in line)
+        fields = larch_io.parse_kv(sync.stdout, duplicate_policy="last")
         sync_status = fields.get("SYNC_STATUS", "")
         sync_error = fields.get("ERROR", "")
         if sync_status == "blocked" or sync.returncode == 1:
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value=sync_error or "local main is ahead of origin/main with non-log changes; push or reconcile before re-running")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line(sync_error or "local main is ahead of origin/main with non-log changes; push or reconcile before re-running"))
             return 3
         if not (sync.returncode == _PROBE_ERROR_EXIT and sync_status == "probe-error") and sync.returncode != 0:
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value=sync_error or f"cli.py git check-main-sync exited unexpectedly (exit {sync.returncode})")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line(sync_error or f"cli.py git check-main-sync exited unexpectedly (exit {sync.returncode})"))
             return 3
     if not args.skip_branch_check and not args.skip_clean_check:
         rebase = _run(["git", "rebase", "origin/main", "--quiet"])
         if rebase.returncode != 0:
             _ = _run(["git", "rebase", "--abort"])
-            _emit_kv(key="PREFLIGHT", value="fail")
-            _emit_kv(key="PREFLIGHT_ERROR", value="git rebase origin/main failed.")
+            logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("git rebase origin/main failed."))
             return 3
     status = _run(["git", "status", "--porcelain"])
     if not args.skip_clean_check or not status.stdout:
@@ -291,7 +281,7 @@ def preflight_main(argv: list[str]) -> int:
         if sentinel:
             with contextlib.suppress(OSError):
                 Path(sentinel).unlink(missing_ok=True)
-    _emit_kv(key="PREFLIGHT", value="ok")
+    logging_util.emit_kv(key="PREFLIGHT", value=_single_line("ok"))
     return 0
 
 
@@ -346,10 +336,10 @@ def fork_env_main(argv: list[str]) -> int:
     except OSError as exc:
         print(f"admission fork-env: could not write caller-env.sh: {exc}", file=sys.stderr)
         return 2
-    _emit_kv(key="BOOTSTRAP_TMPDIR", value=str(bootstrap_tmpdir))
-    _emit_kv(key="CALLER_ENV_PATH", value=str(caller_env))
-    _emit_kv(key="FORK_REPO", value=fork_repo)
-    _emit_kv(key="UPSTREAM_REPO", value=upstream_repo)
-    _emit_kv(key="FORK_OWNER", value=fork_owner)
-    _emit_kv(key="FORKED_TARGET", value="true")
+    logging_util.emit_kv(key="BOOTSTRAP_TMPDIR", value=_single_line(str(bootstrap_tmpdir)))
+    logging_util.emit_kv(key="CALLER_ENV_PATH", value=_single_line(str(caller_env)))
+    logging_util.emit_kv(key="FORK_REPO", value=_single_line(fork_repo))
+    logging_util.emit_kv(key="UPSTREAM_REPO", value=_single_line(upstream_repo))
+    logging_util.emit_kv(key="FORK_OWNER", value=_single_line(fork_owner))
+    logging_util.emit_kv(key="FORKED_TARGET", value=_single_line("true"))
     return 0

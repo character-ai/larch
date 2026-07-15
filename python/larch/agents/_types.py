@@ -311,10 +311,6 @@ def _emit(text: str) -> None:
     logging_util.emit(text)
 
 
-def _emit_kv(*, key: str, value: str | int) -> None:
-    logging_util.emit_kv(key=key, value=str(value))
-
-
 def _read_text(path: str | Path | None) -> str:
     if not path:
         return ""

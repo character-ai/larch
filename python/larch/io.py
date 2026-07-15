@@ -440,11 +440,12 @@ def kv_value(
     found = default
     for raw in _line_iter(text):
         if raw.startswith(prefix):
-            found = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
+            value = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
             if policy == "first":
-                return found
-            if policy == "last-non-empty" and not found:
+                return value
+            if policy == "last-non-empty" and not value:
                 continue
+            found = value
     return found
 
 

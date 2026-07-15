@@ -16,6 +16,7 @@ from larch.issue import blocker
 from larch.issue import combine_issues
 from larch.git import gh
 from larch.issue import issue_wire
+from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.errors import ShipError
@@ -34,10 +35,6 @@ def _emit_json(payload: dict[str, Any]) -> int:
     json.dump(payload, sys.stdout, sort_keys=True)
     sys.stdout.write("\n")
     return 0
-
-
-def _emit_kv(*, name: str, value: str) -> None:
-    print(f"{name}={value}")
 
 
 def _load_json_file(path: str, *, desc: str) -> Any:
@@ -391,9 +388,9 @@ def resolve_repo_main(argv: list[str] | None = None) -> int:
             print("ERROR=Could not determine repository", file=sys.stderr)
             return 1
     origin, matches = _origin_slug_matches(repo)
-    _emit_kv(name="REPO", value=repo)
-    _emit_kv(name="ORIGIN_SLUG", value=origin)
-    _emit_kv(name="ORIGIN_MATCHES", value=str(matches).lower())
+    logging_util.emit_kv(key="REPO", value=repo)
+    logging_util.emit_kv(key="ORIGIN_SLUG", value=origin)
+    logging_util.emit_kv(key="ORIGIN_MATCHES", value=str(matches).lower())
     return 0
 
 

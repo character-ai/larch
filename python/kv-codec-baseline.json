@@ -1,77 +1,5 @@
 [
   {
-    "anchor": "split=080a782305839e2c76098f8374e5af8c153aa09bbdee7165c531bf698ccc131d",
-    "line": 717,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_ci_launcher.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=23a21f5bc74c529e98087b24807f53cb78eef8fdc9e139b64373a7d4c838ffd4",
-    "line": 715,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_ci_launcher.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 696,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_claude_runner.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 116,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_launch_failure.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=602272923aa5c1c3e8372b58e179181cc7c5487180d8a5034e933f9ff80b283e",
-    "line": 339,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_launch_failure.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=ccb82c555b56cfb985a07d1efe10199322a9a0a5ea06e7db3648f5a44032ed9c",
-    "line": 173,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_launch_failure.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=080a782305839e2c76098f8374e5af8c153aa09bbdee7165c531bf698ccc131d",
-    "line": 496,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_review_launcher.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 346,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_review_launcher.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=9f2602228dbd558d72a463fdac1471483f4177f6f0db977c88ca7e64addb47b6",
-    "line": 1043,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/agents/_run_external.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
     "anchor": "split=23a21f5bc74c529e98087b24807f53cb78eef8fdc9e139b64373a7d4c838ffd4",
     "line": 454,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
@@ -124,46 +52,6 @@
     "line": 324,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/design/design_log_publish_flow.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=45c7cccadcb9ab919888b7499410eaa22fd8a9f22a42c425693df8f894d7c3cf",
-    "line": 432,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_oos.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=602272923aa5c1c3e8372b58e179181cc7c5487180d8a5034e933f9ff80b283e",
-    "line": 429,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_oos.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=73879ff6b80412c58c97f623bd0ba49c10ef6095c7b3b37ab80ca73050b805f5",
-    "line": 383,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_oos.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=a46fca1b9fdf9739c559937a6424b15fb06487f0549a53686871feefd9215c98",
-    "line": 644,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_oos.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=ccb82c555b56cfb985a07d1efe10199322a9a0a5ea06e7db3648f5a44032ed9c",
-    "line": 426,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_oos.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
     "rule_id": "kv-codec"
   },
@@ -268,14 +156,6 @@
     "line": 500,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/design/design_step5c.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 337,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/design/design_summary.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
     "rule_id": "kv-codec"
   },
@@ -409,7 +289,7 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 355,
+    "line": 288,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/implement/step_7a.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
@@ -433,7 +313,7 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 433,
+    "line": 430,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/report/final_report.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
@@ -521,38 +401,6 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 93,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/state/admission.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=45c7cccadcb9ab919888b7499410eaa22fd8a9f22a42c425693df8f894d7c3cf",
-    "line": 269,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/state/admission.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=602272923aa5c1c3e8372b58e179181cc7c5487180d8a5034e933f9ff80b283e",
-    "line": 113,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/state/admission.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=ccb82c555b56cfb985a07d1efe10199322a9a0a5ea06e7db3648f5a44032ed9c",
-    "line": 209,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/state/admission.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
     "line": 1304,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/state/bootstrap.py",
@@ -617,58 +465,18 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 568,
+    "line": 565,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/state/session_env.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
     "rule_id": "kv-codec"
   },
   {
-    "anchor": "split=602272923aa5c1c3e8372b58e179181cc7c5487180d8a5034e933f9ff80b283e",
-    "line": 795,
+    "anchor": "split=2ce4610c86cedf4a5a9b299086d5f06f92855bb33caee200eb9b4de1366dc7e9",
+    "line": 1547,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/state/session_env.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=ccb82c555b56cfb985a07d1efe10199322a9a0a5ea06e7db3648f5a44032ed9c",
-    "line": 604,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/state/session_env.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "split=d80873a849f52f7146e9e9d69178c7813893feb94e19d74dd1ef24c40aa3dbdd",
-    "line": 1554,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/state/session_env.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "shell=0428f347225f40408c743827f948f175bbf8878ac34711b7f1e5701359f18d8d",
-    "line": 300,
-    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
-    "path": "skills/design/scripts/design-step3-mav.sh",
-    "reason": "legacy or bootstrap reader pending migration to shared codec",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "shell=c158ceeb60de26eac2ecfb40d5b6e3f907f2fee182ee0385cf2128e2bd67b731",
-    "line": 125,
-    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
-    "path": "skills/implement/scripts/post-tracking-issue.sh",
-    "reason": "legacy or bootstrap reader pending migration to shared codec",
-    "rule_id": "kv-codec"
-  },
-  {
-    "anchor": "shell=49d840ea52ce28e9feb0515900059c130c47e78b0a0cd1e07431c7dfd4b49294",
-    "line": 115,
-    "message": "ad-hoc shell KEY=value reader; use cli.py kv get",
-    "path": "skills/implement/scripts/step-18.sh",
-    "reason": "legacy or bootstrap reader pending migration to shared codec",
     "rule_id": "kv-codec"
   }
 ]

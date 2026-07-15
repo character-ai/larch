@@ -41,7 +41,6 @@ from larch.agents._types import (
     DegradedToolsResult,
     _err,
     _emit,
-    _emit_kv,
     _write,
     _append,
     _plugin_root,
@@ -796,8 +795,8 @@ def external_tool_registry_main(argv: list[str] | None = None) -> int:
         for tool in EXTERNAL_TOOL_NAMES:
             _emit(tool)
     else:
-        _emit_kv(key="EXTERNAL_TOOLS", value=",".join(EXTERNAL_TOOL_NAMES))
-        _emit_kv(key="IMPLEMENTER_CODERS", value="claude,codex,cursor")
+        logging_util.emit_kv(key="EXTERNAL_TOOLS", value=",".join(EXTERNAL_TOOL_NAMES))
+        logging_util.emit_kv(key="IMPLEMENTER_CODERS", value="claude,codex,cursor")
     return 0
 
 
@@ -906,14 +905,14 @@ def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
         cursor_present=ctx.cursor_present,
         skill=ctx.str_value(key="skill", default="this"),
     )
-    _emit_kv(key="DEGRADED", value=str(result.degraded).lower())
-    _emit_kv(key="CODEX_STATE", value=result.codex_state)
-    _emit_kv(key="CURSOR_STATE", value=result.cursor_state)
-    _emit_kv(key="BOTH_DOWN", value=str(result.both_down).lower())
+    logging_util.emit_kv(key="DEGRADED", value=str(result.degraded).lower())
+    logging_util.emit_kv(key="CODEX_STATE", value=result.codex_state)
+    logging_util.emit_kv(key="CURSOR_STATE", value=result.cursor_state)
+    logging_util.emit_kv(key="BOTH_DOWN", value=str(result.both_down).lower())
     if result.both_down:
-        _emit_kv(key="DEGRADED_HARD_FAIL", value="true")
+        logging_util.emit_kv(key="DEGRADED_HARD_FAIL", value="true")
     if result.presence_input_empty:
-        _emit_kv(key="PRESENCE_INPUT_EMPTY", value="true")
+        logging_util.emit_kv(key="PRESENCE_INPUT_EMPTY", value="true")
     if result.degraded:
         _emit("DEGRADED_EXPLANATION_BEGIN")
         for line in result.explanation:
@@ -965,16 +964,16 @@ def status_check_main(argv: list[str] | None = None) -> int:
         cursor_present=cursor_present,
         skill="status",
     )
-    _emit_kv(key="LARCH_PLUGIN_VERSION", value=version)
-    _emit_kv(key="CODEX_BINARY_FOUND", value=codex_binary_found)
-    _emit_kv(key="CURSOR_BINARY_FOUND", value=cursor_binary_found)
-    _emit_kv(key="CODEX_PRESENT", value=codex_present)
-    _emit_kv(key="CURSOR_PRESENT", value=cursor_present)
-    _emit_kv(key="CODEX_STATE", value=degraded.codex_state)
-    _emit_kv(key="CURSOR_STATE", value=degraded.cursor_state)
-    _emit_kv(key="DEGRADED", value=str(degraded.degraded).lower())
+    logging_util.emit_kv(key="LARCH_PLUGIN_VERSION", value=version)
+    logging_util.emit_kv(key="CODEX_BINARY_FOUND", value=codex_binary_found)
+    logging_util.emit_kv(key="CURSOR_BINARY_FOUND", value=cursor_binary_found)
+    logging_util.emit_kv(key="CODEX_PRESENT", value=codex_present)
+    logging_util.emit_kv(key="CURSOR_PRESENT", value=cursor_present)
+    logging_util.emit_kv(key="CODEX_STATE", value=degraded.codex_state)
+    logging_util.emit_kv(key="CURSOR_STATE", value=degraded.cursor_state)
+    logging_util.emit_kv(key="DEGRADED", value=str(degraded.degraded).lower())
     if degraded.codex_state == "probe-failed":
         gate_detail = reviewer_result.codex_gate_detail or _current_codex_gate_detail()
         if gate_detail is not None:
-            _emit_kv(key="CODEX_PROBE_DETAIL", value=gate_detail.message)
+            logging_util.emit_kv(key="CODEX_PROBE_DETAIL", value=gate_detail.message)
     return 0
