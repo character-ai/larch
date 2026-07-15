@@ -16,7 +16,7 @@ from larch.git import gh
 from larch.git import push
 from larch.git import rebase
 from larch.outcomes import Outcome
-from larch.report import run_logs
+from larch.report import run_log_flush, run_log_manifest
 from larch.implement.ship_state import _write_ship_state, _breadcrumb, _progress_note
 from larch.implement.ship_result import ShipResult
 from larch.implement.ship_pr import _write_terminal_state, _publish_post_pr_terminal_snapshot
@@ -168,10 +168,10 @@ def _ship_rebase_phase(
         transient_retries=transient_retries,
     )
     _breadcrumb(step="rebase", detail="Flush+Push")
-    pre_rebase: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner=runner, ctx=working.with_(state_file=None), cwd=cwd)
+    pre_rebase: run_log_manifest.RefreshSkip = run_log_flush.flush_logs_pre(runner=runner, ctx=working.with_(state_file=None), cwd=cwd)
     if (
         pre_rebase.skipped
-        and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
+        and pre_rebase.reason != run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
         and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
     ):
         _write_terminal_state(

@@ -27,7 +27,7 @@ from larch.issue import issue_query
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
-from larch.report import run_logs
+from larch.report import run_log_commit, run_log_manifest
 from larch.state import session_env
 from larch.issue import tracking_issue
 from larch.implement import scope_disposition
@@ -606,7 +606,7 @@ def _write_stalled_sentinel(
 
 
 def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:
-    run_id = run_logs.effective_run_id(ctx)
+    run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id or ctx.repo_unavailable:
         return True
     run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id
@@ -630,28 +630,28 @@ def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> 
     except OSError as exc:
         writer.emit(f"teardown log flush: execution-issues safety net failed: {exc}", quiet=False)
     try:
-        recovery = run_logs.load_or_recover_manifest_checked(ctx)
+        recovery = run_log_manifest.load_or_recover_manifest_checked(ctx)
     except (OSError, ShipError) as exc:
         writer.emit(f"teardown log flush: manifest recovery failed: {exc}", quiet=False)
-        recovery = run_logs.ManifestRecovery(
-            run_logs.Manifest(status=config.MANIFEST_STATUS_PARTIAL, version="1", run_id=run_id, steps_ran={}),
+        recovery = run_log_manifest.ManifestRecovery(
+            run_log_manifest.Manifest(status=config.MANIFEST_STATUS_PARTIAL, version="1", run_id=run_id, steps_ran={}),
             recovery_ok=False,
         )
     if recovery.recovery_ok and ctx.stall_tracking:
         try:
-            _ = run_logs.update_manifest(
+            _ = run_log_manifest.update_manifest(
                 ctx,
                 stalled_at_step=ctx.stall_step or "unknown",
             )
         except (OSError, ShipError) as exc:
             writer.emit(f"teardown log flush: stalled manifest update failed: {exc}", quiet=False)
-            recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
+            recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
     post_merge_sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if not ctx.no_logs_commit and not post_merge_sentinel.exists():
         branch = git.try_current_branch(runner, cwd=cwd) or ""
         if branch not in {"main", "master"}:
             try:
-                commit = run_logs.commit_larch_logs(
+                commit = run_log_commit.commit_larch_logs(
                     runner=runner,
                     ctx=ctx,
                     log_root=Path(ctx.tmpdir) / "larch-logs",
@@ -659,10 +659,10 @@ def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> 
                 )
                 if commit.returncode != 0:
                     writer.emit("teardown log flush: larch-log commit failed", quiet=False)
-                    recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
+                    recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
             except (OSError, ShipError) as exc:
                 writer.emit(f"teardown log flush: larch-log commit failed: {exc}", quiet=False)
-                recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
+                recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
     return recovery.recovery_ok
 
 
@@ -747,7 +747,7 @@ def teardown(
         )
     stash_ref = ""
     sentinel_written = False
-    teardown_run_id = run_logs.effective_run_id(ctx)
+    teardown_run_id = run_log_manifest.effective_run_id(ctx)
     if teardown_run_id:
         _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
         if not bgjob_registry.has_live_entry(repo_root=persisted_repo_root, run_id=teardown_run_id):

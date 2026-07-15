@@ -126,7 +126,7 @@ def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture
         "generate_code_flow_diagram",
         side_effect=fake_generate_code_flow_diagram,
     ), patch.object(
-        step_7a.run_logs,
+        step_7a.run_log_flush,
         "flush_logs_pre",
     ) as mock_flush, patch.object(
         step_7a,
@@ -158,17 +158,17 @@ def test_step7a_skips_run_log_commit_after_preterminal_refresh_skip(
 
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(
-        step_7a.run_logs,
+        step_7a.run_log_flush,
         "_render_token_timing_batches",
         lambda *_args, **_kwargs: None,  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
     monkeypatch.setattr(
-        step_7a.run_logs,
+        step_7a.run_log_flush,
         "_stage_vendor_failure_diagnostics",
         lambda *_args, **_kwargs: None,  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
     monkeypatch.setattr(
-        step_7a.run_logs,
+        step_7a.run_log_flush,
         "flush_logs_pre",
         lambda **_kwargs: RefreshSkip(  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             skipped=True,
@@ -426,10 +426,10 @@ def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.
         "_run_cli",
         side_effect=fake_run_cli,
     ), patch.object(step_7a.execution_issues, "flush_execution_issues", return_value=(0, "ok", 0, "")), patch.object(
-        step_7a.run_logs,
+        step_7a.run_log_flush,
         "_render_token_timing_batches",
     ), patch.object(
-        step_7a.run_logs,
+        step_7a.run_log_flush,
         "_stage_vendor_failure_diagnostics",
     ), patch.object(step_7a, "subprocess") as mock_subprocess:
         mock_subprocess.run.return_value.returncode = 0

@@ -3046,7 +3046,7 @@ def test_step5_complete_flush_warning_preserves_success(
     monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", fail_flush)
     if append_raises:
-        monkeypatch.setattr(review_and_fix.run_logs, "append_execution_issue", fail_append)
+        monkeypatch.setattr(review_and_fix.run_log_batch, "append_execution_issue", fail_append)
 
     rc = review_and_fix.step5([
         "--implement-tmpdir", str(impl),

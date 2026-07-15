@@ -14,8 +14,10 @@ import pytest
 
 from larch.core import config
 from larch.report import final_report
+from larch.report import run_log_commit
 from larch.report import run_log_flush
-from larch.report import run_logs
+from larch.report import run_log_batch
+from larch.report import run_log_manifest
 from larch.implement import ship
 from larch.implement import ship_guidelines
 from larch.implement import ship_pr
@@ -30,7 +32,7 @@ from test_support import RecordingRunner, make_run_context, ok
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
 
-_REAL_FLUSH_LOGS_PRE = run_logs.flush_logs_pre
+_REAL_FLUSH_LOGS_PRE = run_log_flush.flush_logs_pre
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +74,7 @@ def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_re
         merge_result="",
         branch_name=branch_name,
         repo=repo,
-        durable=run_logs.DurableFlags(
+        durable=run_log_manifest.DurableFlags(
             repo_unavailable=False,
             forked_target=False,
             forked=False,
@@ -208,7 +210,7 @@ def test_run_ship_destalls_before_first_pre_pr_flush(
         *,
         cwd: str | None = None,
         strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
+    ) -> run_log_manifest.RefreshSkip:
         _ = runner, cwd, strict_final_report
         assert ctx.state_file is None
         assert ctx.stall_tracking is False
@@ -218,7 +220,7 @@ def test_run_ship_destalls_before_first_pre_pr_flush(
         assert not (tmp_path / "finalize-state.sh").exists()
         raise _FlushProbe
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
 
     with pytest.raises(_FlushProbe):
         ship.run_ship(
@@ -263,13 +265,13 @@ def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None
         *,
         cwd: str | None = None,
         strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
+    ) -> run_log_manifest.RefreshSkip:
         _ = runner, ctx, cwd
         if strict_final_report:
-            return run_logs.RefreshSkip(skipped=False, reason="")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+            return run_log_manifest.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(
         ship.push,
         "push_branch",
@@ -297,13 +299,13 @@ def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeyp
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
-    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
-        return run_logs.RefreshSkip(skipped=True, reason="blocked")
+    def fake_flush_logs_pre(**_kw: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=True, reason="blocked")
 
     def fake_publish(*, runner: RecordingRunner, ctx: RunContext, cwd: str | None = None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         del cwd
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship, "_publish_post_pr_terminal_snapshot", fake_publish)
 
     result = ship._ship_rebase_phase(
@@ -333,8 +335,8 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
-    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
-        return run_logs.RefreshSkip(skipped=False, reason="")
+    def fake_flush_logs_pre(**_kw: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_rebase_and_push(
         *,
@@ -364,7 +366,7 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
         pin_calls.append(kwargs)
         return False
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "post-rebase-head")
     monkeypatch.setitem(
@@ -396,8 +398,8 @@ def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monke
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
-    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
-        return run_logs.RefreshSkip(skipped=False, reason="")
+    def fake_flush_logs_pre(**_kw: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_rebase_and_push(
         *,
@@ -430,7 +432,7 @@ def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monke
     def fail_invalidate(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("invalidate helper should not be called after a clean rebase")
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "post-rebase-head")
     monkeypatch.setitem(
@@ -522,8 +524,8 @@ def test_ship_rebase_phase_defers_guidelines_refresh_to_compose_gate(
     git("update-ref", "refs/remotes/origin/main", "HEAD")
     git("switch", "feature")
 
-    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
-        return run_logs.RefreshSkip(skipped=False, reason="")
+    def fake_flush_logs_pre(**_kw: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_rebase_and_push(
         *,
@@ -559,7 +561,7 @@ def test_ship_rebase_phase_defers_guidelines_refresh_to_compose_gate(
         assert cwd == repo_root
         return git("rev-parse", ref)
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
     monkeypatch.setattr(ship.git, "try_rev_parse", real_try_rev_parse)
 
@@ -1075,13 +1077,13 @@ def test_happy_path_stage_order(
         ctx: RunContext,
         cwd: str | None = None,
         strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
+    ) -> run_log_manifest.RefreshSkip:
         _ = runner
         order.append("flush-pre")
         flush_args.append((ctx.state_file, cwd, strict_final_report))
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(
         ship.push,
         "push_branch",
@@ -1119,17 +1121,17 @@ def test_happy_path_stage_order(
         lambda *_a, **_k: order.append("postmerge") or type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
     )
     monkeypatch.setattr(
-        ship.run_logs,
+        ship.run_log_flush,
         "flush_logs_post",
-        lambda *_a, **_k: order.append("flush-post") or run_logs.RefreshSkip(skipped=False, reason=""),
+        lambda *_a, **_k: order.append("flush-post") or run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
     monkeypatch.setattr(  # also patch the submodule binding used internally
         run_log_flush,
         "flush_logs_post",
-        lambda *_a, **_k: order.append("flush-post") or run_logs.RefreshSkip(skipped=False, reason=""),
+        lambda *_a, **_k: order.append("flush-post") or run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: order.append("comment"))
+    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: order.append("comment"))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: order.append("state"))
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
 
@@ -1173,14 +1175,14 @@ def test_straight_merge_post_ensure_committed_snapshot(
 ) -> None:
     _init_git_repo(tmp_path)
     monkeypatch.setattr(ship, "_guidelines_gate_before_pr", lambda **_k: ship_guidelines.GuidelinesGateResult())
-    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(run_log_flush, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
     ctx = _ctx(tmp_path)
-    _ = run_logs.init_run(ctx)
+    _ = run_log_manifest.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
 
     def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
@@ -1188,10 +1190,10 @@ def test_straight_merge_post_ensure_committed_snapshot(
         return {"cost_unavailable": True}
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
-    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)
     monkeypatch.setattr(
-        run_logs,
+        run_log_commit,
         "_commit_run",
         lambda *_a, **_k: ok(("git", "commit"), "a" * 40 + "\n"),
     )
@@ -1202,7 +1204,7 @@ def test_straight_merge_post_ensure_committed_snapshot(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -1242,14 +1244,14 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
 ) -> None:
     _init_git_repo(tmp_path)
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_k: ship_guidelines.GuidelinesGateResult(guidelines_status="absent"))
-    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(run_log_flush, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
     ctx = _ctx(tmp_path)
-    _ = run_logs.init_run(ctx)
+    _ = run_log_manifest.init_run(ctx)
     flush_calls: list[bool] = []
 
     def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
@@ -1257,10 +1259,10 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
         return {"cost_unavailable": True}
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
-    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)
     monkeypatch.setattr(
-        run_logs,
+        run_log_commit,
         "_commit_run",
         lambda *_a, **_k: ok(("git", "commit"), "a" * 40 + "\n"),
     )
@@ -1273,12 +1275,12 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
         ctx: RunContext,
         cwd: str | None = None,
         strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
+    ) -> run_log_manifest.RefreshSkip:
         flush_calls.append(strict_final_report)
         return real_flush(runner=runner, ctx=ctx, cwd=cwd, strict_final_report=strict_final_report)
 
-    monkeypatch.setattr(run_logs, "flush_logs_pre", capturing_flush)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", capturing_flush)
+    monkeypatch.setattr(run_log_flush, "flush_logs_pre", capturing_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", capturing_flush)
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
@@ -1286,7 +1288,7 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -1314,11 +1316,11 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
         lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
     )
     monkeypatch.setattr(
-        ship.run_logs,
+        ship.run_log_flush,
         "flush_logs_post",
-        lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""),
+        lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
-    monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
+    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(
@@ -1354,7 +1356,7 @@ def test_merge_review_required_exits_as_needs_user_input(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -1388,8 +1390,8 @@ def _prepare_recovered_stalled_log(
     draft: bool = False,
 ) -> Path:
     _init_git_repo(tmp_path)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(run_log_flush, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
@@ -1404,7 +1406,7 @@ def _prepare_recovered_stalled_log(
         encoding="utf-8",
     )
     ctx = _ctx(tmp_path, state_file=str(state_file))
-    _ = run_logs.init_run(ctx)
+    _ = run_log_manifest.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _ = (run_dir / "final-summary.md").write_text(
         "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n",
@@ -1672,25 +1674,25 @@ def test_post_ensure_fresh_run_is_push_only_no_reflush(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
     monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})())
-    monkeypatch.setattr(ship.run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_post", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
 
     def fake_flush(
         *_a: object,
         strict_final_report: bool = False,
         **_k: object,
-    ) -> run_logs.RefreshSkip:
+    ) -> run_log_manifest.RefreshSkip:
         nonlocal strict_flush_called
         if strict_final_report:
             # If post-ensure still re-flushed, this critical skip would stall the
             # run before the monitor (the old issue #5186 / #5217 behavior).
             strict_flush_called = True
-            return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
-        return run_logs.RefreshSkip(skipped=False, reason="")
+            return run_log_manifest.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_monitor(*_a: object, **_k: object) -> object:
         nonlocal monitor_called
@@ -1707,7 +1709,7 @@ def test_post_ensure_fresh_run_is_push_only_no_reflush(
             },
         )()
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
 
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -1730,9 +1732,9 @@ def test_post_ensure_push_failure_stalls_before_monitor(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(
         ship.push,
         "push_branch",
@@ -1765,7 +1767,7 @@ def test_merge_loop_iteration_cap_stalls(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.ci_monitor,
@@ -1827,7 +1829,7 @@ DRAFT=false
         raise AssertionError("fresh-only phase must not run on open-pr resume")
 
     monkeypatch.setattr(ship.finalize, "postbump", forbidden)
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", forbidden)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", forbidden)
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
@@ -1889,9 +1891,9 @@ def _no_checks_loop_stubs(
     snapshot_calls: list[bool],
 ) -> None:
     """Wire an open-pr resume that bails from the monitor with ``detail``."""
-    def recording_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def recording_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         flush_calls.append(True)
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def recording_push(*_args: object, **_kwargs: object) -> ship.push.PushResult:
         push_calls.append(True)
@@ -1911,7 +1913,7 @@ def _no_checks_loop_stubs(
         lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
     )
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", recording_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", recording_flush)
     monkeypatch.setattr(ship.push, "push_branch", recording_push)
     # Force a bounded empty-checks grace so a NO_CHECKS bail classifies as the
     # recoverable stall the loop fix targets, independent of git head routing.
@@ -2492,7 +2494,7 @@ def test_stale_merged_flags_with_open_pr_resume_open_path(
             },
         )(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("fresh report forbidden")))
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("fresh report forbidden")))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -2701,7 +2703,7 @@ def test_pre_push_conflict_handoff_persists_resume_tokens(
             },
         )(),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
 
     def fake_rebase(*_args: object, **_kwargs: object) -> object:
         raise PrePushConflictHandoff(
@@ -2736,7 +2738,7 @@ def _open_pr_merge_loop_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
 
 
 def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
@@ -3686,7 +3688,7 @@ def test_fresh_fallback_hydrates_modes_and_preserves_counters(
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.gh, "pr_view", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("gh down")))
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.STALLED, "status": "stalled", "detail": "postbump failed"})())
 
     result = ship.run_ship(
@@ -3738,9 +3740,9 @@ def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPa
     def fake_live_recovered_outcome(_ctx: RunContext) -> str:
         return "merged"
 
-    def fake_flush_logs_pre(**kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush_logs_pre(**kwargs: object) -> run_log_manifest.RefreshSkip:
         flush_calls.append(bool(kwargs.get("strict_final_report")))
-        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
+        return run_log_manifest.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
 
     monkeypatch.setattr(
         ship_pr,
@@ -3748,7 +3750,7 @@ def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPa
         fake_committed_summary_heading_is_stalled,
     )
     monkeypatch.setattr(ship_pr, "_live_recovered_outcome", fake_live_recovered_outcome)
-    monkeypatch.setattr(ship_pr.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship_pr.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     return flush_calls
 
 
@@ -4581,8 +4583,8 @@ def test_ci_fix_rebase_pending_survives_head_mismatch(
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "u", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "newhead")
@@ -4640,9 +4642,9 @@ def test_postmerge_sentinel_written_before_finalize_postmerge(
     monkeypatch.setattr(ship.finalize, "postmerge", observe_postmerge)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(
-        ship.run_logs,
+        ship.run_log_flush,
         "finalize_postmerge_logs",
-        lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""),
+        lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
     result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert result.outcome is Outcome.OK
@@ -5327,9 +5329,9 @@ def test_postmerge_flush_only_when_pr_closed(
     )
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(
-        ship.run_logs,
+        ship.run_log_flush,
         "finalize_postmerge_logs",
-        lambda *_a, **_k: calls.append(True) or run_logs.RefreshSkip(skipped=False, reason=""),
+        lambda *_a, **_k: calls.append(True) or run_log_manifest.RefreshSkip(skipped=False, reason=""),
     )
     result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert result.outcome is Outcome.STALLED
@@ -6176,10 +6178,10 @@ def test_postmerge_flush_skip_still_completes_ok(
         lambda *_a, **_k: type("Post", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
     )
     monkeypatch.setattr(
-        ship.run_logs,
+        ship.run_log_flush,
         "finalize_postmerge_logs",
         lambda *_a, **_k: flush_calls.append(True)
-        or run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
+        or run_log_manifest.RefreshSkip(skipped=True, reason="commit-failed"),
     )
 
     result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
@@ -6208,7 +6210,7 @@ def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch
         "postbump",
         lambda *_a, **_k: type("R", (), {"outcome": Outcome.STALLED, "status": "rebase-failed", "detail": "conflict"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
@@ -6247,7 +6249,7 @@ def test_postbump_conflict_routes_to_pre_push_handoff(
         )(),
     )
     monkeypatch.setattr(
-        ship.run_logs,
+        ship.run_log_flush,
         "flush_logs_pre",
         lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})(),
     )
@@ -6285,12 +6287,12 @@ def test_pre_rebase_flush_commit_failed_fails_closed(
     state_file = tmp_path / "ship-pr-state.sh"
     seen = {"monitored": False}
 
-    def fake_flush(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_a: object, **_k: object) -> run_log_manifest.RefreshSkip:
         # Clean until the merge loop hands control to the rebase branch; the
         # pre-rebase flush is the only one that must surface commit-failed here.
         if seen["monitored"]:
-            return run_logs.RefreshSkip(skipped=True, reason="commit-failed")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+            return run_log_manifest.RefreshSkip(skipped=True, reason="commit-failed")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_monitor(*_a: object, **_k: object) -> object:
         seen["monitored"] = True
@@ -6311,14 +6313,14 @@ def test_pre_rebase_flush_commit_failed_fails_closed(
 
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
         ship.pr,
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fail_rebase)
@@ -6359,7 +6361,7 @@ def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.Monke
 
 def _patch_fresh_path_pre_pr_create(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
 
 
@@ -7376,10 +7378,10 @@ def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
         "postmerge",
         lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(ship.run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_post", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_manifest, "load_or_recover_manifest", lambda *_a, **_k: object())
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
@@ -7488,8 +7490,8 @@ def test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body(
 
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", fake_postbump)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -7636,8 +7638,8 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
 
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", fake_postbump)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -7677,9 +7679,9 @@ def test_guidelines_pin_warning_flushes_before_pr_body(
         order.append("gate")
         return ship.GuidelinesGateResult(note="Guidelines warning", warning_logged=True)
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_compose(**_kwargs: object) -> str:
         order.append("compose")
@@ -7690,7 +7692,7 @@ def test_guidelines_pin_warning_flushes_before_pr_body(
         return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
 
@@ -7712,12 +7714,12 @@ def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
     def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
         return ship.GuidelinesGateResult(note="Guidelines warning", warning_logged=True)
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         nonlocal flush_calls
         flush_calls += 1
         if flush_calls == 1:
-            return run_logs.RefreshSkip(skipped=False, reason="")
-        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
+            return run_log_manifest.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
 
     def fake_ensure(*_args: object, **_kwargs: object) -> object:
         nonlocal ensure_calls
@@ -7725,7 +7727,7 @@ def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
         return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
 
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -7748,16 +7750,16 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
         order.append("gate")
         return ship.GuidelinesGateResult(note="Guidelines warning", warning_logged=True)
 
-    def fake_flush(**_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(**_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_compose(**_kwargs: object) -> str:
         order.append("compose")
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     if merge:
         monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"))
@@ -7782,9 +7784,9 @@ def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcom
         order.append("gate")
         return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
+        return run_log_manifest.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
@@ -7792,7 +7794,7 @@ def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcom
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship, "_committed_outcome_matches", lambda **_kwargs: True)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
 
@@ -7816,9 +7818,9 @@ def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcom
         order.append("gate")
         return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
+        return run_log_manifest.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
@@ -7831,7 +7833,7 @@ def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcom
         return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship, "_committed_outcome_matches", lambda **_kwargs: False)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
@@ -7852,10 +7854,10 @@ def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
-        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", lambda *_a, **_k: ("Guidelines dropped", True))
     ensure_calls = 0
 
@@ -7886,7 +7888,7 @@ def _prepare_open_pr_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     )
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     return state_file
 
@@ -7903,7 +7905,7 @@ def test_open_pr_resume_guidelines_gate_write_failure_stalls_before_ensure_pr(
         lambda **_kwargs: ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present"),
     )
     monkeypatch.setattr(ship, "write_guideline_ship_outcome", lambda **_kwargs: (_ for _ in ()).throw(OSError("boom")))
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
 
     result = ship.run_ship(
@@ -7929,7 +7931,7 @@ def test_open_pr_resume_blank_head_sha_stalls_before_ensure_pr(
         "load_or_prepare_guidelines_note",
         lambda **_kwargs: ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present"),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
 
     result = ship.run_ship(
@@ -7958,16 +7960,16 @@ def test_open_pr_resume_clears_stale_guideline_outcome_sidecar_before_gate(
         assert not stale.exists()
         return ship.GuidelinesGateResult(note="- G-Py-1: deviation warning", guidelines_status="present")
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_compose(**_kwargs: object) -> str:
         order.append("compose")
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(
         ship.pr,
@@ -8000,7 +8002,7 @@ def test_open_pr_resume_guidelines_gate_needs_assessment_skips_flush_and_ensure_
             detail="architectural-guidelines assessment required before PR body compose",
         ),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
 
     result = ship.run_ship(
@@ -8031,12 +8033,12 @@ def test_open_pr_resume_guidelines_gate_dropped_outcome_stalls_before_compose_an
             reason=ship_guidelines.REASON_COMPOSE_MATERIALIZATION_FAILED,
         )
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("compose_pr_body must not run")))
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
 
@@ -8069,7 +8071,7 @@ def test_open_pr_resume_no_logs_commit_keeps_guideline_outcome_sidecar_and_skips
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(
         ship.pr,
@@ -8101,9 +8103,9 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
         order.append("gate")
         return ship.GuidelinesGateResult(note="Resume note")
 
-    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         order.append("flush")
-        return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
@@ -8113,7 +8115,7 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship, "write_guideline_ship_outcome", lambda **_kw: None)
     monkeypatch.setattr(ship, "_clear_ship_outcome_sidecar", lambda **_kw: None)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(
         ship.pr,
@@ -8197,8 +8199,8 @@ def test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note(
         "pr_view",
         lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feature"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     assert ship.architectural_guidelines.note_fingerprint_stale(tmp_path, base_ref="origin/main", repo_root=repo)
     stale_gate = ship.GuidelinesGateResult(
@@ -8339,7 +8341,7 @@ def test_guidelines_warning_append_failure_warns_stderr(
         raise OSError("append failed")
 
     monkeypatch.setattr(ship.pr_body, "redact_pr_body", fail_redact)
-    monkeypatch.setattr(ship.run_logs, "append_execution_issue", fail_append)
+    monkeypatch.setattr(run_log_batch, "append_execution_issue", fail_append)
 
     note, warning_logged = ship._pin_and_load_guidelines_note(
         implement_tmpdir=str(tmp_path),

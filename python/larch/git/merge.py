@@ -17,7 +17,7 @@ from larch.git import gh
 from larch.git import git
 from larch.core import logging_util
 from larch.core import redact
-from larch.report import run_logs
+from larch.report import run_log_flush, run_log_manifest
 from larch.errors import ShipError
 from larch.core.proc import Runner
 from larch.core.retry import with_transient_retry
@@ -167,7 +167,7 @@ def _post_flush(
     merge_result: str,
 ) -> MergeResult | None:
     try:
-        skip = run_logs.flush_logs_post(
+        skip = run_log_flush.flush_logs_post(
             ctx,
             merge_result=merge_result,
             runner=runner,
@@ -182,7 +182,7 @@ def _post_flush(
             result=config.MERGE_RESULT_ERROR,
             error="redaction failed during post-merge run-log flush",
         )
-    if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
+    if skip.skipped and skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED:
         return MergeResult(
             result=config.MERGE_RESULT_ERROR,
             error=f"post-merge run-log flush skipped: {skip.reason}",
@@ -213,7 +213,7 @@ def _merge_noop_if_pr_closed(
             ),
         )
     if pr.state == "MERGED" or pr.merged_at:
-        merge_result = run_logs.read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
+        merge_result = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
         if merge_result == config.MERGE_RESULT_ADMIN_MERGED:
             outcome = MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
         elif merge_result == config.MERGE_RESULT_MERGED:

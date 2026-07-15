@@ -20,7 +20,7 @@ from larch.core import redact
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.errors import ShipError
 from larch.git import pr_body
-from larch.report import run_logs
+from larch.report import run_log_batch
 
 OUTCOME_PINNED = GUIDELINES.non_clean_ship_outcome
 OUTCOME_CLEAN = config.ASSESSMENT_OUTCOME_CLEAN
@@ -320,7 +320,7 @@ write_invariant_ship_outcome = _exported_ship_writer(INVARIANTS, InvariantsShipO
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> bool:
     issue_log = implement_tmpdir / "execution-issues.md"
     try:
-        run_logs.append_execution_issue(log_file=issue_log, category="Warnings", entry=message)
+        run_log_batch.append_execution_issue(log_file=issue_log, category="Warnings", entry=message)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         detail = logging_util.sanitize_diagnostic_line(str(exc))
         logging_util.BreadcrumbWriter().emit(

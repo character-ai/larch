@@ -264,7 +264,7 @@ def test_cap_rollup_fallback_exact_candidate_match(tmp_path: Path) -> None:
         }) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     scored = [row for row in rows if not row.get("bucket")]
     assert len(scored) == 2
     assert {row["reviewer"] for row in scored} == {"codex", "cursor"}
@@ -288,7 +288,7 @@ def test_single_url_scores_one_row_not_fan_out(tmp_path: Path) -> None:
         }) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     scored = [row for row in rows if not row.get("bucket")]
     assert len(scored) == 1
     assert scored[0]["reviewer"] == "codex"
@@ -466,12 +466,12 @@ def test_legacy_stable_id_extraction_ignores_pre_filed_tokens() -> None:
         "Finding mentions OOS_5 and #4683 in prose.\n"
         "- **Filed URL**: https://github.com/o/r/issues/42\n"
     )
-    assert analyze_issues._extract_legacy_stable_ids_from_ndjson_body(body) == []
+    assert _oos._extract_legacy_stable_ids_from_ndjson_body(body) == []
 
 
 def test_legacy_stable_id_extraction_keeps_pre_filed_token_on_same_line() -> None:
     body = "FINDING_1 ... Filed as https://github.com/o/r/issues/10"
-    assert analyze_issues._extract_legacy_stable_ids_from_ndjson_body(body) == ["FINDING_1"]
+    assert _oos._extract_legacy_stable_ids_from_ndjson_body(body) == ["FINDING_1"]
 
 
 def test_main_agent_stable_id_joins_review_block(tmp_path: Path) -> None:
@@ -485,7 +485,7 @@ def test_main_agent_stable_id_joins_review_block(tmp_path: Path) -> None:
         json.dumps({"body": "- **Stable ID**: oos-accepted-main-agent:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/10"}) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     assert rows[0]["reviewer"] == "codex"
 
 
@@ -508,7 +508,7 @@ def test_cap_rollup_shortfall_keeps_resolved_members(tmp_path: Path) -> None:
         }) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     scored = [row for row in rows if not row.get("bucket")]
     assert len(scored) == 1
     assert scored[0]["reviewer"] == "codex"
@@ -540,7 +540,7 @@ def test_cap_rollup_exceeds_expected_returns_ambiguous(tmp_path: Path) -> None:
         }) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     assert len(rows) == 1
     assert rows[0]["bucket"] == "ambiguous rollup expansion"
 
@@ -568,7 +568,7 @@ def test_cap_rollup_ambiguous_stable_id_emits_bucket_without_scoring_siblings(tm
         }) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     assert any(row.get("bucket") == "ambiguous stable id" for row in rows)
     assert not any(row.get("reviewer") == "cursor" for row in rows if not row.get("bucket"))
 
@@ -589,7 +589,7 @@ def test_incidental_aggregated_rollup_prose_falls_back_to_normal_join(tmp_path: 
         }) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     assert len(rows) == 1
     assert rows[0].get("bucket") is None
     assert rows[0]["reviewer"] == "unknown"
@@ -609,7 +609,7 @@ def test_extract_filed_issue_number_supports_legacy_url_shapes() -> None:
     assert analyze_issues.extract_filed_issue_number_from_text(
         "**Filed**: https://github.com/o/r/issues/42"
     ) == 42
-    assert analyze_issues._record_issue_urls({
+    assert _oos._record_issue_urls({
         "body": "FINDING_1 ... Filed as https://github.com/o/r/issues/99",
     }) == ["https://github.com/o/r/issues/99"]
 
@@ -630,7 +630,7 @@ def test_stable_id_collision_marks_ambiguous(tmp_path: Path) -> None:
         json.dumps({"body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/10"}) + "\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._join_implement_run_records(run)
+    rows = _oos._join_implement_run_records(run)
     assert len(rows) == 1
     assert rows[0]["bucket"] == "ambiguous stable id"
 
@@ -638,7 +638,7 @@ def test_stable_id_collision_marks_ambiguous(tmp_path: Path) -> None:
 def test_merged_issue_index_clears_degraded_state_reason_from_sidecar() -> None:
     issues = [{"number": 1, "title": "t", "state": "CLOSED", "_larch_degraded_fields": ["stateReason"]}]
     details = {1: {"stateReason": "NOT_PLANNED"}}
-    index = analyze_issues._merged_issue_index(issues=issues, filed_issue_details=details)
+    index = _oos._merged_issue_index(issues=issues, filed_issue_details=details)
     assert "stateReason" not in (index[1].get("_larch_degraded_fields") or [])
     fate = analyze_issues.classify_oos_issue_fate(index[1])
     assert fate["bucket"] == "docked closed-unfixed"
@@ -652,7 +652,7 @@ def test_design_oos_bare_url_recovery_requires_filed_shapes(tmp_path: Path) -> N
         "- **Filed URL**: https://github.com/o/r/issues/42\n",
         encoding="utf-8",
     )
-    rows = analyze_issues._parse_oos_issues_created(run / "oos-issues-created.md", accepted_design_path=None)
+    rows = _oos._parse_oos_issues_created(run / "oos-issues-created.md", accepted_design_path=None)
     assert len(rows) == 1
     assert rows[0]["issue_number"] == 42
 
@@ -1145,7 +1145,7 @@ def test_ground_truth_issue_candidates_are_not_truncated_after_ranking(tmp_path:
         category="Bug fix",
     )
     issue_evidence.append(target)
-    candidates = analyze_issues._candidate_evidence_for_row(
+    candidates = gt._candidate_evidence_for_row(
         row,
         issue_evidence=issue_evidence,
         accepted_evidence=[],
@@ -1674,7 +1674,7 @@ def test_ground_truth_calibration_incentive_ignores_fetch_failed_stub_when_bulk_
         )
 
     monkeypatch.setattr(_oos.gh, "issue_view_field_read", fake_view)
-    shipped, reason = analyze_issues._ground_truth_calibration_incentive_shipped(
+    shipped, reason = _oos._ground_truth_calibration_incentive_shipped(
         issues=[],
         filed_issue_details=filed_issue_details,
         repo="o/r",
@@ -1779,7 +1779,7 @@ def test_cap_rollup_ambiguous_run_dir_key_is_root_relative_for_colliding_basenam
     log_root = tmp_path / "larch-logs"
     for rel in ("implement/run-1", "design/run-1"):
         run = _write_cap_rollup_ambiguous_fixture(log_root, rel)
-        rows = analyze_issues._join_implement_run_records(run, log_root=log_root)
+        rows = _oos._join_implement_run_records(run, log_root=log_root)
         assert rows
         assert {row.get("run_dir_key") for row in rows} == {rel}
 
@@ -1929,7 +1929,7 @@ def test_ground_truth_verdict_gc_slimmed_run_excluded_from_qualifying_runs(tmp_p
 
 
 def test_ground_truth_verdict_cache_stores_filtered_rows_only(tmp_path: Path) -> None:
-    analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
+    gt._GROUND_TRUTH_ROW_CACHE.clear()
     log_root = tmp_path / "logs"
     _write_verdict_code_run(log_root, "implement/pre", started_at="2026-06-25T23:59:59Z")
     _write_verdict_code_run(log_root, "implement/post", started_at="2026-06-26T00:00:00Z")
@@ -1944,7 +1944,7 @@ def test_ground_truth_verdict_cache_stores_filtered_rows_only(tmp_path: Path) ->
         min_larch_version="52.1.0",
         min_runs=1,
     )
-    cached_rows, cached_stats = analyze_issues._GROUND_TRUTH_ROW_CACHE[cache_key]
+    cached_rows, cached_stats = gt._GROUND_TRUTH_ROW_CACHE[cache_key]
     assert len(cached_rows) == 1
     assert cached_rows[0].run_dir_key == "implement/post"
     assert cached_stats.qualifying_runs == 1
@@ -2036,8 +2036,8 @@ def test_ground_truth_severity_slice_renders_decisive_yes_rows_and_missing_count
 
 
 def test_ground_truth_same_key_cache_reuse_does_not_double_outcome_counters(tmp_path: Path) -> None:
-    analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
-    analyze_issues._GROUND_TRUTH_FILED_CACHE.clear()
+    gt._GROUND_TRUTH_ROW_CACHE.clear()
+    gt._GROUND_TRUTH_FILED_CACHE.clear()
     log_root = tmp_path / "logs"
     _write_verdict_code_run(log_root, "implement/run-1")
     since = analyze_issues._parse_ground_truth_since_date("2026-06-26")
@@ -2064,8 +2064,8 @@ def test_ground_truth_same_key_cache_reuse_does_not_double_outcome_counters(tmp_
 
 
 def test_ground_truth_cache_does_not_leak_across_filter_keys(tmp_path: Path) -> None:
-    analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
-    analyze_issues._GROUND_TRUTH_FILED_CACHE.clear()
+    gt._GROUND_TRUTH_ROW_CACHE.clear()
+    gt._GROUND_TRUTH_FILED_CACHE.clear()
     log_root = tmp_path / "logs"
     _write_verdict_code_run(log_root, "implement/run-1")
     since = analyze_issues._parse_ground_truth_since_date("2026-06-26")
@@ -2121,7 +2121,7 @@ def test_ground_truth_run_dir_key_returns_none_when_not_under_log_root(tmp_path:
     log_root = tmp_path / "larch-logs"
     outside = tmp_path / "outside-run"
     outside.mkdir()
-    assert analyze_issues._ground_truth_run_dir_key(outside, log_root=log_root) is None
+    assert gt._ground_truth_run_dir_key(outside, log_root=log_root) is None
 
 
 def test_high_risk_oos_backlog_filters_and_sorts_oldest_first() -> None:

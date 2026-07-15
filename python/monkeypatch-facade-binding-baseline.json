@@ -2808,303 +2808,6 @@
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_continues_when_flush_skips_missing_state",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_does_not_call_pre_flush_on_clean_green_path",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_does_not_call_pre_flush_on_clean_green_path",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_flush_recovery_oid_poll_exhaustion_errors",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_flush_recovery_polls_lagged_pr_head_oid",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_flush_recovery_success_emits_admin_merged",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_noop_defaults_to_merged_when_state_unknown",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_noop_runs_post_flush_on_first_probe",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_post_flush_false_skips_internal_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_post_flush_manifest_recovery_failed_emits_error",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_post_recovery_ci_pending",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_ci_not_ready_even_when_review_required",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_conflict_signal_after_admin_failed_advances_main",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_emits_admin_failed",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_emits_admin_merged",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_emits_ci_not_ready",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_emits_merged_via_plain_fallback",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_emits_policy_denied",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_not_mergeable_review_only_requires_review",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_review_required_after_admin_failed",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_review_required_no_admin_fallback",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_pr_runs_version_race_gate_before_admin_merge",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_retries_unknown_then_succeeds",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_skips_pre_flush_and_runs_post_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_skips_pre_flush_and_runs_post_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_merge_unknown_exhaustion_errors",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_policy_denied_with_conflict_signal_routes_to_main_advanced",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_post_flush_redaction_failed_still_errors",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_post_flush_redaction_skip_is_merge_error",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge.py",
-    "qualified_symbol": "test_post_flush_warns_on_degraded_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge_bash_parity.py",
-    "qualified_symbol": "test_flush_recovery_cap_emits_error",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge_bash_parity.py",
-    "qualified_symbol": "test_flush_recovery_mixed_emits_error",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_merge_bash_parity.py",
-    "qualified_symbol": "test_flush_recovery_non_log_paths_emits_error",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
     "file": "tests/git/test_pr.py",
     "qualified_symbol": "test_body_update_main_scope_disposition_refusal_no_edit",
     "facade_module": "larch.git.pr",
@@ -3362,33 +3065,6 @@
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_commit_run",
     "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ci_monitor.py",
-    "qualified_symbol": "test_stage_and_push_warning_refresh_no_logs_commit_allows_push",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ci_monitor.py",
-    "qualified_symbol": "test_stage_and_push_warning_refresh_skip_blocks_push",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ci_monitor.py",
-    "qualified_symbol": "test_stage_and_push_warning_refreshes_before_normal_push",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
@@ -6373,24 +6049,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_default_post_ensure_flush_and_push",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_force_recovered_reconciliation_post_merge_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "_no_checks_loop_stubs",
     "facade_module": "larch.implement.ship",
     "attribute": "_empty_checks_params_for_monitor",
@@ -6409,101 +6067,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_no_checks_loop_stubs",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 7,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_open_pr_merge_loop_stubs",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_patch_fresh_path_pre_pr_create",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_prepare_open_pr_resume",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "_prepare_recovered_stalled_log",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_commit_run",
     "defining_module": "larch.report.run_log_commit",
     "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_prepare_recovered_stalled_log",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_prepare_recovered_stalled_log",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_stub_happy_ship_mocks",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 8,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_stub_happy_ship_mocks",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 7,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_stub_happy_ship_mocks",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "load_or_recover_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 9,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "_stub_happy_ship_mocks",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 10,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -6553,24 +6121,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_ci_fix_rebase_pending_survives_head_mismatch",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_ci_fix_rebase_pending_survives_head_mismatch",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_emergency_repair_resume_green_without_repair_branch_finalizes_postmerge",
     "facade_module": "larch.implement.ship",
     "attribute": "run_postmerge_phase",
@@ -6607,15 +6157,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_fresh_fallback_hydrates_modes_and_preserves_counters",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_fresh_ship_passes_compose_guidelines_note_to_pr_body",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
@@ -6634,15 +6175,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_pin_warning_flushes_before_pr_body",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_guidelines_pin_warning_refresh_skip_stalls_before_pr",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
@@ -6652,38 +6184,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_pin_warning_refresh_skip_stalls_before_pr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_warning_append_failure_warns_stderr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "append_execution_issue",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_guidelines_warning_no_logs_commit_does_not_stall_before_pr",
     "facade_module": "larch.implement.ship",
     "attribute": "_pin_and_load_guidelines_note",
     "defining_module": "larch.implement.ship_guidelines",
     "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_warning_no_logs_commit_does_not_stall_before_pr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -6715,15 +6220,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_warning_real_flush_commits_before_pr_create",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcome",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
@@ -6733,65 +6229,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcome",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcome",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
     "defining_module": "larch.implement.ship_guidelines",
     "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcome",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_happy_path_stage_order",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 9,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_happy_path_stage_order",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_happy_path_stage_order",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "load_or_recover_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 11,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_happy_path_stage_order",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 12,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -6832,29 +6274,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_merge_loop_iteration_cap_stalls",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_merge_retry_results_consume_iteration_budget",
     "facade_module": "larch.implement.ship",
     "attribute": "run_postmerge_phase",
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 7,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_merge_review_required_exits_as_needs_user_input",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -6922,29 +6346,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_blank_head_sha_stalls_before_ensure_pr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_open_pr_resume_clears_stale_guideline_outcome_sidecar_before_gate",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
     "defining_module": "larch.implement.ship_guidelines",
     "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_clears_stale_guideline_outcome_sidecar_before_gate",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -6958,29 +6364,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_guidelines_gate_dropped_outcome_stalls_before_compose_and_ensure_pr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_open_pr_resume_guidelines_gate_needs_assessment_skips_flush_and_ensure_pr",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
     "defining_module": "larch.implement.ship_guidelines",
     "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_guidelines_gate_needs_assessment_skips_flush_and_ensure_pr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7003,15 +6391,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_guidelines_gate_write_failure_stalls_before_ensure_pr",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_open_pr_resume_no_logs_commit_keeps_guideline_outcome_sidecar_and_skips_flush",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
@@ -7021,47 +6400,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_no_logs_commit_keeps_guideline_outcome_sidecar_and_skips_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
     "defining_module": "larch.implement.ship_guidelines",
     "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_restores_counters_and_validated_branch",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7093,74 +6436,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_open_pr_resume_runs_guidelines_gate_before_compose",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_open_pr_resume_wrong_head_routes_through_fresh_checks",
     "facade_module": "larch.implement.ship",
     "attribute": "run_postmerge_phase",
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 7,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_post_ensure_fresh_run_is_push_only_no_reflush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 8,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_post_ensure_fresh_run_is_push_only_no_reflush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 10,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_post_ensure_fresh_run_is_push_only_no_reflush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "load_or_recover_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 9,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_post_ensure_fresh_run_is_push_only_no_reflush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_post_ensure_push_failure_stalls_before_monitor",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_post_ensure_push_failure_stalls_before_monitor",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7174,83 +6454,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_postbump_conflict_routes_to_pre_push_handoff",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_postbump_stall_writes_terminal_finalize",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_postmerge_flush_only_when_pr_closed",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "finalize_postmerge_logs",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_postmerge_flush_skip_still_completes_ok",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "finalize_postmerge_logs",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_postmerge_sentinel_written_before_finalize_postmerge",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "finalize_postmerge_logs",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_pre_push_conflict_handoff_persists_resume_tokens",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_pre_rebase_flush_commit_failed_fails_closed",
     "facade_module": "larch.implement.ship",
     "attribute": "_publish_post_pr_terminal_snapshot",
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 10,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_pre_rebase_flush_commit_failed_fails_closed",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_pre_rebase_flush_commit_failed_fails_closed",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7282,15 +6490,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_run_ship_destalls_before_first_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_run_ship_merge_loop_rebase_refreshes_guidelines_gate",
     "facade_module": "larch.implement.ship",
     "attribute": "_post_ensure_flush_and_push",
@@ -7309,47 +6508,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_run_ship_merge_loop_rebase_refreshes_guidelines_gate",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_run_ship_merge_loop_rebase_refreshes_guidelines_gate",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body",
     "facade_module": "larch.implement.ship",
     "attribute": "reconcile_committed_stalled_summary_if_recovered",
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7417,56 +6580,11 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_ship_rebase_phase_defers_guidelines_refresh_to_compose_gate",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_ship_rebase_phase_rebased_retains_guidelines_note",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_ship_rebase_phase_stall_returns_terminal_result",
     "facade_module": "larch.implement.ship",
     "attribute": "_publish_post_pr_terminal_snapshot",
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_ship_rebase_phase_stall_returns_terminal_result",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_ship_rebase_phase_success_increments_rebase_count",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_stale_merged_flags_with_open_pr_resume_open_path",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 7,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7480,183 +6598,12 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 7,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_post",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 18,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 8,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 9,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "load_or_recover_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 19,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_green_ci_single_pre_pr_flush",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 13,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_post_ensure_committed_snapshot",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 7,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_post_ensure_committed_snapshot",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_post_ensure_committed_snapshot",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_post_ensure_committed_snapshot",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_post_ensure_committed_snapshot",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_straight_merge_post_ensure_committed_snapshot",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "write_final_report_comment",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 11,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_transient_rerun_monitor_result_does_not_consume_iteration",
     "facade_module": "larch.implement.ship",
     "attribute": "run_postmerge_phase",
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 7,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_step_7a.py",
-    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_refresh_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_token_timing_batches",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
-  },
-  {
-    "file": "tests/implement/test_step_7a.py",
-    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_refresh_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_stage_vendor_failure_diagnostics",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
-  },
-  {
-    "file": "tests/implement/test_step_7a.py",
-    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_refresh_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "flush_logs_pre",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
   },
   {
     "file": "tests/issue/test_analyze_issues.py",
@@ -8479,15 +7426,6 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "_ledger_report_fixture",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_batch",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_capture_transcript_main_refuses_preterminal_stalled_summary",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_commit_run",
@@ -8515,42 +7453,6 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_commit_run_reports_copy_tree_scrub_count",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_scrub_run_tree",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_scrub_run_tree",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_commit_run_warns_when_breadcrumb_publish_returns_nonzero",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_copy_tree_to_repo",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_commit_run_warns_when_breadcrumb_publish_returns_nonzero",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "publish_breadcrumbs_main",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_commit_run_warns_when_manifest_update_fails",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_update_manifest_v2",
@@ -8560,56 +7462,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_commit_run_warns_when_manifest_update_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_copy_tree_to_repo",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_commit_run_warns_when_manifest_update_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_update_manifest_v2",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_copytree_rejects_symlinks_escaping_run_dir",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_post_does_not_write_done_manifest_before_reports",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_final_report",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_flush_logs_post_manifest_write_oserror_returns_recovery_skip",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_write_manifest",
     "defining_module": "larch.report.run_log_manifest",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_post_manifest_write_oserror_returns_recovery_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -8632,74 +7489,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_final_report",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_flush_logs_pre_happy_path_commits",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_commit_run",
     "defining_module": "larch.report.run_log_commit",
     "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_happy_path_commits",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_happy_path_commits",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_final_report",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_happy_path_commits",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -8713,47 +7507,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_multi_flush_shipping_then_pr_created",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_multi_flush_shipping_then_pr_created",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_multi_flush_shipping_then_pr_created",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_flush_logs_pre_reports_volatile_only_skip_reason",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_commit_run",
     "defining_module": "larch.report.run_log_commit",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_reports_volatile_only_skip_reason",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -8763,42 +7521,6 @@
     "attribute": "_commit_run",
     "defining_module": "larch.report.run_log_commit",
     "occurrence": 8,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_final_report",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -8812,56 +7534,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_skips_commit_without_repo_cwd",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_skips_commit_without_repo_cwd",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_skips_commit_without_repo_cwd",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_final_report",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_skips_commit_without_repo_cwd",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_flush_logs_pre_state_file_less_commits_with_repo_cwd",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_commit_run",
     "defining_module": "larch.report.run_log_commit",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_state_file_less_commits_with_repo_cwd",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -8875,42 +7552,6 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_strict_final_report_skips_tracking_upsert",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_strict_final_report_skips_tracking_upsert",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_render_ledger_reports",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_strict_final_report_skips_tracking_upsert",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_final_report",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_strict_final_report_skips_tracking_upsert",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "capture_session_transcript",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_flush_logs_pre_update_manifest_failure_returns_recovery_skip",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "update_manifest",
@@ -8920,15 +7561,6 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_update_manifest_failure_returns_recovery_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "update_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_larch_log_commit_commits_canonical_token_report_delta",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
@@ -8938,29 +7570,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_commits_canonical_token_report_delta",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -8974,38 +7588,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_rejects_cwd_outside_repo_root",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_scrub_run_tree",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 3,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -9019,29 +7606,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_skips_volatile_refresh_only_and_cleans",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -9055,29 +7624,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_volatile_cleanup_git_failures_fail_closed",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_larch_log_commit_volatile_cleanup_resets_staged_before_restore",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_volatile_cleanup_resets_staged_before_restore",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -9091,29 +7642,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_volatile_cleanup_restores_am_porcelain",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_larch_log_commit_volatile_session_transcript_refresh_skips_commit",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_commit_volatile_session_transcript_refresh_skips_commit",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -9127,33 +7660,6 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_flush_warns_when_commit_run_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_commit_run",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_flush_warns_when_commit_run_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_stage_pre_commit",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_larch_log_flush_warns_when_stage_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_stage_pre_commit",
-    "defining_module": "larch.report.run_log_flush",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_publish_run_tree_copies_run_id_pathspec",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
@@ -9163,15 +7669,6 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_publish_run_tree_copies_run_id_pathspec",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_publish_run_tree_preserves_existing_dest_when_copy_fails",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
@@ -9181,47 +7678,11 @@
   },
   {
     "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_publish_run_tree_preserves_existing_dest_when_copy_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_publish_run_tree_preserves_existing_dest_when_copy_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_safe_copy_run_tree",
-    "defining_module": "larch.report.run_log_commit",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_publish_run_tree_refuses_placeholder_run_id",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
     "qualified_symbol": "test_publish_run_tree_uses_repo_root_not_cwd_subdir",
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_publish_run_tree_uses_repo_root_not_cwd_subdir",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -9231,69 +7692,6 @@
     "attribute": "_write_batch",
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_render_ledger_reports_uses_direct_renderers",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_write_batch",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_verify_completeness_bailed_heading_with_pr_number_does_not_bail_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_verify_completeness_bailed_heading_without_pr_number_keeps_bail_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_verify_completeness_ok_when_required_file_present",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_verify_completeness_reports_missing_required_file",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_verify_completeness_stale_step9a1_true_without_stats_fails",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_verify_completeness_stalled_heading_with_pr_number_keeps_bail_skip",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "_REPO_ROOT",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -10073,15 +8471,6 @@
   {
     "file": "tests/review/test_review_and_fix.py",
     "qualified_symbol": "test_step5_complete_flush_warning_preserves_success",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "append_execution_issue",
-    "defining_module": "larch.report.run_log_batch",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_and_fix.py",
-    "qualified_symbol": "test_step5_complete_flush_warning_preserves_success",
     "facade_module": "larch.review.review_and_fix",
     "attribute": "_run_round",
     "defining_module": "larch.review.round_runner",
@@ -10445,24 +8834,6 @@
     "facade_module": "larch.state.finalize",
     "attribute": "Path",
     "defining_module": "pathlib",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/state/test_finalize.py",
-    "qualified_symbol": "test_teardown_log_flush_failure_does_not_skip_stash_or_sentinel",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "load_or_recover_manifest_checked",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/state/test_finalize.py",
-    "qualified_symbol": "test_teardown_log_flush_uses_safety_net_not_render_batch",
-    "facade_module": "larch.report.run_logs",
-    "attribute": "render_execution_issues_batch",
-    "defining_module": "larch.report.run_log_flush",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },

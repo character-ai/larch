@@ -42,7 +42,7 @@ from larch.review.dispatch_shared import (
     validate_parse_rate_result,
     with_manifest_attribution,
 )
-from larch.report import run_logs
+from larch.report.run_log_batch import append_execution_issue
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.state.session_env import validate_design_tmpdir
 
@@ -405,7 +405,7 @@ def _append_dynamic_render_warning(*, design: Path, slot: str, tool: str, return
     )
     if detail:
         entry += f" {detail}"
-    run_logs.append_execution_issue(log_file=design / "execution-issues.md", category="Warnings", entry=entry)
+    append_execution_issue(log_file=design / "execution-issues.md", category="Warnings", entry=entry)
 
 
 def _dynamic_render_panel_warning(failures: list[tuple[str, str, int]]) -> str:

@@ -27,7 +27,8 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `design_log_ship.py` — CI-wait (required checks, checks-only) plus bounded failed-run
   rerun and transient-retried squash-admin-merge for design-log PRs; invoked via
   `python/cli.py ship design-log`.
-- **Phase 5** (live via default Python ship driver): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
+- **Phase 5** (live via default Python ship driver): residual `run_logs.py` plus its `run_log_batch.py`,
+  `run_log_manifest.py`, `run_log_commit.py`, and `run_log_flush.py` owners, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is

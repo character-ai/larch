@@ -30,7 +30,7 @@ from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_tally
 from larch.review import self_review_tally
-from larch.report import run_logs
+from larch.report import run_log_batch
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
 
@@ -562,7 +562,7 @@ def _append_record_escalation_tool_failure(*, implement_tmpdir: Path, reason: st
         f"- reason: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
+        run_log_batch.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
 
 
 def _tmpdir_local_file(*, tmpdir: Path, file_path: Path) -> bool:
@@ -685,7 +685,7 @@ def _flush_review_batches_for_result(*, implement_tmpdir: Path, run_id: str, rou
             f"Step 5 could not flush code-review run-log batches: `{exc}`\n"
         )
         with contextlib.suppress(OSError):
-            run_logs.append_execution_issue(
+            run_log_batch.append_execution_issue(
                 log_file=implement_tmpdir / "execution-issues.md",
                 category="Warnings",
                 entry=entry,
@@ -700,7 +700,7 @@ def _append_difficulty_restage_warning(*, implement_tmpdir: Path, reason: str) -
         f"Step 5 could not restage the resolved difficulty-rating run-log batch: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(
+        run_log_batch.append_execution_issue(
             log_file=implement_tmpdir / "execution-issues.md",
             category="Warnings",
             entry=entry,
@@ -1496,7 +1496,7 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
             _err(findings_result.stderr.rstrip())
     if tally_result.returncode == 0 and findings_result.returncode != 0:
         with contextlib.suppress(OSError):
-            run_logs.append_execution_issue(
+            run_log_batch.append_execution_issue(
                 log_file=implement_tmpdir / "execution-issues.md",
                 category="Warnings",
                 entry="Step 5 self-review findings emission failed; final report may fall back to Code review: N/A.",
