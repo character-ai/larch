@@ -275,6 +275,12 @@ assert_contains "cursor implementer PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/cursor-implementer.md"
 assert_contains "implementer base runtime type-validation guidance" \
     'Treat a declared type as the contract for internal values.' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "implementer base G-Py-11 suppression guidance" \
+    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer G-Py-11 suppression guidance" \
+    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/codex-implementer.md"
+assert_contains "cursor implementer G-Py-11 suppression guidance" \
+    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/cursor-implementer.md"
 assert_contains "cursor implementer pylint type-check suppression guidance" \
     'pylint: disable=unidiomatic-typecheck' "$REPO_ROOT/agents/cursor-implementer.md"
 assert_contains "cursor implementer pyright type-check suppression guidance" \
