@@ -75,6 +75,7 @@ RULE = LintRule(
     pathspecs=PATHSPECS,
     source_filter=is_production_source_path,
     occurrence_baseline=True,
+    require_baseline=True,
     stale_baseline_on_clean_scan=False,
     occurrence_pattern_field="normalized_condition",
 )

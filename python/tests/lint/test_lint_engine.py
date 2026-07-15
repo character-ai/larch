@@ -106,6 +106,7 @@ def _rule(
     pathspecs: tuple[str, ...] | None = None,
     source_filter: Callable[[str], bool] | None = None,
     occurrence_baseline: bool = False,
+    require_baseline: bool = False,
     stale_baseline_on_clean_scan: bool = False,
     occurrence_pattern_field: str = "pattern_name",
 ) -> LintRule:
@@ -129,6 +130,7 @@ def _rule(
         pathspecs=pathspecs,
         source_filter=source_filter,
         occurrence_baseline=occurrence_baseline,
+        require_baseline=require_baseline,
         stale_baseline_on_clean_scan=stale_baseline_on_clean_scan,
         occurrence_pattern_field=occurrence_pattern_field,  # type: ignore[arg-type]  # str literal narrower than OccurrencePatternField; test helper widens to str
     )
@@ -782,6 +784,15 @@ def test_allow_inline_suppression_rejects_non_bool(tmp_path: Path) -> None:
     assert code == EXIT_ERROR
     assert out == ""
     assert "allow_inline_suppression" in err
+
+
+def test_require_baseline_rejects_non_bool(tmp_path: Path) -> None:
+    rule = _occurrence_rule()
+    object.__setattr__(rule, "require_baseline", 1)  # type: ignore[misc]
+    code, out, err = _invoke(rule, tmp_path, _git_ok_runner(tmp_path, []))
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "require_baseline" in err
 
 
 def test_detector_and_config_validation(tmp_path: Path) -> None:
@@ -2195,6 +2206,41 @@ def test_occurrence_absent_baseline_clean_and_live(tmp_path: Path) -> None:
     assert code2 == EXIT_ERROR
     assert out2 == ""
     assert "required baseline missing" in err2
+
+
+def test_required_occurrence_baseline_rejects_missing_file_before_clean_scan(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "missing.json"
+    rule = _occurrence_rule(
+        detect=lambda _source: [],
+        require_baseline=True,
+    )
+
+    code, out, err = _invoke(
+        rule,
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert f"failed to read baseline {baseline}: file does not exist" in err
+
+    write_code, write_out, write_err = _invoke(
+        rule,
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+    )
+
+    assert write_code == EXIT_CLEAN
+    assert write_out == ""
+    assert write_err == ""
+    assert baseline.read_text(encoding="utf-8") == "[]\n"
 
 
 def test_pathspecs_and_source_filter_exclude_before_load(tmp_path: Path) -> None:
