@@ -107,6 +107,7 @@ def _rule(
     source_filter: Callable[[str], bool] | None = None,
     occurrence_baseline: bool = False,
     stale_baseline_on_clean_scan: bool = False,
+    occurrence_pattern_field: str = "pattern_name",
 ) -> LintRule:
     def _default_detect(source: SourceFile) -> list[Finding]:
         return [
@@ -129,6 +130,7 @@ def _rule(
         source_filter=source_filter,
         occurrence_baseline=occurrence_baseline,
         stale_baseline_on_clean_scan=stale_baseline_on_clean_scan,
+        occurrence_pattern_field=occurrence_pattern_field,  # type: ignore[arg-type]  # str literal narrower than OccurrencePatternField; test helper widens to str
     )
 
 
@@ -1956,8 +1958,9 @@ def _occurrence_detect(source: SourceFile) -> list[Finding]:
 
 
 def _occurrence_rule(**kwargs: object) -> LintRule:
+    detect = kwargs.pop("detect", _occurrence_detect)
     return _rule(
-        detect=_occurrence_detect,
+        detect=detect,  # type: ignore[arg-type]  # object from kwargs.pop; test helper accepts wider detect type
         occurrence_baseline=True,
         allow_inline_suppression=False,
         pathspecs=("python/**/*.py",),
@@ -2107,6 +2110,61 @@ def test_occurrence_baseline_stale_and_missing_reason(tmp_path: Path) -> None:
     assert code2 == EXIT_ERROR
     assert out2 == ""
     assert "initial_reason" in err2
+
+
+def test_occurrence_normalized_condition_round_trip_and_field_order(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    row = {
+        "file": "larch/mod.py",
+        "qualified_symbol": "parse",
+        "occurrence": 1,
+        "normalized_condition": "Name('flag', Load())",
+        "reason": "known",
+    }
+    original = json.dumps([row], indent=2) + "\n"
+    _ = baseline.write_text(original, encoding="utf-8")
+
+    def _detect(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="unreachable branch occurrence 1 cond=Name('flag', Load())",
+                qualified_symbol="parse",
+                pattern_name="Name('flag', Load())",
+                occurrence=1,
+            )
+        ]
+
+    rule = _occurrence_rule(
+        detect=_detect,
+        occurrence_pattern_field="normalized_condition",
+    )
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke(
+        rule,
+        tmp_path,
+        runner,
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="bootstrap",
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+    rewritten = baseline.read_text(encoding="utf-8")
+    assert rewritten == original
+    assert list(json.loads(rewritten)[0]) == [
+        "file",
+        "qualified_symbol",
+        "occurrence",
+        "normalized_condition",
+        "reason",
+    ]
 
 
 def test_occurrence_absent_baseline_clean_and_live(tmp_path: Path) -> None:

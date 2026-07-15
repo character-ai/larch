@@ -32,6 +32,7 @@ SYNTAX_FAIL_MESSAGE = "unable to parse Python"
 GIT_DIAGNOSTIC_MAX_CHARS = 200
 PYTHON_TREE_PREFIX = "python/"
 SyntaxPolicy = Literal["fail", "skip", "raise"]
+OccurrencePatternField = Literal["pattern_name", "normalized_condition"]
 SourceFilter = Callable[[str], bool]
 _MARKDOWN_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^`~]*)$")
 
@@ -171,6 +172,7 @@ class LintRule:
     source_filter: SourceFilter | None = None
     occurrence_baseline: bool = False
     stale_baseline_on_clean_scan: bool = False
+    occurrence_pattern_field: OccurrencePatternField = "pattern_name"
 
 
 def _is_single_line(value: object) -> bool:
@@ -187,7 +189,7 @@ def _is_exact_bool(value: object) -> bool:
     return isinstance(value, bool)
 
 
-def _validate_rule(rule: LintRule) -> None:  # noqa: C901 - rule field validation is intentional
+def _validate_rule(rule: LintRule) -> None:  # noqa: C901, PLR0912 - rule field validation is intentional
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
     if not _is_exact_bool(rule.allow_inline_suppression):
@@ -196,6 +198,18 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901 - rule field validatio
         raise ScanError("lint rule occurrence_baseline must be a bool")
     if not _is_exact_bool(rule.stale_baseline_on_clean_scan):
         raise ScanError("lint rule stale_baseline_on_clean_scan must be a bool")
+    if rule.occurrence_pattern_field not in ("pattern_name", "normalized_condition"):
+        raise ScanError(
+            "lint rule occurrence_pattern_field must be "
+            "'pattern_name' or 'normalized_condition'"
+        )
+    if (
+        not rule.occurrence_baseline
+        and rule.occurrence_pattern_field != "pattern_name"
+    ):
+        raise ScanError(
+            "occurrence_pattern_field requires rule.occurrence_baseline"
+        )
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
             "lint rule suppression_token must be a non-empty single-line string"
@@ -831,11 +845,15 @@ def _symbol_metric_baseline_row(
 
 
 def _occurrence_baseline_row(
-    record: Mapping[str, object], *, index: int, source: str
+    record: Mapping[str, object],
+    *,
+    index: int,
+    source: str,
+    pattern_field: OccurrencePatternField,
 ) -> OccurrenceBaselineRow:
     file_name = record["file"]
     qualified_symbol = record["qualified_symbol"]
-    pattern_name = record["pattern_name"]
+    pattern_name = record[pattern_field]
     occurrence = record["occurrence"]
     reason = record["reason"]
     if not isinstance(file_name, str):
@@ -844,7 +862,7 @@ def _occurrence_baseline_row(
     if not _is_single_line(qualified_symbol):
         raise ScanError(f"{source}: baseline row {index} has invalid qualified_symbol")
     if not _is_single_line(pattern_name):
-        raise ScanError(f"{source}: baseline row {index} has invalid pattern_name")
+        raise ScanError(f"{source}: baseline row {index} has invalid {pattern_field}")
     if (
         not isinstance(occurrence, int)
         or isinstance(occurrence, bool)
@@ -869,16 +887,25 @@ def _parse_baseline_row(raw: object, *, index: int, source: str) -> BaselineRow:
     generic_keys = frozenset({"path", "line", "rule_id", "message", "reason"})
     anchored_generic_keys = generic_keys | {"anchor"}
     symbol_keys = frozenset({"path", "rule_id", "qualified_symbol", "metric", "reason"})
-    occurrence_keys = frozenset(
+    occurrence_pattern_keys = frozenset(
         {"file", "qualified_symbol", "pattern_name", "occurrence", "reason"}
+    )
+    occurrence_normalized_keys = frozenset(
+        {"file", "qualified_symbol", "normalized_condition", "occurrence", "reason"}
     )
     keys = frozenset(record)
     if keys in {generic_keys, anchored_generic_keys}:
         return _generic_baseline_row(record, index=index, source=source)
     if keys == symbol_keys:
         return _symbol_metric_baseline_row(record, index=index, source=source)
-    if keys == occurrence_keys:
-        return _occurrence_baseline_row(record, index=index, source=source)
+    if keys == occurrence_pattern_keys:
+        return _occurrence_baseline_row(
+            record, index=index, source=source, pattern_field="pattern_name"
+        )
+    if keys == occurrence_normalized_keys:
+        return _occurrence_baseline_row(
+            record, index=index, source=source, pattern_field="normalized_condition"
+        )
     raise ScanError(f"{source}: baseline row {index} has unsupported keys")
 
 
@@ -1084,7 +1111,33 @@ def _baseline_comparison(
     return active, stale
 
 
-def _serialized_baseline(rows: Sequence[BaselineRow]) -> str:
+def _occurrence_record(
+    row: OccurrenceBaselineRow, *, pattern_field: OccurrencePatternField
+) -> dict[str, object]:
+    file_name = _occurrence_json_file(row.path)
+    if pattern_field == "normalized_condition":
+        # Legacy unreachable-branch field order (occurrence before condition).
+        return {
+            "file": file_name,
+            "qualified_symbol": row.qualified_symbol,
+            "occurrence": row.occurrence,
+            "normalized_condition": row.pattern_name,
+            "reason": row.reason,
+        }
+    return {
+        "file": file_name,
+        "qualified_symbol": row.qualified_symbol,
+        "pattern_name": row.pattern_name,
+        "occurrence": row.occurrence,
+        "reason": row.reason,
+    }
+
+
+def _serialized_baseline(
+    rows: Sequence[BaselineRow],
+    *,
+    occurrence_pattern_field: OccurrencePatternField = "pattern_name",
+) -> str:
     records: list[dict[str, object]] = []
     for row in sorted(rows, key=_baseline_sort_key):
         if isinstance(row, GenericBaselineRow):
@@ -1111,13 +1164,7 @@ def _serialized_baseline(rows: Sequence[BaselineRow]) -> str:
         else:
             # Preserve legacy field order and omit sort_keys for byte-stable rewrites.
             records.append(
-                {
-                    "file": _occurrence_json_file(row.path),
-                    "qualified_symbol": row.qualified_symbol,
-                    "pattern_name": row.pattern_name,
-                    "occurrence": row.occurrence,
-                    "reason": row.reason,
-                }
+                _occurrence_record(row, pattern_field=occurrence_pattern_field)
             )
     if rows and isinstance(rows[0], OccurrenceBaselineRow):
         return json.dumps(records, indent=2) + "\n"
@@ -1174,8 +1221,16 @@ def _rows_for_write(
     return written
 
 
-def _publish_baseline(path: Path, *, root: Path, rows: Sequence[BaselineRow]) -> None:
-    intended = _serialized_baseline(rows)
+def _publish_baseline(
+    path: Path,
+    *,
+    root: Path,
+    rows: Sequence[BaselineRow],
+    occurrence_pattern_field: OccurrencePatternField = "pattern_name",
+) -> None:
+    intended = _serialized_baseline(
+        rows, occurrence_pattern_field=occurrence_pattern_field
+    )
     try:
         larch_io.trusted_atomic_write(path, intended, root=root)
     except OSError as exc:
@@ -1290,13 +1345,19 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
     initial_reason: str | None,
     strict_stale: bool,
     paths: Sequence[str | Path] | None,
+    occurrence_pattern_field: OccurrencePatternField = "pattern_name",
 ) -> tuple[int, list[Finding], list[str]]:
     live_rows = _project_findings(collected)
     if write_baseline:
         written = _rows_for_write(
             live_rows, baseline_rows, initial_reason=initial_reason
         )
-        _publish_baseline(destination, root=root, rows=written)
+        _publish_baseline(
+            destination,
+            root=root,
+            rows=written,
+            occurrence_pattern_field=occurrence_pattern_field,
+        )
         return EXIT_CLEAN, [], []
     scoped_baseline = _selected_baseline_rows(baseline_rows, root=root, paths=paths)
     active_rows, stale_rows = _baseline_comparison(live_rows, scoped_baseline)
@@ -1401,6 +1462,7 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
                 initial_reason=initial_reason,
                 strict_stale=strict_stale,
                 paths=paths,
+                occurrence_pattern_field=rule.occurrence_pattern_field,
             )
     except StrictStaleError as exc:
         for warning in exc.warnings:
