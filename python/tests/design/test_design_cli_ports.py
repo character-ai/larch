@@ -6,13 +6,13 @@ from larch import cli
 
 
 EXPECTED = {
-    ("design", verb): (module, func)
+    ("design", verb): (module, func, True)
     for verb, module, func in (
-        ("step2b-drafter", "larch.design.design_lifecycle", "step2b_drafter_main"),
-        ("step2b-postplan", "larch.design.design_lifecycle", "step2b_postplan_main"),
-        ("step2b5", "larch.design.design_lifecycle", "step2b5_main"),
-        ("step5b-prepare", "larch.design.design_lifecycle", "step5b_prepare_main"),
-        ("step5b-annotate", "larch.design.design_lifecycle", "step5b_annotate_main"),
+        ("step2b-drafter", "larch.design.design_step2b", "step2b_drafter_main"),
+        ("step2b-postplan", "larch.design.design_step2b", "step2b_postplan_main"),
+        ("step2b5", "larch.design.design_step5c", "step2b5_main"),
+        ("step5b-prepare", "larch.design.design_step5b", "step5b_prepare_main"),
+        ("step5b-annotate", "larch.design.design_step5b", "step5b_annotate_main"),
         ("postplan-emit", "larch.design.design_postplan", "postplan_emit_main"),
         ("publish", "larch.design.design_publish", "publish_main"),
         ("clarify", "larch.design.clarify", "design_clarify_main"),
@@ -21,15 +21,15 @@ EXPECTED = {
         ("pause-load", "larch.design.design_pause", "pause_load_main"),
         ("render-gate", "larch.design.design_gate_render", "render_gate_main"),
         ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
-        ("stage-terminal-state", "larch.design.design_lifecycle", "stage_terminal_state_main"),
-        ("failure-report", "larch.design.design_lifecycle", "failure_report_main"),
-        ("step-final-summary", "larch.design.design_lifecycle", "step_final_summary_main"),
+        ("stage-terminal-state", "larch.design.design_terminal", "stage_terminal_state_main"),
+        ("failure-report", "larch.design.design_terminal", "failure_report_main"),
+        ("step-final-summary", "larch.design.design_terminal", "step_final_summary_main"),
         ("file-oos-prepare", "larch.design.design_oos", "file_oos_prepare_main"),
         ("file-oos-annotate", "larch.design.design_oos", "file_oos_annotate_main"),
     )
 }
 PLAN_EXPECTED = {
-    ("plan", "validator-autofix"): ("larch.design.plan_quality", "validator_autofix_main"),
+    ("plan", "validator-autofix"): ("larch.design.plan_quality", "validator_autofix_main", True),
 }
 PLAN_REVIEW_EXPECTED = {
     ("plan-review", verb): (module, func)
@@ -84,17 +84,25 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
         assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in PLAN_REVIEW_EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
+        assert (module_name, func_name) == target
     assert ("plan-review", "filter-gate-b-skipped") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     assert ("plan-review", "persist-accepted-audit") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
+        assert (module_name, func_name) == target
     for key, target in ARCHITECTURAL_ASSESSMENT_EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        module_name, func_name, machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
+        assert (module_name, func_name) == target
+        assert machine_stdout is True
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in ARCHITECTURAL_GUIDELINES_EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        module_name, func_name, machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
+        assert (module_name, func_name) == target
+        assert machine_stdout is True
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in ARCHITECTURAL_INVARIANTS_EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        module_name, func_name, machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
+        assert (module_name, func_name) == target
+        assert machine_stdout is True
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]

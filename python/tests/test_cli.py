@@ -136,7 +136,7 @@ def test_dispatch_kv_codec_lint() -> None:
 
 
 def test_kv_get_entrypoint_is_machine_stdout() -> None:
-    assert cli._REGISTRY[("kv", "get")] == ("larch.core.kv_cli", "get_main")  # pyright: ignore[reportPrivateUsage]
+    assert cli._REGISTRY[("kv", "get")] == ("larch.core.kv_cli", "get_main", True)  # pyright: ignore[reportPrivateUsage]
     assert ("kv", "get") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
@@ -176,6 +176,7 @@ def test_run_log_validate_run_id_entrypoint_is_machine_stdout() -> None:
     assert cli._REGISTRY[("run-log", "validate-run-id")] == (  # pyright: ignore[reportPrivateUsage]
         "larch.report.run_logs",
         "larch_log_validate_run_id_main",
+        True,
     )
     assert ("run-log", "validate-run-id") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
@@ -236,7 +237,7 @@ def test_affected_registry_targets_resolve_to_domain_modules() -> None:
     affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.merge", "larch.git.gh", "larch.implement.ci"}
     retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli", "git", "push", "pr", "merge", "gh"}
     checked = 0
-    for module_name, func_name in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
+    for module_name, func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
         assert module_name not in retired
         if module_name in affected:
             module = importlib.import_module(module_name)
@@ -246,18 +247,38 @@ def test_affected_registry_targets_resolve_to_domain_modules() -> None:
 
 
 def test_all_registry_targets_resolve_to_callable_mains() -> None:
-    for (domain, verb), (module_name, func_name) in cli._REGISTRY.items():  # pyright: ignore[reportPrivateUsage]
+    for (domain, verb), (module_name, func_name, _machine_stdout) in cli._REGISTRY.items():  # pyright: ignore[reportPrivateUsage]
         module = importlib.import_module(module_name)
         target = getattr(module, func_name, None)
         assert callable(target), f"{domain} {verb} -> {module_name}.{func_name}"
 
 
-def test_design_lifecycle_registry_entries_are_machine_stdout() -> None:
-    expected = cli._DESIGN_LIFECYCLE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    assert expected <= set(cli._REGISTRY)  # pyright: ignore[reportPrivateUsage]
-    assert expected <= cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    assert cli._REGISTRY[("design", "step5c")] == ("larch.design.design_lifecycle", "step5c_main")  # pyright: ignore[reportPrivateUsage]
-    assert ("design", "step5c") in expected
+def test_machine_stdout_keys_derived_from_registry() -> None:
+    derived = frozenset(
+        key for key, (_module, _func, machine_stdout) in cli._REGISTRY.items() if machine_stdout  # pyright: ignore[reportPrivateUsage]
+    )
+    assert derived == cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+
+
+def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() -> None:
+    design_samples = {
+        ("design", "step0-session"): ("larch.design.design_step0", "step0_session_main"),
+        ("design", "step5c"): ("larch.design.design_step5c", "step5c_main"),
+        ("design", "step2b-drafter"): ("larch.design.design_step2b", "step2b_drafter_main"),
+        ("design", "settle-next-action"): ("larch.design.design_session", "settle_next_action_main"),
+        ("design", "stage-terminal-state"): ("larch.design.design_terminal", "stage_terminal_state_main"),
+    }
+    for key, (module_name, func_name) in design_samples.items():
+        registered = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
+        assert registered == (module_name, func_name, True)
+        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    for module_name, _func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
+        assert module_name != "larch.design.design_lifecycle"
+
+
+def test_human_facing_registry_rows_keep_machine_stdout_false() -> None:
+    assert cli._REGISTRY[("ship", "pr")][2] is False  # pyright: ignore[reportPrivateUsage]
+    assert ("ship", "pr") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
 def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -320,7 +341,7 @@ def test_review_core_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Mon
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.review.review_pipeline": MagicMock(review_core_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.review.review_core_body": MagicMock(review_core_main=mock_main)}):
         rc = cli.main(["review", "core", "--help"])
     assert rc == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"

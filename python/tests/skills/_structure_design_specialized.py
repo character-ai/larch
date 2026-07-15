@@ -12,7 +12,7 @@ from ._structure_label_inventory import assertion_labels
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 20
+LEGACY_ASSERTION_LABEL_COUNT = 19
 
 
 def run(repo_root: Path) -> list[str]:
@@ -35,7 +35,6 @@ def run(repo_root: Path) -> list[str]:
         return False
 
     skill = p("skills/design/SKILL.md")
-    cli = p("python/larch/cli.py")
     migrated = p("python/migrated-scripts.tsv")
     step3b = p("skills/design/scripts/design-step3b-entry.sh")
 
@@ -80,26 +79,6 @@ def run(repo_root: Path) -> list[str]:
         if name in skill_text: failures.append(f"SKILL.md still references retired {name}")
         if (p("skills/design/scripts") / name).exists(): failures.append(f"retired script still exists: {name}")
         if f"skills/design/scripts/{name}" not in migrated_text: failures.append(f"migrated-scripts.tsv missing {name}")
-
-    # Bash retries extraction up to three times; extraction is deterministic here,
-    # but preserve its condition and the legacy failure wording.
-    stdout_lines: list[str] = []
-    collecting = False
-    for line in read(cli).splitlines():
-        if re.match(r"^_DESIGN_LIFECYCLE_STDOUT_KEYS:", line):
-            collecting = True
-            continue
-        if collecting and line == "})":
-            break
-        if collecting:
-            stdout_lines.append(line)
-    stdout_block = "\n".join(stdout_lines)
-    if '("plan", "step1-log")' not in stdout_block:
-        failures.append("cli _DESIGN_LIFECYCLE_STDOUT_KEYS block extraction incomplete after 3 attempts")
-    ported = ["step0-parse", "step0-session", "step0-route", "step0-clarify-hard-halt", "step0-init", "step0-abort-cleanup", "step0-ap-continue", "step0c", "step1d5", "step1d7", "step1e-reentry"]
-    for verb in ported:
-        if f'("design", "{verb}")' not in stdout_block:
-            failures.append(f"cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design {verb}")
 
     lifecycle_paths = (
         "python/larch/design/design_lifecycle.py", "python/larch/design/design_core.py",

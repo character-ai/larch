@@ -196,7 +196,7 @@ def test_unreadable_document_returns_tool_error(
 
 
 def test_cli_registration_points_at_module() -> None:
-    assert larch_cli._REGISTRY[("lint", "doc-pointer-paths")] == (  # pyright: ignore[reportPrivateUsage]  # accessing _REGISTRY to verify cli dispatch registration
+    assert larch_cli._REGISTRY[("lint", "doc-pointer-paths")][:2] == (  # pyright: ignore[reportPrivateUsage]  # accessing _REGISTRY to verify cli dispatch registration
         "larch.lint.lint_doc_pointer_paths",
         "main",
     )

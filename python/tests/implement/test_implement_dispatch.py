@@ -532,34 +532,34 @@ def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout
 
 
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:
-    assert _REGISTRY[("implement", "step2-dispatch")] == ("larch.implement.implement_dispatch", "step2_dispatch_main")
-    assert _REGISTRY[("implement", "run-dispatch")] == ("larch.implement.implement_dispatch", "run_dispatch_main")
-    assert _REGISTRY[("implement", "recovery-paths")] == ("larch.implement.implement_dispatch", "recovery_paths_main")
-    assert _REGISTRY[("implement", "commit")] == ("larch.implement.implement_dispatch", "commit_main")
-    assert _REGISTRY[("implement", "commit-route")] == ("larch.implement.implement_dispatch", "commit_route_main")
-    assert _REGISTRY[("implement", "checks-commit-route")] == ("larch.implement.implement_dispatch", "checks_commit_route_main")
-    assert _REGISTRY[("implement", "checks-step5-resume")] == ("larch.implement.implement_dispatch", "checks_step5_resume_main")
-    assert _REGISTRY[("implement", "clone-tag")] == ("larch.implement.implement_dispatch", "clone_tag_main")
-    assert _REGISTRY[("ship", "normalize-assessment-handoff")] == ("larch.implement.implement_dispatch", "ship_normalize_assessment_handoff_main")
-    assert _REGISTRY[("implement", "kill-active-leg")] == ("larch.implement.implement_dispatch", "kill_active_leg_main")
-    assert _REGISTRY[("plan-review", "write-loop-identity")] == ("larch.core.process_identity", "write_loop_identity_main")
-    assert _REGISTRY[("plan-review", "teardown-loop-identity")] == ("larch.core.process_identity", "teardown_loop_identity_main")
-    assert _REGISTRY[("review-and-fix", "write-loop-identity")] == ("larch.core.process_identity", "write_step5_loop_identity_main")
-    assert _REGISTRY[("review-and-fix", "await-loop-identity")] == ("larch.core.process_identity", "await_step5_loop_identity_main")
-    assert _REGISTRY[("review-and-fix", "teardown-loop-identity")] == ("larch.core.process_identity", "teardown_step5_loop_identity_main")
-    assert _REGISTRY[("review-and-fix", "normalize-status")] == ("larch.review.review_and_fix", "normalize_status")
-    assert _REGISTRY[("implement", "normalize-coder-scout")] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
-    assert _REGISTRY[("implement", "step-5-review")] == ("larch.implement.implement_dispatch", "step5_review_main")
-    assert _REGISTRY[("implement", "step-6-entry")] == ("larch.implement.implement_dispatch", "step6_entry_main")
-    assert _REGISTRY[("implement", "step-8-ship")] == ("larch.implement.implement_dispatch", "step8_ship_main")
-    assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
-    assert _REGISTRY[("implement", "run-step-checks")] == ("larch.implement.implement_dispatch", "run_step_checks_main")
-    assert _REGISTRY[("ship", "pre-driver")] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
-    assert _REGISTRY[("ship", "pre-fix-rebase")] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
-    assert _REGISTRY[("ship", "route-exit")] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
-    assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
-    assert _REGISTRY[("agent", "launch-codex-implement")] == ("larch.agents.agents", "launch_codex_implement_main")
-    assert _REGISTRY[("agent", "launch-cursor-implement")] == ("larch.agents.agents", "launch_cursor_implement_main")
+    assert _REGISTRY[("implement", "step2-dispatch")][:2] == ("larch.implement.implement_dispatch", "step2_dispatch_main")
+    assert _REGISTRY[("implement", "run-dispatch")][:2] == ("larch.implement.implement_dispatch", "run_dispatch_main")
+    assert _REGISTRY[("implement", "recovery-paths")][:2] == ("larch.implement.implement_dispatch", "recovery_paths_main")
+    assert _REGISTRY[("implement", "commit")][:2] == ("larch.implement.implement_dispatch", "commit_main")
+    assert _REGISTRY[("implement", "commit-route")][:2] == ("larch.implement.implement_dispatch", "commit_route_main")
+    assert _REGISTRY[("implement", "checks-commit-route")][:2] == ("larch.implement.implement_dispatch", "checks_commit_route_main")
+    assert _REGISTRY[("implement", "checks-step5-resume")][:2] == ("larch.implement.implement_dispatch", "checks_step5_resume_main")
+    assert _REGISTRY[("implement", "clone-tag")][:2] == ("larch.implement.implement_dispatch", "clone_tag_main")
+    assert _REGISTRY[("ship", "normalize-assessment-handoff")][:2] == ("larch.implement.implement_dispatch", "ship_normalize_assessment_handoff_main")
+    assert _REGISTRY[("implement", "kill-active-leg")][:2] == ("larch.implement.implement_dispatch", "kill_active_leg_main")
+    assert _REGISTRY[("plan-review", "write-loop-identity")][:2] == ("larch.core.process_identity", "write_loop_identity_main")
+    assert _REGISTRY[("plan-review", "teardown-loop-identity")][:2] == ("larch.core.process_identity", "teardown_loop_identity_main")
+    assert _REGISTRY[("review-and-fix", "write-loop-identity")][:2] == ("larch.core.process_identity", "write_step5_loop_identity_main")
+    assert _REGISTRY[("review-and-fix", "await-loop-identity")][:2] == ("larch.core.process_identity", "await_step5_loop_identity_main")
+    assert _REGISTRY[("review-and-fix", "teardown-loop-identity")][:2] == ("larch.core.process_identity", "teardown_step5_loop_identity_main")
+    assert _REGISTRY[("review-and-fix", "normalize-status")][:2] == ("larch.review.review_and_fix", "normalize_status")
+    assert _REGISTRY[("implement", "normalize-coder-scout")][:2] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
+    assert _REGISTRY[("implement", "step-5-review")][:2] == ("larch.implement.implement_dispatch", "step5_review_main")
+    assert _REGISTRY[("implement", "step-6-entry")][:2] == ("larch.implement.implement_dispatch", "step6_entry_main")
+    assert _REGISTRY[("implement", "step-8-ship")][:2] == ("larch.implement.implement_dispatch", "step8_ship_main")
+    assert _REGISTRY[("implement", "step-18-gate-finalize")][:2] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
+    assert _REGISTRY[("implement", "run-step-checks")][:2] == ("larch.implement.implement_dispatch", "run_step_checks_main")
+    assert _REGISTRY[("ship", "pre-driver")][:2] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
+    assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
+    assert _REGISTRY[("ship", "route-exit")][:2] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
+    assert _REGISTRY[("execution-issues", "flush-safety-net")][:2] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
+    assert _REGISTRY[("agent", "launch-codex-implement")][:2] == ("larch.agents.agents", "launch_codex_implement_main")
+    assert _REGISTRY[("agent", "launch-cursor-implement")][:2] == ("larch.agents.agents", "launch_cursor_implement_main")
 
 
 def test_normalize_coder_scout_empty_tmpdir_argv_falls_back_to_env(
@@ -6487,7 +6487,7 @@ def _step5_resume_worker_main(argv: list[str]) -> int:
 
 
 def test_step5_resume_registry() -> None:
-    assert _REGISTRY[("implement", "step-5-resume")] == ("larch.implement.implement_dispatch", "step5_resume_main")
+    assert _REGISTRY[("implement", "step-5-resume")][:2] == ("larch.implement.implement_dispatch", "step5_resume_main")
 
 
 def test_step5_resume_non_numeric_round_rejected(capsys: pytest.CaptureFixture[str]) -> None:
