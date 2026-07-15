@@ -11,6 +11,7 @@
     {"module": "lint_complexity_baseline.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_complexity_debt.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_consecutive_bash.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_doc_pointer_paths.py", "host_decision": "new-module-justified", "justification": "Dedicated Tier-1 Markdown path scanner for AGENTS.md and SECURITY.md; no existing lint host owns fence-aware inline-backtick filesystem probes (#7296).", "source_issue": 7296},
     {"module": "lint_em_dash_output.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_env_via_config_constant.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_flat_tests.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
