@@ -1224,7 +1224,6 @@ def test_check_phantom_dirty_parse_error_emits_unknown(monkeypatch: pytest.Monke
 
 
 def test_emit_kv_rejects_multiline_values() -> None:
-    from larch.core import logging_util  # noqa: PLC0415
 
     with pytest.raises(ValueError, match="newline"):
         logging_util.emit_kv(key="ERROR", value="line1\nline2")

@@ -416,7 +416,10 @@ def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
     sentinel = design_tmpdir / "oos-issue-sentinel"
     if not sentinel.is_file():
         return 0, 0, 0
-    text = sentinel.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = sentinel.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0, 0, 0
     created_str = larch_io.kv_value(text=text, key="ISSUES_CREATED", default="", first_match=False, cr_strip="strip").strip()
     failed_str = larch_io.kv_value(text=text, key="ISSUES_FAILED", default="", first_match=False, cr_strip="strip").strip()
     deduped_str = larch_io.kv_value(text=text, key="ISSUES_DEDUPLICATED", default="", first_match=False, cr_strip="strip").strip()
@@ -619,7 +622,7 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
     issues_failed_raw = larch_io.kv_value(
         text=stdout_text,
         key="ISSUES_FAILED",
-        duplicate_policy="last",
+        first_match=False,
     ).strip()
     issues_failed_count = int(issues_failed_raw) if issues_failed_raw.isdigit() else 0
     for line in stdout_text.splitlines():

@@ -61,7 +61,6 @@ from larch.implement import scope_disposition
 from larch.core import config
 from larch.issue import file_oos
 from larch.state import finalize
-from larch import io as larch_io
 from larch.git import gh
 from larch.git import git
 from larch.core import logging_util

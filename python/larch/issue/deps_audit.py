@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from larch.issue import blocker
-from larch.core import logging_util
 from larch.issue import combine_issues
 from larch.git import gh
 from larch.issue import issue_wire

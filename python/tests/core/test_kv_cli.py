@@ -107,7 +107,7 @@ def test_stdin_last_non_empty_forwards_policy(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rc, out, err = run_get(
+    rc, out, _ = run_get(
         ["--key", "KEY", "--match", "last-non-empty"],
         capsys,
         monkeypatch,
