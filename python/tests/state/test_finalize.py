@@ -15,6 +15,7 @@ from larch.report import run_logs, progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
+from larch.git import rebase
 
 from test_support import RecordingRunner, make_run_context
 
@@ -280,15 +281,21 @@ def test_postbump_exception_uses_bash_status_token(
     assert result.status == "rebase-failed"
 
 
-def test_regenerate_generated_file_invokes_cli(tmp_path: Path) -> None:
-    runner = RecordingRunner(responses=[CommandResult(("py", "cli"), 0, "", "", 0.01)])
-    ok = finalize._regenerate_generated_file(
+def test_resolve_generated_conflicts_invokes_cli(tmp_path: Path) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("py", "cli"), 0, "", "", 0.01),
+            CommandResult(("git", "add"), 0, "", "", 0.01),
+        ],
+    )
+    ok = rebase.resolve_generated_conflicts(
         runner,
-        regen_argv=("lint", "skill-closure-growth", "--write"),
+        paths=("python/skill-closure-baseline.json",),
         cwd=str(tmp_path),
     )
     assert ok is True
-    assert runner.calls[-1][1:] == ["python/cli.py", "lint", "skill-closure-growth", "--write"]
+    assert runner.calls[-2][1:] == ["python/cli.py", "lint", "skill-closure-growth", "--write"]
+    assert runner.calls[-1] == ["git", "add", "--", "python/skill-closure-baseline.json"]
 
 
 def test_autoresolve_generated_conflicts_regenerates_and_continues(
@@ -300,13 +307,9 @@ def test_autoresolve_generated_conflicts_regenerates_and_continues(
     def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
         return ["python/skill-closure-baseline.json"]
 
-    def fake_regen(*_args: object, regen_argv: tuple[str, ...], **_kwargs: object) -> bool:
-        calls.append("regen:" + " ".join(regen_argv))
+    def fake_resolve(*_args: object, paths: tuple[str, ...], **_kwargs: object) -> bool:
+        calls.append("resolve:" + ",".join(paths))
         return True
-
-    def fake_add(_runner: object, *paths: str, **_kwargs: object) -> CommandResult:
-        calls.append("add:" + ",".join(paths))
-        return CommandResult(("git", "add", *paths), 0, "", "", 0.01)
 
     def fake_continue(*_args: object, **_kwargs: object) -> CommandResult:
         calls.append("continue")
@@ -316,8 +319,7 @@ def test_autoresolve_generated_conflicts_regenerates_and_continues(
         return False
 
     monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(finalize, "_regenerate_generated_file", fake_regen)
-    monkeypatch.setattr(finalize.git, "add", fake_add)
+    monkeypatch.setattr(rebase, "resolve_generated_conflicts", fake_resolve)
     monkeypatch.setattr(finalize.git, "rebase_continue", fake_continue)
     monkeypatch.setattr(finalize.git, "rebase_in_progress", fake_in_progress)
 
@@ -325,8 +327,7 @@ def test_autoresolve_generated_conflicts_regenerates_and_continues(
     assert result.status == "rebased"
     assert not result.conflict_files
     assert calls == [
-        "regen:lint skill-closure-growth --write",
-        "add:python/skill-closure-baseline.json",
+        "resolve:python/skill-closure-baseline.json",
         "continue",
     ]
 
@@ -343,11 +344,8 @@ def test_autoresolve_generated_conflicts_resolves_across_multiple_commits(
     def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
         return ["python/skill-closure-baseline.json"]
 
-    def fake_regen(*_args: object, **_kwargs: object) -> bool:
+    def fake_resolve(*_args: object, **_kwargs: object) -> bool:
         return True
-
-    def fake_add(*_args: object, **_kwargs: object) -> CommandResult:
-        return CommandResult(("git", "add"), 0, "", "", 0.01)
 
     def fake_continue(*_args: object, **_kwargs: object) -> CommandResult:
         state["continue_calls"] += 1
@@ -358,8 +356,7 @@ def test_autoresolve_generated_conflicts_resolves_across_multiple_commits(
         return False
 
     monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(finalize, "_regenerate_generated_file", fake_regen)
-    monkeypatch.setattr(finalize.git, "add", fake_add)
+    monkeypatch.setattr(rebase, "resolve_generated_conflicts", fake_resolve)
     monkeypatch.setattr(finalize.git, "rebase_continue", fake_continue)
     monkeypatch.setattr(finalize.git, "rebase_in_progress", fake_in_progress)
 
@@ -372,17 +369,10 @@ def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    regen_called: list[str] = []
-
     def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
         return ["python/skill-closure-baseline.json", "python/larch/state/finalize.py"]
 
-    def fake_regen(*_args: object, **_kwargs: object) -> bool:
-        regen_called.append("regen")
-        return True
-
     monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(finalize, "_regenerate_generated_file", fake_regen)
 
     result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
     assert result.status == "failed"
@@ -390,7 +380,6 @@ def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
         "python/skill-closure-baseline.json",
         "python/larch/state/finalize.py",
     )
-    assert not regen_called  # bails before regenerating a mixed conflict set
 
 
 def test_autoresolve_generated_conflicts_stalls_when_regen_fails(
@@ -400,11 +389,11 @@ def test_autoresolve_generated_conflicts_stalls_when_regen_fails(
     def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
         return ["python/skill-closure-baseline.json"]
 
-    def fake_regen(*_args: object, **_kwargs: object) -> bool:
+    def fake_resolve(*_args: object, **_kwargs: object) -> bool:
         return False
 
     monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(finalize, "_regenerate_generated_file", fake_regen)
+    monkeypatch.setattr(rebase, "resolve_generated_conflicts", fake_resolve)
 
     result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
     assert result.status == "failed"
