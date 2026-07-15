@@ -1,0 +1,5 @@
+1	the planned repo-wide lint hook does not disable filename passing or specify system execution, so staged paths can be passed as unsupported positional arguments and cause the hook to fail.
+1	the plan does not bind acceptance criterion 7, allowing deleted security.md passages to lack deletion rationales in the pr description.
+1	prefix-filtered enumeration does not detect bare script basenames or other unprefixed deleted machinery, so stale security guidance can remain after the 24-token check passes.
+1	suppressing or environment-depending on gitignored `.claude/*` paths does not satisfy the required enumeration, which ignores suppressions and can behave differently on developer machines versus ci.
+1	security.md:337 [scope-reduction] g-md-2: planned suppression retains a dead security.md pointer. scenario: the required raw enumeration is not suppression-aware, so `.claude/hook-audit.log` remains a reported dead pointer and acceptance criterion 2 cannot pass with a correct scanner.
