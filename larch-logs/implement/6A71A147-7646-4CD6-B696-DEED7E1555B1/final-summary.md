@@ -66,6 +66,10 @@ Warnings (21):
   20. None of these qualify for the "scalar literals like `count = 0`" or "loop targets" deviation clause; the "boundary that forces `Any`" clause covers the `_runtime_result_from_mapping` JSON parsing l...
   21. G-Root-1 is resolved: `runtime_main` now accepts `--repo-root` as a `required=True` explicit argument and passes `Path(args.repo_root)` directly to `runtime_verify`, with no cwd derivation. No othe...
 
+## Architectural invariants
+
+The runtime verification additions — new subprocess execution paths, artifact serialization, binding validation, and the tightened verified-issue predicate — do not violate any stated invariant.
+
 ## Architectural guidelines
 
 All guideline deviations cited in the prior note have been resolved in the current diff, and no new deviations were introduced by the additional type annotation fixes.
@@ -74,7 +78,7 @@ All guideline deviations cited in the prior note have been resolved in the curre
 
 - **Outcome**: shipping
 - **Duration**: 00:16:58
-- **Cost**: 💰 TOTAL ~$15.40: Claude $5.75, Codex-5.6 $6.98, Codex-mini $0.06, Cursor $2.15 (Composer $2.15, Grok $0.00), Claude (subprocess) $0.46  |  Tokens: 18568k
+- **Cost**: 💰 TOTAL ~$15.95: Claude $6.30, Codex-5.6 $6.98, Codex-mini $0.06, Cursor $2.15 (Composer $2.15, Grok $0.00), Claude (subprocess) $0.46  |  Tokens: 19767k
 - **Issue**: #6974: https://github.com/character-ai/larch/issues/6974
 - **Plan review**: N/A
 - **Plan coverage**: 5/5 firm headings; band: advisory; disposition: none; todos_left: 0
