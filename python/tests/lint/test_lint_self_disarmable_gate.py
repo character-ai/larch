@@ -8,7 +8,7 @@ import pytest
 from larch.lint import lint_self_disarmable_gate as lint
 from larch.lint import self_disarmable_gate_detector as detector
 from larch.lint.engine import Finding, LintRule, ScanError, SourceFile
-from larch.lint.lint_self_disarmable_gate import PATHSPECS, _source_filter  # type: ignore[reportPrivateUsage]
+from larch.lint.lint_self_disarmable_gate import PATHSPECS, _source_filter  # type: ignore[reportPrivateUsage]  # test verifies private filter behaviour directly
 
 OPTIONAL_META = """\
 from dataclasses import dataclass
