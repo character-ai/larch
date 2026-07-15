@@ -74,6 +74,12 @@ When a production file is simplified, remove matching per-file ignore codes from
 
 Prefer stable machine tokens over full human-facing warning strings. Assert exit codes, argv evidence, structured `KEY=value` lines, finding IDs, status enums, and artifact basenames. Pinning complete prose makes legitimate wording changes fail the suite without improving coverage.
 
+### Runtime type validation
+
+Treat annotations as the contract for values already inside a typed boundary. Do not re-check a field after its annotation and surrounding guards have narrowed it; omit the redundant check.
+
+Validate only untyped or untrusted boundary inputs. When exact built-in type semantics are required, such as rejecting `bool` and subclasses for an `int`, use `type(value) is not int  # pylint: disable=unidiomatic-typecheck  # exact runtime type rejects bool and subclasses`. When `isinstance()` is necessary for a dynamic value that pyright cannot infer, use `isinstance(value, T)  # type: ignore[reportUnnecessaryIsInstance]  # runtime value originates outside the typed boundary`. Each suppression needs a same-line reason, and never add both suppressions to the same check.
+
 ### SKILL.md closure growth ratchet
 
 `python3 python/cli.py skill-closure report` prints `design`, `implement`, `review`, and `panel-tier` separately. For skills, it reports each `SKILL.md` size plus direct always-loaded prompt-source closure. For `panel-tier`, it reports the fixed prompt-source set: `agents/*.md`, `skills/shared/reviewer-templates.md`, and `skills/shared/voting-protocol.md`.

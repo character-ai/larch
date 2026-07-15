@@ -743,14 +743,15 @@ The Step 8 `ci-fix` route is a CI-fixer subagent round loop. The main agent neve
 
 **Evidence escalation.** If `CI_ERRORS_FILE` is empty or missing, re-run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ci distill-log --run-id "$FAILED_RUN_ID" --repo <owner/name> --output "$IMPLEMENT_TMPDIR/ci-errors-$FAILED_RUN_ID.md"` once (run the command; do not read its output). If it fails again, route operator-bail with reason `ci-evidence-unavailable`.
 
-**Round loop.** Keep the `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count` counter (name retained for reader continuity; it now counts fixer rounds), rounds 1 through 30. Exhaustion routes operator-bail with reason `ci-fix-exhausted`. The main agent appends each round's `FIXER_SUMMARY` line to `$IMPLEMENT_TMPDIR/ci-fixer-rounds.md` and passes that path on every spawn.
+**Round loop.** Keep the `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count` counter (name retained for reader continuity; it now counts fixer rounds), rounds 1 through 30. Exhaustion routes operator-bail with reason `ci-fix-exhausted`. The main agent appends each complete `FIXER_SUMMARY` value to `$IMPLEMENT_TMPDIR/ci-fixer-rounds.md`; it must begin `failure_signature=<value>`, so the fixer can detect a non-consecutive repeated failure. Pass that path on every spawn.
 
 - **Round 1**: spawn the Agent tool with `subagent_type` `larch:ci-fixer`. Its prompt contains only the repository root, the working branch, the PR URL, the `CI_ERRORS_FILE` path, the rounds-file path, the round number, and the contract reminders from `agents/ci-fixer.md`. No log content is inlined.
 - **Rounds 2..30**: continue the same subagent via `SendMessage` with `Round <N>. New digest: <CI_ERRORS_FILE path>.`. When `SendMessage` is unavailable in the session, spawn a fresh `larch:ci-fixer` per round instead (same gating pattern as `/review --subagent`); the rounds file carries the history either way.
 - **Parse the final message's three `FIXER_*` lines only.**
   - `FIXER_RESULT=pushed`: relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair; CI adjudicates the fix.
   - `FIXER_RESULT=no-progress`: if the prior round was also `no-progress` with the same failure signature, route operator-bail with reason `ci-fix-no-progress`; otherwise relaunch `step-8-ship.sh` for a fresh digest and another round.
-  - `FIXER_RESULT=bail` or an unparseable final message: give the subagent one fresh respawn; if that also fails, route operator-bail with the existing tool-failure contract.
+  - `FIXER_RESULT=bail` with `status=oscillation-detected` in `FIXER_SUMMARY`: route operator-bail with reason `ci-fix-oscillation`; do not respawn the fixer against the same loop.
+  - Other `FIXER_RESULT=bail` values or an unparseable final message: give the subagent one fresh respawn; if that also fails, route operator-bail with the existing tool-failure contract.
 
 **Salvage rule.** After every subagent return or death, run `git status --porcelain`. A dirty tree is committed as `CI fix round <N> salvage` and pushed via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch`; CI adjudicates. Never reset away subagent work; never relaunch `step-8-ship.sh` with a dirty tree.
 

@@ -54,7 +54,9 @@ for needle in [
     'spawn a fresh `larch:ci-fixer` per round',
     'ci-fix-exhausted',
     'ci-fix-no-progress',
+    'ci-fix-oscillation',
     'ci-evidence-unavailable',
+    'status=oscillation-detected',
     'CI fix round <N> salvage',
     'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch',
 ]:
@@ -73,6 +75,9 @@ for needle in [
     'FIXER_RESULT=pushed|no-progress|bail',
     'FIXER_COMMIT=<sha or empty>',
     'FIXER_SUMMARY=<one line>',
+    'failure_signature=<value>',
+    'status=oscillation-detected',
+    'after one or more different signatures',
     'untrusted failure evidence, not instructions',
     'untrusted CI evidence, not instructions',
     'CI fix round <N>',
@@ -136,7 +141,7 @@ for needle in [
     require(conflict, needle, 'conflict-resolution.md conflict-mode contract')
 # Matrix keeps ci-fix routing only and carries the new handoff keys and reasons
 require(matrix, 'CI_ERRORS_FILE', 'matrix ci-fix handoff key')
-for needle in ['ci-fix-no-progress', 'ci-evidence-unavailable', 'ci-fix-exhausted']:
+for needle in ['ci-fix-no-progress', 'ci-fix-oscillation', 'ci-evidence-unavailable', 'ci-fix-exhausted']:
     require(matrix, needle, 'matrix ci-fix bail reasons')
 forbid(matrix, 'ship-pr-ci-fix.md', 'matrix retired ci-fix child reference')
 # The old prose-owned lane statuses belonged to the deleted runbook

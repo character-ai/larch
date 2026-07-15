@@ -65,6 +65,12 @@ Preventive checks, not hard guards:
 - Tests in files split across Makefile targets: keep `-k` selectors disjoint per `scripts/lint-harness-pytest-partition.py`.
 - PLR0911 is enforced; when a function is near the return limit, consolidate equivalent guard returns instead of adding duplicate early returns or suppression comments.
 
+## Runtime type validation
+
+Treat a declared type as the contract for internal values. Do not add a runtime type check after a type annotation and surrounding guards already narrow the value; remove the check instead. Add validation only at an untyped or untrusted boundary where it enforces a runtime property the annotation alone cannot.
+
+When exact-type validation is genuinely required, such as rejecting `bool` or subclasses for an `int` input, use `type(value) is not int` with `# pylint: disable=unidiomatic-typecheck  # exact runtime type rejects bool and subclasses`. When `isinstance()` remains necessary at a dynamic boundary but pyright cannot see that boundary, use `# type: ignore[reportUnnecessaryIsInstance]  # runtime value originates outside the typed boundary`. Do not add both suppressions or suppress a check that can be omitted. See `docs/linting.md#runtime-type-validation` before introducing either form.
+
 ## Hard guards
 
 These rules are non-negotiable. Violation MUST cause `status=bailed`.
