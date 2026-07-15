@@ -2349,7 +2349,7 @@ def _runtime_evidence(result: proc.CommandResult) -> str:
 
 
 def discover_runtime_tests(*, runner: Runner, fix_sha: str, repo_root: Path) -> tuple[str, ...]:
-    result = runner.run(["git", "diff-tree", "--no-commit-id", "--name-status", "-r", fix_sha])
+    result: proc.CommandResult = runner.run(["git", "diff-tree", "--no-commit-id", "--name-status", "-r", fix_sha])
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         raise AnalyzeBugsError(f"runtime test discovery for {fix_sha} failed: {detail}")
@@ -2375,7 +2375,7 @@ def resolve_runtime_harnesses(paths: Sequence[str]) -> tuple[str, ...]:
 
 
 def runtime_zone_label(path: str) -> str | None:
-    matches = [prefix for prefix in ORCHESTRATION_ZONE_PREFIXES if path.startswith(prefix)]
+    matches: list[str] = [prefix for prefix in ORCHESTRATION_ZONE_PREFIXES if path.startswith(prefix)]
     if not matches:
         return None
     return max(matches, key=len).rstrip("/")
@@ -2384,7 +2384,7 @@ def runtime_zone_label(path: str) -> str | None:
 def _runtime_uncovered_zones(paths: Sequence[str]) -> tuple[str, ...]:
     uncovered: set[str] = set()
     for path in paths:
-        zone = runtime_zone_label(path)
+        zone: str | None = runtime_zone_label(path)
         if zone and not any(path.startswith(prefix) for prefix, _target in HARNESS_MAP):
             uncovered.add(zone)
     return tuple(sorted(uncovered))
@@ -2443,7 +2443,7 @@ def _runtime_result_from_mapping(raw: Mapping[str, Any]) -> RuntimeResult:
 def load_runtime_results(path: Path, bundles: Sequence[BundleRecord]) -> dict[str, RuntimeResult]:
     if not path.exists():
         return {}
-    expected = {(bundle.issue_number, bundle.cache_key, bundle.fix_sha) for bundle in bundles}
+    expected: set[tuple[int, str, str]] = {(bundle.issue_number, bundle.cache_key, bundle.fix_sha) for bundle in bundles}
     matched: dict[str, RuntimeResult] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -2454,9 +2454,9 @@ def load_runtime_results(path: Path, bundles: Sequence[BundleRecord]) -> dict[st
             raise AnalyzeBugsError(f"malformed runtime result artifact: {path}") from exc
         if not isinstance(raw, dict):
             raise AnalyzeBugsError(f"malformed runtime result artifact: {path}")
-        result = _runtime_result_from_mapping(cast("Mapping[str, Any]", raw))
+        result: RuntimeResult = _runtime_result_from_mapping(cast("Mapping[str, Any]", raw))
         for binding in result.bindings:
-            key = (binding.issue, binding.cache_key, binding.fix_sha)
+            key: tuple[int, str, str] = (binding.issue, binding.cache_key, binding.fix_sha)
             if key not in expected or binding.fix_sha != result.fix_sha:
                 continue
             if binding.cache_key in matched:
@@ -2527,12 +2527,12 @@ def runtime_main(argv: list[str]) -> int:
 def _runtime_overlay(verdict: str, tier: str, reason: str, result: RuntimeResult | None) -> tuple[str, str, str, tuple[str, ...]]:
     if result is None:
         return verdict, tier, reason, ()
-    annotations = tuple(f"UNVERIFIED_RUNTIME: no harness covers {zone}" for zone in result.uncovered_zones)
-    failures = [component for component in result.components if component.status in {"failed", "timeout"}]
+    annotations: tuple[str, ...] = tuple(f"UNVERIFIED_RUNTIME: no harness covers {zone}" for zone in result.uncovered_zones)
+    failures: list[RuntimeComponent] = [component for component in result.components if component.status in {"failed", "timeout"}]
     if failures:
         detail = "; ".join(f"{component.name} {component.status}: {component.evidence}".rstrip(": ") for component in failures)
         return "SUSPECT", "RUNTIME", detail, annotations
-    executed = [component for component in result.components if component.status == "passed"]
+    executed: list[RuntimeComponent] = [component for component in result.components if component.status == "passed"]
     if executed and verdict in CERTIFIABLE_FIXED_VERDICTS:
         return verdict, "RUNTIME", reason, annotations
     return verdict, tier, reason, annotations
