@@ -582,7 +582,6 @@ def _attempt_merge(
 
 
 # CLI entrypoint migrated from merge_cli.py.
-
 def pr_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py merge pr")
     parser.add_argument("--pr", required=True, type=int)

@@ -1136,7 +1136,7 @@ def step18b_final_report_main(argv: list[str] | None = None) -> int:
         step17_emitted=explicit,
     )
     logging_util.emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
-    logging_util.emit_kv(key="WFR_RC", value=wfr_rc)
+    logging_util.emit_kv(key="WFR_RC", value=str(wfr_rc))
     logging_util.emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())
     logging_util.emit_kv(key="SNAPSHOT_OK", value=snapshot)
     # ERROR=<reason> makes a render failure self-identifying instead of a silent

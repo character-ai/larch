@@ -35,7 +35,6 @@ _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
 
 
-
 def _plugin_root() -> Path:
     env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if env:
@@ -371,17 +370,16 @@ def _clear_label_retry_pending(*, design_tmpdir: Path, issue_number: str) -> Non
 
 
 def _read_simple_env_value(path: Path, key: str) -> str:
-    return (
-        larch_io.read_kv(
-            path=path,
-            key=key,
-            default="",
-            duplicate_policy="first",
-            on_error_default=True,
-        )
-        .strip()
-        .strip("'\"")
+    value = larch_io.read_kv(
+        path=path,
+        key=key,
+        default="",
+        first_match=True,
+        errors="replace",
+        on_error_default=True,
+        cr_strip="strip",
     )
+    return value.strip().strip("'\"")
 
 
 def _resolve_filing_repo(*, design_tmpdir: Path, issue_number: str | None) -> str:
@@ -419,19 +417,15 @@ def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
     if not sentinel.is_file():
         return 0, 0, 0
     try:
-        values = larch_io.parse_kv(
-            sentinel.read_text(encoding="utf-8", errors="replace"),
-            duplicate_policy="last",
-            strip_value=True,
-        )
+        text = sentinel.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return 0, 0, 0
-    created_raw = values.get("ISSUES_CREATED", "")
-    failed_raw = values.get("ISSUES_FAILED", "")
-    deduped_raw = values.get("ISSUES_DEDUPLICATED", "")
-    created = int(created_raw) if created_raw.isdigit() else 0
-    failed = int(failed_raw) if failed_raw.isdigit() else 0
-    deduped = int(deduped_raw) if deduped_raw.isdigit() else 0
+    created_str = larch_io.kv_value(text=text, key="ISSUES_CREATED", default="", first_match=False, cr_strip="strip").strip()
+    failed_str = larch_io.kv_value(text=text, key="ISSUES_FAILED", default="", first_match=False, cr_strip="strip").strip()
+    deduped_str = larch_io.kv_value(text=text, key="ISSUES_DEDUPLICATED", default="", first_match=False, cr_strip="strip").strip()
+    created = int(created_str) if created_str.isdigit() else 0
+    failed = int(failed_str) if failed_str.isdigit() else 0
+    deduped = int(deduped_str) if deduped_str.isdigit() else 0
     return created, failed, deduped
 
 
@@ -628,7 +622,7 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
     issues_failed_raw = larch_io.kv_value(
         text=stdout_text,
         key="ISSUES_FAILED",
-        duplicate_policy="last",
+        first_match=False,
     ).strip()
     issues_failed_count = int(issues_failed_raw) if issues_failed_raw.isdigit() else 0
     for line in stdout_text.splitlines():

@@ -99,18 +99,23 @@ def read_key(args: list[str]) -> int:
 
 
 def kv_get(args: list[str]) -> int:
-    # Minimal stub for cli.py kv get used by step-18.sh kv_value().
+    # Minimal stub for cli.py kv get used by step-18.sh kv_value(). Mirrors
+    # larch.core.kv_cli.get_main / larch.io.read_kv: always exits 0, printing
+    # the default when the key (or file) is absent.
     key = args[args.index("--key") + 1]
+    default = args[args.index("--default") + 1] if "--default" in args else ""
     file_path = Path(args[args.index("--file") + 1]) if "--file" in args else None
     try:
         text = file_path.read_text(encoding="utf-8") if file_path is not None else sys.stdin.read()
     except OSError:
-        return 1
+        print(default)
+        return 0
     for line in text.splitlines():
         if line.startswith(key + "="):
             print(line.split("=", 1)[1])
             return 0
-    return 1
+    print(default)
+    return 0
 
 
 def step18b(args: list[str]) -> int:

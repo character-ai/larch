@@ -344,7 +344,6 @@ def _emit(text: str) -> None:
     logging_util.emit(text)
 
 
-
 def _err(message: str) -> None:
     logging_util.BreadcrumbWriter().emit(message)
 

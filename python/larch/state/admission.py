@@ -243,7 +243,10 @@ def preflight_main(argv: list[str]) -> int:
         stash = _stash_check()
         if stash == "nonempty":
             logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
-            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop."))
+            logging_util.emit_kv(
+                key="PREFLIGHT_ERROR",
+                value=_single_line("Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop."),
+            )
             return 2
         if stash != "empty":
             logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))

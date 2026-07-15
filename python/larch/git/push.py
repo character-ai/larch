@@ -154,7 +154,6 @@ _REBASE_FAILED_EXIT = 3
 _CHECKPOINT_LOAD_ROUTING = "load-routing"
 
 
-
 def _checkpoint_next_for_exit(exit_code: int) -> str:
     if exit_code == 0:
         return "continue"

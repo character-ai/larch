@@ -19,21 +19,22 @@ def _fail(msg: str) -> int:
     return 2
 
 
-def _session_get(*, path: Path, key: str, default: str = "") -> str:
+def _session_read(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(
         path=path,
         key=key,
         default=default,
-        duplicate_policy="first",
-        empty_value_means_default=True,
+        first_match=True,
+        errors="replace",
         on_error_default=True,
+        empty_value_means_default=True,
     )
 
 
 def _resolve_run_id(*, session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:
-    run_id = _session_get(path=session_env_path, key="RUN_ID", default="")
+    run_id = _session_read(path=session_env_path, key="RUN_ID", default="")
     if not run_id:
-        run_id = _session_get(path=implement_tmpdir / "parent-issue.md", key="RUN_ID", default="")
+        run_id = _session_read(path=implement_tmpdir / "parent-issue.md", key="RUN_ID", default="")
     if not run_id:
         manifests: list[Path] = list((implement_tmpdir / "larch-logs" / "implement").glob("*/manifest.json"))
         if len(manifests) == 1:
@@ -129,7 +130,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
 
     plugin_root = Path(
         os.environ.get("CLAUDE_PLUGIN_ROOT")
-        or _session_get(path=session_env_path, key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
+        or _session_read(path=session_env_path, key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
         or Path(__file__).resolve().parents[3]
     )
     if not plugin_root.is_dir():

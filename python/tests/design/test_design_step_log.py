@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from larch import cli
+from larch.design import design_step_log
 
 
 def test_plan_step1_log_registered_as_machine_stdout() -> None:
@@ -79,11 +80,23 @@ def test_step1_log_requires_conventional_plan_file(tmp_path: Path) -> None:
     assert "plan file not found at conventional path" in result.stderr
 
 
-def test_session_get_keeps_first_match_and_empty_default(tmp_path: Path) -> None:
-    from larch.design import design_step_log  # noqa: PLC0415
+def test_session_read_first_match(tmp_path: Path) -> None:
+    env = tmp_path / "env.sh"
+    _ = env.write_text("RUN_ID=first\nRUN_ID=second\n", encoding="utf-8")
+    assert design_step_log._session_read(path=env, key="RUN_ID", default="") == "first"  # pyright: ignore[reportPrivateUsage]
 
-    path = tmp_path / "session-env.sh"
-    _ = path.write_text("RUN_ID=first\nRUN_ID=second\nEMPTY=\n", encoding="utf-8")
-    assert design_step_log._session_get(path=path, key="RUN_ID") == "first"  # pyright: ignore[reportPrivateUsage]
-    assert design_step_log._session_get(path=path, key="EMPTY", default="fallback") == "fallback"  # pyright: ignore[reportPrivateUsage]
-    assert design_step_log._session_get(path=path, key="MISSING", default="fallback") == "fallback"  # pyright: ignore[reportPrivateUsage]
+
+def test_session_read_empty_value_returns_default(tmp_path: Path) -> None:
+    env = tmp_path / "env.sh"
+    _ = env.write_text("RUN_ID=\nOTHER=val\n", encoding="utf-8")
+    assert design_step_log._session_read(path=env, key="RUN_ID", default="fallback") == "fallback"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_session_read_missing_file_returns_default(tmp_path: Path) -> None:
+    assert design_step_log._session_read(path=tmp_path / "absent.env", key="KEY", default="d") == "d"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_session_read_missing_key_returns_default(tmp_path: Path) -> None:
+    env = tmp_path / "env.sh"
+    _ = env.write_text("OTHER=val\n", encoding="utf-8")
+    assert design_step_log._session_read(path=env, key="KEY", default="d") == "d"  # pyright: ignore[reportPrivateUsage]

@@ -992,7 +992,7 @@ def _write_preflight_bundle(
         text=f"TOOL={tool}\nTIMEOUT={timeout}\nCAPTURE_STDOUT=false\nOUTPUT_FILE={output}\nCMD_JSON=[]\n"
     )
     _write(path=output.with_suffix(output.suffix + ".done"), text=f"{launcher_exit}\n")
-    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=str(launcher_exit))
     failure = classify_launch_failure(
         launcher_exit=launcher_exit,
         sidecar=output.with_suffix(output.suffix + ".diag"),
