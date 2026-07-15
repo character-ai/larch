@@ -25,7 +25,6 @@
     {"module": "lint_lifecycle_prefix_literal.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_literal_counts.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_markdown_heading_fence_state.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
-    {"module": "lint_mermaid_fences.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_module_manifest.py", "host_decision": "new-module-justified", "justification": "Hosts the host-or-justify backstop on the shared lint engine so every python/larch/lint/lint_*.py module records a reviewable manifest entry.", "source_issue": 6968},
     {"module": "lint_monkeypatch_facade_binding.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_no_raw_stderr_after_quiet_init.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

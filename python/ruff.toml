@@ -579,9 +579,6 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"lint_mermaid_fences.py" = [
-    "C901",
-]
 "lint_no_raw_stderr_after_quiet_init.py" = [
     "C901",
 ]

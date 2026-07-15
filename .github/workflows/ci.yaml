@@ -35,8 +35,7 @@ jobs:
   # `agent-lint`, `agnix`, and `shellcheck` run in their dedicated jobs.
   # `gitleaks` working-tree scan moved to the `gitleaks` job to shed ~40s
   # from this job's critical path. Test harnesses run in the separate
-  # `test-harnesses` job. Mermaid fence lint and SIGPIPE safety lint run in
-  # the parallel `lint-mermaid` job (closes #2080).
+  # `test-harnesses` job.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -71,7 +70,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -133,84 +132,8 @@ jobs:
         # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
         # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright) are skipped here.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint
         run: make lint-only
-
-  # Mermaid fence lint and SIGPIPE safety lint — split from the `lint` job
-  # into a parallel job so both halves run concurrently (closes #2080).
-  # Requires fetch-depth: 0 so `python3 python/cli.py lint mermaid-fences --changed-only` can
-  # resolve `origin/<base>...HEAD` even on PRs whose merge base is deeper
-  # than the default depth=1 shallow window.
-  lint-mermaid:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          # Fetch the full history so the Python Mermaid lint
-          # (`python3 python/cli.py lint mermaid-fences --changed-only`) can resolve `origin/<base>...HEAD` even on
-          # PRs whose merge base is deeper than the default depth=1
-          # shallow window. The prior shallow checkout could yield an
-          # empty / wrong diff while the lint step still exited 0,
-          # silently disabling Mermaid CI coverage (closes #1426
-          # follow-up D — round-2 review).
-          fetch-depth: 0
-          sparse-checkout: |
-            /*
-            !/larch-logs/
-          sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 'lts/*'
-          cache: npm
-          # Track the lockfile so a lockfile-only bump invalidates the
-          # npm cache (closes #1426 follow-up FINDING_1).
-          cache-dependency-path: mermaid-lint/package-lock.json
-      - uses: actions/cache@v5
-        id: node-modules-cache
-        with:
-          path: mermaid-lint/node_modules
-          # Key on both package.json and package-lock.json so a
-          # dependency-manifest change that doesn't update the lockfile
-          # still invalidates this cache (closes #1576).
-          key: node-modules-${{ runner.os }}-${{ hashFiles('mermaid-lint/package.json', 'mermaid-lint/package-lock.json') }}
-      - uses: actions/cache@v5
-        id: puppeteer-cache
-        with:
-          path: ~/.cache/puppeteer
-          # Mirror the cache-dependency-path key on the lockfile so the
-          # Chromium cache invalidates whenever resolved Puppeteer
-          # changes — even via lockfile-only bumps (closes #1426
-          # follow-up FINDING_1).
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('mermaid-lint/package-lock.json') }}
-      - name: Install Mermaid CLI
-        # `npm ci` installs exactly from the committed lockfile and
-        # fails if the lockfile is out of sync with package.json. This
-        # is the conventional CI contract — `npm install` would tolerate
-        # / silently update the lockfile, defeating the purpose of
-        # committing it (closes #1426 follow-up FINDING_10).
-        #
-        # Mermaid CLI 11.x has no --parseOnly mode, so the Python lint
-        # falls back to mmdc -i ... -o ....svg, which requires
-        # Puppeteer's Chromium download. The puppeteer cache above
-        # restores ~/.cache/puppeteer between runs so cold downloads
-        # only happen when package-lock.json changes.
-        #
-        # Skipped only when BOTH node_modules and Puppeteer caches hit:
-        # a node_modules hit with a puppeteer miss would leave Chromium
-        # absent and break the mermaid lint step (closes #1576).
-        if: steps.node-modules-cache.outputs.cache-hit != 'true' || steps.puppeteer-cache.outputs.cache-hit != 'true'
-        env:
-          npm_config_fetch_retries: "5"
-          npm_config_fetch_retry_factor: "2"
-          npm_config_fetch_retry_mintimeout: "10000"
-          npm_config_fetch_retry_maxtimeout: "120000"
-        run: cd mermaid-lint && npm ci
-      - name: Lint Mermaid fences (changed only)
-        run: python3 python/cli.py lint mermaid-fences --changed-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
 

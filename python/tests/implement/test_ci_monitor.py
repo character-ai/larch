@@ -1614,7 +1614,7 @@ def test_rerun_failed_submitted_and_already_running() -> None:
 @pytest.mark.parametrize(
     ("name", "shard", "expected"),
     [
-        ("lint", "", ("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")),
+        ("lint", "", ("env", "SKIP=agnix,shellcheck", "make", "lint-only")),
         ("python-lint", "", ("make", "py-lint-main")),
         ("python-pyright", "", ("make", "py-typecheck")),
         ("test-harnesses", "2", ("make", "test-harnesses-2")),

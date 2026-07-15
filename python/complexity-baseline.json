@@ -3259,7 +3259,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "C901",
     "qualified_symbol": "per_job_command",
-    "metric": 13,
+    "metric": 12,
     "added_at": "legacy",
     "history": []
   },
@@ -3307,7 +3307,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0911",
     "qualified_symbol": "per_job_command",
-    "metric": 13,
+    "metric": 12,
     "added_at": "legacy",
     "history": []
   },
@@ -5122,14 +5122,6 @@
     "code": "C901",
     "qualified_symbol": "validate_repo_path",
     "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/lint_mermaid_fences.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 12,
     "added_at": "legacy",
     "history": []
   },

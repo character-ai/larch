@@ -41,36 +41,3 @@ This warning fires once per `session-setup.sh` invocation from a larch dev clone
 diagrams as fenced Markdown blocks. These render automatically in the
 Claude Code chat panel and on GitHub. No extra tooling is needed to
 view them.
-
-## Mermaid CLI (contributors only: required when editing `.md` files with Mermaid fences)
-
-If you work from a **full dev clone** (not a marketplace sparse checkout)
-and edit any `.md` file, the `lint-mermaid-fences` pre-commit hook
-validates staged Mermaid fences with `mmdc` before they land in
-tracking-issue summaries or PR bodies. If fences are present and the
-CLI is not installed, the hook hard-fails (exit 2).
-
-**Prerequisite:** Node.js (LTS recommended, needed by `npm ci`).
-
-```bash
-cd larch
-(cd mermaid-lint && npm ci)
-```
-
-This installs `@mermaid-js/mermaid-cli` 11.12.0 (pinned in
-`mermaid-lint/package.json`) plus its Puppeteer/Chromium dependency
-under `mermaid-lint/node_modules/.bin/mmdc`. The hook resolves `mmdc`
-from `mermaid-lint/node_modules/.bin/` first, then falls back to a
-globally-installed `mmdc` on `PATH`.
-
-Marketplace/sparse installs omit `mermaid-lint/` entirely and do not
-trigger this hook.
-
-To skip the hook for a single commit without installing the toolchain:
-
-```bash
-SKIP=lint-mermaid-fences git commit …
-```
-
-CI installs the toolchain itself, so the hook still runs there even
-when locally skipped.
