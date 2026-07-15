@@ -72,8 +72,7 @@ blocks forbidden labels in refresh, `run-log flush`, `run-log commit`, and
 `capture-transcript` direct-commit paths, with regression tests in
 `python/tests/report/test_run_log_flush.py`, recovery expectations in
 `python/tests/report/test_run_logs.py`, and Step 7a bypass coverage in
-`python/tests/implement/test_step_7a.py` plus
-`skills/implement/scripts/test-step-7a.sh`.
+`python/tests/implement/test_step_7a.py`.
 
 ## Panel integrity
 

@@ -29,4 +29,4 @@ None — standalone offline test. Referenced by `make lint` via the `test-implem
 
 ## Makefile wiring
 
-Added to `test-harnesses-6` shard and the `.PHONY` list as `test-implement-cleanup-roundtrip`.
+Added to a `test-harnesses-N` shard and the `.PHONY` list as `test-implement-cleanup-roundtrip` (see `Makefile` / `make test-harness-shards-coverage`).
