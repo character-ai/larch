@@ -13,7 +13,8 @@ import sys
 import tempfile
 from contextlib import suppress
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn, cast
 
@@ -33,6 +34,128 @@ _CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
 _OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
+
+
+@dataclass(frozen=True)
+class TallyRequest:
+    """Inputs for one code-review vote tally, shared by CLI and in-process callers."""
+
+    ballot_file: str
+    review_tmpdir: str
+    voter_files: tuple[str, ...]
+    voter_tools: tuple[str, ...] = ()
+    session_env_path: str = ""
+    scope_files: str = ""
+    plan_file: str = ""
+    manifest_file: str = ""
+    collector_results_file: str = ""
+    not_substantive_count: str = "0"
+    cursor_available: str = ""
+    codex_available: str = ""
+    round_num: str = "1"
+    both_down: str = "false"
+    proposer_map_file: str = ""
+
+    def to_argv(self) -> list[str]:
+        argv = [
+            "--ballot-file", self.ballot_file,
+            "--review-tmpdir", self.review_tmpdir,
+            "--cursor-available", self.cursor_available,
+            "--codex-available", self.codex_available,
+            "--round-num", self.round_num,
+        ]
+        if self.proposer_map_file:
+            argv.extend(["--proposer-map-file", self.proposer_map_file])
+        for flag, value in (
+            ("--session-env-path", self.session_env_path),
+            ("--scope-files", self.scope_files),
+            ("--plan-file", self.plan_file),
+            ("--manifest-file", self.manifest_file),
+            ("--collector-results-file", self.collector_results_file),
+        ):
+            if value:
+                argv.extend([flag, value])
+        if self.not_substantive_count != "0":
+            argv.extend(["--not-substantive-count", self.not_substantive_count])
+        if self.both_down != "false":
+            argv.extend(["--both-down", self.both_down])
+        argv.extend(["--voter-files", *self.voter_files])
+        if self.voter_tools:
+            argv.extend(["--voter-tools", *self.voter_tools])
+        return argv
+
+
+@dataclass(frozen=True)
+class TallyResult:
+    """One complete tally outcome and the stable KV contract it emits."""
+
+    rc: int
+    status: str = ""
+    accepted_count: int = 0
+    rejected_count: int = 0
+    exonerated_count: int = 0
+    neutral_count: int = 0
+    oos_accepted_count: int = 0
+    oos_rejected_count: int = 0
+    out_of_scope_drift_count: int = 0
+    voting_tally_file: Path | None = None
+    tally_file: Path | None = None
+    accepted_findings_file: Path | None = None
+    rejected_findings_file: Path | None = None
+    oos_accepted_file: Path | None = None
+    oos_file: Path | None = None
+    eligible_voter_count: int = 0
+    voter_count: int = 0
+    parse_failed_count: int = 0
+    findings_classification_tsv_file: Path | None = None
+    under_quorum_items: tuple[str, ...] = ()
+    voting_skipped_warning: str = ""
+    yield_tsv_file: Path | None = None
+    warnings: tuple[str, ...] = ()
+    error: str = ""
+
+    @classmethod
+    def failure(cls, message: str) -> TallyResult:
+        return cls(rc=2, error=message)
+
+    def emit(self) -> None:
+        if self.error:
+            print(self.error, file=sys.stderr)
+            return
+        for warning in self.warnings:
+            logging_util.emit_kv(key="WARN", value=warning)
+        rows = (
+            ("TALLY_STATUS", self.status),
+            ("ACCEPTED_COUNT", self.accepted_count),
+            ("REJECTED_COUNT", self.rejected_count),
+            ("EXONERATED_COUNT", self.exonerated_count),
+            ("NEUTRAL_COUNT", self.neutral_count),
+            ("OOS_ACCEPTED_COUNT", self.oos_accepted_count),
+            ("OOS_REJECTED_COUNT", self.oos_rejected_count),
+            ("OUT_OF_SCOPE_DRIFT_COUNT", self.out_of_scope_drift_count),
+            ("VOTING_TALLY_FILE", self.voting_tally_file),
+            ("TALLY_FILE", self.tally_file),
+            ("ACCEPTED_FINDINGS_FILE", self.accepted_findings_file),
+            ("REJECTED_FINDINGS_FILE", self.rejected_findings_file),
+            ("OOS_ACCEPTED_FILE", self.oos_accepted_file),
+            ("OOS_FILE", self.oos_file),
+            ("TALLY_OK", "true"),
+            ("ELIGIBLE_VOTER_COUNT", self.eligible_voter_count),
+            ("VOTER_COUNT", self.voter_count),
+        )
+        for key, value in rows:
+            if value is not None:
+                logging_util.emit_kv(key=key, value=str(value) if isinstance(value, Path) else value)
+        if self.status == "ok":
+            logging_util.emit_kv(key="UNDER_QUORUM_COUNT", value=len(self.under_quorum_items))
+            logging_util.emit_kv(key="UNDER_QUORUM_ITEMS", value=", ".join(self.under_quorum_items))
+        logging_util.emit_kv(key="PARSE_FAILED_COUNT", value=self.parse_failed_count)
+        if self.voting_skipped_warning:
+            logging_util.emit_kv(key="VOTING_SKIPPED_WARNING", value=self.voting_skipped_warning)
+        if self.findings_classification_tsv_file is not None:
+            logging_util.emit_kv(key="FINDINGS_CLASSIFICATION_TSV_FILE", value=str(self.findings_classification_tsv_file))
+        if self.yield_tsv_file is not None:
+            logging_util.emit_kv(key="YIELD_TSV_FILE", value=str(self.yield_tsv_file))
 
 
 def _error(message: str) -> int:
@@ -77,7 +200,7 @@ def _parse_multi(*, argv: list[str], flag: str) -> tuple[list[str], list[str]]:
     return rest, out
 
 
-def _parse_tally_args(argv: list[str]) -> argparse.Namespace:
+def _parse_tally_args(argv: list[str]) -> TallyRequest:
     rest, voter_files = _parse_multi(argv=argv, flag="--voter-files")
     rest, voter_tools = _parse_multi(argv=rest, flag="--voter-tools")
     parser = argparse.ArgumentParser(prog="tally-code-votes")
@@ -95,9 +218,23 @@ def _parse_tally_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--both-down", default="false")
     parser.add_argument("--proposer-map-file", default="")
     args = parser.parse_args(rest)
-    args.voter_files = voter_files
-    args.voter_tools = voter_tools
-    return args
+    return TallyRequest(
+        ballot_file=args.ballot_file,
+        review_tmpdir=args.review_tmpdir,
+        voter_files=tuple(voter_files),
+        voter_tools=tuple(voter_tools),
+        session_env_path=args.session_env_path,
+        scope_files=args.scope_files,
+        plan_file=args.plan_file,
+        manifest_file=args.manifest_file,
+        collector_results_file=args.collector_results_file,
+        not_substantive_count=args.not_substantive_count,
+        cursor_available=args.cursor_available,
+        codex_available=args.codex_available,
+        round_num=args.round_num,
+        both_down=args.both_down,
+        proposer_map_file=args.proposer_map_file,
+    )
 
 
 def _nested_implement_round(*, review_tmpdir: Path, session_env_path: str) -> bool:
@@ -194,7 +331,7 @@ def _classification_row(*,
 def _voter_votes_and_severities(
     cells: list[tuple[str, str, str, str, str, str | None]],
     *,
-    voter_tools: list[str],
+    voter_tools: Sequence[str],
     three_slot: bool,
 ) -> tuple[list[tuple[str, str]], list[str]]:
     if three_slot:
@@ -657,7 +794,7 @@ def _write_final_tally_outputs(*,
     tally_env: Path,
     counts_text: str,
     review_tmpdir: Path,
-    args: argparse.Namespace,
+    args: TallyRequest,
     ledger_entries: list[dict[str, object]],
 ) -> None:
     findings_ledger.write_round(
@@ -668,20 +805,15 @@ def _write_final_tally_outputs(*,
     _append(path=tally_env, text=counts_text)
 
 
-def tally_code_votes(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tally-code-votes")
-    try:
-        args = _parse_tally_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
+def tally_code_votes(args: TallyRequest) -> TallyResult:
     ballot_file = Path(args.ballot_file)
     review_tmpdir = Path(args.review_tmpdir)
     if not ballot_file.is_file():
-        return _error("tally-code-votes: --ballot-file must name a file")
+        return TallyResult.failure("tally-code-votes: --ballot-file must name a file")
     if args.manifest_file and not Path(args.manifest_file).is_file():
-        return _error("tally-code-votes: --manifest-file must name a file")
+        return TallyResult.failure("tally-code-votes: --manifest-file must name a file")
     if not str(args.round_num).isdigit() or int(args.round_num) <= 0:
-        return _error("tally-code-votes: --round-num must be a positive integer")
+        return TallyResult.failure("tally-code-votes: --round-num must be a positive integer")
     try:
         proposer_map_file, proposer_sidecar_required = _resolve_proposer_map(
             ballot_file=ballot_file,
@@ -689,12 +821,12 @@ def tally_code_votes(argv: list[str]) -> int:
             explicit_map=str(args.proposer_map_file or "")
         )
     except voting.TallyError as exc:
-        return _error(f"tally-code-votes: {exc}")
+        return TallyResult.failure(f"tally-code-votes: {exc}")
     active_bonus = voting.unique_finder_bonus_from_env()
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     three_slot = bool(args.voter_tools)
     if three_slot and (len(args.voter_files) != _THREE_SLOT_COUNT or len(args.voter_tools) != _THREE_SLOT_COUNT):
-        return _error("tally-code-votes: --voter-tools requires exactly three --voter-files and three tool labels")
+        return TallyResult.failure("tally-code-votes: --voter-tools requires exactly three --voter-files and three tool labels")
     accepted_file = review_tmpdir / "accepted-findings.md"
     rejected_file = review_tmpdir / "rejected-findings.md"
     oos_accepted_file = review_tmpdir / "oos-accepted-review.md"
@@ -712,7 +844,7 @@ def tally_code_votes(argv: list[str]) -> int:
     try:
         blocks = _block_files(ballot_file=ballot_file, review_tmpdir=review_tmpdir)
     except RuntimeError:
-        return _error("tally-code-votes: duplicate or malformed FINDING/OOS headings in ballot")
+        return TallyResult.failure("tally-code-votes: duplicate or malformed FINDING/OOS headings in ballot")
     ballot_id_set = {block.stem for block in blocks}
     _write(path=class_tsv, text=voting.code_review_classification_header() + "\n" if three_slot else _CLASSIFICATION_HEADER + "\n")
     not_substantive_count = int(args.not_substantive_count) if str(args.not_substantive_count).isdigit() else 0
@@ -729,29 +861,17 @@ def tally_code_votes(argv: list[str]) -> int:
             args=args,
             ledger_entries=[],
         )
-        for key, value in {
-            "TALLY_STATUS": "skipped-empty-findings",
-            "ACCEPTED_COUNT": "0",
-            "REJECTED_COUNT": "0",
-            "EXONERATED_COUNT": "0",
-            "NEUTRAL_COUNT": "0",
-            "OOS_ACCEPTED_COUNT": "0",
-            "OOS_REJECTED_COUNT": "0",
-            "OUT_OF_SCOPE_DRIFT_COUNT": "0",
-            "VOTING_TALLY_FILE": str(voting_tally_file),
-            "TALLY_FILE": str(tally_env),
-            "ACCEPTED_FINDINGS_FILE": str(accepted_file),
-            "REJECTED_FINDINGS_FILE": str(rejected_file),
-            "OOS_ACCEPTED_FILE": str(oos_accepted_out),
-            "OOS_FILE": str(oos_file),
-            "TALLY_OK": "true",
-            "ELIGIBLE_VOTER_COUNT": "0",
-            "VOTER_COUNT": "0",
-            "PARSE_FAILED_COUNT": "0",
-            "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
-        }.items():
-            logging_util.emit_kv(key=key, value=value)
-        return 0
+        return TallyResult(
+            rc=0,
+            status="skipped-empty-findings",
+            voting_tally_file=voting_tally_file,
+            tally_file=tally_env,
+            accepted_findings_file=accepted_file,
+            rejected_findings_file=rejected_file,
+            oos_accepted_file=oos_accepted_out,
+            oos_file=oos_file,
+            findings_classification_tsv_file=class_tsv,
+        )
     eligible = 0
     effective_files: list[str] = []
     effective_slot = [False, False, False]
@@ -831,7 +951,7 @@ def tally_code_votes(argv: list[str]) -> int:
                 publish=lambda _result: None,
             )
         except RuntimeError as exc:
-            return _error(f"tally-code-votes: {exc}")
+            return TallyResult.failure(f"tally-code-votes: {exc}")
         warning = "**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
         zero_lines = ["# Code Review Voting Tally\n\n", f"{warning}\n\n"]
         if not_substantive_count > 0:
@@ -843,30 +963,20 @@ def tally_code_votes(argv: list[str]) -> int:
             )
         zero_lines.append(voting.render_voter_agreement_and_severity_scoreboards([]))
         _write(path=voting_tally_file, text="".join(zero_lines))
-        for key, value in {
-            "TALLY_STATUS": "main-agent-vote-required",
-            "ACCEPTED_COUNT": "0",
-            "REJECTED_COUNT": "0",
-            "EXONERATED_COUNT": "0",
-            "NEUTRAL_COUNT": "0",
-            "OOS_ACCEPTED_COUNT": "0",
-            "OOS_REJECTED_COUNT": "0",
-            "OUT_OF_SCOPE_DRIFT_COUNT": "0",
-            "VOTING_TALLY_FILE": str(voting_tally_file),
-            "TALLY_FILE": str(tally_env),
-            "ACCEPTED_FINDINGS_FILE": str(accepted_file),
-            "REJECTED_FINDINGS_FILE": str(rejected_file),
-            "OOS_ACCEPTED_FILE": str(oos_accepted_out),
-            "OOS_FILE": str(oos_file),
-            "TALLY_OK": "true",
-            "ELIGIBLE_VOTER_COUNT": str(eligible),
-            "VOTER_COUNT": "0",
-            "PARSE_FAILED_COUNT": str(parse_failed),
-            "VOTING_SKIPPED_WARNING": warning,
-            "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
-        }.items():
-            logging_util.emit_kv(key=key, value=value)
-        return 0
+        return TallyResult(
+            rc=0,
+            status="main-agent-vote-required",
+            voting_tally_file=voting_tally_file,
+            tally_file=tally_env,
+            accepted_findings_file=accepted_file,
+            rejected_findings_file=rejected_file,
+            oos_accepted_file=oos_accepted_out,
+            oos_file=oos_file,
+            eligible_voter_count=eligible,
+            parse_failed_count=parse_failed,
+            findings_classification_tsv_file=class_tsv,
+            voting_skipped_warning=warning,
+        )
     score_rows: list[tuple[str, str, str, int]] = []
     bonus_by_reviewer: defaultdict[str, float] = defaultdict(float)
     sole_finder_reward_count = 0
@@ -1037,7 +1147,7 @@ def tally_code_votes(argv: list[str]) -> int:
             item_contexts(), serialize=serialize, security_hook=lambda context: _security_block(context.block_path), publish=publish
         )
     except RuntimeError as exc:
-        return _error(f"tally-code-votes: {exc}")
+        return TallyResult.failure(f"tally-code-votes: {exc}")
     if under_quorum_items:
         tally_lines.insert(
             1,
@@ -1085,10 +1195,13 @@ def tally_code_votes(argv: list[str]) -> int:
     tally_lines.append("\n")
     tally_lines.append(voting.render_voter_agreement_and_severity_scoreboards(agreement_rows))
     _write(path=voting_tally_file, text="".join(tally_lines))
+    warnings: list[str] = []
     if args.manifest_file:
         archetype_map = _write_archetype_map(Path(args.manifest_file))
-        for orphan in _write_yield_tsv(yield_path=yield_tsv, archetype_map=archetype_map, score_rows=score_rows):
-            logging_util.emit_kv(key="WARN", value=f"yield TSV missing manifest entry for reviewer basename: {orphan}")
+        warnings.extend(
+            f"yield TSV missing manifest entry for reviewer basename: {orphan}"
+            for orphan in _write_yield_tsv(yield_path=yield_tsv, archetype_map=archetype_map, score_rows=score_rows)
+        )
     _write_final_tally_outputs(
         tally_env=tally_env,
         counts_text=f"ACCEPTED_COUNT={accepted}\nREJECTED_COUNT={rejected}\nEXONERATED_COUNT={exonerated}\nNEUTRAL_COUNT={neutral}\nOOS_ACCEPTED_COUNT={oos_accepted}\nOOS_REJECTED_COUNT={oos_rejected}\n",
@@ -1096,37 +1209,40 @@ def tally_code_votes(argv: list[str]) -> int:
         args=args,
         ledger_entries=ledger_entries
     )
-    for key, value in {
-        "TALLY_STATUS": "ok",
-        "ACCEPTED_COUNT": str(accepted),
-        "REJECTED_COUNT": str(rejected),
-        "EXONERATED_COUNT": str(exonerated),
-        "NEUTRAL_COUNT": str(neutral),
-        "OOS_ACCEPTED_COUNT": str(oos_accepted),
-        "OOS_REJECTED_COUNT": str(oos_rejected),
-        "OUT_OF_SCOPE_DRIFT_COUNT": str(drift),
-        "VOTING_TALLY_FILE": str(voting_tally_file),
-        "TALLY_FILE": str(tally_env),
-        "ACCEPTED_FINDINGS_FILE": str(accepted_file),
-        "REJECTED_FINDINGS_FILE": str(rejected_file),
-        "OOS_ACCEPTED_FILE": str(oos_accepted_out),
-        "OOS_FILE": str(oos_file),
-        "TALLY_OK": "true",
-        "ELIGIBLE_VOTER_COUNT": str(eligible),
-        "VOTER_COUNT": str(effective),
-        "UNDER_QUORUM_COUNT": str(len(under_quorum_items)),
-        "UNDER_QUORUM_ITEMS": ", ".join(under_quorum_items),
-        "PARSE_FAILED_COUNT": str(parse_failed),
-        "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
-    }.items():
-        logging_util.emit_kv(key=key, value=value)
-    if args.manifest_file:
-        logging_util.emit_kv(key="YIELD_TSV_FILE", value=str(yield_tsv))
-    return 0
+    return TallyResult(
+        rc=0,
+        status="ok",
+        accepted_count=accepted,
+        rejected_count=rejected,
+        exonerated_count=exonerated,
+        neutral_count=neutral,
+        oos_accepted_count=oos_accepted,
+        oos_rejected_count=oos_rejected,
+        out_of_scope_drift_count=drift,
+        voting_tally_file=voting_tally_file,
+        tally_file=tally_env,
+        accepted_findings_file=accepted_file,
+        rejected_findings_file=rejected_file,
+        oos_accepted_file=oos_accepted_out,
+        oos_file=oos_file,
+        eligible_voter_count=eligible,
+        voter_count=effective,
+        parse_failed_count=parse_failed,
+        findings_classification_tsv_file=class_tsv,
+        under_quorum_items=tuple(under_quorum_items),
+        yield_tsv_file=yield_tsv if args.manifest_file else None,
+        warnings=tuple(warnings),
+    )
 
 
 def tally_code_votes_main(argv: list[str]) -> int:
-    return tally_code_votes(argv)
+    logging_util.quiet_init(argv0="tally-code-votes")
+    try:
+        result = tally_code_votes(_parse_tally_args(argv))
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    result.emit()
+    return result.rc
 
 
 def _parse_emit_args(argv: list[str]) -> argparse.Namespace:

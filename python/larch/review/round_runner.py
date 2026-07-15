@@ -605,55 +605,43 @@ def _build_targeted_dispatch_args(
     return dispatch_args
 
 
-def _build_targeted_tally_args(
+def _build_targeted_tally_request(
     round_dir: Path,
     core: dict[str, str],
     args: argparse.Namespace,
     merged_voter_files: list[str],
     voter_tools: list[str],
-) -> list[str] | None:
+) -> review_tally.TallyRequest | None:
     findings = round_dir / "findings.md"
     proposer_map = round_dir / "proposer-map.tsv"
     if not findings.is_file() or not proposer_map.is_file() or not merged_voter_files or len(merged_voter_files) != len(voter_tools):
         return None
-    tally_args = [
-        "--ballot-file",
-        str(findings),
-        "--review-tmpdir",
-        str(round_dir),
-        "--cursor-available",
-        str(args.cursor_available),
-        "--codex-available",
-        str(args.codex_available),
-        "--round-num",
-        str(args.round_num),
-        "--proposer-map-file",
-        str(proposer_map),
-    ]
     session_env_path = getattr(args, "session_env_path", "")
-    if session_env_path:
-        tally_args.extend(["--session-env-path", str(session_env_path)])
     gather = _parse_env_file(round_dir / "review-core-gather.env")
     scope_files = gather.get("FILE_LIST_FILE", "")
-    if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size:
-        tally_args.extend(["--scope-files", scope_files])
     plan_file = getattr(args, "plan_file", "")
-    if plan_file and Path(plan_file).is_file():
-        tally_args.extend(["--plan-file", str(plan_file)])
     panel_manifest = round_dir / "panel-manifest.ndjson"
-    if panel_manifest.is_file():
-        tally_args.extend(["--manifest-file", str(panel_manifest)])
     collector_results = round_dir / "collector-results.env"
-    if collector_results.is_file():
-        tally_args.extend(["--collector-results-file", str(collector_results)])
     threshold = _parse_env_file(round_dir / "review-core-threshold.env")
     not_substantive = _strict_env_int(threshold, "NOT_SUBSTANTIVE_SLOTS")
-    if not_substantive is not None and not_substantive > 0:
-        tally_args.extend(["--not-substantive-count", str(not_substantive)])
-    if core.get("PANEL_MANIFEST") and "--manifest-file" not in tally_args and Path(core["PANEL_MANIFEST"]).is_file():
-        tally_args.extend(["--manifest-file", core["PANEL_MANIFEST"]])
-    tally_args.extend(["--voter-files", *merged_voter_files, "--voter-tools", *voter_tools])
-    return tally_args
+    core_manifest = core.get("PANEL_MANIFEST", "")
+    manifest_file = str(panel_manifest) if panel_manifest.is_file() else core_manifest if core_manifest and Path(core_manifest).is_file() else ""
+    return review_tally.TallyRequest(
+        ballot_file=str(findings),
+        review_tmpdir=str(round_dir),
+        voter_files=tuple(merged_voter_files),
+        voter_tools=tuple(voter_tools),
+        session_env_path=str(session_env_path),
+        scope_files=scope_files if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size else "",
+        plan_file=str(plan_file) if plan_file and Path(plan_file).is_file() else "",
+        manifest_file=manifest_file,
+        collector_results_file=str(collector_results) if collector_results.is_file() else "",
+        not_substantive_count=str(not_substantive) if not_substantive is not None and not_substantive > 0 else "0",
+        cursor_available=str(args.cursor_available),
+        codex_available=str(args.codex_available),
+        round_num=str(args.round_num),
+        proposer_map_file=str(proposer_map),
+    )
 
 
 def _build_targeted_emit_args(round_dir: Path, core: dict[str, str], tally_env_path: Path, args: argparse.Namespace) -> list[str] | None:
@@ -820,19 +808,18 @@ def _run_under_quorum_revote(
             under_quorum_ids=item_ids,
             output_paths=merged_paths,
         )
-        tally_args = _build_targeted_tally_args(round_dir, core, args, merged, slots.voter_tools)
-        ok = tally_args is not None
+        tally_request = _build_targeted_tally_request(round_dir, core, args, merged, slots.voter_tools)
+        ok = tally_request is not None
     else:
-        tally_args = None
+        tally_request = None
     tally_env_path = revote_dir / "review-core-targeted-tally.env"
     backup_dir = revote_dir / "pre-targeted-final"
-    if ok and tally_args is not None:
+    if ok and tally_request is not None:
         _backup_targeted_artifacts(round_dir, backup_dir)
         commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-        tally_result = (
-            review_core_body._run_command_string(command=commands.tally, args=tally_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-            if commands.tally
-            else review_core_body._call_maybe_override(command="", review_name="tally-code-votes", args=tally_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+        tally_result = review_core_body._run_tally_request(  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+            commands=commands,
+            request=tally_request,
         )
         _write_text(path=tally_env_path, text=tally_result.stdout)
         tally = _parse_env_file(tally_env_path)

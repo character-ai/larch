@@ -111,6 +111,75 @@ def _mk_ballot(path: Path) -> None:
     )
 
 
+def test_tally_request_serializes_shared_cli_contract() -> None:
+    request = review_tally.TallyRequest(
+        ballot_file="ballot.md",
+        review_tmpdir="review",
+        voter_files=("voter-1.txt", "voter-2.txt", "voter-3.txt"),
+        voter_tools=("codex-validity", "codex-plan-fidelity", "codex-pragmatism"),
+        session_env_path="session.env",
+        scope_files="scope.txt",
+        plan_file="plan.md",
+        manifest_file="panel.ndjson",
+        collector_results_file="collector.env",
+        not_substantive_count="2",
+        cursor_available="true",
+        codex_available="true",
+        round_num="2",
+        proposer_map_file="proposer-map.tsv",
+    )
+
+    assert request.to_argv() == [
+        "--ballot-file", "ballot.md",
+        "--review-tmpdir", "review",
+        "--cursor-available", "true",
+        "--codex-available", "true",
+        "--round-num", "2",
+        "--proposer-map-file", "proposer-map.tsv",
+        "--session-env-path", "session.env",
+        "--scope-files", "scope.txt",
+        "--plan-file", "plan.md",
+        "--manifest-file", "panel.ndjson",
+        "--collector-results-file", "collector.env",
+        "--not-substantive-count", "2",
+        "--voter-files", "voter-1.txt", "voter-2.txt", "voter-3.txt",
+        "--voter-tools", "codex-validity", "codex-plan-fidelity", "codex-pragmatism",
+    ]
+
+
+def test_tally_result_emits_one_stable_kv_contract(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    result = review_tally.TallyResult(
+        rc=0,
+        status="ok",
+        accepted_count=1,
+        rejected_count=2,
+        exonerated_count=3,
+        neutral_count=4,
+        oos_accepted_count=5,
+        oos_rejected_count=6,
+        out_of_scope_drift_count=7,
+        voting_tally_file=tmp_path / "voting-tally.md",
+        tally_file=tmp_path / "review-tally.env",
+        accepted_findings_file=tmp_path / "accepted-findings.md",
+        rejected_findings_file=tmp_path / "rejected-findings.md",
+        oos_accepted_file=tmp_path / "oos-accepted-review.md",
+        oos_file=tmp_path / "oos.md",
+        eligible_voter_count=3,
+        voter_count=2,
+        parse_failed_count=1,
+        findings_classification_tsv_file=tmp_path / "classification.tsv",
+        under_quorum_items=("FINDING_2",),
+    )
+
+    result.emit()
+
+    rows = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line)
+    assert rows["TALLY_STATUS"] == "ok"
+    assert rows["ACCEPTED_COUNT"] == "1"
+    assert rows["UNDER_QUORUM_ITEMS"] == "FINDING_2"
+    assert rows["FINDINGS_CLASSIFICATION_TSV_FILE"] == str(tmp_path / "classification.tsv")
+
+
 def test_emit_tally_writes_summary_json(tmp_path: Path) -> None:
     tally = tmp_path / "review-tally.env"
     _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\n", encoding="utf-8")

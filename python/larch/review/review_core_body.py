@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import os
 import re
 import shutil
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from larch.core import config, logging_util, proc
 from larch.calibration import difficulty
@@ -41,6 +43,9 @@ from larch.review.review_prune import (
     reviewer_prune_record,
     write_prune_decision_env,
 )
+
+if TYPE_CHECKING:
+    from larch.review import review_tally
 
 
 def _review_commands() -> ReviewCommands:
@@ -280,9 +285,18 @@ def _flush_round_log(*, review_tmpdir: Path, run_id: str, round_num: int) -> Non
     if not run_id or not implement or not Path(implement).is_dir():
         return
     _ensure_prune_sidecars(review_tmpdir=review_tmpdir, round_num=round_num)
-    _run_python_cli(
-        ["run-log", "write-round", "--log-root", str(Path(implement) / "larch-logs"), "--skill", "implement", "--run-id", run_id, "--round", str(round_num), "--source-dir", str(review_tmpdir)]
-    )
+    from larch.report import run_logs  # noqa: PLC0415 - avoids the report finalization import cycle during review-core module loading.
+
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        _ = run_logs.larch_log_write_round_main(
+            [
+                "--log-root", str(Path(implement) / "larch-logs"),
+                "--skill", "implement",
+                "--run-id", run_id,
+                "--round", str(round_num),
+                "--source-dir", str(review_tmpdir),
+            ]
+        )
 
 
 def _parse_nonnegative_int(value: str, *, default: int = 0) -> int:
@@ -469,6 +483,30 @@ def _emit_review_core_result(result: ReviewCoreResult) -> int:
     return result.rc
 
 
+def _run_tally_request(*, commands: ReviewCommands, request: review_tally.TallyRequest) -> proc.CommandResult:
+    if commands.tally:
+        return _run_command_string(command=commands.tally, args=request.to_argv())
+    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        try:
+            result = review_tally.tally_code_votes(request)
+        except SystemExit as exc:
+            returncode = int(exc.code) if isinstance(exc.code, int) else 2
+        else:
+            result.emit()
+            returncode = result.rc
+    return proc.CommandResult(
+        argv=("tally-code-votes", *request.to_argv()),
+        returncode=returncode,
+        stdout=stdout.getvalue(),
+        stderr=stderr.getvalue(),
+        duration=0.0,
+    )
+
+
 def _emit_tally(*, commands: ReviewCommands, args: Sequence[str], out_file: Path, runner: object = None) -> dict[str, str]:
     if commands.emit:
         result = _run_command_string(command=commands.emit, args=args)
@@ -521,30 +559,22 @@ def _zero_findings_branch(*,  # noqa: PLR0913,RUF100
     rows: list[tuple[str, object]] = list(prefix_rows)
     voter = review_tmpdir / "zero-findings-voter.txt"
     _write_text(path=voter, text="")
-    tally_args = [
-        "--ballot-file",
-        str(review_tmpdir / "findings.md"),
-        "--review-tmpdir",
-        str(review_tmpdir),
-        "--cursor-available",
-        cursor_available,
-        "--codex-available",
-        codex_available,
-        "--round-num",
-        str(round_num),
-        "--voter-files",
-        str(voter),
-    ]
-    if session_env_path:
-        tally_args.extend(["--session-env-path", session_env_path])
-    if panel_manifest and Path(panel_manifest).is_file():
-        tally_args.extend(["--manifest-file", panel_manifest])
-    if collector_results.is_file():
-        tally_args.extend(["--collector-results-file", str(collector_results)])
-    if not_substantive:
-        tally_args.extend(["--not-substantive-count", str(not_substantive)])
+    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
+
+    request = review_tally.TallyRequest(
+        ballot_file=str(review_tmpdir / "findings.md"),
+        review_tmpdir=str(review_tmpdir),
+        voter_files=(str(voter),),
+        session_env_path=session_env_path,
+        manifest_file=panel_manifest if panel_manifest and Path(panel_manifest).is_file() else "",
+        collector_results_file=str(collector_results) if collector_results.is_file() else "",
+        not_substantive_count=str(not_substantive),
+        cursor_available=cursor_available,
+        codex_available=codex_available,
+        round_num=str(round_num),
+    )
     _snapshot_oos(review_tmpdir=review_tmpdir, stem="zero-findings", session_env_path=session_env_path)
-    tally_result = _run_command_string(command=commands.tally, args=tally_args) if commands.tally else _call_maybe_override(command="", review_name="tally-code-votes", args=tally_args)
+    tally_result = _run_tally_request(commands=commands, request=request)
     tally_out = review_tmpdir / "review-core-zero-findings-tally.env"
     _write_text(path=tally_out, text=tally_result.stdout)
     tally = _kv_parse(tally_result.stdout)
@@ -666,34 +696,25 @@ def _dispatch_voters_for_ballot(ctx: ReviewCoreBranchContext) -> tuple[list[str]
 
 
 def _tally_voted_ballot(ctx: ReviewCoreBranchContext, *, proposer_map: Path, voter_files: list[str], voter_tools: list[str], out_name: str) -> tuple[proc.CommandResult, dict[str, str]]:
-    tally_args = [
-        "--ballot-file",
-        str(ctx.review_tmpdir / "findings.md"),
-        "--review-tmpdir",
-        str(ctx.review_tmpdir),
-        "--cursor-available",
-        ctx.cursor_available,
-        "--codex-available",
-        ctx.codex_available,
-        "--round-num",
-        str(ctx.round_num),
-        "--proposer-map-file",
-        str(proposer_map),
-    ]
-    if ctx.session_env_path:
-        tally_args.extend(["--session-env-path", ctx.session_env_path])
-    if ctx.scope_files and Path(ctx.scope_files).is_file() and Path(ctx.scope_files).stat().st_size:
-        tally_args.extend(["--scope-files", ctx.scope_files])
-    if ctx.plan_file and Path(ctx.plan_file).is_file():
-        tally_args.extend(["--plan-file", ctx.plan_file])
-    if ctx.panel_manifest and Path(ctx.panel_manifest).is_file():
-        tally_args.extend(["--manifest-file", ctx.panel_manifest])
-    if ctx.collector_results.is_file():
-        tally_args.extend(["--collector-results-file", str(ctx.collector_results)])
-    if ctx.not_substantive:
-        tally_args.extend(["--not-substantive-count", str(ctx.not_substantive)])
-    tally_args.extend(["--voter-files", *voter_files, "--voter-tools", *voter_tools])
-    tally_result = _run_command_string(command=ctx.commands.tally, args=tally_args) if ctx.commands.tally else _call_maybe_override(command="", review_name="tally-code-votes", args=tally_args)
+    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
+
+    request = review_tally.TallyRequest(
+        ballot_file=str(ctx.review_tmpdir / "findings.md"),
+        review_tmpdir=str(ctx.review_tmpdir),
+        voter_files=tuple(voter_files),
+        voter_tools=tuple(voter_tools),
+        session_env_path=ctx.session_env_path,
+        scope_files=ctx.scope_files if ctx.scope_files and Path(ctx.scope_files).is_file() and Path(ctx.scope_files).stat().st_size else "",
+        plan_file=ctx.plan_file if ctx.plan_file and Path(ctx.plan_file).is_file() else "",
+        manifest_file=ctx.panel_manifest if ctx.panel_manifest and Path(ctx.panel_manifest).is_file() else "",
+        collector_results_file=str(ctx.collector_results) if ctx.collector_results.is_file() else "",
+        not_substantive_count=str(ctx.not_substantive),
+        cursor_available=ctx.cursor_available,
+        codex_available=ctx.codex_available,
+        round_num=str(ctx.round_num),
+        proposer_map_file=str(proposer_map),
+    )
+    tally_result = _run_tally_request(commands=ctx.commands, request=request)
     tally = _kv_parse(tally_result.stdout)
     _write_text(path=ctx.review_tmpdir / out_name, text=tally_result.stdout)
     return tally_result, tally
@@ -1136,22 +1157,27 @@ def _review_core_body(
             rows.append((f"VOTER_{idx}_TOOL", voters[f"VOTER_{idx}_TOOL"]))
         if status:
             rows.append((f"VOTER_{idx}_STATUS", status))
-    tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num), "--proposer-map-file", str(proposer_map)]
-    if session_env_path:
-        tally_args.extend(["--session-env-path", session_env_path])
-    if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size:
-        tally_args.extend(["--scope-files", scope_files])
-    if _get(parsed=parsed, key="--plan-file") and Path(_get(parsed=parsed, key="--plan-file")).is_file():
-        tally_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
-    if panel_manifest and Path(panel_manifest).is_file():
-        tally_args.extend(["--manifest-file", panel_manifest])
-    if collector_results.is_file():
-        tally_args.extend(["--collector-results-file", str(collector_results)])
-    if not_substantive:
-        tally_args.extend(["--not-substantive-count", str(not_substantive)])
-    tally_args.extend(["--voter-files", *voter_files, "--voter-tools", *voter_tools])
+    plan_file = _get(parsed=parsed, key="--plan-file")
+    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
+
+    request = review_tally.TallyRequest(
+        ballot_file=str(review_tmpdir / "findings.md"),
+        review_tmpdir=str(review_tmpdir),
+        voter_files=tuple(voter_files),
+        voter_tools=tuple(voter_tools),
+        session_env_path=session_env_path,
+        scope_files=scope_files if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size else "",
+        plan_file=plan_file if plan_file and Path(plan_file).is_file() else "",
+        manifest_file=panel_manifest if panel_manifest and Path(panel_manifest).is_file() else "",
+        collector_results_file=str(collector_results) if collector_results.is_file() else "",
+        not_substantive_count=str(not_substantive),
+        cursor_available=cursor_available,
+        codex_available=codex_available,
+        round_num=str(round_num),
+        proposer_map_file=str(proposer_map),
+    )
     _progress_note(tmpdir=progress_tmpdir, step="5", text=f"round {round_num}: tallying votes")
-    tally_result = _run_command_string(command=commands.tally, args=tally_args) if commands.tally else _call_maybe_override(command="", review_name="tally-code-votes", args=tally_args)
+    tally_result = _run_tally_request(commands=commands, request=request)
     tally = _kv_parse(tally_result.stdout)
     _write_text(path=review_tmpdir / "review-core-tally.env", text=tally_result.stdout)
     if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
