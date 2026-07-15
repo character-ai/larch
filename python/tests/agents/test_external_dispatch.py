@@ -31,7 +31,7 @@ from larch.git import rebase
 from larch.review import review_aggregate
 from larch.review import review_and_fix
 from larch.review import coder_runner, snapshot
-from larch.review import review_pipeline
+from larch.review import review_dispatch_panel
 from larch.core import config
 
 
@@ -385,12 +385,12 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
         assert role_id == "review.panel"
         return config.PanelDispatchPolicy()
 
-    monkeypatch.setattr(review_pipeline.external_defaults, "slot_defaults", fake_slot_defaults)
-    monkeypatch.setattr(review_pipeline.external_defaults, "panel_dispatch_policy", fake_panel_policy)
+    monkeypatch.setattr(external_defaults, "slot_defaults", fake_slot_defaults)
+    monkeypatch.setattr(external_defaults, "panel_dispatch_policy", fake_panel_policy)
 
     manifest = tmp_path / "manifest.ndjson"
-    review_pipeline._append_static_specialist_rows(manifest=manifest, review_tmpdir=tmp_path, codex_slots_available=False, cursor_slots_available=True, tier=difficulty.MODERATE)
-    review_pipeline._append_round_generic_codex_row(manifest=manifest, review_tmpdir=tmp_path, round_num=4, codex_slots_available=True, tier=difficulty.MODERATE)
+    review_dispatch_panel._append_static_specialist_rows(manifest=manifest, review_tmpdir=tmp_path, codex_slots_available=False, cursor_slots_available=True, tier=difficulty.MODERATE)
+    review_dispatch_panel._append_round_generic_codex_row(manifest=manifest, review_tmpdir=tmp_path, round_num=4, codex_slots_available=True, tier=difficulty.MODERATE)
 
     rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
     assert [row["slot"] for row in rows] == ["sentinel"]

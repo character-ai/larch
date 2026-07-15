@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.report import run_log_batch
-from larch.review import review_pipeline
+from larch.review import review_prune
 from larch.review import voting
 from larch.review._raf_util import (
     _PY_CLI,
@@ -66,7 +66,7 @@ def _clear_reviewer_prune_round(*, ledger: Path, round_num: int, work_dir: Path)
     _write_text(path=empty_manifest, text="")
     _write_text(path=empty_classification, text="finding_id\treviewer_slots\tvoting_result\n")
     try:
-        review_pipeline.reviewer_prune_record(ledger=ledger, round_num=round_num, manifest=empty_manifest, classification=empty_classification)
+        review_prune.reviewer_prune_record(ledger=ledger, round_num=round_num, manifest=empty_manifest, classification=empty_classification)
     except Exception as exc:
         _err(f"WARN: reviewer-prune clear failed for round {round_num}: {exc}")
 

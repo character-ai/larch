@@ -28,7 +28,6 @@ from larch.core import proc
 from larch.report import progress_report
 from larch.report import progress_file
 from larch.core import redact
-from larch.review import review_pipeline
 from larch.review import review_tally
 from larch.review import self_review_tally
 from larch.report import run_logs

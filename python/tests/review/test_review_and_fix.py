@@ -145,7 +145,7 @@ def test_step5_single_emits_round_kvs_without_review_core_leak(tmp_path, monkeyp
         logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
         return 0
 
-    monkeypatch.setattr(review_and_fix.review_pipeline, "review_core", fake_core)
+    monkeypatch.setattr(round_runner.review_core_body, "review_core", fake_core)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "single", "--round-num", "1"])
 
     out = capsys.readouterr().out
@@ -172,7 +172,7 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
         logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
         return 0
 
-    monkeypatch.setattr(review_and_fix.review_pipeline, "review_core", fake_core)
+    monkeypatch.setattr(round_runner.review_core_body, "review_core", fake_core)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
 
     out = capsys.readouterr().out
@@ -197,7 +197,7 @@ def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsy
         logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
         return 0
 
-    monkeypatch.setattr(review_and_fix.review_pipeline, "review_core", fake_core)
+    monkeypatch.setattr(round_runner.review_core_body, "review_core", fake_core)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
 
     result_lines = (impl / ".step5-review-result.env").read_text(encoding="utf-8").splitlines()
@@ -4179,7 +4179,7 @@ def test_clear_reviewer_prune_round_uses_python_helper(tmp_path: Path, monkeypat
     def fake_record(ledger: Path, round_num: int, manifest: Path, classification: Path) -> None:
         calls.append((ledger, round_num, manifest, classification))
 
-    monkeypatch.setattr(review_and_fix.review_pipeline, "reviewer_prune_record", fake_record)
+    monkeypatch.setattr(batch_report.review_prune, "reviewer_prune_record", fake_record)
     ledger = tmp_path / "ledger.tsv"
     work_dir = tmp_path / "work"
 

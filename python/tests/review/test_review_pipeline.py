@@ -15,8 +15,8 @@ from larch.core import config
 from larch.core import proc
 import pytest
 from larch.review import coder_runner, snapshot
-from larch.review import review_pipeline
-from larch.review import review_core_body
+from larch.review import review_collect, review_core_body, review_dispatch_panel, review_pipeline, review_pipeline_shared, review_prune, review_threshold
+from larch.review.review_types import ReviewCoreStatus
 from larch.rendering import rendering
 import review_test_support as rts
 from larch.review import voting
@@ -26,6 +26,14 @@ CLI = rts.CLI
 REVIEW_PIPELINE = ROOT / "python" / "larch" / "review" / "review_pipeline.py"
 REVIEW_CORE_BODY = ROOT / "python" / "larch" / "review" / "review_core_body.py"
 REVIEW_DISPATCH_PANEL = ROOT / "python" / "larch" / "review" / "review_dispatch_panel.py"
+
+
+def test_review_pipeline_exposes_only_measured_public_modules() -> None:
+    assert review_pipeline.external_defaults is not None
+    assert review_pipeline.logging_util is not None
+    assert not hasattr(review_pipeline, "_ballot_block_count")
+    assert not hasattr(review_pipeline, "review_core")
+    assert not hasattr(review_pipeline, "reviewer_prune_record")
 
 
 def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -94,7 +102,7 @@ def _run_review_core_body_direct(
     panel: str = "simple",
     outdir_name: str = "body",
     extra_env: dict[str, str] | None = None,
-) -> review_pipeline.ReviewCoreResult:
+) -> review_core_body.ReviewCoreResult:
     stubs = _write_review_core_stubs(tmp_path / f"{outdir_name}-stubs")
     env = rts.build_review_core_env(
         _stub_dir=tmp_path / f"{outdir_name}-stubs",
@@ -116,7 +124,7 @@ def _run_review_core_body_direct(
         "--panel": panel,
         "--round-num": str(round_num),
     }
-    return review_pipeline._review_core_body(  # pyright: ignore[reportPrivateUsage]
+    return review_core_body._review_core_body(  # pyright: ignore[reportPrivateUsage]
         parsed,
         mode=mode,
         review_tmpdir=outdir,
@@ -129,19 +137,19 @@ def _run_review_core_body_direct(
         run_id="",
         prune_ledger="",
         site="review Step 2",
-        commands=review_pipeline._review_commands(),  # pyright: ignore[reportPrivateUsage]
+        commands=review_core_body._review_commands(),  # pyright: ignore[reportPrivateUsage]
     )
 
 
-def _review_core_row_keys(result: review_pipeline.ReviewCoreResult) -> list[str]:
+def _review_core_row_keys(result: review_core_body.ReviewCoreResult) -> list[str]:
     return [key for key, _value in result.rows]
 
 
 def _assert_emit_stdout_matches_rows(
-    result: review_pipeline.ReviewCoreResult,
+    result: review_core_body.ReviewCoreResult,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rc = review_pipeline._emit_review_core_result(result)  # pyright: ignore[reportPrivateUsage]
+    rc = review_core_body._emit_review_core_result(result)  # pyright: ignore[reportPrivateUsage]
     out = capsys.readouterr().out
     assert rc == result.rc
     assert out.splitlines() == [f"{key}={value}" for key, value in result.rows]
@@ -169,7 +177,7 @@ def test_oos_prefixed_findings_stay_on_ballot(tmp_path: Path) -> None:
 """
     _ = findings.write_text(original, encoding="utf-8")
 
-    assert review_pipeline._ballot_block_count(findings) == 4  # pyright: ignore[reportPrivateUsage]
+    assert review_core_body._ballot_block_count(findings) == 4  # pyright: ignore[reportPrivateUsage]
     assert findings.read_text(encoding="utf-8") == original
     assert not (tmp_path / "oos-dropped-before-vote.md").exists()
     assert not (tmp_path / "pre-vote-oos-gate.env").exists()
@@ -184,7 +192,7 @@ def test_security_oos_prefixed_findings_stay_on_ballot(tmp_path: Path) -> None:
 """
     _ = findings.write_text(original, encoding="utf-8")
 
-    assert review_pipeline._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
+    assert review_core_body._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
     assert findings.read_text(encoding="utf-8") == original
     assert not (tmp_path / "oos-dropped-security-local.md").exists()
 
@@ -197,7 +205,7 @@ def test_direct_oos_findings_stay_on_ballot(tmp_path: Path) -> None:
 """
     _ = findings.write_text(original, encoding="utf-8")
 
-    assert review_pipeline._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
+    assert review_core_body._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
     assert findings.read_text(encoding="utf-8") == original
     assert not (tmp_path / "oos-dropped-direct.md").exists()
 
@@ -232,7 +240,7 @@ def test_prepare_pruned_ballot_missing_file_fails_closed(
 
     assert result is not None
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert ("THRESHOLD_REASON", "ballot-read-failed") in result.rows
 
 
@@ -242,7 +250,7 @@ def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, mon
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert result.status == ReviewCoreStatus.zero_findings
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
     assert keys.index("VOTING_TALLY_FILE") > keys.index("PANEL_SHAPE")
@@ -253,7 +261,7 @@ def test_review_core_body_fix_required_returns_duplicate_classification(tmp_path
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.fix_required
+    assert result.status == ReviewCoreStatus.fix_required
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
@@ -284,7 +292,7 @@ def test_review_core_body_records_reviewer_collect_row(tmp_path: Path, monkeypat
         extra_env={"REVIEW_TMPDIR": str(ledger.parent)},
     )
 
-    assert result.status == review_pipeline.ReviewCoreStatus.fix_required
+    assert result.status == ReviewCoreStatus.fix_required
     collect_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "reviewer-collect" in line).split("\t")
     assert collect_row[3] == "implement"
     assert collect_row[5:7] == ["claude", "reviewer-collect"]
@@ -301,7 +309,7 @@ def test_review_core_body_skips_reviewer_collect_on_zero_findings(tmp_path: Path
         extra_env={"REVIEW_TMPDIR": str(ledger.parent)},
     )
 
-    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert result.status == ReviewCoreStatus.zero_findings
     assert "reviewer-collect" not in ledger.read_text(encoding="utf-8")
 
 
@@ -330,7 +338,7 @@ def test_review_core_body_description_empty_returns_scout_and_common_rows(tmp_pa
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert result.status == ReviewCoreStatus.zero_findings
     assert keys[:4] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "SCOUT_MANIFEST", "REVIEW_CORE_STATUS"]
     assert "PANEL_PRUNED_EMPTY" not in keys
     assert ("PANEL_MODE", "normal") in result.rows
@@ -348,7 +356,7 @@ def test_review_core_body_dispatch_failure_omits_scout_rows(tmp_path: Path, monk
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert "SCOUT_STATUS" not in keys
     assert keys[0] == "REVIEW_CORE_STATUS"
     assert any(key == "THRESHOLD_REASON" for key in keys)
@@ -365,7 +373,7 @@ def test_review_core_body_prune_skipped_includes_pruned_combos(tmp_path: Path, m
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.prune_skipped
+    assert result.status == ReviewCoreStatus.prune_skipped
     assert keys[:4] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PRUNED_COMBOS", "PANEL_PRUNED_EMPTY"]
     assert keys.index("REVIEW_CORE_STATUS") > keys.index("PANEL_PRUNED_EMPTY")
 
@@ -381,7 +389,7 @@ def test_review_core_body_threshold_failure_includes_dispatch_scout_rows(tmp_pat
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert keys.index("REVIEW_CORE_STATUS") > keys.index("PANEL_PRUNED_EMPTY")
 
@@ -402,7 +410,7 @@ def test_review_core_body_threshold_failure_clears_public_oos_artifact(
     )
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert not (tmp_path / "body-threshold-oos" / "oos.md").read_text(encoding="utf-8").strip()
 
 
@@ -418,7 +426,7 @@ def test_review_core_body_proposer_map_failed_has_no_classification(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
     assert "VOTER_1_TOOL" not in keys
     threshold_idx = keys.index("THRESHOLD_REASON")
@@ -447,7 +455,7 @@ def test_review_core_body_validation_exhausted_proposer_map_failed_has_no_classi
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
     assert "VOTER_1_TOOL" not in keys
@@ -474,7 +482,7 @@ def test_review_core_body_validation_exhausted_tally_fail_has_voter_rows(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert "VOTER_1_TOOL" in keys
     assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
@@ -498,7 +506,7 @@ def test_review_core_body_aggregator_validation_exhausted_duplicate_classificati
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.aggregator_validation_exhausted
+    assert result.status == ReviewCoreStatus.aggregator_validation_exhausted
     assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
     assert keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
 
@@ -521,7 +529,7 @@ def test_review_core_body_aggregate_zero_second_path_merges_dispatch_rows(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.ok
+    assert result.status == ReviewCoreStatus.ok
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert "VOTER_1_TOOL" in keys
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
@@ -583,7 +591,7 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=1\\nMERGED_COUNT=1\\nREASON=ok\\n'
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status in {review_pipeline.ReviewCoreStatus.ok, review_pipeline.ReviewCoreStatus.fix_required}
+    assert result.status in {ReviewCoreStatus.ok, ReviewCoreStatus.fix_required}
     assert "VOTER_1_TOOL" in keys
     audit = tmp_path / "body-all-oos" / "oos-dropped-before-vote.md"
     assert not audit.exists()
@@ -609,7 +617,7 @@ def test_review_core_body_all_oos_validation_exhausted_dispatches_voters(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.aggregator_validation_exhausted
+    assert result.status == ReviewCoreStatus.aggregator_validation_exhausted
     assert "VOTER_1_TOOL" in keys
     assert not (tmp_path / "body-all-oos-agg-exhaust" / "oos-dropped-before-vote.md").exists()
 
@@ -634,7 +642,7 @@ def test_review_core_body_all_oos_empty_merge_dispatches_voters(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status in {review_pipeline.ReviewCoreStatus.ok, review_pipeline.ReviewCoreStatus.fix_required}
+    assert result.status in {ReviewCoreStatus.ok, ReviewCoreStatus.fix_required}
     assert "VOTER_1_TOOL" in keys
     assert not (tmp_path / "body-all-oos-agg-zero" / "oos-dropped-before-vote.md").exists()
 
@@ -650,7 +658,7 @@ def test_review_core_body_cap_reached_round_two(tmp_path: Path, monkeypatch: pyt
     )
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.cap_reached
+    assert result.status == ReviewCoreStatus.cap_reached
     assert any(key == "REVIEW_CORE_STATUS" and value == "cap-reached" for key, value in result.rows)
 
 
@@ -669,7 +677,7 @@ def test_review_core_body_main_agent_vote_required_duplicate_classification(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.main_agent_vote_required
+    assert result.status == ReviewCoreStatus.main_agent_vote_required
     assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE")
 
@@ -688,7 +696,7 @@ def test_review_core_body_post_voter_tally_fail_retains_voter_rows(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 2
-    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert result.status == ReviewCoreStatus.panel_failed
     assert "VOTER_1_TOOL" in keys
     assert keys.index("VOTER_1_TOOL") < keys.index("REVIEW_CORE_STATUS")
     assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
@@ -1193,15 +1201,15 @@ def test_check_reviewer_failure_threshold_synthetic_dynamic_drop_when_basename_u
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original = review_pipeline._dropped_reviewer_output_base  # pyright: ignore[reportPrivateUsage]
+    original = review_threshold._dropped_reviewer_output_base  # pyright: ignore[reportPrivateUsage]
 
     def fake_base(line: str, *, manifest: Path | None = None) -> str | None:
-        fields = review_pipeline._dropped_slot_fields(line)  # pyright: ignore[reportPrivateUsage]
+        fields = review_threshold._dropped_slot_fields(line)  # pyright: ignore[reportPrivateUsage]
         if fields is not None and fields[0].startswith("dyn-"):
             return None
         return original(line, manifest=manifest)
 
-    monkeypatch.setattr(review_pipeline, "_dropped_reviewer_output_base", fake_base)
+    monkeypatch.setattr(review_threshold, "_dropped_reviewer_output_base", fake_base)
     collector = tmp_path / "collector-results.env"
     collector.write_text("", encoding="utf-8")
     dropped = tmp_path / "dropped.tsv"
@@ -1231,15 +1239,15 @@ def test_check_reviewer_failure_threshold_collector_ok_unresolvable_drop_skips_s
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original = review_pipeline._dropped_reviewer_output_base  # pyright: ignore[reportPrivateUsage]
+    original = review_threshold._dropped_reviewer_output_base  # pyright: ignore[reportPrivateUsage]
 
     def fake_base(line: str, *, manifest: Path | None = None) -> str | None:
-        fields = review_pipeline._dropped_slot_fields(line)  # pyright: ignore[reportPrivateUsage]
+        fields = review_threshold._dropped_slot_fields(line)  # pyright: ignore[reportPrivateUsage]
         if fields is not None and fields[0].startswith("dyn-"):
             return None
         return original(line, manifest=manifest)
 
-    monkeypatch.setattr(review_pipeline, "_dropped_reviewer_output_base", fake_base)
+    monkeypatch.setattr(review_threshold, "_dropped_reviewer_output_base", fake_base)
     reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
     reviewer.write_text("ok\n", encoding="utf-8")
     collector = tmp_path / "collector-results.env"
@@ -1316,10 +1324,8 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
     dropped = tmp_path / "dropped.tsv"
     _ = dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
 
-    from larch.review import review_pipeline  # noqa: PLC0415
-
     assert (
-        review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+        review_core_body._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
             collector=collector,
             manifest=manifest,
             outputs=[str(arch)],
@@ -1369,10 +1375,8 @@ def test_static_coverage_reason_excuses_tool_absent_static_slot(tmp_path: Path) 
     dropped = tmp_path / "dropped.tsv"
     _ = dropped.write_text("testing\tcodex\ttool-absent\tprimary tool codex not present\n", encoding="utf-8")
 
-    from larch.review import review_pipeline  # noqa: PLC0415
-
     assert (
-        review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+        review_core_body._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
             collector=collector,
             manifest=manifest,
             outputs=[str(arch), str(testing)],
@@ -1407,10 +1411,8 @@ def test_static_coverage_reason_accepts_all_not_substantive_static_slot(tmp_path
         encoding="utf-8",
     )
 
-    from larch.review import review_pipeline  # noqa: PLC0415
-
     assert (
-        review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+        review_core_body._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
             collector=collector,
             manifest=manifest,
             outputs=[str(correctness)],
@@ -1462,9 +1464,7 @@ def test_static_coverage_reason_rejects_mixed_not_substantive_and_failure(tmp_pa
         encoding="utf-8",
     )
 
-    from larch.review import review_pipeline  # noqa: PLC0415
-
-    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+    reason = review_core_body._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
         collector=collector,
         manifest=manifest,
         outputs=[str(failed_codex), str(thin_cursor)],
@@ -1510,9 +1510,7 @@ def test_static_coverage_reason_does_not_excuse_tool_absent_when_surviving_vendo
         encoding="utf-8",
     )
 
-    from larch.review import review_pipeline  # noqa: PLC0415
-
-    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+    reason = review_core_body._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
         collector=collector,
         manifest=manifest,
         outputs=[str(arch)],
@@ -1559,9 +1557,7 @@ def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_fail
         encoding="utf-8",
     )
 
-    from larch.review import review_pipeline  # noqa: PLC0415
-
-    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+    reason = review_core_body._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
         collector=collector,
         manifest=manifest,
         outputs=[str(arch)],
@@ -1982,7 +1978,7 @@ def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tm
         encoding="utf-8",
     )
 
-    review_pipeline.ensure_reviewer_prune_ledger(ledger)
+    review_prune.ensure_reviewer_prune_ledger(ledger)
 
     assert ledger.read_text(encoding="utf-8").splitlines() == [
         current_header,
@@ -2241,11 +2237,11 @@ def _filter_prune_round(tmp_path: Path, manifest: Path, ledger: Path, round_num:
 
 
 def test_reviewer_prune_window_evaluated_round_two_and_onward() -> None:
-    assert review_pipeline.prune_window_evaluated(1) == "false"
-    assert review_pipeline.prune_window_evaluated(2) == "true"
-    assert review_pipeline.prune_window_evaluated(3) == "true"
-    assert review_pipeline.prune_window_evaluated(4) == "true"
-    assert review_pipeline.prune_window_evaluated(5) == "true"
+    assert review_prune.prune_window_evaluated(1) == "false"
+    assert review_prune.prune_window_evaluated(2) == "true"
+    assert review_prune.prune_window_evaluated(3) == "true"
+    assert review_prune.prune_window_evaluated(4) == "true"
+    assert review_prune.prune_window_evaluated(5) == "true"
 
 
 def test_reviewer_prune_filter_round_one_never_prunes(tmp_path: Path) -> None:
@@ -2273,7 +2269,7 @@ def test_reviewer_prune_filter_round_two_prunes_no_history(tmp_path: Path) -> No
     manifest = tmp_path / "panel.ndjson"
     _write_single_prune_manifest(manifest)
     ledger = tmp_path / "ledger.tsv"
-    review_pipeline.ensure_reviewer_prune_ledger(ledger)
+    review_prune.ensure_reviewer_prune_ledger(ledger)
 
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
@@ -2339,15 +2335,15 @@ def test_reviewer_prune_normalize_code_label_reconciles_output_suffix_to_bare_to
     # output labels keep the "-output[...].txt" suffix. Both must canonicalize
     # to the same bare slot so the reviewer-prune join populates non-zero.
     bare = "cursor-specialist-correctness"
-    assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output") == bare  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output.txt") == bare  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output-ns-retry") == bare  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._normalize_code_label(bare) == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_prune._normalize_code_label("cursor-specialist-correctness-output") == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_prune._normalize_code_label("cursor-specialist-correctness-output.txt") == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_prune._normalize_code_label("cursor-specialist-correctness-output-ns-retry") == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_prune._normalize_code_label(bare) == bare  # pyright: ignore[reportPrivateUsage]
     # Dynamic and -codex dynamic slots reconcile too: _normalize_slot keeps
     # "-codex" (it strips only -output/-ns-retry), so the label must canonicalize
     # to the same "-codex"-bearing slot the aggregator emits as the bare token.
-    assert review_pipeline._normalize_code_label("dyn-foo-output.txt") == "dyn-foo"  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._normalize_code_label("dyn-foo-codex-output.txt") == "dyn-foo-codex"  # pyright: ignore[reportPrivateUsage]
+    assert review_prune._normalize_code_label("dyn-foo-output.txt") == "dyn-foo"  # pyright: ignore[reportPrivateUsage]
+    assert review_prune._normalize_code_label("dyn-foo-codex-output.txt") == "dyn-foo-codex"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_reviewer_prune_record_bare_classification_tokens_populate_counts(tmp_path: Path) -> None:
@@ -2753,7 +2749,7 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
             calls.append([str(item) for item in argv])
             return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
 
-    count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
+    count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
         scout_manifest=scout_manifest,
         review_tmpdir=review_tmpdir,
         manifest=manifest,
@@ -2771,7 +2767,7 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
 
 
 def test_dynamic_agent_body_preserves_generated_prompt_contract() -> None:
-    text = review_pipeline._dynamic_agent_body(  # pyright: ignore[reportPrivateUsage]
+    text = review_dispatch_panel._dynamic_agent_body(  # pyright: ignore[reportPrivateUsage]
         name="contract",
         focus_area="correctness",
         rationale="Inspect contract edges.",
@@ -2827,7 +2823,7 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
             calls.append([str(item) for item in argv])
             return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
 
-    count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
+    count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
         scout_manifest=scout_manifest,
         review_tmpdir=round_dir,
         manifest=manifest,
@@ -2910,7 +2906,7 @@ def test_synthesize_dynamic_slots_prerender_omits_architectural_knowledge(
                 rc = rendering.render_specialist_main([str(item) for item in argv][4:])
             return proc.CommandResult(tuple(str(item) for item in argv), rc, buffer.getvalue(), "", 0.0)
 
-    count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
+    count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
         scout_manifest=scout_manifest,
         review_tmpdir=review_tmpdir,
         manifest=manifest,
@@ -3466,7 +3462,7 @@ def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_p
     waterfall = tmp_path / "waterfall.sh"
     _write_waterfall_noop(waterfall)
     append_calls: list[list[str]] = []
-    original_run = review_pipeline._run_python_cli  # pyright: ignore[reportPrivateUsage]
+    original_run = review_pipeline_shared.run_python_cli
 
     def tracking_run(
         args: Sequence[str],
@@ -3478,7 +3474,7 @@ def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_p
             append_calls.append(list(args))
         return original_run(args, runner=runner, env=env)
 
-    monkeypatch.setattr(review_pipeline, "_run_python_cli", tracking_run)
+    monkeypatch.setattr(review_pipeline_shared, "run_python_cli", tracking_run)
     result = run_review(
         "dispatch-panel",
         "--mode", "diff",
@@ -3690,7 +3686,7 @@ def test_degraded_retry_carry_forward_partitions_substantive_slots(tmp_path: Pat
         {"REVIEWER_FILE": str(ok_dynamic), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
     ])
     _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
         manifest=manifest, review_tmpdir=review_tmpdir
     )
     assert launch_manifest != manifest
@@ -3710,7 +3706,7 @@ def test_degraded_retry_carry_forward_inactive_without_flag(tmp_path: Path) -> N
         {"REVIEWER_FILE": str(ok_cursor), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
     ])
     # No degraded-retry.flag: the first pass launches the full panel.
-    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
         manifest=manifest, review_tmpdir=review_tmpdir
     )
     assert launch_manifest == manifest
@@ -3739,7 +3735,7 @@ def test_degraded_retry_carry_forward_relaunches_ok_slot_with_missing_output(tmp
         {"REVIEWER_FILE": str(failed), "TOOL": "cursor", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
     ])
     _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
         manifest=manifest, review_tmpdir=review_tmpdir
     )
     # The OK slot whose output file vanished is re-launched; only the present OK slot carries.
@@ -3765,7 +3761,7 @@ def test_degraded_retry_carry_forward_carries_cap_hit_slots(tmp_path: Path) -> N
         {"REVIEWER_FILE": str(failed_codex), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
     ])
     _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
         manifest=manifest, review_tmpdir=review_tmpdir
     )
     assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
@@ -3791,7 +3787,7 @@ def test_degraded_retry_carry_forward_matches_phase_suffixed_collector_path(tmp_
         {"REVIEWER_FILE": str(failed), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
     ])
     _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
         manifest=manifest, review_tmpdir=review_tmpdir
     )
     assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
@@ -3816,7 +3812,7 @@ def test_degraded_retry_carry_forward_all_ok_returns_empty(tmp_path: Path) -> No
         {"REVIEWER_FILE": str(ok_b), "TOOL": "codex", "STATUS": "OK", "EXIT_CODE": "0"},
     ])
     _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
         manifest=manifest, review_tmpdir=review_tmpdir
     )
     # Defensive: nothing left to re-launch falls back to launching the full panel.
@@ -4348,7 +4344,7 @@ def test_write_proposer_sidecar_and_neutralize(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     sidecar = tmp_path / "proposer-map.tsv"
-    review_pipeline._write_proposer_sidecar_and_neutralize(ballot_file=findings, proposer_map=sidecar)  # pyright: ignore[reportPrivateUsage]
+    review_core_body._write_proposer_sidecar_and_neutralize(ballot_file=findings, proposer_map=sidecar)  # pyright: ignore[reportPrivateUsage]
     assert sidecar.is_file()
     neutral = findings.read_text(encoding="utf-8")
     assert "- **Reviewer**: anonymous" in neutral
@@ -4413,13 +4409,13 @@ printf 'DISPATCH_OK=true\\n'
 def test_collect_findings_sentinel_plain_token(tmp_path: Path) -> None:
     f = tmp_path / "r.md"
     _ = f.write_text("NO_ISSUES_FOUND\n", encoding="utf-8")
-    assert review_pipeline._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
+    assert review_collect._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
 
 
 def test_collect_findings_sentinel_whole_file_json(tmp_path: Path) -> None:
     f = tmp_path / "r.md"
     _ = f.write_text('{"no_issues_found": true}\n', encoding="utf-8")
-    assert review_pipeline._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
+    assert review_collect._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
 
 
 def test_collect_findings_sentinel_standalone_json_after_prose(tmp_path: Path) -> None:
@@ -4431,7 +4427,7 @@ def test_collect_findings_sentinel_standalone_json_after_prose(tmp_path: Path) -
         '{"no_issues_found": true}\n',
         encoding="utf-8",
     )
-    assert review_pipeline._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
+    assert review_collect._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
 
 
 def test_collect_findings_sentinel_rejects_inline_json_in_prose(tmp_path: Path) -> None:
@@ -4442,18 +4438,18 @@ def test_collect_findings_sentinel_rejects_inline_json_in_prose(tmp_path: Path) 
         "- Off-by-one in the loop bound\n",
         encoding="utf-8",
     )
-    assert review_pipeline._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
+    assert review_collect._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_collect_findings_sentinel_real_findings_not_sentinel(tmp_path: Path) -> None:
     f = tmp_path / "r.md"
     _ = f.write_text("### In-Scope Findings\n- Something is wrong here\n", encoding="utf-8")
-    assert review_pipeline._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
+    assert review_collect._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_dropped_reviewer_output_base_generalist_fallback_without_manifest() -> None:
     line = "generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n"
-    assert review_pipeline._dropped_reviewer_output_base(line) == "codex-generalist-output.txt"  # pyright: ignore[reportPrivateUsage]
+    assert review_threshold._dropped_reviewer_output_base(line) == "codex-generalist-output.txt"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_check_reviewer_failure_threshold_generalist_drop_manifest_miss_collector_wins(tmp_path: Path) -> None:

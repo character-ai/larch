@@ -22,7 +22,7 @@ from larch.review import findings_ledger
 from larch.agents import agent_waterfall
 from larch.core import external_defaults
 from larch.calibration import difficulty
-from larch.review import review_pipeline
+from larch.review import review_prune
 from larch.review import voting
 from larch import io as larch_io
 from larch.core import config
@@ -464,7 +464,7 @@ def _degraded_invalid_slot_warning(kv: dict[str, str]) -> str:
 
 
 def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
-    if review_pipeline.prune_window_evaluated(prune_round_num) != "true":
+    if review_prune.prune_window_evaluated(prune_round_num) != "true":
         return manifest, {"PANEL_PRUNED_EMPTY": "false", "PRUNED_COUNT": "0"}
     pre = design / "plan-review-slots.pre-prune.ndjson"
     out = design / "plan-review-slots.pruned.ndjson"

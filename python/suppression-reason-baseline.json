@@ -3675,20 +3675,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/review/_raf_util.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[method-assign]",
-    "occurrence": 3,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/_raf_util.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[method-assign]",
-    "occurrence": 4,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/review/_voting_calibration.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLR2004",
@@ -4889,27 +4875,6 @@
     "file": "larch/review/review_gather.py",
     "suppression_kind": "ruff-noqa",
     "text": "ruff: noqa: PLR2004",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=unused-import",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "suppression_kind": "pyright-report",
-    "text": "pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedImport=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportOptionalIterable=false, reportArgumentType=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "suppression_kind": "ruff-noqa",
-    "text": "ruff: noqa: F401",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },

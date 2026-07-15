@@ -18,7 +18,6 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.review import review_pipeline
 from larch.review.review_types import parse_findings, read_finding_text
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -251,14 +250,10 @@ def _capture_emit_to(buffer: io.StringIO):
         buffer.write(text if text.endswith("\n") else text + "\n")
 
     logging_util.emit = capture_emit  # type: ignore[method-assign]
-    if getattr(review_pipeline, "logging_util", None) is logging_util:
-        review_pipeline.logging_util.emit = capture_emit  # type: ignore[method-assign]
     sys.stdout = buffer
     try:
         yield
     finally:
         sys.stdout = original_stdout
         logging_util.emit = original_emit  # type: ignore[method-assign]
-        if getattr(review_pipeline, "logging_util", None) is logging_util:
-            review_pipeline.logging_util.emit = original_emit  # type: ignore[method-assign]
 # pyright: reportUnusedFunction=false, reportUnusedCallResult=false
