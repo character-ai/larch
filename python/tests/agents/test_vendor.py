@@ -142,7 +142,13 @@ class TestDescriptorRegistry:
     def test_argv_profiles_registered(self) -> None:
         assert CODEX_DESCRIPTOR.argv_profiles == frozenset({"read-only", "workspace-write"})
         assert CURSOR_DESCRIPTOR.argv_profiles == frozenset(
-            {"review-ask", "ci-write", "implement-write", "negotiation-write"}
+            {
+                "review-ask",
+                "ci-write",
+                "implement-write",
+                "negotiation-write",
+                "lint-fix-write",
+            }
         )
         assert CLAUDE_DESCRIPTOR.argv_profiles == frozenset(
             {
@@ -404,6 +410,23 @@ class TestCursorArgv:
             "/ws",
             "review please",
         ]
+
+    def test_lint_fix_write_uses_only_the_lint_fix_flags(self) -> None:
+        argv = build_cursor_argv("lint-fix-write", self._request())
+        assert argv == [
+            "cursor",
+            "agent",
+            "-p",
+            "--trust",
+            "--model",
+            "cursor-model",
+            "--workspace",
+            "/ws",
+            "review please",
+        ]
+        assert "--force" not in argv
+        assert "--output-format" not in argv
+        assert "--mode" not in argv
 
     def test_all_profiles_via_descriptor(self) -> None:
         req = self._request()

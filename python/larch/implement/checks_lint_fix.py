@@ -24,6 +24,15 @@ from typing import Final, NoReturn
 
 from larch import io as larch_io
 from larch.agents import agents
+from larch.agents._vendor import (
+    CLAUDE_DESCRIPTOR,
+    CODEX_DESCRIPTOR,
+    CURSOR_DESCRIPTOR,
+    VendorFamilyHooks,
+    VendorLaunchRequest,
+    VendorProcessResult,
+    run_vendor_launch,
+)
 from larch.core import config
 from larch.core import coder_delta_guards
 from larch.core import external_defaults
@@ -1002,36 +1011,6 @@ def _run_with_startup_lock(
     return runner.run(argv, cwd=cwd)
 
 
-def _build_codex_argv(
-    *,
-    agent_cli: Path,
-    run_dir: Path,
-    repo_root: str,
-    prompt_file: Path,
-) -> list[str]:
-    codex_log = run_dir / "codex.log"
-    return [
-        "python3",
-        str(agent_cli),
-        "agent",
-        "launch-codex-exec",
-        "--output",
-        str(codex_log),
-        "--timeout",
-        str(config.FIXER_LANE_TIMEOUT_SEC),
-        "--workdir",
-        repo_root,
-        "--add-dir",
-        str(run_dir),
-        "--add-dir",
-        repo_root,
-        "--usage-label",
-        "codex_lint_fix",
-        "--prompt-file",
-        str(prompt_file),
-    ]
-
-
 def _load_cursor_launch_argv(
     runner: Runner,
     *,
@@ -1057,41 +1036,6 @@ def _load_cursor_launch_argv(
             return None
     agents.cursor_auth_export_env()
     return tuple(model), ()
-
-
-def _build_cursor_argv(  # noqa: PLR0913,RUF100
-    *,
-    agent_cli: Path,
-    run_dir: Path,
-    repo_root: str,
-    wrapped_prompt: str,
-    model_args: tuple[str, ...],
-    auth_args: tuple[str, ...],
-) -> list[str]:
-    cursor_log = run_dir / "cursor.log"
-    return [
-        "python3",
-        str(agent_cli),
-        "agent",
-        "run-external-agent",
-        "--tool",
-        "cursor",
-        "--output",
-        str(cursor_log),
-        "--timeout",
-        str(config.FIXER_LANE_TIMEOUT_SEC),
-        "--capture-stdout",
-        "--",
-        "cursor",
-        "agent",
-        "-p",
-        "--trust",
-        *model_args,
-        *auth_args,
-        "--workspace",
-        repo_root,
-        wrapped_prompt,
-    ]
 
 
 _TOKEN_LEDGER_ENV_KEYS: Final = (
@@ -1150,12 +1094,6 @@ def _run_codex(  # noqa: PLR0913,RUF100
 ) -> int:
     prompt_file = run_dir / "prompt.md"
     _ = prompt_file.write_text(prompt_body + _codex_lint_fix_prompt_appendix(site), encoding="utf-8")
-    argv = _build_codex_argv(
-        agent_cli=agent_cli,
-        run_dir=run_dir,
-        repo_root=repo_root,
-        prompt_file=prompt_file,
-    )
     codex_log = run_dir / "codex.log"
     codex_events = codex_log.with_suffix(codex_log.suffix + ".events.jsonl")
     codex_wrapper_log = run_dir / "codex.wrapper.log"
@@ -1163,11 +1101,40 @@ def _run_codex(  # noqa: PLR0913,RUF100
     for path in (codex_events, codex_wrapper_log, codex_sidecar):
         if path.exists():
             _ = path.unlink(missing_ok=True)
-    result = runner.run(argv, cwd=repo_root)
-    launcher_exit = _parse_launcher_exit(result.stdout)
-    if launcher_exit is None:
-        done_exit = _read_done_exit(codex_log)
-        launcher_exit = result.returncode if result.returncode != 0 else done_exit
+    request = VendorLaunchRequest(
+        workdir=repo_root,
+        output=str(codex_log),
+        prompt=prompt_body + _codex_lint_fix_prompt_appendix(site),
+        add_dirs=(str(run_dir), repo_root),
+        timing_task_kind="codex_lint_fix",
+    )
+
+    def execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+        _ = argv
+        result = runner.run([
+            "python3", str(agent_cli), "agent", "launch-codex-exec",
+            "--output", str(codex_log), "--timeout", str(config.FIXER_LANE_TIMEOUT_SEC),
+            "--workdir", repo_root, "--add-dir", str(run_dir), "--add-dir", repo_root,
+            "--usage-label", "codex_lint_fix", "--prompt-file", str(prompt_file),
+        ], cwd=repo_root)
+        launcher_exit = _parse_launcher_exit(result.stdout)
+        if launcher_exit is None:
+            done_exit = _read_done_exit(codex_log)
+            launcher_exit = result.returncode if result.returncode != 0 else done_exit
+        return VendorProcessResult(
+            exit_code=launcher_exit, stdout=result.stdout, stderr=result.stderr
+        )
+
+    outcome = run_vendor_launch(
+        CODEX_DESCRIPTOR,
+        "workspace-write",
+        request,
+        hooks=VendorFamilyHooks(execute=execute),
+        use_config_context=False,
+    )
+    launcher_exit = (
+        outcome.process_result.exit_code if outcome.process_result is not None else 1
+    )
     token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
     if token_record.is_file() and token_record.stat().st_size > 0:
         _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)], purpose="token append-record", cwd=repo_root)
@@ -1191,26 +1158,38 @@ def _run_claude(
     prompt_file = run_dir / "prompt.md"
     _ = prompt_file.write_text(prompt_body, encoding="utf-8")
     output = run_dir / "claude-lint-fix.txt"
-    result = runner.run(
-        [
-            "python3",
-            str(agent_cli),
-            "agent",
-            "launch-claude-lint-fix",
-            "--prompt-body-file",
-            str(prompt_file),
-            "--output",
-            str(output),
-            "--timeout",
-            str(config.FIXER_LANE_TIMEOUT_SEC),
-        ],
-        cwd=repo_root,
+    request = VendorLaunchRequest(
+        workdir=repo_root,
+        output=str(output),
+        prompt=prompt_body,
+        model=config.CLAUDE_CI_FIX_MODEL,
+        timing_task_kind="claude-lint-fix",
     )
-    launcher_exit = _parse_launcher_exit(result.stdout)
-    if launcher_exit is None:
-        done_exit = _read_done_exit(output)
-        launcher_exit = result.returncode if result.returncode != 0 else done_exit
-    return launcher_exit
+
+    def execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+        _ = argv
+        result = runner.run([
+            "python3", str(agent_cli), "agent", "launch-claude-lint-fix",
+            "--prompt-body-file", str(prompt_file), "--output", str(output),
+            "--timeout", str(config.FIXER_LANE_TIMEOUT_SEC), "--model",
+            config.CLAUDE_CI_FIX_MODEL,
+        ], cwd=repo_root)
+        launcher_exit = _parse_launcher_exit(result.stdout)
+        if launcher_exit is None:
+            done_exit = _read_done_exit(output)
+            launcher_exit = result.returncode if result.returncode != 0 else done_exit
+        return VendorProcessResult(
+            exit_code=launcher_exit, stdout=result.stdout, stderr=result.stderr
+        )
+
+    outcome = run_vendor_launch(
+        CLAUDE_DESCRIPTOR,
+        "workspace-write",
+        request,
+        hooks=VendorFamilyHooks(execute=execute),
+        use_config_context=False,
+    )
+    return outcome.process_result.exit_code if outcome.process_result is not None else 1
 
 
 def _parse_launcher_exit(text: str) -> int | None:
@@ -1280,31 +1259,43 @@ def _run_cursor(  # noqa: PLR0913,RUF100
         )
         return wrap_result.returncode
     wrapped = wrap_result.stdout.removesuffix("X")
-    argv = _build_cursor_argv(
-        agent_cli=agent_cli,
-        run_dir=run_dir,
-        repo_root=repo_root,
-        wrapped_prompt=wrapped.rstrip("\n"),
-        model_args=model_args,
-        auth_args=auth_args,
-    )
     cursor_log = run_dir / "cursor.log"
     cursor_wrapper_log = run_dir / "cursor.wrapper.log"
-    result = _run_with_startup_lock(
-        runner,
-        scripts_dir=scripts_dir,
-        tool="cursor",
-        argv=[
-            "bash",
-            "-c",
-            'exec "${@:2}" >"$1" 2>&1',
-            "bash",
-            str(cursor_wrapper_log),
-            *argv,
-        ],
-        cwd=repo_root,
+    request = VendorLaunchRequest(
+        workdir=repo_root,
+        output=str(cursor_log),
+        prompt=wrapped.rstrip("\n"),
+        model_args=(*model_args, *auth_args),
+        timing_task_kind="cursor-lint-fix",
     )
-    if result.returncode != 0 and not Path(str(cursor_log) + ".stderr-tail").is_file():
+
+    def execute(*, argv: list[str], **_kwargs: object) -> VendorProcessResult:
+        result = _run_with_startup_lock(
+            runner,
+            scripts_dir=scripts_dir,
+            tool="cursor",
+            argv=[
+                "bash", "-c", 'exec "${@:2}" >"$1" 2>&1', "bash",
+                str(cursor_wrapper_log), "python3", str(agent_cli), "agent",
+                "run-external-agent", "--tool", "cursor", "--output", str(cursor_log),
+                "--timeout", str(config.FIXER_LANE_TIMEOUT_SEC), "--capture-stdout", "--",
+                *argv,
+            ],
+            cwd=repo_root,
+        )
+        return VendorProcessResult(
+            exit_code=result.returncode, stdout=result.stdout, stderr=result.stderr
+        )
+
+    outcome = run_vendor_launch(
+        CURSOR_DESCRIPTOR,
+        "lint-fix-write",
+        request,
+        hooks=VendorFamilyHooks(execute=execute),
+        use_config_context=False,
+    )
+    launcher_exit = outcome.process_result.exit_code if outcome.process_result is not None else 1
+    if launcher_exit != 0 and not Path(str(cursor_log) + ".stderr-tail").is_file():
         for source in (Path(str(cursor_log) + ".diag"), preflight_log, cursor_wrapper_log):
             if source.is_file() and source.stat().st_size > 0:
                 _write_failed_agent_stderr_tail(
@@ -1312,7 +1303,7 @@ def _run_cursor(  # noqa: PLR0913,RUF100
                     output=cursor_log,
                 )
                 break
-    return result.returncode
+    return launcher_exit
 
 
 def _head_change_invalid_after_dispatch(  # noqa: PLR0911,PLR0913,RUF100
