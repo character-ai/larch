@@ -2041,3 +2041,157 @@ def test_run_prepare_writes_origin_headline_and_digest_origin(tmp_path: Path) ->
     assert first["origin"] == {"kind": "regression", "ref": 100}
     # DIGEST_CHARS measures full serialized digest including origin.
     assert int(str(stats["DIGEST_CHARS"])) == len(json.dumps(first))
+
+
+# --- state-publish (offline port of the SKILL.md publication fence) ----------
+
+_STATE_MARKER_REL = config.LEARN_FROM_BUGS_STATE_RELPATH
+_STATE_PR_STDOUT = "PR_NUMBER=7\nPR_URL=https://github.com/o/r/pull/7\nPR_STATUS=created\n"
+
+
+def _publish_ok_responses() -> list[CommandResult]:
+    """Ordered runner responses for a full merged state-publish flow."""
+    return [
+        _result("true\n"),                                # 1  rev-parse --is-inside-work-tree
+        _result(),                                        # 2  remote get-url origin
+        _result(),                                        # 3  verify-origin
+        _result("main\n"),                                # 4  gh repo view defaultBranchRef
+        _result(),                                        # 5  check-ref-format refs/heads/main
+        _result(),                                        # 6  fetch
+        _result(),                                        # 7  rev-parse --verify default ref
+        _result(),                                        # 8  check-ref-format --branch
+        _result(rc=1),                                    # 9  show-ref local branch (absent)
+        _result(rc=2),                                    # 10 ls-remote (absent)
+        _result(),                                        # 11 worktree add
+        _result(),                                        # 12 switch -c
+        _result(f"STATE_RELPATH={_STATE_MARKER_REL}\n"),  # 13 write-state
+        _result(),                                        # 14 git add
+        _result(),                                        # 15 git commit
+        _result(f"{_STATE_MARKER_REL}\n"),                # 16 diff-tree (marker only)
+        _result(_STATE_PR_STDOUT),                        # 17 pr create
+        _result("OPEN\n"),                                # 18 pr view state
+        _result(),                                        # 19 pr merge
+        _result("MERGED\n"),                              # 20 pr view state
+        _result("2026-07-14T00:00:00Z\n"),                # 21 pr view mergedAt
+        _result(),                                        # 22 worktree remove
+        _result(),                                        # 23 show-ref cleanup (present)
+        _result(),                                        # 24 branch -D
+    ]
+
+
+def _run_publish(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    responses: list[CommandResult],
+    *,
+    precreate_worktree: bool = False,
+) -> tuple[int, dict[str, str]]:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(exist_ok=True)
+    if precreate_worktree:
+        (run_dir / learn_from_bugs.STATE_PUBLISH_WORKTREE_NAME).mkdir()
+    monkeypatch.setattr(
+        learn_from_bugs, "_runner", lambda: RecordingRunner.strict_queue(*responses)
+    )
+    rc = learn_from_bugs.state_publish_main(
+        [
+            "--root", str(tmp_path),
+            "--repo", "o/r",
+            "--run-dir", str(run_dir),
+            "--search", "[BUG] in:title",
+            "--state", "closed",
+            "--selected-count", "3",
+            "--highest-closed-issue-number-scanned", "10",
+            "--run-date", "2026-07-14T12:00:00Z",
+            "--scan-started-at", "2026-07-14T11:00:00Z",
+            "--proposals-file", str(run_dir / "reconciled.jsonl"),
+            "--base-proposals-file", str(run_dir / "base.jsonl"),
+        ]
+    )
+    out = dict(
+        line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line
+    )
+    return rc, out
+
+
+def test_state_publish_fresh_success_merges(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, _publish_ok_responses())
+    assert rc == 0
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
+    assert out["PR_NUMBER"] == "7"
+    assert out["PR_URL"] == "https://github.com/o/r/pull/7"
+
+
+def test_state_publish_invalid_branch_name(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = [*_publish_ok_responses()[:7], _result(rc=1)]
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    assert rc == 2
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_INVALID_BRANCH
+    assert "STATE_PUBLISH_RECOVERY_BRANCH" not in out
+
+
+def test_state_publish_refuses_existing_local_branch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = [*_publish_ok_responses()[:8], _result()]
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    assert rc == 2
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_EXISTING_LOCAL_BRANCH
+
+
+def test_state_publish_refuses_existing_remote_branch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = [*_publish_ok_responses()[:9], _result()]
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    assert rc == 2
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_EXISTING_REMOTE_BRANCH
+
+
+def test_state_publish_remote_check_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = [*_publish_ok_responses()[:9], _result(rc=128)]
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    assert rc == 2
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_REMOTE_CHECK_FAILED
+
+
+def test_state_publish_worktree_path_collision(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = _publish_ok_responses()[:10]
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses, precreate_worktree=True)
+    assert rc == 2
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_WORKTREE_COLLISION
+
+
+def test_state_publish_pr_create_failure_reports_recovery_branch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = [*_publish_ok_responses()[:16], _result(rc=1), _result()]
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    assert rc == 2
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_PR_CREATE_FAILED
+    assert out["STATE_PUBLISH_RECOVERY_BRANCH"].startswith(
+        learn_from_bugs.STATE_PUBLISH_BRANCH_PREFIX
+    )
+
+
+def test_state_publish_unmerged_pr_handoff(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = _publish_ok_responses()
+    responses[18] = _result(rc=1)       # admin merge does not complete
+    responses[19] = _result("OPEN\n")   # PR still open, not merged
+    responses[20] = _result()           # no mergedAt timestamp
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    assert rc == 0
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_HANDOFF_PENDING
+    assert out["PR_NUMBER"] == "7"
+    assert out["PR_URL"] == "https://github.com/o/r/pull/7"
