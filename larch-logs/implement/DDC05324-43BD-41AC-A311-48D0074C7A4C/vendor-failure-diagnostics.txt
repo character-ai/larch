@@ -1,0 +1,23 @@
+===== review Step 2 cursor-review =====
+exit-code: 1
+===== diag =====
+[31m✗ Failed to reach the Cursor API. If you are behind a corporate proxy, set the HTTPS_PROXY environment variable.[0m
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+===== review Step 2 codex-review =====
+exit-code: 1
+===== sidecar =====
+Reading additional input from stdin...
+===== diag =====
+Failed with exit code 1. Output size: 0 bytes.
+===== events.jsonl (filtered) =====
+{"type":"error","message":"Reconnecting... 1/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))"}
+{"type":"error","message":"Reconnecting... 2/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))"}
+{"type":"error","message":"Reconnecting... 3/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))"}
+{"type":"error","message":"Reconnecting... 4/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))"}
+{"type":"error","message":"Reconnecting... 5/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))"}
+{"type":"error","message":"stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)"}
+{"type":"turn.failed","error":{"message":"stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)"}}
+===== launch-stderr =====
+❌ codex agent: FAILED (exit code 1, output 0 bytes)
