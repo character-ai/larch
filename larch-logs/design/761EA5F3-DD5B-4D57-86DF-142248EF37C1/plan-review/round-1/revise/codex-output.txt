@@ -1,0 +1,79 @@
+## Plan
+
+Adopt the shared vendor launch lifecycle in the checks lint-fix lane without moving lint-fix policy out of its lane. Preserve the injected `Runner`, waterfall order, tier ledger, classification, token ingestion, timing, failure routing, and persistence.
+
+Re-verify the consumer inventory before editing. Confirm `ci_fixer_lane.py` remains deleted and that no surviving caller depends on the private lint-fix argv builders.
+
+### UPDATED: python/larch/implement/checks_lint_fix.py
+
+- Import the Codex, Cursor, and Claude descriptors; launch request/result and hook types; and `run_vendor_launch`.
+- Replace `_run_codex`, `_run_cursor`, and `_run_claude` wrapper-command dispatch with descriptor requests and lane-owned injected execute hooks. Keep the existing `Runner` seam: every vendor process and lane follow-up command remains observable through the supplied runner.
+- Preserve the full Codex launch contract, not only its argv:
+  - Build the Codex prompt with `_codex_lint_fix_prompt_appendix(site)` and retain the site-specific sandbox and verification-split instructions.
+  - Create and clean an isolated temporary `CODEX_HOME`; run `_prepare_codex_home` before launch; resolve Codex fix-model arguments before descriptor argv construction; and pass the prepared environment to the authenticated executor.
+  - Use `workspace-write`, the repository workdir, and only the run directory and repository as allowed directories.
+  - Preserve events, sidecar, prompt, completion, timeout/auth-retry, quota, and failed-attempt artifact behavior, including `.done` promotion and refusal/preflight bundles equivalent to `launch-codex-exec`.
+  - Reuse the established Codex lifecycle helpers where import boundaries permit; otherwise add narrowly scoped lane adapters with byte-equivalent artifact and failure behavior.
+  - Keep token-record ingestion local to the lane, including fail-soft warnings, and record usage with the `codex_lint_fix` label rather than the generic `codex_exec` label.
+- Preserve the full Cursor contract through the dedicated descriptor profile: model resolution, auth preflight and exported auth state, service-token preread, wrapped prompt, startup locking, captured output, repository workspace access, and configuration isolation/cleanup on success, refusal, and exceptions.
+- Preserve the full Claude contract through descriptor hooks: lint-fix preamble, configured model, repository write tools, stdin prompt delivery, JSON-envelope parsing, diagnostics, exit mapping, output and `.done` artifacts, and usage recording.
+- Record Claude timing from its descriptor hook with `record-vendor-task`, vendor `claude`, task kind `claude-lint-fix`, and output `claude-lint-fix.txt`. Keep `run_lint_fix`’s outer-timing skip for Claude outcomes so a Claude attempt is not recorded twice.
+- Keep failure-tail selection and output artifact handling local to each lane.
+- Remove `_build_codex_argv`, `_build_cursor_argv`, and obsolete wrapper-only helpers only after parity coverage passes.
+- Do not move tier selection, delta classification, ledger writes, failure routing, or persistence into `_vendor.py`.
+
+### UPDATED: python/larch/agents/_vendor.py
+
+- Add and register a narrow `lint-fix-write` Cursor profile.
+- Make its argv exactly the existing lint-fix shape: `cursor agent -p --trust`, resolved model and auth arguments, `--workspace <repo>`, and the wrapped prompt.
+- Do not inherit unrelated `ci-write`, `implement-write`, or negotiation flags such as `--force`, `--output-format json`, or ask mode.
+- Do not add lint-fix policy, persistence, token ingestion, or lane-specific artifact decisions to the descriptor module.
+
+### UPDATED: python/tests/implement/test_checks.py
+
+- Replace retired wrapper-command assertions with descriptor-built argv and injected execute-hook assertions.
+- Add exact Codex parity coverage for workspace-write permissions, repository workdir, only the run directory and repository as allowed directories, resolved model arguments, and the prompt containing the site-scoped `_codex_lint_fix_prompt_appendix(site)`.
+- Add Codex hook-contract tests for isolated `CODEX_HOME`, sanitized/prepared configuration, auth-preflight refusal artifacts, model-resolution failure artifacts, events/sidecar paths, `.done` promotion, cleanup, and the `codex_lint_fix` usage label.
+- Preserve Codex success and failure token-ingestion tests, including fail-soft token-command warnings and no behavior change when the token record is absent.
+- Add exact Cursor parity coverage for the dedicated `lint-fix-write` profile, wrapped prompt shape, repository workspace, model/auth arguments, preflight refusal, startup locking, captured output, and configuration cleanup.
+- Add exact Claude parity coverage for stdin transport, configured model, repository write tools, and lint-fix preamble.
+- Cover Claude valid envelopes, malformed JSON, error responses, empty results, stderr capture, nonzero exits, diagnostic fallback, `.done` output, and per-attempt timing. Retain the regression proving a Claude outcome skips outer timing.
+- Verify injected runners receive vendor launches and lane follow-up commands.
+- Retain waterfall tests proving Claude, Codex, and Cursor tier order, useful-delta handling, tier-ledger rows, classification, persistence, and failure routing remain unchanged.
+
+### UPDATED: python/tests/agents/test_vendor.py
+
+- Update the registered-profile assertion for `lint-fix-write`.
+- Add a focused exact-argv test for the profile, including the absence of unrelated Cursor flags.
+- Confirm all pre-existing descriptor profiles remain byte-compatible.
+
+### MAY_UPDATE: python/larch/agents/_vendor.py
+
+- If the descriptor request type lacks a narrowly typed field needed to carry existing lint-fix authentication arguments without changing another profile’s argv, add only that transport field and cover its default behavior. Do not encode lint-fix policy in the descriptor layer.
+
+## Edge cases
+
+- Codex auth/config/model preflight refusal must produce the same failed-attempt artifacts and classification as the current lane.
+- Missing or malformed completion output remains a failed launch.
+- Token-record absence remains harmless; token-record command failures warn without changing the fixer result.
+- Cursor configuration state does not leak after success, refusal, or exceptions.
+- Vendor success without a useful repository delta continues through the existing waterfall.
+- Claude timing is recorded once per launch attempt and never duplicated by outer timing.
+
+## Failure modes
+
+- Reusing an existing Cursor profile changes lint-fix flags or output behavior; bind the lane only to `lint-fix-write`.
+- Direct Codex descriptor execution can bypass isolated home setup, auth preparation, model resolution, sidecars, completion promotion, or usage labeling; lock the complete hook contract with runner-seam and artifact tests.
+- Hook ordering can change timing, token handling, completion, or diagnostics; assert required post-execution effects on both successful and failed launches.
+- Direct Claude execution can lose wrapper-owned timing or double-record it; retain the inner timing hook and outer Claude skip.
+
+## Testing strategy
+
+- Run focused checks tests in `python/tests/implement/test_checks.py`.
+- Run `python/tests/agents/test_vendor.py`.
+- Run changed-file Python formatting, lint, type checks, and complexity checks documented in `docs/linting.md`.
+- Compare all three descriptor-built argv lists with explicit expected lists; do not rely on substring assertions.
+- Run the existing lint-fix waterfall, tier-ledger, token, timing, classification, and persistence regressions.
+
+difficulty: MODERATE
+diff_lines: 480

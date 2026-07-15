@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	22398	5600	14202	3551	8196	2049		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17213	4304	13774	3444	3439	860		0	0
+design Step 3	phase1	1	dyn-codex-plan-descriptor-lane-integration	plan-review	codex	dyn-codex-plan-descriptor-lane-integration.txt	17586	4397	13649	3413	3937	985		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17353	4339	13914	3479	3439	860		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17237	4310	13798	3450	3439	860		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	22258	5565	14062	3516	8196	2049		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17235	4309	13796	3449	3439	860		0	0
+design Step 3	phase1	1	dyn-cursor-plan-descriptor-lane-integration	plan-review	cursor	dyn-cursor-plan-descriptor-lane-integration.txt	22631	5658	13937	3485	8694	2174		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	22280	5570	14084	3521	8196	2049		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	22282	5571	14086	3522	8196	2049		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	31385	7847	4613	1154	26772	6693	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14891	3723	9143	2286	5748	1437		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14891	3723	9143	2286	5748	1437		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14891	3723	9143	2286	5748	1437		0	0
