@@ -16,22 +16,30 @@ Then route to the default stall semantics in section 4: set `STALL_TRACKING=true
 
 ## 2. Repair-loop invocation
 
-When `REDACTED_LOG_FILE` is present, run:
+When `REDACTED_LOG_FILE` is present, launch the repair-loop as a bgjob (not a bare foreground command). Foreground `checks repair-loop` can exceed the Bash tool's 600 s ceiling when a lint-fix lane runs up to `FIXER_LANE_TIMEOUT_SEC` (1800 s); the bgjob path keeps the launcher return under that ceiling and preserves the `NEXT_ACTION` envelope in the result env.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks repair-loop --tmpdir "$IMPLEMENT_TMPDIR" --site <lint-site> [--checks-site <capture-site>] --checks-log "$REDACTED_LOG_FILE"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks repair-loop --bgjob-launch true --tmpdir "$IMPLEMENT_TMPDIR" --site <lint-site> [--checks-site <capture-site>] --checks-log "$REDACTED_LOG_FILE"
 ```
+
+Launcher stdout is `BGJOB_STATUS=STARTED STEP=implement-<lint-site>-repair PGID=<n>` (site-qualified slug, for example `implement-step3-repair` or `implement-step6-repair`). Then wait:
+
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-<lint-site>-repair --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+```
+
+On `BGJOB_STATUS=WAIT`, repeat the identical wait with no intervening prose or tools. On `DEAD`, route through the site stall path. On final `DONE`, parse section 3 keys from the wait stdout and/or `$IMPLEMENT_TMPDIR/bgjob/implement-<lint-site>-repair.result.env`. Require `BGJOB_RC=0` for `NEXT_ACTION=continue` or `NEXT_ACTION=main-agent-edit`; `NEXT_ACTION=stall` may arrive with a non-zero child rc and still routes per section 4. Do not treat launcher stdout, shell exit 0, or `DONE` alone as success. Ship-pr internal CI repair-loop call sites keep bare foreground invocation (no `--bgjob-launch`); they already run inside a longer-lived ship bgjob.
 
 Bind and reuse the pinned site pair for every invocation in section 4, including post-main-agent re-entries:
 
-- Step 3: `--site step3`. The folded composite launcher is `skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"`, followed by `python/cli.py bgjob wait --step implement-step3-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270` until `DONE`.
-- Step 5 self-review: `--site step5-self-review`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review`.
-- Step 5 MAV and coder-main-agent-required: `--site step5-mav --checks-site step5-review-fixes`. The folded composite launcher is `python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"`. Repair-loop follows the lint-fix site, not the capture site. **Never** omit `--checks-site` on re-entry. Defaulting would run internal re-checks under `step5-mav` instead of `step5-review-fixes`. This text is already shaped for the Step 5 bgjob chunk: that chunk must make the wrapper a thin bgjob launcher, truncate its merge env before start, and gate resume continuation on `BGJOB_RC=0` plus `STEP5_REVIEW_STATUS` in the result env.
-- Step 6: `--site step6`. The initial orchestrator folded composite launcher is `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"` with the change gate active, followed by `python/cli.py bgjob wait --step implement-step6-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270` until `DONE`. All Step 6 post-repair re-entries, including `NEXT_ACTION=continue` and `NEXT_ACTION=main-agent-edit`, use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` plus the same `implement-step6-checks` bgjob wait, so the checks leg always re-runs even when repair leaves the tree matching pre-review baselines. Step 6 repair re-entry must not use the bare `checks-commit-route` launcher and must not omit `--force-checks true`.
+- Step 3: `--site step3`. The folded composite launcher is `skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"`, followed by `python/cli.py bgjob wait --step implement-step3-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270` until `DONE`. Repair-loop step slug: `implement-step3-repair`.
+- Step 5 self-review: `--site step5-self-review`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review`. Repair-loop step slug: `implement-step5-self-review-repair`.
+- Step 5 MAV and coder-main-agent-required: `--site step5-mav --checks-site step5-review-fixes`. The folded composite launcher is `python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"`. Repair-loop follows the lint-fix site, not the capture site. **Never** omit `--checks-site` on re-entry. Defaulting would run internal re-checks under `step5-mav` instead of `step5-review-fixes`. This text is already shaped for the Step 5 bgjob chunk: that chunk must make the wrapper a thin bgjob launcher, truncate its merge env before start, and gate resume continuation on `BGJOB_RC=0` plus `STEP5_REVIEW_STATUS` in the result env. Repair-loop step slug: `implement-step5-mav-repair`.
+- Step 6: `--site step6`. The initial orchestrator folded composite launcher is `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"` with the change gate active, followed by `python/cli.py bgjob wait --step implement-step6-checks --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270` until `DONE`. All Step 6 post-repair re-entries, including `NEXT_ACTION=continue` and `NEXT_ACTION=main-agent-edit`, use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` plus the same `implement-step6-checks` bgjob wait, so the checks leg always re-runs even when repair leaves the tree matching pre-review baselines. Step 6 repair re-entry must not use the bare `checks-commit-route` launcher and must not omit `--force-checks true`. Repair-loop step slug: `implement-step6-repair`.
 
 ## 3. Parse stdout before branching on exit code
 
-Use key-based extraction for these keys before checking the Bash exit code:
+Use key-based extraction for these keys before checking the Bash exit code. After a bgjob-backed repair-loop, read the same keys from the final `DONE` wait stdout and/or `$IMPLEMENT_TMPDIR/bgjob/implement-<lint-site>-repair.result.env`:
 
 - `NEXT_ACTION`
 - `STDERR_TAIL_PATH`
@@ -43,9 +51,9 @@ Use key-based extraction for these keys before checking the Bash exit code:
 Exit-code contract:
 
 - Exit `0` with `NEXT_ACTION=continue` or `NEXT_ACTION=main-agent-edit` is success.
-- Exit `1` with `NEXT_ACTION=stall` is the normal terminal stall path. Parse KVs from captured stdout and route to stall. Do not treat non-zero exit alone as an orchestrator hard failure before KV parse.
+- Exit `1` with `NEXT_ACTION=stall` is the normal terminal stall path. Parse KVs from captured stdout (or the bgjob result env) and route to stall. Do not treat non-zero exit alone as an orchestrator hard failure before KV parse.
 - Exit `2` for argument or validation failure still prints `NEXT_ACTION=stall`. Parse KVs first, then route to stall.
-
+- For bgjob launches: gate on `BGJOB_RC` plus the parsed `NEXT_ACTION` as in section 2; do not use the launcher shell exit alone.
 ## 4. Branch semantics
 
 ### `NEXT_ACTION=stall` after delegated lint-fix exhaustion
@@ -92,7 +100,7 @@ Spawn `larch:ci-fixer` with only: `REPO_ROOT`, `BRANCH_NAME`, `MODE=checks`, the
 - After a fixer return or death, inspect only `git status --porcelain`. If the tree is dirty, salvage one `CI fix round <N> salvage` commit. In `MODE=checks`, never push the salvage commit. Do not discard fixer work.
 
 For Step 6 after a checks-fixer commit, re-run `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`, wait on `implement-step6-checks` until `DONE`, and require `BGJOB_RC=0` plus required KVs before any success-path routing or subsequent `checks repair-loop` invocation; when `CHECKPOINT_NEXT=load-routing` is present, allow the non-zero child rc and route through the rebase macro before treating the probe as failed. Do not reuse the initial orchestrator argv without `--force-checks true`.
-On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
+On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop --bgjob-launch true` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`, then repeat the section 2 `bgjob wait` for `implement-<lint-site>-repair`.
 Keep the updated `REDACTED_LOG_FILE` as the repair-loop input; do not Read a new `DIGEST_FILE` on re-entry.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.

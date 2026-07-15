@@ -17,11 +17,12 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, NoReturn
 
+from larch import io as larch_io
 from larch.agents import agents
 from larch.core import config
 from larch.core import coder_delta_guards
@@ -91,6 +92,8 @@ _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
 _REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
 _REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S: Final = 2.0
+# Module-scoped sink for optional bgjob merge-result-env capture (child mode).
+_result_rows: list[tuple[str, str]] | None = None
 _COMPLEXITY_BASELINE_CODES_RE: Final = "|".join(
     re.escape(code) for code in lint_complexity_baseline.COMPLEXITY_CODES
 )
@@ -262,19 +265,31 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
     return 1
 
 
+def _emit_repair_kv(*, key: str, value: str) -> None:
+    print(f"{key}={value}")
+    rows = _result_rows
+    if rows is None or "\n" in value or "\r" in value:
+        return
+    if re.fullmatch(r"[A-Z0-9_]+", key):
+        rows.append((key, value))
+
+
 def _print_loop_ledger(loop: LoopResult) -> None:
     if not loop.ledger_ready:
         return
-    print("LINT_FIX_LEDGER_READY=true")
-    print(f"LINT_FIX_LEDGER_SITE={loop.ledger_site}")
-    print(f"LINT_FIX_LEDGER_TRIGGER={loop.ledger_trigger}")
-    print(f"LINT_FIX_LEDGER_STEP={loop.ledger_step}")
-    print(f"LINT_FIX_LEDGER_PHASE={loop.ledger_phase}")
-    print(f"LINT_FIX_LEDGER_DISPATCHER={loop.ledger_dispatcher}")
+    _emit_repair_kv(key="LINT_FIX_LEDGER_READY", value="true")
+    _emit_repair_kv(key="LINT_FIX_LEDGER_SITE", value=loop.ledger_site)
+    _emit_repair_kv(key="LINT_FIX_LEDGER_TRIGGER", value=loop.ledger_trigger)
+    _emit_repair_kv(key="LINT_FIX_LEDGER_STEP", value=loop.ledger_step)
+    _emit_repair_kv(key="LINT_FIX_LEDGER_PHASE", value=loop.ledger_phase)
+    _emit_repair_kv(key="LINT_FIX_LEDGER_DISPATCHER", value=loop.ledger_dispatcher)
     if loop.ledger_exit_code is not None:
-        print(f"LINT_FIX_LEDGER_EXIT_CODE={loop.ledger_exit_code}")
+        _emit_repair_kv(key="LINT_FIX_LEDGER_EXIT_CODE", value=str(loop.ledger_exit_code))
     if loop.ledger_failure_detail_log:
-        print(f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={loop.ledger_failure_detail_log}")
+        _emit_repair_kv(
+            key="LINT_FIX_LEDGER_FAILURE_DETAIL_LOG",
+            value=loop.ledger_failure_detail_log,
+        )
 
 
 def _repair_loop_action(
@@ -338,6 +353,89 @@ class _RepairLoopArgumentParser(argparse.ArgumentParser):
         super().error(message)
 
 
+@dataclass(frozen=True)
+class RepairLoopBgjobLaunch:
+    tmpdir: Path
+    site: str
+    checks_site: str
+    checks_log: str
+    repo_root: str
+
+
+def _plugin_root() -> Path:
+    return Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
+
+
+def _run_cli(*args: str) -> CommandResult:
+    return proc.run([sys.executable, str(_plugin_root() / "python" / "cli.py"), *args])
+
+
+def _repair_loop_step_slug(site: str) -> str:
+    return f"implement-{site}-repair"
+
+
+@contextlib.contextmanager
+def _result_env_capture(path: Path | None) -> Generator[None, None, None]:
+    global _result_rows  # noqa: PLW0603 - scoped sink for bgjob merge-result-env capture
+    prior = _result_rows
+    if path is None:
+        yield
+        return
+    rows: list[tuple[str, str]] = []
+    _result_rows = rows
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
+        yield
+    finally:
+        larch_io.atomic_write(path=path, text=larch_io.format_kvs(rows), nofollow=True, mode=0o600)
+        _result_rows = prior
+
+
+def _launch_repair_loop_bgjob(spec: RepairLoopBgjobLaunch) -> int:
+    step = _repair_loop_step_slug(spec.site)
+    merge_result_env = spec.tmpdir / "bgjob" / f"{step}.merge.env"
+    merge_result_env.parent.mkdir(parents=True, exist_ok=True)
+    larch_io.atomic_write(path=merge_result_env, text="", nofollow=True, mode=0o600)
+    budget_s = str(
+        external_defaults.fixer_lane_budget_sec("implement.lint_fix_coder")
+        * config.RCC_MAX_ITER_DEFAULT
+    )
+    child: list[str] = [
+        "bgjob",
+        "start",
+        "--step",
+        step,
+        "--tmpdir",
+        str(spec.tmpdir),
+        "--budget-s",
+        budget_s,
+        "--merge-result-env",
+        str(merge_result_env),
+        "--",
+        sys.executable,
+        str(_plugin_root() / "python" / "cli.py"),
+        "checks",
+        "repair-loop",
+        "--tmpdir",
+        str(spec.tmpdir),
+        "--site",
+        spec.site,
+    ]
+    if spec.checks_site:
+        child.extend(("--checks-site", spec.checks_site))
+    child.extend(("--checks-log", spec.checks_log))
+    if spec.repo_root:
+        child.extend(("--repo-root", spec.repo_root))
+    child.extend(("--bgjob-merge-result-env", str(merge_result_env)))
+    result = _run_cli(*child)
+    if result.stdout:
+        _ = sys.stdout.write(result.stdout)
+    if result.stderr:
+        _ = sys.stderr.write(result.stderr)
+    return int(result.returncode)
+
+
 def _emit_repair_loop_heartbeat(*, stop: threading.Event, site: str) -> None:
     start: float = time.monotonic()
     while not stop.wait(_REPAIR_LOOP_HEARTBEAT_INTERVAL_S):
@@ -345,13 +443,30 @@ def _emit_repair_loop_heartbeat(*, stop: threading.Event, site: str) -> None:
         print(f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s", flush=True)
 
 
-def checks_repair_loop_main(argv: list[str] | None = None) -> int:  # noqa: PLR0915 - CLI entry: arg parse, validation, heartbeat, loop dispatch, self-edit record, and KV emission just exceed the statement cap
+def _emit_repair_loop_outcome(*, action: str, loop: LoopResult) -> None:
+    _emit_repair_kv(key="NEXT_ACTION", value=action)
+    _emit_repair_kv(key="LOOP_STATUS", value=loop.status)
+    if loop.stderr_tail_path:
+        _emit_repair_kv(key="STDERR_TAIL_PATH", value=loop.stderr_tail_path)
+    if loop.coder_log_path:
+        _emit_repair_kv(key="CODER_LOG_FILE", value=loop.coder_log_path)
+    if loop.failure_reason:
+        _emit_repair_kv(key="FAILURE_REASON", value=loop.failure_reason)
+    if loop.tier_ledger_path:
+        _emit_repair_kv(key="LINT_FIX_TIER_LEDGER_PATH", value=loop.tier_ledger_path)
+    if action == "main-agent-edit":
+        _print_loop_ledger(loop)
+
+
+def checks_repair_loop_main(argv: list[str] | None = None) -> int:
     parser = _RepairLoopArgumentParser(prog="cli.py checks repair-loop")
     _ = parser.add_argument("--tmpdir", required=True)
     _ = parser.add_argument("--site", required=True)
     _ = parser.add_argument("--checks-site", default="")
     _ = parser.add_argument("--checks-log", required=True)
     _ = parser.add_argument("--repo-root", default="")
+    _ = parser.add_argument("--bgjob-launch", choices=("true", "false"), default="false")
+    _ = parser.add_argument("--bgjob-merge-result-env", default="")
     args = parser.parse_args(argv)
     canonical_tmp = validate_tmpdir(args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     if canonical_tmp is None:
@@ -369,7 +484,36 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:  # noqa: PLR0
         print("LOOP_STATUS=checks-site-validation")
         return 2
 
-    repo_root = args.repo_root or default_repo_root()
+    if args.bgjob_launch == "true":
+        return _launch_repair_loop_bgjob(
+            RepairLoopBgjobLaunch(
+                tmpdir=canonical_tmp,
+                site=lint_site,
+                checks_site=args.checks_site,
+                checks_log=args.checks_log,
+                repo_root=args.repo_root,
+            )
+        )
+
+    merge_result_env = Path(args.bgjob_merge_result_env) if args.bgjob_merge_result_env else None
+    with _result_env_capture(merge_result_env):
+        return _run_repair_loop_foreground(
+            canonical_tmp=canonical_tmp,
+            lint_site=lint_site,
+            capture_site=capture_site,
+            checks_log=args.checks_log,
+            repo_root=args.repo_root or default_repo_root(),
+        )
+
+
+def _run_repair_loop_foreground(
+    *,
+    canonical_tmp: Path,
+    lint_site: str,
+    capture_site: str,
+    checks_log: str,
+    repo_root: str,
+) -> int:
     runner = proc
     run_parent = str(canonical_tmp / "lint-fix-loop")
 
@@ -407,12 +551,12 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:  # noqa: PLR0
             checks_runner=checks_runner,
             fixer=fixer,
             dispatch_first=True,
-            initial_redacted_log=args.checks_log,
+            initial_redacted_log=checks_log,
             allowed_tmpdir=str(canonical_tmp),
         )
     except OSError:
-        print("NEXT_ACTION=stall")
-        print("LOOP_STATUS=callback-oserror")
+        _emit_repair_kv(key="NEXT_ACTION", value="stall")
+        _emit_repair_kv(key="LOOP_STATUS", value="callback-oserror")
         return 1
     finally:
         stop_heartbeat.set()
@@ -426,21 +570,10 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:  # noqa: PLR0
     action = _repair_loop_action(
         loop=loop,
         lint_site=lint_site,
-        checks_log=args.checks_log,
+        checks_log=checks_log,
         allowed_tmpdir=canonical_tmp,
     )
-    print(f"NEXT_ACTION={action}")
-    print(f"LOOP_STATUS={loop.status}")
-    if loop.stderr_tail_path:
-        print(f"STDERR_TAIL_PATH={loop.stderr_tail_path}")
-    if loop.coder_log_path:
-        print(f"CODER_LOG_FILE={loop.coder_log_path}")
-    if loop.failure_reason:
-        print(f"FAILURE_REASON={loop.failure_reason}")
-    if loop.tier_ledger_path:
-        print(f"LINT_FIX_TIER_LEDGER_PATH={loop.tier_ledger_path}")
-    if action == "main-agent-edit":
-        _print_loop_ledger(loop)
+    _emit_repair_loop_outcome(action=action, loop=loop)
     return 0 if action in {"continue", "main-agent-edit"} else 1
 
 

@@ -532,6 +532,10 @@ def run(repo_root: Path) -> list[str]:
         require("skills/implement/references/checks-repair-loop.md", 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true', "checks-repair-loop Step 6 force-checks repair launcher")
         require("skills/implement/references/checks-repair-loop.md", 'both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`', "checks-repair-loop Step 6 continue and main-agent force-checks")
         require("skills/implement/references/checks-repair-loop.md", "continue only when `BGJOB_RC=0` and required composite KVs are present", "checks-repair-loop bgjob result gate")
+        require(checks_ref, "checks repair-loop --bgjob-launch true", "checks-repair-loop orchestrator bgjob launch")
+        require(checks_ref, "bgjob wait --step implement-<lint-site>-repair", "checks-repair-loop site-qualified repair wait")
+        require(checks_ref, "implement-step3-repair", "checks-repair-loop Step 3 repair slug")
+        require(checks_ref, "implement-step6-repair", "checks-repair-loop Step 6 repair slug")
         forbid(checks_ref, "python/cli.py implement checks-commit-route --checks-site step6", "checks-repair-loop old Step 6 checks-commit-route launcher removed")
         forbid(checks_ref, "checks-commit-route --checks-site step6 --commit-site step7", "checks-repair-loop bare Step 6 checks-commit-route repair re-entry removed")
         forbid(skill, "python/cli.py implement checks-commit-route --checks-site step6", "SKILL old Step 6 checks-commit-route launcher removed")
@@ -1080,4 +1084,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 382
+LEGACY_ASSERTION_LABEL_COUNT = 386

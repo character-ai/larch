@@ -18,6 +18,7 @@ from larch.implement import checks
 from larch.implement import checks_run_relevant as _crr
 from larch.implement import checks_lint_fix as _clf
 from larch.core import config
+from larch.core import external_defaults
 from larch.core import proc
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
@@ -4443,6 +4444,144 @@ def test_checks_repair_loop_main_continue_after_applied_and_clean_recheck(
         f"fix:step3:{checks_log}",
         f"checks:step3:{session}:{tmp_path}",
     ]
+
+
+def test_checks_repair_loop_bgjob_launch_starts_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            "BGJOB_STATUS=STARTED STEP=implement-step3-repair PGID=123\n",
+            "",
+        )
+
+    monkeypatch.setattr(_clf, "_run_cli", fake_run_cli)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+        "--bgjob-launch",
+        "true",
+    ])
+    assert rc == 0
+    assert capsys.readouterr().out == (
+        "BGJOB_STATUS=STARTED STEP=implement-step3-repair PGID=123\n"
+    )
+    start = calls[0]
+    assert start[:2] == ("bgjob", "start")
+    assert start[2:8] == (
+        "--step",
+        "implement-step3-repair",
+        "--tmpdir",
+        str(session),
+        "--budget-s",
+        str(
+            external_defaults.fixer_lane_budget_sec("implement.lint_fix_coder")
+            * config.RCC_MAX_ITER_DEFAULT
+        ),
+    )
+    assert "--merge-result-env" in start
+    assert str(session / "bgjob" / "implement-step3-repair.merge.env") in start
+    assert "--bgjob-merge-result-env" in start
+    assert "checks" in start
+    assert "repair-loop" in start
+    assert "--bgjob-launch" not in start
+
+
+def test_checks_repair_loop_bgjob_launch_site_qualifies_step6_slug(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "BGJOB_STATUS=STARTED\n", "")
+
+    monkeypatch.setattr(_clf, "_run_cli", fake_run_cli)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step6",
+        "--checks-log",
+        str(checks_log),
+        "--bgjob-launch",
+        "true",
+    ])
+    assert rc == 0
+    assert calls[0][3] == "implement-step6-repair"
+
+
+def test_checks_repair_loop_merge_result_env_captures_terminal_kvs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    merge_env = session / "bgjob" / "implement-step3-repair.merge.env"
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        return _repair_loop_ok_result(site=site)
+
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+        "--bgjob-merge-result-env",
+        str(merge_env),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NEXT_ACTION=continue" in out
+    text = merge_env.read_text(encoding="utf-8")
+    assert "NEXT_ACTION=continue\n" in text
+    assert "LOOP_STATUS=ok\n" in text
+    assert "BGJOB_RC=" not in text
 
 
 def test_checks_repair_loop_main_main_agent_edit_envelope(
