@@ -378,9 +378,8 @@ def rename_with_details(
     _validate_tracking_state(state)
     target_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
     raw_tail = strip_lifecycle_prefix(current_title)
-    prospective = _truncate_with_prefix(prefix=target_prefix, tail=raw_tail)
-    redacted_prospective = _redact_compose(prospective, context="tracking-issue title")
-    new_title = _truncate_with_prefix(prefix=target_prefix, tail=strip_lifecycle_prefix(redacted_prospective))
+    redacted_tail = _redact_compose(raw_tail, context="tracking-issue title")
+    new_title = _truncate_with_prefix(prefix=target_prefix, tail=redacted_tail)
 
     current_redacted = _redact_compose(current_title, context="tracking-issue title")
     current_prefix = _detect_lifecycle_prefix(current_redacted)
