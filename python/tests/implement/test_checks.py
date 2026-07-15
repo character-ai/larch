@@ -2109,21 +2109,19 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "run-external-agent" not in argv
 
 
-def test_build_codex_argv_grants_only_run_dir_and_repo(tmp_path: Path) -> None:
+def test_codex_descriptor_grants_only_run_dir_and_repo(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     run_dir = tmp_path / "implement" / "lint-fix-loop" / "step5.1"
     session_root = tmp_path / "implement"
     repo.mkdir()
     run_dir.mkdir(parents=True)
-    prompt_file = run_dir / "prompt.md"
-
-    argv = _clf._build_codex_argv(  # pyright: ignore[reportPrivateUsage]
-        agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
-        run_dir=run_dir,
-        repo_root=str(repo),
-        prompt_file=prompt_file,
+    request = _clf.VendorLaunchRequest(
+        workdir=str(repo),
+        output=str(run_dir / "codex.log"),
+        prompt="fix lint",
+        add_dirs=(str(run_dir), str(repo)),
     )
-
+    argv = _clf.CODEX_DESCRIPTOR.build_argv("workspace-write", request)
     add_dirs = [
         argv[index + 1]
         for index, value in enumerate(argv)

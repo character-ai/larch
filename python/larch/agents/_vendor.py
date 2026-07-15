@@ -48,7 +48,13 @@ REQUIRED_CAPABILITIES: frozenset[str] = frozenset(
 )
 
 CodexSandbox = Literal["read-only", "workspace-write"]
-CursorProfile = Literal["review-ask", "ci-write", "implement-write", "negotiation-write"]
+CursorProfile = Literal[
+    "review-ask",
+    "ci-write",
+    "implement-write",
+    "negotiation-write",
+    "lint-fix-write",
+]
 ClaudeProfile = Literal[
     "review-subprocess",
     "review-subprocess-base",
@@ -219,6 +225,17 @@ def build_cursor_argv(profile: str, request: VendorLaunchRequest) -> list[str]:
             request.workdir,
             request.prompt,
         ]
+    if profile == "lint-fix-write":
+        return [
+            "cursor",
+            "agent",
+            "-p",
+            "--trust",
+            *request.model_args,
+            "--workspace",
+            request.workdir,
+            request.prompt,
+        ]
     raise ValueError(f"unknown Cursor argv profile: {profile}")
 
 
@@ -311,7 +328,13 @@ def build_vendor_registry(
 
 _CODEX_PROFILES: frozenset[str] = frozenset({"read-only", "workspace-write"})
 _CURSOR_PROFILES: frozenset[str] = frozenset(
-    {"review-ask", "ci-write", "implement-write", "negotiation-write"}
+    {
+        "review-ask",
+        "ci-write",
+        "implement-write",
+        "negotiation-write",
+        "lint-fix-write",
+    }
 )
 _CLAUDE_PROFILES: frozenset[str] = frozenset(
     {
