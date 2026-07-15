@@ -20,7 +20,7 @@ from larch.lint.engine import (
     SourceFile,
     run_rule,
 )
-from larch.lint.unreachable_branch_detector import (
+from larch.lint.unreachable_branch_detector import (  # pylint: disable=unused-import  # re-export
     SUPPRESSION,
     Finding,  # type: ignore[reportUnusedImport]  # re-exported for equivalence/detector tests
     is_production_source_path,
