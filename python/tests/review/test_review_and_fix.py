@@ -4579,8 +4579,9 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         voter_2.write_text("FINDING_1: NO -- targeted direct\n", encoding="utf-8")
         return ok(tuple(str(item) for item in argv), f"VOTER_1_PATH={voter_1}\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={voter_2}\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={revote_dir / 'missing.txt'}\nVOTER_3_TOOL=codex-pragmatism\n")
 
-    def fake_tally(*, command: str, review_name: str, args, runner=None):
-        del command, review_name, runner
+    def fake_tally(*, commands: object, request: review_tally.TallyRequest):
+        del commands
+        args = request.to_argv()
         tally_argv.extend(str(item) for item in args)
         round_dir = Path(args[args.index("--review-tmpdir") + 1])
         (round_dir / "voting-tally.md").write_text("clean targeted tally\n", encoding="utf-8")
@@ -4602,7 +4603,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         return ()
 
     monkeypatch.setattr(round_runner.review_core_body, "_run_python_cli", fake_dispatch)
-    monkeypatch.setattr(round_runner.review_core_body, "_call_maybe_override", fake_tally)
+    monkeypatch.setattr(round_runner.review_core_body, "_run_tally_request", fake_tally)
     monkeypatch.setattr(round_runner.review_core_body, "_emit_tally", fake_emit)
     monkeypatch.setattr(round_runner.review_core_body, "_record_prune_round", fake_record_prune_round)
 
