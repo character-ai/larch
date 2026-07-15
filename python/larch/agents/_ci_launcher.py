@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import cast
 
 from larch import io as larch_io
 from larch.core import architectural_guidelines
@@ -57,8 +59,6 @@ from larch.agents._failure_diag import (
 )
 from larch.agents._run_external import (
     external_auth_verdict,
-    _codex_auth_args,
-    _trust_config_arg,
     _prepare_codex_home,
     _resolve_review_codex_workdir,
     _temporary_env,
@@ -87,6 +87,16 @@ from larch.agents._claude_runner import (
     _record_claude_ci_usage,
     _validate_claude_output,
     _validate_prompt_file,
+)
+from larch.agents._vendor import (
+    CODEX_DESCRIPTOR,
+    CURSOR_DESCRIPTOR,
+    VendorFamilyHooks,
+    VendorLaunchOutcome,
+    VendorLaunchRequest,
+    VendorProcessResult,
+    check_token_budget_cap,
+    run_vendor_launch,
 )
 
 
@@ -151,21 +161,81 @@ def _validate_failure_log_path(path: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def _model_arg_value(model_args: list[str]) -> str:
-    for flag in ("--model", "-m"):
-        if flag not in model_args:
-            continue
-        idx = model_args.index(flag)
-        if idx + 1 < len(model_args):
-            return model_args[idx + 1]
-    return ""
-
-
 def _read_failure_context(path_text: str) -> str:
     if not path_text:
         return ""
     text = _read_text(Path(path_text))[:20000]
     return redact.redact_secrets_only(redact.redact_tmpdir_paths(text))
+
+
+def _execute_codex_vendor(  # noqa: PLR0913 - vendor execution inputs mirror the runner contract
+    *,
+    output: Path,
+    timeout_seconds: int,
+    workdir: str,
+    events: Path,
+    sidecar: Path,
+    mark_step2_token: bool = False,
+    **kwargs: object,
+) -> VendorProcessResult:
+    child = cast("list[str]", kwargs["argv"])
+    if mark_step2_token:
+        _mark_external_implement_step2_token(sidecar=sidecar)
+    result = _run_external_agent_with_auth_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=timeout_seconds,
+        cmd=child,
+        cwd=workdir,
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    return VendorProcessResult(exit_code=result.exit_code)
+
+
+def _execute_cursor_vendor(  # noqa: PLR0913 - vendor execution inputs mirror the runner contract
+    *,
+    output: Path,
+    timeout_seconds: int,
+    sidecar: Path,
+    stall_channel: str = "",
+    stall_threshold_seconds: int | None = None,
+    mark_step2_token: bool = False,
+    **kwargs: object,
+) -> VendorProcessResult:
+    child = cast("list[str]", kwargs["argv"])
+    if mark_step2_token:
+        _mark_external_implement_step2_token(sidecar=sidecar)
+    if stall_channel:
+        result = _run_external_agent_with_auth_retries(
+            tool="cursor",
+            output=output,
+            timeout_seconds=timeout_seconds,
+            cmd=child,
+            capture_stdout_only=True,
+            stderr_path=sidecar,
+            stall_channel=stall_channel,
+            stall_threshold_seconds=stall_threshold_seconds
+            or _DEFAULT_CURSOR_CI_STALL_THRESHOLD,
+        )
+    else:
+        result = _run_external_agent_with_auth_retries(
+            tool="cursor",
+            output=output,
+            timeout_seconds=timeout_seconds,
+            cmd=child,
+            capture_stdout_only=True,
+            stderr_path=sidecar,
+        )
+    return VendorProcessResult(exit_code=result.exit_code)
+
+
+def _require_vendor_process_result(
+    outcome: VendorLaunchOutcome, *, launcher: str
+) -> VendorProcessResult:
+    if outcome.process_result is None:
+        raise RuntimeError(f"{launcher} completed without a process result")
+    return outcome.process_result
 
 
 def _ci_parser(prog: str) -> argparse.ArgumentParser:
@@ -273,36 +343,34 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             _append_ci_failure(output, tool="codex", launcher_exit=1, site="ci fixer")
             return 0
-        resolved_model = _model_arg_value(model_args)
-        child = [
-            "codex",
-            "exec",
-            "--sandbox",
-            "workspace-write",
-            "-C",
-            workdir,
-            "--add-dir",
-            workdir,
-            *model_args,
-            "-c",
-            _trust_config_arg(workdir),
-            *_codex_auth_args(),
-            "--output-last-message",
-            str(output),
-            "--json",
-            "--",
-            prompt,
-        ]
+        request = VendorLaunchRequest(
+            workdir=workdir,
+            output=str(output),
+            prompt=prompt,
+            timing_task_kind=args.timing_task_kind or "codex-ci",
+            model_args=tuple(model_args),
+            add_dirs=(workdir,),
+        )
+
         with _temporary_env(name="CODEX_HOME", value=home):
-            result = _run_external_agent_with_auth_retries(
-                tool="codex",
-                output=output,
-                timeout_seconds=int(args.timeout, 10),
-                cmd=child,
-                cwd=workdir,
-                stdout_path=paths.events,
-                stderr_path=paths.sidecar,
+            outcome = run_vendor_launch(
+                CODEX_DESCRIPTOR,
+                "workspace-write",
+                request,
+                hooks=VendorFamilyHooks(
+                    execute=functools.partial(
+                        _execute_codex_vendor,
+                        output=output,
+                        timeout_seconds=int(args.timeout, 10),
+                        workdir=workdir,
+                        events=paths.events,
+                        sidecar=paths.sidecar,
+                    )
+                ),
+                use_config_context=False,
             )
+    result = _require_vendor_process_result(outcome, launcher="Codex CI launch")
+    resolved_model = outcome.model
 
     _finalize_launch(
         hooks=(
@@ -366,27 +434,36 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}", tool="cursor")
         _append_ci_failure(output, tool="cursor", launcher_exit=1, site="ci fixer")
         return 0
-    cfg_tmp = tempfile.mkdtemp(prefix="larch-cursor-cfg-")
-    user_cfg = Path.home() / ".cursor" / "cli-config.json"
-    if user_cfg.is_file():
-        shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
     start = time.time()
-    try:
-        child = ["cursor", "agent", "-p", "--force", "--trust", *model_args, "--output-format", "json", "--workspace", workdir, prompt]
-        with _temporary_env(name="CURSOR_CONFIG_DIR", value=cfg_tmp):
-            result = _run_external_agent_with_auth_retries(
-                tool="cursor",
+    request = VendorLaunchRequest(
+        workdir=workdir,
+        output=str(output),
+        prompt=prompt,
+        timing_task_kind=args.timing_task_kind or "cursor-ci",
+        model_args=tuple(model_args),
+    )
+
+    outcome = run_vendor_launch(
+        CURSOR_DESCRIPTOR,
+        "ci-write",
+        request,
+        hooks=VendorFamilyHooks(
+            execute=functools.partial(
+                _execute_cursor_vendor,
                 output=output,
                 timeout_seconds=int(args.timeout, 10),
-                cmd=child,
-                capture_stdout_only=True,
+                sidecar=paths.sidecar,
                 stall_channel="stdout" if args.role == "fix" else f"tree:{workdir}",
-                stall_threshold_seconds=_parse_positive_or_zero_int(os.environ.get("LARCH_CURSOR_CI_STALL_THRESHOLD", "")) or _DEFAULT_CURSOR_CI_STALL_THRESHOLD,
+                stall_threshold_seconds=_parse_positive_or_zero_int(
+                    os.environ.get("LARCH_CURSOR_CI_STALL_THRESHOLD", "")
+                )
+                or _DEFAULT_CURSOR_CI_STALL_THRESHOLD,
             )
-    finally:
-        shutil.rmtree(cfg_tmp, ignore_errors=True)
-
-    cursor_ci_model = _model_arg_value(model_args)
+        ),
+        use_config_context=True,
+    )
+    result = _require_vendor_process_result(outcome, launcher="Cursor CI launch")
+    cursor_ci_model = outcome.model
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
@@ -706,11 +783,15 @@ def _emit_implement_launcher_envelope(*, args: argparse.Namespace, launcher_exit
 def _implement_token_budget_hit(*, args: argparse.Namespace, tool: str, default_kind: str) -> bool:
     cap = args.token_budget_cap or os.environ.get("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "")
     if cap and _is_positive_int(cap):
-        result = proc.run([sys.executable, str(_PY_CLI), "token", "check-budget", "--cap", cap, "--step", args.timing_task_kind or default_kind], check=False)
-        budget_kv = larch_io.parse_kv("\n".join(result.stdout.split()), duplicate_policy="last")
-        status = budget_kv.get("STATUS", "")
-        total = budget_kv.get("TOTAL", "")
-        if status == "cap_hit":
+        result = check_token_budget_cap(
+            cap=cap,
+            step=args.timing_task_kind or default_kind,
+        )
+        if result.hit:
+            budget_kv = larch_io.parse_kv(
+                "\n".join(result.stdout.split()), duplicate_policy="last"
+            )
+            total = budget_kv.get("TOTAL", "")
             _err(f"⚠ agent launch-{tool}-implement: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external implementer fan-out skipped")
             _write(path=args.transcript_path, text="STATUS=cap_hit\n")
             _write(path=str(args.transcript_path) + ".cap-hit", text="STATUS=cap_hit\n" + result.stdout)
@@ -857,43 +938,41 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
             _write_stderr_tail(source=sidecar, output=output)
             _emit_implement_launcher_envelope(args=args, launcher_exit=1)
             return 0
-        resolved_model = _model_arg_value(model_args)
         events = paths.events
-        child = [
-            "codex",
-            "exec",
-            "--sandbox",
-            "workspace-write",
-            "-C",
-            workdir,
-            "--add-dir",
-            str(session_tmpdir),
-            "--add-dir",
-            workdir,
-            *model_args,
-            "-c",
-            _trust_config_arg(workdir),
-            *_codex_auth_args(),
-            "--output-last-message",
-            str(output),
-            "--json",
-            "--",
-            prompt,
-        ]
-        _mark_external_implement_step2_token(sidecar=sidecar)
+        request = VendorLaunchRequest(
+            workdir=workdir,
+            output=str(output),
+            prompt=prompt,
+            timing_task_kind=task_kind,
+            model_args=tuple(model_args),
+            add_dirs=(str(session_tmpdir), workdir),
+        )
+
         start = time.time()
         with _temporary_env(name="CODEX_HOME", value=str(home)):
-            result = _run_external_agent_with_auth_retries(
-                tool="codex",
-                output=output,
-                timeout_seconds=int(args.timeout, 10),
-                cmd=child,
-                cwd=workdir,
-                stdout_path=events,
-                stderr_path=sidecar,
+            outcome = run_vendor_launch(
+                CODEX_DESCRIPTOR,
+                "workspace-write",
+                request,
+                hooks=VendorFamilyHooks(
+                    execute=functools.partial(
+                        _execute_codex_vendor,
+                        output=output,
+                        timeout_seconds=int(args.timeout, 10),
+                        workdir=workdir,
+                        events=events,
+                        sidecar=sidecar,
+                        mark_step2_token=True,
+                    )
+                ),
+                use_config_context=False,
             )
     finally:
         shutil.rmtree(home, ignore_errors=True)
+    result = _require_vendor_process_result(
+        outcome, launcher="Codex implementation launch"
+    )
+    resolved_model = outcome.model
 
     _finalize_launch(
         hooks=(
@@ -994,28 +1073,34 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
         _write_stderr_tail(source=sidecar, output=output)
         _emit_implement_launcher_envelope(args=args, launcher_exit=1)
         return 0
-    cfg_tmp = tempfile.mkdtemp(prefix="larch-cursor-cfg-")
-    user_cfg = Path.home() / ".cursor" / "cli-config.json"
-    if user_cfg.is_file():
-        with contextlib.suppress(OSError):
-            shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
-    try:
-        child = ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json", *model_args, "--workspace", workdir, wrapped_prompt]
-        _mark_external_implement_step2_token(sidecar=sidecar)
-        start = time.time()
-        with _temporary_env(name="CURSOR_CONFIG_DIR", value=cfg_tmp):
-            result = _run_external_agent_with_auth_retries(
-                tool="cursor",
+    request = VendorLaunchRequest(
+        workdir=workdir,
+        output=str(output),
+        prompt=wrapped_prompt,
+        timing_task_kind=task_kind,
+        model_args=tuple(model_args),
+    )
+
+    start = time.time()
+    outcome = run_vendor_launch(
+        CURSOR_DESCRIPTOR,
+        "implement-write",
+        request,
+        hooks=VendorFamilyHooks(
+            execute=functools.partial(
+                _execute_cursor_vendor,
                 output=output,
                 timeout_seconds=int(args.timeout, 10),
-                cmd=child,
-                capture_stdout_only=True,
-                stderr_path=sidecar,
+                sidecar=sidecar,
+                mark_step2_token=True,
             )
-    finally:
-        shutil.rmtree(cfg_tmp, ignore_errors=True)
-
-    cursor_impl_model = _model_arg_value(model_args)
+        ),
+        use_config_context=True,
+    )
+    result = _require_vendor_process_result(
+        outcome, launcher="Cursor implementation launch"
+    )
+    cursor_impl_model = outcome.model
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),

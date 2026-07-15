@@ -91,7 +91,9 @@ _PRODUCTION_LAUNCHERS = (
 )
 
 # Launchers migrated to the shared vendor descriptor table and run_vendor_launch.
-_MIGRATED_LAUNCHERS = frozenset({"_drafter.py", "_review_launcher.py"})
+_MIGRATED_LAUNCHERS = frozenset(
+    {"_ci_launcher.py", "_drafter.py", "_review_launcher.py"}
+)
 
 
 def _agent_imports(path: Path) -> set[str]:
