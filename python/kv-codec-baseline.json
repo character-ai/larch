@@ -273,7 +273,7 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 290,
+    "line": 292,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/implement/dispatch_manifest.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
@@ -289,7 +289,7 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 355,
+    "line": 288,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/implement/step_7a.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",
@@ -313,7 +313,7 @@
   },
   {
     "anchor": "split=0b405025401f6ee54b9cfde500932675848b8814a014d0e62666ddb9e3753bcb",
-    "line": 433,
+    "line": 430,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",
     "path": "python/larch/report/final_report.py",
     "reason": "pre-existing KEY=value reader pending shared codec migration",

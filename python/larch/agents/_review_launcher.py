@@ -485,11 +485,7 @@ def _review_effective_token_cap(args: argparse.Namespace) -> int | None:
 
 
 def _review_write_cap_hit_artifacts(*, output: Path, cap: int, stdout: str) -> None:
-    total = ""
-    for token in stdout.split():
-        if token.startswith("TOTAL="):
-            total = token.split("=", 1)[1]
-            break
+    total = larch_io.parse_kv("\n".join(stdout.split()), duplicate_policy="last").get("TOTAL", "")
     _err(
         f"⚠ agent launch-review: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external reviewer fan-out skipped"
     )
