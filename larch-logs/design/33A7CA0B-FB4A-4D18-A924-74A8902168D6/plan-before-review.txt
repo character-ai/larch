@@ -1,0 +1,71 @@
+## Approach
+
+Confidence: medium.
+
+Keep the production entrypoint thin. Use `SourceFile.python_ast` for parsing, engine discovery and suppression, and `run_rule` for baseline and output handling.
+
+Retain a compact frozen detector hit type and compatibility adapters for existing detector-focused and equivalence tests. Preserve normalized conditions, per-symbol occurrences, and rendered messages.
+
+Before implementation, confirm that the Piece 1 engine can load and write the legacy occurrence schema with `normalized_condition`. The current engine occurrence codec exposes `pattern_name` instead. If that gap remains, stop as blocked. Do not change `engine.py` or silently change the baseline schema.
+
+## Files to modify/create
+
+### REWRITTEN: python/larch/lint/lint_unreachable_branch.py
+
+- Replace local discovery, suppression parsing, baseline I/O, rendering, and exit handling with `LintRule`, `SourceFile`, `Finding`, and `run_rule`.
+- Keep the module near the requested 250-line limit.
+- Define the existing rule ID, baseline filename, production Python pathspecs, and source filter. Preserve exclusions for tests, support files, symlinks, and excluded directories.
+- Implement a compact path-state scanner over functions, async functions, methods, nested definitions, and class scopes.
+- Preserve normalized AST expression identities and per-qualified-symbol occurrence numbering.
+- Retain only facts justified on every surviving path.
+- Invalidate facts and return proofs when assignments or named expressions may change referenced names.
+- Clear state across loops, `try`, context managers, raises, breaks, continues, and other uncertain control flow.
+- Detect repeated same-value returns in later contradictory `if` and `elif` arms, including unreachable straight-line tails.
+- Keep analysis conservative. Emit no finding when implication, control flow, or return equivalence is uncertain.
+- Adapt detector hits to engine findings without changing fixture identities or rendered lines.
+- Configure engine-owned same-line `# lint-unreachable-branch: ok <reason>` suppression and syntax failures.
+- Preserve `--root`, `--write`, and `--initial-reason` compatibility in a thin `main(argv) -> int`.
+- Keep narrow `scan_file` and source-enumeration compatibility adapters required by existing detector and equivalence tests. Do not use them in the production CLI path.
+- Preserve `python/unreachable-branch-baseline.json` path, schema, stable ordering, reasons, strict stale behavior, and byte-identical `[]\n` output for a clean no-op rewrite.
+
+### UPDATED: python/tests/lint/test_lint_unreachable_branch.py
+
+- Drive detector cases through `SourceFile` or the retained compatibility adapter.
+- Preserve coverage for repeated and different return values, assignment invalidation, the `_final_verdict` regression, nested functions, loop-nested definitions, `elif`, unconditional-return tails, and async functions.
+- Assert exact repository-relative paths, qualified symbols, normalized conditions, occurrences, messages, and rendered engine lines.
+- Cover valid suppression, empty-reason rejection, malformed Python, and production-path filtering.
+- Exercise the engine-backed CLI in a tracked synthetic git repository.
+- Verify clean, new-finding, malformed-source, duplicate-baseline, stale-baseline, and baseline-write exit behavior.
+- Assert the legacy baseline field schema and reason preservation.
+- Compare baseline bytes before and after a no-op rewrite.
+
+## Edge cases
+
+- Do not leak facts between enclosing, nested, class, or async scopes.
+- Count occurrences before baseline and pragma suppression.
+- Drop only facts that reference reassigned names.
+- Treat evaluation of a later `if` as reachable even when its body is impossible.
+- Preserve preparation statements before a direct return.
+- Reject empty suppression reasons and malformed baseline rows.
+
+## Failure modes
+
+- Fail with exit 2 on unreadable sources, syntax errors, invalid arguments, malformed baselines, duplicate identities, or strict stale rows.
+- Fail implementation preflight if Piece 1 cannot represent `normalized_condition` in the existing baseline schema.
+- Do not add local baseline plumbing or modify `engine.py` to bypass that dependency.
+- Avoid broad constant folding or whole-program inference that could add false positives.
+
+## Testing strategy
+
+1. Run `make test-lint-unreachable-branch`.
+2. Run `make lint-unreachable-branch`.
+3. Run `python3 -m pytest python/tests/lint/test_lint_engine_equivalence.py -q -k unreachable`.
+4. Run the detector-focused test module and confirm exact identities and rendered lines.
+5. Run baseline regeneration on the clean repository and verify `python/unreachable-branch-baseline.json` remains byte-unchanged.
+6. Confirm `python/larch/lint/lint_unreachable_branch.py` stays near 250 lines.
+
+difficulty: MODERATE
+diff_added: 360
+diff_deleted: 900
+mechanical_churn: false
+diff_lines: 1260
