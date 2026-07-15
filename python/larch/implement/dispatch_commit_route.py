@@ -28,6 +28,7 @@ from larch.implement import checks
 from larch.implement import checks_result_identity
 from larch.implement import ship
 from larch.implement import scope_disposition
+from larch.implement.self_edit_log import file_sha256, read_self_edits
 from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,
@@ -724,6 +725,7 @@ class Step4CommitSeed:
     message: str
     pathspec: Path | None
     noop_reason: str = ""
+    refresh_step3_self_edits: bool = False
 
 
 _COMMIT_ROUTE_SITES: dict[str, CommitRouteSite] = {
@@ -1165,13 +1167,22 @@ def _step4_noop(reason: str) -> tuple[CommitRouteOutcome, str]:
     return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
 
 
-def _step4_commit_seed_from_files(*, message_path: Path, pathspec: Path) -> Step4CommitSeed | None:
+def _step4_commit_seed_from_files(
+    *,
+    message_path: Path,
+    pathspec: Path,
+    refresh_step3_self_edits: bool = False,
+) -> Step4CommitSeed | None:
     if not _path_readable_nonempty(message_path):
         return None
     message = _read_redacted_message(message_path)
     if not message or not _path_readable_nonempty(pathspec):
         return None
-    return Step4CommitSeed(message=message, pathspec=pathspec)
+    return Step4CommitSeed(
+        message=message,
+        pathspec=pathspec,
+        refresh_step3_self_edits=refresh_step3_self_edits,
+    )
 
 
 def _step4_dispatcher_committed_seed(implement_tmpdir: Path) -> Step4CommitSeed | None:
@@ -1193,10 +1204,54 @@ def _resolve_step4_commit_seed(*, implement_tmpdir: Path, dispatcher_commit_comp
     if _path_readable_nonempty(recovery_metadata):
         return _step4_commit_seed_from_files(message_path=recovery_message, pathspec=recovery_paths)
     if _path_readable_nonempty(implementation_message):
-        return _step4_commit_seed_from_files(message_path=implementation_message, pathspec=implementation_paths)
+        return _step4_commit_seed_from_files(
+            message_path=implementation_message,
+            pathspec=implementation_paths,
+            refresh_step3_self_edits=True,
+        )
     if dispatcher_commit_complete:
         return _step4_dispatcher_committed_seed(implement_tmpdir)
     return None
+
+
+def _step4_pathspec_with_step3_self_edits(
+    *,
+    implement_tmpdir: Path,
+    pathspec: Path,
+    repo_root: Path,
+) -> tuple[Path | None, bool]:
+    """Union still-attributed Step 3 edits into the frozen implementation pathspec.
+
+    The implementation pathspec comes from Step 2.4, before a Step 3 repair-loop
+    can run lint-fix. Only dirty paths whose current content still matches an
+    attribution record are added; unrelated concurrent changes remain outside
+    the commit route.
+    """
+    result = _run([GIT_BIN, "status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    if result.returncode != 0:
+        return None, False
+    dirty_paths = set(_porcelain_status_paths_z(result.stdout))
+    if not dirty_paths:
+        return pathspec, True
+    eligible_sources = {"lint-fix:step3", "pre-commit-autofix"}
+    self_edit_paths = {
+        record.path
+        for record in read_self_edits(implement_tmpdir)
+        if record.source in eligible_sources
+        and record.path in dirty_paths
+        and not Path(record.path).is_absolute()
+        and ".." not in Path(record.path).parts
+        and file_sha256(repo_root, record.path) == record.post_sha256
+    }
+    paths = sorted(set(_read_nul_pathspec(pathspec)) | self_edit_paths)
+    if not self_edit_paths:
+        return pathspec, True
+    refreshed_pathspec = implement_tmpdir / "step4-commit-paths.nul"
+    _write_bytes_atomic(
+        path=refreshed_pathspec,
+        data=b"".join(path.encode("utf-8", "surrogateescape") + b"\0" for path in paths),
+    )
+    return refreshed_pathspec, True
 
 
 def _step4_commit_failure(
@@ -1262,7 +1317,19 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
         return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
     if seed.pathspec is None:
         return _step4_noop(seed.noop_reason)
-    if _pathspec_clean_relative_to_head(seed.pathspec):
+    pathspec = seed.pathspec
+    if seed.refresh_step3_self_edits:
+        repo_root = _resolve_repo_root()
+        if repo_root is None:
+            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+        pathspec, refresh_ok = _step4_pathspec_with_step3_self_edits(
+            implement_tmpdir=implement_tmpdir,
+            pathspec=pathspec,
+            repo_root=repo_root,
+        )
+        if not refresh_ok or pathspec is None:
+            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+    if _pathspec_clean_relative_to_head(pathspec):
         noop_reason = "dispatcher-committed" if dispatcher_commit_complete else "already-committed"
         return _step4_noop(noop_reason)
 
@@ -1273,7 +1340,7 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
             "--message",
             seed.message,
             "--pathspec-from-file",
-            str(seed.pathspec),
+            str(pathspec),
             "--pathspec-file-nul",
         ],
         deadline_ms=deadline_ms,
