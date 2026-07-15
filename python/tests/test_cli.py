@@ -257,7 +257,7 @@ def test_machine_stdout_keys_derived_from_registry() -> None:
     derived = frozenset(
         key for key, (_module, _func, machine_stdout) in cli._REGISTRY.items() if machine_stdout  # pyright: ignore[reportPrivateUsage]
     )
-    assert cli._MACHINE_STDOUT_KEYS == derived  # pyright: ignore[reportPrivateUsage]
+    assert derived == cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
 def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() -> None:
@@ -272,7 +272,7 @@ def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() 
         registered = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
         assert registered == (module_name, func_name, True)
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    for _key, (module_name, _func_name, _machine_stdout) in cli._REGISTRY.items():  # pyright: ignore[reportPrivateUsage]
+    for module_name, _func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
         assert module_name != "larch.design.design_lifecycle"
 
 
