@@ -158,6 +158,9 @@ class SourceFile:
         return state.tree
 
 
+PrepareCorpus: TypeAlias = Callable[[Sequence[SourceFile]], None]
+
+
 @dataclass(frozen=True)
 class LintRule:
     """Detect-function rule configuration for ``run_rule``."""
@@ -174,6 +177,7 @@ class LintRule:
     stale_baseline_on_clean_scan: bool = False
     occurrence_pattern_field: OccurrencePatternField = "pattern_name"
     require_baseline: bool = False
+    prepare_corpus: PrepareCorpus | None = None
 
 
 def _is_single_line(value: object) -> bool:
@@ -1282,9 +1286,11 @@ def _scan_findings(
         selected = [rel for rel in selected if rule.source_filter(rel)]
     pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s+(\S.*)$")
     empty_pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s*$")
+    sources = [_load_source(root, rel_path) for rel_path in selected]
+    if rule.prepare_corpus is not None:
+        rule.prepare_corpus(sources)
     collected: list[Finding] = []
-    for rel_path in selected:
-        source = _load_source(root, rel_path)
+    for source in sources:
         collected.extend(
             _scan_source(
                 source,
