@@ -275,6 +275,150 @@ def test_build_bundle_record_rejects_pr_fix_sha_outside_evidence_ref(tmp_path: P
     assert ["git", "merge-base", "--is-ancestor", "deadbeef", "origin/main"] in runner.calls
 
 
+def test_build_bundle_discovers_cross_language_consumers_and_widens_evidence_scans(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(7, "[BUG] renamed field", "CLOSED", "COMPLETED", "body", "u", "", ())
+    runner = RecordingRunner(
+        responses=[
+            _result("deadbeef\x1fFixes #7\x1e"),
+            _result(),
+            _result(),
+            _result("python/larch/issue/model.py\n"),
+            _result("1\n"),
+            _result("2\t2\tpython/larch/issue/model.py\n"),
+            _result("-    old_name: str\n+    new_name: str\n-    registry['old_key']\n+    registry['new_key']\n"),
+            _result("origin/main:python/larch/issue/model.py:3: new_key\n"),
+            _result(rc=1),
+            _result("origin/main:.claude/skills/example/SKILL.md:5: old_key\n"),
+            _result("origin/main:scripts/consumer.sh:9: echo old_name\n"),
+            _result("later\n"),
+            _result("revert\n"),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+
+    assert bundle.changed_symbols == ("new_key", "new_name", "old_key", "old_name")
+    assert bundle.consumer_paths == (".claude/skills/example/SKILL.md", "scripts/consumer.sh")
+    assert bundle.scan_files == ("python/larch/issue/model.py", ".claude/skills/example/SKILL.md", "scripts/consumer.sh")
+    assert all(status == analyze_bugs.SCAN_OK for status in (bundle.diff_scan_status, bundle.consumer_scan_status, bundle.later_history_scan_status, bundle.revert_scan_status))
+    assert any(entry == "scripts/consumer.sh:9: `old_name` [cross-language]" for entry in bundle.consumer_references)
+    assert any(entry == ".claude/skills/example/SKILL.md:5: `old_key` [cross-language]" for entry in bundle.consumer_references)
+    assert runner.calls[-2][-3:] == ["python/larch/issue/model.py", ".claude/skills/example/SKILL.md", "scripts/consumer.sh"]
+    assert runner.calls[-1][-3:] == ["python/larch/issue/model.py", ".claude/skills/example/SKILL.md", "scripts/consumer.sh"]
+    bundle_text = Path(bundle.bundle_path).read_text(encoding="utf-8")
+    assert "## Consumers of changed symbols\nStatus: ok" in bundle_text
+    assert "scripts/consumer.sh:9: `old_name` [cross-language]" in bundle_text
+
+
+def test_failed_required_evidence_blocks_cached_certification(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(7, "[BUG] diff failure", "CLOSED", "COMPLETED", "body", "u", "", ())
+    runner = RecordingRunner(
+        responses=[
+            _result("deadbeef\x1fFixes #7\x1e"),
+            _result(),
+            _result(),
+            _result("python/larch/issue/model.py\n"),
+            _result("1\n"),
+            _result("2\t0\tpython/larch/issue/model.py\n"),
+            _result(rc=128, stderr="fatal: invalid object"),
+            _result(),
+            _result(),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+    cached = analyze_bugs.LedgerRecord(
+        cache_key=bundle.cache_key,
+        issue=bundle.issue_number,
+        fix_sha=bundle.fix_sha,
+        later_history_hash=bundle.later_history_hash,
+        deep_verdict="CONFIRMED_FIXED",
+        deep_reason="stale cached certification",
+        stages_complete=("deep",),
+    )
+
+    assert bundle.diff_scan_status == analyze_bugs.SCAN_FAILED
+    assert bundle.consumer_scan_status == analyze_bugs.SCAN_FAILED
+    assert bundle.mechanical_verdict == "NEEDS_DEEP"
+    assert "required evidence incomplete" in bundle.mechanical_reason
+    assert analyze_bugs._record_for_bundle({bundle.cache_key: cached}, bundle) is None  # pyright: ignore[reportPrivateUsage]  # cache-bypass coverage
+    verdict, tier, reason, _missing, _sampled = analyze_bugs._final_verdict_with_tier(bundle, cached)  # pyright: ignore[reportPrivateUsage]  # certification gate coverage
+    assert (verdict, tier) == ("NEEDS_DEEP", "MECH")
+    assert "fix-diff" in reason
+
+
+def test_required_git_scan_distinguishes_grep_no_match_from_failure() -> None:
+    no_match = analyze_bugs._required_git_scan(  # pyright: ignore[reportPrivateUsage]  # command-result edge coverage
+        RecordingRunner(responses=[_result(rc=1)], strict=True),
+        ["git", "grep", "needle"],
+        description="consumer scan failed",
+        no_match_ok=True,
+    )
+    failed = analyze_bugs._required_git_scan(  # pyright: ignore[reportPrivateUsage]  # command-result edge coverage
+        RecordingRunner(responses=[_result(rc=2, stderr="bad checkout")], strict=True),
+        ["git", "grep", "needle"],
+        description="consumer scan failed",
+        no_match_ok=True,
+    )
+
+    assert no_match.status == analyze_bugs.SCAN_OK
+    assert failed.status == analyze_bugs.SCAN_FAILED
+    assert "bad checkout" in failed.reason
+
+
+def test_later_history_and_revert_failures_are_persisted_in_bundle(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(7, "[BUG] history failure", "CLOSED", "COMPLETED", "body", "u", "", ())
+    runner = RecordingRunner(
+        responses=[
+            _result("deadbeef\x1fFixes #7\x1e"),
+            _result(),
+            _result(),
+            _result("python/larch/issue/model.py\n"),
+            _result("1\n"),
+            _result("2\t0\tpython/larch/issue/model.py\n"),
+            _result("+ unrelated_change\n"),
+            _result(rc=128, stderr="fatal: invalid checkout"),
+            _result(rc=128, stderr="fatal: invalid checkout"),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+
+    assert bundle.later_history_scan_status == analyze_bugs.SCAN_FAILED
+    assert bundle.revert_scan_status == analyze_bugs.SCAN_FAILED
+    assert bundle.mechanical_verdict == "NEEDS_DEEP"
+    bundle_text = Path(bundle.bundle_path).read_text(encoding="utf-8")
+    assert "## Later commits touching evidence files\nStatus: failed\nFailure: later-history scan failed" in bundle_text
+    assert "## Revert scan\nStatus: failed\nFailure: revert scan failed" in bundle_text
+
+
 def test_exact_fix_reference_newest_wins_and_prefix_collision() -> None:
     output = "badsha\x1fFixes #1234\x1e\ngoodsha\x1fFixes #123\x1e\noldsha\x1fFixes #123\x1e\n"
     runner = RecordingRunner(responses=[_result(output)], strict=True)
