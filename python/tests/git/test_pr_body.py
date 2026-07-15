@@ -1344,55 +1344,52 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-    calls: list[list[str]] = []
+    calls: list[dict[str, object]] = []
 
-    def fake_run(cmd: list[str], **kwargs: object) -> object:
-        _ = kwargs
-        calls.append(cmd)
+    def fake_upsert(*_args: object, **kwargs: object) -> pr_body.tracking_issue.UpsertSummaryOutput:
+        calls.append(kwargs)
+        return pr_body.tracking_issue.UpsertSummaryOutput(
+            comment_id="1", comment_url="https://github.com/o/r/issues/42#issuecomment-1", updated=False
+        )
 
-        class Result:
-            returncode = 0
-            stdout = "LARCH_PLUGIN_VERSION=99.0.0\n" if cmd[2:4] == ["plugin", "read-version"] else "COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n"
-            stderr = ""
-        return Result()
-
-    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    monkeypatch.setattr(pr_body.tracking_issue, "upsert_marker_summary", fake_upsert)
     result = pr_body.post_tracking_issue(tmp_path)
     assert result.exit_code == 0
     assert result.posted is True
     assert "issues/42" in result.comment_url
     assert (tmp_path / "summary-metadata.md").is_file()
     assert result.error == ""
-    assert [cmd[1] for cmd in calls] == [str(pr_body._PY_CLI), str(pr_body._PY_CLI)]
+    assert calls[0]["issue"] == "42"
+    assert calls[0]["repo"] == "o/r"
 
 
-def test_post_tracking_issue_warns_plugin_read_version_nonzero_on_stderr(
+def test_post_tracking_issue_uses_unknown_version_when_plugin_metadata_is_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
-    def fake_run(cmd: list[str], **kwargs: object) -> object:
-        _ = kwargs
+    def fake_upsert(
+        _runner: object,
+        *,
+        issue: str,
+        marker: str,
+        content_file: Path,
+        repo: str,
+    ) -> pr_body.tracking_issue.UpsertSummaryOutput:
+        _ = (issue, marker, content_file, repo)
+        return pr_body.tracking_issue.UpsertSummaryOutput(comment_id="1", comment_url="", updated=False)
 
-        class Result:
-            returncode = 7 if cmd[2:4] == ["plugin", "read-version"] else 0
-            stdout = "" if cmd[2:4] == ["plugin", "read-version"] else "COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n"
-            stderr = "read failed" if cmd[2:4] == ["plugin", "read-version"] else ""
-        return Result()
-
-    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    monkeypatch.setattr(pr_body.tracking_issue, "upsert_marker_summary", fake_upsert)
+    monkeypatch.setattr(pr_body.config, "PLUGIN_JSON_PATH", "missing-plugin.json")
     result = pr_body.post_tracking_issue(tmp_path)
-    captured = capsys.readouterr()
 
     assert result.exit_code == 0
     assert result.posted is True
     assert result.error == ""
-    assert "pr_body: plugin read-version failed rc=7" in captured.err
-    assert "pr_body: plugin read-version" not in captured.out
+    assert "Larch version: `unknown`" in (tmp_path / "summary-metadata.md").read_text(encoding="utf-8")
 
 
 def test_diagram_failure_capture_redacts_prefixed_mermaid_on_stderr_line() -> None:

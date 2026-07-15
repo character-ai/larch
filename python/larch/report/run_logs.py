@@ -439,9 +439,6 @@ def larch_log_manifest_main(argv: list[str]) -> int:
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
         return _larch_log_fail(code=1, message="invalid manifest arguments")
-    path = _manifest_cli_path(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id)
-    if not path.is_file():
-        return _larch_log_fail(code=1, message=f"manifest not found: {path}")
     updates: dict[str, Any] = {}
     for assignment in args.field:
         if "=" not in assignment:
@@ -449,11 +446,24 @@ def larch_log_manifest_main(argv: list[str]) -> int:
         key, _, raw = assignment.partition("=")
         updates[key] = _parse_manifest_scalar(raw)
     try:
-        _update_manifest_v2(path=path, updates=updates)
+        result = log_manifest_update(
+            log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, updates=updates
+        )
     except ValueError as exc:
         return _larch_log_fail(code=1, message=str(exc))
-    _emit_larch_log_envelope(path=path, written=True, unchanged=False)
+    _emit_larch_log_envelope(path=result, written=True, unchanged=False)
     return 0
+
+
+def log_manifest_update(
+    *, log_root: Path, skill: str, run_id: str, updates: dict[str, Any]
+) -> Path:
+    """Apply mutable manifest fields and return the updated manifest path."""
+    path = _manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
+    if not path.is_file():
+        raise ValueError(f"manifest not found: {path}")
+    _update_manifest_v2(path=path, updates=updates)
+    return path
 
 
 def _resolve_required_files_manifest(raw: str) -> Path:

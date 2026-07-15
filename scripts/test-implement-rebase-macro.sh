@@ -16,8 +16,8 @@ step7a_py=Path('python/larch/implement/step_7a.py').read_text()
 
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 1.r') != 0:
     errors.append('SKILL.md must not call prompt-side 1.r probe')
-if '"push"' not in bootstrap or '"checkpoint-probe"' not in bootstrap or '"1.r"' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py must invoke push checkpoint-probe for 1.r')
+if 'push.checkpoint_probe(' not in bootstrap or 'step_prefix="1.r"' not in bootstrap:
+    errors.append('python/larch/state/bootstrap.py must invoke the typed checkpoint probe for 1.r')
 if 'plan materialization' not in bootstrap:
     errors.append('python/larch/state/bootstrap.py 1.r probe must use plan materialization label')
 if '--forked-target' not in bootstrap or 'REBASE_RC' not in bootstrap:

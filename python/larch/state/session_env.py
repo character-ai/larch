@@ -321,8 +321,8 @@ class SessionSetupResult:
     stderr_diagnostics: tuple[str, ...] = ()
 
 
-class _SetupPreflightExit(Exception):
-    """Internal signal: setup preflight failed and must short-circuit the wrapper."""
+class SessionSetupError(Exception):
+    """Setup preflight failed and must short-circuit the wrapper."""
 
     def __init__(self, *, returncode: int, output: str) -> None:
         super().__init__(output)
@@ -1649,37 +1649,66 @@ def persist_run_flags_main(argv: list[str]) -> int:
     parser.add_argument("--difficulty-override", default="")
     try:
         args = parser.parse_args(argv)
-        if not args.implement_tmpdir:
-            raise ValueError("--implement-tmpdir is required")
-        if not Path(args.implement_tmpdir).is_dir():
-            raise ValueError("--implement-tmpdir not a directory")
-        for flag in ("quick_mode", "no_issues", "force_requested", "self_review_requested", "self_implement_requested"):
-            value = getattr(args, flag)
-            if value not in _BOOL:
-                raise ValueError(f"--{flag.replace('_', '-')} must be true or false")
-        if args.difficulty_override and args.difficulty_override not in {"TRIVIAL", "MODERATE", "HARD"}:
-            raise ValueError("--difficulty-override must be empty, TRIVIAL, MODERATE, or HARD")
-        data: dict[str, str] = {
-            "QUICK_MODE": args.quick_mode,
-            "NO_ISSUES": args.no_issues,
-            "FORCE_REQUESTED": args.force_requested,
-            "SELF_REVIEW_REQUESTED": args.self_review_requested,
-            "SELF_IMPLEMENT_REQUESTED": args.self_implement_requested,
-            "DIFFICULTY_OVERRIDE": args.difficulty_override,
-        }
-        target = Path(args.implement_tmpdir) / "run-flags.sh"
-        if not _writer_target_allowed(target):
-            raise ValueError(f"output path not under allowed session root: {target}")
-        if not _safe_output_parent(target):
-            raise OSError(f"output parent is not a writable directory: {target.parent}")
-        _validate_writer_keys(data=data, allowed=RUN_FLAG_KEYS)
-        _validate_no_newlines(data)
-        _atomic_write(path=target, text=_kv_text(data))
+        persist_run_flags(
+            implement_tmpdir=Path(args.implement_tmpdir),
+            quick_mode=args.quick_mode,
+            no_issues=args.no_issues,
+            force_requested=args.force_requested,
+            self_review_requested=args.self_review_requested,
+            self_implement_requested=args.self_implement_requested,
+            difficulty_override=args.difficulty_override,
+        )
         print("RUN_FLAGS_PERSISTED=true")
         return 0
     except (OSError, SystemExit, ValueError) as exc:
         _plain_err(f"persist-implement-run-flags.sh: {exc}")
         return 2
+
+
+def persist_run_flags(  # noqa: PLR0913 - persisted option fields mirror the stable CLI contract.
+    *,
+    implement_tmpdir: Path,
+    quick_mode: str = "false",
+    no_issues: str = "",
+    force_requested: str = "false",
+    self_review_requested: str = "false",
+    self_implement_requested: str = "false",
+    difficulty_override: str = "",
+) -> Path:
+    """Persist validated implement options and return the written run-flags path."""
+    if not str(implement_tmpdir):
+        raise ValueError("--implement-tmpdir is required")
+    if not implement_tmpdir.is_dir():
+        raise ValueError("--implement-tmpdir not a directory")
+    values = {
+        "quick_mode": quick_mode,
+        "no_issues": no_issues,
+        "force_requested": force_requested,
+        "self_review_requested": self_review_requested,
+        "self_implement_requested": self_implement_requested,
+    }
+    for flag, value in values.items():
+        if value not in _BOOL:
+            raise ValueError(f"--{flag.replace('_', '-')} must be true or false")
+    if difficulty_override and difficulty_override not in {"TRIVIAL", "MODERATE", "HARD"}:
+        raise ValueError("--difficulty-override must be empty, TRIVIAL, MODERATE, or HARD")
+    data = {
+        "QUICK_MODE": quick_mode,
+        "NO_ISSUES": no_issues,
+        "FORCE_REQUESTED": force_requested,
+        "SELF_REVIEW_REQUESTED": self_review_requested,
+        "SELF_IMPLEMENT_REQUESTED": self_implement_requested,
+        "DIFFICULTY_OVERRIDE": difficulty_override,
+    }
+    target = implement_tmpdir / "run-flags.sh"
+    if not _writer_target_allowed(target):
+        raise ValueError(f"output path not under allowed session root: {target}")
+    if not _safe_output_parent(target):
+        raise OSError(f"output parent is not a writable directory: {target.parent}")
+    _validate_writer_keys(data=data, allowed=RUN_FLAG_KEYS)
+    _validate_no_newlines(data)
+    _atomic_write(path=target, text=_kv_text(data))
+    return target
 
 
 def write_run_params_main(argv: list[str]) -> int:
@@ -2024,7 +2053,7 @@ def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip
     Performs preflight/stale-plugin probes, session tmpdir/identity creation,
     optional prior-log carry-forward, repo resolution, reviewer probes, and
     optional session-env writing (via :func:`write_env`, never the CLI wrapper).
-    Preflight failure raises :class:`_SetupPreflightExit`; other outcomes return a
+    Preflight failure raises :class:`SessionSetupError`; other outcomes return a
     :class:`SessionSetupResult` whose ``stdout_emissions``/``stderr_diagnostics``
     reproduce the wrapper's exact successful output without re-probing.
     """
@@ -2038,7 +2067,7 @@ def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip
             cmd.append("--skip-branch-check")
         preflight = runner.run(cmd)
         if preflight.returncode != 0:
-            raise _SetupPreflightExit(returncode=preflight.returncode, output=preflight.stdout + preflight.stderr)
+            raise SessionSetupError(returncode=preflight.returncode, output=preflight.stdout + preflight.stderr)
         stale = runner.run([str(_scripts_dir() / "check-stale-plugin.sh")])
         if stale.returncode != 0:
             diagnostics.append(f"session-setup.sh: warning: stale plugin check failed (rc={stale.returncode}): {stale.stdout}{stale.stderr}")
@@ -2192,7 +2221,7 @@ def setup_main(argv: list[str]) -> int:
             write_session_env=args.write_session_env,
             caller_env=args.caller_env,
         )
-    except _SetupPreflightExit as exc:
+    except SessionSetupError as exc:
         _emit(exc.output)
         return exc.returncode
     for emission in result.stdout_emissions:

@@ -1039,41 +1039,48 @@ def post_tracking_issue(
             comment_url="",
             error="RUN_ID must match ^[A-Za-z0-9._-]+$",
         )
-    version = "unknown"
-    try:
-        completed = subprocess.run([sys.executable, str(_PY_CLI), "plugin", "read-version"], text=True, capture_output=True, check=False)
-        version = _plugin_version_from_completed(completed)
-    except OSError as exc:
-        _warn(f"plugin read-version launch failed: {exc}")
+    version = _installed_plugin_version()
     summary = implement_tmpdir / "summary-metadata.md"
     lines = [f"Run ID: `{run}`", f"Logs: `larch-logs/implement/{run}/`", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
     if force_requested == "true":
         lines.append("Force: true")
     lines.append(f"Larch version: `{version}`")
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    repo = _read_kv(path=session, key="REPO")
-    cmd = [sys.executable, str(_PY_CLI), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run} -->", "--content-file", str(summary)]
-    if repo:
-        cmd += ["--repo", repo]
-    completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
-    if completed.returncode == 0:
+    repo = _read_kv(path=session, key="REPO") or None
+    try:
+        posted = tracking_issue.upsert_marker_summary(
+            proc, issue=issue, marker=f"<!-- larch:metadata v1 runid={run} -->",
+            content_file=str(summary), repo=repo,
+        )
+    except (tracking_issue.CliFailure, OSError, ValueError) as exc:
+        err = " ".join(str(exc).split())[:500]
+        _warn(f"tracking-issue upsert-summary failed: {err}")
+    else:
         if issue_number:
             parent.write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={adopted}\n", encoding="utf-8")
-        m: re.Match[str] | None = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
         return TrackingIssuePostResult(
             exit_code=0,
             posted=True,
-            comment_url=m.group(1) if m else "",
+            comment_url=posted.comment_url,
             error="",
         )
-    err = " ".join(completed.stderr.split())[:500]
-    _warn(f"tracking-issue upsert-summary failed rc={completed.returncode} stderr={err}")
     return TrackingIssuePostResult(
         exit_code=1,
         posted=False,
         comment_url="",
         error=err,
     )
+
+
+def _installed_plugin_version() -> str:
+    try:
+        plugin_root = Path(__file__).resolve().parents[3]
+        metadata = json.loads((plugin_root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        _warn("plugin read-version failed")
+        return "unknown"
+    candidate = metadata.get("version")
+    return candidate if isinstance(candidate, str) and candidate else "unknown"
 
 
 def post_tracking_issue_main(argv: list[str] | None = None) -> int:

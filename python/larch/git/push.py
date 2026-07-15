@@ -181,44 +181,6 @@ def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
     return ",".join(files)
 
 
-def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
-    if result.skipped_already_pushed:
-        logging_util.emit_kv(key="SKIPPED_ALREADY_PUSHED", value="true")
-    if result.skipped_already_fresh:
-        logging_util.emit_kv(key="SKIPPED_ALREADY_FRESH", value="true")
-    if result.conflict_files:
-        logging_util.emit_kv(key="CONFLICT_FILES", value=result.conflict_files)
-    if result.rebase_error and result.exit_code != _REBASE_FAILED_EXIT:
-        logging_util.emit_kv(key="REBASE_ERROR", value=_rebase_sanitize(result.rebase_error))
-
-    if result.exit_code == 0:
-        if result.skipped_already_pushed or result.skipped_already_fresh:
-            logging_util.emit_kv(key="REBASE_OUTCOME", value="skipped")
-        else:
-            logging_util.emit_kv(key="REBASE_OUTCOME", value="ok")
-        logging_util.emit_kv(key="ROUTE", value="continue")
-        logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-        return 0
-    if result.exit_code == 1:
-        logging_util.emit_kv(key="REBASE_OUTCOME", value="conflict")
-        logging_util.emit_kv(key="CONFLICT_FILES", value=_conflict_files_csv(result))
-        logging_util.emit_kv(key="ROUTE", value="conflict")
-        logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-        return 1
-    if result.exit_code == _REBASE_FAILED_EXIT:
-        logging_util.emit_kv(key="REBASE_OUTCOME", value="failed")
-        err = result.rebase_error or "rebase-failed"
-        logging_util.emit_kv(key="REBASE_ERROR", value=_rebase_sanitize(err))
-        logging_util.emit_kv(key="ROUTE", value="bail")
-        logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-        return 3
-    logging_util.emit_kv(key="REBASE_OUTCOME", value="failed")
-    logging_util.emit_kv(key="REBASE_ERROR", value=f"unexpected-rc-{result.exit_code}")
-    logging_util.emit_kv(key="ROUTE", value="bail")
-    logging_util.emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
-    return result.exit_code
-
-
 def _is_trivial_conflict_file(path: str) -> bool:
     return path.startswith("larch-logs/")
 
@@ -416,6 +378,68 @@ def rebase_main(argv: list[str]) -> int:
     return result.exit_code
 
 
+@dataclass(frozen=True)
+class CheckpointProbeResult:
+    """Typed routing output for the Step 1.r rebase checkpoint."""
+
+    exit_code: int
+    routing: dict[str, str]
+    advisory_lines: tuple[str, ...] = ()
+    stderr: str = ""
+
+
+def checkpoint_probe(
+    *, step_prefix: str, short_name: str, forked_target: str = "false",
+    base_remote: str | None = None, base_ref: str | None = None,
+) -> CheckpointProbeResult:
+    """Run the checkpoint's rebase and phantom checks without re-entering cli.py."""
+    _ = short_name
+    remote = base_remote or ("upstream" if forked_target == "true" else "origin")
+    result = _checkpoint_rebase_result(base_remote=remote, base_ref=base_ref or "main")
+    routing = {"REBASE_RC": str(result.exit_code)}
+    if result.skipped_already_pushed:
+        routing["SKIPPED_ALREADY_PUSHED"] = "true"
+    if result.skipped_already_fresh:
+        routing["SKIPPED_ALREADY_FRESH"] = "true"
+    outcome, route = {
+        0: ("skipped" if result.skipped_already_pushed or result.skipped_already_fresh else "ok", "continue"),
+        1: ("conflict", "conflict"),
+    }.get(result.exit_code, ("failed", "bail"))
+    routing.update(REBASE_OUTCOME=outcome, ROUTE=route)
+    if result.exit_code == 1 or result.conflict_files:
+        routing["CONFLICT_FILES"] = _conflict_files_csv(result)
+    if result.rebase_error:
+        routing["REBASE_ERROR"] = _rebase_sanitize(result.rebase_error)
+    elif result.exit_code not in {0, 1}:
+        error = "rebase-failed" if result.exit_code == _REBASE_FAILED_EXIT else f"unexpected-rc-{result.exit_code}"
+        routing["REBASE_ERROR"] = error
+    routing["CHECKPOINT_NEXT"] = _checkpoint_next_for_exit(result.exit_code)
+    if result.exit_code != 0:
+        return CheckpointProbeResult(result.exit_code, routing)
+    advisory: list[str] = []
+    _append_phantom_checkpoint_lines(advisory, step_prefix=step_prefix)
+    return CheckpointProbeResult(0, routing, tuple(advisory))
+
+
+def _append_phantom_checkpoint_lines(lines: list[str], *, step_prefix: str) -> None:
+    probe = phantom.probe_with_warn(proc, step=f"{step_prefix}-post-rebase")
+    lines.append(f"PHANTOM_STATUS={probe.dirty.status}")
+    if probe.dirty.reason:
+        lines.append(f"PHANTOM_REASON={probe.dirty.reason}")
+    if probe.dirty.status == "phantom":
+        lines.append(f"PHANTOM_COUNT={probe.dirty.count}")
+        if probe.dirty.paths_file:
+            lines.append(f"PHANTOM_PATHS_FILE={probe.dirty.paths_file}")
+    if probe.append_warn_error:
+        lines.append(f"PHANTOM_APPEND_WARN_ERROR={probe.append_warn_error}")
+
+
+def _render_checkpoint_probe_output(result: CheckpointProbeResult) -> str:
+    lines = [f"{key}={value}" for key, value in result.routing.items()]
+    lines.extend(result.advisory_lines)
+    return "\n".join(lines) + "\n"
+
+
 def checkpoint_probe_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py push checkpoint-probe")
     parser.add_argument("step_prefix")
@@ -429,21 +453,9 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     print(f"→ rebase-probe: {args.step_prefix} {args.short_name}", file=sys.stderr)
     base_remote = args.base_remote or ("upstream" if args.forked_target == "true" else "origin")
     base_ref = args.base_ref or "main"
-    result = _checkpoint_rebase_result(
-        base_remote=base_remote,
-        base_ref=base_ref,
+    result = checkpoint_probe(
+        step_prefix=args.step_prefix, short_name=args.short_name, forked_target=args.forked_target,
+        base_remote=base_remote, base_ref=base_ref,
     )
-    rc = _emit_rebase_checkpoint_keys(result)
-    if rc != 0:
-        return rc
-    probe = phantom.probe_with_warn(proc, step=f"{args.step_prefix}-post-rebase")
-    logging_util.emit_kv(key="PHANTOM_STATUS", value=probe.dirty.status)
-    if probe.dirty.reason:
-        logging_util.emit_kv(key="PHANTOM_REASON", value=probe.dirty.reason)
-    if probe.dirty.status == "phantom":
-        logging_util.emit_kv(key="PHANTOM_COUNT", value=probe.dirty.count)
-        if probe.dirty.paths_file:
-            logging_util.emit_kv(key="PHANTOM_PATHS_FILE", value=probe.dirty.paths_file)
-    if probe.append_warn_error:
-        logging_util.emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=probe.append_warn_error)
-    return 0
+    sys.stdout.write(_render_checkpoint_probe_output(result))
+    return result.exit_code
