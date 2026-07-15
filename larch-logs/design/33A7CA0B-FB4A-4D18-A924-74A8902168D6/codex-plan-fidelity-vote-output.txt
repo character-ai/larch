@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires the normalized-condition occurrence codec and preservation of occurrence identities.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly requires exit 2 for malformed sources and strict stale rows.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly preserves the legacy test and support-file exclusions.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- This is a latent symlink scenario without a concrete feature-path trigger and exceeds the approved no-engine-edit scope.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the exclusion concern already covered by the plan.
