@@ -250,12 +250,9 @@ from larch.agents._review_launcher import (  # noqa: F401
     _review_capture_cursor_dirty_baseline,
     _review_write_cursor_dirty_tree_from_baseline,
     _review_effective_token_cap,
-    _review_check_budget_or_write_cap_hit,
     _review_apply_session_token_env,
     _review_write_clean_readonly_dirty_tree,
     _review_run_test_trap_after_inner_done_if_enabled,
-    _review_setup_cursor_config_dir,
-    _review_cleanup_cursor_config_dir,
 )
 from larch.agents._claude_runner import (  # noqa: F401
     _canonical,

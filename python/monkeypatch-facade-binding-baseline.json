@@ -1310,7 +1310,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "_promote_inner_done",
     "defining_module": "larch.agents._run_external",
-    "occurrence": 13,
+    "occurrence": 11,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1346,7 +1346,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "resolve_model_args",
     "defining_module": "larch.agents._launch_failure",
-    "occurrence": 7,
+    "occurrence": 5,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1477,6 +1477,24 @@
   },
   {
     "file": "tests/agents/test_launch_review.py",
+    "qualified_symbol": "test_codex_success_mirrors_quota_before_retry_classification",
+    "facade_module": "larch.agents._review_launcher",
+    "attribute": "_mirror_codex_quota_from_events",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "review-launcher migration tests require controlled imported launcher bindings"
+  },
+  {
+    "file": "tests/agents/test_launch_review.py",
+    "qualified_symbol": "test_codex_success_mirrors_quota_before_retry_classification",
+    "facade_module": "larch.agents._review_launcher",
+    "attribute": "run_external_agent",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "review-launcher migration tests require controlled imported launcher bindings"
+  },
+  {
+    "file": "tests/agents/test_launch_review.py",
     "qualified_symbol": "test_codex_terminal_artifacts_order_metadata_usage_dirty_tree_done",
     "facade_module": "larch.agents._review_launcher",
     "attribute": "_prepare_codex_home",
@@ -1562,7 +1580,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "resolve_model_args",
     "defining_module": "larch.agents._launch_failure",
-    "occurrence": 12,
+    "occurrence": 10,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1652,7 +1670,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "resolve_model_args",
     "defining_module": "larch.agents._launch_failure",
-    "occurrence": 10,
+    "occurrence": 8,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1661,7 +1679,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "run_external_agent",
     "defining_module": "larch.agents._run_external",
-    "occurrence": 9,
+    "occurrence": 7,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1715,7 +1733,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "resolve_model_args",
     "defining_module": "larch.agents._launch_failure",
-    "occurrence": 6,
+    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1724,7 +1742,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "run_external_agent",
     "defining_module": "larch.agents._run_external",
-    "occurrence": 7,
+    "occurrence": 5,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1733,7 +1751,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "_promote_inner_done",
     "defining_module": "larch.agents._run_external",
-    "occurrence": 13,
+    "occurrence": 11,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1769,7 +1787,7 @@
     "facade_module": "larch.agents._review_launcher",
     "attribute": "resolve_model_args",
     "defining_module": "larch.agents._launch_failure",
-    "occurrence": 7,
+    "occurrence": 5,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1861,6 +1879,15 @@
     "defining_module": "larch.agents._run_external",
     "occurrence": 3,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/agents/test_launch_review.py",
+    "qualified_symbol": "test_token_budget_cap_from_env_writes_done_and_skips_vendor",
+    "facade_module": "larch.agents._review_launcher",
+    "attribute": "check_token_budget_cap",
+    "defining_module": "larch.agents._vendor",
+    "occurrence": 1,
+    "reason": "review-launcher migration tests require controlled imported launcher bindings"
   },
   {
     "file": "tests/agents/test_launch_review.py",
