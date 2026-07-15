@@ -690,14 +690,15 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         if value and value not in {"true", "false"}:
             _err(f"implement step2-dispatch: --{flag_name.replace('_', '-')} must be 'true', 'false', or empty, got: {value}")
             return 2
-    tmpdir_raw = Path(args.tmpdir)
+    tmpdir_value = str(args.tmpdir) or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    tmpdir_raw = Path(tmpdir_value)
     if not tmpdir_raw.is_dir():
         _err(f"implement step2-dispatch: --tmpdir not a directory: {tmpdir_raw}")
         return 2
     tmpdir = tmpdir_raw.resolve()
     if not args.difficulty:
         args.difficulty = difficulty.resolve_step2_effective_difficulty(tmpdir)
-    os.environ["IMPLEMENT_TMPDIR"] = str(tmpdir)
+    os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(tmpdir)
     if (tmpdir / "session-id").is_file():
         session_id = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
         if session_id:

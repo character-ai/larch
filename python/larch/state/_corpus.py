@@ -190,7 +190,8 @@ def build_sensitive_corpus_from_evidence(
 
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
     path = Path(args.public_file)
-    tmpdir = Path(args.tmpdir) if args.tmpdir else Path(args.implement_tmpdir)
+    raw_tmpdir = args.tmpdir if args.tmpdir else args.implement_tmpdir
+    tmpdir = Path(raw_tmpdir)
     if not (path.is_absolute() and not path.is_symlink() and path.is_file()):
         emit(key="PUBLIC_FILE_VALID", value="false")
         return 1

@@ -321,7 +321,8 @@ def fork_env_main(argv: list[str]) -> int:
         return 2
     fork_owner = fork_repo.split("/", 1)[0]
     if args.tmpdir:
-        bootstrap_tmpdir = Path(args.tmpdir)
+        explicit_tmpdir = args.tmpdir
+        bootstrap_tmpdir = Path(explicit_tmpdir)
         try:
             bootstrap_tmpdir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:

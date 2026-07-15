@@ -590,6 +590,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "gh-argv-literal"): ("larch.lint.lint_gh_argv_literal", "main", False),
     ("lint", "wire-artifact-pairing"): ("larch.lint.lint_wire_artifact_pairing", "main", False),
     ("lint", "tempfile-dir"): ("larch.lint.lint_tempfile_dir", "main", False),
+    ("lint", "tmpdir-arg-env-fallback"): ("larch.lint.lint_tmpdir_arg_env_fallback", "main", False),
     ("lint", "markdown-heading-fence-state"): ("larch.lint.lint_markdown_heading_fence_state", "main", False),
     ("lint", "doc-pointer-paths"): ("larch.lint.lint_doc_pointer_paths", "main", False),
     ("lint", "awk-multibyte-regex"): ("larch.lint.lint_awk_multibyte_regex", "main_entry", False),

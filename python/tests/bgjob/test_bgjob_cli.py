@@ -67,6 +67,59 @@ def test_wait_reports_missing_tmpdir_without_arg_or_env(
     assert out == "BGJOB_ERROR=missing-tmpdir\n"
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--step", "demo-step", "--tmpdir", "", "--budget-s", "1", "--", "true"],
+        ["--step", "demo-step", "--budget-s", "1", "--", "true"],
+    ],
+)
+def test_start_empty_or_omitted_tmpdir_uses_implement_tmpdir_env(
+    argv: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[model.JobSpec] = []
+
+    def fake_owner_identity(_raw: str | None) -> model.OwnerIdentity:
+        return model.OwnerIdentity(recorded=None)
+
+    def fake_start_daemon(spec: model.JobSpec) -> int:
+        captured.append(spec)
+        return 0
+
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", fake_owner_identity)
+    monkeypatch.setattr(cli.daemon, "start_daemon", fake_start_daemon)
+
+    rc = cli.start_main(argv)
+
+    assert rc == 0
+    assert len(captured) == 1
+    assert captured[0].tmpdir == tmp_path.resolve()
+
+
+def test_start_reports_missing_tmpdir_without_arg_or_env(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    started = False
+
+    def fake_start_daemon(_spec: model.JobSpec) -> int:
+        nonlocal started
+        started = True
+        return 0
+
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    monkeypatch.setattr(cli.daemon, "start_daemon", fake_start_daemon)
+
+    rc = cli.start_main(["--step", "demo-step", "--budget-s", "1", "--", "true"])
+    out = capsys.readouterr().out
+
+    assert rc == 2
+    assert out == "BGJOB_ERROR=missing-tmpdir\n"
+    assert started is False
+
+
 def test_rejects_bad_step_slug(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = cli.wait_main(["--step", "../bad", "--tmpdir", str(tmp_path), "--max-wait-s", "0"])
     out = capsys.readouterr().out

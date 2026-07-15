@@ -1608,8 +1608,9 @@ def scope_disposition_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--tracking-issue", default="")
     _ = parser.add_argument("--run-id", default="")
     args = parser.parse_args(argv)
-    tmpdir = Path(args.tmpdir) if args.tmpdir else Path()
-    if not args.tmpdir or not tmpdir.is_dir():
+    raw_tmpdir = str(args.tmpdir)
+    tmpdir = Path(raw_tmpdir) if raw_tmpdir else Path()
+    if not raw_tmpdir or not tmpdir.is_dir():
         print("implement scope-disposition: --tmpdir is required", file=sys.stderr)
         return config.EXIT_USAGE
     repo_root = (
