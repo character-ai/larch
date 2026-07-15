@@ -563,6 +563,112 @@ def _compose_findings_from_collector(
     return in_scope, oos_md, ok_count, failure_count
 
 
+def _log_dispatcher_dropped_slots(*, design: Path, dropped_slots_file: str) -> None:
+    """Record each waterfall dispatcher-dropped reviewer slot as an execution issue (issue #7353).
+
+    A slot the waterfall drops before collection leaves no collector record, so
+    ``_compose_findings_from_collector`` never sees it and the degraded panel goes unlogged
+    (``COLLECT_FAILURE_COUNT=0``, "Exec issues: 0"). Surface each ``collector-failure`` drop as
+    a per-slot External Reviewer Issue so the final summary counts the lost reviewer.
+    """
+    if not dropped_slots_file:
+        return
+    path = Path(dropped_slots_file)
+    if not path.is_file() or path.is_symlink():
+        return
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line:
+            continue
+        slot, tool, reason, detail = ([*line.split("\t"), "", "", ""])[:4]
+        if reason != "collector-failure":
+            continue
+        fail_slug = re.sub(r"[^A-Za-z0-9._+-]+", "_", slot).strip("_")[:200] or "slot"
+        fail_log = design / f"{fail_slug}-dispatch-drop.failure.log"
+        _ = fail_log.write_text(
+            f"reviewer slot {slot} ({tool}) dropped by waterfall dispatcher before collection: {reason}\n{detail}\n",
+            encoding="utf-8",
+        )
+        _ = _run_cli(
+            argv=[
+                "run-log",
+                "append-failure",
+                "--log",
+                str(design / "execution-issues.md"),
+                "--site",
+                "design Step 3",
+                "--tool",
+                f"plan-review dispatcher-drop {tool} {reason}",
+                "--exit-code",
+                "1",
+                "--category",
+                "External Reviewer Issues",
+                "--output-file",
+                str(fail_log),
+                "--redact",
+            ]
+        )
+
+
+def _log_insufficient_input_warning(*, design: Path, round_num: int) -> None:
+    """Record an ``AGGREGATOR_STATUS=insufficient-input`` round as a degraded-panel warning (issue #7353).
+
+    Too few reviewers survived for the aggregator to produce meaningful output, so the round
+    yields no useful review coverage. Surface it as a Warnings execution issue so the final
+    summary counts the degraded round instead of reporting "Warnings: 0".
+    """
+    note = design / f"aggregator-insufficient-input-round-{round_num}.warning.log"
+    _ = note.write_text(
+        f"plan-review round {round_num} aggregator returned insufficient-input: too few reviewers "
+        "survived for the aggregator to produce meaningful output; the round produced no useful "
+        "review coverage.\n",
+        encoding="utf-8",
+    )
+    _ = _run_cli(
+        argv=[
+            "run-log",
+            "append-failure",
+            "--log",
+            str(design / "execution-issues.md"),
+            "--site",
+            "design Step 3",
+            "--tool",
+            f"plan-review aggregator round {round_num}",
+            "--exit-code",
+            "0",
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(note),
+            "--redact",
+            "--status-label",
+            "insufficient-input",
+        ]
+    )
+
+
+def _apply_aggregator_status(
+    *,
+    design: Path,
+    round_num: int,
+    agg_kv: dict[str, str],
+    returncode: int,
+    values: dict[str, str],
+) -> None:
+    """Record ``AGGREGATOR_STATUS`` and handle the degraded aggregator outcomes.
+
+    ``insufficient-input`` means too few reviewers reached the aggregator, so it is
+    surfaced as a Warnings execution issue (issue #7353). Any other non-ok, non-disabled
+    status snapshots this round's forensics before the next round overwrites the stable
+    paths (issue #4996); clean aggregations skip the snapshot to avoid committed bytes.
+    """
+    agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=returncode)
+    values["AGGREGATOR_STATUS"] = agg_status
+    if agg_status == "insufficient-input":
+        _log_insufficient_input_warning(design=design, round_num=round_num)
+    elif agg_status not in {"ok", "disabled"}:
+        _snapshot_aggregator_forensics(design=design, round_num=round_num)
+
+
 def _lookup_by_output(
     *, norm: str, output: str, by_norm: dict[str, str], by_output: dict[str, str]
 ) -> str | None:
@@ -941,6 +1047,7 @@ def execute_round(
             _emit(key=k, value=v)
         return 0, values
 
+    _log_dispatcher_dropped_slots(design=design, dropped_slots_file=panel_kv.get("DROPPED_SLOTS_FILE", ""))
     paths_file = panel_kv.get("PANEL_PATHS_FILE") or panel_kv.get("ALL_OUTPUT_FILES_PATH") or str(design / "plan-review-panel-paths.txt")
     paths_path = Path(paths_file)
     collect_out = ""
@@ -1037,13 +1144,7 @@ def execute_round(
         text=f"round {round_num}: aggregating reviewer findings",
     )
     agg_kv = _parse_kv(agg.stdout)
-    agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=agg.returncode)
-    values["AGGREGATOR_STATUS"] = agg_status
-    # Retain this round's aggregator forensics before the next round overwrites the stable paths
-    # (issue #4996). Only failures leave a committed pointer worth resolving, so skip the snapshot
-    # for clean aggregations to avoid adding committed bytes on healthy runs.
-    if agg_status not in {"ok", "insufficient-input", "disabled"}:
-        _snapshot_aggregator_forensics(design=design, round_num=round_num)
+    _apply_aggregator_status(design=design, round_num=round_num, agg_kv=agg_kv, returncode=agg.returncode, values=values)
     ballot = design / "ballot.txt"
     proposer_map = design / "proposer-map.tsv"
     if not _aggregation_ok_for_voting(agg_kv=agg_kv, returncode=agg.returncode):

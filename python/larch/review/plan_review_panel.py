@@ -511,6 +511,14 @@ def _validated_tier_args(*, parser: argparse.ArgumentParser, tier: str, escalate
     return normalized
 
 
+def _emit_panel_degraded_warnings(*, kv: dict[str, str], dynamic_warning: str) -> None:
+    degraded_warning = _degraded_invalid_slot_warning(kv)
+    if degraded_warning:
+        _emit(key="INVALID_SLOT_PANEL_WARNING", value=degraded_warning)
+    if dynamic_warning:
+        _emit(key="DYNAMIC_RENDER_PANEL_WARNING", value=dynamic_warning)
+
+
 def dispatch_panel(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review panel-dispatch")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -638,11 +646,9 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     _emit(key="DYNAMIC_SLOT_COUNT", value=len(dynamic))
     _emit(key="PANEL_PRUNED_EMPTY", value=prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
     _emit(key="PANEL_PATHS_FILE", value=paths_file)
-    degraded_warning = _degraded_invalid_slot_warning(kv)
-    if degraded_warning:
-        _emit(key="INVALID_SLOT_PANEL_WARNING", value=degraded_warning)
-    if dynamic_warning:
-        _emit(key="DYNAMIC_RENDER_PANEL_WARNING", value=dynamic_warning)
+    if kv.get("DROPPED_SLOTS_FILE"):
+        _emit(key="DROPPED_SLOTS_FILE", value=kv["DROPPED_SLOTS_FILE"])
+    _emit_panel_degraded_warnings(kv=kv, dynamic_warning=dynamic_warning)
     return proc.returncode
 
 

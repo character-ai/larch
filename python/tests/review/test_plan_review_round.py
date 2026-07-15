@@ -370,6 +370,7 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
     _ = feature_file.write_text("feature\n", encoding="utf-8")
     _ = reviewer_file.write_text("Looks good overall.\n", encoding="utf-8")
     collect_argvs: list[list[str]] = []
+    append_failure_argvs: list[list[str]] = []
 
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         del env
@@ -404,6 +405,9 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
             return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
             return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["run-log", "append-failure"]:
+            append_failure_argvs.append(argv[:])
+            return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
         raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
@@ -424,6 +428,190 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
     assert "--substantive-validation" in collect_argvs[0]
     assert "--validation-mode" in collect_argvs[0]
     assert "--structured-reviewer-validation" not in collect_argvs[0]
+    # Issue #7353: AGGREGATOR_STATUS=insufficient-input surfaces as a Warnings execution issue.
+    assert values["AGGREGATOR_STATUS"] == "insufficient-input"
+    warning_calls = [a for a in append_failure_argvs if a[a.index("--category") + 1] == "Warnings"]
+    assert len(warning_calls) == 1
+    assert warning_calls[0][warning_calls[0].index("--status-label") + 1] == "insufficient-input"
+
+
+def test_log_dispatcher_dropped_slots_surfaces_collector_failure_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A collector-failure dispatcher drop logs an External Reviewer Issue; tool-absent does not (#7353)."""
+    dropped = tmp_path / "panel.output-files.dropped-slots"
+    _ = dropped.write_text(
+        "codex-plan-pragmatic\tcodex\tcollector-failure\tSTATUS=error launcher exited 1\n"
+        "cursor-plan-innovation\tcursor\ttool-absent\tprimary tool cursor not present\n",
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    plan_review_round._log_dispatcher_dropped_slots(design=tmp_path, dropped_slots_file=str(dropped))
+
+    assert len(calls) == 1
+    argv = calls[0]
+    assert argv[:2] == ["run-log", "append-failure"]
+    assert argv[argv.index("--category") + 1] == "External Reviewer Issues"
+    assert argv[argv.index("--site") + 1] == "design Step 3"
+    assert argv[argv.index("--tool") + 1] == "plan-review dispatcher-drop codex collector-failure"
+    fail_log = Path(argv[argv.index("--output-file") + 1])
+    assert fail_log.is_file()
+    assert "STATUS=error launcher exited 1" in fail_log.read_text(encoding="utf-8")
+
+
+def test_log_dispatcher_dropped_slots_missing_file_is_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    plan_review_round._log_dispatcher_dropped_slots(design=tmp_path, dropped_slots_file="")
+    plan_review_round._log_dispatcher_dropped_slots(design=tmp_path, dropped_slots_file=str(tmp_path / "absent.dropped-slots"))
+
+    assert not calls
+
+
+def test_log_insufficient_input_warning_appends_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AGGREGATOR_STATUS=insufficient-input logs a Warnings execution issue (#7353)."""
+    calls: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    plan_review_round._log_insufficient_input_warning(design=tmp_path, round_num=2)
+
+    assert len(calls) == 1
+    argv = calls[0]
+    assert argv[:2] == ["run-log", "append-failure"]
+    assert argv[argv.index("--category") + 1] == "Warnings"
+    assert argv[argv.index("--status-label") + 1] == "insufficient-input"
+    assert argv[argv.index("--tool") + 1] == "plan-review aggregator round 2"
+    note = Path(argv[argv.index("--output-file") + 1])
+    assert note.is_file()
+    assert "insufficient-input" in note.read_text(encoding="utf-8")
+
+
+def test_execute_round_logs_waterfall_dropped_slot_to_execution_issues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Issue #7353: a reviewer slot the waterfall drops before collection (collector-failure)
+    # leaves no collector record, so execute_round surfaces it to execution-issues.md from the
+    # panel-dispatch DROPPED_SLOTS_FILE instead of letting the degraded panel go uncounted.
+    design = tmp_path
+    plan = design / "plan.txt"
+    feature = design / "feature-description.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = feature.write_text("feature\n", encoding="utf-8")
+    paths = design / "panel-paths.txt"
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    dropped = design / "drops.dropped-slots"
+    _ = dropped.write_text(
+        "codex-plan-pragmatic\tcodex\tcollector-failure\tSTATUS=error launcher exited 1\n"
+        "cursor-plan-innovation\tcursor\ttool-absent\tprimary tool cursor not present\n",
+        encoding="utf-8",
+    )
+    sidecar = design / "cursor-plan-arch.sidecar.tsv"
+    _write_sidecar(
+        sidecar,
+        [
+            {
+                "scope": "in_scope",
+                "severity": "major",
+                "focus_area": "correctness",
+                "location": "plan.md",
+                "what": "Real finding",
+                "scenario_or_breakage": "breaks the plan",
+                "suggested_fix": "fix it",
+            }
+        ],
+    )
+    append_failure_argvs: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        _ = env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            _ = paths.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                f'{{"slot":"cursor-plan-arch","output":"{reviewer_file}"}}\n',
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths}\nDROPPED_SLOTS_FILE={dropped}\n",
+                "",
+            )
+        if argv[:2] == ["agent", "collect-results"]:
+            record = collect_results.CollectorRecord(
+                reviewer_file=str(reviewer_file),
+                tool="cursor",
+                status="OK",
+                exit_code="0",
+                structured_sidecar=str(sidecar),
+            )
+            return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            _ = (design / "ballot.txt").write_text("### FINDING_1:\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"DISPATCH_OK=true\nVOTER_1_PATH={design / 'codex-validity-vote-output.txt'}\nVOTER_1_TOOL=codex-validity\nVOTER_1_STATUS=launched\n",
+                "",
+            )
+        if argv[:2] == ["plan-review", "tally"]:
+            _ = (design / "accepted-plan-findings.md").write_text("### FINDING_1:\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
+        if argv[:2] == ["run-log", "append-failure"]:
+            append_failure_argvs.append(argv[:])
+            return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, _values = plan_review_round.execute_round(
+        design=design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="true",
+        cursor_present="true",
+        plan_file=plan,
+        feature_file=feature,
+    )
+
+    assert rc == 0
+    drop_calls = [a for a in append_failure_argvs if a[a.index("--category") + 1] == "External Reviewer Issues"]
+    assert len(drop_calls) == 1
+    call = drop_calls[0]
+    assert call[call.index("--tool") + 1] == "plan-review dispatcher-drop codex collector-failure"
+    fail_log = Path(call[call.index("--output-file") + 1])
+    assert fail_log.is_file()
+    assert "codex-plan-pragmatic" in fail_log.read_text(encoding="utf-8")
+    # The benign tool-absent drop is not surfaced as an execution issue.
+    assert not any("tool-absent" in " ".join(a) for a in append_failure_argvs)
 
 
 def test_plan_review_tally_classifies_security_from_restored_attribution(
