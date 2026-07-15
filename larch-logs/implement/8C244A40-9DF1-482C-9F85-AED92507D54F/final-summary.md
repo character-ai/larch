@@ -44,18 +44,18 @@ codex/pragmatism-vote                 │                                     �
 
 ## Architectural invariants
 
-The changed code introduces no violation of any architectural invariant. The schema additions to the bug-fix-triage and bug-fix-verifier agents are backed by real tool grants (the verifier's frontmatter already lists Read, Grep, and Glob), and both agents retain explicit fail-closed cannot-read outcomes for missing or insufficient evidence. Ledger evolution is additive: old rows without the new fields are detected by the `current_fields <= set(raw)` subset check and receive `legacy_schema=True`, leaving existing consumers unaffected. No gate-disarming inputs are self-authored by the gated entity, no pause-snapshot or run-log commit logic is touched, and no stale result is consumed without matching its identity to the inputs that produced it.
+The changed code introduces no violation of any architectural invariant. Agent evidence requirements are strengthened rather than weakened: the verifier agent now mandates active Grep evidence for every introduced-risk verdict, and the legacy-schema gate (`not record.legacy_schema`) prevents old rows from producing introduced-risk or class-completeness claims without that evidence. No gate-disarm, pause-snapshot, stale-result-reuse, run-log flush, committed-field, outcome-label, panel-slot, or ship-recovery path is touched.
 
 ## Architectural guidelines
 
-The changed code is clean against all architectural guidelines. The schema evolution preserves byte-compatibility for existing ledger readers while adding the new fields only for current-schema rows, satisfying additive-schema and multi-consumer sweep expectations. Both producer agents and all parser, ledger, and report consumers are updated in the same diff. The `NO_INTRODUCED_RISK` and `SIBLING_SITE_RE` constants are module-local Finals consistent with the established pattern of other same-module constants such as `SCAN_OK`, `SCAN_FAILED`, and `EVIDENCE_TOKEN_LABEL`, which fall under the module-private deviate clause. The `_markdown_table` helper performs no column alignment or label truncation, so the hostile-width golden-test requirement of the report-renderer guidance is not triggered. All pyright suppressions in the test file carry inline reasons and are narrowly scoped per line. The new test suite covers legacy-schema preservation, schema-rejection paths, and the full report rendering path for the new sections.
+The changed code is clean against all architectural guidelines. The schema evolution is additive, byte-compatible for prior ledger shapes, and all producers and consumers are updated in the same diff. New constants follow the established module-level Final pattern. New locals are explicitly typed. Report-rendering additions do not use column alignment or label truncation, so the hostile-width golden-test requirement is not triggered. All pyright suppressions in the test file carry inline reasons.
 
 ## /implement run 8C244A40-9DF1-482C-9F85-AED92507D54F: pr-created
 
 - **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 00:19:59
-- **Cost**: 💰 TOTAL ~$13.40: Claude $3.87, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 18018k
+- **Cost**: 💰 TOTAL ~$15.53: Claude $6.00, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 22619k
 - **Issue**: #7212: https://github.com/character-ai/larch/issues/7212
 - **PR**: #7414: https://github.com/character-ai/larch/pull/7414
 - **Plan review**: N/A
@@ -63,7 +63,7 @@ The changed code is clean against all architectural guidelines. The schema evolu
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/8 accepted
-- **Lines (PR diff)**: code +365/-11, larch-logs +680/-0
+- **Lines (PR diff)**: code +365/-11, larch-logs +682/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
