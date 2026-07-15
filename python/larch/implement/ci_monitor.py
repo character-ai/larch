@@ -1043,12 +1043,10 @@ def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
     if name == "lint":
         return (
             "env",
-            "SKIP=agnix,lint-mermaid-fences,shellcheck",
+            "SKIP=agnix,shellcheck",
             "make",
             "lint-only",
         )
-    if name == "lint-mermaid":
-        return ("make", "lint-mermaid")
     if name == "shellcheck":
         return ("make", "shellcheck")
     if name == "test-harnesses":

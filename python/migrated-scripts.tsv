@@ -94,8 +94,6 @@ scripts/lint-codex-exec-auth.md	#3687
 scripts/lint-codex-exec-auth.sh	#3687
 scripts/lint-gh-body-inline.md	#3687
 scripts/lint-gh-body-inline.sh	#3687
-scripts/lint-mermaid-fences.md	#3687
-scripts/lint-mermaid-fences.sh	#3687
 scripts/lint-readability-preamble.md	#3687
 scripts/lint-readability-preamble.sh	#3687
 scripts/lint-skill-invocations.md	#3687

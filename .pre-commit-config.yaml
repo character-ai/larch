@@ -248,15 +248,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-mermaid-fences
-        name: lint mermaid fences
-        entry: python3 python/cli.py lint mermaid-fences
-        language: system
-        types: [markdown]
-        pass_filenames: true
-
-  - repo: local
-    hooks:
       - id: lint-skill-invocations
         name: Lint skill-invocation docs
         entry: python3 python/cli.py lint skill-invocations

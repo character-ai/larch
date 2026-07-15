@@ -855,7 +855,6 @@ CI_FIX_ROLE: Final = "fix"
 CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "lint",
     "lint-local",
-    "lint-mermaid",
     "shellcheck",
     "test-harnesses",
     "agent-lint",

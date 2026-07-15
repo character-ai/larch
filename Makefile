@@ -15,7 +15,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
-.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync
+.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline agent-sync
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
 .PHONY: lint-guideline-no-exception test-lint-guideline-no-exception
 .PHONY: lint-flat-tests test-lint-flat-tests
@@ -1280,11 +1280,6 @@ test-gather-branch-context:
 
 test-run-external-agent:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'not (negotiation_round or check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_codex_exec or launch_cursor_ci or parse_codex_usage or run_external_agent_args or model_args or degraded_tools)'
-
-lint-mermaid:
-	if [ ! -f mermaid-lint/node_modules/.package-lock.json ]; then (cd mermaid-lint && npm ci); fi
-	python3 python/cli.py lint mermaid-fences --changed-only
-	bash scripts/test-pipe-sigpipe-safety.sh
 
 agent-sync:
 	python3 python/cli.py generate check

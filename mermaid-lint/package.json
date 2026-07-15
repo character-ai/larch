@@ -1,8 +1,0 @@
-{
-  "name": "larch-mermaid-lint-toolchain",
-  "private": true,
-  "version": "0.0.0",
-  "devDependencies": {
-    "@mermaid-js/mermaid-cli": "11.12.0"
-  }
-}

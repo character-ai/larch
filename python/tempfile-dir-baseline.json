@@ -105,13 +105,6 @@
     "reason": "gh body-file staging, deleted in finally"
   },
   {
-    "file": "larch/lint/lint_mermaid_fences.py",
-    "qualified_symbol": "main",
-    "callee": "TemporaryDirectory",
-    "occurrence": 1,
-    "reason": "standalone linter workspace, auto-cleaned"
-  },
-  {
     "file": "larch/release/release_finish.py",
     "qualified_symbol": "_redacted_notes",
     "callee": "NamedTemporaryFile",

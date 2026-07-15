@@ -20,7 +20,6 @@ Anchor comments and PR bodies embed Mermaid diagrams that GitHub renders publicl
 
 - Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `python/cli.py mermaid sanitize`. Rejected diagrams are dropped; callers either omit the publish section so prior issue content is preserved or fall back to an explicit placeholder when that surface requires one.
 - Tracking-issue redaction: `/design` Step 5c.5 and `/implement` Step 7a publish through `python/cli.py diagrams upsert`, which redacts secrets and tmpdir paths before delegating to `python3 python/cli.py tracking-issue upsert-summary`. `python3 python/cli.py tracking-issue upsert-summary` repeats the redaction chain as defense in depth.
-- CI Mermaid lint: `python3 python/cli.py lint mermaid-fences` runs Mermaid CLI over changed Markdown fences and catches syntax outside the narrow sanitizer policy.
 
 ## For Tool Authors
 
@@ -32,10 +31,6 @@ The authoritative tracking-issue surface for diagrams is the issue-scoped
 Code Flow section at Step 7a. The PR body still embeds the Code Flow diagram
 only, after Step 9a validation.
 
-## Node Toolchain Maintenance
-
-This repo uses `@mermaid-js/mermaid-cli` for CI parsing. Keep the version pinned exactly in `mermaid-lint/package.json`; bump yearly or on critical CVE. Run `(cd mermaid-lint && npm audit)` opportunistically during bumps. There is no scheduled audit gate.
-
 ## Update Triggers
 
-Update this file when sanitizer policy, Mermaid CLI pinning, diagram-emitter steps, or anchor/PR publication behavior changes.
+Update this file when sanitizer policy, diagram-emitter steps, or anchor/PR publication behavior changes.
