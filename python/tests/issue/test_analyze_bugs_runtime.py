@@ -110,10 +110,10 @@ def test_runtime_max_zero_replaces_artifact_without_running_commands(tmp_path: P
         repo_root=tmp_path,
     )
 
-    assert results == ()
+    assert not results
     assert skipped == 1
     assert artifact.read_text(encoding="utf-8") == ""
-    assert runner.calls == []
+    assert not runner.calls
 
 
 
@@ -159,7 +159,7 @@ def test_stale_runtime_binding_is_ignored_and_malformed_artifact_fails(tmp_path:
     stale = analyze_bugs.RuntimeResult(SHA_B, (analyze_bugs.RuntimeBinding(1, "one", SHA_B),), (), ())
     _ = (tmp_path / analyze_bugs.RUNTIME_RESULTS_NAME).write_text(json.dumps(analyze_bugs._runtime_result_json(stale)) + "\n", encoding="utf-8")  # pyright: ignore[reportPrivateUsage]  # artifact fixture serialization
 
-    assert analyze_bugs.load_runtime_results(tmp_path / analyze_bugs.RUNTIME_RESULTS_NAME, [bundle]) == {}
+    assert not analyze_bugs.load_runtime_results(tmp_path / analyze_bugs.RUNTIME_RESULTS_NAME, [bundle])
     _ = (tmp_path / analyze_bugs.RUNTIME_RESULTS_NAME).write_text("not-json\n", encoding="utf-8")
     with pytest.raises(analyze_bugs.AnalyzeBugsError, match="malformed runtime"):
         _ = analyze_bugs.load_runtime_results(tmp_path / analyze_bugs.RUNTIME_RESULTS_NAME, [bundle])
