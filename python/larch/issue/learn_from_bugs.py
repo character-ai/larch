@@ -1976,7 +1976,7 @@ def _resolve_pr_outcome(
         raise StatePublishError(
             STATE_PUBLISH_PR_CREATE_FAILED, "the identified state PR is not open"
         )
-    merge = gh.pr_merge(runner, number, repo=ctx.request.repo, merge_method="merge", admin=True)
+    merge = gh.pr_merge(runner, number, repo=ctx.request.repo, merge_method="squash", admin=True)
     merged_state = _pr_state(runner, ctx, number)
     merged_at = gh.command(
         runner,
