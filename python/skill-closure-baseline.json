@@ -38,11 +38,11 @@
     "skill_md_lines": 694
   },
   {
-    "closure_content_estimated_tokens": 48657,
-    "closure_estimated_tokens": 48779,
+    "closure_content_estimated_tokens": 48700,
+    "closure_estimated_tokens": 48822,
     "closure_lines": 1372,
-    "conditional_content_estimated_tokens": 18629,
-    "conditional_estimated_tokens": 18677,
+    "conditional_content_estimated_tokens": 18717,
+    "conditional_estimated_tokens": 18764,
     "conditional_files": [
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
@@ -67,8 +67,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 35740,
-    "skill_md_estimated_tokens": 35822,
+    "skill_md_content_estimated_tokens": 35783,
+    "skill_md_estimated_tokens": 35865,
     "skill_md_lines": 879
   },
   {

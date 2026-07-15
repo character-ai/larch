@@ -229,6 +229,39 @@ def test_record_escalation_writes_canonical_ledger(tmp_path: Path, capsys: pytes
     assert "site=step5" in (tmp_path / "stall-recovery-escalation-ledger.tsv").read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("tmpdir", ["", "relative-tmpdir"])
+def test_record_escalation_rejects_empty_or_relative_tmpdir(
+    tmpdir: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = stall_recovery.record_escalation_main([
+        "--implement-tmpdir", tmpdir,
+        "--site", "step5",
+        "--trigger", "main-agent-required",
+        "--step", "5",
+        "--phase", "review",
+        "--dispatcher", "lint-fix-loop",
+        "--exit-code", "1",
+    ])
+
+    assert rc == 2
+    assert "record-escalation --implement-tmpdir is empty or not absolute" in capsys.readouterr().err
+
+
+def test_record_escalation_accepts_explicit_empty_detail_log(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = stall_recovery.record_escalation_main([
+        *_record_escalation_args(tmp_path),
+        "--failure-detail-log", "",
+    ])
+
+    assert rc == 0
+    assert "ESCALATION_RECORDED=true" in capsys.readouterr().out
+    assert _escalation_ledger_fields(tmp_path)["failure_detail_log"] == ""
+
+
 def _step2_vendor_bail_escalation_args(tmp_path: Path) -> list[str]:
     """Documented Step 2 step2-impl handoff argv (vendor-failure recovery)."""
     return [

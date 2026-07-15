@@ -26,7 +26,7 @@ from larch.state._tokens import (
     read_kv,
 )
 from larch.state._detail_log import MAX_OPTIONAL_EVIDENCE_BYTES  # noqa: F401  # pylint: disable=unused-import
-from larch.state._escalation import _validate_artifact_prefix, record_escalation
+from larch.state._escalation import _validate_artifact_prefix, record_escalation_checked
 from larch.state._validate import validate_token, validate_terminal_state
 from larch.state._classify import (
     classify,
@@ -253,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--artifact-prefix", default=_global_default(globals_dict=globals_dict, key="artifact_prefix", fallback=""))
         p.add_argument("--profile", default=_global_default(globals_dict=globals_dict, key="profile", fallback="implement"))
         ns, _ = p.parse_known_args(sub_argv)
-        return record_escalation(ns)
+        return record_escalation_checked(ns)
     if sub == "dedup-tier-a-report":
         p.add_argument("--body-file", default="")
         p.add_argument("--attempts-file", default="")
