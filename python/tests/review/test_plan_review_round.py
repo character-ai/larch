@@ -511,6 +511,29 @@ def test_log_insufficient_input_warning_appends_warning(
     assert "insufficient-input" in note.read_text(encoding="utf-8")
 
 
+def test_apply_aggregator_status_skips_warning_for_healthy_zero_findings_panel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    status = plan_review_round._apply_aggregator_status(
+        design=tmp_path,
+        round_num=2,
+        agg_kv={"REASON": "insufficient-input", "AGGREGATED": "false"},
+        returncode=0,
+        ok_count=2,
+    )
+
+    assert status == "insufficient-input"
+    assert not calls
+
+
 def test_execute_round_logs_waterfall_dropped_slot_to_execution_issues(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
