@@ -127,6 +127,7 @@ class IssueRunner:
     edit_bodies: list[str] = field(default_factory=_empty_str_list)
     calls: list[list[str]] = field(default_factory=_empty_call_list)
     edit_failures: int = 0
+    persist_edits: bool = True
 
     def run(
         self,
@@ -145,10 +146,13 @@ class IssueRunner:
             return CommandResult(tuple(args), 0, '{"body": ' + __import__("json").dumps(self.body) + "}", "", 0.01)
         if args[:4] == ["gh", "issue", "edit", "9"]:  # lint-gh-argv-literal: ok fixture assertion
             body_file = args[args.index("--body-file") + 1]
-            self.edit_bodies.append(Path(body_file).read_text(encoding="utf-8"))
+            edited = Path(body_file).read_text(encoding="utf-8")
+            self.edit_bodies.append(edited)
             if self.edit_failures:
                 self.edit_failures -= 1
                 return CommandResult(tuple(args), 1, "", "Could not resolve host", 0.01)
+            if self.persist_edits:
+                self.body = edited
             return CommandResult(tuple(args), 0, "", "", 0.01)
         if args[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 0, "owner/repo\n", "", 0.01)
@@ -179,6 +183,73 @@ def test_named_block_write_malformed_skips_edit() -> None:
     result = issue_wire.named_block_write(runner=runner, marker="plan", issue="9", repo="owner/repo", content="x", delete=False)
     assert result == {"malformed": "start-without-end"}
     assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
+
+
+def test_named_block_write_appends_unfenced_plan_over_fenced_decompose_placeholder() -> None:
+    """#7212/#7402: fenced-only plan markers must not block a live unfenced write."""
+    fenced_only = (
+        "Partition piece 2 of 2 split from #6971.\n\n"
+        "```\n"
+        "<!-- larch:plan:start -->\n"
+        "## Plan\n\n"
+        "(needs /design)\n"
+        "<!-- larch:plan:end -->\n"
+        "```\n\n"
+        "**Original feature context (excerpt)**:\n\nfeature\n"
+    )
+    assert issue_wire.parse_named_block(body=fenced_only, marker="plan") == (None, "")
+    runner = IssueRunner(fenced_only)
+    result = issue_wire.named_block_write(
+        runner=runner,
+        marker="plan",
+        issue="9",
+        repo="owner/repo",
+        content="## Plan\n\nDo the work.\n\ndifficulty: MODERATE\n",
+        delete=False,
+    )
+    assert result["mode"] == "appended"
+    inner, malformed = issue_wire.parse_named_block(body=runner.body, marker="plan")
+    assert malformed == ""
+    assert inner is not None
+    assert "Do the work." in inner
+    assert "```\n<!-- larch:plan:start -->" in runner.body
+
+
+def test_named_block_write_fails_closed_when_post_write_body_still_fenced_only() -> None:
+    """If the edit does not leave a parseable unfenced plan, fail before /design succeeds."""
+    fenced_only = (
+        "```\n"
+        "<!-- larch:plan:start -->\n"
+        "placeholder\n"
+        "<!-- larch:plan:end -->\n"
+        "```\n"
+    )
+    runner = IssueRunner(fenced_only, persist_edits=False)
+    with pytest.raises(ShipError, match="post-write-verify-missing"):
+        _ = issue_wire.named_block_write(
+            runner=runner,
+            marker="plan",
+            issue="9",
+            repo="owner/repo",
+            content="## Plan\n\nlive\n",
+            delete=False,
+        )
+    assert runner.edit_bodies  # edit was attempted
+    assert issue_wire.parse_named_block(body=runner.body, marker="plan") == (None, "")
+
+
+def test_named_block_write_rejects_empty_plan_content() -> None:
+    runner = IssueRunner("body")
+    with pytest.raises(ShipError, match="empty-plan-content"):
+        _ = issue_wire.named_block_write(
+            runner=runner,
+            marker="plan",
+            issue="9",
+            repo="owner/repo",
+            content="   \n",
+            delete=False,
+        )
+    assert not runner.edit_bodies
 
 
 def test_issue_body_redaction_and_no_second_redaction() -> None:
