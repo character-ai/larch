@@ -43,7 +43,7 @@ from larch.core.proc import CommandResult
 from larch.core import process_identity
 from larch.core import logging_util
 from larch.outcomes import Outcome
-from larch.report import run_logs
+from larch.report import run_log_batch
 from larch.state import finalize
 
 from test_support import make_implement_tmpdir
@@ -8251,7 +8251,7 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
         argv = list(args)
         entry = argv[argv.index("--entry") + 1]
         captured.append(entry)
-        run_logs.append_execution_issue(
+        run_log_batch.append_execution_issue(
             log_file=Path(argv[argv.index("--log") + 1]), category=argv[argv.index("--category") + 1], entry=entry
         )
         return subprocess.CompletedProcess(argv, 0, "", "")

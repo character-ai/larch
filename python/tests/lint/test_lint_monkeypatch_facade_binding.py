@@ -303,11 +303,11 @@ def test_duplicate_import_alias_uses_last_binding(tmp_path: Path) -> None:
             from larch import ship
 
             def test_patch(monkeypatch):
-                monkeypatch.setattr(ship.run_logs, "_commit_run", lambda: None)
+                    monkeypatch.setattr(ship.run_logs, "_commit_run", lambda: None)
             """,
             ship_source="""
             from larch.report import run_log_flush as run_logs
-            from larch.report import run_logs as run_logs
+            from larch.report import run_log_commit, run_logs as run_logs
             """,
         ),
         baseline=[],

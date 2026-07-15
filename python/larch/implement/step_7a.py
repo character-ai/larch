@@ -19,7 +19,8 @@ from larch.core import config
 from larch.core import run_context
 from larch.git import pr_body
 from larch.issue import execution_issues
-from larch.report import run_logs
+from larch.core import proc
+from larch.report import run_log_batch, run_log_flush, run_log_manifest
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
 _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
@@ -142,13 +143,13 @@ def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) ->
 
 
 def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
-    run_logs.append_execution_issue(
+    run_log_batch.append_execution_issue(
         log_file=implement_tmpdir / "execution-issues.md",
         category="Warnings",
         entry=f"- **Step 7a — code flow diagram**: {message}"    )
 
 
-def _refresh_skip_blocks_direct_commit(refresh: run_logs.RefreshSkip) -> bool:
+def _refresh_skip_blocks_direct_commit(refresh: run_log_manifest.RefreshSkip) -> bool:
     error: str = refresh.error.lower() if refresh.error else ""
     if not refresh.skipped:
         return False
@@ -205,8 +206,8 @@ def _run_log_flush(
     )
     with_context = ctx.with_(state_file=None)
     try:
-        run_logs._render_token_timing_batches(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-        run_logs._stage_vendor_failure_diagnostics(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        run_log_flush._render_token_timing_batches(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        run_log_flush._stage_vendor_failure_diagnostics(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
     except Exception:
         log_flush_status = "degraded"
     if claude_source_file:
@@ -245,7 +246,7 @@ def _run_log_flush(
     if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
         log_flush_status = "degraded"
     if not no_logs_commit and not defer_git_commit:
-        refresh = run_logs.flush_logs_pre(runner=run_logs.proc, ctx=with_context, cwd=str(Path.cwd()))
+        refresh = run_log_flush.flush_logs_pre(runner=proc, ctx=with_context, cwd=str(Path.cwd()))
         if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
             log_flush_status = "degraded"
         if not _refresh_skip_blocks_direct_commit(refresh):
@@ -287,7 +288,7 @@ def _generate_code_flow_diagram(
                 if line.startswith("FIRST_RC="):
                     first_rc = line.split("=", 1)[1].strip()
         retry_msg = f"code-flow subprocess transient (rc={first_rc}); retried once"
-        run_logs.append_execution_issue(
+        run_log_batch.append_execution_issue(
             log_file=implement_tmpdir / "execution-issues.md",
             category="Warnings",
             entry=f"- **Step 7a — code flow diagram**: {retry_msg}",

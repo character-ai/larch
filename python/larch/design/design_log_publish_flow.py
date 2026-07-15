@@ -19,7 +19,7 @@ from larch.core import config, proc, redact
 from larch.design import design_publish
 from larch.git import gh
 from larch.design.design_summary import resolve_summary_mode
-from larch.report import run_logs
+from larch.report.run_log_batch import append_execution_issue
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
@@ -577,7 +577,7 @@ def _record_missing_invariant_assessment_warning(
     if not (completeness.required and not completeness.present):
         return
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(
+        append_execution_issue(
             log_file=design_tmpdir / "execution-issues.md",
             category="Warnings",
             entry=(
@@ -609,7 +609,7 @@ def _record_missing_guideline_assessment_warning(
     if not (completeness.required and not completeness.present):
         return
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(
+        append_execution_issue(
             log_file=design_tmpdir / "execution-issues.md",
             category="Warnings",
             entry=(

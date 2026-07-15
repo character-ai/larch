@@ -21,7 +21,7 @@ from larch.git.gh import FailedJob
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
 from larch.report import run_log_flush
-from larch.report import run_logs
+from larch.report import run_log_manifest
 from test_support import make_run_context, ok
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -1797,9 +1797,9 @@ def test_stage_and_push_warning_refreshes_before_normal_push(
     }
     order: list[str] = []
 
-    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_log_manifest.RefreshSkip:
         order.append("flush")
-        return ci_monitor.run_logs.RefreshSkip(skipped=False, reason="")
+        return ci_monitor.run_log_manifest.RefreshSkip(skipped=False, reason="")
 
     def fake_push(*_args: object, **_kwargs: object) -> CommandResult:
         order.append("push")
@@ -1809,7 +1809,7 @@ def test_stage_and_push_warning_refreshes_before_normal_push(
         order.append("callback")
         return True
 
-    monkeypatch.setattr(ci_monitor.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ci_monitor.git, "push", fake_push)
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -1843,9 +1843,9 @@ def test_stage_and_push_warning_refresh_skip_blocks_push(
     }
     order: list[str] = []
 
-    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_logs.RefreshSkip:
+    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_log_manifest.RefreshSkip:
         order.append("flush")
-        return ci_monitor.run_logs.RefreshSkip(skipped=True, reason=ci_monitor.config.REFRESH_SKIP_VOLATILE_ONLY)
+        return ci_monitor.run_log_manifest.RefreshSkip(skipped=True, reason=ci_monitor.config.REFRESH_SKIP_VOLATILE_ONLY)
 
     def fake_push(*_args: object, **_kwargs: object) -> CommandResult:
         order.append("push")
@@ -1855,7 +1855,7 @@ def test_stage_and_push_warning_refresh_skip_blocks_push(
         order.append("callback")
         return True
 
-    monkeypatch.setattr(ci_monitor.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ci_monitor.git, "push", fake_push)
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -1887,7 +1887,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         (FailedJob(name="python-lint", conclusion="failure"),),
     )
     ctx = make_run_context(tmpdir=str(tmp_path), run_id="run-abc")
-    _ = run_logs.init_run(ctx)
+    _ = run_log_manifest.init_run(ctx)
     _seed_warning_flush_inputs(tmp_path, warning="architectural-guidelines warning")
 
     def noop(*_args: object, **_kwargs: object) -> None:
@@ -1957,8 +1957,8 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
         (FailedJob(name="python-lint", conclusion="failure"),),
     )
 
-    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_logs.RefreshSkip:
-        return ci_monitor.run_logs.RefreshSkip(skipped=True, reason=ci_monitor.config.REFRESH_SKIP_NO_LOGS_COMMIT)
+    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_log_manifest.RefreshSkip:
+        return ci_monitor.run_log_manifest.RefreshSkip(skipped=True, reason=ci_monitor.config.REFRESH_SKIP_NO_LOGS_COMMIT)
 
     def fake_force_push_recovery(*_args: object, **_kwargs: object) -> ci_monitor.git.ForcePushResult:
         return ci_monitor.git.ForcePushResult(pushed=True, status="ok")
@@ -1966,7 +1966,7 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
     def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
         return True
 
-    monkeypatch.setattr(ci_monitor.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ci_monitor.git, "force_push_recovery", fake_force_push_recovery)
     monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
     runner = RecordingRunner(responses)

@@ -17,7 +17,7 @@ from larch import io as larch_io
 from larch.report import design_diagram_log
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines, config, proc
-from larch.report import run_logs
+from larch.report.run_log_batch import append_execution_issue
 from larch.design import design_step0_env, plan_grammar
 from larch.design.design_core import capture_contract_stream_to_paths
 from larch.design.design_terminal import stage_terminal_state_core
@@ -184,7 +184,7 @@ def _write_diagram_sanitizer_failure(
         exit_code=exit_code,
         raw_capture_path=failure_log,
     )
-    run_logs.append_execution_issue(
+    append_execution_issue(
         log_file=design_tmpdir / "execution-issues.md",
         category="Warnings",
         entry=design_diagram_log.bounded_diagram_warning_body(
@@ -612,7 +612,7 @@ def _emit_invalid_guideline_deviation_refusal(
 
 
 def _append_transcript_warning(*, design_tmpdir: Path, warning_step_label: str, status: str, message: str) -> None:
-    run_logs.append_execution_issue(
+    append_execution_issue(
         log_file=design_tmpdir / "execution-issues.md",
         category="Warnings",
         entry=f"design Step {warning_step_label} session-transcript {status}: {message}",
@@ -966,7 +966,7 @@ def _stage_failed_plan_write(
     )
     staged = "STAGED=true" in stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else False
     if stage_rc != 0 or not staged:
-        run_logs.append_execution_issue(
+        append_execution_issue(
             log_file=design_tmpdir / "execution-issues.md",
             category="Warnings",
             entry="design Step 5c plan-write terminal-state staging failed; failure report may be unavailable.",
@@ -1337,7 +1337,7 @@ def publish_core(argv: Sequence[str]) -> int:
         run_upsert = True
         upsert_args += ["--clear-architecture"]
     else:
-        run_logs.append_execution_issue(
+        append_execution_issue(
             log_file=design_tmpdir / "execution-issues.md",
             category="Warnings",
             entry=design_diagram_log.bounded_diagram_warning_body(

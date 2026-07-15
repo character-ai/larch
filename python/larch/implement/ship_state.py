@@ -16,7 +16,7 @@ from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.outcomes import Outcome
 from larch.report import progress_file
-from larch.report import run_logs
+from larch.report import run_log_manifest
 from larch.state import finalize
 
 
@@ -300,15 +300,15 @@ def _write_ship_state(
     if path.is_symlink() or tmp.is_symlink():
         raise ShipError(f"refusing to write symlinked ship state path: {path}")
     if resume_phase is None:
-        resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE") if path.is_file() else ""
+        resume_phase = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE") if path.is_file() else ""
     if caller_kind is None:
-        caller_kind = run_logs.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND") if path.is_file() else ""
+        caller_kind = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND") if path.is_file() else ""
     if resume_phase not in _ALLOWED_RESUME_PHASES:
         resume_phase = ""
     if caller_kind not in _ALLOWED_CALLER_KINDS:
         caller_kind = ""
     clear_handoff_keys = resume_phase == "" and caller_kind == ""
-    run_id = run_logs.effective_run_id(ctx)
+    run_id = run_log_manifest.effective_run_id(ctx)
     if extra_fields:
         unexpected = set(extra_fields) - _ALLOWED_EXTRA_FIELDS
         if unexpected:

@@ -11,7 +11,7 @@ import pytest
 
 from larch.issue import execution_issues
 from larch.state import finalize
-from larch.report import run_logs, progress_file
+from larch.report import run_log_flush, run_log_manifest, progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
@@ -99,7 +99,7 @@ def test_title_matches_empty_expected_rejected() -> None:
 def test_postmerge_skips_draft_without_done_manifest(tmp_path: Path) -> None:
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, draft=True)
-    _ = run_logs.init_run(ctx)
+    _ = run_log_manifest.init_run(ctx)
     result = finalize.postmerge(runner=runner, ctx=ctx, cwd=str(tmp_path))
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -191,7 +191,7 @@ def test_teardown_log_flush_uses_safety_net_not_render_batch(
         safety_net_called = True
         return 0, "skip", 0, ""
 
-    monkeypatch.setattr(run_logs, "render_execution_issues_batch", spy_render)
+    monkeypatch.setattr(run_log_flush, "render_execution_issues_batch", spy_render)
     monkeypatch.setattr(execution_issues, "flush_execution_issues_safety_net", spy_safety_net)
 
     runner = RecordingRunner()
@@ -211,10 +211,10 @@ def test_teardown_log_flush_failure_does_not_skip_stash_or_sentinel(
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
 
-    def fail_recovery(*_a: object, **_k: object) -> run_logs.ManifestRecovery:
+    def fail_recovery(*_a: object, **_k: object) -> run_log_manifest.ManifestRecovery:
         raise ShipError("lost")
 
-    monkeypatch.setattr(run_logs, "load_or_recover_manifest_checked", fail_recovery)
+    monkeypatch.setattr(run_log_manifest, "load_or_recover_manifest_checked", fail_recovery)
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "issue", "view"), 0, '{"title":"Existing title","state":"OPEN"}\n', "", 0.01),
@@ -1054,7 +1054,7 @@ def test_teardown_deactivates_run_before_tmpdir_removal(
     """Teardown calls deactivate_run with the effective run ID."""
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
-    _ = run_logs.init_run(ctx)
+    _ = run_log_manifest.init_run(ctx)
 
     deactivate_calls: list[tuple[object, str]] = []
 

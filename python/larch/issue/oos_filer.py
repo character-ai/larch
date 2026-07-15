@@ -27,7 +27,7 @@ from larch.git import gh
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_priority
-from larch.report import run_logs
+from larch.report import run_log_manifest
 from larch.review.review_types import is_security_block_text, parse_canonical_heading
 from larch.state import session_env as _session_env_oos
 
@@ -1066,7 +1066,7 @@ def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
     if not manifest.is_file():
         return False
     try:
-        run_logs._update_manifest_v2(path=manifest, updates={"steps_ran.step9a1": value})  # pyright: ignore[reportPrivateUsage]  # direct typed replacement for cli.py manifest re-entry
+        run_log_manifest._update_manifest_v2(path=manifest, updates={"steps_ran.step9a1": value})  # pyright: ignore[reportPrivateUsage]  # direct typed replacement for cli.py manifest re-entry
     except (OSError, ValueError) as exc:
         raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {str(exc)[:300]}") from exc
     return True

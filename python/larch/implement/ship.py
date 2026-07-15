@@ -72,7 +72,7 @@ from larch.core import proc
 from larch.git import push
 from larch.core import redact
 from larch.git import rebase
-from larch.report import run_logs
+from larch.report import run_log_flush, run_log_manifest
 from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import Runner
@@ -240,7 +240,7 @@ def _normalize_hook_fixed_bytes(content: bytes) -> bytes:
 def _committed_outcome_matches(
     *, ctx: RunContext, cwd: str, kind: AssessmentKind
 ) -> bool:
-    run_id = run_logs.effective_run_id(ctx)
+    run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id:
         return False
     sidecar = Path(ctx.tmpdir) / kind.ship_outcome_sidecar
@@ -274,7 +274,7 @@ def _destall_pre_pr_reentry(
         return ctx
     if not ctx.state_file:
         return ctx
-    prior_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="PHASE")
+    prior_phase = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="PHASE")
     if prior_phase != "stalled":
         return ctx
     tmpdir = Path(ctx.tmpdir)
@@ -317,14 +317,14 @@ def _flush_guideline_outcome_before_pr(
 ) -> None:
     step = "pr-create-guideline-outcome-refresh"
     try:
-        refresh = run_logs.flush_logs_pre(
+        refresh = run_log_flush.flush_logs_pre(
             runner=runner,
             ctx=ctx.with_(state_file=None),
             cwd=cwd,
         )
     except (OSError, ShipError) as exc:
         detail = logging_util.sanitize_diagnostic_line(str(exc).strip())
-        refresh = run_logs.RefreshSkip(
+        refresh = run_log_manifest.RefreshSkip(
             skipped=True,
             reason=config.REFRESH_SKIP_COMMIT_FAILED,
             error=detail,
@@ -1267,11 +1267,11 @@ def _emergency_repair_transient_recovery_result(
     resume: ResumePlan,
     repo_root: str,
 ) -> ShipResult | None:
-    repair_branch = run_logs.read_state_kv(
+    repair_branch = run_log_manifest.read_state_kv(
         state_file=working.state_file,
         key="EMERGENCY_REPAIR_BRANCH",
     ).strip()
-    repair_head = run_logs.read_state_kv(
+    repair_head = run_log_manifest.read_state_kv(
         state_file=working.state_file,
         key="MAIN_REPAIR_HEAD",
     ).strip()
@@ -1394,7 +1394,7 @@ def run_ship(
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
                 needs_user_reason=config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL,
-                failed_run_id=run_logs.read_state_kv(state_file=ctx.state_file, key="MAIN_REPAIR_RUN_ID"),
+                failed_run_id=run_log_manifest.read_state_kv(state_file=ctx.state_file, key="MAIN_REPAIR_RUN_ID"),
                 pr_number=working.pr_number,
                 pr_url=working.pr_url,
                 merge_result=working.merge_result,
@@ -1424,7 +1424,7 @@ def run_ship(
             if not preflight.ok:
                 postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
             else:
-                refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner=runner, ctx=fresh_context.with_(state_file=None), cwd=repo_root)
+                refresh: run_log_manifest.RefreshSkip = run_log_flush.flush_logs_pre(runner=runner, ctx=fresh_context.with_(state_file=None), cwd=repo_root)
                 if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
                     _breadcrumb(step="warning", detail=f"postbump refresh skipped: {refresh.reason}")
                 postbump = finalize.postbump(runner=runner, ctx=fresh_context, cwd=repo_root)
@@ -1548,7 +1548,7 @@ def run_ship(
             _progress_note(step="8", text=f"CI running for PR #{working.pr_number}")
         if resume.start == "fresh":
             try:
-                run_logs.write_final_report_comment(runner=runner, ctx=working)
+                run_log_flush.write_final_report_comment(runner=runner, ctx=working)
             except ShipError as exc:
                 _breadcrumb(step="warning", detail=str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:

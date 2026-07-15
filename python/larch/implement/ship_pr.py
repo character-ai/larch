@@ -18,7 +18,7 @@ from larch.git import git
 from larch.git import push
 from larch.report import final_report
 from larch.outcomes import Outcome
-from larch.report import run_logs
+from larch.report import run_log_flush, run_log_manifest
 from larch.state import finalize
 from larch.state import stall_recovery
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state
@@ -110,7 +110,7 @@ def _committed_summary_heading_is_stalled(
     ctx: RunContext,
     cwd: str,
 ) -> bool:
-    run_id = run_logs.effective_run_id(ctx)
+    run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id:
         return False
     rel = _repo_final_summary_relpath(run_id)
@@ -156,7 +156,7 @@ def reconcile_committed_stalled_summary_if_recovered(
         or not _live_recovered_outcome(ctx)
     ):
         return None
-    refresh = run_logs.flush_logs_pre(
+    refresh = run_log_flush.flush_logs_pre(
         runner=runner,
         ctx=ctx.with_(state_file=None),
         cwd=cwd,
@@ -244,7 +244,7 @@ def _pr_title(*, ctx: RunContext, runner: Runner, cwd: str | None) -> str:
 
 def _postmerge_should_flush(ctx: RunContext) -> bool:
     return bool(
-        run_logs.effective_run_id(ctx)
+        run_log_manifest.effective_run_id(ctx)
         and ctx.pr_number is not None
         and not ctx.repo_unavailable
         and ctx.pr_closed
@@ -298,7 +298,7 @@ def _publish_post_pr_terminal_snapshot(
     if ctx.pr_number is None:
         return
     with suppress(Exception):
-        refresh = run_logs.flush_logs_pre(
+        refresh = run_log_flush.flush_logs_pre(
             runner=runner,
             ctx=ctx.with_(state_file=None),
             cwd=cwd,
@@ -330,7 +330,7 @@ def run_postmerge_phase(
         _write_terminal_finalize_if_terminal(ctx=state_ctx, result=Outcome.OK, step="")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
         # Best-effort: ignore RefreshSkip so a flush miss cannot stall a successful post-merge.
-        _ = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
+        _ = run_log_flush.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
     if post.outcome is not Outcome.OK:
         _write_terminal_finalize_if_terminal(ctx=state_ctx, result=post.outcome, step=post.status)
         _write_ship_state(state_ctx, phase="postmerge", terminal_outcome=post.outcome)

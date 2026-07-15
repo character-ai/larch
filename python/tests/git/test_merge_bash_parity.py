@@ -13,7 +13,7 @@ from larch.core import config
 from larch.git import gh
 from larch.git import git
 from larch.git import merge as merge_module
-from larch.report import run_logs
+from larch.report import run_log_manifest, run_log_flush
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 from test_support import (
@@ -41,8 +41,8 @@ def _mock_rev_cccc(*_a: object, **_k: object) -> str:
     return "cccc3333"
 
 
-def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_logs.RefreshSkip:
-    return run_logs.RefreshSkip(skipped=False, reason="")
+def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_log_manifest.RefreshSkip:
+    return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
 
 def _mock_ensure_head_behind(*_a: object, **_k: object) -> gh.MergeState:
@@ -302,7 +302,7 @@ def test_flush_recovery_mixed_emits_error(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects)
-    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
@@ -327,7 +327,7 @@ def test_flush_recovery_cap_emits_error(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_cap)
-    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
@@ -351,7 +351,7 @@ def test_flush_recovery_non_log_paths_emits_error(
     monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_paths)
     monkeypatch.setattr(git, "diff_name_only", fake_diff_name_only)
-    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR

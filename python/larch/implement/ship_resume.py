@@ -14,7 +14,7 @@ from larch.git import git
 from larch.git import gh
 from larch.implement import ci_monitor
 from larch.outcomes import Outcome
-from larch.report import run_logs
+from larch.report import run_log_manifest
 from larch.implement.ship_state import (
     _truthy,
     _state_file_kv,
@@ -41,15 +41,15 @@ class ResumePlan:
     merge_result: str
     branch_name: str
     repo: str
-    durable: run_logs.DurableFlags
+    durable: run_log_manifest.DurableFlags
     detail: str = ""
 
 
 def _is_active_pre_push_handoff(ctx: RunContext) -> bool:
     if not ctx.state_file:
         return False
-    resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
-    caller_kind = run_logs.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND")
+    resume_phase = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
+    caller_kind = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND")
     return (
         resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
         and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
@@ -76,7 +76,7 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         value = state.get(key, "")
         if value:
             changes[field] = value
-    pr_number: int | None = run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
+    pr_number: int | None = run_log_manifest.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
     if pr_number is not None:
         changes["pr_number"] = pr_number
     for key, field in (
@@ -153,15 +153,15 @@ def _empty_checks_params_for_monitor(
 
 
 def _fresh_resume_plan(
-    durable: run_logs.DurableFlags,
+    durable: run_log_manifest.DurableFlags,
     *,
     branch_name: str = "",
     repo: str = "",
-    counters: run_logs.ResumeCounters | None = None,
+    counters: run_log_manifest.ResumeCounters | None = None,
     detail: str = "",
 ) -> ResumePlan:
     if counters is None:
-        counters = run_logs.ResumeCounters(0, 0, 0, 0)
+        counters = run_log_manifest.ResumeCounters(0, 0, 0, 0)
     return ResumePlan(
         start="fresh",
         iteration=counters.iteration,
@@ -181,8 +181,8 @@ def _fresh_resume_plan(
 def _resume_from_state(
     *,
     start: str,
-    counters: run_logs.ResumeCounters,
-    durable: run_logs.DurableFlags,
+    counters: run_log_manifest.ResumeCounters,
+    durable: run_log_manifest.DurableFlags,
     pr_number: int | None,
     pr_url: str,
     merge_result: str,
@@ -208,8 +208,8 @@ def _resume_from_state(
 
 def _invalid_state_plan(
     *,
-    counters: run_logs.ResumeCounters,
-    durable: run_logs.DurableFlags,
+    counters: run_log_manifest.ResumeCounters,
+    durable: run_log_manifest.DurableFlags,
     branch_name: str,
     repo: str,
     detail: str,
@@ -235,11 +235,11 @@ def _local_merged(*, ctx: RunContext, state_phase: str, merge_result: str) -> bo
     checkout guards, to finalize a post-merge resume whose local checkout was
     moved off the (now deleted) feature branch onto ``main`` (issue #6930).
     """
-    pr_closed_signal = _state_bool_text(run_logs.read_state_kv(state_file=ctx.state_file, key="PR_CLOSED"))
+    pr_closed_signal = _state_bool_text(run_log_manifest.read_state_kv(state_file=ctx.state_file, key="PR_CLOSED"))
     postmerge_phase_signal = state_phase == "postmerge"
     merge_result_signal = merge_result in config.POST_MERGE_MERGE_RESULTS
     postmerge_sentinel_signal = (Path(ctx.tmpdir) / "post-merge-sentinel").is_file()
-    manifest_done_signal = run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and postmerge_sentinel_signal
+    manifest_done_signal = run_log_manifest.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and postmerge_sentinel_signal
     signal_count = sum(
         bool(signal)
         for signal in (
@@ -253,21 +253,21 @@ def _local_merged(*, ctx: RunContext, state_phase: str, merge_result: str) -> bo
 
 
 def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumePlan:
-    counters: run_logs.ResumeCounters = run_logs.read_resume_counters(ctx.state_file)
-    durable: run_logs.DurableFlags = run_logs.read_durable_flags(state_file=ctx.state_file, ctx=ctx)
+    counters: run_log_manifest.ResumeCounters = run_log_manifest.read_resume_counters(ctx.state_file)
+    durable: run_log_manifest.DurableFlags = run_log_manifest.read_durable_flags(state_file=ctx.state_file, ctx=ctx)
     if not ctx.state_file or not Path(ctx.state_file).is_file():
         return _fresh_resume_plan(durable, repo=ctx.repo)
 
-    state_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="PHASE")
-    resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
-    state_branch = run_logs.read_state_kv(state_file=ctx.state_file, key="BRANCH_NAME").strip()
-    repair_branch = run_logs.read_state_kv(state_file=ctx.state_file, key="EMERGENCY_REPAIR_BRANCH").strip()
-    state_repo = run_logs.read_state_kv(state_file=ctx.state_file, key="REPO").strip() or ctx.repo
-    state_pr_url = run_logs.read_state_kv(state_file=ctx.state_file, key="PR_URL")
+    state_phase = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="PHASE")
+    resume_phase = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
+    state_branch = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="BRANCH_NAME").strip()
+    repair_branch = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="EMERGENCY_REPAIR_BRANCH").strip()
+    state_repo = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="REPO").strip() or ctx.repo
+    state_pr_url = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="PR_URL")
     pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
-    merge_result = run_logs.read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
+    merge_result = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
 
-    caller_kind = run_logs.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND")
+    caller_kind = run_log_manifest.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND")
     phase14_flag = Path(ctx.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
     if (
         resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
@@ -284,7 +284,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             start="blocked-rebase-continuation",
             counters=counters,
             durable=durable,
-            pr_number=run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number),
+            pr_number=run_log_manifest.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number),
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=state_branch or ctx.branch_name or ctx.branch,
@@ -354,7 +354,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             start="done" if state_phase == "done" else "merged",
             counters=counters,
             durable=durable,
-            pr_number=run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number),
+            pr_number=run_log_manifest.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number),
             pr_url=pr_url,
             merge_result=_valid_merge_result(merge_result),
             branch_name=current_branch or expected_branch,
@@ -410,7 +410,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             detail="cannot verify gh-skipped resume branch anchor",
         )
     branch_name = current_branch
-    pr_number: int | None = run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
+    pr_number: int | None = run_log_manifest.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
     if state_phase == "postmerge-push-watch":
         return _resume_from_state(
             start="postmerge-push-watch",
@@ -558,7 +558,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
 
 
 def _hydrate_resume_context(*, ctx: RunContext, resume: ResumePlan) -> RunContext:
-    run_id = run_logs.effective_run_id(ctx) or ctx.run_id
+    run_id = run_log_manifest.effective_run_id(ctx) or ctx.run_id
     return ctx.with_(
         run_id=run_id,
         branch=resume.branch_name or ctx.branch,

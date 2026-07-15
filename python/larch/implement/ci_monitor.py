@@ -22,7 +22,7 @@ from larch.core import logging_util
 from larch.git import rebase
 from larch.core import redact
 from larch.core import retry
-from larch.report import run_logs
+from larch.report import run_log_flush, run_log_manifest
 from larch.report import progress_file
 from larch.agents.agents import TierAttempt
 from larch.errors import ShipError
@@ -1142,7 +1142,7 @@ def _run_pre_push_log_refresh(callback: PrePushLogRefreshFn | None) -> bool:
         return False
 
 
-def _warn_refresh_skip_before_ci_push(*, skip: run_logs.RefreshSkip, warning_logged: bool) -> bool:
+def _warn_refresh_skip_before_ci_push(*, skip: run_log_manifest.RefreshSkip, warning_logged: bool) -> bool:
     if skip.skipped and warning_logged:
         reason = skip.reason or "unknown"
         if skip.error:
@@ -1155,7 +1155,7 @@ def _warn_refresh_skip_before_ci_push(*, skip: run_logs.RefreshSkip, warning_log
             return True
         _warn_stderr(f"ship-pr: run-log refresh skipped before CI-fix push: {reason}")
         return False
-    if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
+    if skip.skipped and skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED:
         _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
         return False
     return True
@@ -1177,7 +1177,7 @@ def _refresh_run_logs_before_ci_push(
             return False
         return True
     try:
-        skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
+        skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
     except (OSError, ShipError) as exc:
         if warning_logged:
             detail = logging_util.sanitize_diagnostic_line(redact.redact(str(exc)))

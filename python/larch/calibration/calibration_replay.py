@@ -261,7 +261,7 @@ def _ballot_from_jsonl_record(*, record: Mapping[str, object], finding_id: str) 
 
 
 def _extract_implementation_plan_body(lines: Sequence[str]) -> str:
-    """Mirror run_logs._validate_plan_goals_payload section and first-line rules."""
+    """Mirror run_log_batch._validate_plan_goals_payload section and first-line rules."""
     in_section = False
     saw = False
     body_lines: list[str] = []

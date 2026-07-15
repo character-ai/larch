@@ -31,7 +31,7 @@ from typing import NamedTuple, cast
 from larch import io as larch_io
 from larch.core import config
 from larch.report import run_log_corpus
-from larch.report import run_logs
+from larch.report.run_log_batch import append_execution_issue
 from larch.review import voting
 from larch.review.review_types import count_non_security_blocks, is_canonical_heading, parse_blocks
 from larch.design.plan_grammar import balanced_fence_line_indices
@@ -292,7 +292,7 @@ def _next_oos_number(path: Path) -> int:
 def _append_run_log_warning(*, tmpdir: Path, entry: str) -> None:
     log = tmpdir / "execution-issues.md"
     try:
-        run_logs.append_execution_issue(log_file=log, category="Warnings", entry=entry)
+        append_execution_issue(log_file=log, category="Warnings", entry=entry)
         return
     except Exception as exc:
         _ = exc

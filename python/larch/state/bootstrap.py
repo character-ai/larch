@@ -27,7 +27,7 @@ from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body, push
 from larch.issue import issue_query, tracking_issue
-from larch.report import progress_file, run_logs, statusline_install, timing, tokens
+from larch.report import progress_file, run_log_batch, run_logs, statusline_install, timing, tokens
 from larch.agents import agents
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -753,7 +753,7 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
 
 def _append_execution_issue_entry(*, log: Path, category: str, entry: str) -> bool:
     try:
-        run_logs.append_execution_issue(log_file=log, category=category, entry=entry)
+        run_log_batch.append_execution_issue(log_file=log, category=category, entry=entry)
     except OSError:
         return False
     return True
