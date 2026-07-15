@@ -188,6 +188,22 @@ def _split_conflict_csv(value: str) -> list[str]:
     return [item for item in value.split(",") if item]
 
 
+def _partition_checkpoint_conflicts(
+    conflicts: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    trivial = [path for path in conflicts if _is_trivial_conflict_file(path)]
+    generated = [
+        path for path in conflicts if path in config.REBASE_AUTORESOLVE_GENERATED_FILES
+    ]
+    nontrivial = [
+        path
+        for path in conflicts
+        if not _is_trivial_conflict_file(path)
+        and path not in config.REBASE_AUTORESOLVE_GENERATED_FILES
+    ]
+    return trivial, generated, nontrivial
+
+
 def _current_unmerged_conflict_files() -> str:
     files = git.try_unmerged_paths(proc)
     if files:
@@ -281,9 +297,8 @@ def _checkpoint_rebase_result(
         if not cf:
             return rebase.RebasePushResult(exit_code=1, conflict_files="")
         conflicts: list[str] = _split_conflict_csv(cf)
-        trivial = [path for path in conflicts if _is_trivial_conflict_file(path)]
-        nontrivial = [path for path in conflicts if not _is_trivial_conflict_file(path)]
-        if not trivial:
+        trivial, generated, nontrivial = _partition_checkpoint_conflicts(conflicts)
+        if not trivial and not generated:
             return rebase.RebasePushResult(exit_code=1, conflict_files=cf)
         for path in trivial:
             if not _resolve_trivial_conflict_file(path):
@@ -291,9 +306,17 @@ def _checkpoint_rebase_result(
                     exit_code=1,
                     conflict_files=_current_unmerged_conflict_files(),
                 )
-        if nontrivial:
+        if nontrivial or (
+            generated
+            and not rebase.resolve_generated_conflicts(
+                proc,
+                paths=generated,
+                cwd=None,
+            )
+        ):
             cf_now = _current_unmerged_conflict_files()
-            return rebase.RebasePushResult(exit_code=1, conflict_files=cf_now or ",".join(nontrivial))
+            remaining = nontrivial or generated
+            return rebase.RebasePushResult(exit_code=1, conflict_files=cf_now or ",".join(remaining))
         result = _continue_checkpoint_rebase()
         if result.exit_code == _REBASE_FAILED_EXIT:
             handled = _handle_empty_continue_rc3(result)

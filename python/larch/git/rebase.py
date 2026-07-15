@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 import random
 import re
+import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,32 @@ class RebasePushResult:
     conflict_files: str = ""
     rebase_error: str = ""
     push_error: str = ""
+
+
+def resolve_generated_conflicts(
+    runner: Runner,
+    *,
+    paths: Sequence[str],
+    cwd: str | None,
+) -> bool:
+    """Regenerate and stage an allowlisted set of conflicted generated files.
+
+    Returns ``False`` without mutating the worktree when the set is empty or
+    includes a path outside ``REBASE_AUTORESOLVE_GENERATED_FILES``. A failed
+    generator or staging command also leaves the rebase for the caller's
+    normal conflict or bail route.
+    """
+    allow = config.REBASE_AUTORESOLVE_GENERATED_FILES
+    if not paths or any(path not in allow for path in paths):
+        return False
+    for path in paths:
+        regenerated = runner.run([sys.executable, "python/cli.py", *allow[path]], cwd=cwd)
+        if regenerated.returncode != 0:
+            return False
+        staged = git.add(runner, path, cwd=cwd)
+        if staged.returncode != 0:
+            return False
+    return True
 
 
 def _conflict_launch_output_dir(tmpdir: str | None) -> Path:

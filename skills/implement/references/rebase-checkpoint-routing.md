@@ -8,6 +8,11 @@
 
 `python/cli.py push checkpoint-probe` accepts `--forked-target true|false`; `true` defaults the base to `upstream/main` unless `--base-remote` or `--base-ref` is supplied explicitly.
 
+Before emitting this contract, the probe regenerates and continues a conflict
+set confined to `config.REBASE_AUTORESOLVE_GENERATED_FILES`. This applies to
+every checkpoint caller, including 4.r, 7.r, and 7a.r. Mixed or regeneration-
+failed conflicts remain in progress and use the existing conflict route below.
+
 **Orchestrator contract: absorbed `1.r` (Step 0 envelope only)** (token-aware KV scan; multiple `KEY=value` tokens per line allowed: mirror Step 5-style parsing):
 
 1. Do **not** invoke `python/cli.py push checkpoint-probe` prompt-side for `1.r`. Do **not** branch on `step-0-bootstrap.sh` wrapper process exit code: bootstrap returns exit `0` while relaying the internal probe rc in `REBASE_RC=`.
