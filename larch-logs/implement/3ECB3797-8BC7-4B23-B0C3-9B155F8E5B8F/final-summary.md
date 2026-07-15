@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+The changed `/status` model-pin resolution, config literals, skill/docs wording, and tests do not touch gate, pause, stale-result, run-log, panel-slot, agent-verdict, or ship-recovery surfaces covered by the architectural invariants.
+
+## Architectural guidelines
+
+The changed code keeps model-pin resolution behind an injectable Runner, config Finals for argv/statuses/grammar, fail-closed Cursor list parsing with newline-sanitized KV details, Codex reported as unverifiable rather than silent success, and skill/docs/tests updated with the new wire keys in the same change.
+
 ## /implement run 3ECB3797-8BC7-4B23-B0C3-9B155F8E5B8F: shipping
 
 - **Outcome**: shipping
