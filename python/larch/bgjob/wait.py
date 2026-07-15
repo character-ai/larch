@@ -61,7 +61,14 @@ def _wait_for_startup(ctx: WaitContext) -> bool:
     return False
 
 
-def _report_missing_registry(*, reg_path: Path, ctx: WaitContext) -> int:
+def _report_missing_registry(*, result_path: Path, reg_path: Path, ctx: WaitContext) -> int:
+    # The daemon writes the result env before unlinking its registry row. When
+    # the registry vanishes between the wait's result read and its registry
+    # read, the result is already on disk; emit DONE instead of a spurious DEAD.
+    rows = _read_result(result_path)
+    if rows is not None:
+        _print_rows([(config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_DONE), *rows.items()])
+        return 0
     if _wait_for_startup(ctx):
         return 0
     _print_rows(
@@ -108,6 +115,7 @@ def wait_once(*, tmpdir: Path, step: str, max_wait_s: int, run_id: str | None = 
             reg_path, entry = registry.read_for(tmpdir=tmpdir, step=step, run_id=run_id)
             if entry is None:
                 return _report_missing_registry(
+                    result_path=result_path,
                     reg_path=reg_path,
                     ctx=ctx,
                 )
