@@ -112,7 +112,7 @@ def push_current_branch(
         # Explicit refspec so git ignores push.default and never targets the
         # tracked upstream when a feature branch tracks origin/main (#7405).
         # -u repairs the tracking so later pushes also resolve to this branch.
-        result = runner.run(["git", "push", "-u", "origin", "HEAD"], cwd=cwd)
+        result = git.push_set_upstream(runner, "origin", "HEAD", cwd=cwd)
         if result.returncode == 0:
             return PushResult(
                 remote="origin",
