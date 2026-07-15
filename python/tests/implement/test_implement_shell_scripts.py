@@ -98,6 +98,21 @@ def read_key(args: list[str]) -> int:
     return 0
 
 
+def kv_get(args: list[str]) -> int:
+    # Minimal stub for cli.py kv get used by step-18.sh kv_value().
+    key = args[args.index("--key") + 1]
+    file_path = Path(args[args.index("--file") + 1]) if "--file" in args else None
+    try:
+        text = file_path.read_text(encoding="utf-8") if file_path is not None else sys.stdin.read()
+    except OSError:
+        return 1
+    for line in text.splitlines():
+        if line.startswith(key + "="):
+            print(line.split("=", 1)[1])
+            return 0
+    return 1
+
+
 def step18b(args: list[str]) -> int:
     tmp = Path(args[args.index("--implement-tmpdir") + 1])
     sentinel = "true" if (tmp / ".step17-emitted").exists() else "false"
@@ -140,6 +155,8 @@ def main() -> int:
     args = sys.argv[1:]
     if args[:2] == ["session", "read-key"]:
         return read_key(args[2:])
+    if args[:2] == ["kv", "get"]:
+        return kv_get(args[2:])
     if args[:2] == ["final-report", "step18b"]:
         return step18b(args[2:])
     if args[:2] == ["run-log", "append-failure"]:
