@@ -42,7 +42,7 @@ def _sleep_noop(_seconds: float) -> None:
     """Stand-in for time.sleep in daemon tests."""
 
 
-def test_daemon_child_clears_stale_result_and_registers_before_signal(
+def test_daemon_child_signals_before_identity_capture_and_registers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
@@ -85,6 +85,7 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
 
     def write_entry(entry: model.RegistryEntry) -> Path:
         assert not stale_result.exists()
+        assert order == ["pipe", f"capture:{child_identity.pid}", f"capture:{os.getpid()}"]
         path = tmp_path / "registry" / f"{entry.run_id}-{entry.step}.env"
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text("STEP=demo-step\nRUN_ID=run-1\n", encoding="utf-8")
@@ -92,7 +93,7 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
         return path
 
     def write_pipe(_fd: int, data: bytes) -> int:
-        assert order == [f"capture:{child_identity.pid}", f"capture:{os.getpid()}", "registry"]
+        assert not order
         order.append("pipe")
         return len(data)
 
@@ -116,7 +117,8 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
 
     assert rc == 0
     assert not stale_result.exists()
-    assert order == [f"capture:{child_identity.pid}", f"capture:{os.getpid()}", "registry", "pipe", "monitor"]
+    assert not model.startup_env_path(tmpdir=tmp_path, step="demo-step").exists()
+    assert order == ["pipe", f"capture:{child_identity.pid}", f"capture:{os.getpid()}", "registry", "monitor"]
 
 
 def test_owner_identity_from_env_requires_capture(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -402,11 +404,19 @@ def test_daemon_child_kills_child_group_on_post_popen_failure(tmp_path: Path, mo
     def fake_killpg(pid: int, sig: int) -> None:
         calls.update(killpg=(pid, sig))
 
+    def fake_getpgid(_pid: int) -> int:
+        return child_identity.pgid
+
+    def fake_write_pipe(_fd: int, data: bytes) -> int:
+        return len(data)
+
     def fake_popen(*_args: object, **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(pid=child_identity.pid, wait=_wait_ok)
 
     monkeypatch.setattr(daemon.os, "setsid", lambda: None)
     monkeypatch.setattr(daemon.os, "close", _close_fd)
+    monkeypatch.setattr(daemon.os, "getpgid", fake_getpgid)
+    monkeypatch.setattr(daemon.os, "write", fake_write_pipe)
     monkeypatch.setattr(daemon.os, "killpg", fake_killpg)
     monkeypatch.setattr(daemon.subprocess, "Popen", fake_popen)
 
@@ -422,6 +432,43 @@ def test_daemon_child_kills_child_group_on_post_popen_failure(tmp_path: Path, mo
         _ = daemon._daemon_child(spec, pipe_fd=99)  # pyright: ignore[reportPrivateUsage]
 
     assert calls["killpg"] == (child_identity.pid, signal.SIGKILL)
+    rows = larch_io.read_kvs(model.result_env_path(tmpdir=tmp_path, step=spec.step))
+    assert rows["BGJOB_RC"] == "2"
+    assert not model.startup_env_path(tmpdir=tmp_path, step=spec.step).exists()
+
+
+def test_start_daemon_acknowledges_before_slow_identity_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    if process_identity.read_process_identity(pid=os.getpid()) is None:
+        pytest.skip("process identity probe is unavailable in this sandbox")
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    original_capture = daemon._capture_identity  # pyright: ignore[reportPrivateUsage]
+    capture_count = 0
+
+    def slow_first_capture(pid: int, *, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
+        nonlocal capture_count
+        capture_count += 1
+        if capture_count == 1:
+            time.sleep(1)
+        return original_capture(pid, expected_signature=expected_signature)
+
+    spec = model.JobSpec(
+        step="demo-step",
+        tmpdir=tmp_path,
+        log_dir=tmp_path / "bgjob",
+        budget_s=10,
+        command=(sys.executable, "-c", "import time; time.sleep(2)"),
+        run_id="run-1",
+        owner=model.OwnerIdentity(recorded=None),
+    )
+    monkeypatch.setattr(daemon, "_capture_identity", slow_first_capture)
+
+    started_at = time.monotonic()
+    assert daemon.start_daemon(spec) == 0
+    assert time.monotonic() - started_at < 0.5
+    assert capsys.readouterr().out.startswith("BGJOB_STATUS=STARTED STEP=demo-step PGID=")
+    assert model.startup_env_path(tmpdir=tmp_path, step=spec.step).is_file()
 
 
 def test_daemon_child_rejects_symlinked_log_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

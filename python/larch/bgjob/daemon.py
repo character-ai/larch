@@ -149,6 +149,25 @@ def write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:
         larch_io.atomic_write(path=safe_sentinel, text="", nofollow=True, mode=0o600)
 
 
+def _write_startup_marker(*, spec: model.JobSpec) -> Path:
+    startup = model.startup_env_path(tmpdir=spec.tmpdir, step=spec.step)
+    larch_io.atomic_write(
+        path=startup,
+        text=larch_io.format_kvs(_safe_rows([("STEP", spec.step), ("START_EPOCH", str(int(time.time())))])),
+        nofollow=True,
+        mode=0o600,
+    )
+    return startup
+
+
+def _acknowledge_start(*, spec: model.JobSpec, child: subprocess.Popen[bytes], pipe_fd: int) -> Path:
+    pgid = os.getpgid(child.pid)
+    startup = _write_startup_marker(spec=spec)
+    _ = os.write(pipe_fd, f"{child.pid} {pgid}\n".encode())
+    _ = os.close(pipe_fd)
+    return startup
+
+
 def _terminate_child_group(child: process_identity.RecordedProcessIdentity, *, reason: str) -> None:
     _ = process_identity.terminate_validated_process_group(
         recorded=child,
@@ -282,8 +301,8 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
     child: subprocess.Popen[bytes] | None = None
     child_identity: process_identity.RecordedProcessIdentity | None = None
     reg_path: Path | None = None
+    startup_marker: Path | None = None
     pipe_closed = False
-    pgid = 0
     try:
         with _open_verified_log_handle(stdout_log, root=spec.log_dir) as stdout_handle, _open_verified_log_handle(
             stderr_log, root=spec.log_dir
@@ -295,6 +314,8 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
                     stderr=stderr_handle,
                     start_new_session=True,
                 )
+                startup_marker = _acknowledge_start(spec=spec, child=child, pipe_fd=pipe_fd)
+                pipe_closed = True
                 child_identity = _capture_identity(child.pid, expected_signature=" ".join(spec.command[:2]))
                 daemon_identity = _capture_identity(os.getpid())
                 reg_path = registry.write_entry(
@@ -314,10 +335,8 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
                         result_env=result,
                     )
                 )
-                pgid = os.getpgid(child.pid)
-                _ = os.write(pipe_fd, f"{child.pid} {pgid}\n".encode())
-                _ = os.close(pipe_fd)
-                pipe_closed = True
+                startup_marker.unlink()
+                startup_marker = None
                 return _monitor(spec, child, child_identity, reg_path)
             except Exception:
                 if child_identity is not None:
@@ -330,6 +349,12 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
                         _ = child.wait(timeout=5)
                 if reg_path is not None:
                     registry.unlink_entry(reg_path)
+                if pipe_closed:
+                    with contextlib.suppress(Exception):
+                        write_result(spec=spec, rc="2", elapsed_s=0)
+                if startup_marker is not None:
+                    with contextlib.suppress(FileNotFoundError):
+                        startup_marker.unlink()
                 raise
     finally:
         if not pipe_closed:

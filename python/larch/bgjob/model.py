@@ -124,6 +124,12 @@ def result_env_path(*, tmpdir: Path, step: str) -> Path:
     return ensure_under(root / f"{slug}{config.BGJOB_RESULT_ENV_SUFFIX}", root, label="result env")
 
 
+def startup_env_path(*, tmpdir: Path, step: str) -> Path:
+    slug = validate_slug(step, label="step")
+    root = bgjob_dir(tmpdir)
+    return ensure_under(root / f"{slug}{config.BGJOB_STARTUP_ENV_SUFFIX}", root, label="startup env")
+
+
 def validate_merge_result_env(*, path: Path, tmpdir: Path) -> Path:
     """Validate a caller-selected merge env beneath the owned session tmpdir."""
     root = checked_dir(tmpdir, label="tmpdir")
