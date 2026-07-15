@@ -1119,7 +1119,7 @@ def test_agent_rows_accept_only_complete_legacy_or_current_schemas() -> None:
         legacy_schema=False,
         stages_complete=("deep",),
     )
-    assert analyze_bugs._class_open_siblings(nonconfirmed_siblings) == ()  # pyright: ignore[reportPrivateUsage]  # confirmed-instance report gate coverage
+    assert not analyze_bugs._class_open_siblings(nonconfirmed_siblings)  # pyright: ignore[reportPrivateUsage]  # confirmed-instance report gate coverage
 
 
 def test_legacy_ledger_rows_are_marked_without_refresh(tmp_path: Path) -> None:
