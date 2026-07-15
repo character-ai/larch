@@ -1062,11 +1062,11 @@ def _same_resolved_path(left: str | Path, right: Path) -> bool:
 
 
 def _reject_note_metadata(reason: str) -> None:
-    _LOG.debug("architectural note metadata rejected: %s", reason)
+    _LOG.debug(f"architectural note metadata rejected: {reason}")
 
 
 def _reject_coverage_advance(reason: str) -> bool:
-    _LOG.debug("architectural coverage advance rejected: %s", reason)
+    _LOG.debug(f"architectural coverage advance rejected: {reason}")
     return False
 
 
