@@ -1,10 +1,45 @@
+"""Coverage for the engine-backed unreachable-branch rule."""
+
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 from pathlib import Path
 
-
+import pytest
+from larch.lint import engine as lint_engine
 from larch.lint import lint_unreachable_branch as lint
+from larch.lint.engine import (
+    EXIT_CLEAN,
+    EXIT_ERROR,
+    EXIT_FINDINGS,
+    ScanError,
+    SourceFile,
+    render_finding,
+    run_rule,
+)
+from larch.lint.unreachable_branch_detector import is_production_source_path
+from tests.lint.test_lint_engine import (
+    RecordingRunner,
+    _git_ok_runner,  # type: ignore[reportPrivateUsage]  # importing test-internal helpers from sibling test module
+    _write_files,  # type: ignore[reportPrivateUsage]  # importing test-internal helpers from sibling test module
+)
+
+VIOLATING = (
+    "def run(flag: bool, value: int) -> int:\n"
+    "    if flag:\n"
+    "        return value\n"
+    "    if flag:\n"
+    "        return value\n"
+    "    return 0\n"
+)
+
+COMPLIANT = "def run() -> int:\n    return 0\n"
+
+
+def _source(path: str, text: str) -> SourceFile:
+    return SourceFile(path=path, text=text, lines=tuple(text.splitlines()))
 
 
 def _record(
@@ -12,7 +47,7 @@ def _record(
     file: str = "larch/mod.py",
     qualified_symbol: str = "run",
     occurrence: int = 1,
-    normalized_condition: str = "Name('flag')",
+    normalized_condition: str = "Name('flag', Load())",
     reason: str = "grandfathered",
 ) -> dict[str, object]:
     return {
@@ -24,32 +59,49 @@ def _record(
     }
 
 
-def _write_project(root: Path, *, files: dict[str, str], baseline: object | None) -> None:
-    python_dir = root / "python"
-    for relpath, source in files.items():
-        path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
-    if baseline is not None:
-        _ = (python_dir / lint.BASELINE_FILENAME).write_text(json.dumps(baseline), encoding="utf-8")
+def _invoke_main(root: Path, argv: list[str]) -> tuple[int, str, str]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = lint.main(["--root", str(root), *argv])
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def _invoke_rule(
+    root: Path,
+    runner: RecordingRunner,
+    *,
+    write_baseline: bool = False,
+    initial_reason: str | None = None,
+    strict_stale: bool = True,
+    baseline_name: str = lint.BASELINE_FILENAME,
+) -> tuple[int, str, str]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = run_rule(
+            lint.RULE,
+            root,
+            runner,
+            paths=None,
+            baseline_path=root / "python" / baseline_name,
+            write_baseline=write_baseline,
+            initial_reason=initial_reason,
+            strict_stale=strict_stale,
+        )
+    return code, stdout.getvalue(), stderr.getvalue()
 
 
 def test_repeated_conditional_return_same_value(tmp_path: Path) -> None:
     larch_dir = tmp_path / "python" / "larch"
     path = larch_dir / "mod.py"
     path.parent.mkdir(parents=True)
-    _ = path.write_text(
-        "def run(flag: bool, value: int) -> int:\n"
-        "    if flag:\n"
-        "        return value\n"
-        "    if flag:\n"
-        "        return value\n"
-        "    return 0\n",
-        encoding="utf-8",
-    )
+    _ = path.write_text(VIOLATING, encoding="utf-8")
     findings = lint.scan_file(path, larch_dir=larch_dir)
     assert len(findings) == 1
     assert findings[0].qualified_symbol == "run"
+    assert findings[0].occurrence == 1
+    assert findings[0].normalized_condition == "Name('flag', Load())"
 
 
 def test_different_return_values_not_flagged(tmp_path: Path) -> None:
@@ -146,7 +198,9 @@ def test_nested_functions_under_loop_are_scanned_once(tmp_path: Path) -> None:
     assert findings[0].qualified_symbol == "outer.inner"
 
 
-def test_elif_preparation_and_unconditional_return_branches_detected(tmp_path: Path) -> None:
+def test_elif_preparation_and_unconditional_return_branches_detected(
+    tmp_path: Path,
+) -> None:
     larch_dir = tmp_path / "python" / "larch"
     path = larch_dir / "mod.py"
     path.parent.mkdir(parents=True)
@@ -197,56 +251,77 @@ def test_suppression_on_condition_line(tmp_path: Path) -> None:
     assert not lint.scan_file(path, larch_dir=larch_dir)
 
 
+def test_suppressed_match_does_not_consume_occurrence() -> None:
+    text = (
+        "def run(flag: bool, value: int) -> int:\n"
+        "    if flag:\n"
+        "        return value\n"
+        "    if flag:  # lint-unreachable-branch: ok first\n"
+        "        return value\n"
+        "    if flag:\n"
+        "        return value\n"
+        "    return 0\n"
+    )
+    findings = lint.detect(_source("python/larch/mod.py", text))
+    assert len(findings) == 1
+    assert findings[0].occurrence == 1
+    assert findings[0].pattern_name == "Name('flag', Load())"
+    assert findings[0].qualified_symbol == "run"
+    rendered = render_finding(findings[0])
+    assert rendered.startswith("python/larch/mod.py:")
+    assert "lint-unreachable-branch" in rendered
+    assert "occurrence 1" in rendered
+
+
+def test_empty_suppression_reason_raises() -> None:
+    text = (
+        "def run(flag: bool, value: int) -> int:\n"
+        "    if flag:\n"
+        "        return value\n"
+        "    if flag:  # lint-unreachable-branch: ok\n"
+        "        return value\n"
+        "    return 0\n"
+    )
+    with pytest.raises(ScanError, match="empty lint-unreachable-branch"):
+        _ = lint.detect(_source("python/larch/mod.py", text))
+
+
+def test_adapted_findings_pass_occurrence_baseline_validation() -> None:
+    findings = lint.detect(_source("python/larch/mod.py", VIOLATING))
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.qualified_symbol == "run"
+    assert finding.pattern_name == "Name('flag', Load())"
+    assert finding.occurrence == 1
+    validated = lint_engine._validate_finding(  # type: ignore[reportPrivateUsage]
+        finding, source=_source("python/larch/mod.py", VIOLATING), rule=lint.RULE
+    )
+    assert validated.pattern_name == finding.pattern_name
+    row = lint_engine.OccurrenceBaselineRow(
+        path=validated.path,
+        qualified_symbol=validated.qualified_symbol or "",
+        pattern_name=validated.pattern_name or "",
+        occurrence=validated.occurrence or 0,
+        reason="bootstrap",
+    )
+    serialized = lint_engine._serialized_baseline(  # type: ignore[reportPrivateUsage]
+        [row], occurrence_pattern_field="normalized_condition"
+    )
+    assert '"normalized_condition"' in serialized
+    assert '"pattern_name"' not in serialized
+    parsed = lint_engine._parse_baseline_text(  # type: ignore[reportPrivateUsage]
+        serialized, source="round-trip"
+    )
+    assert parsed == [row]
+
+
 def test_malformed_source_exits_2(tmp_path: Path) -> None:
-    _write_project(tmp_path, files={"larch/mod.py": "def broken(\n"}, baseline=[])
-    assert lint.main(["--root", str(tmp_path)]) == 2
-
-
-def test_baseline_schema_and_stale(tmp_path: Path) -> None:
-    source = (
-        "def run(flag: bool, value: int) -> int:\n"
-        "    if flag:\n"
-        "        return value\n"
-        "    if flag:\n"
-        "        return value\n"
-        "    return 0\n"
-    )
-    _write_project(tmp_path, files={"larch/mod.py": source}, baseline=None)
-    assert (
-        lint.main(
-            ["--root", str(tmp_path), "--write", "--initial-reason", "bootstrap"]
-        )
-        == 0
-    )
-    assert lint.main(["--root", str(tmp_path)]) == 0
-
-    # Replace source so the baselined finding disappears; stale row must fail.
-    _ = (tmp_path / "python" / "larch" / "mod.py").write_text(
-        "def run() -> int:\n    return 0\n", encoding="utf-8"
-    )
-    assert lint.main(["--root", str(tmp_path)]) == 2
-
-
-def test_duplicate_baseline_rejected(tmp_path: Path) -> None:
-    _write_project(
-        tmp_path,
-        files={"larch/mod.py": "def run() -> int:\n    return 0\n"},
-        baseline=[_record(), _record()],
-    )
-    assert lint.main(["--root", str(tmp_path)]) == 2
-
-
-def test_new_finding_exits_1(tmp_path: Path) -> None:
-    source = (
-        "def run(flag: bool, value: int) -> int:\n"
-        "    if flag:\n"
-        "        return value\n"
-        "    if flag:\n"
-        "        return value\n"
-        "    return 0\n"
-    )
-    _write_project(tmp_path, files={"larch/mod.py": source}, baseline=[])
-    assert lint.main(["--root", str(tmp_path)]) == 1
+    _write_files(tmp_path, {"python/larch/mod.py": "def broken(\n"})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "cannot parse source" in err
 
 
 def test_scope_excludes_tests(tmp_path: Path) -> None:
@@ -256,3 +331,142 @@ def test_scope_excludes_tests(tmp_path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text("x = 1\n", encoding="utf-8")
     assert [p.name for p in lint.iter_source_files(larch_dir)] == ["prod.py"]
+
+
+def test_production_path_filter_and_pathspecs() -> None:
+    assert is_production_source_path("python/larch/mod.py")
+    assert not is_production_source_path("python/larch/test_mod.py")
+    assert not is_production_source_path("python/larch/conftest.py")
+    assert not is_production_source_path("python/cli.py")
+    assert not is_production_source_path("python/bootstrap.py")
+    assert lint.RULE.pathspecs == ("python/larch/*.py", "python/larch/**/*.py")
+    assert lint.RULE.source_filter is is_production_source_path
+
+
+def test_engine_cli_skips_exempt_larch_sources(tmp_path: Path) -> None:
+    _write_files(
+        tmp_path,
+        {
+            "python/larch/prod.py": VIOLATING,
+            "python/larch/test_skip.py": VIOLATING,
+            "python/larch/conftest.py": VIOLATING,
+            "python/cli.py": VIOLATING,
+        },
+    )
+    tracked = [
+        "python/larch/prod.py",
+        "python/larch/test_skip.py",
+        "python/larch/conftest.py",
+        "python/cli.py",
+    ]
+    runner = _git_ok_runner(tmp_path, tracked)
+    code, out, _err = _invoke_rule(
+        tmp_path,
+        runner,
+        write_baseline=True,
+        initial_reason="bootstrap",
+        strict_stale=False,
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    baseline = json.loads(
+        (tmp_path / "python" / lint.BASELINE_FILENAME).read_text(encoding="utf-8")
+    )
+    assert len(baseline) == 1
+    assert baseline[0]["file"] == "larch/prod.py"
+    assert list(baseline[0]) == [
+        "file",
+        "qualified_symbol",
+        "occurrence",
+        "normalized_condition",
+        "reason",
+    ]
+
+
+def test_baseline_schema_and_stale(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, _, _ = _invoke_rule(
+        tmp_path,
+        runner,
+        write_baseline=True,
+        initial_reason="bootstrap",
+        strict_stale=False,
+    )
+    assert code == EXIT_CLEAN
+    baseline_path = tmp_path / "python" / lint.BASELINE_FILENAME
+    original = baseline_path.read_text(encoding="utf-8")
+    record = json.loads(original)[0]
+    assert list(record) == [
+        "file",
+        "qualified_symbol",
+        "occurrence",
+        "normalized_condition",
+        "reason",
+    ]
+    assert record["reason"] == "bootstrap"
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, _ = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_CLEAN
+    assert out == ""
+
+    _ = (tmp_path / "python" / "larch" / "mod.py").write_text(COMPLIANT, encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, _, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_ERROR
+    assert "stale baseline row" in err
+
+
+def test_duplicate_baseline_rejected(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text(
+        json.dumps([_record(), _record()], indent=2) + "\n", encoding="utf-8"
+    )
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, _, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_ERROR
+    assert "duplicate baseline identity" in err
+
+
+def test_new_finding_exits_1(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text("[]\n", encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, _ = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_FINDINGS
+    assert "python/larch/mod.py:" in out
+    assert "lint-unreachable-branch" in out
+
+
+def test_noop_regeneration_is_byte_identical(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    original = json.dumps([_record()], indent=2) + "\n"
+    _ = baseline.write_text(original, encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, _, _ = _invoke_rule(
+        tmp_path,
+        runner,
+        write_baseline=True,
+        initial_reason="bootstrap",
+        strict_stale=False,
+    )
+    assert code == EXIT_CLEAN
+    assert baseline.read_text(encoding="utf-8") == original
+
+
+def test_main_empty_initial_reason_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    code, _, err = _invoke_main(tmp_path, ["--write", "--initial-reason", "  "])
+    assert code == EXIT_ERROR
+    assert "--initial-reason must be non-empty" in err
+
+
+def test_rule_contract_flags() -> None:
+    assert lint.RULE.occurrence_baseline is True
+    assert lint.RULE.allow_inline_suppression is False
+    assert lint.RULE.occurrence_pattern_field == "normalized_condition"
+    assert lint.RULE.syntax_policy == "raise"
+    assert lint.RULE.source_filter is is_production_source_path
