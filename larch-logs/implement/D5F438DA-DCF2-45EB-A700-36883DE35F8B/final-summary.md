@@ -42,12 +42,20 @@ codex/pragmatism-vote                       │                              █
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+The changed code raises no invariant concerns. The removal of `skills/implement/scripts/test-step-7a.sh` from the Step 7a bypass coverage citation in `ARCHITECTURAL_INVARIANTS.md` is a documentation narrowing, not a coverage removal: the bash harness continues to execute as `step-7a-bash-harness` in `test-harnesses-2`, and `python/tests/implement/test_step_7a.py` (now the sole cited authority) remains fully wired. No gate-disarming, stale-result reuse, run-log omission, slot-drop, agent-fabrication, or post-merge mutation path is introduced or weakened by the changed code.
+
+## Architectural guidelines
+
+The changed code is consistent with all applicable guidelines. The Makefile restructuring splits public aggregate targets (combining pytest and bash lanes) from the Bash-leaf shard members and updates the coverage validator to enforce the new contract mechanically, extending an existing mechanism rather than introducing a new surface. Documentation in `docs/linting.md` is swept in the same change: shard numbers for relocated targets are corrected, the six-shard references are reduced to five, and the direct-Bash-leaf rule is stated clearly. The `scripts/test-harness-shards-coverage.sh` additions use Bash 3.2-compatible constructs throughout. Renamed shard leaves such as `write-final-report-bash-harness`, `step-7a-bash-harness`, `oos-disposition-gate-bash-harness`, and `flush-execution-issues-bash-harness` are declared `.PHONY`, wired into shard lists, updated in exclusion comments in `agent-lint.toml`, and reflected in documentation in the same diff, with no unswept prose reference to the prior shape introduced by this change.
+
 ## /implement run D5F438DA-DCF2-45EB-A700-36883DE35F8B: shipping
 
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 00:23:57
-- **Cost**: 💰 TOTAL ~$13.79: Claude $0.87, Codex-5.6 $6.12, Codex-mini $0.03, Cursor $6.54 (Composer $3.98, Grok $2.56), Claude (subprocess) $0.23  |  Tokens: 19237k
+- **Cost**: 💰 TOTAL ~$15.51: Claude $2.59, Codex-5.6 $6.12, Codex-mini $0.03, Cursor $6.54 (Composer $3.98, Grok $2.56), Claude (subprocess) $0.23  |  Tokens: 21632k
 - **Issue**: #7064: https://github.com/character-ai/larch/issues/7064
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
