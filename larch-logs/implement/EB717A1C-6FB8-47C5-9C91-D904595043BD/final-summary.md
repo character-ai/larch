@@ -114,19 +114,19 @@ Warnings (44):
 
 Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
-The changed code is confined to the lint engine occurrence baseline codec, the engine-backed markdown-heading-fence-state rule refactor, and the extracted AST detector module. None of these changes touch workflow gates, pause/resume snapshots, persisted step-result consumers, run-log flush paths, committed run-log field writers, outcome label writers, panel slot accounting, agent verdict dispatch, or ship/recovery routes. All nine invariants are unimplicated.
+The changed code is confined to the lint engine occurrence baseline codec, the engine-backed markdown-heading-fence-state rule refactor, and the extracted AST detector module. None of the changed code touches workflow gates, pause/resume snapshots, persisted step-result consumers, run-log flush paths, committed run-log field writers, outcome label writers, panel slot accounting, agent verdict dispatch, or ship/recovery routes. All nine invariants remain unimplicated.
 
 ## Architectural guidelines
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
-The CI-fix and surrounding changes are clean against the architectural guidelines. All noqa suppressions added by the diff carry inline reason comments. The `isinstance()` usage introduced by the CI-fix is the Pythonic form. The occurrence baseline grammar extension is additive. The `OccurrenceBaselineRow` codec requires a non-empty `reason` field on every row, consistent with the reason-bearing ratchet baseline discipline. All new error paths raise `ScanError` with descriptive messages and no swallowing. No new bare suppressions appear in the diff.
+The changed code is clean against the architectural guidelines. All noqa and type-ignore suppressions added by the diff carry inline reason comments. New value types use frozen dataclasses; the mutable accumulator is a genuine builder exempted by G-Py-1. Every new error path raises `ScanError` with a descriptive message and no exception swallowing. The occurrence codec is additive: distinct key-set dispatch leaves existing baseline shapes unchanged, and all new `LintRule` fields default to `None` or `False`. `OccurrenceBaselineRow` enforces a non-empty `reason` field on every row. Symlink rejection is preserved in the full normalization path. The refactoring moves detection into the shared engine pattern.
 
 ## /implement run EB717A1C-6FB8-47C5-9C91-D904595043BD: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:03:27
-- **Cost**: 💰 TOTAL ~$37.93: Claude $8.36, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 53202k
+- **Cost**: 💰 TOTAL ~$39.86: Claude $10.29, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 56122k
 - **Issue**: #6989: https://github.com/character-ai/larch/issues/6989
 - **PR**: #7360: https://github.com/character-ai/larch/pull/7360
 - **Plan review**: N/A
@@ -134,7 +134,7 @@ The CI-fix and surrounding changes are clean against the architectural guideline
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 9/16 accepted
-- **Lines (PR diff)**: code +1682/-1091, larch-logs +1270/-0
+- **Lines (PR diff)**: code +1682/-1091, larch-logs +1276/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 44
