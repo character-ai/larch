@@ -35,6 +35,7 @@ from larch.implement import (
     dispatch_step18,
     dispatch_step2,
     dispatch_recovery,
+    self_edit_log,
 )
 from larch.core import config
 from larch.calibration import difficulty
@@ -5102,6 +5103,48 @@ def test_run_step4_commit_leg_commits_ordinary_pathspec(
         str(impl / "implementation-commit-paths.nul"),
         "--pathspec-file-nul",
     ]]
+
+
+def test_run_step4_commit_leg_absorbs_attributed_step3_lint_fix_path(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = make_implement_tmpdir(tmp_path)
+    baseline = repo / "python" / "suppression-reason-baseline.json"
+    baseline.parent.mkdir()
+    baseline.write_text('{"reasons": []}\n', encoding="utf-8")
+    unrelated = repo / "unrelated.txt"
+    unrelated.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", str(baseline.relative_to(repo)), "unrelated.txt")
+    _git(repo, "commit", "-m", "add baselines")
+    baseline.write_text('{"reasons": ["lint-fix"]}\n', encoding="utf-8")
+    unrelated.write_text("external change\n", encoding="utf-8")
+    _ = self_edit_log.record_self_edits(
+        tmpdir=impl,
+        source="lint-fix:step3",
+        paths=[str(baseline.relative_to(repo))],
+        repo_root=repo,
+    )
+    (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
+    (impl / "implementation-commit-paths.nul").write_bytes(b"README.md\0")
+    calls: list[list[str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok both re-export facades are patched for this regression
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok both re-export facades are patched for this regression
+
+    outcome, stdout = dispatch_commit_route._run_step4_commit_leg(impl, deadline_ms=123)
+
+    assert outcome == "continue"
+    assert "COMMIT_ROUTE_OUTCOME=continue\n" in stdout
+    assert calls[0][-2] == str(impl / "step4-commit-paths.nul")
+    assert (impl / "step4-commit-paths.nul").read_bytes() == (
+        b"README.md\0python/suppression-reason-baseline.json\0"
+    )
 
 
 def test_run_step4_commit_leg_failure_seeds_step4_stall(
