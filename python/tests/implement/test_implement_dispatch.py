@@ -5134,7 +5134,8 @@ def test_run_step4_commit_leg_absorbs_attributed_step3_lint_fix_path(
         calls.append(list(argv))
         return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
 
-    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok both re-export facades are patched for this regression
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok both re-export facades are patched for this regression
 
     outcome, stdout = dispatch_commit_route._run_step4_commit_leg(impl, deadline_ms=123)
 
