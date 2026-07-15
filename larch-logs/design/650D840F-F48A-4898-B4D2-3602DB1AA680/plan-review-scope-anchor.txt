@@ -1,0 +1,93 @@
+Partition piece 4 of 5 split from #6967.
+
+**Scope**: Rewrite `python/larch/lint/lint_self_disarmable_gate.py` as a baseline-free engine rule; update `python/tests/lint/test_lint_self_disarmable_gate.py`. Preserve metadata and owner validation, `OptionalMetadata` re-export resolution, malformed-definition handling, hard-trigger and presentation-softening detection, design-module scope, suppression behavior, and full-corpus preparation.
+
+**Firm headings**: python/larch/lint/lint_self_disarmable_gate.py, python/tests/lint/test_lint_self_disarmable_gate.py
+
+**Acceptance**:
+
+`make test-lint-self-disarmable-gate`, `make lint-self-disarmable-gate`, and the self-disarmable-gate cases in `python/tests/lint/test_lint_engine_equivalence.py` pass. Corpus preparation consumes the complete engine-discovered `SourceFile` collection exactly once and performs no second discovery pass. The rule remains baseline-free, all metadata and gate regression cases pass, current and fixture outputs match the pre-port goldens, and the production module is at most approximately 250 lines.
+
+**Dependencies (from panel)**: blocked-by Piece 1
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# bug-treadmill [FEATURE] Shared lint engine for python/larch/lint rule modules
+
+​#### Problem
+
+Every custom lint is a standalone application. As of 2026-07-11:
+
+- `python/larch/lint/` holds 43 Python modules totaling ~15.9k lines.
+- The three lints added by #6873 are `lint_markdown_heading_fence_state.py` (873 lines), `lint_unreachable_branch.py` (820), and `lint_self_disarmable_gate.py` (552). All three define their own `argparse` CLI and their own `--baseline` / `--write-baseline` handling. Spot-checks of `lint_unreachable_branch.py` and `lint_markdown_heading_fence_state.py` show no imports from the `larch.lint` package at all.
+- `lint_common.py` exists (114 lines) but the newest lints do not use it.
+- 15 modules implement their own baseline I/O against sibling `python/*-baseline.json` files.
+- Four more standalone lints landed the same week: #6619 (monkeypatch facade binding), #6622 (lifecycle prefix literal), #6750 (suppression reason), #6675 (two regression ratchets).
+
+The cost is double. Each new prevention proposal from `/learn-from-bugs` lands as 550-900 lines instead of ~100. And plumbing duplicated 40+ times is the same defect class as #6632 / #6672 (one grammar, two diverging parsers): suppression grammar, baseline schema, discovery scope, and output format can each drift per module.
+
+​#### Goal
+
+A new lint rule is a detect function plus a registration entry, roughly 100-250 lines including tests hooks, instead of 550-900.
+
+​#### Required design
+
+Create `python/larch/lint/engine.py` following the repo's guidelines (frozen dataclasses per G-Py-1, injected Runner per G-Py-7, fail loudly per G-Py-4):
+
+1. Data model.
+   - `Finding`: frozen dataclass with `path`, `line`, `rule_id`, `message`, optional `qualified_symbol`, optional `metric`.
+   - `SourceFile`: frozen dataclass with `path`, `text`, `lines`, and a lazy `ast` property for `.py` files. Syntax-error policy is a rule option: `fail` (emit a finding) or `skip`.
+   - `LintRule`: frozen dataclass with `rule_id`, `description`, `pathspecs` (git pathspecs), `detect(SourceFile) -> Iterable[Finding]`, optional `pragma_token` override, `syntax_error_policy`.
+2. Discovery. Enumerate files with `git ls-files -- <pathspecs>` through the injected Runner. No `os.walk`.
+3. Suppression. One canonical same-line pragma: `# lint-<rule-id>: ok <reason>`. A non-empty reason is required for the suppression to count. `pragma_token` lets a ported rule keep its previously documented token for back-compat.
+4. Baselines. One loader/writer supporting the two existing shapes: symbol-metric entries (`{file, code, qualified_symbol, metric}`, the complexity style) and generic finding-key entries. Stable sort order on write so diffs stay minimal. A finding absent from the baseline fails. A baseline entry with no matching finding is reported as stale (warning by default; `--strict-stale` fails). Rules without a baseline are supported.
+5. CLI. `run_rule(rule, argv) -> int` handling `--paths`, `--baseline`, `--write-baseline`, `--strict-stale`. Output one finding per line: `path:line: RULE_ID message`. Diagnostics go to stderr. Exit 0 clean, 1 findings, 2 usage.
+6. Registration stays as-is. Each rule module keeps a thin `main(argv)` that calls `run_rule`, keeps its `("lint", "<name>")` entry in `python/larch/cli.py`, and keeps its `lint-<name>` / `test-lint-<name>` Makefile pair. No CI workflow changes.
+
+​#### Ports in scope
+
+Port exactly the three #6873 lints (`lint_markdown_heading_fence_state`, `lint_unreachable_branch`, `lint_self_disarmable_gate`) onto the engine. Each port must produce identical findings on the current tree; capture old and new outputs in the equivalence test and diff them. Baseline files keep their current paths and schemas. Do not change any rule's behavior.
+
+​#### Adoption ratchet
+
+Add an engine-based rule `lint-engine-adoption`: flag any `python/larch/lint/lint_*.py` that constructs its own `argparse.ArgumentParser` or reads/writes a `*-baseline.json` outside `engine.p
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Rewrite `lint_self_disarmable_gate.py` as a thin engine-backed rule (≤250 lines).
+- Preserve all detection behavior: metadata-disarm detection, suppression with owner validation, `OptionalMetadata` re-export resolution, and design-module scope.
+- Keep all existing tests passing; update the unit test to exercise the engine API.
+
+### Non-goals
+- Do not change detection logic or flag behavior.
+- Do not add a baseline file; the rule stays baseline-free.
+- Do not port any other lint modules.
+
+### Approach sketch
+- Extract all AST scanning helpers plus `resolve_optional_metadata`, `iter_gate_modules`, and `scan_file` into a new `self_disarmable_gate_detector.py`.
+- Build a thin `lint_self_disarmable_gate.py` with `detect(SourceFile)`, a `RULE` constant, and a `run_rule`-based `main()`.
+- Pre-resolve `OptionalMetadata` fields once in `_build_rule(root)` via a captured closure; the engine's per-file `detect()` receives the resolved `meta_fields`.
+- Handle suppression (including owner-name validation) inside `detect()` itself; set `allow_inline_suppression=False` on the engine rule.
+- Re-export `Finding`, `ScanError`, `MetadataResolution`, `SUPPRESSION`, `scan_file`, and `resolve_optional_metadata` from the thin wrapper for backward compatibility with existing tests.
+
+### Surfaces in scope
+- `python/larch/lint/self_disarmable_gate_detector.py` (new)
+- `python/larch/lint/lint_self_disarmable_gate.py` (rewrite)
+- `python/tests/lint/test_lint_self_disarmable_gate.py` (update)
+- `python/tests/lint/test_lint_engine_equivalence.py` (update adapter to use `detect()`)
+- `python/lint-module-manifest.json` (add entry for new detector module)
+
+### Open questions
+- None.
