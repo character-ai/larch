@@ -43,6 +43,22 @@
     },
     {
       "filed_issue": null,
+      "id": "variant-path-gate-persistence-invariant",
+      "run_date": "2026-07-15T07:43:36Z",
+      "status": "proposed",
+      "target": "ARCHITECTURAL_INVARIANTS.md#I-Gate-2",
+      "type": "invariant"
+    },
+    {
+      "filed_issue": null,
+      "id": "pattern-match-hint-confirmation-guideline",
+      "run_date": "2026-07-15T07:43:36Z",
+      "status": "proposed",
+      "target": "ARCHITECTURAL_GUIDELINES.md#G-Ext-5",
+      "type": "guideline"
+    },
+    {
+      "filed_issue": null,
       "id": "result-env-key-parity-lint",
       "run_date": "2026-07-15T16:31:26Z",
       "status": "proposed",

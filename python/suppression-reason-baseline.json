@@ -1904,13 +1904,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/implement/checks_lint_fix.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR0913,RUF100",
-    "occurrence": 5,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/implement/checks_run_relevant.py",
     "suppression_kind": "noqa",
     "text": "noqa: C901,PLR0911,PLR0912,RUF100",
