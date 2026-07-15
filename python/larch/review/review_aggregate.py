@@ -24,7 +24,7 @@ _EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 _SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(major|minor|nit)\s*$", re.IGNORECASE)
 _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORECASE)
 _BLANK_SEVERITY_RE = re.compile(r"(?m)^(-\s*\*\*Severity\*\*:\s*)$")
-_MIN_AGGREGATE_INPUTS = 2
+MIN_AGGREGATE_INPUTS = 2
 _MOVE_FAILED_RC = 3
 _VALIDATION_FAILED_RC = 4
 # Issue #4881: the OOS-attribution failure class (#4868) is the only semantically retryable
@@ -846,7 +846,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="validation-failed")
             return 0
     aggregate_input_count = _count_finding_blocks(source_file)
-    if aggregate_input_count < _MIN_AGGREGATE_INPUTS:
+    if aggregate_input_count < MIN_AGGREGATE_INPUTS:
         _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="insufficient-input")
         return 0
     agent = _PLUGIN_ROOT / "agents" / "orchestrator-aggregator.md"

@@ -652,21 +652,25 @@ def _apply_aggregator_status(
     round_num: int,
     agg_kv: dict[str, str],
     returncode: int,
-    values: dict[str, str],
-) -> None:
+    ok_count: int,
+) -> str:
     """Record ``AGGREGATOR_STATUS`` and handle the degraded aggregator outcomes.
 
-    ``insufficient-input`` means too few reviewers reached the aggregator, so it is
-    surfaced as a Warnings execution issue (issue #7353). Any other non-ok, non-disabled
-    status snapshots this round's forensics before the next round overwrites the stable
-    paths (issue #4996); clean aggregations skip the snapshot to avoid committed bytes.
+    ``insufficient-input`` is a degraded-panel warning only when too few reviewer slots
+    completed. A healthy panel can have no findings to aggregate, which is benign. Any
+    other non-ok, non-disabled status snapshots this round's forensics before the next
+    round overwrites the stable paths (issue #4996); clean aggregations skip the snapshot
+    to avoid committed bytes.
     """
     agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=returncode)
-    values["AGGREGATOR_STATUS"] = agg_status
-    if agg_status == "insufficient-input":
+    if (
+        agg_status == "insufficient-input"
+        and ok_count < review_aggregate.MIN_AGGREGATE_INPUTS
+    ):
         _log_insufficient_input_warning(design=design, round_num=round_num)
     elif agg_status not in {"ok", "disabled"}:
         _snapshot_aggregator_forensics(design=design, round_num=round_num)
+    return agg_status
 
 
 def _lookup_by_output(
@@ -1144,7 +1148,13 @@ def execute_round(
         text=f"round {round_num}: aggregating reviewer findings",
     )
     agg_kv = _parse_kv(agg.stdout)
-    _apply_aggregator_status(design=design, round_num=round_num, agg_kv=agg_kv, returncode=agg.returncode, values=values)
+    values["AGGREGATOR_STATUS"] = _apply_aggregator_status(
+        design=design,
+        round_num=round_num,
+        agg_kv=agg_kv,
+        returncode=agg.returncode,
+        ok_count=ok_count,
+    )
     ballot = design / "ballot.txt"
     proposer_map = design / "proposer-map.tsv"
     if not _aggregation_ok_for_voting(agg_kv=agg_kv, returncode=agg.returncode):
