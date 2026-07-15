@@ -53,6 +53,7 @@ def test_cli_help_and_registry_smoke() -> None:
     assert cli._REGISTRY[("design", "render-gate")] == (
         "larch.design.design_gate_render",
         "render_gate_main",
+        True,
     )
     assert ("design", "render-gate") in cli._MACHINE_STDOUT_KEYS
 
