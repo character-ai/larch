@@ -2054,6 +2054,26 @@ def test_occurrence_baseline_rejects_duplicates_and_preserves_reasons(
     assert rewritten[0]["reason"] == "preserved"
 
 
+def test_occurrence_baseline_rejects_empty_path_components(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row(file="larch//mod.py")], indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    code, out, err = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "invalid file" in err
+
+
 def test_occurrence_baseline_stale_and_missing_reason(tmp_path: Path) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "occ.json"

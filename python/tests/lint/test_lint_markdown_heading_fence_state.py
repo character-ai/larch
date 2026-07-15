@@ -5,10 +5,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
 from larch.lint import lint_markdown_heading_fence_state as lint
+from larch.lint import engine as lint_engine
 from larch.lint.engine import (
     EXIT_CLEAN,
     EXIT_ERROR,
@@ -266,10 +268,12 @@ def test_nested_symbol_occurrence_numbering() -> None:
     ]
 
 
-def test_production_path_filter_excludes_tests_support_and_vendor() -> None:
+def test_production_path_filter_includes_root_files_and_excludes_tests_support_and_vendor() -> None:
+    assert is_production_source_path("python/root.py")
     assert is_production_source_path("python/larch/prod.py")
     assert not is_production_source_path("python/larch/test_mod.py")
     assert not is_production_source_path("python/larch/conftest.py")
+    assert not is_production_source_path("python/tests/support/helper.py")
     assert not is_production_source_path("python/larch/.venv/vendor.py")
     assert not is_production_source_path("scripts/tool.py")
     assert not is_production_source_path("skills/demo/helper.py")
@@ -336,6 +340,7 @@ def test_excluded_malformed_and_out_of_tree_paths_never_loaded(tmp_path: Path) -
             "python/larch/prod.py": "x = 1\n",
             "python/larch/test_bad.py": "def broken(\n",
             "python/larch/conftest.py": "def broken(\n",
+            "python/tests/support/helper.py": "def broken(\n",
             "scripts/tool.py": "def broken(\n",
             "skills/demo/helper.py": "def broken(\n",
         },
@@ -344,6 +349,7 @@ def test_excluded_malformed_and_out_of_tree_paths_never_loaded(tmp_path: Path) -
         "python/larch/prod.py",
         "python/larch/test_bad.py",
         "python/larch/conftest.py",
+        "python/tests/support/helper.py",
         "scripts/tool.py",
         "skills/demo/helper.py",
     ]
@@ -383,6 +389,58 @@ def test_excluded_paths_filtered_in_write_mode(tmp_path: Path) -> None:
     assert out == ""
     baseline = tmp_path / "python" / lint.BASELINE_FILENAME
     assert baseline.read_text(encoding="utf-8") == "[]\n"
+
+
+def test_tracked_symlink_is_skipped_in_check_and_write_modes(tmp_path: Path) -> None:
+    target = tmp_path / "outside.py"
+    _ = target.write_text(VIOLATING, encoding="utf-8")
+    link = tmp_path / "python/larch/linked.py"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target)
+
+    check_runner = _git_ok_runner(tmp_path, ["python/larch/linked.py"])
+    code, out, err = _invoke_rule(tmp_path, check_runner, strict_stale=False)
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+
+    write_runner = _git_ok_runner(tmp_path, ["python/larch/linked.py"])
+    code, out, err = _invoke_rule(
+        tmp_path,
+        write_runner,
+        write_baseline=True,
+        initial_reason="seed",
+        strict_stale=False,
+    )
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+    assert (tmp_path / "python" / lint.BASELINE_FILENAME).read_text(encoding="utf-8") == "[]\n"
+
+
+def test_unreadable_in_scope_file_exits_2_with_deterministic_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    original_open = lint_engine.os.open
+
+    def denied_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if os.fspath(path) == "mod.py" and dir_fd is not None:
+            raise PermissionError("read denied")
+        if dir_fd is None:
+            return original_open(path, flags, mode)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(lint_engine.os, "open", denied_open)
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "failed to read python/larch/mod.py" in err
 
 
 def test_absent_baseline_clean_scan_exits_0(tmp_path: Path) -> None:
@@ -509,5 +567,5 @@ def test_rule_contract_flags() -> None:
     assert lint.RULE.allow_inline_suppression is False
     assert lint.RULE.occurrence_baseline is True
     assert lint.RULE.syntax_policy == "raise"
-    assert lint.RULE.pathspecs == ("python/**/*.py",)
+    assert lint.RULE.pathspecs == ("python/*.py", "python/**/*.py")
     assert lint.RULE.source_filter is is_production_source_path

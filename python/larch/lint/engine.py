@@ -236,7 +236,14 @@ def _discover_tracked_paths(
     for entry in records:
         if entry == "":
             raise ScanError("git ls-files --cached returned a blank path record")
-        rel = _normalize_repo_relative_path(entry, root=root, label="discovered path")
+        rel = _normalize_repo_relative_path(
+            entry,
+            root=root,
+            label="discovered path",
+            skip_symlink=True,
+        )
+        if rel is None:
+            continue
         if rel in seen:
             continue
         seen.add(rel)
@@ -244,7 +251,13 @@ def _discover_tracked_paths(
     return ordered
 
 
-def _normalize_repo_relative_path(raw: str, *, root: Path, label: str) -> str:
+def _normalize_repo_relative_path(
+    raw: str,
+    *,
+    root: Path,
+    label: str,
+    skip_symlink: bool = False,
+) -> str | None:
     if not _is_single_line(raw):
         raise ScanError(f"{label} must be a non-empty single-line path")
     candidate = raw
@@ -257,6 +270,8 @@ def _normalize_repo_relative_path(raw: str, *, root: Path, label: str) -> str:
         raise ScanError(f"{label} must not contain '.' or '..': {raw}")
     path_in_repo = root / candidate
     if path_in_repo.is_symlink():
+        if skip_symlink:
+            return None
         raise ScanError(f"{label} is a symlink: {raw}")
     absolute = path_in_repo.resolve()
     try:
@@ -325,6 +340,8 @@ def _filter_tracked_paths(
 
 def _load_source(root: Path, rel_path: str) -> SourceFile:
     rel_path = _normalize_repo_relative_path(rel_path, root=root, label="source path")
+    if rel_path is None:
+        raise ScanError("source path is a symlink")
     try:
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
@@ -689,14 +706,13 @@ def _occurrence_repo_path(file_name: str, *, source: str, index: int) -> str:
     if normalized.startswith(PYTHON_TREE_PREFIX):
         raise ScanError(f"{source}: baseline row {index} has invalid file")
     parts = Path(normalized).parts
-    if (
+    malformed = (
         normalized != file_name
         or normalized.startswith("/")
         or not normalized.endswith(".py")
-        or "" in parts
-        or "." in parts
-        or ".." in parts
-    ):
+    )
+    malformed = malformed or "" in normalized.split("/")
+    if malformed or "." in parts or ".." in parts:
         raise ScanError(f"{source}: baseline row {index} has invalid file")
     return f"{PYTHON_TREE_PREFIX}{normalized}"
 

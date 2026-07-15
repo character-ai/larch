@@ -22,7 +22,7 @@ SUPPRESSION = "lint-markdown-heading-fence-state"
 PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s+(\S.*)$")
 EMPTY_PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s*$")
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
-EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__"})
+EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__", "tests"})
 MODULE_SYMBOL = "<module>"
 HEADING_PATTERN_RE = re.compile(
     r"(?:\^|\\A)\s*#\{1,6\}|"
@@ -554,4 +554,3 @@ def scan_text(repo_path: str, source: str, *, tree: ast.Module) -> list[HeadingF
             _track_assignment(state, fake, loop_targets=set())
     _walk_statements(tree.body, state=state, loop_targets=set(), fence_guard_active=False)
     return list(state.findings)
-

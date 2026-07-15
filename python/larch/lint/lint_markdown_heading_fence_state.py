@@ -23,7 +23,7 @@ from larch.lint.markdown_heading_fence_state_detector import (
 
 RULE_ID = SUPPRESSION
 BASELINE_FILENAME = "markdown-heading-fence-state-baseline.json"
-PATHSPECS = ("python/**/*.py",)
+PATHSPECS = ("python/*.py", "python/**/*.py")
 
 
 def detect(source: SourceFile) -> list[Finding]:
