@@ -7,7 +7,6 @@ import io
 import json
 from pathlib import Path
 
-import pytest
 from larch.lint import lint_tmpdir_arg_env_fallback as lint
 from larch.lint.engine import (
     EXIT_CLEAN,
@@ -273,10 +272,9 @@ def test_malformed_python_exits_2(tmp_path: Path) -> None:
 
 def test_live_tree_baseline_only_documents_bgjob_site() -> None:
     repo = Path(__file__).resolve().parents[2]
-    baseline = json.loads(
+    baseline: list[dict[str, object]] = json.loads(
         (repo / "tmpdir-arg-env-fallback-baseline.json").read_text(encoding="utf-8")
     )
-    assert isinstance(baseline, list)
     assert len(baseline) == 1
     row = baseline[0]
     assert row["file"] == "larch/bgjob/cli.py"
