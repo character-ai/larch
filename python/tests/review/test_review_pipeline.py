@@ -20,6 +20,7 @@ from larch.review.review_types import ReviewCoreStatus
 from larch.rendering import rendering
 import review_test_support as rts
 from larch.review import voting
+from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -1109,15 +1110,13 @@ def test_check_reviewer_failure_threshold_counts_dynamic_straggler_drop_with_man
     dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
     manifest = tmp_path / "panel-manifest.ndjson"
     manifest.write_text(
-        json.dumps(
-            {
-                "slot": "dyn-dyn-lint-escalation",
-                "tool": "cursor",
-                "output": str(tmp_path / "dyn-dyn-lint-escalation-output.txt"),
-                "agent": "agents/reviewer.md",
-            }
-        )
-        + "\n",
+        panel_manifest_ndjson([
+            panel_manifest_row(
+                "dyn-dyn-lint-escalation",
+                "cursor",
+                tmp_path / "dyn-dyn-lint-escalation-output.txt",
+            )
+        ]),
         encoding="utf-8",
     )
 

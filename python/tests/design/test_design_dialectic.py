@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from larch.design import design_dialectic
+from tests.support.design_wire import dialectic_candidate_json
 
 
 def _write_plan(tmp_path: Path, text: str = "## Plan\n\ndiff_lines: 1\n") -> None:
@@ -406,21 +407,7 @@ def test_promote_skips_when_drafter_pick_mismatches_final_plan(tmp_path: Path, c
     _write_plan(tmp_path, "## Original\n\ndiff_lines: 1\n")
     raw = tmp_path / design_dialectic.RAW_PENDING
     raw.write_text(
-        json.dumps(
-            {
-                "decisions": [
-                    {
-                        "id": "fork",
-                        "title": "Fork",
-                        "option_a": "Use SQLite",
-                        "option_b": "Use JSON files",
-                        "tradeoff": "Different failure modes",
-                        "drafter_pick": "option_a",
-                        "why_this_matters": "Operator should see it",
-                    }
-                ]
-            }
-        ),
+        dialectic_candidate_json(option_a="Use SQLite", option_b="Use JSON files"),
         encoding="utf-8",
     )
     _write_plan(tmp_path, "## Final\n\nUse JSON files for storage.\n\ndiff_lines: 1\n")

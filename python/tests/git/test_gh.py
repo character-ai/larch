@@ -11,11 +11,11 @@ import pytest
 
 from larch.core import config
 from larch.git import gh
-from larch.implement import scope_disposition
 from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
 from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
+from test_support import write_required_plan_coverage
 
 
 @dataclass
@@ -1545,25 +1545,7 @@ def test_job_durations_raises_on_failed_read() -> None:
 
 
 def _write_scope_required_coverage(tmp_path: Path) -> None:
-    coverage = scope_disposition.PlanCoverage(
-        total=1,
-        touched=0,
-        untouched=1,
-        untouched_percent=100,
-        band="high",
-        plan_paths=("a.py",),
-        touched_paths=(),
-        untouched_paths=("a.py",),
-        todos_left_count=0,
-        todos_left=(),
-        fingerprint="fp-required",
-        disposition_required=True,
-        plan_fidelity_forced=True,
-        coverage_file=str(tmp_path / "plan-coverage.json"),
-        untouched_file=str(tmp_path / "untouched.txt"),
-        todos_file=str(tmp_path / "todos.txt"),
-    )
-    scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+    write_required_plan_coverage(tmp_path, fingerprint="fp-required")
 
 
 def test_pr_edit_body_file_scope_refusal_no_edit(

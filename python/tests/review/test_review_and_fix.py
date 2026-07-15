@@ -24,6 +24,7 @@ from larch.review import round_runner
 from larch.review import snapshot
 from _pytest.mark.structures import Mark, MarkDecorator
 from test_support import ok
+from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
 
 def _mark(name: str) -> MarkDecorator:
@@ -915,15 +916,13 @@ def test_surface_dropped_reviewer_warning_static_straggler_with_dynamic_manifest
     dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
     manifest = tmp_path / "panel-manifest.ndjson"
     manifest.write_text(
-        json.dumps(
-            {
-                "slot": "dyn-dyn-lint-escalation",
-                "tool": "cursor",
-                "output": str(tmp_path / "dyn-dyn-lint-escalation-output.txt"),
-                "agent": "agents/reviewer.md",
-            }
-        )
-        + "\n",
+        panel_manifest_ndjson([
+            panel_manifest_row(
+                "dyn-dyn-lint-escalation",
+                "cursor",
+                tmp_path / "dyn-dyn-lint-escalation-output.txt",
+            )
+        ]),
         encoding="utf-8",
     )
 

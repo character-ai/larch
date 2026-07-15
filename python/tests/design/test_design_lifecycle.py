@@ -42,7 +42,7 @@ from larch.core import architectural_guidelines
 from larch.core import logging_util
 from larch.core.proc import CommandResult
 from larch.report import progress_file
-from tests.support.design_wire import plan_body, run_params_json, write_result_env
+from tests.support.design_wire import dialectic_candidate_json, plan_body, run_params_json, write_result_env
 from larch.core import proc as proc_module
 from larch.state import session_env
 from larch.state import stall_recovery
@@ -6649,21 +6649,7 @@ def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
             (design / "plan.txt").write_text("## Draft\n\nUse SQLite.\n\ndiff_lines: 1\n", encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".dialectic-raw-pending.json").write_text(
-                json.dumps(
-                    {
-                        "decisions": [
-                            {
-                                "id": "fork",
-                                "title": "Fork",
-                                "option_a": "Use SQLite",
-                                "option_b": "Use JSON files",
-                                "tradeoff": "Different failure modes",
-                                "drafter_pick": "option_a",
-                                "why_this_matters": "Operator should see it",
-                            }
-                        ]
-                    }
-                ),
+                dialectic_candidate_json(option_a="Use SQLite", option_b="Use JSON files"),
                 encoding="utf-8",
             )
         if args[2:4] == ["design", "dialectic-promote-candidates"]:

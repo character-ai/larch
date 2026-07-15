@@ -6,6 +6,7 @@ that exercise malformed or legacy wire data should keep their literals inline.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -21,6 +22,15 @@ PlanHeadingKind = Literal["NEW", "UPDATED"]
 _PLAN_HEADING_KINDS: frozenset[HeadingKind] = frozenset(get_args(PlanHeadingKind))
 PlanSection = tuple[PlanHeadingKind, str]
 ResultEnvRows = Mapping[str, str] | Sequence[tuple[str, str]]
+
+
+def dialectic_candidate_json(*, option_a: str, option_b: str) -> str:
+    """Serialize one ordinary dialectic decision fixture."""
+    return json.dumps({"decisions": [{
+        "id": "fork", "title": "Fork", "option_a": option_a, "option_b": option_b,
+        "tradeoff": "Different failure modes", "drafter_pick": "option_a",
+        "why_this_matters": "Operator should see it",
+    }]})
 
 
 def _validate_env_key(key: str) -> None:

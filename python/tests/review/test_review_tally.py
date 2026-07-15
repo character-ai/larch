@@ -4,7 +4,6 @@ import csv
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,6 +13,7 @@ if TYPE_CHECKING:
 from larch.review import review_tally
 from larch.review import review_core_body
 import review_test_support as rts
+from test_support import run_cli
 from larch.review import voting
 from tests.support.review_wire import ballot_snippet, make_finding_block
 
@@ -67,18 +67,7 @@ def _tsv_row_list(path: Path) -> list[dict[str, str]]:
 
 
 def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = os.environ.copy()
-    merged["LARCH_QUIET_DISABLE"] = "1"
-    if env:
-        merged.update(env)
-    return subprocess.run(
-        [sys.executable, str(CLI), *args],
-        cwd=ROOT,
-        env=merged,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    return run_cli(*args, env=env, quiet_disable=True)
 
 
 def run_review(
