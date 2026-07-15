@@ -1,0 +1,11 @@
+1	runtime failures downgraded to `suspect` may still enter verified-issue accounting, snapshots, and newly-verified deltas.
+1	pytest cache output can violate the skill’s clean-tree preflight on subsequent runs.
+1	a parsed `--runtime-max` value other than the cli default may not reach the runtime subcommand.
+1	invoking pytest without discovered paths can collect the full suite, violating the runtime budget and per-fix execution contract.
+1	`deep_truncated` handling may overwrite runtime failure verdicts and discard bounded runtime evidence.
+1	naming harness authorities without concrete path-prefix-to-target mappings leaves harness execution ambiguous.
+1	the plan does not define orchestration-zone prefixes or a shared method for deriving zone labels and coverage-gap annotations.
+1	budgeting issue bundles instead of distinct fix commits can consume multiple slots for one sha or inconsistently verify issues sharing a commit.
+1	python/larch/issue/analyze_bugs.py:2773-2786 [scope-reduction] runtime stage must not follow an initial analyze-bugs report. scenario: render_report is not read-only: it appends analytics hydrated_records to ledger.jsonl, writes run-state.json, report.md, and sweep-state.json. the plan runs stage 3 report, then runtime, then report again, so the first pass can persist wrong verified_issues and duplicate ledger hydration before runtime evidence exists.
+2	runtime promotion and verified accounting do not pin a certifiable verdict set. a passing pytest or mapped harness could assign `runtime` to `not_fixed`, `regressed`, `incomplete`, or `unverifiable`, causing failed fixes to appear verified.
+2	mapping `test-implement-anti-halt` to `skills/implement/` misses fixes that only touch `scripts/test-implement-anti-halt.sh`, so those changes resolve to the wrong harness.

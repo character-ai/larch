@@ -1,0 +1,1 @@
+Add bounded offline runtime verification to `/analyze-bugs`. Persist SHA-bound results, promote passing fixes to `RUNTIME`, downgrade failures to `SUSPECT`, and report harness gaps without changing read-only agents.
