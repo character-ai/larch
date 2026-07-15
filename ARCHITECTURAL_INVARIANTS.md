@@ -19,6 +19,21 @@ metadata may soften presentation, never the trigger condition. Evidence of
 violation: a gate whose disarm inputs are all writable by the entity under
 evaluation (#6542, #6524).
 
+### I-Gate-2: A variant path runs every persistence step its mainline gate runs
+
+A flag carve-out, fallback lane, or legacy-shape path may skip pauses,
+approvals, and presentation waits. It must not skip a gate's persistence or
+verification steps: after any path passes a gate, every artifact the mainline
+path persists at that gate exists and verifies, and every freshness check the
+mainline runs has run. A variant that drops a persist step turns the next
+consumer's fail-closed check into a false stall or a fail-open pass. Evidence
+of violation: `--skip-approve` skipped the Gate C invariant present-note and
+assessment persistence, so Step 5c false-blocked (#7250); legacy `unavailable`
+durable notes passed the Step 8 merge gate with no live-fingerprint check
+(#7216). Mechanical backing: per-variant prompt-contract pins, such as the
+skip-approve Gate C pins in `python/tests/core/test_architectural_guidelines.py`;
+add an equivalent pin whenever a gate gains a new variant path.
+
 ### I-Pause-1: A pause snapshot contains every artifact a resume guard reads
 
 The /design pause snapshot must include every file and sentinel that any

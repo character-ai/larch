@@ -300,6 +300,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: for every external-CLI invocation, list the postcondition guards run on the non-zero exit path and run the same guards on the zero-exit and self-reported-success path; treat a vendor self-reported terminal status as untrusted until re-verified.
 - Deviate when: a guard is gated on a signal that cannot occur on the success path by construction, for example a check that only runs for non-zero exit codes; name that reason in a code comment.
 
+### G-Ext-5: Treat a pattern match, a pinned external id, or a cheap progress proxy as a hint; confirm it against the owning surface before acting, and send a failed confirmation down the same path as no match
+- Why: a trailing `(#N)` in a squash-merge subject was read as the merged PR number, and the false-positive match skipped the commits-to-pulls fallback that already ran for no-match commits, so `/release` aborted (#7229); a hand-pinned Cursor model id absent from the vendor's model list shipped unprobed and broke the MODERATE implement lane (#7237); the CI-fixer lane read HEAD advance as the only progress signal and orphaned a correct uncommitted fix (#6959).
+- Guidance: after extracting an identifier by regex, reading a pinned external id, or sampling a cheap progress proxy, confirm it against the surface that owns the truth (the PR association API, the vendor model list, the working tree) before branching on it; when confirmation fails, take the exact no-match fallback path, never a bespoke error path.
+- Deviate when: the source text is machine-generated under a locked grammar whose writer and reader a test pins to one constant.
+
 ## Documentation and Markdown
 
 ### G-Md-1: Keep drift-prone facts out of prose; derive counts from a single source, refer to code by symbol not line number, and use repo-relative or `${CLAUDE_PLUGIN_ROOT}` paths
