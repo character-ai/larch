@@ -11,6 +11,7 @@ import contextlib
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -101,6 +102,38 @@ def _append_record_escalation_tool_failure(*, tmpdir: Path, reason: str) -> None
         run_log_batch.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
 
 
+@dataclass(frozen=True)
+class _EscalationLedgerEntry:
+    site: str
+    trigger: str
+    step: str
+    phase: str
+    dispatcher: str
+    exit_code: str
+    rel_log: str
+    detail_log_skipped: str
+    generic: bool
+
+
+def _escalation_ledger_row(entry: _EscalationLedgerEntry) -> str:
+    safe_dispatcher = _safe_dispatcher_value(entry.dispatcher, generic=entry.generic)
+    raw_exit_code = str(entry.exit_code or "")
+    safe_exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code) else "unknown"
+    skip_field = f"\tdetail_log_skipped={entry.detail_log_skipped}" if entry.detail_log_skipped else ""
+    return (
+        f"utc={datetime.now(UTC).isoformat()}\tsite={entry.site}\ttrigger={entry.trigger}\tstep={entry.step}\tphase={entry.phase}"
+        f"\tdispatcher={safe_dispatcher}\texit_code={safe_exit_code}\tfailure_detail_log={entry.rel_log}{skip_field}\n"
+    )
+
+
+def record_escalation_checked(args: argparse.Namespace) -> int:
+    tmpdir = Path(args.implement_tmpdir)
+    if not args.implement_tmpdir or not tmpdir.is_absolute():
+        print("stall-recovery: record-escalation --implement-tmpdir is empty or not absolute", file=sys.stderr)
+        return 2
+    return record_escalation(args)
+
+
 def record_escalation(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     prefix = getattr(args, "artifact_prefix", "") or ""
@@ -139,14 +172,18 @@ def record_escalation(args: argparse.Namespace) -> int:
     if not _validate_tmpdir_write_path(tmpdir=tmpdir, path=ledger):
         print("stall-recovery: record-escalation ledger path invalid", file=sys.stderr)
         return hard_fail("ledger-path-invalid")
-    safe_dispatcher = _safe_dispatcher_value(dispatcher, generic=generic)
-    raw_exit_code = str(exit_code or "")
-    safe_exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code) else "unknown"
-    skip_field = f"\tdetail_log_skipped={detail_log_skipped}" if detail_log_skipped else ""
-    row = (
-        f"utc={datetime.now(UTC).isoformat()}\tsite={site}\ttrigger={trigger}\tstep={step}\tphase={phase}"
-        f"\tdispatcher={safe_dispatcher}\texit_code={safe_exit_code}\tfailure_detail_log={rel_log}{skip_field}\n"
+    entry = _EscalationLedgerEntry(
+        site=site,
+        trigger=trigger,
+        step=step,
+        phase=phase,
+        dispatcher=dispatcher,
+        exit_code=exit_code,
+        rel_log=rel_log,
+        detail_log_skipped=detail_log_skipped,
+        generic=generic,
     )
+    row = _escalation_ledger_row(entry)
     try:
         if ledger.is_file() and not os.access(ledger, os.W_OK):
             raise OSError("canonical-ledger-not-writable")
