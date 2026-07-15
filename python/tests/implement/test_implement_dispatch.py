@@ -44,6 +44,7 @@ from larch.core import process_identity
 from larch.core import logging_util
 from larch.outcomes import Outcome
 from larch.report import run_logs
+from larch.state import finalize
 
 from test_support import make_implement_tmpdir
 
@@ -2358,6 +2359,8 @@ def _install_step18_normalize(
     monkeypatch: pytest.MonkeyPatch,
     *,
     succeeded: bool,
+    outcome: str = "pr-created",
+    pr_number: str = "1",
     calls: list[list[str]] | None = None,
 ) -> None:
     def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -2366,7 +2369,11 @@ def _install_step18_normalize(
         return subprocess.CompletedProcess(
             list(args),
             0,
-            f"IMPLEMENT_OUTCOME_SUCCEEDED={'true' if succeeded else 'false'}\n",
+            (
+                f"IMPLEMENT_NORMALIZED_OUTCOME={outcome}\n"
+                f"IMPLEMENT_PR_NUMBER={pr_number}\n"
+                f"IMPLEMENT_OUTCOME_SUCCEEDED={'true' if succeeded else 'false'}\n"
+            ),
             "",
         )
 
@@ -2478,6 +2485,40 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
     assert "STALL_TRACKING_DISK=1\n" in captured.out
     assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
     assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
+
+
+def test_step18_gate_finalize_refuses_terminal_shipping_without_pr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    _install_step18_normalize(monkeypatch, succeeded=False, outcome="shipping", pr_number="")
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: pytest.fail("finalize must not run for terminal shipping without a PR"),
+    )
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == config.EXIT_INTERNAL_ERROR
+
+    captured = capsys.readouterr()
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping\n" in captured.out
+    assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
+    assert "TERMINAL_FINALIZE_REFUSED=true\n" in captured.out
+    assert "STATUS=blocked\n" in captured.out
+    assert "OUTCOME=stalled\n" in captured.out
+    assert captured.out.rstrip().endswith("NEXT_ACTION=tool-failure")
+    state = finalize.read_finalize_state(tmp / "finalize-state.sh")
+    assert state["BAIL_REASON"] == "step18-terminal-shipping-without-pr"
+    assert state["EXIT_CODE"] == str(config.EXIT_INTERNAL_ERROR)
+    assert state["PHASE"] == "stalled"
+    assert state["STALL_STEP"] == "8"
+    assert state["STALL_TRACKING"] == "true"
+    assert state["STEP18_GATE_REFUSAL"] == "step18-terminal-shipping-without-pr"
+    execution_issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "### Tool Failures" in execution_issues
+    assert "Step 18 terminal gate" in execution_issues
 
 
 def test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize(
