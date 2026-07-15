@@ -360,7 +360,7 @@ def test_engine_cli_skips_exempt_larch_sources(tmp_path: Path) -> None:
         "python/cli.py",
     ]
     runner = _git_ok_runner(tmp_path, tracked)
-    code, out, _err = _invoke_rule(
+    code, out, _ = _invoke_rule(
         tmp_path,
         runner,
         write_baseline=True,

@@ -130,7 +130,7 @@ def _rule(
         source_filter=source_filter,
         occurrence_baseline=occurrence_baseline,
         stale_baseline_on_clean_scan=stale_baseline_on_clean_scan,
-        occurrence_pattern_field=occurrence_pattern_field,  # type: ignore[arg-type]
+        occurrence_pattern_field=occurrence_pattern_field,  # type: ignore[arg-type]  # str literal narrower than OccurrencePatternField; test helper widens to str
     )
 
 
@@ -1960,7 +1960,7 @@ def _occurrence_detect(source: SourceFile) -> list[Finding]:
 def _occurrence_rule(**kwargs: object) -> LintRule:
     detect = kwargs.pop("detect", _occurrence_detect)
     return _rule(
-        detect=detect,  # type: ignore[arg-type]
+        detect=detect,  # type: ignore[arg-type]  # object from kwargs.pop; test helper accepts wider detect type
         occurrence_baseline=True,
         allow_inline_suppression=False,
         pathspecs=("python/**/*.py",),
