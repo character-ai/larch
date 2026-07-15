@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,7 +10,7 @@ if TYPE_CHECKING:
 
 from larch import io as larch_io
 from larch.bgjob import cli, model, registry
-from larch.core import process_identity
+from larch.core import config, process_identity
 
 
 def test_wait_done_prints_result_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -27,6 +28,39 @@ def test_wait_missing_registry_reports_dead(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     rc = cli.wait_main(["--step", "demo-step", "--tmpdir", str(tmp_path), "--max-wait-s", "0"])
     out = capsys.readouterr().out
+    assert rc == 0
+    assert "BGJOB_STATUS=DEAD" in out
+    assert "BGJOB_DIAG=missing-registry" in out
+
+
+def test_wait_reports_wait_while_startup_marker_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    marker = model.startup_env_path(tmpdir=tmp_path, step="demo-step")
+    larch_io.write_kvs(path=marker, values=[("STEP", "demo-step"), ("START_EPOCH", str(int(time.time())))])
+
+    rc = cli.wait_main(["--step", "demo-step", "--tmpdir", str(tmp_path), "--max-wait-s", "0"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "BGJOB_STATUS=WAIT" in out
+    assert "BGJOB_STATUS=DEAD" not in out
+
+
+def test_wait_ignores_stale_startup_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    marker = model.startup_env_path(tmpdir=tmp_path, step="demo-step")
+    larch_io.write_kvs(
+        path=marker,
+        values=[("STEP", "demo-step"), ("START_EPOCH", str(int(time.time()) - config.BGJOB_STARTUP_GRACE_S - 1))],
+    )
+
+    rc = cli.wait_main(["--step", "demo-step", "--tmpdir", str(tmp_path), "--max-wait-s", "0"])
+    out = capsys.readouterr().out
+
     assert rc == 0
     assert "BGJOB_STATUS=DEAD" in out
     assert "BGJOB_DIAG=missing-registry" in out
