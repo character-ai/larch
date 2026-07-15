@@ -184,6 +184,24 @@ def _bool_str(value: object) -> str:
     return "true" if value else "false"
 
 
+def _verify_named_block_post_write(*, runner: Runner, marker: str, issue: str, repo: str) -> None:
+    """Re-read the issue body and require a parseable unfenced named block.
+
+    Fenced marker examples (decompose/split placeholders) are ignored by
+    ``parse_named_block``, matching /implement preflight. A write that leaves
+    only fenced markers must fail closed so /design cannot report success when
+    /implement would still see ``BLOCK_PRESENT=false`` (#7402, #7212).
+    """
+    verified_body = gh.issue_view_body(runner, issue, repo=repo)
+    inner, malformed = parse_named_block(body=verified_body, marker=marker)
+    if malformed:
+        raise ShipError(f"post-write-verify-malformed:{malformed}")
+    if inner is None:
+        raise ShipError("post-write-verify-missing")
+    if marker == "plan" and not inner.strip():
+        raise ShipError("post-write-verify-empty")
+
+
 def named_block_write(
     *, runner: Runner,
     marker: str,
@@ -214,6 +232,8 @@ def named_block_write(
         if content is None:
             msg = "content is required unless delete is true"
             raise ValueError(msg)
+        if marker == "plan" and not content.strip():
+            raise ShipError("empty-plan-content")
         block = compose_named_block(marker=marker, inner=content)
         if markers_present:
             _stripped, strip_malformed = strip_named_block(body=current_body, marker=marker)
@@ -237,6 +257,8 @@ def named_block_write(
     result = gh.issue_edit_body_with_retry(runner, issue, redacted_body, repo=repo)
     if result.returncode != 0:
         raise ShipError(_single_line_redacted(result.stdout + result.stderr))
+    if not delete:
+        _verify_named_block_post_write(runner=runner, marker=marker, issue=issue, repo=repo)
     return {
         "written": True,
         "mode": mode,
