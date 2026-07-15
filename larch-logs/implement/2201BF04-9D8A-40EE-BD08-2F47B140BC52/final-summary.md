@@ -9,25 +9,26 @@ Warnings (0):
 
 ## Architectural invariants
 
-The changed named-block write path adds pre-write empty-plan rejection and a post-edit re-read that fail-closes when the issue body still lacks a parseable unfenced block; none of the absolute invariants are violated by this integrity check or its tests.
+The named-block write path adds empty-plan rejection and a post-edit re-read that fails closed when the issue body still lacks a parseable unfenced block; none of the absolute invariants are violated by this integrity check or its tests.
 
 ## Architectural guidelines
 
-The shared `named_block_write` path rejects empty plan content before edit and re-reads the issue body after a successful mutation so a fenced-only or otherwise unparseable body cannot be reported as written; the new unit cases exercise append-over-fenced-placeholder success, post-write missing-block failure, and empty-content rejection. That matches fail-closed postcondition verification on the shared writer without a guideline deviation in the changed code.
+The shared named-block writer rejects empty plan content before edit and re-reads the issue body after a successful mutation so a fenced-only or unparseable body cannot be reported as written; the new unit cases cover append-over-fenced-placeholder success, post-write missing-block failure, and empty-content rejection, with no guideline deviation in the changed code.
 
-## /implement run 2201BF04-9D8A-40EE-BD08-2F47B140BC52: shipping
+## /implement run 2201BF04-9D8A-40EE-BD08-2F47B140BC52: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - Force: true
 - **Duration**: 00:23:55
-- **Cost**: 💰 TOTAL ~$0.22: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.22  |  Tokens: 126k
+- **Cost**: 💰 TOTAL ~$0.25: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.25  |  Tokens: 229k
 - **Issue**: #7402: https://github.com/character-ai/larch/issues/7402
+- **PR**: #7429: https://github.com/character-ai/larch/pull/7429
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +108/-1, larch-logs +196/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 0
