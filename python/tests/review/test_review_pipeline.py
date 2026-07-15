@@ -2434,7 +2434,7 @@ def test_reviewer_prune_record_plan_mode_ignores_body_severity_for_weight(tmp_pa
 
     _record_prune_classification(ledger, manifest, classification, 1, label_map=label_map)
 
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("Cursor-Arch\t1\t1\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("Cursor-Arch\t1\t1\t0\t1\ttrue")
 
 
 def test_reviewer_prune_filter_floor_uses_unweighted_accepted_with_high_severity(tmp_path: Path) -> None:
