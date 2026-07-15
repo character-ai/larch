@@ -16,7 +16,7 @@ import re
 import stat
 import sys
 import tokenize
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +33,42 @@ GIT_DIAGNOSTIC_MAX_CHARS = 200
 PYTHON_TREE_PREFIX = "python/"
 SyntaxPolicy = Literal["fail", "skip", "raise"]
 SourceFilter = Callable[[str], bool]
+_MARKDOWN_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^`~]*)$")
+
+
+@dataclass(frozen=True)
+class MarkdownLine:
+    """One Markdown line and the language of its enclosing fence, if any."""
+
+    number: int
+    text: str
+    language: str | None
+
+
+def fenced_markdown_lines(lines: Sequence[str]) -> Iterable[MarkdownLine]:
+    """Yield lines annotated with their active fenced-code-block language."""
+    marker: str | None = None
+    width = 0
+    language: str | None = None
+    for number, line in enumerate(lines, start=1):
+        match = _MARKDOWN_FENCE_RE.match(line)
+        if marker is None:
+            if match is not None:
+                token, info = match.groups()
+                marker = token[0]
+                width = len(token)
+                language = info.strip().split(maxsplit=1)[0].lower() if info.strip() else ""
+                yield MarkdownLine(number, line, None)
+                continue
+            yield MarkdownLine(number, line, None)
+            continue
+        if match is not None and match.group(1)[0] == marker and len(match.group(1)) >= width:
+            yield MarkdownLine(number, line, language)
+            marker = None
+            width = 0
+            language = None
+            continue
+        yield MarkdownLine(number, line, language)
 
 
 class ScanError(Exception):
