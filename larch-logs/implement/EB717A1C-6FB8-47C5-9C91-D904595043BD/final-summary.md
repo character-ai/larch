@@ -110,6 +110,12 @@ Warnings (44):
   36. `# type: ignore[arg-type] # kwargs typed as object to forward to _rule without re-declaring every field`
   37. `# type: ignore[reportPrivateUsage] # importing test-internal helpers from sibling test module`
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+The changed code is confined to the lint engine baseline codec, the markdown-heading-fence-state rule refactor, and their tests. None of these changes touch workflow gates, pause/resume snapshots, persisted step-result consumers, run-log flush paths, panel slot accounting, agent verdict dispatch, or ship/recovery routes. All nine invariants are unimplicated.
+
 ## Architectural guidelines
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
@@ -120,7 +126,7 @@ All previously noted issues were resolved: exit codes now use the named constant
 
 - **Outcome**: shipping
 - **Duration**: 01:03:27
-- **Cost**: 💰 TOTAL ~$34.98: Claude $5.41, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 47861k
+- **Cost**: 💰 TOTAL ~$35.82: Claude $6.25, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 49236k
 - **Issue**: #6989: https://github.com/character-ai/larch/issues/6989
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
