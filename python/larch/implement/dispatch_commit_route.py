@@ -1241,7 +1241,14 @@ def _step4_pathspec_with_step3_self_edits(
         and record.path in dirty_paths
         and not Path(record.path).is_absolute()
         and ".." not in Path(record.path).parts
-        and file_sha256(repo_root, record.path) == record.post_sha256
+        # A green Step 3 re-entry may regenerate a known generated file after
+        # lint-fix recorded its digest. The configured allowlist is the
+        # independent evidence that this stale digest remains safe to absorb;
+        # all other paths still require an exact attribution digest.
+        and (
+            file_sha256(repo_root, record.path) == record.post_sha256
+            or record.path in config.REBASE_AUTORESOLVE_GENERATED_FILES
+        )
     }
     paths = sorted(set(_read_nul_pathspec(pathspec)) | self_edit_paths)
     if not self_edit_paths:
