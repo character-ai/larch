@@ -1,0 +1,23 @@
+### FINDING_1: Structure pins reject three-field registry rows
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Concern**: Structure-pin tests still match two-field `_REGISTRY` rows, so the planned three-field migration can fail structure and full test suites despite correct implementation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `### UPDATED: python/tests/skills/skill_structure_pins.py` and `### UPDATED: python/tests/skills/_structure_implement_specialized.py` to relax or extend needles for three-tuples (for example allow an optional trailing `, True`/`False`) while keeping module/function checks
+  - From Cursor-Innovation: Add both skill-structure files to the firm plan and update pins to accept the third boolean field without dropping module/function checks.
+
+### FINDING_2: Update `_REGISTRY` type annotation
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The plan changes `_REGISTRY` values to three-tuples but does not explicitly update its type annotation, potentially causing strict pyright failures.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Explicitly update the `_REGISTRY` annotation to `dict[tuple[str, str], tuple[str, str, bool]]` in the cli.py section alongside the value migration
+  - From Cursor-Innovation: Include the annotation change explicitly in the `python/larch/cli.py` section.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: minor
+- **Focus area**: code-quality
+- **Location**: plan.txt:Testing strategy
+- **Concern**: [SCOPE-REDUCTION] Remove `make py-test` from the validation plan. Scenario: The focused changed-file suites already cover this registry change; the repository instructs contributors to test only changed files and reserves the full sweep for CI.
+- **Proposed resolution**: Delete the `make py-test` step.
