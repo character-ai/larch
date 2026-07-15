@@ -1,8 +1,10 @@
 """Python CLI entrypoint for /design publish."""
+# pylint: disable=cyclic-import  # accepted: function-level import of design_log_publish_flow for in-process run_log_publish; flow imports this module for assessment checks and transcript capture.
 
 from __future__ import annotations
 
 import contextlib
+import io
 import os
 import re
 import subprocess
@@ -23,7 +25,9 @@ from larch.git.repo_roots import consumer_repo_root
 
 
 @dataclass(frozen=True)
-class _TranscriptCaptureContext:
+class TranscriptCaptureContext:
+    """Inputs for design-session transcript capture before committed log publish."""
+
     design_tmpdir: Path
     plugin_root: Path
     session_id: str
@@ -419,7 +423,7 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
     _ = _write_result_env(path=result_env, rows=kvs)
 
 
-def _check_invariant_assessment_completeness(
+def check_invariant_assessment_completeness(
     *,
     design_tmpdir: Path,
     repo_root: Path,
@@ -459,7 +463,7 @@ def _check_invariant_assessment_completeness(
     )
 
 
-def _check_guideline_assessment_completeness(
+def check_guideline_assessment_completeness(
     *,
     design_tmpdir: Path,
     repo_root: Path,
@@ -714,7 +718,7 @@ def _materialize_claude_source_snapshot(
     )
 
 
-def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Path, snapshot: Path, session_id: str) -> bool:
+def _refresh_design_source_env(*, ctx: TranscriptCaptureContext, source_env: Path, snapshot: Path, session_id: str) -> bool:
     result = proc.run(
         [
             sys.executable,
@@ -748,7 +752,7 @@ def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Pa
     return False
 
 
-def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # pyright: ignore[reportUnusedFunction]  # used by design_log_publish_flow
+def capture_design_transcript(*, ctx: TranscriptCaptureContext) -> bool:
     """Capture and hoist a design session transcript before committed log publish.
 
     Returns False only for publish-blocking hygiene failures. Capture skip statuses
@@ -841,43 +845,43 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
 
 def _run_log_publish_after_capture(
     *,
-    ctx: _TranscriptCaptureContext,
+    ctx: TranscriptCaptureContext,
     kvs: list[tuple[str, str]],
     result_env: Path,
     outcome: str,
     write_result_env_on_publish_failure: bool = True,
 ) -> int | None:
-    publish = proc.run(
-        [
-            sys.executable,
-            str(ctx.plugin_root / "python" / "cli.py"),
-            "design",
-            "log-publish",
-            "--design-tmpdir",
-            str(ctx.design_tmpdir),
-            "--run-id",
-            ctx.session_id,
-            "--issue",
-            ctx.issue,
-            "--outcome",
-            outcome,
-            *(["--repo", ctx.repo] if ctx.repo else []),
-        ],
-    )
+    # Break the design_publish <-> design_log_publish_flow import cycle at the call site.
+    from larch.design import design_log_publish_flow  # noqa: PLC0415 - cycle with design_log_publish_flow
+
+    # Redirect stdout too: the prior subprocess path swallowed log-publish stdout.
+    _stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    with contextlib.redirect_stdout(_stdout_buf), contextlib.redirect_stderr(stderr_buf):
+        result = design_log_publish_flow.run_log_publish(
+            design_log_publish_flow.LogPublishRequest(
+                design_tmpdir=ctx.design_tmpdir,
+                run_id=ctx.session_id,
+                issue=ctx.issue,
+                repo=ctx.repo,
+                outcome=outcome,
+                plugin_root=ctx.plugin_root,
+            )
+        )
     _write_bounded_phase_stderr(
         design_tmpdir=ctx.design_tmpdir,
         filename=config.DESIGN_PUBLISH_LOG_STDERR_FILE,
-        text=publish.stderr or "",
+        text=stderr_buf.getvalue(),
     )
-    publish_kv = _parse_kv(publish.stdout)
-    if "PUBLISH_OK" in publish_kv:
-        kvs.append(("PUBLISH_OK", publish_kv["PUBLISH_OK"]))
-    for key in ("PR_NUMBER", "PR_URL", "RECOVERY_BRANCH"):
-        if publish_kv.get(key):
-            kvs.append((key, publish_kv[key]))
-            if key == "RECOVERY_BRANCH":
-                kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
-    if publish.returncode != 0 and not publish_kv.get("RECOVERY_BRANCH"):
+    kvs.append(("PUBLISH_OK", "true" if result.publish_ok else "false"))
+    if result.pr_number:
+        kvs.append(("PR_NUMBER", result.pr_number))
+    if result.pr_url:
+        kvs.append(("PR_URL", result.pr_url))
+    if result.recovery_branch:
+        kvs.append(("RECOVERY_BRANCH", result.recovery_branch))
+        kvs.append(("LOG_RECOVERY_BRANCH", result.recovery_branch))
+    if result.exit_code != 0 and not result.recovery_branch:
         _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
         if write_result_env_on_publish_failure:
             _emit_rows(kvs)
@@ -886,7 +890,7 @@ def _run_log_publish_after_capture(
             except OSError as exc:
                 print(str(exc), file=sys.stderr)
         return 5
-    scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
+    scrub_violations = result.secret_scrub_violations or "0"
     if scrub_violations.isdigit() and int(scrub_violations) > 0:
         print(
             f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
@@ -895,7 +899,7 @@ def _run_log_publish_after_capture(
             "and check chat/PRs for the same value.**",
             flush=True,
         )
-    if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
+    if result.exit_code == 0 and not result.publish_ok:
         if write_result_env_on_publish_failure:
             _emit_rows(kvs)
             return 0 if _write_result_env(path=result_env, rows=kvs) else 3
@@ -972,7 +976,7 @@ def _stage_failed_plan_write(
 def _finalize_failed_plan_write(
     *,
     design_tmpdir: Path,
-    transcript_capture: _TranscriptCaptureContext | None,
+    transcript_capture: TranscriptCaptureContext | None,
     kvs: list[tuple[str, str]],
     result_env: Path,
 ) -> int:
@@ -1171,7 +1175,7 @@ def publish_core(argv: Sequence[str]) -> int:
         if validate.returncode != 0 or dict(kvs).get("VALIDATE_STATUS") != "ok":
             return 5
 
-    invariant_completeness = _check_invariant_assessment_completeness(
+    invariant_completeness = check_invariant_assessment_completeness(
         design_tmpdir=design_tmpdir,
         repo_root=repo_root_arg,
         outcome="approved",
@@ -1195,7 +1199,7 @@ def publish_core(argv: Sequence[str]) -> int:
         )
         return 4
 
-    completeness = _check_guideline_assessment_completeness(
+    completeness = check_guideline_assessment_completeness(
         design_tmpdir=design_tmpdir,
         repo_root=repo_root_arg,
         outcome="approved",
@@ -1250,7 +1254,7 @@ def publish_core(argv: Sequence[str]) -> int:
     )
     if block.returncode != 0:
         transcript_capture = (
-            _TranscriptCaptureContext(
+            TranscriptCaptureContext(
                 design_tmpdir=design_tmpdir,
                 plugin_root=plugin_root,
                 session_id=parsed["--session-id"],
@@ -1425,7 +1429,7 @@ def publish_core(argv: Sequence[str]) -> int:
         _replace_kv(rows=kvs, key="LOG_PUBLISH_ATTEMPTED", value="true")
         _checkpoint_result_env(path=result_env, rows=kvs, phase="log-publish")
         publish_rc = _run_log_publish_after_capture(
-            ctx=_TranscriptCaptureContext(
+            ctx=TranscriptCaptureContext(
                 design_tmpdir=design_tmpdir,
                 plugin_root=plugin_root,
                 session_id=parsed["--session-id"],

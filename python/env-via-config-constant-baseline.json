@@ -369,15 +369,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_log_publish_flow.py",
-    "qualified_symbol": "log_publish_main",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "larch/design/design_oos.py",
     "qualified_symbol": "_issue_number_from",
     "env_name": "ISSUE_NUMBER",

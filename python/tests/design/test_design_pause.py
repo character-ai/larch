@@ -331,7 +331,7 @@ def test_pause_save_uses_real_log_publish_path(
     monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
-        "_capture_design_transcript",
+        "capture_design_transcript",
         fake_capture_design_transcript,
     )  # type: ignore[attr-defined]
     monkeypatch.setattr(

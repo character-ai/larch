@@ -211,7 +211,7 @@ def test_log_publish_captures_transcript_before_publish(
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
-        "_capture_design_transcript",
+        "capture_design_transcript",
         fake_capture,
     )
     monkeypatch.setattr(
@@ -268,7 +268,7 @@ def test_log_publish_capture_failure_skips_publish(
 
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
-        "_capture_design_transcript",
+        "capture_design_transcript",
         fake_capture,
     )
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
@@ -302,7 +302,7 @@ def test_log_publish_approved_missing_invariant_assessment_records_warning(
     design.mkdir()
     published = False
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
@@ -344,7 +344,7 @@ def test_log_publish_approved_missing_invariant_assessment_does_not_follow_marke
     _ = protected.write_text("keep\n", encoding="utf-8")
     (design / ".missing-invariant-assessment-warning").symlink_to(protected)
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         design_log_publish_flow,
@@ -378,7 +378,7 @@ def test_log_publish_invariant_assessment_present_suppresses_warning(
     design.mkdir()
     _ = (design / "architectural-invariant-assessment.md").write_text("clean\n", encoding="utf-8")
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         design_log_publish_flow,
@@ -411,7 +411,7 @@ def test_log_publish_empty_invariants_do_not_warn(
     design = tmp_path / "design"
     design.mkdir()
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         design_log_publish_flow,
@@ -445,7 +445,7 @@ def test_log_publish_approved_missing_guideline_assessment_records_warning(
     design.mkdir()
     published = False
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
@@ -487,7 +487,7 @@ def test_log_publish_approved_missing_guideline_assessment_does_not_follow_marke
     _ = protected.write_text("keep\n", encoding="utf-8")
     (design / ".missing-guideline-assessment-warning").symlink_to(protected)
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         design_log_publish_flow,
@@ -521,7 +521,7 @@ def test_log_publish_guideline_assessment_present_suppresses_warning(
     design.mkdir()
     _ = (design / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         design_log_publish_flow,
@@ -564,13 +564,13 @@ def test_log_publish_capture_skip_still_publishes_pause(
 
     def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
         request = kwargs["request"]
-        assert isinstance(request, design_log_publish_flow._PublishDesignLogsRequest)
+        assert isinstance(request, design_log_publish_flow.PublishDesignLogsRequest)
         reasons.append(request.run_id)
         return (True, "", "", "", "0")
 
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
-        "_capture_design_transcript",
+        "capture_design_transcript",
         fake_capture,
     )
     monkeypatch.setattr(
@@ -710,7 +710,7 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
-        "_capture_design_transcript",
+        "capture_design_transcript",
         fake_capture,
     )
     monkeypatch.setattr(
@@ -797,7 +797,7 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
-        "_capture_design_transcript",
+        "capture_design_transcript",
         fake_capture,
     )
     monkeypatch.setattr(
@@ -1400,7 +1400,7 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
         design_log_publish_flow.SecretScrubFailure, match="run-log commit"
     ):
         _ = design_log_publish_flow._publish_design_logs(
-            request=design_log_publish_flow._PublishDesignLogsRequest(
+            request=design_log_publish_flow.PublishDesignLogsRequest(
                 plugin_root=tmp_path,
                 design_tmpdir=design,
                 run_id="RUN1",

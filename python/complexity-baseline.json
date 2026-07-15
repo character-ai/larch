@@ -1570,7 +1570,7 @@
   {
     "file": "larch/design/design_log_publish_flow.py",
     "code": "C901",
-    "qualified_symbol": "log_publish_main",
+    "qualified_symbol": "run_log_publish",
     "metric": 21,
     "added_at": "legacy",
     "history": []
@@ -1586,7 +1586,7 @@
   {
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0911",
-    "qualified_symbol": "log_publish_main",
+    "qualified_symbol": "run_log_publish",
     "metric": 15,
     "added_at": "legacy",
     "history": []
@@ -1610,7 +1610,7 @@
   {
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0912",
-    "qualified_symbol": "log_publish_main",
+    "qualified_symbol": "run_log_publish",
     "metric": 20,
     "added_at": "legacy",
     "history": []
@@ -1626,7 +1626,7 @@
   {
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0915",
-    "qualified_symbol": "log_publish_main",
+    "qualified_symbol": "run_log_publish",
     "metric": 82,
     "added_at": "legacy",
     "history": []
