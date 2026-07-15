@@ -1,4 +1,5 @@
 """Python CLI entrypoint for /design publish."""
+# pylint: disable=cyclic-import  # accepted: function-level import of design_log_publish_flow for in-process run_log_publish; flow imports this module for assessment checks and transcript capture.
 
 from __future__ import annotations
 
