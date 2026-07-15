@@ -16,14 +16,59 @@ import pytest
 
 from larch.calibration import difficulty
 from larch.core import config
+from larch.design import design_log_publish_flow
 from larch.design import design_publish
 from larch.design import design_step5c
 from tests.support.design_wire import diff_lines_trailer, plan_body, write_result_env
 
 
+def _log_publish_result_from_env() -> design_log_publish_flow.LogPublishResult:
+    """Mirror the former fake-cli design log-publish env contract for in-process stubs."""
+    rc = int(os.environ.get("FAKE_CLI_LOG_PUBLISH_RC", "0"))
+    if os.environ.get("FAKE_CLI_LOG_PUBLISH_PARTIAL") == "1":
+        return design_log_publish_flow.LogPublishResult(publish_ok=False, exit_code=rc)
+    ok = os.environ.get("FAKE_CLI_LOG_PUBLISH_OK", "true") == "true"
+    pr_number = ""
+    pr_url = ""
+    if os.environ.get("FAKE_CLI_LOG_PUBLISH_PR", "1") == "1":
+        pr_number = "99"
+        pr_url = "https://github.com/owner/repo/pull/99"
+    recovery = os.environ.get("FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH", "")
+    scrub = os.environ.get("FAKE_CLI_SCRUB_VIOLATIONS")
+    return design_log_publish_flow.LogPublishResult(
+        publish_ok=ok,
+        exit_code=rc,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        recovery_branch=recovery,
+        secret_scrub_violations=scrub,
+    )
+
+
+def _install_log_publish_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[design_log_publish_flow.LogPublishRequest]:
+    calls: list[design_log_publish_flow.LogPublishRequest] = []
+
+    def stub(
+        request: design_log_publish_flow.LogPublishRequest,
+    ) -> design_log_publish_flow.LogPublishResult:
+        calls.append(request)
+        return _log_publish_result_from_env()
+
+    monkeypatch.setattr(design_log_publish_flow, "run_log_publish", stub)
+    return calls
+
+
 @pytest.fixture(autouse=True)
 def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _stub_inprocess_log_publish(monkeypatch: pytest.MonkeyPatch) -> list[design_log_publish_flow.LogPublishRequest]:  # pyright: ignore[reportUnusedFunction]
+    """Stub in-process log-publish so design publish tests never hit real git publish."""
+    return _install_log_publish_stub(monkeypatch)
 
 
 def _write_fake_cli(path: Path) -> None:
@@ -360,6 +405,8 @@ raise SystemExit(0)
 def _run_publish_with_fake_cli(
     tmp_path: Path,
     env_overrides: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
@@ -368,16 +415,11 @@ def _run_publish_with_fake_cli(
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    env.update(env_overrides)
-    result = subprocess.run(
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    for key, value in env_overrides.items():
+        monkeypatch.setenv(key, value)
+    rc = design_publish.publish_core(
         [
-            sys.executable,
-            str(cli_py),
-            "design",
-            "publish",
             "--design-tmpdir",
             str(design),
             "--issue",
@@ -386,11 +428,14 @@ def _run_publish_with_fake_cli(
             "RUN1",
             "--claude-pid",
             "11",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+        ]
+    )
+    captured = capsys.readouterr()
+    result = subprocess.CompletedProcess(
+        args=["design", "publish"],
+        returncode=rc,
+        stdout=captured.out,
+        stderr=captured.err,
     )
     return result, design
 
@@ -608,7 +653,7 @@ def test_publish_invariant_assessment_required_for_approved_partition(
     repo = _git_repo_with_invariants(tmp_path, monkeypatch)
     _plugin_root, design = _minimal_publish_design(tmp_path)
 
-    completeness = design_publish._check_invariant_assessment_completeness(
+    completeness = design_publish.check_invariant_assessment_completeness(
         design_tmpdir=design,
         repo_root=repo,
         outcome="approved-partition",
@@ -1242,7 +1287,11 @@ def test_publish_reports_missing_script_count_from_validate_log(tmp_path: Path) 
     assert "VALIDATE_MISSING_SCRIPT_COUNT=2" in result_env
 
 
-def test_publish_success_writes_result_env(tmp_path: Path) -> None:
+def test_publish_success_writes_result_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
@@ -1250,15 +1299,9 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    result = subprocess.run(
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    rc = design_publish.publish_core(
         [
-            sys.executable,
-            str(cli_py),
-            "design",
-            "publish",
             "--design-tmpdir",
             str(design),
             "--issue",
@@ -1269,22 +1312,23 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
             "11",
             "--repo",
             "owner/repo",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+        ]
     )
-    assert result.returncode == 0
-    assert "PLAN_WRITE_OK=true" in result.stdout
-    assert "PUBLISH_OK=true" in result.stdout
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "PLAN_WRITE_OK=true" in out
+    assert "PUBLISH_OK=true" in out
     composed = (design / "composed-plan.md").read_text(encoding="utf-8")
     assert "review_status:" not in composed.split("diff_lines:")[0]
     result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert "PR_NUMBER=99" in result_env
 
 
-def test_publish_suppresses_named_block_stdout_noise(tmp_path: Path) -> None:
+def test_publish_suppresses_named_block_stdout_noise(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
@@ -1292,17 +1336,10 @@ def test_publish_suppresses_named_block_stdout_noise(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    env["FAKE_CLI_NAMED_BLOCK_STDOUT"] = "NAMED_BLOCK_STDOUT_SENTINEL"
-
-    result = subprocess.run(
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("FAKE_CLI_NAMED_BLOCK_STDOUT", "NAMED_BLOCK_STDOUT_SENTINEL")
+    rc = design_publish.publish_core(
         [
-            sys.executable,
-            str(cli_py),
-            "design",
-            "publish",
             "--design-tmpdir",
             str(design),
             "--issue",
@@ -1311,17 +1348,13 @@ def test_publish_suppresses_named_block_stdout_noise(tmp_path: Path) -> None:
             "RUN1",
             "--claude-pid",
             "11",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+        ]
     )
-
-    assert result.returncode == 0, result.stderr
-    assert "NAMED_BLOCK_STDOUT_SENTINEL" not in result.stdout
-    assert "PLAN_WRITE_OK=true" in result.stdout
-    assert "PUBLISH_OK=true" in result.stdout
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NAMED_BLOCK_STDOUT_SENTINEL" not in out
+    assert "PLAN_WRITE_OK=true" in out
+    assert "PUBLISH_OK=true" in out
 
 
 def test_publish_present_empty_session_id_skips_log_publish(tmp_path: Path) -> None:
@@ -1813,7 +1846,11 @@ def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None
     assert "PLAN_WRITE_OK=true" in result.stdout
 
 
-def test_publish_warns_rotate_on_secret_scrub_violations(tmp_path: Path) -> None:
+def test_publish_warns_rotate_on_secret_scrub_violations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     # A non-zero SECRET_SCRUB_VIOLATIONS from log-publish means a secret-shaped
     # value was scrubbed from the committed design logs; the publish tail must warn
     # the operator to rotate the exposed credential (#4782).
@@ -1824,16 +1861,10 @@ def test_publish_warns_rotate_on_secret_scrub_violations(tmp_path: Path) -> None
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    env["FAKE_CLI_SCRUB_VIOLATIONS"] = "2"
-    result = subprocess.run(
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("FAKE_CLI_SCRUB_VIOLATIONS", "2")
+    rc = design_publish.publish_core(
         [
-            sys.executable,
-            str(cli_py),
-            "design",
-            "publish",
             "--design-tmpdir",
             str(design),
             "--issue",
@@ -1842,19 +1873,20 @@ def test_publish_warns_rotate_on_secret_scrub_violations(tmp_path: Path) -> None
             "RUN1",
             "--claude-pid",
             "11",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+        ]
     )
-    assert result.returncode == 0, result.stderr
-    assert "ROTATE it now" in result.stdout
-    assert "redacted 2 secret-shaped value(s)" in result.stdout
-    assert "PLAN_WRITE_OK=true" in result.stdout
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ROTATE it now" in out
+    assert "redacted 2 secret-shaped value(s)" in out
+    assert "PLAN_WRITE_OK=true" in out
 
 
-def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
+def test_publish_no_rotate_warning_when_zero_violations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     # Zero violations (the common case) emits no rotate warning (#4782).
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
@@ -1863,16 +1895,10 @@ def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    env = os.environ.copy()
-    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    env["FAKE_CLI_SCRUB_VIOLATIONS"] = "0"
-    result = subprocess.run(
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("FAKE_CLI_SCRUB_VIOLATIONS", "0")
+    rc = design_publish.publish_core(
         [
-            sys.executable,
-            str(cli_py),
-            "design",
-            "publish",
             "--design-tmpdir",
             str(design),
             "--issue",
@@ -1881,17 +1907,18 @@ def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
             "RUN1",
             "--claude-pid",
             "11",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+        ]
     )
-    assert result.returncode == 0, result.stderr
-    assert "ROTATE it now" not in result.stdout
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ROTATE it now" not in out
 
 
-def test_publish_scrub_failure_explicit_kvs_returns_rc5_without_rotate_warning(tmp_path: Path) -> None:
+def test_publish_scrub_failure_explicit_kvs_returns_rc5_without_rotate_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     result, design = _run_publish_with_fake_cli(
         tmp_path,
         {
@@ -1899,6 +1926,8 @@ def test_publish_scrub_failure_explicit_kvs_returns_rc5_without_rotate_warning(t
             "FAKE_CLI_LOG_PUBLISH_OK": "false",
             "FAKE_CLI_SCRUB_VIOLATIONS": "2",
         },
+        monkeypatch,
+        capsys,
     )
 
     assert result.returncode == 5
@@ -1908,13 +1937,19 @@ def test_publish_scrub_failure_explicit_kvs_returns_rc5_without_rotate_warning(t
     assert 5 not in {0, 1, 3, 4}
 
 
-def test_publish_scrub_failure_partial_stdout_returns_rc5(tmp_path: Path) -> None:
+def test_publish_scrub_failure_partial_stdout_returns_rc5(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     result, _design = _run_publish_with_fake_cli(
         tmp_path,
         {
             "FAKE_CLI_LOG_PUBLISH_RC": "1",
             "FAKE_CLI_LOG_PUBLISH_PARTIAL": "1",
         },
+        monkeypatch,
+        capsys,
     )
 
     assert result.returncode == 5
@@ -1922,7 +1957,11 @@ def test_publish_scrub_failure_partial_stdout_returns_rc5(tmp_path: Path) -> Non
     assert "ROTATE it now" not in result.stdout
 
 
-def test_publish_recoverable_non_push_failure_returns_zero_without_rotate_warning(tmp_path: Path) -> None:
+def test_publish_recoverable_non_push_failure_returns_zero_without_rotate_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     result, design = _run_publish_with_fake_cli(
         tmp_path,
         {
@@ -1930,6 +1969,8 @@ def test_publish_recoverable_non_push_failure_returns_zero_without_rotate_warnin
             "FAKE_CLI_LOG_PUBLISH_PR": "0",
             "FAKE_CLI_SCRUB_VIOLATIONS": "0",
         },
+        monkeypatch,
+        capsys,
     )
 
     assert result.returncode == 0, result.stderr
@@ -1939,13 +1980,19 @@ def test_publish_recoverable_non_push_failure_returns_zero_without_rotate_warnin
     assert "PUBLISH_OK=false" in result_env
 
 
-def test_publish_recoverable_push_or_pr_failure_returns_zero_with_recovery_branch(tmp_path: Path) -> None:
+def test_publish_recoverable_push_or_pr_failure_returns_zero_with_recovery_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     result, _design = _run_publish_with_fake_cli(
         tmp_path,
         {
             "FAKE_CLI_LOG_PUBLISH_OK": "false",
             "FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH": "larch-logs/design-RUN1",
         },
+        monkeypatch,
+        capsys,
     )
 
     assert result.returncode == 0, result.stderr
@@ -1955,7 +2002,11 @@ def test_publish_recoverable_push_or_pr_failure_returns_zero_with_recovery_branc
     assert "ROTATE it now" not in result.stdout
 
 
-def test_publish_recoverable_failure_still_warns_rotate_on_scrub_violations(tmp_path: Path) -> None:
+def test_publish_recoverable_failure_still_warns_rotate_on_scrub_violations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     result, _design = _run_publish_with_fake_cli(
         tmp_path,
         {
@@ -1963,6 +2014,8 @@ def test_publish_recoverable_failure_still_warns_rotate_on_scrub_violations(tmp_
             "FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH": "larch-logs/design-RUN1",
             "FAKE_CLI_SCRUB_VIOLATIONS": "1",
         },
+        monkeypatch,
+        capsys,
     )
 
     assert result.returncode == 0, result.stderr
@@ -2293,7 +2346,11 @@ def test_publish_checkpoint_failure_propagates_instead_of_using_stale_state(
             "--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11",
         ])
 
-def _run_publish_capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+def test_publish_delegates_to_log_publish_without_inline_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _stub_inprocess_log_publish: list[design_log_publish_flow.LogPublishRequest],
+) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
@@ -2301,29 +2358,16 @@ def _run_publish_capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> 
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
-    transcript = tmp_path / "transcript.jsonl"
-    transcript.write_text('{"type":"user"}\n', encoding="utf-8")
-    session_dir = tmp_path / "session"
-    session_dir.mkdir()
-    call_log = tmp_path / "calls.jsonl"
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    env = os.environ.copy()
-    env.update(
-        {
-            "CLAUDE_PLUGIN_ROOT": str(plugin_root),
-            "FAKE_CLI_CALL_LOG": str(call_log),
-            "FAKE_CLI_TRANSCRIPT_PATH": str(transcript),
-            "FAKE_CLI_SESSION_DIR": str(session_dir),
-        }
-    )
-    env.update(env_overrides)
-    result = subprocess.run(
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    capture_calls: list[object] = []
+
+    def fail_if_inline_capture(**_kwargs: object) -> bool:
+        capture_calls.append(_kwargs)
+        raise AssertionError("publish must not capture transcripts inline")
+
+    monkeypatch.setattr(design_publish, "capture_design_transcript", fail_if_inline_capture)
+    rc = design_publish.publish_core(
         [
-            sys.executable,
-            str(cli_py),
-            "design",
-            "publish",
             "--design-tmpdir",
             str(design),
             "--issue",
@@ -2332,30 +2376,14 @@ def _run_publish_capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> 
             "RUN1",
             "--claude-pid",
             "11",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
+        ]
     )
-    return result, design, call_log
 
-
-def _call_args(call_log: Path) -> list[list[str]]:
-    return [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
-
-
-def test_publish_delegates_to_log_publish_without_inline_capture(tmp_path: Path) -> None:
-    result, design, call_log = _run_publish_capture_case(tmp_path, {})
-
-    assert result.returncode == 0, result.stderr
+    assert rc == 0
     assert not (design / "session-transcript.jsonl").exists()
-    calls = _call_args(call_log)
-    log_publish_calls = [args for args in calls if args[:2] == ["design", "log-publish"]]
-    assert log_publish_calls
-    assert log_publish_calls[0][log_publish_calls[0].index("--outcome") + 1] == "approved"
-    assert all(args[:2] != ["run-log", "capture-transcript"] for args in calls)
-    assert all(args[:2] != ["token", "claude-source"] for args in calls)
+    assert not capture_calls
+    assert _stub_inprocess_log_publish
+    assert _stub_inprocess_log_publish[0].outcome == "approved"
 
 
 def test_publish_capture_does_not_read_session_env(tmp_path: Path) -> None:
@@ -2406,8 +2434,8 @@ def _capture_case(
     )
     os.environ.update(env_overrides)
     try:
-        ok = design_publish._capture_design_transcript(
-            ctx=design_publish._TranscriptCaptureContext(
+        ok = design_publish.capture_design_transcript(
+            ctx=design_publish.TranscriptCaptureContext(
                 design_tmpdir=design,
                 plugin_root=plugin_root,
                 session_id="RUN1",
@@ -2421,6 +2449,10 @@ def _capture_case(
         os.environ.clear()
         os.environ.update(old_env)
     return ok, design, call_log
+
+
+def _call_args(call_log: Path) -> list[list[str]]:
+    return [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
 
 
 def test_capture_design_transcript_persists_source_and_hoists(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2474,8 +2506,8 @@ def test_capture_aborts_when_stale_root_removal_fails(tmp_path: Path) -> None:
     (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
     (design / "session-transcript.jsonl").mkdir()
 
-    ok = design_publish._capture_design_transcript(
-        ctx=design_publish._TranscriptCaptureContext(
+    ok = design_publish.capture_design_transcript(
+        ctx=design_publish.TranscriptCaptureContext(
             design_tmpdir=design,
             plugin_root=plugin_root,
             session_id="RUN1",
@@ -2499,8 +2531,8 @@ def test_capture_session_id_drift_uses_warning_label(tmp_path: Path) -> None:
     design.mkdir()
     (design / "source-env.sh").write_text("SESSION_ID=OLD-RUN\n", encoding="utf-8")
 
-    ok = design_publish._capture_design_transcript(
-        ctx=design_publish._TranscriptCaptureContext(
+    ok = design_publish.capture_design_transcript(
+        ctx=design_publish.TranscriptCaptureContext(
             design_tmpdir=design,
             plugin_root=plugin_root,
             session_id="RUN1",

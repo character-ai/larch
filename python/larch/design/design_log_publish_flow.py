@@ -15,8 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import redact
-from larch.core import proc
+from larch.core import config, proc, redact
 from larch.design import design_publish
 from larch.git import gh
 from larch.design.design_summary import resolve_summary_mode
@@ -34,7 +33,9 @@ class SecretScrubFailure(RuntimeError):
 
 
 @dataclass(frozen=True)
-class _PublishDesignLogsRequest:
+class PublishDesignLogsRequest:
+    """Inputs for committing a design run tree onto a dedicated log branch."""
+
     plugin_root: Path
     design_tmpdir: Path
     run_id: str
@@ -43,8 +44,45 @@ class _PublishDesignLogsRequest:
     include_completed: bool = False
 
 
+@dataclass(frozen=True)
+class LogPublishRequest:
+    """Typed inputs for committed /design log-publish (CLI and in-process)."""
+
+    design_tmpdir: Path
+    run_id: str
+    issue: str
+    repo: str = ""
+    reason: str = "final"
+    outcome: str = ""
+    dry_run: bool = False
+    plugin_root: Path | None = None
+
+
+@dataclass(frozen=True)
+class LogPublishResult:
+    """Result of :func:`run_log_publish`; CLI emitters preserve the KV grammar."""
+
+    publish_ok: bool
+    exit_code: int = 0
+    pr_number: str = ""
+    pr_url: str = ""
+    recovery_branch: str = ""
+    secret_scrub_violations: str | None = None
+
+
 def _emit(*, k: str, v: str) -> None:
     print(f"{k}={v}")
+
+
+def emit_log_publish_result(result: LogPublishResult) -> None:
+    """Emit the existing log-publish KEY=value stdout grammar once per result."""
+    _emit(k="PUBLISH_OK", v="true" if result.publish_ok else "false")
+    _emit(k="PR_NUMBER", v=result.pr_number)
+    _emit(k="PR_URL", v=result.pr_url)
+    if result.recovery_branch:
+        _emit(k="RECOVERY_BRANCH", v=result.recovery_branch)
+    if result.secret_scrub_violations is not None:
+        _emit(k="SECRET_SCRUB_VIOLATIONS", v=result.secret_scrub_violations)
 
 
 def _validate_repo(value: str) -> bool:
@@ -338,7 +376,7 @@ def _design_log_worktree_parent(design_tmpdir: Path) -> Path:
 
 
 def _publish_design_logs(
-    *, request: _PublishDesignLogsRequest
+    *, request: PublishDesignLogsRequest
 ) -> tuple[bool, str, str, str, str]:
     """Commit the design run tree on a dedicated branch via a disposable worktree, push it, and open a PR.
 
@@ -531,7 +569,7 @@ def _record_missing_invariant_assessment_warning(
 ) -> None:
     if repo_root is None:
         return
-    completeness = design_publish._check_invariant_assessment_completeness(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001 - degraded publish shares Step 5c gate
+    completeness = design_publish.check_invariant_assessment_completeness(
         design_tmpdir=design_tmpdir,
         repo_root=repo_root,
         outcome=outcome,
@@ -563,7 +601,7 @@ def _record_missing_guideline_assessment_warning(
 ) -> None:
     if repo_root is None:
         return
-    completeness = design_publish._check_guideline_assessment_completeness(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001 - degraded publish shares Step 5c gate
+    completeness = design_publish.check_guideline_assessment_completeness(
         design_tmpdir=design_tmpdir,
         repo_root=repo_root,
         outcome=outcome,
@@ -615,6 +653,135 @@ def _render_final_summary_before_copy(
     )
 
 
+def _failed_publish_result(*, exit_code: int = 0, scrub: str | None = None) -> LogPublishResult:
+    return LogPublishResult(
+        publish_ok=False,
+        exit_code=exit_code,
+        secret_scrub_violations=scrub,
+    )
+
+
+def run_log_publish(request: LogPublishRequest) -> LogPublishResult:
+    """Publish committed /design logs in-process; callers emit KV via :func:`emit_log_publish_result`."""
+    design_tmpdir = request.design_tmpdir
+    if not design_tmpdir.is_dir():
+        return _failed_publish_result()
+    if not request.issue.isdigit() or request.issue == "0":
+        return _failed_publish_result()
+    if not _validate_slug(request.run_id):
+        return _failed_publish_result()
+    if request.repo and not _validate_repo(request.repo):
+        return _failed_publish_result(exit_code=1)
+    if request.reason not in {"final", "pause"}:
+        return _failed_publish_result()
+    warning_step_label = "5c" if request.reason == "final" else "pause"
+    outcome = request.outcome or _default_outcome_for_reason(request.reason)
+
+    if request.dry_run:
+        for cmd in ("git", "gh"):
+            if shutil.which(cmd) is None:
+                return _failed_publish_result()
+        repo_root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+        if not repo_root:
+            return _failed_publish_result()
+        dry_run_repo_root = Path(repo_root)
+        _record_missing_invariant_assessment_warning(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            repo_root=dry_run_repo_root,
+        )
+        _record_missing_guideline_assessment_warning(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            repo_root=dry_run_repo_root,
+        )
+        if not _render_final_summary_before_copy(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            issue=request.issue,
+            repo=request.repo,
+            run_id=request.run_id,
+        ):
+            print(
+                "design log-publish: final-summary render failed; continuing without stale summary",
+                file=sys.stderr,
+            )
+        _persist_metadata(
+            design_tmpdir=design_tmpdir, pr_number="", pr_url="", recovery_branch=""
+        )
+        return LogPublishResult(publish_ok=True, exit_code=0)
+
+    plugin_root = request.plugin_root or Path(
+        os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3])
+    )
+    repo_root = _repo_root_for_assessment_check()
+    capture_ctx = design_publish.TranscriptCaptureContext(
+        design_tmpdir=design_tmpdir,
+        plugin_root=plugin_root,
+        session_id=request.run_id,
+        issue=request.issue,
+        repo=request.repo,
+        claude_pid=os.environ.get("LARCH_CLAUDE_PID", "") or os.environ.get("PPID", ""),
+        warning_step_label=warning_step_label,
+    )
+    if not design_publish.capture_design_transcript(ctx=capture_ctx):
+        return _failed_publish_result()
+
+    _record_missing_invariant_assessment_warning(
+        design_tmpdir=design_tmpdir,
+        outcome=outcome,
+        repo_root=repo_root,
+    )
+    _record_missing_guideline_assessment_warning(
+        design_tmpdir=design_tmpdir,
+        outcome=outcome,
+        repo_root=repo_root,
+    )
+
+    if not _render_final_summary_before_copy(
+        design_tmpdir=design_tmpdir,
+        outcome=outcome,
+        issue=request.issue,
+        repo=request.repo,
+        run_id=request.run_id,
+    ):
+        print(
+            "design log-publish: final-summary render failed; continuing without stale summary",
+            file=sys.stderr,
+        )
+
+    try:
+        publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = (
+            _publish_design_logs(
+                request=PublishDesignLogsRequest(
+                    plugin_root=plugin_root,
+                    design_tmpdir=design_tmpdir,
+                    run_id=request.run_id,
+                    issue=request.issue,
+                    repo=request.repo,
+                    include_completed=request.reason == "pause",
+                )
+            )
+        )
+    except SecretScrubFailure as exc:
+        print(f"design log-publish: secret scrub failed: {exc}", file=sys.stderr)
+        return _failed_publish_result(exit_code=1, scrub="0")
+    _persist_metadata(
+        design_tmpdir=design_tmpdir,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        recovery_branch=recovery_branch,
+    )
+    return LogPublishResult(
+        publish_ok=publish_ok,
+        exit_code=0,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        recovery_branch=recovery_branch,
+        secret_scrub_violations=scrub_violations,
+    )
+
+
 def log_publish_main(argv: Sequence[str]) -> int:
     args = list(argv)
     parsed = {
@@ -644,147 +811,19 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 1
     if not parsed["--design-tmpdir"] or not parsed["--run-id"] or not parsed["--issue"]:
         return 1
-    design_tmpdir = Path(parsed["--design-tmpdir"])
-    if not design_tmpdir.is_dir():
-        _emit(k="PUBLISH_OK", v="false")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        return 0
-    if not parsed["--issue"].isdigit() or parsed["--issue"] == "0":
-        _emit(k="PUBLISH_OK", v="false")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        return 0
-    if not _validate_slug(parsed["--run-id"]):
-        _emit(k="PUBLISH_OK", v="false")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        return 0
+    # Invalid --repo fails closed without KV rows (legacy CLI contract).
     if parsed["--repo"] and not _validate_repo(parsed["--repo"]):
         return 1
-    if parsed["--reason"] not in {"final", "pause"}:
-        _emit(k="PUBLISH_OK", v="false")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        return 0
-    warning_step_label = "5c" if parsed["--reason"] == "final" else "pause"
-    outcome = parsed["--outcome"] or _default_outcome_for_reason(parsed["--reason"])
-
-    if dry_run:
-        for cmd in ("git", "gh"):
-            if shutil.which(cmd) is None:
-                _emit(k="PUBLISH_OK", v="false")
-                _emit(k="PR_NUMBER", v="")
-                _emit(k="PR_URL", v="")
-                return 0
-        repo_root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
-        if not repo_root:
-            _emit(k="PUBLISH_OK", v="false")
-            _emit(k="PR_NUMBER", v="")
-            _emit(k="PR_URL", v="")
-            return 0
-        dry_run_repo_root = Path(repo_root)
-        _record_missing_invariant_assessment_warning(
-            design_tmpdir=design_tmpdir,
-            outcome=outcome,
-            repo_root=dry_run_repo_root,
-        )
-        _record_missing_guideline_assessment_warning(
-            design_tmpdir=design_tmpdir,
-            outcome=outcome,
-            repo_root=dry_run_repo_root,
-        )
-        if not _render_final_summary_before_copy(
-            design_tmpdir=design_tmpdir,
-            outcome=outcome,
+    result = run_log_publish(
+        LogPublishRequest(
+            design_tmpdir=Path(parsed["--design-tmpdir"]),
+            run_id=parsed["--run-id"],
             issue=parsed["--issue"],
             repo=parsed["--repo"],
-            run_id=parsed["--run-id"],
-        ):
-            print(
-                "design log-publish: final-summary render failed; continuing without stale summary",
-                file=sys.stderr,
-            )
-        _persist_metadata(
-            design_tmpdir=design_tmpdir, pr_number="", pr_url="", recovery_branch=""
+            reason=parsed["--reason"],
+            outcome=parsed["--outcome"],
+            dry_run=dry_run,
         )
-        _emit(k="PUBLISH_OK", v="true")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        return 0
-
-    plugin_root = Path(
-        os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3])
     )
-    repo_root = _repo_root_for_assessment_check()
-    capture_ctx = design_publish._TranscriptCaptureContext(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-        design_tmpdir=design_tmpdir,
-        plugin_root=plugin_root,
-        session_id=parsed["--run-id"],
-        issue=parsed["--issue"],
-        repo=parsed["--repo"],
-        claude_pid=os.environ.get("LARCH_CLAUDE_PID", "") or os.environ.get("PPID", ""),
-        warning_step_label=warning_step_label,
-    )
-    if not design_publish._capture_design_transcript(ctx=capture_ctx):  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-        _emit(k="PUBLISH_OK", v="false")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        return 0
-
-    _record_missing_invariant_assessment_warning(
-        design_tmpdir=design_tmpdir,
-        outcome=outcome,
-        repo_root=repo_root,
-    )
-    _record_missing_guideline_assessment_warning(
-        design_tmpdir=design_tmpdir,
-        outcome=outcome,
-        repo_root=repo_root,
-    )
-
-    if not _render_final_summary_before_copy(
-        design_tmpdir=design_tmpdir,
-        outcome=outcome,
-        issue=parsed["--issue"],
-        repo=parsed["--repo"],
-        run_id=parsed["--run-id"],
-    ):
-        print(
-            "design log-publish: final-summary render failed; continuing without stale summary",
-            file=sys.stderr,
-        )
-
-    try:
-        publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = (
-            _publish_design_logs(
-                request=_PublishDesignLogsRequest(
-                    plugin_root=plugin_root,
-                    design_tmpdir=design_tmpdir,
-                    run_id=parsed["--run-id"],
-                    issue=parsed["--issue"],
-                    repo=parsed["--repo"],
-                    include_completed=parsed["--reason"] == "pause",
-                )
-            )
-        )
-    except SecretScrubFailure as exc:
-        print(f"design log-publish: secret scrub failed: {exc}", file=sys.stderr)
-        _emit(k="PUBLISH_OK", v="false")
-        _emit(k="PR_NUMBER", v="")
-        _emit(k="PR_URL", v="")
-        _emit(k="SECRET_SCRUB_VIOLATIONS", v="0")
-        return 1
-    _persist_metadata(
-        design_tmpdir=design_tmpdir,
-        pr_number=pr_number,
-        pr_url=pr_url,
-        recovery_branch=recovery_branch,
-    )
-    _emit(k="PUBLISH_OK", v="true" if publish_ok else "false")
-    _emit(k="PR_NUMBER", v=pr_number)
-    _emit(k="PR_URL", v=pr_url)
-    if recovery_branch:
-        _emit(k="RECOVERY_BRANCH", v=recovery_branch)
-    _emit(k="SECRET_SCRUB_VIOLATIONS", v=scrub_violations)
-    return 0
+    emit_log_publish_result(result)
+    return result.exit_code
