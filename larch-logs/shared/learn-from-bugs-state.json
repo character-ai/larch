@@ -1,5 +1,5 @@
 {
-  "highest_closed_issue_number_scanned": 7257,
+  "highest_closed_issue_number_scanned": 7417,
   "proposals": [
     {
       "filed_issue": 7145,
@@ -21,7 +21,7 @@
       "filed_issue": 7296,
       "id": "doc-canonical-pointer-existence-lint",
       "run_date": "2026-07-14T08:18:13Z",
-      "status": "proposed",
+      "status": "adopted",
       "target": "module:python/larch/lint/lint_doc_pointer_paths.py",
       "type": "lint"
     },
@@ -29,7 +29,7 @@
       "filed_issue": 7296,
       "id": "security-md-dead-pointer-sweep",
       "run_date": "2026-07-14T08:18:13Z",
-      "status": "proposed",
+      "status": "adopted",
       "target": "fix:security-md-dead-pointer-sweep",
       "type": "fix"
     },
@@ -37,16 +37,32 @@
       "filed_issue": 7297,
       "id": "tmpdir-arg-env-fallback-lint",
       "run_date": "2026-07-14T08:18:13Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "module:python/larch/lint/lint_tmpdir_arg_env_fallback.py",
       "type": "lint"
+    },
+    {
+      "filed_issue": null,
+      "id": "variant-path-gate-persistence-invariant",
+      "run_date": "2026-07-15T07:43:36Z",
+      "status": "proposed",
+      "target": "ARCHITECTURAL_INVARIANTS.md#I-Gate-2",
+      "type": "invariant"
+    },
+    {
+      "filed_issue": null,
+      "id": "pattern-match-hint-confirmation-guideline",
+      "run_date": "2026-07-15T07:43:36Z",
+      "status": "proposed",
+      "target": "ARCHITECTURAL_GUIDELINES.md#G-Ext-5",
+      "type": "guideline"
     }
   ],
   "repo": "character-ai/larch",
-  "run_date": "2026-07-14T08:18:13Z",
-  "scan_started_at": "2026-07-14T08:08:19Z",
+  "run_date": "2026-07-15T07:43:36Z",
+  "scan_started_at": "2026-07-15T07:32:00Z",
   "schema_version": 2,
   "search": "[BUG] in:title",
-  "selected_count": 174,
+  "selected_count": 31,
   "state": "closed"
 }
