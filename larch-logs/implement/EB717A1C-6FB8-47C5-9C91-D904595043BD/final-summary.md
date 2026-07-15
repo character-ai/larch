@@ -114,26 +114,27 @@ Warnings (44):
 
 Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
-The changed code is confined to the lint engine baseline codec, the markdown-heading-fence-state rule refactor, and their tests. None of these changes touch workflow gates, pause/resume snapshots, persisted step-result consumers, run-log flush paths, panel slot accounting, agent verdict dispatch, or ship/recovery routes. All nine invariants are unimplicated.
+The changed code is confined to the lint engine occurrence baseline codec, the engine-backed markdown-heading-fence-state rule refactor, and the extracted AST detector module. None of these changes touch workflow gates, pause/resume snapshots, persisted step-result consumers, run-log flush paths, committed run-log field writers, outcome label writers, panel slot accounting, agent verdict dispatch, or ship/recovery routes. All nine invariants are unimplicated.
 
 ## Architectural guidelines
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
-All previously noted issues were resolved: exit codes now use the named constant from `larch.lint.engine`; all type-ignore and noqa suppressions in the changed test files carry inline reason comments. No new bare suppressions appear in the diff. The diff is otherwise clean against the architectural guidelines.
+The CI-fix and surrounding changes are clean against the architectural guidelines. All noqa suppressions added by the diff carry inline reason comments. The `isinstance()` usage introduced by the CI-fix is the Pythonic form. The occurrence baseline grammar extension is additive. The `OccurrenceBaselineRow` codec requires a non-empty `reason` field on every row, consistent with the reason-bearing ratchet baseline discipline. All new error paths raise `ScanError` with descriptive messages and no swallowing. No new bare suppressions appear in the diff.
 
-## /implement run EB717A1C-6FB8-47C5-9C91-D904595043BD: shipping
+## /implement run EB717A1C-6FB8-47C5-9C91-D904595043BD: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 01:03:27
-- **Cost**: 💰 TOTAL ~$35.82: Claude $6.25, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 49236k
+- **Cost**: 💰 TOTAL ~$37.93: Claude $8.36, Codex-5.6 $13.46, Codex-mini $0.06, Cursor $14.62 (Composer $8.57, Grok $6.05), Claude (subprocess) $1.43  |  Tokens: 53202k
 - **Issue**: #6989: https://github.com/character-ai/larch/issues/6989
+- **PR**: #7360: https://github.com/character-ai/larch/pull/7360
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 9/16 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1682/-1091, larch-logs +1270/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 44
