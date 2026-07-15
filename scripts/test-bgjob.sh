@@ -167,11 +167,16 @@ wait_dead() {
 registry_file_for_step() {
     local step="$1"
     local candidate
-    for candidate in "$REGISTRY_ROOT"/*-"$step".env; do
-        if [ -f "$candidate" ]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
+    local tries=0
+    while [ "$tries" -lt 100 ]; do
+        for candidate in "$REGISTRY_ROOT"/*-"$step".env; do
+            if [ -f "$candidate" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done
+        tries=$((tries + 1))
+        sleep 0.05
     done
     return 1
 }
