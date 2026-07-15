@@ -73,6 +73,10 @@ Warnings (36):
   26. G-Cfg-1 / G-Cfg-3: The `OccurrencePatternField = Literal["pattern_name", "normalized_condition"]` type alias in `engine.py` serves as the single definition of the allowed field values. `EXIT_ERROR`...
   27. G-Enf-2: The existing `unreachable-branch-baseline.json` with reason-bearing rows is preserved; the new engine capability allows the rule to write and read back the same format.
 
+## Architectural invariants
+
+The diff is confined to lint engine baseline parameterization and an unreachable-branch rule extraction; no invariant domain is implicated.
+
 ## Architectural guidelines
 
 The changed code satisfies all architectural guidelines: every type suppression carries an explicit inline reason, new tests accompany the change, the production entry point delegates through the engine, and the existing baseline format and CLI interface are preserved.
@@ -81,7 +85,7 @@ The changed code satisfies all architectural guidelines: every type suppression 
 
 - **Outcome**: shipping
 - **Duration**: 00:46:55
-- **Cost**: 💰 TOTAL ~$22.28: Claude $4.55, Codex-5.6 $5.10, Codex-mini $0.10, Cursor $8.39 (Composer $4.56, Grok $3.83), Claude (subprocess) $4.14  |  Tokens: 29558k
+- **Cost**: 💰 TOTAL ~$23.00: Claude $5.27, Codex-5.6 $5.10, Codex-mini $0.10, Cursor $8.39 (Composer $4.56, Grok $3.83), Claude (subprocess) $4.14  |  Tokens: 30902k
 - **Issue**: #6990: https://github.com/character-ai/larch/issues/6990
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
