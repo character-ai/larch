@@ -11,6 +11,8 @@ Shared orchestrator-side contract for publishing `final-summary.md` bodies to to
 - Never use Bash, Python, or another tool call to extract or print the final-summary body.
 - Do NOT paraphrase, summarize, reorder, or add prose between bullets.
 - Do NOT condense, collapse, or omit any part of the body (including `### Round N reviewer timing` ASCII Gantt blocks). Do NOT wrap any section in `<details>` or equivalent HTML.
+- A `/design` final summary can begin with `## Review Phase Detail` before its later `## /design run ...` block. Start terminal emission at byte 1 of the cached file; `Review Phase Detail` is required output, not optional context.
+- Never begin a `/design` terminal emission at `## /design run ...`, even when that block looks like the structured summary. Doing so omits the preceding review timing and violates this contract.
 - Do not add prose around the block.
 - Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.
 - Preserve the full structured block, including title, mode, duration, cost line with per-agent breakdown, tokens, and bullets.
@@ -48,7 +50,7 @@ Use this profile for `/design` final `bgjob wait` `DONE` stdout and the matching
 1. Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout already in the orchestrator context window, or from the matching `$DESIGN_TMPDIR/bgjob/<step>.result.env` after `BGJOB_RC=0` and required-KV validation.
 2. Confirm whole-line `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` markers are present as a readiness signal only. The marker body is expected to be empty.
 3. Do not extract or emit summary bodies from marker pairs on `/design` paths.
-4. When `FINAL_SUMMARY_PATH` is non-empty and the path names a non-empty file, use the Read tool on that path and cache the full file body verbatim, including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. Do NOT collapse, wrap in `<details>`, or omit any part of the file body.
+4. When `FINAL_SUMMARY_PATH` is non-empty and the path names a non-empty file, use the Read tool on that path and cache the full file body verbatim, including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. If the file begins with `## Review Phase Detail`, retain that heading and every following byte through the later `## /design run ...` block. Do NOT collapse, wrap in `<details>`, omit any part of the file body, or start terminal emission at the later run-summary heading.
 5. The Read/cache may happen before cleanup, Step 6, cancellation routing, partition routing, warning replay, or footer text. Plain-chat emission must wait until the terminal placement point after those required actions.
 6. Do not re-read task-output files, stdout captures, unrelated result env files, or tmpdir logs to recover markers. Do not re-read those files to recover summary bodies. The only result-env read is the caller's required bgjob result env used for `BGJOB_RC=0` and `FINAL_SUMMARY_PATH` validation.
 7. Do not scrape markers via Bash or Python.
