@@ -54,6 +54,12 @@ Warnings (8):
   7. G-Py-11 requires the format `# type: ignore[code] # reason`. The code `reportPrivateUsage` identifies the suppressed error class but does not constitute a reason explaining why the suppression is a...
   8. No other guideline deviation was found in the changed code. The refactoring is internally consistent with G-Py-4 (fail-closed: `_detect` raises `ScanError` when `prepare_corpus` was not called; `ma...
 
+## Architectural invariants
+
+## Assessment note: invariants
+
+The follow-up commit adds a reason string to a type-ignore comment in a test file; no changed line in this diff touches any workflow gate, pause snapshot, run-log persistence, panel slot accounting, agent verdict contract, or ship lifecycle route covered by the architectural invariants.
+
 ## Architectural guidelines
 
 ## Assessment note: guidelines
@@ -64,7 +70,7 @@ The suppression comment in `python/tests/lint/test_lint_self_disarmable_gate.py`
 
 - **Outcome**: shipping
 - **Duration**: 00:58:31
-- **Cost**: 💰 TOTAL ~$24.58: Claude $12.75, Codex-5.6 $2.51, Codex-mini $0.03, Cursor $5.13 (Composer $4.14, Grok $0.99), Claude (subprocess) $4.16  |  Tokens: 45610k
+- **Cost**: 💰 TOTAL ~$25.53: Claude $13.68, Codex-5.6 $2.51, Codex-mini $0.03, Cursor $5.13 (Composer $4.14, Grok $0.99), Claude (subprocess) $4.18  |  Tokens: 47848k
 - **Issue**: #6991: https://github.com/character-ai/larch/issues/6991
 - **Plan review**: N/A
 - **Plan coverage**: 4/4 firm headings; band: advisory; disposition: none; todos_left: 0
