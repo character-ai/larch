@@ -14,11 +14,13 @@ import json
 import re
 import sys
 import tokenize
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from re import Pattern
 from typing import TypedDict, cast
+
+from larch.lint.engine import first_duplicate as _first_duplicate
+from larch.lint.engine import normalize_python_file_path
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "suppression-reason-baseline.json"
@@ -157,19 +159,6 @@ class SegmentMatch:
     reason: str | None = None
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized: str = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    if normalized == "python":
-        return ""
-    return normalized.removeprefix("python/")
-
-
 def _bad_path_parts(parts: list[str]) -> bool:
     return "" in parts or "." in parts or ".." in parts
 
@@ -195,7 +184,7 @@ def _invalid_normalized_parts(normalized: str, parts: list[str]) -> bool:
 def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized: str = normalize_file_path(value)
+    normalized: str = normalize_python_file_path(value)
     parts: list[str] = normalized.split("/")
     if normalized != value or _invalid_normalized_parts(normalized, parts):
         raise BaselineError(f"{source}: record {index} has invalid file")
@@ -481,15 +470,6 @@ def _validate_record(item: object, *, index: int, source: Path) -> Record:
         "occurrence": occurrence,
         "reason": reason,
     }
-
-
-def _first_duplicate(keys: Iterable[tuple[str, str, str, int]]) -> tuple[str, str, str, int] | None:
-    seen: set[tuple[str, str, str, int]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
 
 
 def load_baseline(path: Path) -> list[Record]:

@@ -9,6 +9,7 @@ stderr, then returns 0 / 1 / 2.
 from __future__ import annotations
 
 import ast
+import argparse
 import io
 import json
 import os
@@ -16,11 +17,11 @@ import re
 import stat
 import sys
 import tokenize
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, TypeAlias, cast
+from typing import Literal, TypeAlias, TypeVar, cast
 
 from larch import io as larch_io
 from larch.core.proc import CommandResult, Runner
@@ -31,9 +32,16 @@ EXIT_ERROR = 2
 SYNTAX_FAIL_MESSAGE = "unable to parse Python"
 GIT_DIAGNOSTIC_MAX_CHARS = 200
 PYTHON_TREE_PREFIX = "python/"
+PYTHON_TEST_EXEMPT_FILENAMES = frozenset(
+    {"conftest.py", "test_support.py", "review_test_support.py"}
+)
+PYTHON_EXCLUDED_DIRS = frozenset(
+    {".git", "node_modules", ".venv", ".agents", "__pycache__"}
+)
 SyntaxPolicy = Literal["fail", "skip", "raise"]
 OccurrencePatternField = Literal["pattern_name", "normalized_condition"]
 SourceFilter = Callable[[str], bool]
+DuplicateKey = TypeVar("DuplicateKey", bound=Hashable)
 _MARKDOWN_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^`~]*)$")
 
 
@@ -178,6 +186,145 @@ class LintRule:
     occurrence_pattern_field: OccurrencePatternField = "pattern_name"
     require_baseline: bool = False
     prepare_corpus: PrepareCorpus | None = None
+
+
+def normalize_python_file_path(raw: str) -> str:
+    """Return a normalized POSIX path relative to the ``python/`` tree."""
+    normalized = raw.replace("\\", "/")
+    marker = "/python/"
+    if marker in normalized:
+        normalized = normalized.rsplit(marker, maxsplit=1)[1]
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.removeprefix(PYTHON_TREE_PREFIX)
+
+
+def is_exempt_python_source(path: Path) -> bool:
+    """Return whether a Python test or shared test helper is out of scope."""
+    name = path.name
+    return (
+        (name.startswith("test_") and name.endswith(".py"))
+        or name in PYTHON_TEST_EXEMPT_FILENAMES
+    )
+
+
+def is_production_python_path(rel_path: str, *, prefix: str = PYTHON_TREE_PREFIX) -> bool:
+    """Check a repo-relative production Python path before loading its source."""
+    if not rel_path.startswith(prefix) or not rel_path.endswith(".py"):
+        return False
+    relative = Path(rel_path[len(prefix) :])
+    return not (
+        is_exempt_python_source(relative)
+        or bool(PYTHON_EXCLUDED_DIRS.intersection(relative.parts))
+    )
+
+
+def qualified_symbol(prefix: tuple[str, ...], *, module_symbol: str = "<module>") -> str:
+    """Render a nested AST scope as its stable baseline symbol."""
+    return ".".join(prefix) if prefix else module_symbol
+
+
+def ordered_ast_child_nodes(node: ast.AST) -> list[ast.AST]:
+    """Return AST children in source order, including ``with`` expressions."""
+    def position(child: ast.AST, index: int) -> tuple[int, int, int]:
+        if isinstance(child, ast.withitem):
+            context_expr = child.context_expr
+            return (
+                getattr(context_expr, "lineno", 10**9),
+                getattr(context_expr, "col_offset", 10**9),
+                index,
+            )
+        return (
+            getattr(child, "lineno", 10**9),
+            getattr(child, "col_offset", 10**9),
+            index,
+        )
+
+    indexed = list(enumerate(ast.iter_child_nodes(node)))
+    indexed.sort(key=lambda item: position(item[1], item[0]))
+    return [child for _, child in indexed]
+
+
+def first_duplicate(keys: Iterable[DuplicateKey]) -> DuplicateKey | None:
+    """Return the first repeated stable identity, or ``None`` when unique."""
+    seen: set[DuplicateKey] = set()
+    for key in keys:
+        if key in seen:
+            return key
+        seen.add(key)
+    return None
+
+
+@dataclass(frozen=True)
+class RuleCli:
+    """Stable command-line contract for an engine-backed lint rule."""
+
+    prog: str
+    description: str | None
+    baseline_filename: str | None = None
+    error_label: str | None = None
+    default_root: Path = Path(__file__).resolve().parents[3]
+    scoped_paths: tuple[str, ...] | None = None
+
+
+def run_rule_cli(
+    argv: Sequence[str],
+    *,
+    rule: LintRule,
+    cli: RuleCli,
+    runner: Runner,
+) -> int:
+    """Parse the standard lint argv and run an engine rule.
+
+    The shared contract keeps every rule's root, baseline, strict-stale, and
+    reason validation identical. Rules with bespoke positional arguments keep
+    their own entrypoint and still call :func:`run_rule` directly.
+    """
+    parser = argparse.ArgumentParser(prog=cli.prog, description=cli.description)
+    _ = parser.add_argument(
+        "--root",
+        default=str(cli.default_root),
+        help="Repository root (default: checkout containing this module).",
+    )
+    if cli.baseline_filename is not None:
+        _ = parser.add_argument(
+            "--write",
+            action="store_true",
+            help=f"Regenerate {cli.baseline_filename} from the live scan.",
+        )
+        _ = parser.add_argument(
+            "--initial-reason",
+            help="Reason for live findings that have no preserved baseline reason.",
+        )
+    try:
+        parsed = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return EXIT_ERROR
+
+    root = Path(str(parsed.root)).resolve()
+    if cli.baseline_filename is None:
+        return run_rule(rule, root, runner, paths=cli.scoped_paths)
+
+    initial_reason = parsed.initial_reason
+    if initial_reason is not None and not str(initial_reason).strip():
+        print(
+            f"{cli.error_label or cli.prog}: --initial-reason must be non-empty",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    write_baseline = bool(parsed.write)
+    return run_rule(
+        rule,
+        root,
+        runner,
+        paths=None if write_baseline else cli.scoped_paths,
+        baseline_path=root / "python" / cli.baseline_filename,
+        write_baseline=write_baseline,
+        initial_reason=None if initial_reason is None else str(initial_reason),
+        strict_stale=not write_baseline,
+    )
 
 
 def _is_single_line(value: object) -> bool:

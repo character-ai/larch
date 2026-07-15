@@ -11,10 +11,17 @@ import argparse
 import ast
 import json
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
+
+from larch.lint.engine import (
+    first_duplicate as _first_duplicate,
+    is_exempt_python_source,
+    normalize_python_file_path,
+    ordered_ast_child_nodes,
+    qualified_symbol,
+)
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "tempfile-dir-baseline.json"
@@ -49,21 +56,10 @@ class Finding:
         return (self.file, self.qualified_symbol, self.callee, self.occurrence)
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.removeprefix("python/")
-
-
 def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized = normalize_file_path(value)
+    normalized = normalize_python_file_path(value)
     parts = normalized.split("/")
     if (  # pylint: disable=too-many-boolean-expressions  # 7-condition path-component guard; splitting would obscure intent
         normalized != value
@@ -78,49 +74,17 @@ def _validate_normalized_file(value: object, *, source: Path, index: int) -> str
     return normalized
 
 
-def is_exempt_path(path: Path) -> bool:
-    """Return whether a source file is outside production lint scope."""
-    name = path.name
-    return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
-
-
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
     result: list[Path] = []
     for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
+        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
             continue
         relative = path.relative_to(larch_dir.parent)
         if EXCLUDED_DIRS.intersection(relative.parts):
             continue
         result.append(path)
     return result
-
-
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
-
-
-def _child_position(node: ast.AST, *, index: int) -> tuple[int, int, int]:
-    if isinstance(node, ast.withitem):
-        context_expr = node.context_expr
-        return (
-            getattr(context_expr, "lineno", 10**9),
-            getattr(context_expr, "col_offset", 10**9),
-            index,
-        )
-    return (
-        getattr(node, "lineno", 10**9),
-        getattr(node, "col_offset", 10**9),
-        index,
-    )
-
-
-def _ordered_child_nodes(node: ast.AST) -> list[ast.AST]:
-    children = list(ast.iter_child_nodes(node))
-    indexed = list(enumerate(children))
-    indexed.sort(key=lambda item: _child_position(item[1], index=item[0]))
-    return [node for _, node in indexed]
 
 
 def _tempfile_callee(node: ast.AST) -> str | None:
@@ -146,7 +110,7 @@ def _collect_scope(
     findings: list[Finding],
 ) -> None:
     occurrence = 0
-    symbol = _qualified(prefix)
+    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
 
     def walk(node: ast.AST) -> None:
         nonlocal occurrence
@@ -180,7 +144,7 @@ def _collect_scope(
                         lineno=lineno if isinstance(lineno, int) else 0,
                     )
                 )
-        for child in _ordered_child_nodes(node):
+        for child in ordered_ast_child_nodes(node):
             walk(child)
 
     for statement in body:
@@ -246,17 +210,6 @@ def _validate_record(item: object, *, index: int, source: Path) -> Record:
         "occurrence": occurrence,
         "reason": reason,
     }
-
-
-def _first_duplicate(
-    keys: Iterable[tuple[str, str, str, int]],
-) -> tuple[str, str, str, int] | None:
-    seen: set[tuple[str, str, str, int]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
 
 
 def load_baseline(path: Path) -> list[Record]:

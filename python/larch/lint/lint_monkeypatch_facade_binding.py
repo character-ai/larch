@@ -14,10 +14,16 @@ import ast
 import json
 import re
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
+
+from larch.lint.engine import (
+    first_duplicate as _first_duplicate,
+    normalize_python_file_path,
+    ordered_ast_child_nodes,
+    qualified_symbol,
+)
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "monkeypatch-facade-binding-baseline.json"
@@ -224,17 +230,6 @@ class ModuleResolver:
         return None
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.removeprefix("python/")
-
-
 def _is_regular_under(path: Path, root: Path) -> bool:
     try:
         _ = path.relative_to(root)
@@ -266,7 +261,7 @@ def _is_valid_test_file(value: str) -> bool:
 def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized = normalize_file_path(value)
+    normalized = normalize_python_file_path(value)
     if normalized != value or not _is_valid_test_file(normalized):
         raise BaselineError(f"{source}: record {index} has invalid file")
     return normalized
@@ -362,32 +357,6 @@ def _import_binding_source(statement: ast.stmt, attribute: str, *, current: Modu
         if bound_name == attribute:
             return base_module or alias.name
     return None
-
-
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
-
-
-def _child_position(node: ast.AST, *, index: int) -> tuple[int, int, int]:
-    if isinstance(node, ast.withitem):
-        context_expr = node.context_expr
-        return (
-            getattr(context_expr, "lineno", 10**9),
-            getattr(context_expr, "col_offset", 10**9),
-            index,
-        )
-    return (
-        getattr(node, "lineno", 10**9),
-        getattr(node, "col_offset", 10**9),
-        index,
-    )
-
-
-def _ordered_child_nodes(node: ast.AST) -> list[ast.AST]:
-    children = list(ast.iter_child_nodes(node))
-    indexed = list(enumerate(children))
-    indexed.sort(key=lambda item: _child_position(item[1], index=item[0]))
-    return [child for _, child in indexed]
 
 
 def _build_import_map(
@@ -539,7 +508,7 @@ def _collect_scope(
     state: ScanState,
 ) -> None:
     occurrence = 0
-    symbol = _qualified(prefix)
+    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
 
     def walk(node: ast.AST) -> None:
         nonlocal occurrence
@@ -576,7 +545,7 @@ def _collect_scope(
                         suppressed=_has_suppression(state.lines, line_number),
                     )
                 )
-        for child in _ordered_child_nodes(node):
+        for child in ordered_ast_child_nodes(node):
             walk(child)
 
     for statement in body:
@@ -706,17 +675,6 @@ def _validate_record(item: object, *, index: int, source: Path) -> Record:
         "occurrence": occurrence,
         "reason": reason,
     }
-
-
-def _first_duplicate(
-    keys: Iterable[tuple[str, str, str, str, str, int]],
-) -> tuple[str, str, str, str, str, int] | None:
-    seen: set[tuple[str, str, str, str, str, int]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
 
 
 def load_baseline(path: Path) -> list[Record]:

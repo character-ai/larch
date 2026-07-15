@@ -7,18 +7,16 @@ occurrence codec and legacy ``normalized_condition`` field name.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import sys
-from pathlib import Path
 
 from larch.core import proc
 from larch.lint.engine import (
-    EXIT_ERROR,
     Finding as EngineFinding,
     LintRule,
+    RuleCli,
     SourceFile,
-    run_rule,
+    run_rule_cli,
 )
 from larch.lint.unreachable_branch_detector import (  # pylint: disable=unused-import  # re-export
     SUPPRESSION,
@@ -81,56 +79,18 @@ RULE = LintRule(
 )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint unreachable-branch",
-        description=__doc__,
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from the live AST scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason for live findings that have no preserved baseline reason.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint unreachable-branch``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return EXIT_ERROR
-    root = Path(str(parsed.root)).resolve()
-    baseline_path = root / "python" / BASELINE_FILENAME
-    initial_reason = parsed.initial_reason
-    if initial_reason is not None and not str(initial_reason).strip():
-        print(
-            "lint-unreachable-branch: --initial-reason must be non-empty",
-            file=sys.stderr,
-        )
-        return EXIT_ERROR
-    return run_rule(
-        RULE,
-        root,
-        proc.ProcRunner(),
-        paths=None,
-        baseline_path=baseline_path,
-        write_baseline=bool(parsed.write),
-        initial_reason=None if initial_reason is None else str(initial_reason),
-        strict_stale=not bool(parsed.write),
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        rule=RULE,
+        cli=RuleCli(
+            prog="cli.py lint unreachable-branch",
+            description=__doc__,
+            baseline_filename=BASELINE_FILENAME,
+            error_label="lint-unreachable-branch",
+        ),
+        runner=proc.ProcRunner(),
     )
 
 
