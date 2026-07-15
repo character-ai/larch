@@ -163,6 +163,11 @@ def _run_python_cli(args: Sequence[str], *, runner: proc.Runner | None = None, e
     return _run_capture([sys.executable, str(CLI), *args], runner=runner, env=env)
 
 
+def run_python_cli(args: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None) -> proc.CommandResult:
+    """Run a CLI command through the shared dispatch binding."""
+    return _run_python_cli(args, runner=runner, env=env)
+
+
 def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
     return _run_capture([command, *args], runner=runner)
 

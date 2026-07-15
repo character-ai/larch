@@ -142,15 +142,15 @@ def _write_plan_review_prune_label_map(*, design: Path, manifest: Path) -> Path:
 
 def _record_plan_review_prune_round(*, design: Path, round_num: int, manifest: Path, classification: Path) -> None:
     try:
-        from larch.review import review_pipeline  # noqa: PLC0415
+        from larch.review import review_prune  # noqa: PLC0415
 
         label_map = _write_plan_review_prune_label_map(design=design, manifest=manifest)
-        review_pipeline.reviewer_prune_record(
+        review_prune.reviewer_prune_record(
             ledger=design / "reviewer-prune-ledger.tsv",
             round_num=round_num,
             manifest=manifest,
             classification=classification,
-            options=review_pipeline.PruneRecordOptions(
+            options=review_prune.PruneRecordOptions(
                 label_map=label_map,
                 reviewer_status=design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv",
             ),

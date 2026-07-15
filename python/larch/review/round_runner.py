@@ -24,7 +24,6 @@ from larch.core import config
 from larch.calibration import difficulty
 from larch.report import progress_report
 from larch.review import review_core_body
-from larch.review import review_pipeline
 from larch.review import review_tally
 from larch.review import voting
 from larch.review._raf_util import (
@@ -126,7 +125,7 @@ def review_core_capture(*,
         if result.stderr:
             _err(result.stderr.rstrip())
         return result.returncode
-    impl = review_core_impl or review_pipeline.review_core
+    impl = review_core_impl or review_core_body.review_core
     buffer = io.StringIO()
     with _temporary_env(name=config.ENV_IMPLEMENT_TMPDIR, value=str(implement_tmpdir) if implement_tmpdir is not None else os.environ.get(config.ENV_IMPLEMENT_TMPDIR)):
         try:

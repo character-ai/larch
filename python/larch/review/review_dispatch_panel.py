@@ -19,6 +19,7 @@ from larch.design.plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 from larch.calibration import difficulty
 from larch.design.plan_scout import filter_manifest as filter_scout_manifest
 from larch.review import findings_ledger
+from larch.review import review_pipeline_shared
 from larch.review.dispatch_shared import append_manifest_row, resolved_model_for_row, topology_slots
 from larch.review.review_pipeline_shared import (
     FOCUS_AREAS,
@@ -32,7 +33,6 @@ from larch.review.review_pipeline_shared import (
     _parse_args,
     _run_capture,
     _run_command_string,
-    _run_python_cli,
     _write_text,
 )
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
@@ -168,7 +168,7 @@ def _append_producer_scout_warning_once(*, status: str, fail_reason: str) -> Non
     if sentinel.exists():
         return
     reason = f" ({fail_reason})" if fail_reason else ""
-    result = _run_python_cli(
+    result = review_pipeline_shared.run_python_cli(
         [
             "run-log",
             "append-entry",
@@ -357,7 +357,7 @@ def _synthesize_dynamic_slots(*,
             path = context.get(key, "")
             if path and Path(path).is_file():
                 render_args.extend([flag, path])
-        result = _run_python_cli(render_args, runner=runner)  # type: ignore[arg-type]
+        result = review_pipeline_shared.run_python_cli(render_args, runner=runner)  # type: ignore[arg-type]
         if result.returncode == 0 and result.stdout:
             _write_text(path=rendered_prompt, text=result.stdout)
             payload_bytes = read_panel_payload_bytes(payload_sidecar) + len(rationale.encode("utf-8")) + len(prompt_body.encode("utf-8"))
@@ -586,7 +586,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     diff_mode = ""
     if dynamic_max and mode == "diff" and diff_file and Path(diff_file).is_file() and Path(diff_file).stat().st_size:
         classifier = os.environ.get("CLASSIFY_DIFF_MODE_SH", "")
-        result = _run_command_string(command=classifier, args=[diff_file]) if classifier else _run_python_cli(["agent", "classify-diff", diff_file])
+        result = _run_command_string(command=classifier, args=[diff_file]) if classifier else review_pipeline_shared.run_python_cli(["agent", "classify-diff", diff_file])
         diff_mode = _kv_parse(result.stdout).get("DIFF_MODE", result.stdout.removeprefix("DIFF_MODE=").strip()) or "generic"
         if diff_mode in {"docs-only", "test-only", "generated-only"}:
             scout_status = f"skipped-{diff_mode}"
@@ -709,7 +709,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
                 if _get(parsed=parsed, key="--session-env-path"):
                     scout_args.extend(["--session-env-path", _get(parsed=parsed, key="--session-env-path")])
                 scout_cmd = os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_SH", "")
-                result = _run_command_string(command=scout_cmd, args=scout_args[2:]) if scout_cmd else _run_python_cli(scout_args)
+                result = _run_command_string(command=scout_cmd, args=scout_args[2:]) if scout_cmd else review_pipeline_shared.run_python_cli(scout_args)
                 scout_kv = _kv_parse(result.stdout)
                 scout_status = scout_kv.get("SCOUT_STATUS", "validation-failed" if result.returncode else "ok")
                 scout_fail_reason = scout_kv.get("SCOUT_FAIL_REASON", "")
@@ -862,7 +862,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     if session_env_path:
         waterfall_args.extend(["--session-env-path", session_env_path])
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
-    result = _run_capture([dispatch_override, *waterfall_args], env=panel_env) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], env=panel_env)
+    result = _run_capture([dispatch_override, *waterfall_args], env=panel_env) if dispatch_override else review_pipeline_shared.run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], env=panel_env)
     kv = _kv_parse(result.stdout)
     if result.returncode != 0:
         _emit_kv(key="WARN", value=f"agent dispatch-waterfall exited rc={result.returncode}")

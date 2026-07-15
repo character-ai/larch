@@ -9442,15 +9442,6 @@
   },
   {
     "file": "tests/review/test_review_and_fix.py",
-    "qualified_symbol": "test_clear_reviewer_prune_round_uses_python_helper",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "reviewer_prune_record",
-    "defining_module": "larch.review.review_prune",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_and_fix.py",
     "qualified_symbol": "test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed",
     "facade_module": "larch.review.snapshot",
     "attribute": "_git_output",
@@ -10234,28 +10225,10 @@
   },
   {
     "file": "tests/review/test_review_and_fix.py",
-    "qualified_symbol": "test_step5_loop_emits_single_final_envelope",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "review_core",
-    "defining_module": "larch.review.review_core_body",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_and_fix.py",
     "qualified_symbol": "test_step5_loop_prune_skipped_converges_below_cap",
     "facade_module": "larch.review.review_and_fix",
     "attribute": "_run_round",
     "defining_module": "larch.review.round_runner",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_and_fix.py",
-    "qualified_symbol": "test_step5_loop_writes_mergeable_completion_kvs",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "review_core",
-    "defining_module": "larch.review.review_core_body",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
@@ -10274,15 +10247,6 @@
     "facade_module": "larch.review.review_and_fix",
     "attribute": "_skip_ratio_threshold",
     "defining_module": "larch.review.batch_report",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_and_fix.py",
-    "qualified_symbol": "test_step5_single_emits_round_kvs_without_review_core_leak",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "review_core",
-    "defining_module": "larch.review.review_core_body",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
@@ -10464,33 +10428,6 @@
     "attribute": "revalidate_pre_coder_snapshot",
     "defining_module": "larch.review.snapshot",
     "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_pipeline.py",
-    "qualified_symbol": "test_check_reviewer_failure_threshold_collector_ok_unresolvable_drop_skips_synthetic",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "_dropped_reviewer_output_base",
-    "defining_module": "larch.review.review_threshold",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_pipeline.py",
-    "qualified_symbol": "test_check_reviewer_failure_threshold_synthetic_dynamic_drop_when_basename_unresolvable",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "_dropped_reviewer_output_base",
-    "defining_module": "larch.review.review_threshold",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_pipeline.py",
-    "qualified_symbol": "test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate",
-    "facade_module": "larch.review.review_pipeline",
-    "attribute": "_run_python_cli",
-    "defining_module": "larch.review.review_pipeline_shared",
-    "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {

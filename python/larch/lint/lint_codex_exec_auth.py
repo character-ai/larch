@@ -173,7 +173,7 @@ def scan_review_and_fix_review_core(root: Path) -> bool:
                 continue
             if REVIEW_CORE_SUBPROCESS_RE.search(line):
                 print(
-                    f"lint-codex-exec-auth: {rel}:{nr}: Step 5 must not subprocess review core; use review_core_capture / review_pipeline.review_core",
+                    f"lint-codex-exec-auth: {rel}:{nr}: Step 5 must not subprocess review core; use review_core_capture / review_core_body.review_core",
                     file=sys.stderr,
                 )
                 violation = True
