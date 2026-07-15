@@ -2475,21 +2475,21 @@ def runtime_verify(*, runner: Runner, run_dir: Path, bundles: Sequence[BundleRec
         if not FULL_SHA_RE.fullmatch(bundle.fix_sha):
             raise AnalyzeBugsError(f"runtime verification received invalid fix SHA for issue #{bundle.issue_number}")
         grouped.setdefault(bundle.fix_sha, []).append(bundle)
-    ranked = sorted(grouped.items(), key=lambda item: (-max(bundle.fix_time for bundle in item[1]), item[0]))
+    ranked: list[tuple[str, list[BundleRecord]]] = sorted(grouped.items(), key=lambda item: (-max(bundle.fix_time for bundle in item[1]), item[0]))
     if runtime_max == 0:
         _atomic_write_text(run_dir / RUNTIME_RESULTS_NAME, "")
         _write_json(run_dir / "runtime-summary.json", {"selected_unique_shas": 0, "skipped_unique_shas": len(ranked)})
         return (), len(ranked)
-    selected = ranked[:runtime_max]
+    selected: list[tuple[str, list[BundleRecord]]] = ranked[:runtime_max]
     results: list[RuntimeResult] = []
     for fix_sha, grouped_bundles in selected:
-        bindings = tuple(RuntimeBinding(bundle.issue_number, bundle.cache_key, fix_sha) for bundle in grouped_bundles)
-        touched_paths = tuple(path for bundle in grouped_bundles for path in bundle.touched_files)
-        tests = discover_runtime_tests(runner=runner, fix_sha=fix_sha, repo_root=repo_root)
+        bindings: tuple[RuntimeBinding, ...] = tuple(RuntimeBinding(bundle.issue_number, bundle.cache_key, fix_sha) for bundle in grouped_bundles)
+        touched_paths: tuple[str, ...] = tuple(p for bundle in grouped_bundles for p in bundle.touched_files)
+        tests: tuple[str, ...] = discover_runtime_tests(runner=runner, fix_sha=fix_sha, repo_root=repo_root)
         components: list[RuntimeComponent] = []
         if tests:
-            base_temp = run_dir / "runtime-pytest-tmp" / fix_sha
-            command = ["python3", "-m", "pytest", "-p", "no:cacheprovider", "--basetemp", str(base_temp), "--", *tests]
+            base_temp: Path = run_dir / "runtime-pytest-tmp" / fix_sha
+            command: list[str] = ["python3", "-m", "pytest", "-p", "no:cacheprovider", "--basetemp", str(base_temp), "--", *tests]
             components.append(_runtime_component("pytest", runner.run(command, timeout=config.ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC, cwd=str(repo_root))))
         else:
             components.append(RuntimeComponent(name="pytest", status="absent", evidence="no runnable commit test files"))
@@ -2498,7 +2498,7 @@ def runtime_verify(*, runner: Runner, run_dir: Path, bundles: Sequence[BundleRec
             for target in resolve_runtime_harnesses(touched_paths)
         )
         results.append(RuntimeResult(fix_sha=fix_sha, bindings=bindings, components=tuple(components), uncovered_zones=_runtime_uncovered_zones(touched_paths)))
-    path = run_dir / RUNTIME_RESULTS_NAME
+    path: Path = run_dir / RUNTIME_RESULTS_NAME
     _atomic_write_text(path, "".join(json.dumps(_runtime_result_json(result), sort_keys=True) + "\n" for result in results))
     skipped = len(ranked) - len(selected)
     _write_json(run_dir / "runtime-summary.json", {"selected_unique_shas": len(results), "skipped_unique_shas": skipped})
@@ -2511,15 +2511,13 @@ def runtime_main(argv: list[str]) -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--ledger-path", required=True)
     parser.add_argument("--runtime-max", type=int, default=config.ANALYZE_BUGS_DEFAULT_RUNTIME_MAX)
+    parser.add_argument("--repo-root", required=True)
     args = parser.parse_args(argv)
     try:
         manifest_path = Path(args.manifest)
         _manifest, bundles = _load_manifest(manifest_path)
         runner = _runner()
-        root_result = runner.run(["git", "rev-parse", "--show-toplevel"])
-        if root_result.returncode != 0 or not root_result.stdout.strip():
-            raise AnalyzeBugsError("could not resolve repository root for runtime verification")
-        results, skipped = runtime_verify(runner=runner, run_dir=Path(args.run_dir), bundles=bundles, runtime_max=args.runtime_max, repo_root=Path(root_result.stdout.strip()))
+        results, skipped = runtime_verify(runner=runner, run_dir=Path(args.run_dir), bundles=bundles, runtime_max=args.runtime_max, repo_root=Path(args.repo_root))
     except AnalyzeBugsError as exc:
         return _fail(str(exc))
     _emit_kvs({"RUNTIME_RESULTS_PATH": str(Path(args.run_dir) / RUNTIME_RESULTS_NAME), "RUNTIME_SELECTED_UNIQUE_SHAS": len(results), "RUNTIME_SKIPPED_UNIQUE_SHAS": skipped})

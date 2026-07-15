@@ -183,7 +183,8 @@ python3 "$PWD/python/cli.py" analyze-bugs runtime \
   --run-dir "$RUN_DIR" \
   --manifest "$MANIFEST_PATH" \
   --ledger-path "$LEDGER_PATH" \
-  --runtime-max "$RUNTIME_MAX"
+  --runtime-max "$RUNTIME_MAX" \
+  --repo-root "$PWD"
 ```
 
 The coordinator selects newest unique fix SHAs, runs each selected SHA once, and fans its evidence out to every matching manifest binding. It discovers only added or modified `python/tests/` paths, never invokes pytest without paths, disables the on-repository cache provider, and places pytest temporary paths under the run directory. Mapped harnesses run with the same bounded timeout. Failures and timeouts become bounded `SUSPECT` evidence without aborting later SHA groups. Passing runtime checks promote only `CONFIRMED_FIXED`, `FIXED_CLEAR`, or `FIXED_LIKELY` to `RUNTIME`; `SUSPECT` is not verified. Uncovered orchestration zones remain static and render as `UNVERIFIED_RUNTIME` in the harness-gap section. Print the selected and skipped unique-SHA counts from the command KVs.
