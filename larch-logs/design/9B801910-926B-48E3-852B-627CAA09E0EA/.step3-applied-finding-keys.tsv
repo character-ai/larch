@@ -1,0 +1,3 @@
+1	`start_main` calls `_build_spec` with raw `args.tmpdir`, so an empty argument can become `path("")` and resolve to the cwd while the baseline reason only covers the adapted path.
+1	python/tests/lint/test_lint_tmpdir_arg_env_fallback.py [scope-reduction] do not require unrelated `or` expressions to remain findings. scenario: the exact rule flags only calls whose argument node is exactly `args.tmpdir`; enforcing a failure for `args.tmpdir or other_value` broadens the ratchet beyond the specified ast shape.
+2	python/larch/bgjob/cli.py:24,64 `start_main` still parses `--tmpdir` as required. scenario: the plan-mandated omitted-`--tmpdir` regression case exits in argparse before the planned environment fallback runs.

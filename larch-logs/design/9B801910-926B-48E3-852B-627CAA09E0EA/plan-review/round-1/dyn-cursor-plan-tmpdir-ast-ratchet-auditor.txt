@@ -1,0 +1,24 @@
+Reviewing the plan against current `args.tmpdir` sites and the existing lint infrastructure.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/issue/file_oos.py:1131-1139	UPDATED file_oos says only "normalize" before Path, not the IMPLEMENT_TMPDIR env fallback used at the other reconciled sites	A variable-only rewrite (`tmpdir_raw = args.tmpdir` then `Path(tmpdir_raw)`) still leaves launcher `--tmpdir "$IMPLEMENT_TMPDIR"` empty expansion as `Path("")` → cwd, the exact failure class this issue targets	Spell out the same normalization as dispatch_step2: `args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")` before `Path`, keeping `--tmpdir` required
+1	in_scope	major	correctness	python/larch/implement/scope_disposition.py:1597-1613	UPDATED scope_disposition does not forbid copying dispatch_step2's env `or` fallback even though the parser already defaults `--tmpdir` from `config.ENV_IMPLEMENT_TMPDIR`	`raw = args.tmpdir or os.environ.get(...)` turns explicit `--tmpdir ""` from today's hard `EXIT_USAGE` into env adoption when the shell variable is empty but the child env is set	Limit the change to separating raw validation from `Path(raw)`; do not add a second env `or`. Keep `if not args.tmpdir or not tmpdir.is_dir():` failure semantics
+1	in_scope	minor	architecture	python/tmpdir-arg-env-fallback-baseline.json:1	NEW baseline row spec names `_build_spec` but not the engine occurrence-baseline keys (`file`, `qualified_symbol`, `pattern_name`, `occurrence`, `reason`)	Plan text points at tempfile-dir machinery while NEW module calls for shared occurrence-baseline support; mixing `callee` vs `pattern_name` breaks manifest/tests against `engine._occurrence_baseline_row`	Document the committed row shape explicitly (`pattern_name` `Path`, `qualified_symbol` `_build_spec`, `occurrence` 1) and wire the rule through `run_rule(..., strict_stale=True)` like `lint_markdown_heading_fence_state.py`
+
+## Verification summary
+
+**Six `Path(args.tmpdir)` sites on main** (matches plan count): `state/_corpus.py:193`, `state/admission.py:324`, `issue/file_oos.py:1139`, `implement/dispatch_step2.py:693`, `implement/scope_disposition.py:1611`, `bgjob/cli.py:34`.
+
+**`validate_tmpdir` sites**: all three production call sites in `implement/checks_lint_fix.py:234,356,462` already use the accepted `BoolOp(Or)` + `os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ...)` shape; no plan updates needed.
+
+**Fallback matcher (plan spec)**: exact `Attribute(args.tmpdir)` only; `Path`/`validate_tmpdir` with a `BoolOp(Or)` operand that includes `os.environ.get` on `config.ENV_IMPLEMENT_TMPDIR` or bare `ENV_IMPLEMENT_TMPDIR`; unrelated `or` (e.g. `ship_seed.py:115` `args.tmpdir or ""`) correctly stays out of scope.
+
+**Five-site reconciliation policies** (plan intent is sound where explicit):
+- `_corpus.py`: `args.tmpdir` then `args.implement_tmpdir`, not ambient env.
+- `admission.py`: explicit `--tmpdir` only else `tempfile.mkdtemp`; plan's "do not adopt IMPLEMENT_TMPDIR" matches `admission.py:323-332`.
+- `dispatch_step2.py`: env fallback before directory check matches the bug class (`dispatch_step2.py:693-700`).
+- `scope_disposition.py`: parser default already supplies env; only AST shape removal is needed if env `or` is avoided (finding above).
+- `bgjob/cli.py`: sole baselined site; `wait_main` (`cli.py:251`) already normalizes outside the flagged shape.
+
+**Occurrence identity / stale baseline**: plan's lexical-scope + occurrence counter matches `lint_tempfile_dir.py:141-184` and engine occurrence baselines; `strict_stale=True` is required for the promised stale-row failure (`tempfile_dir._run_check` does not reject orphan baseline rows).
+
+**Already compliant (no plan change)**: `dispatch_manifest.py:268`, `dispatch_recovery.py:147`, `checks_lint_fix.py` fallbacks, `bgjob/cli.py:251` wait path.
