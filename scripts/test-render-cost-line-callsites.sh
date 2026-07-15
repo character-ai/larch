@@ -92,6 +92,8 @@ grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn 
 grep -Fq -- '--post-publish-only' "$design_skill" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
 grep -Fq 'emit its full body verbatim as plain chat markdown' "$shared_final_summary" || fail 'shared final-summary emit must pin full-body emit prose'
+grep -Fq 'Start terminal emission at byte 1 of the cached file; `Review Phase Detail` is required output, not optional context.' "$shared_final_summary" || fail 'shared final-summary emit must require leading Review Phase Detail output'
+grep -Fq 'Never begin a `/design` terminal emission at `## /design run ...`' "$shared_final_summary" || fail 'shared final-summary emit must forbid skipping Review Phase Detail'
 grep -Fq 'Caller profile parameters' "$shared_final_summary" || fail 'shared final-summary emit must define caller profile parameters'
 grep -Fq 'caller begin/end marker pair' "$shared_final_summary" || fail 'shared final-summary emit must parameterize marker tokens'
 grep -Fq 'source description: task-output, wrapper stdout, or bgjob `DONE` stdout plus result env' "$shared_final_summary" || fail 'shared final-summary emit must parameterize summary source'
@@ -124,6 +126,8 @@ grep -Fq 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/f
 grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$design_skill" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016
 grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL must pin full-body Read/cache regardless of PLAN_WRITE_OK'
+grep -Fq 'MANDATORY: emit from byte 1 of the cached file. When it begins with `## Review Phase Detail`, include that section and its Gantt charts; do not start at the later `## /design run ...` heading.' "$design_skill" || fail 'design Final summary block must require Review Phase Detail terminal output'
+grep -Fq 'MANDATORY: terminal emission starts at byte 1 of the cache. Do not skip a leading `## Review Phase Detail` section or start at the later `## /design run ...` heading.' "$design_skill" || fail 'design Step 5c must require Review Phase Detail terminal output'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$design_skill" || fail 'design SKILL must pin anti-recap prose'
 grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
 grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
