@@ -319,7 +319,7 @@ def test_pause_save_uses_real_log_publish_path(
     def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
         return "issue body\n"
 
-    def fakecapture_design_transcript(**_kwargs: object) -> bool:
+    def fake_capture_design_transcript(**_kwargs: object) -> bool:
         design_tmpdir = getattr(_kwargs.get("ctx"), "design_tmpdir", None)
         if isinstance(design_tmpdir, Path):
             _ = (design_tmpdir / "session-transcript.jsonl").write_bytes(b"")
@@ -332,7 +332,7 @@ def test_pause_save_uses_real_log_publish_path(
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
         "capture_design_transcript",
-        fakecapture_design_transcript,
+        fake_capture_design_transcript,
     )  # type: ignore[attr-defined]
     monkeypatch.setattr(
         design_log_publish_flow,
