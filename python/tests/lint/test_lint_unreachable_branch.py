@@ -293,7 +293,7 @@ def test_adapted_findings_pass_occurrence_baseline_validation() -> None:
     assert finding.qualified_symbol == "run"
     assert finding.pattern_name == "Name('flag', Load())"
     assert finding.occurrence == 1
-    validated = lint_engine._validate_finding(  # type: ignore[reportPrivateUsage]
+    validated = lint_engine._validate_finding(  # type: ignore[reportPrivateUsage]  # accessing private engine internals for round-trip validation
         finding, source=_source("python/larch/mod.py", VIOLATING), rule=lint.RULE
     )
     assert validated.pattern_name == finding.pattern_name
@@ -304,12 +304,12 @@ def test_adapted_findings_pass_occurrence_baseline_validation() -> None:
         occurrence=validated.occurrence or 0,
         reason="bootstrap",
     )
-    serialized = lint_engine._serialized_baseline(  # type: ignore[reportPrivateUsage]
+    serialized = lint_engine._serialized_baseline(  # type: ignore[reportPrivateUsage]  # accessing private engine internals for round-trip validation
         [row], occurrence_pattern_field="normalized_condition"
     )
     assert '"normalized_condition"' in serialized
     assert '"pattern_name"' not in serialized
-    parsed = lint_engine._parse_baseline_text(  # type: ignore[reportPrivateUsage]
+    parsed = lint_engine._parse_baseline_text(  # type: ignore[reportPrivateUsage]  # accessing private engine internals for round-trip validation
         serialized, source="round-trip"
     )
     assert parsed == [row]
