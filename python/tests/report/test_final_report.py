@@ -190,6 +190,38 @@ def test_write_final_report_renders_needs_user_from_handoff(tmp_path: Path, monk
     assert "pending NEXT_ACTION=assessments" in summary
 
 
+def test_write_final_report_resolves_persisted_needs_user_handoff_after_merge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    (tmp_path / "ship-pr-state.sh").write_text(
+        "PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\nMERGE_RESULT=merged\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".ship-route-exit-handoff.env").write_text(
+        "NEEDS_USER_REASON=architectural-assessments\nNEXT_ACTION=assessments\n",
+        encoding="utf-8",
+    )
+    entry = "- ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)"
+    issue_id = final_report.execution_issues.execution_issue_id(category="Tool Failures", body=entry)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Tool Failures", "body": entry + "\n", "issue_id": issue_id}) + "\n",
+        encoding="utf-8",
+    )
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "merge and CI watch skipped" not in summary
+    records = [json.loads(line) for line in (run_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()]
+    assert records[-1]["event"] == "resolved"
+
+
 def test_write_final_report_no_handoff_keeps_normal_outcome(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _write_minimal_state(tmp_path)
     _stub_cost_and_assessment(monkeypatch)

@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
@@ -875,18 +876,103 @@ def _append_needs_user_execution_issue(
         )
 
 
-def _prime_needs_user_execution_issue(implement_tmpdir: Path, *, outcome: str) -> tuple[str, str]:
+def _resolve_needs_user_execution_issue(
+    implement_tmpdir: Path,
+    *,
+    run_dir: Path,
+    reason: str,
+    next_action: str,
+) -> str:
+    """Record a durable resolution before removing the live needs-user entry."""
+    pending = f"; pending NEXT_ACTION={next_action}" if next_action else ""
+    entry = f"- ship route: merge and CI watch skipped — needs user (reason: {reason}{pending})"
+    batch_path = run_dir / "execution-issues.ndjson"
+    if batch_path.is_file():
+        try:
+            batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
+            if not execution_issues.execution_issue_batch_has_resolution(
+                batch_text=batch_text, category="Tool Failures", entry=entry,
+            ):
+                record = execution_issues.execution_issue_resolution_record(
+                    category="Tool Failures", entry=entry, resolution="merge-completed",
+                )
+                with tempfile.NamedTemporaryFile(
+                    "w", delete=False, dir=run_dir, encoding="utf-8",
+                ) as handle:
+                    record_path = Path(handle.name)
+                    _ = handle.write(record + "\n")
+                try:
+                    # Function-scoped import avoids the run-log flush import cycle.
+                    from larch.report import run_logs  # noqa: PLC0415 - local import avoids the run-log flush import cycle.
+
+                    append_result = run_logs.log_append(
+                        log_root=implement_tmpdir / "larch-logs",
+                        skill="implement",
+                        run_id=run_dir.name,
+                        batch="execution-issues",
+                        record_file=str(record_path),
+                    )
+                    appended = append_result.path.read_text(encoding="utf-8", errors="replace")
+                    if not execution_issues.execution_issue_batch_has_resolution(
+                        batch_text=appended, category="Tool Failures", entry=entry,
+                    ):
+                        return "execution-issue resolution was not persisted"
+                finally:
+                    record_path.unlink(missing_ok=True)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            return f"execution-issue resolution failed: {exc}"
+    try:
+        execution_issues.resolve_execution_issue(
+            implement_tmpdir / "execution-issues.md", entry=entry,
+        )
+    except OSError as exc:
+        return f"execution-issue live resolution failed: {exc}"
+    return ""
+
+
+def _prime_needs_user_execution_issue(
+    implement_tmpdir: Path,
+    *,
+    outcome: str,
+    run_dir: Path,
+) -> tuple[str, str]:
     """Append the needs-user exec-issues row when the handoff applies (#7074).
 
     Returns ``(reason, next_action)`` (both empty when it does not apply). Callers
     must load the issue counts *after* this so the appended row is counted.
     """
+    resolution_error = _resolve_stale_needs_user_handoff(
+        implement_tmpdir, run_dir=run_dir, outcome=outcome,
+    )
+    if resolution_error:
+        raise ShipError(resolution_error)
     needs_user = _needs_user_ship_handoff(implement_tmpdir, outcome=outcome)
     if needs_user is None:
         return "", ""
     reason, next_action = needs_user
     _append_needs_user_execution_issue(implement_tmpdir, reason=reason, next_action=next_action)
     return reason, next_action
+
+
+def _resolve_stale_needs_user_handoff(
+    implement_tmpdir: Path,
+    *,
+    run_dir: Path,
+    outcome: str,
+) -> str:
+    """Resolve a prior ship handoff once a terminal merge supersedes it."""
+    if outcome not in _MERGE_COMPLETED_OUTCOMES:
+        return ""
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    reason = _read_kv(path=handoff, key="NEEDS_USER_REASON")
+    if not reason:
+        return ""
+    return _resolve_needs_user_execution_issue(
+        implement_tmpdir,
+        run_dir=run_dir,
+        reason=reason,
+        next_action=_read_kv(path=handoff, key="NEXT_ACTION"),
+    )
 
 
 def write_final_report(
@@ -932,7 +1018,9 @@ def write_final_report(
     # and CI watch, so it must not render as ✅ DONE. Prime the exec-issues row from
     # the committed handoff *before* loading the issue counts so the row is counted.
     needs_user_reason, needs_user_next_action = _prime_needs_user_execution_issue(
-        implement_tmpdir, outcome=outcome
+        implement_tmpdir,
+        outcome=outcome,
+        run_dir=implement_tmpdir / "larch-logs" / "implement" / run_id,
     )
     run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(
         implement_tmpdir=implement_tmpdir, run_id=run_id

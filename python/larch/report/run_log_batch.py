@@ -424,6 +424,11 @@ def _normalize_body_for_hash(body: str) -> str:
     return "\n".join(lines)
 
 
+def execution_issue_identity(*, category: str, body: str) -> str:
+    """Return the stable identity for an execution-issue ledger entry."""
+    return hashlib.sha256(f"{category}\0{_normalize_body_for_hash(body)}".encode()).hexdigest()
+
+
 _APPEND_LOCK_ATTEMPTS = 100
 
 

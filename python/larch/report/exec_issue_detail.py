@@ -15,6 +15,7 @@ from typing import cast
 from larch.core import config
 from larch.core import proc
 from larch.core import redact
+from larch.report.run_log_batch import execution_issue_identity
 
 EXEC_CATEGORIES = frozenset({"Tool Failures", "External Reviewer Issues"})
 WARN_CATEGORY = "Warnings"
@@ -237,9 +238,35 @@ def structured_body_dedupe_keys(body: str, category: str) -> set[str]:
 
 
 def _parse_ndjson_structured_rows(rows: list[dict[str, object]]) -> IssueDetailGroups:
+    active_rows: list[dict[str, object]] = []
+    for source_row in rows:
+        if source_row.get("event") == "resolved":
+            issue_ids = source_row.get("issue_ids")
+            if isinstance(issue_ids, list):
+                resolved: set[str] = set()
+                issue_id_items = cast("list[object]", issue_ids)
+                for issue_id_obj in issue_id_items:
+                    if isinstance(issue_id_obj, str):
+                        resolved.add(issue_id_obj)
+                active_rows = [
+                    active_row
+                    for active_row in active_rows
+                    if active_row.get("issue_id") not in resolved
+                ]
+            continue
+        category_obj = source_row.get("category")
+        body_obj = source_row.get("body")
+        active_row = source_row
+        if isinstance(category_obj, str) and isinstance(body_obj, str) and not isinstance(source_row.get("issue_id"), str):
+            active_row = {
+                **source_row,
+                "issue_id": execution_issue_identity(category=category_obj, body=body_obj),
+            }
+        active_rows.append(active_row)
+
     exec_events: list[IssueEvent] = []
     warn_events: list[IssueEvent] = []
-    for row in rows:
+    for row in active_rows:
         category_obj = row.get("category")
         body_obj = row.get("body")
         category = category_obj if isinstance(category_obj, str) else ""
@@ -269,9 +296,12 @@ def _parse_ndjson_legacy(path: Path) -> LoadResult:
             parsed.append(None)
     dict_rows = [cast("dict[str, object]", row) for row in parsed if isinstance(row, dict)]
     all_dicts = bool(parsed) and len(dict_rows) == len(parsed)
-    all_categorized = bool(dict_rows) and all(isinstance(row.get("category"), str) for row in dict_rows)
-    structured_rows = [row for row in dict_rows if isinstance(row.get("category"), str)]
-    if all_dicts and all_categorized:
+    def is_structured(row: dict[str, object]) -> bool:
+        return isinstance(row.get("category"), str) or row.get("event") == "resolved"
+
+    all_structured = bool(dict_rows) and all(is_structured(row) for row in dict_rows)
+    structured_rows = [row for row in dict_rows if is_structured(row)]
+    if all_dicts and all_structured:
         return LoadResult(_parse_ndjson_structured_rows(dict_rows), listing_degraded=False)
 
     body_parts = [

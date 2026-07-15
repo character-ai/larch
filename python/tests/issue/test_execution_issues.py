@@ -93,6 +93,26 @@ def test_append_execution_issue_rejects_symlink_log(tmp_path: Path) -> None:
         execution_issues.append_execution_issue(log, category="Warnings", entry="- warning")
 
 
+def test_resolve_execution_issue_removes_only_the_matching_live_entry(tmp_path: Path) -> None:
+    log = tmp_path / "execution-issues.md"
+    _ = log.write_text("### Tool Failures\n- one\n- two\n", encoding="utf-8")
+
+    assert execution_issues.resolve_execution_issue(log, entry="- one") is True
+    assert execution_issues.resolve_execution_issue(log, entry="- absent") is False
+    assert log.read_text(encoding="utf-8") == "### Tool Failures\n- two\n"
+
+
+def test_execution_issue_resolution_record_uses_the_entry_identity() -> None:
+    record = json.loads(execution_issues.execution_issue_resolution_record(
+        category="Tool Failures", entry="- transient", resolution="recovered",
+    ))
+
+    assert record["event"] == "resolved"
+    assert record["issue_ids"] == [
+        execution_issues.execution_issue_id(category="Tool Failures", body="- transient")
+    ]
+
+
 def test_flush_execution_issues_writes_sentinel_and_clears_log(tmp_path: Path) -> None:
     issue_log = tmp_path / "execution-issues.md"
     _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
