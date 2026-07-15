@@ -168,6 +168,8 @@ Require `SUCCESS=true`, `RELATION_VERIFIED=true`, the exact requested blocked-by
 
 File follow-ups only through `/issue ... --operator-invoked`, never for public security findings. Invoke `/issue` via the Skill tool. Before each call, repeat the second security gate. Pass a caller sentinel path under `$TRIAGE_TMPDIR`.
 
+Preserve bug status when a close verdict replaces a bug with follow-ups: derive this only from the original Step 1 title, after removing any lifecycle prefix. For every replacement call, pass `--title-prefix "[BUG] [TRIAGED]"` and give `/issue` an untagged title. Do not use this prefix for follow-ups from a non-bug or a `valid` verdict.
+
 > **Continue after child returns.** When `/issue` returns, execute the counter and sentinel checks below; do NOT end the turn or summarize. → shared/subskill-invocation.md#anti-halt
 
 Parse `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, and every per-issue result key. Then run:
