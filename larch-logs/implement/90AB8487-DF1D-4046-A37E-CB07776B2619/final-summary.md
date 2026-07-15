@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+The changed design log-publish path preserves fail-closed transcript capture, secret scrub, and committed-log publish semantics; promoting helpers and switching from a subprocess CLI call to an in-process typed request/result does not disarm gates, weaken pause/resume artifact contracts, or introduce silent run-log omissions.
+
+## Architectural guidelines
+
+The refactor aligns with the guidelines: frozen request/result dataclasses, env access via the config constant with a shrinking baseline, a documented call-site import to break the publish cycle, preserved KEY=value CLI emission for existing readers, and test stubs updated to the public in-process seam without widening grandfathered suppressions.
+
 ## /implement run 90AB8487-DF1D-4046-A37E-CB07776B2619: shipping
 
 - **Outcome**: shipping
