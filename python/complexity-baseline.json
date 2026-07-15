@@ -4770,6 +4770,16 @@
   {
     "file": "larch/issue/issue_create.py",
     "code": "C901",
+    "qualified_symbol": "add_blocked_by",
+    "metric": 14,
+    "added_at": "2026-07-14",
+    "history": [],
+    "source_issue": 7276,
+    "reason": "Typed API retains the established dependency retry branches."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "code": "C901",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 20,
     "added_at": "legacy",
@@ -4782,6 +4792,16 @@
     "metric": 23,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "code": "C901",
+    "qualified_symbol": "create_one",
+    "metric": 16,
+    "added_at": "2026-07-14",
+    "history": [],
+    "source_issue": 7276,
+    "reason": "Typed API retains the established issue-create fallback branches."
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -4834,10 +4854,30 @@
   {
     "file": "larch/issue/issue_create.py",
     "code": "PLR0911",
+    "qualified_symbol": "add_blocked_by",
+    "metric": 9,
+    "added_at": "2026-07-14",
+    "history": [],
+    "source_issue": 7276,
+    "reason": "Typed API returns one explicit result for each retry outcome."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "code": "PLR0911",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 11,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "code": "PLR0911",
+    "qualified_symbol": "create_one",
+    "metric": 12,
+    "added_at": "2026-07-14",
+    "history": [],
+    "source_issue": 7276,
+    "reason": "Typed API returns one explicit result for each create outcome."
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -4866,6 +4906,16 @@
   {
     "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
+    "qualified_symbol": "add_blocked_by",
+    "metric": 14,
+    "added_at": "2026-07-14",
+    "history": [],
+    "source_issue": 7276,
+    "reason": "Typed API preserves dependency validation and retry branches."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "code": "PLR0912",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 22,
     "added_at": "legacy",
@@ -4878,6 +4928,16 @@
     "metric": 22,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "code": "PLR0912",
+    "qualified_symbol": "create_one",
+    "metric": 16,
+    "added_at": "2026-07-14",
+    "history": [],
+    "source_issue": 7276,
+    "reason": "Typed API preserves create authorization and fallback branches."
   },
   {
     "file": "larch/issue/issue_create.py",

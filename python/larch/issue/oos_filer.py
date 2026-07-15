@@ -25,11 +25,12 @@ from larch.core import proc
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import file_oos
+from larch.issue import issue_create
 from larch.issue import oos_priority
+from larch.report import run_logs
 from larch.review.review_types import is_security_block_text, parse_canonical_heading
 from larch.state import session_env as _session_env_oos
 
-_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _INTRA_BATCH_DEP_FIELD_COUNT = 2
@@ -85,14 +86,6 @@ def _repo_root() -> Path:
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip())
     return Path.cwd()
-
-
-def _run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, str(_CLI), *args], input=input_text, text=True, capture_output=True, check=False)
-
-
-def _parse_kv(text: str) -> dict[str, str]:
-    return larch_io.parse_kv(text, cr_strip="strip")
 
 
 def _is_security_block(block: str) -> bool:
@@ -403,8 +396,8 @@ def _materialize_sentinel_recovery_evidence(*, tmpdir: Path, filed: list[FiledIs
     path.write_text("\n".join(blocks), encoding="utf-8")
 
 
-def _run_disposition_checkpoint(tmpdir: Path) -> subprocess.CompletedProcess[str]:
-    return _run_cli(["oos", "disposition-checkpoint", "--implement-tmpdir", str(tmpdir)])
+def _run_disposition_checkpoint(tmpdir: Path) -> int:
+    return file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmpdir)])
 
 
 def _after_checkpoint(
@@ -419,7 +412,7 @@ def _after_checkpoint(
 ) -> tuple[int, dict[str, object]]:
     checkpoint = _run_disposition_checkpoint(tmpdir)
     urls = [issue.url for issue in filed]
-    if checkpoint.returncode == _SECURITY_SIDECAR_CHECKPOINT_RC:
+    if checkpoint == _SECURITY_SIDECAR_CHECKPOINT_RC:
         stats = _write_run_statistics(
             tmpdir=tmpdir,
             run_id=run_id,
@@ -436,12 +429,12 @@ def _after_checkpoint(
             "run_statistics_written": bool(urls and stats.is_file()),
             "step9a1_stamped": False,
         }
-    if checkpoint.returncode != 0:
+    if checkpoint != 0:
         try:
             stamped = _stamp_manifest(tmpdir, run_id, value=False)
         except RuntimeError:
             stamped = False
-        return checkpoint.returncode or 1, {
+        return checkpoint or 1, {
             "status": "disposition_checkpoint_failed",
             "accepted_count": accepted_count,
             "filed_count": len(filed) if filed_count is None else filed_count,
@@ -508,8 +501,11 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
     if not _codex_available():
         _append_warning(tmpdir=tmpdir, message="Codex unavailable; filing the pre-combine OOS batch.")
         return text
-    result = _run_cli(
+    cli_path = Path(__file__).resolve().parents[2] / "cli.py"
+    result = subprocess.run(  # lint-subprocess-via-runner: ok fixed cli.py command deliberately crosses to the external Codex agent boundary
         [
+            sys.executable,
+            str(cli_path),
             "agent",
             "launch-codex-exec",
             "--output",
@@ -525,6 +521,9 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
             "--add-dir",
             str(tmpdir),
         ],
+        text=True,
+        capture_output=True,
+        check=False,
     )
     if result.returncode != 0 or not output_path.is_file():
         _append_warning(tmpdir=tmpdir, message="Codex combine failed; filing the pre-combine OOS batch.")
@@ -690,7 +689,7 @@ def _cleanup_created_issues(
         number = issue.url.rsplit("/", 1)[-1]
         if not number.isdigit():
             continue
-        _ = _run_cli(["issue", "cleanup-failed", "--issue-number", number, *([] if not repo else ["--repo", repo])])
+        _ = issue_create.cleanup_failed(issue=number, repo=repo)
 
 
 def _body_bytes(text: str) -> int:
@@ -744,13 +743,18 @@ def _is_capped_rollup_body(body: str) -> bool:
     return "OOS_ISSUES_PER_RUN_CAP" in body and "rolled up" in body
 
 
-def _body_files_for_item(*, tmpdir: Path, item_index: int, fields: dict[str, str]) -> list[Path]:
-    raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
-    body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
+def _body_files_for_item(
+    *,
+    tmpdir: Path,
+    item_index: int,
+    item: issue_create.ParsedItem,
+    body_path: Path | None,
+) -> list[Path]:
+    body = body_path.read_text(encoding="utf-8", errors="replace") if body_path is not None and body_path.is_file() else ""
     body = file_oos._sanitize_public_text(body)  # pyright: ignore[reportPrivateUsage]
-    reviewer = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_REVIEWER", ""))  # pyright: ignore[reportPrivateUsage]
-    phase = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_PHASE", "implement"))  # pyright: ignore[reportPrivateUsage]
-    vote = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_VOTE_TALLY", "N/A"))  # pyright: ignore[reportPrivateUsage]
+    reviewer = file_oos._sanitize_public_text(item.reviewer)  # pyright: ignore[reportPrivateUsage]
+    phase = file_oos._sanitize_public_text(item.phase or "implement")  # pyright: ignore[reportPrivateUsage]
+    vote = file_oos._sanitize_public_text(item.vote or "N/A")  # pyright: ignore[reportPrivateUsage]
     if reviewer or phase or vote:
         body = _wrap_oos_body(body, reviewer=reviewer, phase=phase, vote=vote)
     out_dir = tmpdir / "oos-issue-bodies"
@@ -785,21 +789,10 @@ def _apply_intra_batch_edges(
         blocked_number = issue_numbers.get(blocked_index, "")
         if not blocker_number.isdigit() or not blocked_number.isdigit():
             continue
-        intra = _run_cli(
-            [
-                "issue",
-                "add-blocked-by",
-                "--client-issue",
-                blocked_number,
-                "--blocker-issue",
-                blocker_number,
-                *([] if not repo else ["--repo", repo]),
-            ],
-        )
-        intra_kv = _parse_kv(intra.stdout)
-        if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
-            detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
-            _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=intra.returncode or 1, output=detail)
+        intra = issue_create.add_blocked_by(client=blocked_number, blocker=blocker_number, repo=repo)
+        if intra.exit_code != 0 or not intra.added:
+            detail = intra.error or "intra-batch add-blocked-by failed"
+            _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=intra.exit_code or 1, output=detail)
             _cleanup_created_issues(tmpdir, filed, repo=repo)
             return False
     return True
@@ -838,12 +831,11 @@ def _run_issue_batch(
     sanitized_input = bodies_dir / "oos-combined-sanitized.md"
     sanitized_input.write_text(file_oos._sanitize_public_text(combined.read_text(encoding="utf-8", errors="replace")), encoding="utf-8")  # pyright: ignore[reportPrivateUsage]
 
-    parsed = _run_cli(["issue", "parse-input", "--input-file", str(sanitized_input), "--output-dir", str(bodies_dir)])
-    if parsed.returncode != 0:
-        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue parse-input", rc=parsed.returncode, output=parsed.stderr or parsed.stdout)
+    parsed = issue_create.parse_input(input_file=sanitized_input, output_dir=bodies_dir)
+    if parsed.exit_code != 0:
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue parse-input", rc=parsed.exit_code, output=parsed.error)
         return BatchResult([], 1, "hard_create")
-    fields = _parse_kv(parsed.stdout)
-    total = int(fields.get("ITEMS_TOTAL", "0") or "0")
+    total = len(parsed.items)
     if not _probe_tracking_blocker(tmpdir=tmpdir, repo=repo, issue_number=issue_number):
         return BatchResult([], 1, "hard_create")
 
@@ -856,11 +848,12 @@ def _run_issue_batch(
     failure_mode: Literal["none", "hard_create", "priority_label", "priority_provision"] = "none"
     priority_label_ready: bool | None = None
     for item_index in create_order:
-        title = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_TITLE", "")).strip()  # pyright: ignore[reportPrivateUsage]
+        item = parsed.items[item_index - 1]
+        title = file_oos._sanitize_public_text(item.title).strip()  # pyright: ignore[reportPrivateUsage]
         # Never publish an empty public issue: if the parser flagged this item
         # malformed (no/empty Description body), skip filing and fail loud
         # instead of creating an issue with a blank `## Description` (#5260).
-        if fields.get(f"ITEM_{item_index}_MALFORMED", "") == "true":
+        if item.malformed:
             detail = f"skipped malformed accepted-OOS item (empty/unparseable Description); not filing empty public issue: {title or f'item {item_index}'}"
             _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=detail)
             continue
@@ -871,36 +864,29 @@ def _run_issue_batch(
             failures += 1
             failure_mode = "priority_provision"
             continue
-        body_files = _body_files_for_item(tmpdir=tmpdir, item_index=item_index, fields=fields)
+        body_files = _body_files_for_item(tmpdir=tmpdir, item_index=item_index, item=item, body_path=parsed.body_paths[item_index - 1])
         source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
         primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
         total_parts = len(body_files)
         for part_index, body_file in enumerate(body_files, start=1):
             part_title = title if total_parts == 1 else f"{title} (part {part_index}/{total_parts})"
-            args = [
-                "issue",
-                "create-one",
-                "--title",
-                part_title,
-                "--title-prefix",
-                "[OOS]",
-                "--body-file",
-                str(body_file),
-            ]
+            create_args: dict[str, object] = {
+                "title": part_title,
+                "title_prefix": "[OOS]",
+                "body_file": str(body_file),
+                "labels": [oos_priority.OOS_CORRECTNESS_LABEL] if item_priority else [],
+            }
             if repo:
-                args.extend(["--repo", repo])
-            if item_priority:
-                args.extend(["--label", oos_priority.OOS_CORRECTNESS_LABEL])
+                create_args["repo"] = repo
             if context_file is not None:
-                args.extend(["--context-file", str(context_file), "--run-id", run_id, "--trusted-root", str(tmpdir)])
-            created = _run_cli(args)
-            kv = _parse_kv(created.stdout)
-            if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
+                create_args.update({"context_file": str(context_file), "run_id": run_id, "trusted_root": str(tmpdir)})
+            created = issue_create.create_one(create_args)
+            if created.exit_code != 0:
                 failures += 1
                 _cleanup_created_issues(tmpdir, filed, repo=repo)
                 return BatchResult(filed, failures, "hard_create")
-            url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
-            duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
+            url = created.url
+            duplicate = created.duplicate
             filed_issue: FiledIssue | None = None
             if url:
                 part_stable = primary_stable if part_index == 1 else f"{primary_stable}:part{part_index}"
@@ -919,15 +905,14 @@ def _run_issue_batch(
                     _handle_priority_label_failure(filed_issue, filed, tmpdir, url, repo)
                     break
                 filed.append(filed_issue)
-            number = kv.get("ISSUE_NUMBER") or ""
+            number = created.number
             if part_index == 1 and number.isdigit():
                 issue_numbers[item_index] = number
             if issue_number and number.isdigit():
-                blocked = _run_cli(["issue", "add-blocked-by", "--client-issue", number, "--blocker-issue", issue_number, *([] if not repo else ["--repo", repo])])
-                blocked_kv = _parse_kv(blocked.stdout)
-                if blocked.returncode != 0 or blocked_kv.get("BLOCKED_BY_FAILED") == "true":
-                    detail = blocked_kv.get("ERROR") or blocked.stderr or blocked.stdout or "add-blocked-by failed"
-                    _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=blocked.returncode or 1, output=detail)
+                blocked = issue_create.add_blocked_by(client=number, blocker=issue_number, repo=repo)
+                if blocked.exit_code != 0 or not blocked.added:
+                    detail = blocked.error or "add-blocked-by failed"
+                    _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=blocked.exit_code or 1, output=detail)
                     _cleanup_created_issues(tmpdir, filed, repo=repo)
                     return BatchResult(filed, 1, "hard_create")
         item_edges = [edge for edge in intra_batch_edges if edge[1] == item_index]
@@ -1080,24 +1065,27 @@ def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
     manifest = tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
     if not manifest.is_file():
         return False
-    result = _run_cli(
-        [
-            "run-log",
-            "manifest",
-            "--log-root",
-            str(tmpdir / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            run_id,
-            "--field",
-            f"steps_ran.step9a1={'true' if value else 'false'}",
-        ],
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "manifest update failed").strip()
-        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {detail[:300]}")
+    try:
+        run_logs._update_manifest_v2(path=manifest, updates={"steps_ran.step9a1": value})  # pyright: ignore[reportPrivateUsage]  # direct typed replacement for cli.py manifest re-entry
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {str(exc)[:300]}") from exc
     return True
+
+
+def _file_conflict_deps(*, input_file: Path, output_file: Path) -> tuple[int, str]:
+    """Materialize the in-process dependency plan with CLI-compatible failure data."""
+    try:
+        cluster_cap, global_cap = file_oos._file_conflict_caps()  # pyright: ignore[reportPrivateUsage]  # preserve the CLI's cap validation before writing
+        file_oos._write_file_conflict_deps(  # pyright: ignore[reportPrivateUsage]  # preserve the CLI's atomic write and stale-output cleanup contract
+            input_file,
+            output_file,
+            cluster_cap=cluster_cap,
+            global_cap=global_cap,
+        )
+    except (OSError, ValueError) as exc:
+        output_file.unlink(missing_ok=True)
+        return 1, str(exc)
+    return 0, ""
 
 
 def _recover_persisted_blocks(
@@ -1203,21 +1191,21 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos issue-cap", rc=1, output=str(exc))
         return 1, {"status": "issue_cap_failed", "accepted_count": accepted_count, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
     deps = tmpdir / "oos-intra-batch-deps.tsv"
-    deps_result = _run_cli(["oos", "file-conflict-deps", "--input-file", str(combined), "--output", str(deps)])
+    deps_rc, deps_error = _file_conflict_deps(input_file=combined, output_file=deps)
     deps_path: Path | None = None
-    if deps_result.returncode == 0:
+    if deps_rc == 0:
         if deps.is_file() and deps.stat().st_size > 0:
             deps_path = deps
     else:
         warning = (
-            f"**⚠ /implement: oos-file-conflict pre-pass failed (exit {deps_result.returncode}) — "
+            f"**⚠ /implement: oos-file-conflict pre-pass failed (exit {deps_rc}) — "
             "proceeding without caller-supplied serialization edges; review accepted-OOS Descriptions "
             "before greenlighting parallel workers**"
         )
         _append_warning(tmpdir=tmpdir, message=warning)
-        detail = deps_result.stderr or deps_result.stdout or warning
-        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos file-conflict-deps", rc=deps_result.returncode or 1, output=detail)
-        if deps_result.returncode == 1:
+        detail = deps_error or warning
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos file-conflict-deps", rc=deps_rc or 1, output=detail)
+        if deps_rc == 1:
             deps.unlink(missing_ok=True)
     # issue_cap may have rewritten `combined` in place (rolling surplus blocks
     # into one aggregate). Map stable IDs from the post-cap file the batch
