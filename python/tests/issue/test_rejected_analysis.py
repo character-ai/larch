@@ -12,6 +12,7 @@ from larch.errors import ShipError
 from larch.issue import rejected_analysis as ra
 from larch.report import run_log_corpus
 from larch.review import voting
+from tests.support.review_wire import code_review_classification_row
 
 
 def _started() -> str:
@@ -38,31 +39,14 @@ def _write_implement_fixture(root: Path, *, run_id: str = "RUN-1", finding_id: s
         encoding="utf-8",
     )
     header = voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-    row = "\t".join(
-        [
-            finding_id,
-            "cursor-specialist",
-            "rejected",
-            vote1,
-            "true",
-            severity1,
-            "good",
-            "false",
-            "cursor-validity",
-            vote2,
-            "true",
-            "minor",
-            "good",
-            "false",
-            "codex-plan-fidelity",
-            "NO",
-            "true",
-            "minor",
-            "good",
-            "false",
-            "codex-pragmatism",
-            scope,
-        ]
+    row = code_review_classification_row(
+        finding_id,
+        "rejected",
+        reviewer="cursor-specialist",
+        vote1=vote1,
+        severity1=severity1,
+        vote2=vote2,
+        scope=scope,
     )
     (round_dir / "findings-classification.tsv").write_text(header + "\n" + row + "\n", encoding="utf-8")
     return run

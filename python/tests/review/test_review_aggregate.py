@@ -399,39 +399,13 @@ def test_aggregate_oos_retry_threads_payload_bytes_into_env_and_manifest(tmp_pat
     dispatch = tmp_path / "payload-dispatch.sh"
     env_log = tmp_path / "payload-env.log"
     counter = tmp_path / "dispatch-count.txt"
-    rts.write_executable(
-        path=dispatch,
-        body=f"""#!/usr/bin/env bash
-set -euo pipefail
-slots=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --slots-file) slots="${{2:?}}"; shift 2 ;;
-    --require-result-pattern) shift 2 ;;
-    --codex-present|--cursor-present|--mode|--diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;
-    *) shift 1 ;;
-  esac
-done
-[[ -n "$slots" && -f "$slots" ]] || exit 2
-out=$(jq -r '.output' "$slots")
-n=0
-[[ -f "{counter}" ]] && n=$(cat "{counter}")
-n=$((n + 1))
-printf '%s' "$n" > "{counter}"
-printf '%s\n' "${{LARCH_PANEL_PAYLOAD_BYTES:-0}}" >> "{env_log}"
-if [[ "$n" -eq 1 ]]; then
-  cat > "$out" <<'FAILBODY'
-{_OOS_ATTR_FAIL}
-FAILBODY
-else
-  cat > "$out" <<'OKBODY'
-{_OOS_ATTR_SUCCESS}
-OKBODY
-fi
-paths_out="${{slots}}.output-files"
-printf '%s\n' "$out" > "$paths_out"
-printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_FILES_PATH=%s\nALL_OUTPUT_TOOLS=cursor\n' "$out" "$paths_out"
-""",
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=1,
+        fail_body=_OOS_ATTR_FAIL,
+        success_body=_OOS_ATTR_SUCCESS,
+        env_log=env_log,
     )
 
     result = run_review(

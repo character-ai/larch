@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import os
+import shlex
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self
+from typing import Self, TypeVar
 
 from larch.agents import collect_results
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
+from larch.implement import scope_disposition
 
 from tests.support.repo_contract import ROOT, repo_root
 from tests.support.review_wire import plan_review_slot_line, slot_manifest_ndjson
 
 CLI = ROOT / "python" / "cli.py"
+T = TypeVar("T")
 
 # Session/tmpdir builders depend on the root contract above; re-export after it.
 from tests.support.session import (  # noqa: E402  # pylint: disable=wrong-import-position
@@ -41,15 +45,18 @@ __all__ = [
     "PR_VIEW_OPEN_JSON",
     "ROOT",
     "RecordingRunner",
+    "capture_start",
     "completed",
     "gh_pr_view",
     "gh_result",
+    "make_committed_repo",
     "make_design_tmpdir",
     "make_implement_tmpdir",
     "make_run_context",
     "make_zero_findings_plan_review_fake_cli",
     "merge_admin_responses",
     "ok",
+    "operator_repo_with_remote",
     "repo_root",
     "run_cli",
     "run_params_text",
@@ -57,6 +64,8 @@ __all__ = [
     "seed_plan",
     "seed_run_params",
     "write_design_source_env",
+    "write_gh_pr_stub",
+    "write_required_plan_coverage",
     "write_session_env",
 ]
 
@@ -67,6 +76,15 @@ def _empty_calls() -> list[list[str]]:
 
 def _empty_results() -> list[CommandResult]:
     return []
+
+
+def capture_start(captured: list[T]) -> Callable[[T], int]:
+    """Return a successful starter fake that records its specification."""
+    def fake_start(spec: T) -> int:
+        captured.append(spec)
+        return 0
+
+    return fake_start
 
 
 @dataclass
@@ -114,10 +132,13 @@ class RecordingRunner:
 def run_cli(
     *args: str,
     env: dict[str, str] | None = None,
+    quiet_disable: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run python/cli.py in a subprocess with CLAUDE_PLUGIN_ROOT set to the repo root."""
     merged = os.environ.copy()
     merged["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
+    if quiet_disable:
+        merged["LARCH_QUIET_DISABLE"] = "1"
     if env:
         merged.update(env)
     return subprocess.run(
@@ -128,6 +149,91 @@ def run_cli(
         capture_output=True,
         check=False,
     )
+
+
+def write_gh_pr_stub(
+    path: Path, *, pr_create_rc: int, capture_path: Path | None = None
+) -> None:
+    """Write a ``gh`` stub for PR-create and PR-merge fixture flows."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    capture_path_arg = shlex.quote(str(capture_path) if capture_path else "")
+    _ = path.write_text(
+        "#!/usr/bin/env bash\n"
+        f"CAPTURE_PATH={capture_path_arg}\n"
+        'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then\n'
+        '  if [ -n "$CAPTURE_PATH" ]; then\n'
+        '    {\n'
+        "      printf '%s\\n' '__ARGV__'\n"
+        "      for arg in \"$@\"; do printf '%s\\n' \"$arg\"; done\n"
+        "      printf '%s\\n' '__BODY__'\n"
+        '      body_file=""\n'
+        '      while [ "$#" -gt 0 ]; do\n'
+        '        if [ "$1" = "--body-file" ]; then\n'
+        '          shift\n'
+        '          body_file="${1-}"\n'
+        '          break\n'
+        '        fi\n'
+        '        shift\n'
+        '      done\n'
+        '      if [ -n "$body_file" ]; then cat "$body_file"; fi\n'
+        '    } > "$CAPTURE_PATH"\n'
+        '  fi\n'
+        f"  if [ {pr_create_rc} -ne 0 ]; then echo 'gh: pr create failed' >&2; exit {pr_create_rc}; fi\n"
+        "  echo 'https://github.com/o/r/pull/77'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then exit 0; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def operator_repo_with_remote(tmp_path: Path) -> Path:
+    """Create a committed ``main`` fixture repository with a bare ``origin`` remote."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for args in (("init", "-q"), ("checkout", "-q", "-b", "main"),
+                 ("config", "user.email", "t@example.com"), ("config", "user.name", "t")):
+        _ = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    for args in (("add", "README.md"), ("commit", "-q", "-m", "seed")):
+        _ = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    origin = tmp_path / "origin.git"
+    _ = subprocess.run(["git", "init", "-q", "--bare", str(origin)], cwd=tmp_path, check=True, capture_output=True)
+    for args in (("remote", "add", "origin", str(origin)), ("push", "-q", "-u", "origin", "main")):
+        _ = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    return repo
+
+
+def make_committed_repo(tmp_path: Path) -> Path:
+    """Create a minimal committed repository for implementation-session tests."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for args in (("init",), ("config", "user.email", "test@example.com"),
+                 ("config", "user.name", "Test")):
+        _ = subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    _ = (repo / "tracked").write_text("base\n", encoding="utf-8")
+    for args in (("add", "tracked"), ("commit", "-m", "base")):
+        _ = subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    return repo.resolve()
+
+
+def write_required_plan_coverage(
+    tmp_path: Path,
+    *,
+    fingerprint: str,
+) -> None:
+    """Write the high-coverage disposition fixture used by PR tests."""
+    coverage = scope_disposition.PlanCoverage(
+        total=1, touched=0, untouched=1, untouched_percent=100, band="high",
+        plan_paths=("a.py",), touched_paths=(), untouched_paths=("a.py",),
+        todos_left_count=0, todos_left=(), fingerprint=fingerprint,
+        disposition_required=True, plan_fidelity_forced=True,
+        coverage_file=str(tmp_path / "plan-coverage.json"),
+        untouched_file=str(tmp_path / "untouched.txt"), todos_file=str(tmp_path / "todos.txt"),
+    )
+    scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
 
 
 # Shared RunContext defaults for ship-pr unit tests; override fields via

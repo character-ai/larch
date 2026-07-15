@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from larch.calibration import difficulty
 from larch.calibration import difficulty_calibration as dc
 from larch.review import voting
+from tests.support.review_wire import code_review_classification_row
 
 if TYPE_CHECKING:
     import pytest
@@ -98,31 +99,7 @@ def _design_tsv(run: Path, round_num: int, *rows: str) -> None:
 
 
 def _code_row(fid: str, result: str, *, scope: str = "", severity: str = "major") -> str:
-    values = [
-        fid,
-        "reviewer",
-        result,
-        "YES",
-        "true",
-        severity,
-        "good",
-        "false",
-        "cursor-validity",
-        "NO",
-        "true",
-        "minor",
-        "good",
-        "false",
-        "codex-plan-fidelity",
-        "NO",
-        "true",
-        "minor",
-        "good",
-        "false",
-        "codex-pragmatism",
-        scope,
-    ]
-    return "\t".join(values)
+    return code_review_classification_row(fid, result, scope=scope, severity1=severity)
 
 
 def _implement_tsv(run: Path, round_num: int, *rows: str) -> None:

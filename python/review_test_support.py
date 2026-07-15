@@ -570,11 +570,18 @@ def write_aggregate_counting_dispatch_stub(
     fail_attempts: int,
     fail_body: str,
     success_body: str,
+    env_log: Path | None = None,
 ) -> None:
     """Dispatch stub that emits ``fail_body`` for the first ``fail_attempts`` invocations, then
     ``success_body``. Each invocation increments ``counter_file`` so a test can assert how many
-    aggregator dispatches the bounded validation-retry loop performed.
+    aggregator dispatches the bounded validation-retry loop performed. When supplied, ``env_log``
+    records the panel-payload byte count for each invocation.
     """
+    env_log_write = (
+        f'printf \'%s\\n\' "${{LARCH_PANEL_PAYLOAD_BYTES:-0}}" >> "{env_log}"\n'
+        if env_log is not None
+        else ""
+    )
     write_executable(
         path=path,
         body=f"""#!/usr/bin/env bash
@@ -595,7 +602,7 @@ n=0
 [[ -f "$counter" ]] && n=$(cat "$counter")
 n=$((n + 1))
 printf '%s' "$n" > "$counter"
-if [[ "$n" -le {fail_attempts} ]]; then
+{env_log_write}if [[ "$n" -le {fail_attempts} ]]; then
   cat > "$out" <<'FAILBODY'
 {fail_body}
 FAILBODY

@@ -8,13 +8,14 @@ import json
 import io
 import os
 import subprocess
-import stat
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.design import design_pause
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
+from test_support import operator_repo_with_remote as _operator_repo_with_remote
+from test_support import write_gh_pr_stub as _write_gh_stub
 
 if TYPE_CHECKING:
     import pytest
@@ -29,43 +30,6 @@ _MARKER_END = "<!-- larch:design-pause:end -->"
 def test_parse_pause_payload_normalizes_keys_before_last_value_selection() -> None:
     payload = f"{_MARKER_START}\nSTEP=old\n STEP =new\nSTEP=latest\n{_MARKER_END}\n"
     assert design_pause._parse_pause_payload(payload) == {"STEP": "latest"}  # pyright: ignore[reportPrivateUsage]
-
-
-def _git(*argv: str, cwd: Path) -> None:
-    _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
-
-
-def _write_gh_stub(path: Path, *, pr_create_rc: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_text(
-        "#!/usr/bin/env bash\n"
-        'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then\n'
-        f"  if [ {pr_create_rc} -ne 0 ]; then echo 'gh: pr create failed' >&2; exit {pr_create_rc}; fi\n"
-        "  echo 'https://github.com/o/r/pull/77'\n"
-        "  exit 0\n"
-        "fi\n"
-        'if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then exit 0; fi\n'
-        "exit 0\n",
-        encoding="utf-8",
-    )
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
-
-
-def _operator_repo_with_remote(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git("init", "-q", cwd=repo)
-    _git("checkout", "-q", "-b", "main", cwd=repo)
-    _git("config", "user.email", "t@example.com", cwd=repo)
-    _git("config", "user.name", "t", cwd=repo)
-    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    _git("add", "README.md", cwd=repo)
-    _git("commit", "-q", "-m", "seed", cwd=repo)
-    origin = tmp_path / "origin.git"
-    _git("init", "-q", "--bare", str(origin), cwd=tmp_path)
-    _git("remote", "add", "origin", str(origin), cwd=repo)
-    _git("push", "-q", "-u", "origin", "main", cwd=repo)
-    return repo
 
 
 def _pause_marker_body(

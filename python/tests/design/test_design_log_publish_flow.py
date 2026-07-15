@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import os
-import shlex
-import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +12,8 @@ from typing import Any
 import pytest
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
+from test_support import operator_repo_with_remote as _operator_repo_with_remote
+from test_support import write_gh_pr_stub as _write_gh_stub
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 LOG_BRANCH = f"larch-logs/design-{RUN_ID}"
@@ -21,60 +21,6 @@ LOG_BRANCH = f"larch-logs/design-{RUN_ID}"
 
 def _git(*argv: str, cwd: Path) -> None:
     _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
-
-
-def _write_gh_stub(
-    path: Path, *, pr_create_rc: int, capture_path: Path | None = None
-) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    capture_path_arg = shlex.quote(str(capture_path) if capture_path else "")
-    _ = path.write_text(
-        "#!/usr/bin/env bash\n"
-        f"CAPTURE_PATH={capture_path_arg}\n"
-        'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then\n'
-        '  if [ -n "$CAPTURE_PATH" ]; then\n'
-        '    {\n'
-        "      printf '%s\\n' '__ARGV__'\n"
-        "      for arg in \"$@\"; do printf '%s\\n' \"$arg\"; done\n"
-        "      printf '%s\\n' '__BODY__'\n"
-        '      body_file=""\n'
-        '      while [ "$#" -gt 0 ]; do\n'
-        '        if [ "$1" = "--body-file" ]; then\n'
-        '          shift\n'
-        '          body_file="${1-}"\n'
-        '          break\n'
-        '        fi\n'
-        '        shift\n'
-        '      done\n'
-        '      if [ -n "$body_file" ]; then cat "$body_file"; fi\n'
-        '    } > "$CAPTURE_PATH"\n'
-        '  fi\n'
-        f"  if [ {pr_create_rc} -ne 0 ]; then echo 'gh: pr create failed' >&2; exit {pr_create_rc}; fi\n"
-        "  echo 'https://github.com/o/r/pull/77'\n"
-        "  exit 0\n"
-        "fi\n"
-        'if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then exit 0; fi\n'
-        "exit 0\n",
-        encoding="utf-8",
-    )
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
-
-
-def _operator_repo_with_remote(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git("init", "-q", cwd=repo)
-    _git("checkout", "-q", "-b", "main", cwd=repo)
-    _git("config", "user.email", "t@example.com", cwd=repo)
-    _git("config", "user.name", "t", cwd=repo)
-    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    _git("add", "README.md", cwd=repo)
-    _git("commit", "-q", "-m", "seed", cwd=repo)
-    origin = tmp_path / "origin.git"
-    _git("init", "-q", "--bare", str(origin), cwd=tmp_path)
-    _git("remote", "add", "origin", str(origin), cwd=repo)
-    _git("push", "-q", "-u", "origin", "main", cwd=repo)
-    return repo
 
 
 def _operator_repo_with_guidelines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

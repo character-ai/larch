@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import subprocess
 import os
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,36 +8,19 @@ import pytest
 
 from larch.implement import checks_result_identity as identity
 from larch.implement import dispatch_commit_route as route
+from test_support import capture_start as _capture_spec
+from test_support import make_committed_repo
 
 if TYPE_CHECKING:
     from larch.bgjob import model
-
-
-def _capture_spec(captured: list[model.JobSpec]) -> Callable[[model.JobSpec], int]:
-    def fake_start(spec: model.JobSpec) -> int:
-        captured.append(spec)
-        return 0
-
-    return fake_start
 
 
 def _start_ok(_spec: model.JobSpec) -> int:
     return 0
 
 
-def _git(repo: Path, *args: str) -> None:
-    _ = subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
-
-
 def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "config", "user.email", "test@example.com")
-    _git(repo, "config", "user.name", "Test")
-    _ = (repo / "tracked").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "tracked")
-    _git(repo, "commit", "-m", "base")
+    repo = make_committed_repo(tmp_path)
     impl = tmp_path / "impl"
     impl.mkdir()
     _ = (impl / "session-env.sh").write_text(f"REPO_ROOT={repo.resolve()}\n", encoding="utf-8")
@@ -47,7 +28,7 @@ def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
     monkeypatch.setattr(route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    return impl, repo.resolve()
+    return impl, repo
 
 
 def test_parent_seeds_identity_and_forwards_child_arguments(

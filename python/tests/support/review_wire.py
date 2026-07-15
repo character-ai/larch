@@ -118,3 +118,21 @@ def slot_manifest_ndjson(rows: Sequence[WireRow]) -> str:
 def panel_manifest_ndjson(rows: Sequence[WireRow]) -> str:
     """Serialize shared panel-manifest rows using the canonical NDJSON contract."""
     return slot_manifest_ndjson(rows)
+
+
+def code_review_classification_row(  # noqa: PLR0913 - columns are a wire-format fixture.
+    finding_id: str,
+    result: str,
+    *,
+    reviewer: str = "reviewer",
+    vote1: str = "YES",
+    severity1: str = "major",
+    vote2: str = "NO",
+    scope: str = "",
+) -> str:
+    """Build one ordinary code-review findings-classification TSV row."""
+    return (
+        f"{finding_id}\t{reviewer}\t{result}\t{vote1}\ttrue\t{severity1}\tgood\tfalse\t"
+        f"cursor-validity\t{vote2}\ttrue\tminor\tgood\tfalse\tcodex-plan-fidelity\t"
+        f"NO\ttrue\tminor\tgood\tfalse\tcodex-pragmatism\t{scope}"
+    )

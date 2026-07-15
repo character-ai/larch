@@ -16,7 +16,7 @@ from larch.git import pr as pr_module
 from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
 
-from test_support import RecordingRunner, make_run_context
+from test_support import RecordingRunner, make_run_context, write_required_plan_coverage
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
@@ -724,25 +724,7 @@ def test_create_branch_main_no_kvs_on_non_success(
 
 
 def _write_required_coverage(tmp_path: Path) -> None:
-    coverage = pr_module.scope_disposition.PlanCoverage(
-        total=1,
-        touched=0,
-        untouched=1,
-        untouched_percent=100,
-        band="high",
-        plan_paths=("a.py",),
-        touched_paths=(),
-        untouched_paths=("a.py",),
-        todos_left_count=0,
-        todos_left=(),
-        fingerprint="fp-required",
-        disposition_required=True,
-        plan_fidelity_forced=True,
-        coverage_file=str(tmp_path / "plan-coverage.json"),
-        untouched_file=str(tmp_path / "untouched.txt"),
-        todos_file=str(tmp_path / "todos.txt"),
-    )
-    pr_module.scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+    write_required_plan_coverage(tmp_path, fingerprint="fp-required")
 
 
 def _write_scope_required_plan(tmp_path: Path) -> None:
