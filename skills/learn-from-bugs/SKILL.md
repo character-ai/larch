@@ -183,7 +183,7 @@ Use this one fragment for all three marker-producing paths: default mode after S
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
-Run the whole fragment as one Bash call. `learn-from-bugs state-publish` owns the entire flow behind `python/cli.py`: it validates the checkout and origin, resolves and fetches the repository default branch, derives and reserves a collision-free state branch, then publishes the marker from a disposable clean detached worktree, so filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`. It invokes `learn-from-bugs write-state` exactly once against that worktree, commits only the marker with `--only`, opens the state PR with a file-backed body, and attempts an immediate `--admin --merge`:
+Run the whole fragment as one Bash call. `learn-from-bugs state-publish` owns the entire flow behind `python/cli.py`: it validates the checkout and origin, resolves and fetches the repository default branch, derives and reserves a collision-free state branch, then publishes the marker from a disposable clean detached worktree, so filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`. It invokes `learn-from-bugs write-state` exactly once against that worktree, commits only the marker with `--only`, opens the state PR with a file-backed body, and attempts an immediate `--admin --squash`:
 
 ```bash
 set -euo pipefail

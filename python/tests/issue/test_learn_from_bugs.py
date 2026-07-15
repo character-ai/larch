@@ -2086,6 +2086,7 @@ def _run_publish(
     responses: list[CommandResult],
     *,
     precreate_worktree: bool = False,
+    runner: RecordingRunner | None = None,
 ) -> tuple[int, dict[str, str]]:
     run_dir = tmp_path / "run"
     run_dir.mkdir(exist_ok=True)
@@ -2096,9 +2097,8 @@ def _run_publish(
     # present. Clear those vars so the offline call sequence stays hermetic.
     monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
     monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
-    monkeypatch.setattr(
-        learn_from_bugs, "_runner", lambda: RecordingRunner.strict_queue(*responses)
-    )
+    active_runner = runner if runner is not None else RecordingRunner.strict_queue(*responses)
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: active_runner)
     rc = learn_from_bugs.state_publish_main(
         [
             "--root", str(tmp_path),
@@ -2128,6 +2128,21 @@ def test_state_publish_fresh_success_merges(
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
     assert out["PR_NUMBER"] == "7"
     assert out["PR_URL"] == "https://github.com/o/r/pull/7"
+
+
+def test_state_publish_fresh_success_requests_admin_squash(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    responses = _publish_ok_responses()
+    runner = RecordingRunner.strict_queue(*responses)
+
+    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses, runner=runner)
+
+    assert rc == 0
+    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
+    assert runner.calls[18] == [  # lint-gh-argv-literal: ok exact regression assertion
+        "gh", "pr", "merge", "7", "--repo", "o/r", "--squash", "--admin",
+    ]
 
 
 def test_state_publish_invalid_branch_name(
