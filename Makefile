@@ -21,7 +21,9 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: lint-flat-tests test-lint-flat-tests
 .PHONY: test-hook-deny-run-in-background test-bgjob
 .PHONY: lint-em-dash-output test-lint-em-dash-output
-.PHONY: test-step-7a test-step-8-oos-checkpoint
+.PHONY: test-step-7a step-7a-py-harness step-7a-bash-harness test-step-8-oos-checkpoint
+.PHONY: test-oos-disposition-gate oos-disposition-gate-py-harness oos-disposition-gate-bash-harness
+.PHONY: test-flush-execution-issues flush-execution-issues-py-harness flush-execution-issues-bash-harness
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
@@ -372,16 +374,19 @@ lint-awk-multibyte-regex:
 # bash-only shards after pruning 193 pytest-wrapper targets that duplicated the python-tests job).
 # Each test-harnesses-N rule below stays on a single physical line (no `\` continuations); the
 # drift-detection script `scripts/test-harness-shards-coverage.sh` parses these lines literally.
+# Shard members must be direct Bash leaves (recipe-bearing test-* or *-bash-harness with no pytest).
+# Public aggregates (pytest + smoke) and pytest-only leaves stay out of shard lists; run via
+# make py-test or the local developer aggregate targets.
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 
-test-harnesses-1: test-write-final-report test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
+test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
 
-test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt
+test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
-test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts
+test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts flush-execution-issues-bash-harness
 
 test-harnesses-5: test-step3-review-cap test-findings-classification test-design-step3-entry test-design-step3-entry-symlink test-file-failure-report-cross-repo test-check-topology-rule-paths test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip
 
@@ -846,8 +851,14 @@ test-implement-structure:
 test-implement-step8-exit3-first-fixer:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step8-exit3-first-fixer.sh
 
-test-oos-disposition-gate:
+test-oos-disposition-gate: oos-disposition-gate-py-harness oos-disposition-gate-bash-harness
+
+oos-disposition-gate-py-harness:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'disposition_gate'
+
+# Delegation smoke for oos-disposition-gate.sh; behavior lives in oos-disposition-gate-py-harness.
+oos-disposition-gate-bash-harness:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-disposition-gate.sh
 
 test-oos-file-conflict-deps:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_file_oos.py -q -k 'file_conflict_deps'
@@ -959,11 +970,22 @@ test-implement-bootstrap-invoke:
 test-parse-bootstrap-routing-envelope:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
 
-test-flush-execution-issues:
+test-flush-execution-issues: flush-execution-issues-py-harness flush-execution-issues-bash-harness
+
+flush-execution-issues-py-harness:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/issue/test_execution_issues.py -q -k flush
 
-test-step-7a:
+# Delegation smoke for flush-execution-issues.sh; behavior lives in flush-execution-issues-py-harness.
+flush-execution-issues-bash-harness:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
+
+test-step-7a: step-7a-py-harness step-7a-bash-harness
+
+step-7a-py-harness:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_step_7a.py -q
+
+# Delegation smoke for step-7a.sh; behavior lives in step-7a-py-harness.
+step-7a-bash-harness:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-7a.sh
 
 

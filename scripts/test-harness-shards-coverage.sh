@@ -60,29 +60,89 @@ CARVE_OUT_FN='
   }
 '
 
+# Unified direct-Bash-leaf inventory:
+# - recipe-bearing test-* targets whose complete recipe is Bash-harness work
+#   (no pytest invocation)
+# - recipe-bearing *-bash-harness leaves (including non-test-* names)
+# Excludes recipe-less aggregates, direct pytest recipes, and mixed recipes
+# that contain any pytest invocation. Shard members must be inventory leaves.
 extract_individual_targets() {
   local makefile="$1"
 
-  # Match ANY test-prefixed recipe target (not just lowercase-hyphenated) so
-  # naming violations like `test-foo_bar:` enter the inventory and are caught
-  # by both the naming-violation check AND the shard-coverage check. Carve-outs
-  # are still excluded. Targets whose recipe invokes pytest are skipped: they
-  # duplicate the python-tests CI job and are no longer shard-bound (#5429).
   awk -F: -v CARVE="$CARVE_OUTS" -v COVERAGE="test-harness-shards-coverage" "
     $CARVE_OUT_FN
-    BEGIN { cur_is_pytest = 0 }
+    function is_inventory_candidate(name) {
+      if (name ~ /^test/) return 1
+      if (name ~ /-bash-harness\$/) return 1
+      return 0
+    }
+    function flush(   keep) {
+      if (cur == \"\") return
+      keep = 0
+      if (has_recipe && !cur_is_pytest && is_inventory_candidate(cur) && !is_carve_out(cur)) {
+        keep = 1
+      }
+      if (keep) print cur
+      cur = \"\"
+      cur_is_pytest = 0
+      has_recipe = 0
+    }
+    BEGIN { cur = \"\"; cur_is_pytest = 0; has_recipe = 0 }
     /^[[:space:]]*#/ { next }
-    /^test[^[:space:]:]*:/ {
-      if (cur && !cur_is_pytest) print cur
-      cur = \"\"; cur_is_pytest = 0
+    /^[^[:space:]#][^:]*:/ {
+      flush()
       name = \$1
-      if (!is_carve_out(name)) cur = name
+      if (is_inventory_candidate(name) && !is_carve_out(name)) cur = name
       next
     }
-    /^\t/ { if (/pytest/) cur_is_pytest = 1; next }
-    { if (cur && !cur_is_pytest) print cur; cur = \"\"; cur_is_pytest = 0 }
-    END { if (cur && !cur_is_pytest) print cur }
+    /^\t/ {
+      if (cur != \"\") {
+        has_recipe = 1
+        if (/pytest/) cur_is_pytest = 1
+      }
+      next
+    }
+    { flush() }
+    END { flush() }
   " "$makefile" | sort -u
+}
+
+# Classify makefile targets for shard-member rejection: aggregate (recipe-less),
+# pytest (recipe contains pytest), or unknown (not declared).
+extract_nonleaf_classifications() {
+  local makefile="$1"
+  local out="$2"
+
+  awk -F: "
+    function flush() {
+      if (cur == \"\") return
+      if (!has_recipe) kind[cur] = \"aggregate\"
+      else if (cur_is_pytest) kind[cur] = \"pytest\"
+      else kind[cur] = \"leaf\"
+      cur = \"\"
+      cur_is_pytest = 0
+      has_recipe = 0
+    }
+    BEGIN { cur = \"\"; cur_is_pytest = 0; has_recipe = 0 }
+    /^[[:space:]]*#/ { next }
+    /^[^[:space:]#][^:]*:/ {
+      flush()
+      cur = \$1
+      next
+    }
+    /^\t/ {
+      if (cur != \"\") {
+        has_recipe = 1
+        if (/pytest/) cur_is_pytest = 1
+      }
+      next
+    }
+    { flush() }
+    END {
+      flush()
+      for (name in kind) print name \"\\t\" kind[name]
+    }
+  " "$makefile" | sort > "$out"
 }
 
 extract_shard_prereqs() {
@@ -194,12 +254,10 @@ validate_makefile() {
   local phony="$TMPDIR_SLICES/phony"
   local phony_missing="$TMPDIR_SLICES/phony-missing"
 
-  # Naming violation = any test-prefixed recipe target whose full name does
+  # Naming violation = any test-prefixed inventory candidate whose full name does
   # not match ^test-[a-z0-9-]+$. Carve-outs (aggregate roll-up, shards, coverage,
-  # standalone evals) are excluded from this check — they're known-good by
-  # construction. This replaces the prior `^test[^a-z:-].*:` heuristic, which
-  # only inspected the character immediately after `test` and missed names
-  # like `test-foo_bar:` (underscore after the first hyphen).
+  # standalone evals) are excluded. Non-test-* Bash leaves (e.g. *-bash-harness)
+  # are not subject to the test-* naming convention.
   awk -v CARVE="$CARVE_OUTS" -v COVERAGE="test-harness-shards-coverage" "
     $CARVE_OUT_FN
     /^test[^[:space:]:]*:/ {
@@ -220,10 +278,34 @@ validate_makefile() {
   extract_individual_targets "$makefile" > "$individual"
   extract_shard_prereqs "$makefile" "$slice_all" "$th_prereqs_expected"
 
+  local nonleaf_kinds="$TMPDIR_SLICES/nonleaf-kinds"
+  local nonleaf_in_shards="$TMPDIR_SLICES/nonleaf-in-shards"
+  extract_nonleaf_classifications "$makefile" "$nonleaf_kinds"
+  : > "$nonleaf_in_shards"
+  while IFS= read -r prereq; do
+    [[ -z "$prereq" || "$prereq" == "test-harness-shards-coverage" ]] && continue
+    kind="$(awk -F '\t' -v n="$prereq" '$1 == n { print $2; exit }' "$nonleaf_kinds")"
+    if [[ -z "$kind" ]]; then
+      printf '%s\tunknown\n' "$prereq" >> "$nonleaf_in_shards"
+    elif [[ "$kind" == "aggregate" || "$kind" == "pytest" ]]; then
+      printf '%s\t%s\n' "$prereq" "$kind" >> "$nonleaf_in_shards"
+    fi
+  done < "$slice_all"
+  sort -u "$nonleaf_in_shards" -o "$nonleaf_in_shards"
+
   grep -Fxv 'test-harness-shards-coverage' "$slice_all" | sort -u > "$slice_no_self" || true
   sort "$slice_all" | uniq -d > "$duplicates"
   comm -23 "$individual" "$slice_no_self" > "$missing"
+  # Orphans = shard members not in the Bash-leaf inventory. Non-leaf
+  # classifications (aggregate/pytest/unknown) are reported separately below
+  # so a scheduled aggregate is not only an opaque orphan.
   comm -13 "$individual" "$slice_no_self" > "$orphan"
+  if [[ -s "$nonleaf_in_shards" ]]; then
+    # Drop non-leaf names from the generic orphan list to avoid double-reporting.
+    awk -F '\t' '{ print $1 }' "$nonleaf_in_shards" | sort -u > "$TMPDIR_SLICES/nonleaf-names"
+    comm -23 "$orphan" "$TMPDIR_SLICES/nonleaf-names" > "$TMPDIR_SLICES/orphan-filtered"
+    mv "$TMPDIR_SLICES/orphan-filtered" "$orphan"
+  fi
 
   extract_test_harnesses_prereqs "$makefile" "$th_prereqs"
   # th_prereqs_expected was populated by extract_shard_prereqs above using the
@@ -235,7 +317,7 @@ validate_makefile() {
   comm -23 "$th_prereqs_expected" "$th_prereqs.sorted" > "$th_prereqs_missing"
   comm -13 "$th_prereqs_expected" "$th_prereqs.sorted" > "$th_prereqs_extra"
 
-  # .PHONY membership check (R2_F9): every shard-bound test-* target must
+  # .PHONY membership check (R2_F9): every shard-bound inventory leaf must
   # appear in some .PHONY declaration. The Makefile may have multiple .PHONY
   # lines; we union all tokens after the first colon. Continuation lines
   # ending with backslash are folded onto the prior line.
@@ -272,6 +354,14 @@ validate_makefile() {
   append_section "shard rule must be on a single physical line - see scripts/test-harness-shards-coverage.md" "!" "$continuation_violations"
   append_section "missing from shards" "-" "$missing"
   append_section "orphan in shards" "+" "$orphan"
+  if [[ -s "$nonleaf_in_shards" ]]; then
+    {
+      printf '@@ non-leaf in shards (aggregate, pytest, or unknown) @@\n'
+      while IFS=$'\t' read -r name kind; do
+        printf '+ %s (%s)\n' "$name" "$kind"
+      done < "$nonleaf_in_shards"
+    } >> "$REPORT"
+  fi
   append_section "duplicate across shards" "!" "$duplicates"
   append_section "test-harnesses aggregate declaration errors" "!" "$ROLLUP_DECL_ERRORS"
   append_section "test-harnesses aggregate missing shard targets" "-" "$th_prereqs_missing"
@@ -312,9 +402,9 @@ write_happy_fixture() {
   local path="$1"
 
   cat > "$path" <<'EOF'
-.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-alpha test-beta test-gamma test-delta test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag eval-research
+.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-alpha test-beta test-gamma test-delta test-zeta write-final-report-bash-harness test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag eval-research
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
-test-harnesses-1: test-alpha
+test-harnesses-1: test-alpha write-final-report-bash-harness
 test-harnesses-2: test-beta
 test-harnesses-3: test-gamma
 test-harnesses-4: test-delta
@@ -329,6 +419,8 @@ test-delta:
 	bash scripts/test-delta.sh
 test-zeta:
 	bash scripts/test-zeta.sh
+write-final-report-bash-harness:
+	bash scripts/test-write-final-report.sh
 test-harness-shards-coverage:
 	bash scripts/test-harness-shards-coverage.sh
 test-eval-set-structure:
@@ -423,6 +515,45 @@ run_self_case() {
       awk '{ gsub(/ test-harness-shards-coverage /, " "); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
+    bash-harness-missing)
+      # Unsharded non-test-* Bash leaf must be reported missing.
+      awk '{ sub(/^test-harnesses-1: test-alpha write-final-report-bash-harness$/, "test-harnesses-1: test-alpha"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    bash-harness-orphan-unknown)
+      # Unknown non-test-* prerequisite in a shard is rejected as non-leaf.
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma mystery-bash-harness"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    aggregate-in-shard)
+      # Recipe-less aggregate combining pytest + Bash must not be a shard leaf.
+      {
+        printf 'test-write-final-report: write-final-report-py-harness write-final-report-bash-harness\n'
+        printf 'write-final-report-py-harness:\n'
+        printf '\tpython3 -m pytest -q python/tests/report/test_final_report.py\n'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-write-final-report"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    pytest-recipe-in-shard)
+      # Direct pytest recipe excluded from inventory and rejected if scheduled.
+      {
+        printf 'test-only-pytest:\n'
+        printf '\tpython3 -m pytest -q python/tests/example.py\n'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-pytest"); gsub(/ test-zeta /, " test-zeta test-only-pytest "); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    mixed-pytest-bash-in-shard)
+      # Multi-command recipe containing pytest is not a Bash leaf.
+      {
+        printf 'test-mixed-lane:\n'
+        printf '\tpython3 -m pytest -q python/tests/example.py\n'
+        printf '\tbash scripts/test-mixed-lane.sh\n'
+      } >> "$fixture"
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-mixed-lane"); gsub(/ test-zeta /, " test-zeta test-mixed-lane "); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
     happy-path)
       ;;
     *)
@@ -456,7 +587,7 @@ self_test() {
   make_tmpdir
   run_self_case happy-path 0 ""
   run_self_case missing-target 1 "missing from shards"
-  run_self_case orphan-in-shards 1 "orphan in shards"
+  run_self_case orphan-in-shards 1 "non-leaf in shards"
   run_self_case duplicate-across-shards 1 "duplicate across shards"
   run_self_case backslash-continuation-violation 1 "shard rule must be on a single physical line"
   run_self_case naming-convention-violation 1 "harness recipe target uses non-standard naming"
@@ -467,6 +598,11 @@ self_test() {
   run_self_case harnesses-aggregate-extra-shard 1 "test-harnesses aggregate has unexpected prerequisites"
   run_self_case missing-phony 1 "missing from .PHONY"
   run_self_case missing-phony-self 1 "missing from .PHONY"
+  run_self_case bash-harness-missing 1 "missing from shards"
+  run_self_case bash-harness-orphan-unknown 1 "non-leaf in shards"
+  run_self_case aggregate-in-shard 1 "non-leaf in shards"
+  run_self_case pytest-recipe-in-shard 1 "non-leaf in shards"
+  run_self_case mixed-pytest-bash-in-shard 1 "non-leaf in shards"
 }
 
 main() {
