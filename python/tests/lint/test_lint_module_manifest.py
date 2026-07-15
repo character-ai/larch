@@ -49,12 +49,12 @@ class _FakeGit:
         self,
         argv: Sequence[str],
         *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
+        timeout: float | None = None,  # pylint: disable=unused-argument
+        cwd: str | None = None,  # pylint: disable=unused-argument
+        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
+        check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
     ) -> CommandResult:
         args = list(argv)
         if args[:3] == ["git", "rev-parse", "--show-toplevel"]:
