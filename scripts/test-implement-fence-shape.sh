@@ -294,6 +294,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path("python").resolve()))
+from larch.git import git, pr  # noqa: E402
 from larch.state import bootstrap, session_env  # noqa: E402
 
 
@@ -404,8 +405,8 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
     root = Path(tmp).resolve()
     impl = root / "impl"
     impl.mkdir()
-    session_env = impl / "session-env.sh"
-    session_env.write_text(
+    session_file = impl / "session-env.sh"
+    session_file.write_text(
         "\n".join(
             [
                 f"LARCH_CLAUDE_PLUGIN_ROOT={Path.cwd()}",
@@ -432,47 +433,30 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         fail("partial-upgrade fixture unexpectedly started with larch-run.sh")
 
     original_env = os.environ.copy()
-    original_run = bootstrap._run
-    original_cli = bootstrap._cli
+    original_branch_state = pr.check_branch_state
+    original_entry_gate = session_env.entry_gate
+    original_current_branch = git.current_branch
+    original_summary = bootstrap._upsert_plan_summary
     original_checkpoint = bootstrap.dirty_tree.checkpoint
 
-    def completed(args: object, stdout: str = "") -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args, 0, stdout, "")
+    def fake_branch_state(*_args: object, **_kwargs: object) -> pr.CreateBranchResult:
+        return pr.CreateBranchResult(
+            status="checked", current_branch="feature/resume", is_main=False,
+            is_user_branch=True, user_prefix="user",
+        )
 
-    def fake_run(argv: list[str], *, env: dict[str, str] | None = None, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-        joined = " ".join(argv)
-        if "pr create-branch --check" in joined:
-            return completed(argv, "CURRENT_BRANCH=feature/resume\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n")
-        if "python/cli.py git current-branch" in joined:
-            return completed(argv, "BRANCH=feature/resume\n")
-        if "python/cli.py plan step1-log" in joined:
-            return completed(argv, "PLAN_LOG=ok\n")
-        return completed(argv, "")
-
-    def fake_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-        if args[:3] == ("pr", "create-branch", "--check"):
-            return completed(args, "CURRENT_BRANCH=feature/resume\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n")
-        if args[:3] == ("session", "read-key", "--file"):
-            path = Path(args[3])
-            key = args[args.index("--key") + 1]
-            default = args[args.index("--default") + 1] if "--default" in args else ""
-            value = default
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.startswith(key + "="):
-                    value = line.split("=", 1)[1]
-                    break
-            return completed(args, value + "\n")
-        if args[:3] == ("session", "entry-gate", "--mode"):
-            return completed(args, "ENTRY_GATE=ok\nSKIP_BRANCH_CHECK=false\n")
-        return completed(args, "")
+    def fake_entry_gate(**_kwargs: object) -> session_env.GateResult:
+        return session_env.GateResult(entry_gate="ok", skip_branch_check="false")
 
     try:
         os.environ.clear()
         os.environ.update(original_env)
         os.environ["IMPLEMENT_TMPDIR"] = str(impl)
         os.environ["LARCH_CLAUDE_PID"] = "12345"
-        bootstrap._run = fake_run
-        bootstrap._cli = fake_cli
+        pr.check_branch_state = fake_branch_state
+        session_env.entry_gate = fake_entry_gate
+        git.current_branch = lambda *_args, **_kwargs: "feature/resume"
+        bootstrap._upsert_plan_summary = lambda _st: None
         bootstrap.dirty_tree.checkpoint = lambda: ["STATUS=clean"]
         opts = bootstrap.BootstrapOptions(
             up_to_phase="plan",
@@ -480,17 +464,25 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
             run_id="resume-session",
             resume_plan_tail=True,
         )
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        bootstrap_stdout = io.StringIO()
+        bootstrap_stderr = io.StringIO()
+        with contextlib.redirect_stdout(bootstrap_stdout), contextlib.redirect_stderr(bootstrap_stderr):
             rc = bootstrap.run_bootstrap(opts)
     finally:
-        bootstrap._run = original_run
-        bootstrap._cli = original_cli
+        pr.check_branch_state = original_branch_state
+        session_env.entry_gate = original_entry_gate
+        git.current_branch = original_current_branch
+        bootstrap._upsert_plan_summary = original_summary
         bootstrap.dirty_tree.checkpoint = original_checkpoint
         os.environ.clear()
         os.environ.update(original_env)
 
     if rc != 0:
-        fail(f"resume bootstrap partial-upgrade path failed with rc={rc}")
+        fail(
+            "resume bootstrap partial-upgrade path failed with "
+            f"rc={rc} stdout={bootstrap_stdout.getvalue()!r} "
+            f"stderr={bootstrap_stderr.getvalue()!r}"
+        )
     if not launcher.exists() or not os.access(launcher, os.X_OK):
         fail("resume bootstrap partial-upgrade path did not emit executable larch-run.sh")
 
