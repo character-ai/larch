@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+The changed note-metadata and coverage-advance paths still require present status, note identity, covered-diff fingerprint match against the expected snapshot, and the existing coverage advance checks; resolving both path forms before equality only accepts the same file under `/tmp` versus `/private/tmp` spelling and fails closed on resolve errors, so persisted notes remain bound to the inputs that produced them.
+
+## Architectural guidelines
+
+The fix compares DIFF_SNAPSHOT and the expected materialized snapshot after resolve at the shared validator, keeps fail-closed rejection with debug reasons instead of silent returns, and adds offline symlink-path regression tests for note consumability and logs-only coverage advance, which matches the intended recovery and fail-closed practices for this surface.
+
 ## /implement run 10BBC1D6-BF11-4FB1-BB0A-DC36DA90F3FE: shipping
 
 - **Outcome**: shipping
