@@ -792,7 +792,7 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
                 return 1
             slice_file.write_text("", encoding="utf-8")
     context_file_str = getattr(args, "context_file", "") or ""
-    ctx = Path(context_file_str) if context_file_str else None
+    ctx = Path(context_file_str) if context_file_str else tmpdir / "session-env.sh"
     run_id = _read_run_id(tmpdir=tmpdir, session_env_file=ctx)
     authorized, auth_reason = _session_env_report.check_live_mutation_auth(
         context_file=ctx,
