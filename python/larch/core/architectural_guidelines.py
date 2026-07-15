@@ -1056,7 +1056,8 @@ def _same_resolved_path(left: str | Path, right: Path) -> bool:
     """Compare paths after resolving symlinks so /tmp and /private/tmp forms match."""
     try:
         return Path(left).resolve() == Path(right).resolve()
-    except OSError:
+    except (OSError, RuntimeError):
+        # RuntimeError: symlink loops on Python <3.13 (fail closed like sibling resolve sites).
         return False
 
 
