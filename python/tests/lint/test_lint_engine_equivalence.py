@@ -20,6 +20,7 @@ import pytest
 from larch.lint import lint_markdown_heading_fence_state as lint_md
 from larch.lint import lint_self_disarmable_gate as lint_sd
 from larch.lint import lint_unreachable_branch as lint_ub
+from larch.lint import self_disarmable_gate_detector as _sd_detector
 from larch.lint.engine import Finding, SourceFile, render_finding
 from larch.lint.engine import (
     OccurrenceBaselineRow,
@@ -314,16 +315,6 @@ def _map_unreachable_finding(legacy: lint_ub.Finding) -> Finding:
     )
 
 
-def _map_self_disarmable_finding(legacy: lint_sd.Finding) -> Finding:
-    return Finding(
-        path=_normalize_repo_relative_posix(f"python/{legacy.file}"),
-        line=legacy.lineno,
-        rule_id=lint_sd.SUPPRESSION,
-        message=legacy.message,
-        qualified_symbol=legacy.qualified_symbol,
-    )
-
-
 def adapt_unreachable_branch(repo_root: Path) -> list[Finding]:
     """Scan synthetic python/larch with the unreachable-branch detector."""
     larch_dir: Path = repo_root / "python" / "larch"
@@ -337,19 +328,20 @@ def adapt_unreachable_branch(repo_root: Path) -> list[Finding]:
 
 
 def adapt_self_disarmable_gate(repo_root: Path) -> list[Finding]:
-    """Resolve synthetic OptionalMetadata, then scan plan_quality.py."""
-    larch_dir: Path = repo_root / "python" / "larch"
-    design_dir: Path = larch_dir / "design"
-    resolution: lint_sd.MetadataResolution = lint_sd.resolve_optional_metadata(
-        design_dir
-    )
-    plan_quality: Path = design_dir / "plan_quality.py"
-    legacy_findings: list[lint_sd.Finding] = lint_sd.scan_file(
-        plan_quality,
-        larch_dir=larch_dir,
-        meta_fields=resolution.fields,
-    )
-    return [_map_self_disarmable_finding(item) for item in legacy_findings]
+    """Build SourceFile corpus from design dir; prepare once then detect each source."""
+    design_dir: Path = repo_root / "python" / "larch" / "design"
+    sources: list[SourceFile] = []
+    for path in sorted(design_dir.glob("*.py")):
+        if not path.is_file() or path.is_symlink() or path.name.startswith("test_"):
+            continue
+        text: str = path.read_text(encoding="utf-8")
+        rel: str = path.relative_to(repo_root).as_posix()
+        sources.append(SourceFile(path=rel, text=text, lines=tuple(text.splitlines())))
+    prepared = _sd_detector.prepare_corpus(sources)
+    findings: list[Finding] = []
+    for source in sources:
+        findings.extend(_sd_detector.detect(source, prepared=prepared))
+    return findings
 
 
 def test_markdown_adapter_preserves_repo_relative_paths_and_occurrence_codec(
