@@ -75,24 +75,25 @@ Warnings (36):
 
 ## Architectural invariants
 
-The diff is confined to lint engine baseline parameterization and an unreachable-branch rule extraction; no invariant domain is implicated.
+The changed code is confined to lint engine baseline parameterization and the extraction of the unreachable-branch detector into its own module; none of the invariant domains (workflow integrity, run-log integrity, panel integrity, agent contracts, ship lifecycle) are touched.
 
 ## Architectural guidelines
 
-The changed code satisfies all architectural guidelines: every type suppression carries an explicit inline reason, new tests accompany the change, the production entry point delegates through the engine, and the existing baseline format and CLI interface are preserved.
+The changed code satisfies all applicable guidelines: every lint and type suppression added in the diff carries an explicit inline reason; the new `occurrence_pattern_field` parameter is additive and backward-compatible with the existing `unreachable-branch-baseline.json` wire format (both read paths recognized, write path preserves the legacy `normalized_condition` field order); the primary detection path is injected via `SourceFile` through the engine seam rather than walking the filesystem directly; new tests accompany every new code path; and the production entry point continues to delegate through `run_rule` with a properly typed `LintRule` constant.
 
-## /implement run BA7BF6F8-9DA4-4DDD-B65D-CD6BA50B5617: shipping
+## /implement run BA7BF6F8-9DA4-4DDD-B65D-CD6BA50B5617: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:46:55
-- **Cost**: 💰 TOTAL ~$23.00: Claude $5.27, Codex-5.6 $5.10, Codex-mini $0.10, Cursor $8.39 (Composer $4.56, Grok $3.83), Claude (subprocess) $4.14  |  Tokens: 30902k
+- **Cost**: 💰 TOTAL ~$24.68: Claude $6.95, Codex-5.6 $5.10, Codex-mini $0.10, Cursor $8.39 (Composer $4.56, Grok $3.83), Claude (subprocess) $4.14  |  Tokens: 33933k
 - **Issue**: #6990: https://github.com/character-ai/larch/issues/6990
+- **PR**: #7397: https://github.com/character-ai/larch/pull/7397
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/5 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1084/-852, larch-logs +715/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7396
 - **Exec issues**: 0
 - **Warnings**: 36
