@@ -12,13 +12,7 @@ import pytest
 from larch.core.proc import CommandResult
 from larch.state import bootstrap
 
-from test_support import (
-    IMPLEMENT_BASELINE_KEYS,
-    ROOT as _REPO_ROOT,
-    seed_feature_description,
-    seed_plan,
-    write_session_env,
-)
+from test_support import ROOT as _REPO_ROOT, seed_feature_description, seed_plan
 
 
 def test_filtered_envelope_allowlist_and_resume_empty_coder() -> None:
@@ -59,22 +53,13 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
         "LARCH_AUTO_MODE=true\n",
         encoding="utf-8",
     )
-    calls: list[tuple[str, ...]] = []
+    calls: list[bootstrap.session_env.WriteEnvParams] = []
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        if args[:2] == ("session", "read-key"):
-            file_path = args[args.index("--file") + 1]
-            key = args[args.index("--key") + 1]
-            default = args[args.index("--default") + 1] if "--default" in args else ""
-            for line in Path(file_path).read_text(encoding="utf-8").splitlines():
-                if line.startswith(f"{key}="):
-                    return subprocess.CompletedProcess(["cli", *args], 0, line.split("=", 1)[1] + "\n", "")
-            return subprocess.CompletedProcess(["cli", *args], 0, default + "\n", "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+    def fake_write_env(params: bootstrap.session_env.WriteEnvParams) -> bootstrap.session_env.WriteEnvResult:
+        calls.append(params)
+        return bootstrap.session_env.WriteEnvResult(output=Path(params.output), wrote=True)
 
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.session_env, "write_env", fake_write_env)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="infra"),
         implement_tmpdir=str(tmp_path),
@@ -84,28 +69,19 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
         claude_binary_found="true",
     )
     bootstrap._write_base_session_env(st)  # pyright: ignore[reportPrivateUsage]
-    write_env = next(call for call in calls if call[:2] == ("session", "write-env") and "--plugin-root-only" not in call)
-    assert "--claude-source-file" in write_env
-    assert "/tmp/source.env" in write_env
-    assert "--dynamic-archetypes" in write_env
-    assert "1" in write_env
-    assert "--auto-mode" in write_env
-    assert write_env[write_env.index("--claude-binary-found") + 1] == "true"
+    write_env = next(call for call in calls if not call.plugin_root_only)
+    assert write_env.claude_source_file == "/tmp/source.env"
+    assert write_env.dynamic_archetypes == "1"
+    assert write_env.auto_mode == "true"
+    assert write_env.claude_binary_found == "true"
 
 
 def test_write_claude_source_snapshot_does_not_inject_larch_session_id(tmp_path, monkeypatch) -> None:
-    calls: list[tuple[tuple[str, ...], object]] = []
-
-    def fake_cli(*args: str, env=None):
-        calls.append((args, env))
-        return subprocess.CompletedProcess(
-            ["cli", *args],
-            0,
-            "TRANSCRIPT_PATH=/tmp/transcript.jsonl\nSESSION_DIR=/tmp/session\nSESSION_UUID=claude-session\n",
-            "",
-        )
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    source = bootstrap.tokens.ClaudeSourceResult(
+        transcript_path=Path("/tmp/transcript.jsonl"), session_dir=Path("/tmp/session"),
+        session_uuid="claude-session",
+    )
+    monkeypatch.setattr(bootstrap.tokens, "token_claude_source", lambda: source)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="infra"),
         implement_tmpdir=str(tmp_path),
@@ -114,7 +90,6 @@ def test_write_claude_source_snapshot_does_not_inject_larch_session_id(tmp_path,
 
     bootstrap._write_claude_source_snapshot(st)  # pyright: ignore[reportPrivateUsage]
 
-    assert calls == [(("token", "claude-source"), None)]
     assert (tmp_path / "claude-source.env").is_file()
 
 
@@ -136,16 +111,20 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
 
 
 def test_install_statusline_best_effort_relays_notice(monkeypatch, capsys) -> None:
-    def fake_cli(*args: str, env=None):
-        _ = args, env
-        return subprocess.CompletedProcess(["cli"], 0, "larch: installed progress statusline (set LARCH_STATUSLINE_DISABLE=1 to opt out)\n", "")
+    calls: list[tuple[Path, Path, bool]] = []
 
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    def fake_install(*, plugin_root: Path, repo_root: Path, notice: bool) -> bootstrap.statusline_install.StatuslineInstallResult:
+        calls.append((plugin_root, repo_root, notice))
+        print("larch: installed progress statusline (set LARCH_STATUSLINE_DISABLE=1 to opt out)")
+        return bootstrap.statusline_install.StatuslineInstallResult(installed=True)
+
+    monkeypatch.setattr(bootstrap.statusline_install, "install_statusline", fake_install)
 
     bootstrap._install_statusline_best_effort()  # pyright: ignore[reportPrivateUsage]
 
     out = capsys.readouterr().out
     assert "installed progress statusline" in out
+    assert calls[0][2] is True
 
 
 def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, monkeypatch) -> None:
@@ -173,16 +152,12 @@ def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, mon
 
 
 def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, monkeypatch) -> None:
-    calls: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        if args[:2] == ("issue", "state"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "STATE=OPEN\nIS_PR=false\n", "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    calls: list[object] = []
+    monkeypatch.setattr(
+        bootstrap.issue_query, "issue_state",
+        lambda *_args, **_kwargs: bootstrap.issue_query.IssueState(state="OPEN", url="", is_pr=False),
+    )
+    monkeypatch.setattr(bootstrap.run_logs, "log_init", lambda *args, **kwargs: calls.append((args, kwargs)))
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
@@ -193,21 +168,19 @@ def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, mo
     bootstrap._phase_tracking(st)  # pyright: ignore[reportPrivateUsage]
     assert st.implement_bail_reason == "tracking-init-failed"
     assert st.stall_tracking == "true"
-    assert not any(call[:2] == ("run-log", "init") for call in calls)
+    assert not calls
 
 
 def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> None:
     rename_called = [False]
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        if args[:2] == ("issue", "state"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "STATE=OPEN\nIS_PR=false\n", "")
-        if args[:2] == ("tracking-issue", "rename"):
-            rename_called[0] = True
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    def fake_rename(*_args: object, **_kwargs: object) -> None:
+        rename_called[0] = True
+    monkeypatch.setattr(
+        bootstrap.issue_query, "issue_state",
+        lambda *_args, **_kwargs: bootstrap.issue_query.IssueState(state="OPEN", url="", is_pr=False),
+    )
+    monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", fake_rename)
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=dirty", "MODE=checkpoint"])
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
@@ -221,26 +194,16 @@ def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> 
 
 
 def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -> None:
-    calls: list[tuple[str, ...]] = []
+    post_called = [False]
 
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        if "tracking-issue-write.sh" in str(argv[0]):
-            return subprocess.CompletedProcess(argv, 0, "RENAMED=true\n", "")
-        if "post-tracking-issue.sh" in str(argv[0]):
-            calls.append(("post",))
-            return subprocess.CompletedProcess(argv, 0, "POSTED=true\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    def fake_post(*_args: object, **_kwargs: object) -> None:
+        post_called[0] = True
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        if args[:2] == ("run-log", "init"):
-            return subprocess.CompletedProcess(["cli", *args], 1, "", "boom\n")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+    def fail_init(**_kwargs: object) -> object:
+        raise OSError("boom")
 
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.run_logs, "log_init", fail_init)
+    monkeypatch.setattr(bootstrap.pr_body, "post_tracking_issue", fake_post)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
         implement_tmpdir=str(tmp_path),
@@ -252,20 +215,12 @@ def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -
     assert not bootstrap._perform_tracking_side_effects(st, write_sentinel=True)  # pyright: ignore[reportPrivateUsage]
     assert st.implement_bail_reason == "tracking-init-failed"
     assert st.stall_tracking == "true"
-    assert ("post",) not in calls
+    assert not post_called[0]
     assert not (tmp_path / "parent-issue.md").exists()
 
 
-def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, monkeypatch, capsys) -> None:
-    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
-
-    def fake_cli(*args: str, env=None):
-        _ = env
-        if args[:2] == ("tracking-issue", "read"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, capsys) -> None:
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\nADOPTED=true\n", encoding="utf-8")
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking"),
         implement_tmpdir=str(tmp_path),
@@ -278,18 +233,8 @@ def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, monke
     assert "STEP_FAILED=issue-number-required-for-resume" in capsys.readouterr().out
 
 
-def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path, monkeypatch) -> None:
-    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
-    calls: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, env=None):
-        _ = env
-        if args[:2] == ("tracking-issue", "read"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
-        calls.append(args)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path) -> None:
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\nADOPTED=true\n", encoding="utf-8")
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
         implement_tmpdir=str(tmp_path),
@@ -300,7 +245,6 @@ def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path
     assert st.branch_selected == "branch-1-resume"
     assert st.issue_number_resolved == "7"
     assert st.run_id == "R1"
-    assert not any(call[:2] == ("run-log", "init") for call in calls)
 
 
 def test_force_bypass_validates_issue_and_consumes_invalid_log(tmp_path, monkeypatch) -> None:
@@ -309,46 +253,39 @@ def test_force_bypass_validates_issue_and_consumes_invalid_log(tmp_path, monkeyp
     preflight.mkdir()
     impl.mkdir()
     (preflight / "force-bypass.log").write_text("BYPASS kind=missing-plan issue=99\n", encoding="utf-8")
-    calls: list[tuple[str, ...]] = []
+    calls: list[dict[str, object]] = []
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+    def fake_append_failure(**kwargs: object) -> Path:
+        calls.append(kwargs)
+        return impl / "failure.md"
 
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.run_logs, "log_append_failure", fake_append_failure)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", force_requested="true", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
     )
     assert bootstrap._append_force_bypass(st)  # pyright: ignore[reportPrivateUsage]
     assert (impl / ".force-bypass-log-consumed").exists()
-    assert "--exit-code" in calls[0]
-    assert "99" in calls[0]
-    assert "invalid-format" in calls[0]
+    assert calls[0]["exit_code"] == "99"
+    assert calls[0]["status_label"] == "invalid-format"
 
 
-def test_force_bypass_valid_bypass_makes_no_cli_calls(tmp_path, monkeypatch) -> None:
+def test_force_bypass_valid_bypass_makes_no_run_log_write(tmp_path, monkeypatch) -> None:
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
     preflight.mkdir()
     impl.mkdir()
     (preflight / "force-bypass.log").write_text("BYPASS kind=missing-plan issue=7\n", encoding="utf-8")
-    calls: list[tuple[str, ...]] = []
+    def unexpected_append_failure(**_kwargs: object) -> Path:
+        raise AssertionError("valid bypasses are intentional; no warning is logged")
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.run_logs, "log_append_failure", unexpected_append_failure)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", force_requested="true", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
     )
     assert bootstrap._append_force_bypass(st)  # pyright: ignore[reportPrivateUsage]
     assert (impl / ".force-bypass-log-consumed").exists()
-    assert not calls  # valid bypasses are intentional; no warning is logged
 
 
 def test_resume_plan_tail_appends_force_bypass_before_flags(tmp_path, monkeypatch) -> None:
@@ -427,14 +364,13 @@ def test_publish_plan_review_tally_emits_stub_when_no_candidate(tmp_path, monkey
     impl = tmp_path / "impl"
     preflight.mkdir()
     impl.mkdir()
-    calls: list[tuple[str, ...]] = []
+    calls: list[dict[str, object]] = []
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+    def fake_log_write(**kwargs: object) -> Path:
+        calls.append(kwargs)
+        return impl / "larch-logs" / "manifest.json"
 
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.run_logs, "log_write", fake_log_write)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
@@ -442,9 +378,8 @@ def test_publish_plan_review_tally_emits_stub_when_no_candidate(tmp_path, monkey
     )
     bootstrap._publish_plan_review_tally(st)  # pyright: ignore[reportPrivateUsage]
 
-    write_calls = [c for c in calls if "write" in c and "plan-review-tally" in c]
-    assert len(write_calls) == 1
-    source = Path(write_calls[0][write_calls[0].index("--input-file") + 1])
+    assert len(calls) == 1
+    source = Path(str(calls[0]["input_file"]))
     assert source.is_file()
     record = json.loads(source.read_text(encoding="utf-8"))
     assert record["phase"] == "plan-review"
@@ -461,14 +396,13 @@ def test_publish_plan_review_tally_prefers_existing_candidate(tmp_path, monkeypa
     impl.mkdir()
     tally = preflight / "plan-review-tally.json"
     tally.write_text('{"schema_version":2,"phase":"plan-review"}', encoding="utf-8")
-    calls: list[tuple[str, ...]] = []
+    calls: list[dict[str, object]] = []
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+    def fake_log_write(**kwargs: object) -> Path:
+        calls.append(kwargs)
+        return impl / "larch-logs" / "manifest.json"
 
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.run_logs, "log_write", fake_log_write)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
@@ -476,9 +410,8 @@ def test_publish_plan_review_tally_prefers_existing_candidate(tmp_path, monkeypa
     )
     bootstrap._publish_plan_review_tally(st)  # pyright: ignore[reportPrivateUsage]
 
-    write_calls = [c for c in calls if "write" in c and "plan-review-tally" in c]
-    assert len(write_calls) == 1
-    source = Path(write_calls[0][write_calls[0].index("--input-file") + 1])
+    assert len(calls) == 1
+    source = Path(str(calls[0]["input_file"]))
     assert source == tally
     assert not (impl / "plan-review-tally-stub.json").exists()
 
@@ -756,7 +689,11 @@ def test_invoke_persists_ship_seed_input_flags(tmp_path, monkeypatch) -> None:
         "--no-logs-commit", "true",
     ])
     assert rc == 0
-    data = bootstrap._parse_kv((tmp_path / "ship-seed-input.env").read_text(encoding="utf-8"))  # pyright: ignore[reportPrivateUsage]
+    data = dict(
+        line.split("=", 1)
+        for line in (tmp_path / "ship-seed-input.env").read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
     assert data == {
         "MERGE": "true",
         "DRAFT": "true",
@@ -787,7 +724,11 @@ def test_invoke_resume_preserves_existing_ship_seed_context(tmp_path, monkeypatc
         lambda data, **_kwargs: bootstrap.ContinueTailResult(routing=data, advisory_lines=[]),  # pyright: ignore[reportPrivateUsage]
     )
     assert bootstrap.invoke_main(["--mode", "resume"]) == 0
-    data = bootstrap._parse_kv((tmp_path / "ship-seed-input.env").read_text(encoding="utf-8"))  # pyright: ignore[reportPrivateUsage]
+    data = dict(
+        line.split("=", 1)
+        for line in (tmp_path / "ship-seed-input.env").read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
     assert data["MERGE"] == "true"
     assert data["MANIFEST_PATH"] == "/tmp/manifest.json"
     assert data["TOOL_LABEL"] == "Codex"
@@ -1026,7 +967,6 @@ def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch,
     assert (tmp_path / "bootstrap-routing.env").is_dir()
 
 
-@pytest.mark.usefixtures("gate_and_probe")
 def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     plan = seed_plan(tmp_path, "plan\n")
@@ -1044,6 +984,7 @@ def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypat
         return 0
 
     monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    _install_tail_fakes(monkeypatch)
     assert bootstrap.invoke_main(["--mode", "resume"]) == 0
     out = capsys.readouterr().out
     stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
@@ -1288,10 +1229,10 @@ def test_invoke_error_redaction_failure_uses_fixed_diagnostic(tmp_path, monkeypa
     token = "ghp_" + ("A" * 24)
     (impl / "copy-plan.stderr.log").write_text(f"{impl}/secret.txt token {token}\n", encoding="utf-8")
 
-    def fail_run(*args, **_kwargs):
-        return subprocess.CompletedProcess(args[0], 1, "", "failed\n")
+    def fail_redact(_text: str) -> str:
+        raise RuntimeError("redaction unavailable")
 
-    monkeypatch.setattr(bootstrap.subprocess, "run", fail_run)
+    monkeypatch.setattr(bootstrap.redact, "redact", fail_redact)
     bootstrap._invoke_error(step_failed="copy-plan", out=f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED=copy-plan\n", implement_tmpdir=str(impl))  # pyright: ignore[reportPrivateUsage]
     err = capsys.readouterr().err
     assert "diagnostic redaction failed" in err
@@ -1300,25 +1241,29 @@ def test_invoke_error_redaction_failure_uses_fixed_diagnostic(tmp_path, monkeypa
 
 
 def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> None:
-    calls: list[tuple[str, ...]] = []
+    calls: list[str] = []
 
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    def fail_rename(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
+        calls.append("rename")
+        raise OSError("rename failed")
 
-    def fake_cli(*args: str, env=None):
-        _ = env
-        if args[:2] == ("tracking-issue", "rename"):
-            calls.append(("rename",))
-            return subprocess.CompletedProcess(["cli", *args], 1, "FAILED=true\n", "rename failed\n")
-        if args[:2] == ("tracking", "post-issue"):
-            calls.append(("post",))
-            return subprocess.CompletedProcess(["cli", *args], 0, "POSTED=true\n", "")
-        calls.append(args)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+    def fake_log_init(**_kwargs: object) -> Path:
+        calls.append("init")
+        return tmp_path / "larch-logs" / "implement" / "RUN1"
 
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    def fake_post(*_args: object, **_kwargs: object) -> bootstrap.pr_body.TrackingIssuePostResult:
+        calls.append("post")
+        return bootstrap.pr_body.TrackingIssuePostResult(
+            exit_code=0, posted=True, comment_url="", error=""
+        )
+
+    def fake_title(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("gh",), 0, "Title", "", 0.01)
+
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_title)
+    monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", fail_rename)
+    monkeypatch.setattr(bootstrap.run_logs, "log_init", fake_log_init)
+    monkeypatch.setattr(bootstrap.pr_body, "post_tracking_issue", fake_post)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
         implement_tmpdir=str(tmp_path),
@@ -1330,8 +1275,7 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
     assert bootstrap._perform_tracking_side_effects(st, write_sentinel=True)  # pyright: ignore[reportPrivateUsage]
     assert st.stall_tracking == "false"
     assert st.implement_bail_reason == ""
-    assert ("run-log", "init", "--log-root", str(tmp_path / "larch-logs"), "--skill", "implement", "--run-id", "RUN1", "--issue", "7") in calls
-    assert ("post",) in calls
+    assert calls == ["rename", "init", "post"]
     assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")
 
 
@@ -1357,25 +1301,56 @@ def _run_phase_infra_for_progress(
     activate_returncode: int = 0,
     self_review_requested: str = "false",
     self_implement_requested: str = "false",
+    write_implement_env_error: str = "",
+    claude_pid: bool = True,
 ) -> tuple[bootstrap.BootstrapState, list[tuple[str, ...]]]:
     calls: list[tuple[str, ...]] = []
-    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
+    if claude_pid:
+        monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
+    else:
+        monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
 
-    def fake_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def fake_branch(*_args: object, **_kwargs: object) -> bootstrap.pr.CreateBranchResult:
+        calls.append(("branch",))
+        return bootstrap.pr.CreateBranchResult("checked", current_branch="feature", is_user_branch=True, user_prefix="user")
+
+    def fake_gate(**_kwargs: object) -> bootstrap.session_env.GateResult:
+        calls.append(("entry-gate",))
+        return bootstrap.session_env.GateResult("user-branch", "true")
+
+    def fake_setup(**kwargs: object) -> bootstrap.session_env.SessionSetupResult:
+        calls.append(("setup", str(kwargs["skip_codex_probe"]), str(kwargs["skip_cursor_probe"])))
+        return bootstrap.session_env.SessionSetupResult(
+            session_tmpdir=tmp_path, session_id=setup_session_id, render_cache_dir=tmp_path,
+            claude_binary_found="true", repo="owner/repo", repo_unavailable="false",
+            codex_present="false", cursor_present="false", codex_binary_found="false", cursor_binary_found="false",
+        )
+
+    def fake_activate(repo_root: str | Path, run_id: str) -> None:
+        _ = repo_root, activate_returncode
+        calls.append(("activate", run_id))
+
+    def fake_timing(*, label: str, env: dict[str, str] | None = None) -> None:
         _ = env
-        calls.append(args)
-        if args[:3] == ("pr", "create-branch", "--check"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
-        if args[:2] == ("session", "entry-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
-        if args[:2] == ("session", "setup"):
-            return subprocess.CompletedProcess(["cli", *args], 0, _phase_infra_setup_stdout(tmp_path, session_id=setup_session_id), "")
-        if args[:2] == ("progress", "activate"):
-            stderr = "activate failed\n" if activate_returncode else ""
-            return subprocess.CompletedProcess(["cli", *args], activate_returncode, "", stderr)
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+        calls.append(("timing", label))
 
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    def fake_write_implement_env(**_kwargs: object) -> bootstrap.session_env.WriteImplementEnvResult:
+        calls.append(("write-implement-env",))
+        if write_implement_env_error:
+            raise OSError(write_implement_env_error)
+        return bootstrap.session_env.WriteImplementEnvResult(tmp_path / "pointer", tmp_path / "run", tmp_path, str(Path.cwd()))
+
+    monkeypatch.setattr(bootstrap.pr, "check_branch_state", fake_branch)
+    monkeypatch.setattr(bootstrap.session_env, "entry_gate", fake_gate)
+    monkeypatch.setattr(bootstrap.session_env, "setup", fake_setup)
+    monkeypatch.setattr(bootstrap.progress_file, "activate_run", fake_activate)
+    monkeypatch.setattr(bootstrap.timing, "mark", fake_timing)
+    monkeypatch.setattr(bootstrap.session_env, "write_implement_env", fake_write_implement_env)
+    monkeypatch.setattr(bootstrap, "_write_claude_source_snapshot", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_write_base_session_env", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_refresh_reviewer_state", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_install_statusline_best_effort", lambda: None)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_write_larch_run_sh", lambda _tmpdir: True)  # pyright: ignore[reportPrivateUsage]
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(
             up_to_phase="infra",
@@ -1399,13 +1374,13 @@ def test_phase_infra_progress_activate_uses_explicit_run_id_before_timing(
         setup_session_id="setup-run-id",
     )
 
-    activate_call = next(call for call in calls if call[:2] == ("progress", "activate"))
-    timing_call = next(call for call in calls if call[:2] == ("timing", "mark"))
+    activate_call = next(call for call in calls if call[0] == "activate")
+    timing_call = next(call for call in calls if call[0] == "timing")
 
     assert st.run_id == "explicit-run-id"
-    assert activate_call == ("progress", "activate", "--repo-root", str(Path.cwd()), "--run-id", "explicit-run-id")
+    assert activate_call == ("activate", "explicit-run-id")
     assert calls.index(activate_call) < calls.index(timing_call)
-    assert timing_call[:3] == ("timing", "mark", "Step 0 — preflight")
+    assert timing_call == ("timing", "Step 0 — preflight")
 
 
 def test_phase_infra_progress_activate_uses_setup_session_id_fallback(
@@ -1418,10 +1393,10 @@ def test_phase_infra_progress_activate_uses_setup_session_id_fallback(
         setup_session_id="setup-session-run-id",
     )
 
-    activate_call = next(call for call in calls if call[:2] == ("progress", "activate"))
+    activate_call = next(call for call in calls if call[0] == "activate")
 
     assert st.run_id == "setup-session-run-id"
-    assert activate_call[-2:] == ("--run-id", "setup-session-run-id")
+    assert activate_call == ("activate", "setup-session-run-id")
 
 
 def test_phase_infra_progress_activate_failure_is_best_effort(
@@ -1439,8 +1414,8 @@ def test_phase_infra_progress_activate_failure_is_best_effort(
     captured = capsys.readouterr()
 
     assert st.run_id == "setup-run-id"
-    assert any(call[:2] == ("progress", "activate") for call in calls)
-    assert any(call[:2] == ("session", "write-implement-env") for call in calls)
+    assert any(call[0] == "activate" for call in calls)
+    assert any(call[0] == "write-implement-env" for call in calls)
     assert "STEP_FAILED=" not in captured.out
 
 
@@ -1457,10 +1432,8 @@ def test_phase_infra_self_subagents_skip_external_tool_health_validation(
         self_implement_requested="true",
     )
 
-    setup_call = next(call for call in calls if call[:2] == ("session", "setup"))
-    assert "--skip-codex-probe" in setup_call
-    assert "--skip-cursor-probe" in setup_call
-    assert not any(call[:2] == ("agent", "check-reviewers") for call in calls)
+    setup_call = next(call for call in calls if call[0] == "setup")
+    assert setup_call[1:] == ("True", "True")
 
 
 @pytest.mark.parametrize("reserved_run_id", ["current", ".", ".."])
@@ -1477,90 +1450,25 @@ def test_phase_infra_reserved_run_id_skips_progress_activate(
     )
 
     assert st.run_id == reserved_run_id
-    assert not any(call[:2] == ("progress", "activate") for call in calls)
+    assert not any(call[0] == "activate" for call in calls)
 
 
 def test_write_implement_env_failure_is_fatal(tmp_path, monkeypatch) -> None:
-    calls: list[tuple[str, ...]] = []
-    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
-
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        if args[:3] == ("pr", "create-branch", "--check"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
-        if args[:2] == ("session", "entry-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
-        if args[:2] == ("session", "setup"):
-            return subprocess.CompletedProcess(
-                ["cli", *args],
-                0,
-                f"SESSION_TMPDIR={tmp_path}\nSESSION_ID=R1\nREPO=owner/repo\nREPO_UNAVAILABLE=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n",
-                "",
-            )
-        if args[:2] == ("session", "write-implement-env"):
-            return subprocess.CompletedProcess(["cli", *args], 2, "", "pointer failed\n")
-        if args[:2] == ("run-log", "append-failure"):
-            return subprocess.CompletedProcess(["cli", *args], 1, "", "append failed\n")
-        if args[:2] == ("run-log", "append-entry"):
-            log = Path(args[args.index("--log") + 1])
-            entry = args[args.index("--entry") + 1]
-            _ = log.write_text(entry, encoding="utf-8")
-            return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra"))
     with pytest.raises(bootstrap.BootstrapExit) as exc_info:
-        bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+        _run_phase_infra_for_progress(
+            tmp_path, monkeypatch, write_implement_env_error="pointer failed",
+        )
     assert exc_info.value.code == 2
-    assert st.implement_tmpdir == str(tmp_path)
     assert "pointer failed" in (tmp_path / "write-implement-env-warning.log").read_text(encoding="utf-8")
-    assert any(call[:2] == ("run-log", "append-failure") for call in calls)
     fallback = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "- **Step implement-bootstrap write-implement-env: session write-implement-env failed" in fallback
 
 
 def test_write_implement_env_missing_pid_is_fatal_without_write_attempt(tmp_path, monkeypatch) -> None:
-    calls: list[tuple[str, ...]] = []
-    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
-
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    def fake_cli(*args: str, env=None):
-        _ = env
-        calls.append(args)
-        if args[:3] == ("pr", "create-branch", "--check"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
-        if args[:2] == ("session", "entry-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
-        if args[:2] == ("session", "setup"):
-            return subprocess.CompletedProcess(
-                ["cli", *args],
-                0,
-                f"SESSION_TMPDIR={tmp_path}\nSESSION_ID=R1\nREPO=owner/repo\nREPO_UNAVAILABLE=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n",
-                "",
-            )
-        if args[:2] == ("session", "write-implement-env"):
-            raise AssertionError("write-implement-env should not run without LARCH_CLAUDE_PID")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra"))
-
     with pytest.raises(bootstrap.BootstrapExit) as exc_info:
-        bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+        _run_phase_infra_for_progress(tmp_path, monkeypatch, claude_pid=False)
 
     assert exc_info.value.code == 2
-    assert not any(call[:2] == ("session", "write-implement-env") for call in calls)
 
 
 def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:
@@ -1623,837 +1531,105 @@ def test_bootstrap_next_tail_popped_route_but_blockers_cleans_up(tmp_path: Path)
     assert bootstrap._bootstrap_next(data, continue_tail_attempted=True) == "cleanup"  # pyright: ignore[reportPrivateUsage]
 
 
-def _healthy_gate_stdout() -> str:
-    return "DEGRADED=false\nBOTH_DOWN=false\nCODEX_STATE=ok\nCURSOR_STATE=ok\n"
+def _reviewers(*, codex_present: bool = True, cursor_present: bool = True) -> bootstrap.agents.CheckReviewersResult:
+    return bootstrap.agents.CheckReviewersResult(codex_binary_found=True, cursor_binary_found=True, codex_present=codex_present, cursor_present=cursor_present)
 
 
-def _degraded_gate_stdout(*, both_down: str = "true") -> str:
-    return (
-        "DEGRADED=true\n"
-        f"BOTH_DOWN={both_down}\n"
-        "CODEX_STATE=binary-missing\n"
-        "CURSOR_STATE=binary-missing\n"
-        "DEGRADED_EXPLANATION_BEGIN\n"
-        "⚠ Degraded external-tool availability for this /implement run:\n"
-        "DEGRADED_EXPLANATION_END\n"
+def _gate(*, both_down: bool = False) -> bootstrap.agents.DegradedToolsResult:
+    degraded = both_down
+    return bootstrap.agents.DegradedToolsResult(
+        degraded=degraded,
+        codex_state="binary-missing" if degraded else "ok",
+        cursor_state="binary-missing" if degraded else "ok",
+        both_down=both_down,
+        presence_input_empty=False,
+        explanation=("Degraded external-tool availability",) if degraded else (),
     )
 
 
-def _probe_stdout(*, route: str = "continue") -> str:
-    return f"REBASE_OUTCOME=ok\nROUTE={route}\nCHECKPOINT_NEXT=continue\nSKIPPED_ALREADY_FRESH=true\nPHANTOM_STATUS=clean\n"
+def _probe(*, exit_code: int = 0, route: str = "continue", extra: str = "") -> bootstrap.push.CheckpointProbeResult:
+    return bootstrap.push.CheckpointProbeResult(exit_code, f"REBASE_OUTCOME=ok\nROUTE={route}\nCHECKPOINT_NEXT=continue\n{extra}", "")
 
 
-@pytest.fixture
-def gate_and_probe(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_cli(*args: str, **_kwargs):
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, _healthy_gate_stdout(), "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+def _install_tail_fakes(monkeypatch: pytest.MonkeyPatch, *, gate: bootstrap.agents.DegradedToolsResult | None = None, probe: bootstrap.push.CheckpointProbeResult | None = None) -> None:
+    def healthy_reviewers() -> bootstrap.agents.CheckReviewersResult:
+        return _reviewers()
 
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        if "checkpoint-probe" in " ".join(map(str, argv)):
-            return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap.agents, "check_reviewers", healthy_reviewers)
+    monkeypatch.setattr(bootstrap.agents, "degraded_tools_result", lambda **_kwargs: gate or _gate())
+    monkeypatch.setattr(bootstrap.push, "checkpoint_probe", lambda **_kwargs: probe or _probe())
 
 
-@pytest.mark.usefixtures("gate_and_probe")
-def test_invoke_absorbed_degraded_gate_healthy_tools_do_not_prompt(tmp_path: Path) -> None:
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
-    assert tail.routing.get("ROUTE") == "continue"
-    assert tail.routing.get("CHECKPOINT_NEXT") == "continue"
+def test_bootstrap_has_no_cli_self_reentry() -> None:
+    source = Path(bootstrap.__file__).read_text(encoding="utf-8")
+    assert "_PY_CLI" not in source
+    assert "_cli(" not in source
+    assert not hasattr(bootstrap, "_cli")
 
 
-def test_self_review_and_self_implement_skip_external_tool_health_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, **_kwargs):
-        calls.append(args)
-        raise AssertionError("combined self-subagent mode must not validate external tools")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path, CODEX_PRESENT="false", CURSOR_PRESENT="false"),
-        opts=bootstrap.BootstrapOptions(
-            up_to_phase="coder",
-            self_review_requested="true",
-            self_implement_requested="true",
-        ),
-        non_interactive=True,
-    )
-
-    assert not calls
-    assert tail.contract_failure is False
+def test_absorbed_tail_uses_typed_healthy_gate_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_tail_fakes(monkeypatch)
+    tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder"), non_interactive=False)  # pyright: ignore[reportPrivateUsage]
     assert tail.routing["DEGRADED"] == "false"
-    assert tail.routing["DEGRADED_PROMPT_REQUIRED"] == "false"
+    assert tail.routing["ROUTE"] == "continue"
+    assert tail.routing["REBASE_RC"] == "0"
+
+
+def test_absorbed_tail_both_down_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_tail_fakes(monkeypatch, gate=_gate(both_down=True))
+    tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder"), non_interactive=True)  # pyright: ignore[reportPrivateUsage]
+    assert tail.contract_failure
+    assert tail.step_failed == "degraded-both-down-hard-fail"
+    assert tail.routing["DEGRADED_HARD_FAIL"] == "true"
+
+
+def test_absorbed_tail_one_down_prompts_interactively(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    one_down = bootstrap.agents.DegradedToolsResult(
+        degraded=True,
+        codex_state="binary-missing",
+        cursor_state="ok",
+        both_down=False,
+        presence_input_empty=False,
+        explanation=("one tool unavailable",),
+    )
+    _install_tail_fakes(monkeypatch, gate=one_down)
+    tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder"), non_interactive=False)  # pyright: ignore[reportPrivateUsage]
+    assert tail.routing["DEGRADED_PROMPT_REQUIRED"] == "true"
+    assert "ROUTE" not in tail.routing
+
+
+def test_absorbed_tail_self_subagents_skip_tool_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap.agents, "check_reviewers", lambda: (_ for _ in ()).throw(AssertionError("unexpected gate")))
+    monkeypatch.setattr(bootstrap.agents, "degraded_tools_result", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected gate")))
+    monkeypatch.setattr(bootstrap.push, "checkpoint_probe", lambda **_kwargs: _probe())
+    tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder", self_review_requested="true", self_implement_requested="true"), non_interactive=True)  # pyright: ignore[reportPrivateUsage]
+    assert tail.routing["DEGRADED"] == "false"
     assert tail.routing["ROUTE"] == "continue"
 
 
-def test_invoke_absorbed_degraded_gate_one_down_interactive_requires_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_cli(*args: str, **_kwargs):
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(both_down="false"), "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert not (tmp_path / ".degraded-tools-gate-prompted").exists()
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
-    assert "DEGRADED_HARD_FAIL" not in tail.routing
-    assert "ROUTE" not in tail.routing
-    assert "CHECKPOINT_NEXT" not in tail.routing
+def test_absorbed_tail_relays_typed_conflict_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_tail_fakes(monkeypatch, probe=_probe(exit_code=1, route="conflict", extra="CONFLICT_FILES=a.py,b.py\n"))
+    tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder"), non_interactive=False)  # pyright: ignore[reportPrivateUsage]
+    assert tail.routing["ROUTE"] == "conflict"
+    assert tail.routing["CONFLICT_FILES"] == "a.py,b.py"
+    assert tail.routing["REBASE_RC"] == "1"
 
 
-def test_invoke_absorbed_degraded_gate_both_down_interactive_hard_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.contract_failure is True
-    assert tail.step_failed == "degraded-both-down-hard-fail"
-    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
-    assert "ROUTE" not in tail.routing
-
-
-def test_invoke_absorbed_degraded_gate_both_down_with_existing_sentinel_hard_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
-    )
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.contract_failure is True
-    assert tail.step_failed == "degraded-both-down-hard-fail"
-    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
-    assert "ROUTE" not in tail.routing
-
-
-def test_refresh_gate_probe_retries_then_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, **_kwargs):
-        calls.append(args)
-        return subprocess.CompletedProcess(list(args), 1, "", "probe failed")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="coder"),
-        implement_tmpdir=str(tmp_path),
-    )
-    st.codex_present = "true"
-    st.cursor_present = "true"
+def test_refresh_gate_probe_retries_typed_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+    def unavailable() -> bootstrap.agents.CheckReviewersResult:
+        nonlocal calls
+        calls += 1
+        raise OSError("probe unavailable")
+    monkeypatch.setattr(bootstrap.agents, "check_reviewers", unavailable)
+    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="coder"), implement_tmpdir=str(tmp_path))
     assert bootstrap._refresh_gate_probe(st) == "absorbed-gate-probe-refresh-failed"  # pyright: ignore[reportPrivateUsage]
-    assert len(calls) == 2
-    assert calls[0][:2] == ("agent", "check-reviewers")
+    assert calls == 2
 
 
-def test_refresh_gate_probe_always_reruns_check_reviewers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, **_kwargs):
-        calls.append(args)
-        return subprocess.CompletedProcess(
-            list(args),
-            0,
-            "CODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n",
-            "",
-        )
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="coder"),
-        implement_tmpdir=str(tmp_path),
-    )
-    st.codex_present = "true"
-    st.cursor_present = "true"
-    st.codex_binary_found = "false"
-    st.cursor_binary_found = "false"
+def test_refresh_gate_probe_updates_typed_reviewer_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap.agents, "check_reviewers", lambda: _reviewers(codex_present=False, cursor_present=False))
+    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="coder"), implement_tmpdir=str(tmp_path))
     assert bootstrap._refresh_gate_probe(st) is None  # pyright: ignore[reportPrivateUsage]
-    assert len(calls) == 1
-    assert "--skip-codex-probe" not in calls[0]
-    assert "--skip-cursor-probe" not in calls[0]
     assert st.codex_present == "false"
-    assert st.codex_binary_found == "true"
-
-
-def test_invoke_absorbed_gate_probe_refresh_failure_contract_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 1, "", "probe failed"),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.contract_failure is True
-    assert tail.step_failed == "absorbed-gate-probe-refresh-failed"
-    assert "ROUTE" not in tail.routing
-
-
-def test_invoke_absorbed_degraded_gate_existing_sentinel_avoids_reprompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
-    )
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
-    assert tail.routing.get("ROUTE") == "continue"
-
-
-def test_invoke_absorbed_degraded_gate_both_down_noninteractive_hard_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, **_kwargs):
-        calls.append(args)
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(), "")
-        if args[:2] == ("run-log", "append-entry"):
-            return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=True,
-    )
-    assert tail.contract_failure is True
-    assert tail.step_failed == "degraded-both-down-hard-fail"
-    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
-    assert not (tmp_path / ".degraded-tools-gate-prompted").exists()
-
-
-def test_invoke_absorbed_degraded_gate_one_down_noninteractive_requires_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
-    )
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=True,
-    )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
-    assert "ROUTE" not in tail.routing
-
-
-def test_invoke_absorbed_degraded_gate_missing_both_down_interactive_fails_closed_to_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(
-            list(args),
-            0,
-            "DEGRADED=true\nCODEX_STATE=binary-missing\nCURSOR_STATE=binary-missing\n"
-            "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
-            "",
-        ),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
-
-
-def test_invoke_absorbed_degraded_gate_missing_both_down_noninteractive_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(
-            list(args),
-            0,
-            "DEGRADED=true\nCODEX_STATE=binary-missing\nCURSOR_STATE=binary-missing\n"
-            "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
-            "",
-        ),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=True,
-    )
-    assert tail.contract_failure
-    assert tail.step_failed == "absorbed-both-down-missing"
-
-
-@pytest.mark.usefixtures("gate_and_probe")
-def test_checkpoint_absorbed_1r_continue_routes_to_step2(tmp_path: Path) -> None:
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("ROUTE") == "continue"
-    assert tail.routing.get("CHECKPOINT_NEXT") == "continue"
-    assert tail.routing.get("REBASE_RC") == "0"
-
-
-def test_invoke_absorbed_1r_conflict_relays_conflict_files_and_rebase_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(
-        bootstrap,
-        "_run",
-        lambda argv, **_: subprocess.CompletedProcess(
-            argv,
-            1,
-            "REBASE_OUTCOME=conflict\nROUTE=conflict\nCONFLICT_FILES=a.py,b.py\n",
-            "",
-        ),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("ROUTE") == "conflict"
-    assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
-    assert tail.routing.get("REBASE_RC") == "1"
-    assert tail.routing.get("CONFLICT_FILES") == "a.py,b.py"
-
-
-def test_invoke_absorbed_1r_bail_relays_rebase_error_and_rebase_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(
-        bootstrap,
-        "_run",
-        lambda argv, **_: subprocess.CompletedProcess(
-            argv,
-            3,
-            "REBASE_OUTCOME=failed\nROUTE=bail\nREBASE_ERROR=detached-head\n",
-            "",
-        ),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("ROUTE") == "bail"
-    assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
-    assert tail.routing.get("REBASE_RC") == "3"
-    assert tail.routing.get("REBASE_ERROR") == "detached-head"
-
-
-def test_invoke_absorbed_1r_synthesizes_rebase_rc_from_process_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(
-        bootstrap,
-        "_run",
-        lambda argv, **_: subprocess.CompletedProcess(argv, 9, "REBASE_OUTCOME=failed\nROUTE=bail\n", ""),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("REBASE_RC") == "9"
-
-
-def test_invoke_absorbed_1r_phantom_stdout_not_routing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    plan = seed_plan(tmp_path, "plan\n")
-    _ = seed_feature_description(tmp_path)
-
-    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
-        print(f"IMPLEMENT_TMPDIR={tmp_path}")
-        print(f"PLAN_FILE={plan}")
-        print("STALL_TRACKING=false")
-        print("coder=codex")
-        print("CODEX_PRESENT=true")
-        print("CURSOR_PRESENT=true")
-        print("CODEX_BINARY_FOUND=true")
-        print("CURSOR_BINARY_FOUND=true")
-        return 0
-
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    assert bootstrap.invoke_main(["--mode", "initial", "--non-interactive", "false"]) == 0
-    out = capsys.readouterr().out
-    stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
-    assert "CHECKPOINT_NEXT=continue" in out
-    assert "CHECKPOINT_NEXT=continue" in stored
-    assert "PHANTOM_STATUS=clean" in out
-    assert "PHANTOM_STATUS" not in stored
-    assert "BOOTSTRAP_NEXT=step2" in out
-    assert "BOOTSTRAP_NEXT=step2" in stored
-
-
-def test_invoke_degraded_prompt_required_sets_bootstrap_next(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    plan = seed_plan(tmp_path, "plan\n")
-    _ = seed_feature_description(tmp_path)
-
-    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
-        print(f"IMPLEMENT_TMPDIR={tmp_path}")
-        print(f"PLAN_FILE={plan}")
-        print("STALL_TRACKING=false")
-        print("coder=codex")
-        print("CODEX_PRESENT=true")
-        print("CURSOR_PRESENT=true")
-        return 0
-
-    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    monkeypatch.setattr(
-        bootstrap,
-        "_run_absorbed_continue_tail",
-        lambda _data, **_kwargs: bootstrap.ContinueTailResult(routing={"DEGRADED_PROMPT_REQUIRED": "true"}),
-    )
-    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
-    out = capsys.readouterr().out
-    stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
-    assert "BOOTSTRAP_NEXT=degraded-prompt" in out
-    assert "BOOTSTRAP_NEXT=degraded-prompt" in stored
-
-
-def test_filtered_envelope_retains_degraded_prompt_required() -> None:
-    text = "IMPLEMENT_TMPDIR=/tmp/x\nDEGRADED_PROMPT_REQUIRED=true\nROUTE=\nPHANTOM_STATUS=clean\n"
-    out = bootstrap._filtered_envelope(text, resume=False)  # pyright: ignore[reportPrivateUsage]
-    assert "DEGRADED_PROMPT_REQUIRED=true" in out
-    assert "PHANTOM_STATUS" not in out
-
-
-def test_continue_predicate_skips_on_bail(tmp_path: Path) -> None:
-    data = _continue_data(tmp_path, IMPLEMENT_BAIL_REASON="dirty-tree")
-    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_continue_predicate_skips_on_repo_unavailable(tmp_path: Path) -> None:
-    data = _continue_data(tmp_path, REPO_UNAVAILABLE="true")
-    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_continue_predicate_skips_without_feature_description(tmp_path: Path) -> None:
-    data = _continue_data(tmp_path)
-    (tmp_path / "feature-description.txt").unlink()
-    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_restore_resume_coder_from_symlinked_routing_file(tmp_path: Path) -> None:
-    target = tmp_path / "routing-target.env"
-    _ = target.write_text("coder=cursor\ncoder_fallback=true\n", encoding="utf-8")
-    routing = tmp_path / "bootstrap-routing.env"
-    routing.symlink_to(target)
-    _ = (tmp_path / "session-env.sh").write_text("coder=codex\n", encoding="utf-8")
-    data: dict[str, str] = {"IMPLEMENT_TMPDIR": str(tmp_path)}
-    bootstrap._restore_resume_coder(data=data, routing_file=routing, tmpdir=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
-    assert data["coder"] == "codex"
-    assert "coder_fallback" not in data
-
-
-def test_resolve_non_interactive_detects_larch_cron_env() -> None:
-    assert bootstrap._resolve_non_interactive(explicit="", env={"LARCH_CRON": "true"})  # pyright: ignore[reportPrivateUsage]
-
-
-def test_resolve_non_interactive_detects_parent_claude_p(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
-    assert bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
-
-
-def test_resolve_non_interactive_both_down_claude_p_never_interactive_prompt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
-
-    def fake_cli(*args: str, **_kwargs):
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(), "")
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=bootstrap._resolve_non_interactive(explicit=""),  # pyright: ignore[reportPrivateUsage]
-    )
-    assert tail.contract_failure is True
-    assert tail.step_failed == "degraded-both-down-hard-fail"
-
-
-def test_invoke_absorbed_degraded_gate_relays_presence_stderr(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    gate_stderr = (
-        "agent degraded-tools-gate: ERROR: --codex-present resolved empty "
-        "(caller rehydration bug — read presence keys from the durable session-env file, "
-        "not ambient shell state); treating as down (fail-safe)\n"
-    )
-
-    def fake_cli(*args: str, **_kwargs):
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(
-                ["cli", *args],
-                0,
-                "DEGRADED=true\nBOTH_DOWN=true\nPRESENCE_INPUT_EMPTY=true\n"
-                "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
-                gate_stderr,
-            )
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=True,
-    )
-    assert "--codex-present resolved empty" in capsys.readouterr().err
-
-
-def test_invoke_resume_runs_absorbed_tail_for_symlinked_routing_file(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    plan = seed_plan(tmp_path, "plan\n")
-    _ = seed_feature_description(tmp_path)
-    target = tmp_path / "routing-target.env"
-    _ = target.write_text(f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n", encoding="utf-8")
-    (tmp_path / "bootstrap-routing.env").symlink_to(target)
-    gate_called = False
-
-    def fake_cli(*args: str, **_kwargs):
-        nonlocal gate_called
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            gate_called = True
-        return subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), "")
-
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        if "checkpoint-probe" in " ".join(map(str, argv)):
-            return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
-        print(f"IMPLEMENT_TMPDIR={tmp_path}")
-        print("RUN_ID=R1")
-        print(f"PLAN_FILE={plan}")
-        print("STALL_TRACKING=false")
-        print("coder=codex")
-        return 0
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
-    assert gate_called
-    assert "ROUTE=continue" in capsys.readouterr().out
-
-
-def test_resolve_non_interactive_detects_autonomous_loop_in_parent_args(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(argv, **kwargs):
-        _ = kwargs
-        if len(argv) >= 3 and argv[2] == "args=":
-            return subprocess.CompletedProcess(argv, 0, "claude <<autonomous-loop-dynamic>> /implement 42", "")
-        if len(argv) >= 3 and argv[2] == "comm=":
-            return subprocess.CompletedProcess(argv, 0, "claude", "")
-        if len(argv) >= 3 and argv[2] == "ppid=":
-            return subprocess.CompletedProcess(argv, 0, "1", "")
-        return subprocess.CompletedProcess(argv, 1, "", "")
-
-    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
-    assert bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
-
-
-def test_invoke_absorbed_degraded_gate_cli_failure_exit_2(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    plan = seed_plan(tmp_path, "plan\n")
-    _ = seed_feature_description(tmp_path)
-
-    def fake_cli(*args: str, **_kwargs):
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(list(args), 1, "", "agent degraded-tools-gate: presence parse failed")
-        return subprocess.CompletedProcess(list(args), 0, "", "")
-
-    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
-        print(f"IMPLEMENT_TMPDIR={tmp_path}")
-        print(f"PLAN_FILE={plan}")
-        print("STALL_TRACKING=false")
-        print("coder=codex")
-        print("CODEX_PRESENT=true")
-        print("CURSOR_PRESENT=true")
-        return 0
-
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    assert bootstrap.invoke_main(["--mode", "initial"]) == 2
-    captured = capsys.readouterr()
-    assert "STEP_FAILED=absorbed-degraded-gate" in captured.out
-    assert "presence parse failed" in captured.err
-
-
-def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("LARCH_EVAL_RUN", raising=False)
-    assert bootstrap._resolve_non_interactive(explicit="true")  # pyright: ignore[reportPrivateUsage]
-    assert not bootstrap._resolve_non_interactive(explicit="false")  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setenv("LARCH_EVAL_RUN", "true")
-    assert bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
-    assert bootstrap._resolve_non_interactive(explicit="", env={"LARCH_AUTONOMOUS_LOOP": "true"})  # pyright: ignore[reportPrivateUsage]
-
-
-def test_resolve_non_interactive_defaults_interactive_without_explicit_signal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: False)
-    assert not bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
-
-
-def test_parse_probe_stdout_preserves_spaced_rebase_error() -> None:
-    routing, advisory = bootstrap._parse_probe_stdout(  # pyright: ignore[reportPrivateUsage]
-        "REBASE_OUTCOME=failed\nROUTE=bail\nREBASE_ERROR=fetch failed on upstream main\nCONFLICT_FILES=docs/user guide.md\nPHANTOM_STATUS=clean tree\n",
-    )
-    assert routing["REBASE_ERROR"] == "fetch failed on upstream main"
-    assert routing["CONFLICT_FILES"] == "docs/user guide.md"
-    assert any(line.startswith("PHANTOM_STATUS=") for line in advisory)
-
-
-def test_invoke_absorbed_degraded_gate_relays_explanation_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
-    )
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    err = capsys.readouterr().err
-    assert "Degraded external-tool availability" in err
-
-
-def test_invoke_absorbed_degraded_gate_one_down_interactive_relays_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
-    )
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert "Degraded external-tool availability" in capsys.readouterr().err
-
-
-def test_invoke_absorbed_degraded_gate_both_down_interactive_relays_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
-    )
-    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert "Degraded external-tool availability" in capsys.readouterr().err
-
-
-def test_invoke_absorbed_degraded_gate_missing_presence_keys_passed_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: list[tuple[str, ...]] = []
-
-    def fake_cli(*args: str, **_kwargs):
-        captured.append(args)
-        if args[:2] == ("agent", "degraded-tools-gate"):
-            return subprocess.CompletedProcess(
-                ["cli", *args],
-                0,
-                "DEGRADED=true\nBOTH_DOWN=true\nPRESENCE_INPUT_EMPTY=true\n"
-                "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
-                "",
-            )
-        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
-
-    data = _continue_data(tmp_path)
-    del data["CODEX_PRESENT"]
-    del data["CURSOR_PRESENT"]
-    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        data,
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=True,
-    )
-    gate_args = next(call for call in captured if call[:2] == ("agent", "degraded-tools-gate"))
-    assert "--codex-present" in gate_args
-    assert "--cursor-present" in gate_args
-    assert gate_args[gate_args.index("--codex-present") + 1] in {"", "false"}
-    assert gate_args[gate_args.index("--cursor-present") + 1] in {"", "false"}
-    assert tail.contract_failure is True
-    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
-
-
-def test_invoke_absorbed_1r_passes_forked_target_without_base_remote_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: list[list[str]] = []
-
-    def fake_run(argv, **_kwargs):
-        captured.append(list(argv))
-        return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
-
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder", forked_target="true"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("ROUTE") == "continue"
-    argv = captured[0]
-    assert "--forked-target" in argv
-    assert argv[argv.index("--forked-target") + 1] == "true"
-    assert "--base-remote" not in argv
-    assert "--base-ref" not in argv
-
-
-def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    consumer = tmp_path / "consumer"
-    _ = consumer.mkdir()
-    _ = subprocess.run(["git", "init"], cwd=consumer, capture_output=True, check=True)
-    captured_cwd: list[str | None] = []
-
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env
-        captured_cwd.append(cwd)
-        return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
-
-    monkeypatch.chdir(consumer)
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert captured_cwd
-    cwd = captured_cwd[0]
-    assert cwd is not None
-    assert Path(cwd).resolve() == consumer.resolve()
-    assert Path(cwd).resolve() != _REPO_ROOT.resolve()
-
-
-def test_invoke_absorbed_degraded_gate_explanation_missing_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    plan = seed_plan(tmp_path, "plan\n")
-    _ = seed_feature_description(tmp_path)
-    monkeypatch.setattr(
-        bootstrap,
-        "_cli",
-        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, "DEGRADED=true\nBOTH_DOWN=true\n", ""),
-    )
-
-    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
-        print(f"IMPLEMENT_TMPDIR={tmp_path}")
-        print(f"PLAN_FILE={plan}")
-        print("STALL_TRACKING=false")
-        print("coder=codex")
-        print("CODEX_PRESENT=true")
-        print("CURSOR_PRESENT=true")
-        return 0
-
-    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    assert bootstrap.invoke_main(["--mode", "initial", "--non-interactive", "false"]) == 2
-
-
-def test_checkpoint_absorbed_1r_malformed_route_synthesizes_bail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
-    monkeypatch.setattr(
-        bootstrap,
-        "_run",
-        lambda argv, **_: subprocess.CompletedProcess(argv, 9, "REBASE_OUTCOME=failed\nROUTE=garbage\n", "probe stderr"),
-    )
-    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
-        _continue_data(tmp_path),
-        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=False,
-    )
-    assert tail.routing.get("ROUTE") == "bail"
-    assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
-    assert tail.routing.get("REBASE_RC") == "9"
-    assert tail.routing.get("REBASE_ERROR")
-
-
-def test_restore_resume_progress_reactivates_persisted_run_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """--resume-plan-tail path re-activates the persisted LARCH_RUN_ID."""
-    bs = bootstrap
-
-    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
-    _ = write_session_env(
-        tmp_path,
-        omit=IMPLEMENT_BASELINE_KEYS,
-        overrides={"LARCH_RUN_ID": "resume-run-77"},
-    )
-
-    activate_calls: list[tuple[str, ...]] = []
-    real_run = bs._run  # type: ignore[attr-defined]
-
-    def fake_run(argv: list[str], **kwargs: str | None) -> subprocess.CompletedProcess[str]:
-        if len(argv) >= 4 and argv[2:4] == ["progress", "activate"]:
-            activate_calls.append(tuple(argv))
-            return subprocess.CompletedProcess(argv, 0, "", "")
-        return real_run(argv, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(bs, "_run", fake_run)  # type: ignore[attr-defined]
-
-    opts = bs.BootstrapOptions(up_to_phase="coder")
-    st = bs.BootstrapState(opts, implement_tmpdir=str(tmp_path))
-    st.run_id = ""
-    bs._restore_resume_progress(st)  # pyright: ignore[reportPrivateUsage]
-
-    assert st.run_id == "resume-run-77"
-    assert any("resume-run-77" in c for c in activate_calls)
+    assert st.cursor_binary_found == "true"

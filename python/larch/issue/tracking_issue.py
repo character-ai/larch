@@ -512,6 +512,21 @@ def upsert_summary(
     _upsert_marker_comment(runner, issue, _upsert_marker("final-summary"), body, repo=repo, cwd=cwd)
 
 
+def upsert_marker_summary(
+    runner: Runner,
+    *,
+    issue: str,
+    marker: str,
+    content_file: str,
+    repo: str | None,
+) -> UpsertSummaryOutput:
+    """Upsert a caller-owned marker summary and return its typed outcome."""
+    return _upsert_summary_cli(
+        runner, issue=issue, marker=marker, content_file=content_file,
+        repo=repo, comment_id=None,
+    )
+
+
 def upsert_token_report(
     runner: Runner,
     issue: str,
