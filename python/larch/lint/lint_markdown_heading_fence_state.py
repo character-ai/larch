@@ -63,6 +63,7 @@ RULE = LintRule(
     pathspecs=PATHSPECS,
     source_filter=is_production_source_path,
     occurrence_baseline=True,
+    stale_baseline_on_clean_scan=True,
 )
 
 

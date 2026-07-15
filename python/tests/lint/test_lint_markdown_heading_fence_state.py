@@ -391,7 +391,7 @@ def test_excluded_paths_filtered_in_write_mode(tmp_path: Path) -> None:
     assert baseline.read_text(encoding="utf-8") == "[]\n"
 
 
-def test_tracked_symlink_is_skipped_in_check_and_write_modes(tmp_path: Path) -> None:
+def test_tracked_symlink_in_scope_fails_in_check_and_write_modes(tmp_path: Path) -> None:
     target = tmp_path / "outside.py"
     _ = target.write_text(VIOLATING, encoding="utf-8")
     link = tmp_path / "python/larch/linked.py"
@@ -400,8 +400,9 @@ def test_tracked_symlink_is_skipped_in_check_and_write_modes(tmp_path: Path) -> 
 
     check_runner = _git_ok_runner(tmp_path, ["python/larch/linked.py"])
     code, out, err = _invoke_rule(tmp_path, check_runner, strict_stale=False)
-    assert code == EXIT_CLEAN
-    assert out == err == ""
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "discovered path is a symlink" in err
 
     write_runner = _git_ok_runner(tmp_path, ["python/larch/linked.py"])
     code, out, err = _invoke_rule(
@@ -411,9 +412,22 @@ def test_tracked_symlink_is_skipped_in_check_and_write_modes(tmp_path: Path) -> 
         initial_reason="seed",
         strict_stale=False,
     )
-    assert code == EXIT_CLEAN
-    assert out == err == ""
-    assert (tmp_path / "python" / lint.BASELINE_FILENAME).read_text(encoding="utf-8") == "[]\n"
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "discovered path is a symlink" in err
+
+
+def test_existing_empty_baseline_with_clean_scan_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text("[]\n", encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+
+    code, out, err = _invoke_rule(tmp_path, runner)
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "stale baseline present with zero live findings" in err
 
 
 def test_unreadable_in_scope_file_exits_2_with_deterministic_diagnostic(

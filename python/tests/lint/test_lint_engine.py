@@ -106,6 +106,7 @@ def _rule(
     pathspecs: tuple[str, ...] | None = None,
     source_filter: Callable[[str], bool] | None = None,
     occurrence_baseline: bool = False,
+    stale_baseline_on_clean_scan: bool = False,
 ) -> LintRule:
     def _default_detect(source: SourceFile) -> list[Finding]:
         return [
@@ -127,6 +128,7 @@ def _rule(
         pathspecs=pathspecs,
         source_filter=source_filter,
         occurrence_baseline=occurrence_baseline,
+        stale_baseline_on_clean_scan=stale_baseline_on_clean_scan,
     )
 
 
@@ -2167,6 +2169,43 @@ def test_pathspecs_and_source_filter_exclude_before_load(tmp_path: Path) -> None
     assert out == ""
     assert err == ""
     assert "python/**/*.py" in runner.calls[1][0]
+
+
+def test_source_filter_excludes_missing_tracked_path_before_filesystem_validation(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"python/larch/ok.py": "x = 1\n"})
+
+    rule = _rule(
+        detect=lambda _source: [],
+        pathspecs=("python/**/*.py",),
+        source_filter=lambda rel: rel == "python/larch/ok.py",
+    )
+    runner = _git_ok_runner(
+        tmp_path, ["python/larch/ok.py", "python/tests/excluded.py"]
+    )
+
+    code, out, err = _invoke(rule, tmp_path, runner)
+
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+
+
+def test_in_scope_tracked_symlink_fails_discovery(tmp_path: Path) -> None:
+    target = tmp_path / "outside.py"
+    _ = target.write_text("x = 1\n", encoding="utf-8")
+    link = tmp_path / "linked.py"
+    link.symlink_to(target)
+
+    code, out, err = _invoke(
+        _rule(detect=lambda _source: []),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["linked.py"]),
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "discovered path is a symlink: linked.py" in err
 
 
 def test_syntax_policy_raise_exits_error(tmp_path: Path) -> None:

@@ -134,6 +134,7 @@ class LintRule:
     pathspecs: tuple[str, ...] | None = None
     source_filter: SourceFilter | None = None
     occurrence_baseline: bool = False
+    stale_baseline_on_clean_scan: bool = False
 
 
 def _is_single_line(value: object) -> bool:
@@ -157,6 +158,8 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901 - rule field validatio
         raise ScanError("lint rule allow_inline_suppression must be a bool")
     if not _is_exact_bool(rule.occurrence_baseline):
         raise ScanError("lint rule occurrence_baseline must be a bool")
+    if not _is_exact_bool(rule.stale_baseline_on_clean_scan):
+        raise ScanError("lint rule stale_baseline_on_clean_scan must be a bool")
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
             "lint rule suppression_token must be a non-empty single-line string"
@@ -217,6 +220,7 @@ def _discover_tracked_paths(
     runner: Runner,
     *,
     pathspecs: Sequence[str] | None = None,
+    source_filter: SourceFilter | None = None,
 ) -> list[str]:
     # Scope ls-files when callers pass pathspecs so sparse checkouts that omit
     # unrelated trees (for example CI excluding larch-logs/) do not fail
@@ -236,14 +240,15 @@ def _discover_tracked_paths(
     for entry in records:
         if entry == "":
             raise ScanError("git ls-files --cached returned a blank path record")
-        rel = _normalize_repo_relative_path(
+        lexical_rel = _normalize_repo_relative_path(
             entry,
             root=root,
             label="discovered path",
-            skip_symlink=True,
+            check_filesystem=False,
         )
-        if rel is None:
+        if source_filter is not None and not source_filter(lexical_rel):
             continue
+        rel = _normalize_repo_relative_path(entry, root=root, label="discovered path")
         if rel in seen:
             continue
         seen.add(rel)
@@ -256,8 +261,8 @@ def _normalize_repo_relative_path(
     *,
     root: Path,
     label: str,
-    skip_symlink: bool = False,
-) -> str | None:
+    check_filesystem: bool = True,
+) -> str:
     if not _is_single_line(raw):
         raise ScanError(f"{label} must be a non-empty single-line path")
     candidate = raw
@@ -268,10 +273,11 @@ def _normalize_repo_relative_path(
     parts = Path(candidate).parts
     if "." in parts or ".." in parts:
         raise ScanError(f"{label} must not contain '.' or '..': {raw}")
+    lexical = Path(candidate).as_posix()
+    if not check_filesystem:
+        return lexical
     path_in_repo = root / candidate
     if path_in_repo.is_symlink():
-        if skip_symlink:
-            return None
         raise ScanError(f"{label} is a symlink: {raw}")
     absolute = path_in_repo.resolve()
     try:
@@ -340,8 +346,6 @@ def _filter_tracked_paths(
 
 def _load_source(root: Path, rel_path: str) -> SourceFile:
     rel_path = _normalize_repo_relative_path(rel_path, root=root, label="source path")
-    if rel_path is None:
-        raise ScanError("source path is a symlink")
     try:
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
@@ -1168,9 +1172,17 @@ def _scan_findings(
         discovery_pathspecs = [
             _validate_requested_path(item, root=root)[0] for item in paths
         ]
-    tracked = _discover_tracked_paths(
-        root, runner, pathspecs=discovery_pathspecs
-    )
+    if rule.source_filter is None:
+        tracked = _discover_tracked_paths(
+            root, runner, pathspecs=discovery_pathspecs
+        )
+    else:
+        tracked = _discover_tracked_paths(
+            root,
+            runner,
+            pathspecs=discovery_pathspecs,
+            source_filter=rule.source_filter,
+        )
     selected = _filter_tracked_paths(tracked, root=root, paths=paths)
     if rule.source_filter is not None:
         selected = [rel for rel in selected if rule.source_filter(rel)]
@@ -1332,6 +1344,16 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
             findings = []
             result = EXIT_CLEAN
             warnings = []
+        elif (
+            rule.stale_baseline_on_clean_scan
+            and not write_baseline
+            and not collected
+            and not baseline_rows
+        ):
+            assert destination is not None
+            raise ScanError(
+                f"stale baseline present with zero live findings: {destination}"
+            )
         else:
             assert destination is not None
             result, findings, warnings = _run_with_baseline(
