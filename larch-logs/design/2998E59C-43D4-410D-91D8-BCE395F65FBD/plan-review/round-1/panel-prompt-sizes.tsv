@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	24501	6126	14202	3551	10299	2575		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17209	4303	13798	3450	3411	853		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17325	4332	13914	3479	3411	853		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17185	4297	13774	3444	3411	853		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	24383	6096	14084	3521	10299	2575		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17207	4302	13796	3449	3411	853		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	24361	6091	14062	3516	10299	2575		0	0
+design Step 3	phase1	1	dyn-cursor-plan-harness-partition-auditor	plan-review	cursor	dyn-cursor-plan-harness-partition-auditor.txt	24722	6181	13937	3485	10785	2697		0	0
+design Step 3	phase1	1	dyn-codex-plan-harness-partition-auditor	plan-review	codex	dyn-codex-plan-harness-partition-auditor.txt	17546	4387	13649	3413	3897	975		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	24385	6097	14086	3522	10299	2575		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	22785	5697	4459	1115	18326	4582	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14095	3524	9131	2283	4964	1241		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14095	3524	9131	2283	4964	1241		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14095	3524	9131	2283	4964	1241		0	0

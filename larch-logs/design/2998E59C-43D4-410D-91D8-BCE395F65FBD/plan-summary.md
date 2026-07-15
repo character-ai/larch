@@ -1,0 +1,1 @@
+Reconcile the Bash-only shard inventory after Pieces 2-4. Keep pytest out of CI harness shards, retain the four delegation smokes, clean stale references, and change the five-shard matrix only when timing evidence requires it.

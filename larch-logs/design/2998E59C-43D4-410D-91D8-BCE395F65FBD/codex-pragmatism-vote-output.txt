@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicates prior neutral evidence; optional timing does not break the current feature path.
