@@ -68,24 +68,25 @@ Warnings (21):
 
 ## Architectural invariants
 
-The runtime verification additions — new subprocess execution paths, artifact serialization, binding validation, and the tightened verified-issue predicate — do not violate any stated invariant.
+The runtime verification additions — subprocess execution, artifact serialization and validation, binding checks, and the tightened verified-issue predicate — do not violate any stated invariant.
 
 ## Architectural guidelines
 
-All guideline deviations cited in the prior note have been resolved in the current diff, and no new deviations were introduced by the additional type annotation fixes.
+The runtime verification stage follows applicable guidelines: frozen dataclasses, injectable Runner, tunables in config.py, SHA and path validation at trust boundaries, a named verdict set for routing, and the new artifact schema deviate clause applies since no committed history exists.
 
-## /implement run 6A71A147-7646-4CD6-B696-DEED7E1555B1: shipping
+## /implement run 6A71A147-7646-4CD6-B696-DEED7E1555B1: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:16:58
-- **Cost**: 💰 TOTAL ~$15.95: Claude $6.30, Codex-5.6 $6.98, Codex-mini $0.06, Cursor $2.15 (Composer $2.15, Grok $0.00), Claude (subprocess) $0.46  |  Tokens: 19767k
+- **Cost**: 💰 TOTAL ~$17.53: Claude $7.88, Codex-5.6 $6.98, Codex-mini $0.06, Cursor $2.15 (Composer $2.15, Grok $0.00), Claude (subprocess) $0.46  |  Tokens: 22653k
 - **Issue**: #6974: https://github.com/character-ai/larch/issues/6974
+- **PR**: #7445: https://github.com/character-ai/larch/pull/7445
 - **Plan review**: N/A
 - **Plan coverage**: 5/5 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 7/14 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +445/-7, larch-logs +880/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 21
