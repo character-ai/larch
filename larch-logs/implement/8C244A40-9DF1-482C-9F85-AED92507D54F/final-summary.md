@@ -42,12 +42,20 @@ codex/pragmatism-vote                 │                                     �
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+The changed code introduces no violation of any architectural invariant. The schema additions to the bug-fix-triage and bug-fix-verifier agents are backed by real tool grants (the verifier's frontmatter already lists Read, Grep, and Glob), and both agents retain explicit fail-closed cannot-read outcomes for missing or insufficient evidence. Ledger evolution is additive: old rows without the new fields are detected by the `current_fields <= set(raw)` subset check and receive `legacy_schema=True`, leaving existing consumers unaffected. No gate-disarming inputs are self-authored by the gated entity, no pause-snapshot or run-log commit logic is touched, and no stale result is consumed without matching its identity to the inputs that produced it.
+
+## Architectural guidelines
+
+The changed code is clean against all architectural guidelines. The schema evolution preserves byte-compatibility for existing ledger readers while adding the new fields only for current-schema rows, satisfying additive-schema and multi-consumer sweep expectations. Both producer agents and all parser, ledger, and report consumers are updated in the same diff. The `NO_INTRODUCED_RISK` and `SIBLING_SITE_RE` constants are module-local Finals consistent with the established pattern of other same-module constants such as `SCAN_OK`, `SCAN_FAILED`, and `EVIDENCE_TOKEN_LABEL`, which fall under the module-private deviate clause. The `_markdown_table` helper performs no column alignment or label truncation, so the hostile-width golden-test requirement of the report-renderer guidance is not triggered. All pyright suppressions in the test file carry inline reasons and are narrowly scoped per line. The new test suite covers legacy-schema preservation, schema-rejection paths, and the full report rendering path for the new sections.
+
 ## /implement run 8C244A40-9DF1-482C-9F85-AED92507D54F: shipping
 
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 00:19:59
-- **Cost**: 💰 TOTAL ~$10.46: Claude $0.93, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 12193k
+- **Cost**: 💰 TOTAL ~$12.11: Claude $2.58, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 14756k
 - **Issue**: #7212: https://github.com/character-ai/larch/issues/7212
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
