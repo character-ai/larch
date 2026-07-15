@@ -26,6 +26,7 @@ STATIC_REVIEWERS = ("correctness", "edge-cases", "testing")
 FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR = 1
 REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR = 2
+REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR = 2
 PER_REVIEWER_OOS_PROPOSAL_CAP = 3
 
 
@@ -35,6 +36,13 @@ class PruneRoundCounts:
     weighted_accepted: int = 0
     rejected: int = 0
     total: int = 0
+    observed: bool = True
+
+
+@dataclass(frozen=True)
+class PruneRecordOptions:
+    label_map: Path | None = None
+    reviewer_status: Path | None = None
 
 
 @dataclass(frozen=True)

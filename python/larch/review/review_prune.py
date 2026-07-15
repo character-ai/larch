@@ -15,7 +15,9 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.review.review_pipeline_shared import (
     PruneFilterResult,
+    PruneRecordOptions,
     PruneRoundCounts,
+    REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR,
     REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR,
     REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR,
     _atomic_write,
@@ -120,6 +122,10 @@ def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode:
 
 
 def _prune_ledger_header() -> list[str]:
+    return ["round", "tool", "slot", "label", "accepted_count", "weighted_accepted_count", "rejected_count", "total_count", "observed"]
+
+
+def _weighted_prune_ledger_header() -> list[str]:
     return ["round", "tool", "slot", "label", "accepted_count", "weighted_accepted_count", "rejected_count", "total_count"]
 
 
@@ -129,7 +135,9 @@ def _legacy_prune_ledger_header() -> list[str]:
 
 def _normalize_prune_ledger_row(row: list[str]) -> list[str] | None:
     if len(row) == len(_legacy_prune_ledger_header()):
-        normalized = [*row[:5], row[4], *row[5:]]
+        normalized = [*row[:5], row[4], *row[5:], "true"]
+    elif len(row) == len(_weighted_prune_ledger_header()):
+        normalized = [*row, "true"]
     elif len(row) == len(_prune_ledger_header()):
         normalized = list(row)
     else:
@@ -141,6 +149,8 @@ def _normalize_prune_ledger_row(row: list[str]) -> list[str] | None:
         int(normalized[6])
         int(normalized[7])
     except ValueError:
+        return None
+    if normalized[8] not in {"true", "false"}:
         return None
     return normalized
 
@@ -178,15 +188,35 @@ def _rewrite_prune_ledger(*, path: Path, round_num: int, new_rows: list[list[str
             os.unlink(tmp)
 
 
-def reviewer_prune_record(*, ledger: Path, round_num: int, manifest: Path, classification: Path, label_map: Path | None = None) -> None:
+def _skipped_reviewer_labels(path: Path | None) -> set[str]:
+    if path is None or path.is_symlink() or not path.is_file():
+        return set()
+    with path.open(encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if reader.fieldnames is None or not {"slot", "status"}.issubset(reader.fieldnames):
+            return set()
+        return {str(row.get("slot") or "") for row in reader if row.get("status") == "skipped" and row.get("slot")}
+
+
+def reviewer_prune_record(
+    *,
+    ledger: Path,
+    round_num: int,
+    manifest: Path,
+    classification: Path,
+    options: PruneRecordOptions | None = None,
+) -> None:
     rows = _manifest_rows(manifest)
-    label_mp = _read_label_map(label_map)
+    record_options = options or PruneRecordOptions()
+    label_mp = _read_label_map(record_options.label_map)
     plan_mode = bool(label_mp)
     slot_labels = [(row, label_mp.get(str(row.get("slot") or ""), _output_label(row))) for row in rows]
     counts = _read_classification_counts(path=classification, labels=[label for _, label in slot_labels], plan_mode=plan_mode)
+    skipped_labels = _skipped_reviewer_labels(record_options.reviewer_status)
     ledger_rows: list[list[str]] = []
     for row, label in slot_labels:
         count = counts.get(label, PruneRoundCounts())
+        observed = label not in skipped_labels
         ledger_rows.append(
             [
                 str(round_num),
@@ -197,6 +227,7 @@ def reviewer_prune_record(*, ledger: Path, round_num: int, manifest: Path, class
                 str(count.weighted_accepted),
                 str(count.rejected),
                 str(count.total),
+                str(observed).lower(),
             ]
         )
     _rewrite_prune_ledger(path=ledger, round_num=round_num, new_rows=ledger_rows)
@@ -207,7 +238,7 @@ def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneR
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.reader(handle, delimiter="\t")
         header = next(reader, None)
-        if header not in (_prune_ledger_header(), _legacy_prune_ledger_header()):
+        if header not in (_prune_ledger_header(), _weighted_prune_ledger_header(), _legacy_prune_ledger_header()):
             raise ValueError("missing ledger columns")
         for row in reader:
             normalized = _normalize_prune_ledger_row(row)
@@ -219,6 +250,7 @@ def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneR
                 weighted_accepted=int(normalized[5]),
                 rejected=int(normalized[6]),
                 total=int(normalized[7]),
+                observed=normalized[8] == "true",
             )
             if r >= round_num:
                 continue
@@ -233,8 +265,27 @@ def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneR
                     weighted_accepted=max(existing.weighted_accepted, counts.weighted_accepted),
                     rejected=max(existing.rejected, counts.rejected),
                     total=max(existing.total, counts.total),
+                    observed=existing.observed or counts.observed,
                 )
     return hist
+
+
+def _prior_counts_prunable(prior_counts: Iterable[PruneRoundCounts]) -> bool | None:
+    observed_counts = [counts for counts in prior_counts if counts.observed]
+    if not observed_counts:
+        return None
+    accepted_sum = sum(counts.accepted for counts in observed_counts)
+    weighted_accepted_sum = sum(counts.weighted_accepted for counts in observed_counts)
+    rejected_sum = sum(counts.rejected for counts in observed_counts)
+    total_sum = sum(counts.total for counts in observed_counts)
+    net_prunable = total_sum <= 0 or weighted_accepted_sum - rejected_sum <= 0
+    floor_prunable = (
+        total_sum > 0
+        and accepted_sum < REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR
+        and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
+        < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
+    )
+    return net_prunable or floor_prunable
 
 
 def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: Path) -> PruneFilterResult:
@@ -269,17 +320,8 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
         if not prior_counts:
             pruned.append(key)
             continue
-        accepted_sum = sum(counts.accepted for counts in prior_counts.values())
-        weighted_accepted_sum = sum(counts.weighted_accepted for counts in prior_counts.values())
-        rejected_sum = sum(counts.rejected for counts in prior_counts.values())
-        total_sum = sum(counts.total for counts in prior_counts.values())
-        net_prunable = total_sum <= 0 or weighted_accepted_sum - rejected_sum <= 0
-        floor_prunable = (
-            total_sum > 0
-            and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
-            < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
-        )
-        if net_prunable or floor_prunable:
+        prunable = _prior_counts_prunable(prior_counts.values())
+        if prunable:
             pruned.append(key)
             continue
         eligible.append(row)
@@ -380,12 +422,12 @@ def write_prune_decision_env(*,
 
 def reviewer_prune(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="review-reviewer-prune")
-    usage = "Usage: review reviewer-prune record --ledger FILE --round N --manifest FILE --classification FILE [--label-map FILE] | review reviewer-prune filter --ledger FILE --round N --manifest FILE --out FILE"
+    usage = "Usage: review reviewer-prune record --ledger FILE --round N --manifest FILE --classification FILE [--label-map FILE] [--reviewer-status FILE] | review reviewer-prune filter --ledger FILE --round N --manifest FILE --out FILE"
     if not argv or "--help" in argv:
         _usage(usage)
         return 0 if argv and "--help" in argv else 2
     command, rest = argv[0], argv[1:]
-    parsed = _parse_args(argv=rest, usage=usage, options={"--ledger", "--round", "--manifest", "--classification", "--label-map", "--out"})
+    parsed = _parse_args(argv=rest, usage=usage, options={"--ledger", "--round", "--manifest", "--classification", "--label-map", "--reviewer-status", "--out"})
     if parsed is None:
         return 0
     if not parsed or command not in {"record", "filter"}:
@@ -410,7 +452,17 @@ def reviewer_prune(argv: list[str]) -> int:
             _usage("review reviewer-prune: record requires --classification FILE")
             return 2
         label_map_raw = _get(parsed=parsed, key="--label-map")
-        reviewer_prune_record(ledger=ledger, round_num=round_num, manifest=manifest, classification=classification, label_map=Path(label_map_raw) if label_map_raw else None)
+        reviewer_status_raw = _get(parsed=parsed, key="--reviewer-status")
+        reviewer_prune_record(
+            ledger=ledger,
+            round_num=round_num,
+            manifest=manifest,
+            classification=classification,
+            options=PruneRecordOptions(
+                label_map=Path(label_map_raw) if label_map_raw else None,
+                reviewer_status=Path(reviewer_status_raw) if reviewer_status_raw else None,
+            ),
+        )
         return 0
     out = Path(_get(parsed=parsed, key="--out"))
     if not str(out):
