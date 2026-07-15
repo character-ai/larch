@@ -3297,7 +3297,7 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/report/final_report.py",
+        "file": "larch/report/final_report.py",
     "suppression_kind": "noqa",
     "text": "noqa: S607",
     "occurrence": 1,

@@ -8644,3 +8644,35 @@ def test_distill_ci_errors_exception_never_blocks_bail(
 
     monkeypatch.setattr(ship.ci, "distill_log", _boom)
     assert ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result) == ("", "distill-exception", 0)
+
+
+def test_read_main_health_sidecar_last_match(tmp_path: Path) -> None:
+    _ = (tmp_path / "main-health.env").write_text(
+        "MAIN_CI_STATUS=fail\nMAIN_CI_STATUS=pass\n", encoding="utf-8"
+    )
+    ctx = _ctx(tmp_path)
+    result = ship._read_main_health_sidecar(ctx)  # pyright: ignore[reportPrivateUsage]
+    assert result["MAIN_CI_STATUS"] == "pass"
+
+
+def test_read_main_health_sidecar_missing_file(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    assert ship._read_main_health_sidecar(ctx) == {}  # pyright: ignore[reportPrivateUsage]
+
+
+def test_read_main_health_sidecar_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "real.env"
+    _ = target.write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
+    link = tmp_path / "main-health.env"
+    link.symlink_to(target)
+    ctx = _ctx(tmp_path)
+    assert ship._read_main_health_sidecar(ctx) == {}  # pyright: ignore[reportPrivateUsage]
+
+
+def test_read_main_health_sidecar_preserves_embedded_equals(tmp_path: Path) -> None:
+    _ = (tmp_path / "main-health.env").write_text(
+        "URL=https://example.com/?a=1\n", encoding="utf-8"
+    )
+    ctx = _ctx(tmp_path)
+    result = ship._read_main_health_sidecar(ctx)  # pyright: ignore[reportPrivateUsage]
+    assert result["URL"] == "https://example.com/?a=1"

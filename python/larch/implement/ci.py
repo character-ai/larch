@@ -27,7 +27,6 @@ from larch.core import proc
 from larch.core import redact
 
 
-
 def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:
     try:
         return parser.parse_args(argv)
@@ -37,7 +36,7 @@ def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int)
 
 def _status_error_kv() -> None:
     logging_util.emit_kv(key="CI_STATUS", value="error")
-    logging_util.emit_kv(key="BEHIND_COUNT", value=0)
+    logging_util.emit_kv(key="BEHIND_COUNT", value=str(0))
     logging_util.emit_kv(key="FAILED_RUN_ID", value="")
     logging_util.emit_kv(key="CONFLICTED", value="false")
 
@@ -150,7 +149,7 @@ def status_main(argv: list[str]) -> int:
         empty_checks_grace=args.empty_checks_grace,
     )
     logging_util.emit_kv(key="CI_STATUS", value=status.status)
-    logging_util.emit_kv(key="BEHIND_COUNT", value=status.behind_count)
+    logging_util.emit_kv(key="BEHIND_COUNT", value=str(status.behind_count))
     logging_util.emit_kv(key="FAILED_RUN_ID", value=status.failed_run_id or "")
     logging_util.emit_kv(key="CONFLICTED", value=str(status.conflicted).lower())
     return 0
@@ -407,7 +406,7 @@ def failed_jobs_main(argv: list[str]) -> int:
             print(line)
     fixable = logging_util.sanitize_list(",".join(fixable_tokens))
     unfixable = logging_util.sanitize_list(",".join(unfixable_tokens))
-    logging_util.emit_kv(key="FAILED_JOBS_COUNT", value=classified.count)
+    logging_util.emit_kv(key="FAILED_JOBS_COUNT", value=str(classified.count))
     logging_util.emit_kv(key="FAILED_JOBS_FIXABLE", value=fixable)
     logging_util.emit_kv(key="FAILED_JOBS_UNFIXABLE", value=unfixable)
     return 0
@@ -757,7 +756,7 @@ def distill_log_main(argv: list[str]) -> int:
     outcome = _distill_from_gh(distill_args)
     logging_util.emit_kv(key="STATUS", value=outcome.status)
     logging_util.emit_kv(key="OUTPUT", value=outcome.output)
-    logging_util.emit_kv(key="FAILED_JOBS_COUNT", value=outcome.failed_jobs_count)
+    logging_util.emit_kv(key="FAILED_JOBS_COUNT", value=str(outcome.failed_jobs_count))
     logging_util.emit_kv(key="BAIL_CLASS", value=outcome.bail_class)
     return outcome.exit_code
 
@@ -776,7 +775,7 @@ def behind_count_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
         fetch=not args.no_fetch,
     )
-    logging_util.emit_kv(key="BEHIND_COUNT", value=count)
+    logging_util.emit_kv(key="BEHIND_COUNT", value=str(count))
     return 0
 
 

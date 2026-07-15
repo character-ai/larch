@@ -385,7 +385,6 @@ def create_pr_parity(
 
 
 # CLI entrypoints migrated from pr_cli.py.
-
 def _parse(
     *, parser: argparse.ArgumentParser, argv: list[str]
 ) -> argparse.Namespace | None:
@@ -487,12 +486,12 @@ def create_main(argv: list[str]) -> int:
         )
     except Exception as exc:  # pylint: disable=broad-except
         logging_util.emit_kv(key="PR_STATUS", value="error")
-        logging_util.emit_kv(key="PR_NUMBER", value=0)
+        logging_util.emit_kv(key="PR_NUMBER", value=str(0))
         logging_util.emit_kv(key="PR_URL", value="")
         logging_util.emit_kv(key="PR_TITLE", value=args.title)
         print(str(exc), file=sys.stderr)
         return 2
-    logging_util.emit_kv(key="PR_NUMBER", value=result.number)
+    logging_util.emit_kv(key="PR_NUMBER", value=str(result.number))
     logging_util.emit_kv(key="PR_URL", value=result.url)
     logging_util.emit_kv(key="PR_TITLE", value=result.title)
     logging_util.emit_kv(key="PR_STATUS", value=result.status)

@@ -520,12 +520,6 @@ def update_pr_body(
 # C4c report helper ports
 # ---------------------------------------------------------------------------
 
-
-
-def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key=key, value=str(value))
-
-
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
@@ -1098,10 +1092,10 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
         adopted=args.adopted,
         force_requested=args.force_requested,
     )
-    _emit_kv(key="POSTED", value=str(result.posted).lower())
-    _emit_kv(key="COMMENT_URL", value=result.comment_url)
+    logging_util.emit_kv(key="POSTED", value=str(result.posted).lower())
+    logging_util.emit_kv(key="COMMENT_URL", value=result.comment_url)
     if result.error:
-        _emit_kv(key="ERROR", value=result.error)
+        logging_util.emit_kv(key="ERROR", value=result.error)
     return result.exit_code
 
 
@@ -1160,9 +1154,9 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     result = slack_issue_announce(
         Path(args.implement_tmpdir), best_effort=args.best_effort
     )
-    _emit_kv(key="STATUS", value=result.status)
+    logging_util.emit_kv(key="STATUS", value=result.status)
     if result.reason:
-        _emit_kv(
+        logging_util.emit_kv(
             key="REASON" if result.status == "skipped" else "ERROR",
             value=result.reason,
         )
@@ -1343,7 +1337,7 @@ def generate_code_flow_diagram_main(argv: list[str] | None = None) -> int:
         base_remote=args.base_remote,
         base_ref=args.base_ref,
     )
-    _emit_kv(key="STATUS", value=result.status)
-    _emit_kv(key="DIAGRAM_FILE", value=result.diagram_file)
-    _emit_kv(key="SKIP_REASON", value=result.reason)
+    logging_util.emit_kv(key="STATUS", value=result.status)
+    logging_util.emit_kv(key="DIAGRAM_FILE", value=result.diagram_file)
+    logging_util.emit_kv(key="SKIP_REASON", value=result.reason)
     return result.exit_code

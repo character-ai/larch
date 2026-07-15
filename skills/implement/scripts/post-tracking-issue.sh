@@ -122,7 +122,7 @@ if python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue "${args[@]}" >"$out_file"
         printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=%s\n' "$ISSUE" "$RUN_ID" "$_adopted" > "$PARENT_ISSUE"
     fi
     emit_kv POSTED true
-    emit_kv COMMENT_URL "$(python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$out_file" --key COMMENT_URL --match first 2>/dev/null || true)"
+    emit_kv COMMENT_URL "$(python3 "$PLUGIN_ROOT/python/cli.py" kv get --key COMMENT_URL --file "$out_file" --match first 2>/dev/null)"
     exit 0
 fi
 

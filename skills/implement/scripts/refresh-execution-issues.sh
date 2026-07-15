@@ -32,13 +32,11 @@ fail_usage() {
 read_kv() {
     local key=$1 file=$2
     [ -f "$file" ] || return 0
-    python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
+    python3 "$PLUGIN_ROOT/python/cli.py" kv get --key "$key" --file "$file" --match first 2>/dev/null
 }
 
 read_plugin_version() {
-    python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null \
-        | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null \
-        || true
+    python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null
 }
 
 IMPLEMENT_TMPDIR=""

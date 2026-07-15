@@ -112,7 +112,7 @@ _stall_layer_active() {
 
 kv_value() {
     local key=$1 file=$2
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --key "$key" --file "$file" --match first 2>/dev/null
 }
 
 append_failure_best_effort() {

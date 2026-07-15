@@ -51,6 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from larch import io as larch_io
 from larch.core import architectural_guidelines
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.implement import ci_monitor
@@ -979,8 +980,10 @@ def _read_main_health_sidecar(ctx: RunContext) -> dict[str, str]:
     path = Path(ctx.tmpdir) / "main-health.env"
     return larch_io.read_kvs(
         path,
-        duplicate_policy="last",
+        first_wins=False,
+        errors="replace",
         reject_symlink=True,
+        cr_strip="strip",
         on_error_default=True,
     )
 

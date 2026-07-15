@@ -162,10 +162,10 @@ def parse_codex_usage_main(argv: list[str] | None = None) -> int:
         else:
             _err("agent parse-codex-usage: no usage events")
         return 1
-    logging_util.emit_kv(key="INPUT", value=totals.uncached_input_tokens)
-    logging_util.emit_kv(key="CACHED_INPUT", value=totals.cached_input_tokens)
-    logging_util.emit_kv(key="OUTPUT", value=totals.output_tokens)
-    logging_util.emit_kv(key="TOTAL", value=totals.total_tokens)
+    logging_util.emit_kv(key="INPUT", value=str(totals.uncached_input_tokens))
+    logging_util.emit_kv(key="CACHED_INPUT", value=str(totals.cached_input_tokens))
+    logging_util.emit_kv(key="OUTPUT", value=str(totals.output_tokens))
+    logging_util.emit_kv(key="TOTAL", value=str(totals.total_tokens))
     return 0
 
 

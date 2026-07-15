@@ -452,7 +452,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     # but return the subprocess's own returncode so callers that check the
     logging_util.emit_kv(key="STATUS", value="OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
     logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
-    logging_util.emit_kv(key="ELAPSED", value=elapsed)
+    logging_util.emit_kv(key="ELAPSED", value=str(elapsed))
     _emit_claude_subprocess_failure_fields(output=output, launcher_exit=exit_code)
     return exit_code
 

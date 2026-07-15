@@ -532,7 +532,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             use_config_context=False,
         )
         launcher_exit = outcome.process_result.exit_code if outcome.process_result is not None else 0
-    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=str(launcher_exit))
     logging_util.emit_kv(key="OUTPUT", value=str(output))
     return 0
 
@@ -1190,7 +1190,7 @@ def launch_claude_drafter(
         proc.run([sys.executable, str(_PY_CLI), "timing", "record-vendor-task", "--vendor", "claude", "--task-kind", timing_task_kind, "--start-s", str(int(start)), "--end-s", str(int(end)), "--output", str(output), "--exit-code", str(exit_code), "--status", status], check=False)
         logging_util.emit_kv(key="STATUS", value=status)
         logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
-        logging_util.emit_kv(key="ELAPSED", value=int(end - start))
+        logging_util.emit_kv(key="ELAPSED", value=str(int(end - start)))
         status_text = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else ""
         scout_written = "SCOUT_WRITTEN=true" in status_text
         logging_util.emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())

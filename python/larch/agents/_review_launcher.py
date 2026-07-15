@@ -897,7 +897,7 @@ def _review_emit_launcher_result(
         tool=tool,
         output_file=output,
     )
-    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=str(launcher_exit))
     logging_util.emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
     logging_util.emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
     logging_util.emit_kv(key="OUTPUT", value=str(output))

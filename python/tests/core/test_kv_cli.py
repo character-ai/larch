@@ -116,4 +116,44 @@ def test_stdin_last_non_empty_forwards_policy(
 
     assert rc == 0
     assert out == "one\n"
+
+
+def test_file_duplicate_first_vs_last(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "values.env"
+    _ = source.write_text("KEY=first\nKEY=second\n", encoding="utf-8")
+
+    rc_first, out_first, _ = run_get(["--key", "KEY", "--file", str(source)], capsys, monkeypatch)
+    assert rc_first == 0
+    assert out_first == "first\n"
+
+    rc_last, out_last, _ = run_get(
+        ["--key", "KEY", "--file", str(source), "--match", "last"], capsys, monkeypatch
+    )
+    assert rc_last == 0
+    assert out_last == "second\n"
+
+
+def test_cr_strip_strips_crlf_line_endings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "values.env"
+    _ = source.write_text("KEY=value\r\n", encoding="utf-8")
+
+    rc, out, _ = run_get(
+        ["--key", "KEY", "--file", str(source), "--cr-strip", "strip"], capsys, monkeypatch
+    )
+    assert rc == 0
+    assert out == "value\n"
+
+
+def test_stdin_byte_compatible_embedded_equals(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rc, out, err = run_get(
+        ["--key", "URL", "--match", "first"], capsys, monkeypatch, stdin="URL=https://example.com/?a=1&b=2\n"
+    )
+    assert rc == 0
+    assert out == "https://example.com/?a=1&b=2\n"
     assert err == ""

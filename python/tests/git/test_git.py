@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 
 from larch.git import git
+from larch.core import logging_util
 from larch.core import retry
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, ProcRunner
