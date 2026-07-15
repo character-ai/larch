@@ -8,7 +8,6 @@ the strict, reason-bearing baseline; inline comments cannot suppress a gate.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import hashlib
 import re
@@ -17,7 +16,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import proc
-from larch.lint.engine import Finding, LintRule, SourceFile, run_rule
+from larch.lint.engine import Finding, LintRule, RuleCli, SourceFile, run_rule_cli
 
 RULE_ID = "kv-codec"
 SUPPRESSION_TOKEN = "lint-kv-codec"
@@ -143,36 +142,19 @@ RULE = LintRule(
 )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint kv-codec")
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    _ = parser.add_argument("--write", action="store_true")
-    _ = parser.add_argument("--initial-reason")
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
     """Run the kv-codec ratchet or regenerate its checked-in baseline."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return 2
-    root = Path(str(parsed.root)).resolve()
-    write_baseline = bool(parsed.write)
-    reason = None if parsed.initial_reason is None else str(parsed.initial_reason)
-    return run_rule(
-        RULE,
-        root,
-        proc.ProcRunner(),
-        paths=None if write_baseline else ["python/larch", "scripts", "skills"],
-        baseline_path=root / "python" / BASELINE_FILENAME,
-        write_baseline=write_baseline,
-        initial_reason=reason,
-        strict_stale=not write_baseline,
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        rule=RULE,
+        cli=RuleCli(
+            prog="cli.py lint kv-codec",
+            description=__doc__,
+            baseline_filename=BASELINE_FILENAME,
+            error_label="lint-kv-codec",
+            scoped_paths=("python/larch", "scripts", "skills"),
+        ),
+        runner=proc.ProcRunner(),
     )
 
 

@@ -16,7 +16,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import ScanError
+from larch.lint.engine import (
+    ScanError,
+    is_exempt_python_source,
+    normalize_python_file_path,
+    qualified_symbol,
+)
 
 SUPPRESSION = "lint-unreachable-branch"
 PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s+(\S.*)$")
@@ -39,21 +44,8 @@ class Finding:
         return (self.file, self.qualified_symbol, self.occurrence, self.normalized_condition)
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.removeprefix("python/")
-
-
-def is_exempt_path(path: Path) -> bool:
-    """Return whether a source file is outside production lint scope."""
-    name = path.name
-    return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
+normalize_file_path = normalize_python_file_path
+is_exempt_path = is_exempt_python_source
 
 
 def is_production_source_path(rel_path: str) -> bool:
@@ -78,10 +70,6 @@ def iter_source_files(larch_dir: Path) -> list[Path]:
             continue
         result.append(path)
     return result
-
-
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
 
 
 def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
@@ -504,7 +492,7 @@ def _scan_function(
     comments_by_line: Mapping[int, tuple[str, ...]],
     findings: list[Finding],
 ) -> None:
-    symbol = _qualified((*prefix, node.name))
+    symbol = qualified_symbol((*prefix, node.name), module_symbol=MODULE_SYMBOL)
     occurrence_counter = [0]
     # Per-function occurrence should count findings in this function only for
     # baseline identity; use a local counter then rewrite occurrence as

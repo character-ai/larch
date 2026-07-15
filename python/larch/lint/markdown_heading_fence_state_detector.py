@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import ScanError
+from larch.lint.engine import ScanError, is_exempt_python_source, qualified_symbol
 
 SUPPRESSION = "lint-markdown-heading-fence-state"
 PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s+(\S.*)$")
@@ -44,10 +44,7 @@ class HeadingFenceHit:
     pattern_name: str
 
 
-def is_exempt_path(path: Path) -> bool:
-    """Return whether a source file is outside production lint scope."""
-    name = path.name
-    return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
+is_exempt_path = is_exempt_python_source
 
 
 def is_production_source_path(rel_path: str) -> bool:
@@ -59,10 +56,6 @@ def is_production_source_path(rel_path: str) -> bool:
         return False
     under_python = rel_path[len(PYTHON_TREE_PREFIX) :]
     return not bool(EXCLUDED_DIRS.intersection(Path(under_python).parts))
-
-
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
 
 
 def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
@@ -343,7 +336,10 @@ def _walk_statements(
                 fence_guard_names=set(state.fence_guard_names),
                 findings=state.findings,
                 occurrence=0,
-                symbol=_qualified((*state.symbol.split("."), statement.name))
+                symbol=qualified_symbol(
+                    (*state.symbol.split("."), statement.name),
+                    module_symbol=MODULE_SYMBOL,
+                )
                 if state.symbol != MODULE_SYMBOL
                 else statement.name,
                 repo_path=state.repo_path,

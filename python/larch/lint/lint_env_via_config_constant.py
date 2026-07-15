@@ -15,10 +15,17 @@ import json
 import re
 import sys
 from collections import Counter
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
+
+from larch.lint.engine import (
+    first_duplicate as _first_duplicate,
+    is_exempt_python_source,
+    normalize_python_file_path,
+    ordered_ast_child_nodes,
+    qualified_symbol,
+)
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "env-via-config-constant-baseline.json"
@@ -84,23 +91,10 @@ class Finding:
         )
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    if normalized == "python":
-        return ""
-    return normalized.removeprefix("python/")
-
-
 def _validate_normalized_file(value: object, *, source: Path, index: int, kind: str) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: {kind} {index} has invalid file")
-    normalized = normalize_file_path(value)
+    normalized = normalize_python_file_path(value)
     parts = normalized.split("/")
     if (
         normalized != value
@@ -113,17 +107,11 @@ def _validate_normalized_file(value: object, *, source: Path, index: int, kind: 
     return normalized
 
 
-def is_exempt_path(path: Path) -> bool:
-    """Return whether a source file is outside production lint scope."""
-    name = path.name
-    return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
-
-
 def iter_source_files(python_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files, sorted."""
     result: list[Path] = []
     for path in sorted(python_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
+        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
             continue
         relative = path.relative_to(python_dir)
         if EXCLUDED_DIRS.intersection(relative.parts):
@@ -179,23 +167,6 @@ def parse_config_constants(config_path: Path, *, allow_duplicate_values: bool) -
     return constants
 
 
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
-
-
-def _ordered_child_nodes(node: ast.AST) -> list[ast.AST]:
-    children = list(ast.iter_child_nodes(node))
-    indexed = list(enumerate(children))
-    indexed.sort(
-        key=lambda item: (
-            getattr(item[1], "lineno", 10**9),
-            getattr(item[1], "col_offset", 10**9),
-            item[0],
-        )
-    )
-    return [node for _, node in indexed]
-
-
 def _is_os_environ(node: ast.AST) -> bool:
     return (
         isinstance(node, ast.Attribute)
@@ -243,7 +214,7 @@ def _collect_scope(
     findings: list[Finding],
 ) -> None:
     occurrence = 0
-    symbol = _qualified(prefix)
+    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
 
     def walk(node: ast.AST) -> None:
         nonlocal occurrence
@@ -283,7 +254,7 @@ def _collect_scope(
                         lineno=lineno if isinstance(lineno, int) else 0,
                     )
                 )
-        for child in _ordered_child_nodes(node):
+        for child in ordered_ast_child_nodes(node):
             walk(child)
 
     for statement in body:
@@ -498,17 +469,6 @@ def _collect_all(
         source_lines_by_file[normalized] = _source_lines(path)
         findings.extend(scan_file(path, python_dir=python_dir, env_constants=env_constants))
     return findings, source_lines_by_file
-
-
-def _first_duplicate(
-    keys: Iterable[tuple[str, str, str, str, str, int]],
-) -> tuple[str, str, str, str, str, int] | None:
-    seen: set[tuple[str, str, str, str, str, int]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
 
 
 def _check_duplicate_live(findings: list[Finding]) -> str | None:

@@ -16,7 +16,7 @@ import json
 import re
 import sys
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 import tokenize
@@ -24,6 +24,13 @@ from typing import TypedDict, cast
 
 from larch.core import config
 from larch.issue import title_match
+from larch.lint.engine import (
+    first_duplicate as _first_duplicate,
+    is_exempt_python_source,
+    normalize_python_file_path,
+    ordered_ast_child_nodes,
+    qualified_symbol,
+)
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "lifecycle-prefix-literal-baseline.json"
@@ -106,19 +113,6 @@ class Finding:
 OccurrenceKey = tuple[str, str, str, str, str]
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized: str = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    if normalized == "python":
-        return ""
-    return normalized.removeprefix("python/")
-
-
 def _has_bad_path_parts(parts: list[str]) -> bool:
     return "" in parts or "." in parts or ".." in parts
 
@@ -126,7 +120,7 @@ def _has_bad_path_parts(parts: list[str]) -> bool:
 def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized: str = normalize_file_path(value)
+    normalized: str = normalize_python_file_path(value)
     parts: list[str] = normalized.split("/")
     if (
         normalized != value
@@ -139,17 +133,11 @@ def _validate_normalized_file(value: object, *, source: Path, index: int) -> str
     return normalized
 
 
-def is_exempt_path(path: Path) -> bool:
-    """Return whether a source file is outside production lint scope."""
-    name: str = path.name
-    return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
-
-
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
     result: list[Path] = []
     for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
+        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
             continue
         relative: Path = path.relative_to(larch_dir.parent)
         if EXCLUDED_DIRS.intersection(relative.parts):
@@ -189,25 +177,6 @@ def build_token_map() -> dict[str, TokenInfo]:
         add(prefix, constant=f"config.TRACKING_ISSUE_PREFIX_BY_STATE[{state_literal}]")
     add(title_match.BUG_PREFIX, constant="title_match.BUG_PREFIX")
     return tokens
-
-
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
-
-
-def _child_position(node: ast.AST, *, index: int) -> tuple[int, int, int]:
-    return (
-        getattr(node, "lineno", 10**9),
-        getattr(node, "col_offset", 10**9),
-        index,
-    )
-
-
-def _ordered_child_nodes(node: ast.AST) -> list[ast.AST]:
-    children: list[ast.AST] = list(ast.iter_child_nodes(node))
-    indexed: list[tuple[int, ast.AST]] = list(enumerate(children))
-    indexed.sort(key=lambda item: _child_position(item[1], index=item[0]))
-    return [child for _, child in indexed]
 
 
 def _literal_text(node: ast.AST) -> str | None:
@@ -427,7 +396,7 @@ def _collect_scope(
     findings: list[Finding],
 ) -> None:
     occurrence_counts: Counter[OccurrenceKey] = Counter()
-    symbol: str = _qualified(prefix)
+    symbol: str = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
     recorder = ScopeRecorder(
         findings=findings,
         occurrence_counts=occurrence_counts,
@@ -458,7 +427,7 @@ def _collect_scope(
         lineno: int = lineno_value if isinstance(lineno_value, int) else 0
         for context, match in _contexts_for_node(node, token_infos=token_infos):
             recorder.record(context=context, match=match, lineno=lineno)
-        for child in _ordered_child_nodes(node):
+        for child in ordered_ast_child_nodes(node):
             walk(child)
 
     for statement in body:
@@ -538,17 +507,6 @@ def _validate_record(item: object, *, index: int, source: Path) -> Record:
         "occurrence": occurrence,
         "reason": reason,
     }
-
-
-def _first_duplicate(
-    keys: Iterable[tuple[str, str, str, str, str, int]],
-) -> tuple[str, str, str, str, str, int] | None:
-    seen: set[tuple[str, str, str, str, str, int]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
 
 
 def load_baseline(path: Path) -> list[Record]:

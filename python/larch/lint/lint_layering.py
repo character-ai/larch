@@ -16,10 +16,17 @@ import json
 import re
 import sys
 from collections import Counter
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
+
+from larch.lint.engine import (
+    first_duplicate as _first_duplicate,
+    is_exempt_python_source,
+    normalize_python_file_path,
+    ordered_ast_child_nodes,
+    qualified_symbol,
+)
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "layering-baseline.json"
@@ -81,21 +88,10 @@ class Finding:
         return (self.file, self.qualified_symbol, self.imported_package, self.occurrence)
 
 
-def normalize_file_path(raw: str) -> str:
-    """Return a normalized POSIX path relative to python/."""
-    normalized = raw.replace("\\", "/")
-    marker = "/python/"
-    if marker in normalized:
-        normalized = normalized.rsplit(marker, maxsplit=1)[1]
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.removeprefix("python/")
-
-
 def _validate_normalized_file(value: object, *, source: Path, index: int, kind: str) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: {kind} {index} has invalid file")
-    normalized = normalize_file_path(value)
+    normalized = normalize_python_file_path(value)
     parts = normalized.split("/")
     if (
         normalized != value
@@ -108,17 +104,11 @@ def _validate_normalized_file(value: object, *, source: Path, index: int, kind: 
     return normalized
 
 
-def is_exempt_path(path: Path) -> bool:
-    """Return whether a source file is outside production lint scope."""
-    name = path.name
-    return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
-
-
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
     result: list[Path] = []
     for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
+        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
             continue
         relative = path.relative_to(larch_dir.parent)
         if EXCLUDED_DIRS.intersection(relative.parts):
@@ -207,23 +197,6 @@ def _importee_packages(node: ast.stmt, *, importer_pkg: str) -> list[str]:
     return []
 
 
-def _qualified(prefix: tuple[str, ...]) -> str:
-    return ".".join(prefix) if prefix else MODULE_SYMBOL
-
-
-def _ordered_child_nodes(node: ast.AST) -> list[ast.AST]:
-    children = list(ast.iter_child_nodes(node))
-    indexed = list(enumerate(children))
-    indexed.sort(
-        key=lambda item: (
-            getattr(item[1], "lineno", 10**9),
-            getattr(item[1], "col_offset", 10**9),
-            item[0],
-        )
-    )
-    return [n for _, n in indexed]
-
-
 @dataclass
 class _ScopeCtx:
     normalized_file: str
@@ -238,7 +211,7 @@ def _collect_scope(
     prefix: tuple[str, ...],
     ctx: _ScopeCtx,
 ) -> None:
-    symbol = _qualified(prefix)
+    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
     occurrence_by_importee: dict[str, int] = {}
 
     def walk(node: ast.AST) -> None:
@@ -267,7 +240,7 @@ def _collect_scope(
                         )
                     )
             return
-        for child in _ordered_child_nodes(node):
+        for child in ordered_ast_child_nodes(node):
             walk(child)
 
     for statement in body:
@@ -409,17 +382,6 @@ def _collect_all(
             scan_file(path, python_dir=python_dir, importer_pkg=importer_pkg, importer_tier=importer_tier)
         )
     return findings, source_lines_by_file
-
-
-def _first_duplicate(
-    keys: Iterable[tuple[str, str, str, int]],
-) -> tuple[str, str, str, int] | None:
-    seen: set[tuple[str, str, str, int]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
 
 
 def _check_duplicate_live(findings: list[Finding]) -> str | None:

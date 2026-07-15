@@ -12,15 +12,13 @@ this gate (I-Gate-1 / G-Enf-2).
 
 from __future__ import annotations
 
-import argparse
 import io
 import re
 import sys
 import tokenize
-from pathlib import Path
 
 from larch.core import proc
-from larch.lint.engine import Finding, LintRule, SourceFile, run_rule
+from larch.lint.engine import Finding, LintRule, RuleCli, SourceFile, run_rule_cli
 
 RULE_ID = "pylint-skip-file"
 SUPPRESSION_TOKEN = "lint-pylint-skip-file"
@@ -117,56 +115,19 @@ RULE = LintRule(
 )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint pylint-skip-file",
-        description=__doc__,
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from the live scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason for live findings that have no preserved baseline reason.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint pylint-skip-file``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return 2
-    root = Path(str(parsed.root)).resolve()
-    baseline_path = root / "python" / BASELINE_FILENAME
-    initial_reason = parsed.initial_reason
-    if initial_reason is not None and not str(initial_reason).strip():
-        print("lint-pylint-skip-file: --initial-reason must be non-empty", file=sys.stderr)
-        return 2
-    write_baseline = bool(parsed.write)
-    # write_baseline forbids filtered paths; detect() self-scopes to python/larch/.
-    paths: list[str] | None = None if write_baseline else [SCOPE_PREFIX.rstrip("/")]
-    return run_rule(
-        RULE,
-        root,
-        proc.ProcRunner(),
-        paths=paths,
-        baseline_path=baseline_path,
-        write_baseline=write_baseline,
-        initial_reason=None if initial_reason is None else str(initial_reason),
-        strict_stale=not write_baseline,
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        rule=RULE,
+        cli=RuleCli(
+            prog="cli.py lint pylint-skip-file",
+            description=__doc__,
+            baseline_filename=BASELINE_FILENAME,
+            error_label="lint-pylint-skip-file",
+            scoped_paths=(SCOPE_PREFIX.rstrip("/"),),
+        ),
+        runner=proc.ProcRunner(),
     )
 
 
