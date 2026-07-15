@@ -83,6 +83,10 @@ Warnings (41):
   40. Update `skills/design/SKILL.md:682` to name `design_step5c.py` instead of `design_lifecycle.py`
   41. for the `design step5c` verb.
 
+## Architectural invariants
+
+The diff is a pure CLI registry refactoring confined to `python/larch/cli.py` and corresponding test and skill files. It widens the registry value type from a 2-tuple to a 3-tuple by inlining a `machine_stdout` boolean, removes the two hand-maintained frozensets in favour of a dynamically derived view, and repoints several design-lifecycle, review, and run-log commands from monolithic modules to focused submodules. No invariant governing gate disarmament, pause snapshot completeness, stale-result identity validation, run-log flush artifact completeness, committed artifact content, outcome labeling, panel slot accounting, agent evidence backing, or ship recovery routing is touched by any changed line.
+
 ## Architectural guidelines
 
 The diff modifies `python/larch/cli.py` and related test files to consolidate the CLI registry format and repoint design and review verb entries to their defining modules; no guideline deviation is introduced by the changed code.
@@ -91,7 +95,7 @@ The diff modifies `python/larch/cli.py` and related test files to consolidate th
 
 - **Outcome**: shipping
 - **Duration**: 00:35:08
-- **Cost**: 💰 TOTAL ~$20.15: Claude $6.82, Codex-5.6 $4.48, Codex-mini $0.01, Cursor $8.18 (Composer $4.70, Grok $3.48), Claude (subprocess) $0.66  |  Tokens: 29548k
+- **Cost**: 💰 TOTAL ~$21.03: Claude $7.70, Codex-5.6 $4.48, Codex-mini $0.01, Cursor $8.18 (Composer $4.70, Grok $3.48), Claude (subprocess) $0.66  |  Tokens: 30826k
 - **Issue**: #7387: https://github.com/character-ai/larch/issues/7387
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
