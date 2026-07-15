@@ -160,6 +160,23 @@ def test_rename_strips_legacy_prefix() -> None:
     assert "[IN PROGRESS]" not in new
 
 
+@pytest.mark.parametrize("current_title", ["[BUG] My feature", "[DESIGNED] [BUG] My feature"])
+def test_rename_prepends_lifecycle_prefix_without_stripping_bug_prefix(
+    current_title: str,
+) -> None:
+    runner = RecordingRunner()
+    new = tracking_issue.rename(
+        runner,
+        "1",
+        "implementing",
+        repo="o/r",
+        current_title=current_title,
+    )
+    assert new == "[IMPLEMENTING] [BUG] My feature"
+    title_index = runner.calls[-1].index("--title") + 1
+    assert runner.calls[-1][title_index] == new
+
+
 def test_append_comment_rejects_invalid_lifecycle_marker() -> None:
     runner = RecordingRunner()
     with pytest.raises(ShipError, match="invalid lifecycle marker"):
