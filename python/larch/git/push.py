@@ -383,8 +383,9 @@ class CheckpointProbeResult:
     """Typed routing output for the Step 1.r rebase checkpoint."""
 
     exit_code: int
-    stdout: str
-    stderr: str
+    routing: dict[str, str]
+    advisory_lines: tuple[str, ...] = ()
+    stderr: str = ""
 
 
 def checkpoint_probe(
@@ -395,28 +396,29 @@ def checkpoint_probe(
     _ = short_name
     remote = base_remote or ("upstream" if forked_target == "true" else "origin")
     result = _checkpoint_rebase_result(base_remote=remote, base_ref=base_ref or "main")
-    lines = [f"REBASE_RC={result.exit_code}"]
+    routing = {"REBASE_RC": str(result.exit_code)}
     if result.skipped_already_pushed:
-        lines.append("SKIPPED_ALREADY_PUSHED=true")
+        routing["SKIPPED_ALREADY_PUSHED"] = "true"
     if result.skipped_already_fresh:
-        lines.append("SKIPPED_ALREADY_FRESH=true")
+        routing["SKIPPED_ALREADY_FRESH"] = "true"
     outcome, route = {
         0: ("skipped" if result.skipped_already_pushed or result.skipped_already_fresh else "ok", "continue"),
         1: ("conflict", "conflict"),
     }.get(result.exit_code, ("failed", "bail"))
-    lines.extend((f"REBASE_OUTCOME={outcome}", f"ROUTE={route}"))
+    routing.update(REBASE_OUTCOME=outcome, ROUTE=route)
     if result.exit_code == 1 or result.conflict_files:
-        lines.append(f"CONFLICT_FILES={_conflict_files_csv(result)}")
+        routing["CONFLICT_FILES"] = _conflict_files_csv(result)
     if result.rebase_error:
-        lines.append(f"REBASE_ERROR={_rebase_sanitize(result.rebase_error)}")
+        routing["REBASE_ERROR"] = _rebase_sanitize(result.rebase_error)
     elif result.exit_code not in {0, 1}:
         error = "rebase-failed" if result.exit_code == _REBASE_FAILED_EXIT else f"unexpected-rc-{result.exit_code}"
-        lines.append(f"REBASE_ERROR={error}")
-    lines.append(f"CHECKPOINT_NEXT={_checkpoint_next_for_exit(result.exit_code)}")
+        routing["REBASE_ERROR"] = error
+    routing["CHECKPOINT_NEXT"] = _checkpoint_next_for_exit(result.exit_code)
     if result.exit_code != 0:
-        return CheckpointProbeResult(result.exit_code, "\n".join(lines) + "\n", "")
-    _append_phantom_checkpoint_lines(lines, step_prefix=step_prefix)
-    return CheckpointProbeResult(0, "\n".join(lines) + "\n", "")
+        return CheckpointProbeResult(result.exit_code, routing)
+    advisory: list[str] = []
+    _append_phantom_checkpoint_lines(advisory, step_prefix=step_prefix)
+    return CheckpointProbeResult(0, routing, tuple(advisory))
 
 
 def _append_phantom_checkpoint_lines(lines: list[str], *, step_prefix: str) -> None:
@@ -430,6 +432,12 @@ def _append_phantom_checkpoint_lines(lines: list[str], *, step_prefix: str) -> N
             lines.append(f"PHANTOM_PATHS_FILE={probe.dirty.paths_file}")
     if probe.append_warn_error:
         lines.append(f"PHANTOM_APPEND_WARN_ERROR={probe.append_warn_error}")
+
+
+def _render_checkpoint_probe_output(result: CheckpointProbeResult) -> str:
+    lines = [f"{key}={value}" for key, value in result.routing.items()]
+    lines.extend(result.advisory_lines)
+    return "\n".join(lines) + "\n"
 
 
 def checkpoint_probe_main(argv: list[str]) -> int:
@@ -449,5 +457,5 @@ def checkpoint_probe_main(argv: list[str]) -> int:
         step_prefix=args.step_prefix, short_name=args.short_name, forked_target=args.forked_target,
         base_remote=base_remote, base_ref=base_ref,
     )
-    sys.stdout.write(result.stdout)
+    sys.stdout.write(_render_checkpoint_probe_output(result))
     return result.exit_code

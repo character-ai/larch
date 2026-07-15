@@ -1528,8 +1528,19 @@ def _gate(*, both_down: bool = False) -> bootstrap.agents.DegradedToolsResult:
     )
 
 
-def _probe(*, exit_code: int = 0, route: str = "continue", extra: str = "") -> bootstrap.push.CheckpointProbeResult:
-    return bootstrap.push.CheckpointProbeResult(exit_code, f"REBASE_OUTCOME=ok\nROUTE={route}\nCHECKPOINT_NEXT=continue\n{extra}", "")
+def _probe(
+    *,
+    exit_code: int = 0,
+    route: str = "continue",
+    conflict_files: str = "",
+) -> bootstrap.push.CheckpointProbeResult:
+    routing = {"REBASE_OUTCOME": "ok", "ROUTE": route, "CHECKPOINT_NEXT": "continue"}
+    if conflict_files:
+        routing["CONFLICT_FILES"] = conflict_files
+    return bootstrap.push.CheckpointProbeResult(
+        exit_code,
+        routing,
+    )
 
 
 def _install_tail_fakes(monkeypatch: pytest.MonkeyPatch, *, gate: bootstrap.agents.DegradedToolsResult | None = None, probe: bootstrap.push.CheckpointProbeResult | None = None) -> None:
@@ -1589,7 +1600,7 @@ def test_absorbed_tail_self_subagents_skip_tool_gate(tmp_path: Path, monkeypatch
 
 
 def test_absorbed_tail_relays_typed_conflict_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_tail_fakes(monkeypatch, probe=_probe(exit_code=1, route="conflict", extra="CONFLICT_FILES=a.py,b.py\n"))
+    _install_tail_fakes(monkeypatch, probe=_probe(exit_code=1, route="conflict", conflict_files="a.py,b.py"))
     tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder"), non_interactive=False)  # pyright: ignore[reportPrivateUsage]
     assert tail.routing["ROUTE"] == "conflict"
     assert tail.routing["CONFLICT_FILES"] == "a.py,b.py"

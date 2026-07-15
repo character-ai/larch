@@ -70,7 +70,6 @@ ROUTING_KEYS: tuple[str, ...] = (
     "SKIPPED_ALREADY_PUSHED",
     "SKIPPED_ALREADY_FRESH",
 )
-_ADVISORY_STDOUT_PREFIXES: tuple[str, ...] = ("PHANTOM_",)
 _KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -1208,10 +1207,7 @@ def bootstrap_main(argv: list[str]) -> int:
 
 def _filtered_envelope(text: str, *, resume: bool) -> str:
     lines: list[str] = []
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
+    for key, value in larch_io.parse_kv(text, skip_comments=True, cr_strip="rstrip").items():
         if not _KEY_RE.fullmatch(key) or key not in ROUTING_KEYS:
             continue
         if resume and key in {"coder", "coder_fallback"} and not value:
@@ -1334,10 +1330,6 @@ def _invoke_error(*, step_failed: str, out: str, implement_tmpdir: str) -> None:
 
 def _str_bool(value: str) -> str:
     return value if value in {"true", "false"} else ""
-
-
-def _is_advisory_stdout_key(key: str) -> bool:
-    return any(key.startswith(prefix) for prefix in _ADVISORY_STDOUT_PREFIXES)
 
 
 def _envelope_text(data: dict[str, str]) -> str:
@@ -1476,32 +1468,6 @@ class ContinueTailResult:
     failure_detail: str = ""
 
 
-def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
-    routing: dict[str, str] = {}
-    advisory: list[str] = []
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        if "=" in line:
-            key, value = line.split("=", 1)
-            if _is_advisory_stdout_key(key):
-                advisory.append(f"{key}={value}")
-                continue
-            if key in ROUTING_KEYS:
-                routing[key] = value
-                continue
-        for token in line.split():
-            if "=" not in token:
-                continue
-            key, value = token.split("=", 1)
-            if _is_advisory_stdout_key(key):
-                advisory.append(f"{key}={value}")
-            elif key in ROUTING_KEYS:
-                routing[key] = value
-    return routing, advisory
-
-
-
 def _refresh_gate_probe(st: BootstrapState) -> str | None:
     try:
         result = agents.check_reviewers()
@@ -1518,20 +1484,19 @@ def _refresh_gate_probe(st: BootstrapState) -> str | None:
     return None
 
 def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
-    env = {**os.environ, "IMPLEMENT_TMPDIR": st.implement_tmpdir}
-    _ = env
     result = push.checkpoint_probe(
         step_prefix="1.r", short_name="plan materialization",
         forked_target=forked_target if forked_target in {"true", "false"} else "false",
     )
-    routing, advisory = _parse_probe_stdout(result.stdout)
+    routing = dict(result.routing)
+    advisory = list(result.advisory_lines)
     routing["REBASE_RC"] = str(result.exit_code)
     route = routing.get("ROUTE", "")
     if route not in {"continue", "conflict", "bail"}:
         routing["ROUTE"] = "bail"
         routing["CHECKPOINT_NEXT"] = "load-routing"
         routing.setdefault("REBASE_OUTCOME", "failed")
-        error = _single_line(result.stderr or result.stdout or f"probe rc {result.exit_code}")
+        error = _single_line(result.stderr or f"probe rc {result.exit_code}")
         routing["REBASE_ERROR"] = _redact_text(error, implement_tmpdir=st.implement_tmpdir)
     elif routing.get("CHECKPOINT_NEXT", "") not in {"continue", "load-routing"}:
         routing["CHECKPOINT_NEXT"] = "load-routing"
