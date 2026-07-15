@@ -19,8 +19,18 @@ from larch.implement.dispatch_helpers import (
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
 )
+from larch.errors import ShipError
+from larch.issue import execution_issues
+from larch.state import finalize
 from larch.implement.dispatch_leg import _run_cli_capture
 from larch.state._tokens import _abandoned_checks_bgjob_stall_step
+
+
+_TERMINAL_SHIPPING_REFUSAL_REASON = "step18-terminal-shipping-without-pr"
+_TERMINAL_SHIPPING_REFUSAL_ENTRY = (
+    "- **Step 18 terminal gate**: refused terminal `shipping` without PR evidence; "
+    "preserved the session for stall recovery."
+)
 
 
 def _stall_layer_active(value: str) -> bool:
@@ -98,6 +108,58 @@ def _normalize_outcome_for_step18(implement_tmpdir: Path, *, memory_layer: str, 
     return _parse_kv(result.stdout if result.returncode == 0 else "")
 
 
+def _is_terminal_shipping_without_pr(normalized: dict[str, str]) -> bool:
+    return (
+        normalized.get("IMPLEMENT_NORMALIZED_OUTCOME") == "shipping"
+        and not normalized.get("IMPLEMENT_PR_NUMBER", "").strip()
+    )
+
+
+def _record_terminal_shipping_refusal(*, implement_tmpdir: Path) -> bool:
+    """Persist the terminal-gate refusal before returning a hard failure.
+
+    ``shipping`` is only valid for a committed, pre-PR snapshot.  Once Step 18
+    starts terminal finalization, retaining that label would otherwise permit a
+    teardown that loses the session needed to recover the failed ship attempt.
+    """
+    state_path = implement_tmpdir / "finalize-state.sh"
+    if state_path.is_symlink():
+        return False
+    try:
+        state: dict[str, str] = finalize.read_finalize_state(state_path)
+        state.update(
+            {
+                "BAIL_REASON": _TERMINAL_SHIPPING_REFUSAL_REASON,
+                "EXIT_CODE": str(config.EXIT_INTERNAL_ERROR),
+                "PHASE": "stalled",
+                "STALL_STEP": "8",
+                "STALL_TRACKING": "true",
+                "STEP18_GATE_REFUSAL": _TERMINAL_SHIPPING_REFUSAL_REASON,
+            }
+        )
+        finalize.write_finalize_state_merged(path=state_path, data=state)
+        persisted: dict[str, str] = finalize.read_finalize_state(state_path)
+        expected = {
+            "BAIL_REASON": _TERMINAL_SHIPPING_REFUSAL_REASON,
+            "EXIT_CODE": str(config.EXIT_INTERNAL_ERROR),
+            "PHASE": "stalled",
+            "STALL_STEP": "8",
+            "STALL_TRACKING": "true",
+            "STEP18_GATE_REFUSAL": _TERMINAL_SHIPPING_REFUSAL_REASON,
+        }
+        if any(persisted.get(key) != value for key, value in expected.items()):
+            return False
+        issue_log = implement_tmpdir / "execution-issues.md"
+        execution_issues.append_execution_issue(
+            issue_log,
+            category="Tool Failures",
+            entry=_TERMINAL_SHIPPING_REFUSAL_ENTRY,
+        )
+        return _TERMINAL_SHIPPING_REFUSAL_ENTRY in issue_log.read_text(encoding="utf-8")
+    except (OSError, ShipError):
+        return False
+
+
 def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement step-18-gate-finalize")
     parser.add_argument("--implement-tmpdir", default="")
@@ -123,9 +185,20 @@ def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="NEXT_ACTION", value="stall-recovery")
         return 0
 
-    _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
     print("⏩ 18a: stall recovery: no stall detected")
-    _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
+    normalized = _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
+    if _is_terminal_shipping_without_pr(normalized):
+        persisted = _record_terminal_shipping_refusal(implement_tmpdir=implement_tmpdir)
+        _emit_kv(key="STALL_RECOVERY_REQUIRED", value="true" if persisted else "unknown")
+        _emit_kv(key="TERMINAL_FINALIZE_REFUSED", value="true")
+        _emit_kv(key="STATUS", value="blocked")
+        _emit_kv(key="OUTCOME", value="stalled")
+        _emit_kv(key="NEXT_ACTION", value="tool-failure")
+        if not persisted:
+            print("implement step-18-gate-finalize: cannot persist terminal shipping refusal", file=sys.stderr)
+        return config.EXIT_INTERNAL_ERROR
+
+    _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
 
     # lint-subprocess-via-runner: ok composite must invoke the existing Bash finalize fence verbatim
     child = subprocess.run(
