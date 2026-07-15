@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
 
 from larch import cli as larch_cli
 from larch.lint import lint_doc_pointer_paths as lint
@@ -194,7 +196,7 @@ def test_unreadable_document_returns_tool_error(
 
 
 def test_cli_registration_points_at_module() -> None:
-    assert larch_cli._REGISTRY[("lint", "doc-pointer-paths")] == (
+    assert larch_cli._REGISTRY[("lint", "doc-pointer-paths")] == (  # pyright: ignore[reportPrivateUsage]
         "larch.lint.lint_doc_pointer_paths",
         "main",
     )

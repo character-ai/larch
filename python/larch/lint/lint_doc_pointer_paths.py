@@ -137,7 +137,7 @@ def scan_document(*, root: Path, relpath: str, text: str) -> list[Finding]:
                     Finding(
                         file=relpath,
                         lineno=lineno,
-                        token="<!-- lint-doc-pointer-paths: ok -->",
+                        token="<!-- lint-doc-pointer-paths: ok -->",  # noqa: S106 - literal suppression marker text, not a credential
                         message=(
                             f"{relpath}:{lineno}: empty lint-doc-pointer-paths "
                             "suppression reason"
