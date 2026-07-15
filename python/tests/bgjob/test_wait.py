@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 from larch import io as larch_io
-from larch.bgjob import cli, model, registry
+from larch.bgjob import cli, model, registry, wait
 from larch.core import config, process_identity
 
 
@@ -107,3 +107,37 @@ def test_wait_keeps_polling_when_child_is_dead_but_daemon_is_live(
     assert rc == 0
     assert "BGJOB_STATUS=WAIT" in out
     assert "BGJOB_STATUS=DEAD" not in out
+
+
+def test_wait_rechecks_result_when_registry_unlinked_after_result_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The daemon writes the result env before unlinking its registry row.
+
+    When the registry vanishes in the window between the wait's result read and its
+    registry read, the result is already on disk; the wait must re-read it instead
+    of declaring a spurious DEAD missing-registry.
+    """
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    result = model.result_env_path(tmpdir=tmp_path, step="demo-step")
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "timeout"), ("BGJOB_ELAPSED_S", "1")])
+
+    real_read_result = wait._read_result  # pyright: ignore[reportPrivateUsage]  # monkeypatch private _read_result to replay the registry-unlinked-after-result-check race
+    call_count = {"n": 0}
+
+    def race_read_result(path: Path) -> dict[str, str] | None:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return None
+        return real_read_result(path)
+
+    monkeypatch.setattr(wait, "_read_result", race_read_result)
+
+    rc = cli.wait_main(["--step", "demo-step", "--tmpdir", str(tmp_path), "--max-wait-s", "0"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "BGJOB_STATUS=DONE" in out
+    assert "BGJOB_RC=timeout" in out
+    assert "BGJOB_STATUS=DEAD" not in out
+    assert call_count["n"] >= 2

@@ -742,6 +742,23 @@ def test_branch_push_propagates_final_exit_code(monkeypatch: pytest.MonkeyPatch,
     assert "BRANCH=feature" in captured.out
 
 
+def test_push_current_branch_uses_explicit_origin_head_refspec() -> None:
+    # An explicit refspec makes git ignore push.default, so a feature branch
+    # tracking origin/main no longer exits 128 with an upstream mismatch (#7405).
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "feature\n", "", 0.01),
+            CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "feature\n", "", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
+        ],
+    )
+    result = push.push_current_branch(runner, sleeper=lambda _s: None)
+    assert result.status == "pushed"
+    assert result.branch == "feature"
+    assert ["git", "push"] not in runner.calls
+    assert ["git", "push", "-u", "origin", "HEAD"] in runner.calls
+
+
 def test_branch_main_unknown_argument_stderr_prefix(capsys: pytest.CaptureFixture[str]) -> None:
     assert push.branch_main(["--bogus"]) == 1
     err = capsys.readouterr().err
