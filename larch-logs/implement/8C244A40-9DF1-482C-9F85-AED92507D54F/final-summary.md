@@ -55,7 +55,7 @@ The changed code is clean against all architectural guidelines. The schema evolu
 - **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 00:19:59
-- **Cost**: 💰 TOTAL ~$12.73: Claude $3.20, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 16250k
+- **Cost**: 💰 TOTAL ~$13.40: Claude $3.87, Codex-5.6 $7.40, Codex-mini $0.03, Cursor $1.76 (Composer $1.76, Grok $0.00), Claude (subprocess) $0.34  |  Tokens: 18018k
 - **Issue**: #7212: https://github.com/character-ai/larch/issues/7212
 - **PR**: #7414: https://github.com/character-ai/larch/pull/7414
 - **Plan review**: N/A
