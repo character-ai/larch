@@ -317,6 +317,9 @@ def test_adapted_findings_pass_occurrence_baseline_validation() -> None:
 
 def test_malformed_source_exits_2(tmp_path: Path) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "def broken(\n"})
+    _ = (tmp_path / "python" / lint.BASELINE_FILENAME).write_text(
+        "[]\n", encoding="utf-8"
+    )
     runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
     code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
     assert code == EXIT_ERROR
@@ -440,6 +443,17 @@ def test_new_finding_exits_1(tmp_path: Path) -> None:
     assert "lint-unreachable-branch" in out
 
 
+def test_clean_scan_without_baseline_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+
+    code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "failed to read baseline" in err
+
+
 def test_noop_regeneration_is_byte_identical(tmp_path: Path) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
     baseline = tmp_path / "python" / lint.BASELINE_FILENAME
@@ -466,6 +480,7 @@ def test_main_empty_initial_reason_exits_2(tmp_path: Path) -> None:
 
 def test_rule_contract_flags() -> None:
     assert lint.RULE.occurrence_baseline is True
+    assert lint.RULE.require_baseline is True
     assert lint.RULE.allow_inline_suppression is False
     assert lint.RULE.occurrence_pattern_field == "normalized_condition"
     assert lint.RULE.syntax_policy == "raise"

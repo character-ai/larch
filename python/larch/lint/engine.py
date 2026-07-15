@@ -173,6 +173,7 @@ class LintRule:
     occurrence_baseline: bool = False
     stale_baseline_on_clean_scan: bool = False
     occurrence_pattern_field: OccurrencePatternField = "pattern_name"
+    require_baseline: bool = False
 
 
 def _is_single_line(value: object) -> bool:
@@ -196,6 +197,8 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901, PLR0912 - rule field 
         raise ScanError("lint rule allow_inline_suppression must be a bool")
     if not _is_exact_bool(rule.occurrence_baseline):
         raise ScanError("lint rule occurrence_baseline must be a bool")
+    if not _is_exact_bool(rule.require_baseline):
+        raise ScanError("lint rule require_baseline must be a bool")
     if not _is_exact_bool(rule.stale_baseline_on_clean_scan):
         raise ScanError("lint rule stale_baseline_on_clean_scan must be a bool")
     if rule.occurrence_pattern_field not in ("pattern_name", "normalized_condition"):
@@ -1390,7 +1393,8 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
     With no baseline options this preserves the scan-only contract. Baseline
     checks return ``0`` for fully baselined findings, ``1`` for new or grown
     findings, and ``2`` for invalid state, strict stale rows, or I/O failures.
-    Occurrence baselines may be absent when the live scan is clean.
+    Occurrence baselines may be absent when the live scan is clean unless the
+    rule requires a baseline.
     """
     try:
         _validate_baseline_options(
@@ -1423,7 +1427,7 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
                         "rule.occurrence_baseline"
                     )
             elif not write_baseline:
-                if rule.occurrence_baseline:
+                if rule.occurrence_baseline and not rule.require_baseline:
                     baseline_absent = True
                 else:
                     raise ScanError(
