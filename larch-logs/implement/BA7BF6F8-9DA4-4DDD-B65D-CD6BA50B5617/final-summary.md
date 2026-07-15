@@ -75,17 +75,17 @@ Warnings (36):
 
 ## Architectural invariants
 
-The changed code is confined to lint engine baseline parameterization and the extraction of the unreachable-branch detector into its own module; none of the invariant domains (workflow integrity, run-log integrity, panel integrity, agent contracts, ship lifecycle) are touched.
+The changed code refactors the lint engine's occurrence baseline parameterization and extracts the unreachable-branch detector into a separate module; it does not touch any of the invariant domains defined in ARCHITECTURAL_INVARIANTS.md (workflow integrity, run-log integrity, panel integrity, agent contracts, or ship lifecycle), so all invariants hold without exception.
 
 ## Architectural guidelines
 
-The changed code satisfies all applicable guidelines: every lint and type suppression added in the diff carries an explicit inline reason; the new `occurrence_pattern_field` parameter is additive and backward-compatible with the existing `unreachable-branch-baseline.json` wire format (both read paths recognized, write path preserves the legacy `normalized_condition` field order); the primary detection path is injected via `SourceFile` through the engine seam rather than walking the filesystem directly; new tests accompany every new code path; and the production entry point continues to delegate through `run_rule` with a properly typed `LintRule` constant.
+The changed code satisfies all applicable guidelines in ARCHITECTURAL_GUIDELINES.md. Every inline lint and type suppression added in Python code carries an explicit reason: the `# noqa: C901, PLR0912 - rule field validation is intentional` in `engine.py`, the `# pylint: disable=unused-import  # re-export` and per-import `# type: ignore[reportUnusedImport]  # re-exported for equivalence/detector tests` in `lint_unreachable_branch.py`, the `# type: ignore[arg-type]` annotations in the test helper with specific reasons, and `# type: ignore[reportUnnecessaryIsInstance]` in the new detector module with a reason. The baseline wire format is evolved additively: the old `pattern_name` key set continues to be recognized, the new `normalized_condition` key set is added as a second recognized shape, and the write path defaults to `pattern_name` for backward compatibility. The `occurrence_pattern_field="normalized_condition"` for the unreachable-branch rule is set explicitly on the rule constant, not hard-coded in the engine. The detector is injected as a `detect` callable through `LintRule`, maintaining the injectable-seam pattern. New tests accompany every new code path.
 
 ## /implement run BA7BF6F8-9DA4-4DDD-B65D-CD6BA50B5617: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:46:55
-- **Cost**: 💰 TOTAL ~$24.68: Claude $6.95, Codex-5.6 $5.10, Codex-mini $0.10, Cursor $8.39 (Composer $4.56, Grok $3.83), Claude (subprocess) $4.14  |  Tokens: 33933k
+- **Cost**: 💰 TOTAL ~$27.30: Claude $9.57, Codex-5.6 $5.10, Codex-mini $0.10, Cursor $8.39 (Composer $4.56, Grok $3.83), Claude (subprocess) $4.14  |  Tokens: 38060k
 - **Issue**: #6990: https://github.com/character-ai/larch/issues/6990
 - **PR**: #7397: https://github.com/character-ai/larch/pull/7397
 - **Plan review**: N/A
@@ -93,7 +93,7 @@ The changed code satisfies all applicable guidelines: every lint and type suppre
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/5 accepted
-- **Lines (PR diff)**: code +1084/-852, larch-logs +715/-0
+- **Lines (PR diff)**: code +1084/-852, larch-logs +721/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7396
 - **Exec issues**: 0
 - **Warnings**: 36
