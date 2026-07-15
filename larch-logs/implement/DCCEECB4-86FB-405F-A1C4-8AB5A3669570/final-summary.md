@@ -50,6 +50,10 @@ Warnings (3):
   2. G-Py-11 deviation: `python/tests/lint/test_lint_doc_pointer_paths.py` line 694 uses a bare `# pyright: ignore[reportPrivateUsage]` suppression without an inline reason. G-Py-11 requires every type...
   3. No other guideline deviations were found in the changed code. The new `lint_doc_pointer_paths.py` module correctly follows G-CLI-1 (module-level `main(argv)->int` registered by domain/verb in the c...
 
+## Architectural invariants
+
+The changed code adds a new documentation-linting module and updates stale Python module path references; none of the changed lines touch any invariant enforcement boundary.
+
 ## Architectural guidelines
 
 The fix adds an inline reason to the previously bare `# pyright: ignore[reportPrivateUsage]` suppression in `python/tests/lint/test_lint_doc_pointer_paths.py`. All suppressions in the changed code now carry inline reasons as required, and no other guideline deviations are present.
@@ -58,7 +62,7 @@ The fix adds an inline reason to the previously bare `# pyright: ignore[reportPr
 
 - **Outcome**: shipping
 - **Duration**: 00:31:26
-- **Cost**: 💰 TOTAL ~$18.00: Claude $3.12, Codex-5.6 $5.12, Codex-mini $0.05, Cursor $5.56 (Composer $2.96, Grok $2.60), Claude (subprocess) $4.15  |  Tokens: 22013k
+- **Cost**: 💰 TOTAL ~$18.72: Claude $3.80, Codex-5.6 $5.12, Codex-mini $0.05, Cursor $5.56 (Composer $2.96, Grok $2.60), Claude (subprocess) $4.19  |  Tokens: 23200k
 - **Issue**: #7296: https://github.com/character-ai/larch/issues/7296
 - **Plan review**: N/A
 - **Plan coverage**: 8/8 firm headings; band: advisory; disposition: none; todos_left: 0
