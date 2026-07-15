@@ -1136,7 +1136,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    tmpdir = Path(args.tmpdir)
+    raw_tmpdir = str(args.tmpdir)
+    tmpdir = Path(raw_tmpdir)
     status = detect(tmpdir, forked=args.forked, repo_unavailable=args.repo_unavailable)
     result = {
         "non_security_count": status.non_security_count,

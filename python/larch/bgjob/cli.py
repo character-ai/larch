@@ -62,7 +62,7 @@ def _build_spec(args: argparse.Namespace) -> model.JobSpec:
 
 def start_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py bgjob start")
-    _add_common_job_args(parser)
+    _add_common_job_args(parser, tmpdir_required=False)
     _ = parser.add_argument("--budget-s", required=True, type=int)
     _ = parser.add_argument("--log-dir", default="")
     _ = parser.add_argument("--owner-pid", default="")
@@ -78,6 +78,11 @@ def start_main(argv: list[str] | None = None) -> int:
     if args.budget_s <= 0:
         print("BGJOB_ERROR=invalid-budget")
         return 2
+    resolved_tmpdir = str(args.tmpdir) or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not resolved_tmpdir:
+        print("BGJOB_ERROR=missing-tmpdir")
+        return 2
+    args.tmpdir = resolved_tmpdir
     try:
         return daemon.start_daemon(_build_spec(args))
     except (OSError, RuntimeError, ValueError) as exc:

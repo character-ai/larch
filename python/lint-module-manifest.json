@@ -44,6 +44,7 @@
     {"module": "lint_subprocess_via_runner.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_suppression_reason.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_tempfile_dir.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_tmpdir_arg_env_fallback.py", "host_decision": "new-module-justified", "justification": "Distinct AST rule for direct args.tmpdir attribute-passing into validate_tmpdir/Path; nearest hosts lint_tempfile_dir (tempfile factory dir=) and lint_env_via_config_constant (bare env string access) detect different shapes and baseline schemas (#7297).", "source_issue": 7297},
     {"module": "lint_tier1a.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_unreachable_branch.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_wire_artifact_pairing.py", "host_decision": "legacy", "justification": "", "source_issue": 0}

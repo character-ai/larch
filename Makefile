@@ -57,7 +57,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal wire-artifact-pairing tempfile-dir markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal wire-artifact-pairing tempfile-dir tmpdir-arg-env-fallback markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -87,7 +87,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-kv-codec-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-markdown-heading-fence-state-baseline
+.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-tmpdir-arg-env-fallback-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-kv-codec-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-markdown-heading-fence-state-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -133,6 +133,16 @@ regen-tempfile-dir-baseline:
 		$(PYTHON) python/cli.py lint tempfile-dir --write; \
 	else \
 		$(PYTHON) python/cli.py lint tempfile-dir --write --initial-reason 'grandfathered ambient tempfile usage pre-tempfile-dir ratchet'; \
+	fi
+
+regen-tmpdir-arg-env-fallback-baseline:
+	# Regenerate python/tmpdir-arg-env-fallback-baseline.json from live AST scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/tmpdir-arg-env-fallback-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint tmpdir-arg-env-fallback --write; \
+	else \
+		$(PYTHON) python/cli.py lint tmpdir-arg-env-fallback --write --initial-reason 'grandfathered direct args.tmpdir consumption pre-tmpdir-arg-env-fallback ratchet'; \
 	fi
 
 regen-monkeypatch-facade-binding-baseline:
