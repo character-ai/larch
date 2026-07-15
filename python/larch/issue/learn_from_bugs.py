@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
 import shlex
 import sys
@@ -30,9 +31,9 @@ from larch.core.architectural_guidelines import (
     GUIDELINE_HEADING_RE,
     INVARIANT_HEADING_RE,
 )
-from larch.core.proc import ProcRunner, Runner
+from larch.core.proc import CommandResult, ProcRunner, Runner
 from larch.errors import ShipError
-from larch.git import gh
+from larch.git import gh, git
 from larch.issue import issue_wire
 from larch.issue.analyze_bugs import resolve_repo
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
@@ -1652,4 +1653,456 @@ def validate_report_main(argv: list[str]) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     _print_kv({"REPORT_CONTRACT": "pass"})
+    return 0
+
+
+# --- State publication (offline-testable port of the SKILL.md fence) ---------
+#
+# ``learn-from-bugs state-publish`` owns the whole marker-publication flow that
+# used to live as a ~232-line inline Bash fence in the skill (G-Skill-2: keep
+# logic in Python behind cli.py; SKILL.md and Bash stay thin). It publishes from
+# a disposable detached worktree so filing artifacts and unrelated operator
+# changes in the analysis root stay untouched, and it drives git, gh,
+# ``learn-from-bugs write-state`` / ``verify-origin``, and the file-backed
+# ``pr create`` verb through the Runner seam so every branch is testable offline.
+
+STATE_PUBLISH_WORKTREE_NAME: Final = "state-publication-worktree"
+STATE_PUBLISH_BRANCH_PREFIX: Final = "chore/learn-from-bugs-state-"
+_STATE_MARKER_SUBJECT: Final = "chore(larch-logs): update learn-from-bugs state"
+_STATE_PR_BODY: Final = (
+    "## Summary\n\nPublish the latest `/learn-from-bugs` scan and proposal state.\n"
+)
+# gh pr create runs from the disposable worktree; strip the /implement session
+# handoff vars so its scope-disposition guard cannot bind to an unrelated run.
+_STATE_PR_ENV_STRIP: Final = ("IMPLEMENT_TMPDIR", "SHIP_PR_STATE_FILE")
+
+# STATE_PUBLISH_STATUS success values.
+STATE_PUBLISH_MERGED: Final = "merged"
+STATE_PUBLISH_HANDOFF_PENDING: Final = "handoff-pending"
+
+# STATE_PUBLISH_STATUS failure reason tokens (G-Cfg-1: each token defined once).
+STATE_PUBLISH_NOT_A_CHECKOUT: Final = "not-a-checkout"
+STATE_PUBLISH_MISSING_ORIGIN: Final = "missing-origin"
+STATE_PUBLISH_ORIGIN_MISMATCH: Final = "origin-mismatch"
+STATE_PUBLISH_DEFAULT_BRANCH_UNRESOLVED: Final = "default-branch-unresolved"
+STATE_PUBLISH_FETCH_FAILED: Final = "fetch-failed"
+STATE_PUBLISH_INVALID_BRANCH: Final = "invalid-branch"
+STATE_PUBLISH_EXISTING_LOCAL_BRANCH: Final = "existing-local-branch"
+STATE_PUBLISH_EXISTING_REMOTE_BRANCH: Final = "existing-remote-branch"
+STATE_PUBLISH_REMOTE_CHECK_FAILED: Final = "remote-check-failed"
+STATE_PUBLISH_WORKTREE_COLLISION: Final = "worktree-collision"
+STATE_PUBLISH_WORKTREE_ADD_FAILED: Final = "worktree-add-failed"
+STATE_PUBLISH_BRANCH_CREATE_FAILED: Final = "branch-create-failed"
+STATE_PUBLISH_WRITE_STATE_FAILED: Final = "write-state-failed"
+STATE_PUBLISH_COMMIT_FAILED: Final = "commit-failed"
+STATE_PUBLISH_PR_CREATE_FAILED: Final = "pr-create-failed"
+
+_PR_NUMBER_RE: Final = re.compile(r"[1-9][0-9]*")
+_PR_STATUSES: Final = frozenset({"created", "existing"})
+
+
+class StatePublishError(LearnFromBugsError):
+    """A state-publication failure carrying a machine reason token."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.recovery_branch = ""
+
+
+@dataclass(frozen=True)
+class StatePublishRequest:
+    root: Path
+    repo: str
+    run_dir: Path
+    search: str
+    state: str
+    selected_count: int
+    highest_closed_issue_number_scanned: int
+    run_date: str
+    scan_started_at: str
+    proposals_file: str
+    base_proposals_file: str
+
+
+@dataclass(frozen=True)
+class StatePublishResult:
+    status: str
+    pr_number: int
+    pr_url: str
+
+
+@dataclass(frozen=True)
+class _PublishContext:
+    request: StatePublishRequest
+    worktree: Path
+    branch: str
+    default_branch: str
+
+
+@dataclass
+class _PublishProgress:
+    committed: bool = False
+    pr_created: bool = False
+
+
+def _cli_argv(*args: str) -> list[str]:
+    cli_path = Path(__file__).resolve().parents[2] / "cli.py"
+    return [sys.executable, str(cli_path), *args]
+
+
+def _git(runner: Runner, root: Path, args: Sequence[str]) -> CommandResult:
+    return runner.run(["git", "-C", str(root), *args])
+
+
+def _unique_kv(stdout: str, keys: tuple[str, ...]) -> dict[str, str] | None:
+    """Return each key's value only when every key appears on exactly one line."""
+    counts = dict.fromkeys(keys, 0)
+    values: dict[str, str] = {}
+    for line in stdout.splitlines():
+        for key in keys:
+            prefix = f"{key}="
+            if line.startswith(prefix):
+                counts[key] += 1
+                values[key] = line[len(prefix) :]
+    if any(count != 1 for count in counts.values()):
+        return None
+    return values
+
+
+def _is_repo_relative(relpath: str) -> bool:
+    if "\r" in relpath:
+        return False
+    guarded = f"/{relpath}/"
+    return not any(marker in guarded for marker in ("//", "/./", "/../"))
+
+
+def _preflight(runner: Runner, request: StatePublishRequest) -> None:
+    root = request.root
+    inside = _git(runner, root, ["rev-parse", "--is-inside-work-tree"])
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        raise StatePublishError(
+            STATE_PUBLISH_NOT_A_CHECKOUT,
+            "state publication requires the analysis root to be a repository checkout",
+        )
+    if _git(runner, root, ["remote", "get-url", "origin"]).returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_MISSING_ORIGIN, "state publication requires the origin remote"
+        )
+    verify = runner.run(
+        _cli_argv(
+            "learn-from-bugs", "verify-origin", "--root", str(root), "--repo", request.repo
+        )
+    )
+    if verify.returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_ORIGIN_MISMATCH,
+            f"state publication requires the analysis-root origin to identify {request.repo}",
+        )
+
+
+def _resolve_default_branch(runner: Runner, request: StatePublishRequest) -> tuple[str, str]:
+    root = request.root
+    view = gh.command(
+        runner,
+        ["repo", "view", request.repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
+    )
+    branches = [line for line in view.stdout.splitlines() if line.strip()]
+    if view.returncode != 0 or len(branches) != 1:
+        raise StatePublishError(
+            STATE_PUBLISH_DEFAULT_BRANCH_UNRESOLVED, "could not resolve one repository default branch"
+        )
+    default_branch = branches[0]
+    if _git(runner, root, ["check-ref-format", f"refs/heads/{default_branch}"]).returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_DEFAULT_BRANCH_UNRESOLVED,
+            "the repository default branch is not a valid Git branch",
+        )
+    fetch_spec = f"+refs/heads/{default_branch}:refs/remotes/origin/{default_branch}"
+    if git.fetch(runner, "origin", fetch_spec, cwd=str(root)).returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_FETCH_FAILED, "could not fetch the repository default branch"
+        )
+    default_ref = f"refs/remotes/origin/{default_branch}"
+    if _git(runner, root, ["rev-parse", "--verify", f"{default_ref}^{{commit}}"]).returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_DEFAULT_BRANCH_UNRESOLVED, "the fetched default-branch ref is missing"
+        )
+    return default_branch, default_ref
+
+
+def _state_branch_name(request: StatePublishRequest) -> str:
+    timestamp = re.sub(r"[^A-Za-z0-9]", "", request.run_date)
+    run_token = re.sub(r"[^A-Za-z0-9._-]", "-", request.run_dir.name)
+    if not timestamp or not run_token:
+        raise StatePublishError(
+            STATE_PUBLISH_INVALID_BRANCH, "state publication branch components must not be empty"
+        )
+    return f"{STATE_PUBLISH_BRANCH_PREFIX}{timestamp}-{run_token}"
+
+
+def _reserve_branch(runner: Runner, root: Path, branch: str) -> None:
+    if _git(runner, root, ["check-ref-format", "--branch", branch]).returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_INVALID_BRANCH, "the state publication branch is invalid"
+        )
+    if git.local_branch_exists(runner, branch, cwd=str(root)):
+        raise StatePublishError(
+            STATE_PUBLISH_EXISTING_LOCAL_BRANCH,
+            "refusing to reuse an existing local state publication branch",
+        )
+    remote = git.remote_branch_state(runner, f"refs/heads/{branch}", cwd=str(root))
+    if remote.state == "present":
+        raise StatePublishError(
+            STATE_PUBLISH_EXISTING_REMOTE_BRANCH,
+            "refusing to reuse an existing remote state publication branch",
+        )
+    if remote.state != "absent":
+        raise StatePublishError(
+            STATE_PUBLISH_REMOTE_CHECK_FAILED, "could not check the remote state publication branch"
+        )
+
+
+def _write_state_in_worktree(runner: Runner, ctx: _PublishContext) -> str:
+    request = ctx.request
+    argv = _cli_argv(
+        "learn-from-bugs", "write-state",
+        "--root", str(ctx.worktree),
+        "--repo", request.repo,
+        "--search", request.search,
+        "--state", request.state,
+        "--selected-count", str(request.selected_count),
+        "--highest-closed-issue-number-scanned", str(request.highest_closed_issue_number_scanned),
+        "--run-date", request.run_date,
+        "--scan-started-at", request.scan_started_at,
+        "--proposals-file", request.proposals_file,
+    )
+    if request.base_proposals_file:
+        argv.extend(["--base-proposals-file", request.base_proposals_file])
+    result = runner.run(argv, cwd=str(ctx.worktree))
+    if result.returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_WRITE_STATE_FAILED,
+            "learn-from-bugs write-state failed during state publication",
+        )
+    parsed = _unique_kv(result.stdout, ("STATE_RELPATH",))
+    if parsed is None or not parsed["STATE_RELPATH"]:
+        raise StatePublishError(
+            STATE_PUBLISH_WRITE_STATE_FAILED, "write-state did not return exactly one STATE_RELPATH"
+        )
+    marker_rel = parsed["STATE_RELPATH"]
+    if not _is_repo_relative(marker_rel):
+        raise StatePublishError(
+            STATE_PUBLISH_WRITE_STATE_FAILED, "STATE_RELPATH must be repository-relative"
+        )
+    return marker_rel
+
+
+def _commit_marker(
+    runner: Runner, ctx: _PublishContext, marker_rel: str, progress: _PublishProgress
+) -> None:
+    worktree = str(ctx.worktree)
+    if git.add(runner, marker_rel, cwd=worktree).returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_COMMIT_FAILED, "could not stage the state marker")
+    commit = git.commit(
+        runner, _STATE_MARKER_SUBJECT, only=True, paths=(marker_rel,), cwd=worktree
+    )
+    if commit.returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_COMMIT_FAILED, "could not commit the state marker")
+    progress.committed = True
+    changed = git.diff_tree_name_only(runner, "HEAD", cwd=worktree)
+    committed_paths = [line for line in changed.stdout.splitlines() if line.strip()]
+    if changed.returncode != 0 or committed_paths != [marker_rel]:
+        raise StatePublishError(
+            STATE_PUBLISH_COMMIT_FAILED, "the state commit changed more than the marker"
+        )
+
+
+def _parse_pr_identity(stdout: str) -> tuple[int, str]:
+    fields = _unique_kv(stdout, ("PR_NUMBER", "PR_URL", "PR_STATUS"))
+    if fields is None or not fields["PR_URL"]:
+        raise StatePublishError(
+            STATE_PUBLISH_PR_CREATE_FAILED, "PR creation returned incomplete identity"
+        )
+    if _PR_NUMBER_RE.fullmatch(fields["PR_NUMBER"]) is None:
+        raise StatePublishError(
+            STATE_PUBLISH_PR_CREATE_FAILED, "PR creation returned an invalid number"
+        )
+    if fields["PR_STATUS"] not in _PR_STATUSES:
+        raise StatePublishError(
+            STATE_PUBLISH_PR_CREATE_FAILED, "PR creation returned an invalid status"
+        )
+    return int(fields["PR_NUMBER"]), fields["PR_URL"]
+
+
+def _create_state_pr(runner: Runner, ctx: _PublishContext) -> tuple[int, str]:
+    body_path = ctx.request.run_dir / "state-publication-pr-body.md"
+    larch_io.atomic_write(
+        body_path, _STATE_PR_BODY, create_parent=True, prefix=f".{body_path.name}.", nofollow=True
+    )
+    env = {key: value for key, value in os.environ.items() if key not in _STATE_PR_ENV_STRIP}
+    result = runner.run(
+        _cli_argv(
+            "pr", "create",
+            "--repo", ctx.request.repo,
+            "--branch", ctx.branch,
+            "--base", ctx.default_branch,
+            "--title", _STATE_MARKER_SUBJECT,
+            "--body-file", str(body_path),
+        ),
+        cwd=str(ctx.worktree),
+        env=env,
+    )
+    if result.returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_PR_CREATE_FAILED, "state PR creation failed")
+    return _parse_pr_identity(result.stdout)
+
+
+def _pr_state(runner: Runner, ctx: _PublishContext, number: int) -> CommandResult:
+    return gh.command(
+        runner,
+        ["pr", "view", str(number), "--repo", ctx.request.repo, "--json", "state", "--jq", ".state"],
+        cwd=str(ctx.worktree),
+    )
+
+
+def _resolve_pr_outcome(
+    runner: Runner, ctx: _PublishContext, number: int, url: str
+) -> StatePublishResult:
+    opened = _pr_state(runner, ctx, number)
+    if opened.returncode != 0:
+        return StatePublishResult(STATE_PUBLISH_HANDOFF_PENDING, number, url)
+    if opened.stdout.strip() != "OPEN":
+        raise StatePublishError(
+            STATE_PUBLISH_PR_CREATE_FAILED, "the identified state PR is not open"
+        )
+    merge = gh.pr_merge(runner, number, repo=ctx.request.repo, merge_method="merge", admin=True)
+    merged_state = _pr_state(runner, ctx, number)
+    merged_at = gh.command(
+        runner,
+        ["pr", "view", str(number), "--repo", ctx.request.repo, "--json", "mergedAt", "--jq", '.mergedAt // ""'],
+        cwd=str(ctx.worktree),
+    )
+    durable = (
+        merge.returncode == 0
+        and merged_state.returncode == 0
+        and merged_state.stdout.strip() == "MERGED"
+        and merged_at.returncode == 0
+        and merged_at.stdout.strip() != ""
+    )
+    status = STATE_PUBLISH_MERGED if durable else STATE_PUBLISH_HANDOFF_PENDING
+    return StatePublishResult(status, number, url)
+
+
+def _publish_in_worktree(
+    runner: Runner, ctx: _PublishContext, progress: _PublishProgress
+) -> StatePublishResult:
+    if _git(runner, ctx.worktree, ["switch", "-c", ctx.branch]).returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_BRANCH_CREATE_FAILED, "could not create the state branch in the worktree"
+        )
+    marker_rel = _write_state_in_worktree(runner, ctx)
+    _commit_marker(runner, ctx, marker_rel, progress)
+    number, url = _create_state_pr(runner, ctx)
+    progress.pr_created = True
+    return _resolve_pr_outcome(runner, ctx, number, url)
+
+
+def _cleanup_worktree(runner: Runner, ctx: _PublishContext, progress: _PublishProgress) -> bool:
+    """Remove the disposable worktree; drop the branch unless it is a recovery surface.
+
+    Returns True when the state branch is preserved (committed but PR-less).
+    """
+    root = ctx.request.root
+    removed = _git(runner, root, ["worktree", "remove", "--force", str(ctx.worktree)])
+    preserve = progress.committed and not progress.pr_created
+    cleanup_failed = removed.returncode != 0
+    if (
+        removed.returncode == 0
+        and not preserve
+        and git.local_branch_exists(runner, ctx.branch, cwd=str(root))
+        and _git(runner, root, ["branch", "-D", ctx.branch]).returncode != 0
+    ):
+        cleanup_failed = True
+    if cleanup_failed:
+        print(
+            f"state publication cleanup failed; inspect the disposable worktree at {ctx.worktree}",
+            file=sys.stderr,
+        )
+    return preserve
+
+
+def run_state_publish(runner: Runner, request: StatePublishRequest) -> StatePublishResult:
+    """Publish the learn-from-bugs marker from a disposable detached worktree."""
+    _preflight(runner, request)
+    default_branch, default_ref = _resolve_default_branch(runner, request)
+    branch = _state_branch_name(request)
+    _reserve_branch(runner, request.root, branch)
+    worktree = request.run_dir / STATE_PUBLISH_WORKTREE_NAME
+    if worktree.exists():
+        raise StatePublishError(
+            STATE_PUBLISH_WORKTREE_COLLISION, "the state publication worktree path already exists"
+        )
+    added = _git(runner, request.root, ["worktree", "add", "--detach", str(worktree), default_ref])
+    if added.returncode != 0:
+        raise StatePublishError(
+            STATE_PUBLISH_WORKTREE_ADD_FAILED, "could not create the state publication worktree"
+        )
+    ctx = _PublishContext(
+        request=request, worktree=worktree, branch=branch, default_branch=default_branch
+    )
+    progress = _PublishProgress()
+    try:
+        result = _publish_in_worktree(runner, ctx, progress)
+    except StatePublishError as exc:
+        if _cleanup_worktree(runner, ctx, progress):
+            exc.recovery_branch = branch
+        raise
+    _ = _cleanup_worktree(runner, ctx, progress)
+    return result
+
+
+def state_publish_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="learn-from-bugs state-publish", allow_abbrev=False)
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--search", required=True)
+    parser.add_argument("--state", required=True)
+    parser.add_argument("--selected-count", type=int, required=True)
+    parser.add_argument("--highest-closed-issue-number-scanned", type=int, required=True)
+    parser.add_argument("--run-date", required=True)
+    parser.add_argument("--scan-started-at", required=True)
+    parser.add_argument("--proposals-file", required=True)
+    parser.add_argument("--base-proposals-file", default="")
+    args = parser.parse_args(argv)
+    request = StatePublishRequest(
+        root=Path(args.root).expanduser(),
+        repo=args.repo,
+        run_dir=Path(args.run_dir).expanduser(),
+        search=args.search,
+        state=args.state,
+        selected_count=args.selected_count,
+        highest_closed_issue_number_scanned=args.highest_closed_issue_number_scanned,
+        run_date=args.run_date,
+        scan_started_at=args.scan_started_at,
+        proposals_file=args.proposals_file,
+        base_proposals_file=args.base_proposals_file,
+    )
+    try:
+        result = run_state_publish(_runner(), request)
+    except StatePublishError as exc:
+        rows: dict[str, object] = {"STATE_PUBLISH_STATUS": exc.reason}
+        if exc.recovery_branch:
+            rows["STATE_PUBLISH_RECOVERY_BRANCH"] = exc.recovery_branch
+        _print_kv(rows)
+        print(str(exc), file=sys.stderr)
+        return 2
+    _print_kv(
+        {
+            "STATE_PUBLISH_STATUS": result.status,
+            "PR_NUMBER": result.pr_number,
+            "PR_URL": result.pr_url,
+        }
+    )
     return 0

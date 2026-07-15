@@ -216,77 +216,27 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(P.2) default mode must continue to approval-gated Step 5 after publication resolution")
     if "`ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote" not in text:
         failures.append("(Q.1) publication must accept detached repository checkouts with origin")
-    if 'git -C "$ANALYSIS_ROOT" rev-parse --is-inside-work-tree' not in text:
-        failures.append("(Q.2) publication must validate ANALYSIS_ROOT as a repository checkout")
-    if 'git -C "$ANALYSIS_ROOT" remote get-url origin' not in text:
-        failures.append("(Q.3) publication must validate the origin remote")
-    if "learn-from-bugs verify-origin" not in text:
-        failures.append("(Q.3a) publication must mechanically verify origin identifies $REPO")
-    if 'gh repo view "$REPO" --json defaultBranchRef --jq \'.defaultBranchRef.name\'' not in text:
-        failures.append("(Q.4) publication must resolve the repository default branch")
-    if '"+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"' not in text:
-        failures.append("(Q.5) publication must fetch the repository default branch")
-    if 'DEFAULT_BRANCH_REF="refs/remotes/origin/$DEFAULT_BRANCH"' not in text:
-        failures.append("(Q.6) publication base must use the fetched origin default-branch ref")
-    if 'STATE_TIMESTAMP=$(printf \'%s\' "$RUN_DATE" | tr -cd \'A-Za-z0-9\')' not in text:
-        failures.append("(R.1) publication branch timestamp must remove colon and punctuation")
-    if 'STATE_RUN_TOKEN=$(basename "$RUN_DIR" | sed \'s/[^A-Za-z0-9._-]/-/g\')' not in text:
-        failures.append("(R.2) publication run token must sanitize slash and unsafe characters")
-    if '[ -z "$STATE_TIMESTAMP" ] || [ -z "$STATE_RUN_TOKEN" ]' not in text:
-        failures.append("(R.3) publication must reject empty branch components")
-    if 'git -C "$ANALYSIS_ROOT" check-ref-format --branch "$STATE_BRANCH"' not in text:
-        failures.append("(R.4) publication must validate the complete state branch")
-    if 'show-ref --verify --quiet "refs/heads/$STATE_BRANCH"' not in text:
-        failures.append("(R.5) publication must reject local branch collisions")
-    if 'ls-remote --exit-code --heads origin' not in text:
-        failures.append("(R.6) publication must reject remote branch collisions")
-    if 'git -C "$ANALYSIS_ROOT" worktree add --detach' not in text:
-        failures.append("(S.1) publication must create an isolated detached worktree")
+    if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish' not in text:
+        failures.append("(Q.2) publication must delegate the whole flow to learn-from-bugs state-publish")
+    state_publish_args = (
+        '--root "$ANALYSIS_ROOT"',
+        '--repo "$REPO"',
+        '--run-dir "$RUN_DIR"',
+        '--run-date "$RUN_DATE"',
+        '--scan-started-at "$SCAN_STARTED_AT"',
+        '--proposals-file "$RECONCILED_PROPOSALS_PATH"',
+        '--base-proposals-file "$RUN_DIR/base-proposals.jsonl"',
+    )
+    if not all(arg in text for arg in state_publish_args):
+        failures.append("(Q.3) state-publish must forward the checkout, run, and proposal inputs")
     if "set -euo pipefail" not in text:
         failures.append("(S.2) publication fence must use strict mode")
-    if 'cd "$STATE_WORKTREE" || exit 2' not in text:
-        failures.append("(S.3) publication commands must run from STATE_WORKTREE")
-    if 'git switch -c "$STATE_BRANCH"' not in text:
-        failures.append("(S.4) publication must create the state branch in STATE_WORKTREE")
-    if text.count('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs write-state \\') != 1:
-        failures.append("(S.5) shared publication must invoke write-state exactly once")
-    if '--root "$STATE_WORKTREE"' not in text:
-        failures.append("(S.6) write-state must target the disposable worktree")
-    if 'write-state did not return exactly one STATE_RELPATH.' not in text:
-        failures.append("(S.7) publication must require exactly one STATE_RELPATH")
-    if 'STATE_RELPATH must be repository-relative.' not in text:
-        failures.append("(S.8) publication must validate STATE_RELPATH as repository-relative")
-    if 'git add -- "$MARKER_REL"' not in text:
-        failures.append("(S.9) publication must stage only the marker")
-    if '--only -- "$MARKER_REL"' not in text:
-        failures.append("(S.10) publication must commit only the marker")
-    if 'git diff-tree --no-commit-id --name-only -r HEAD' not in text:
-        failures.append("(S.11) publication must verify the marker-only commit")
-    if 'git -C "$ANALYSIS_ROOT" worktree remove --force "$STATE_WORKTREE"' not in text:
-        failures.append("(S.12) publication cleanup must remove the disposable worktree from ANALYSIS_ROOT")
-    if 'git -C "$ANALYSIS_ROOT" branch -D "$STATE_BRANCH"' not in text:
-        failures.append("(S.13) publication cleanup must manage the state branch from ANALYSIS_ROOT")
-    pr_create = 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr create \\'
-    if pr_create not in text or '--repo "$REPO"' not in text or '--branch "$STATE_BRANCH"' not in text or '--base "$DEFAULT_BRANCH"' not in text or '--body-file "$PR_BODY_PATH"' not in text:
-        failures.append("(T.1) publication must use file-backed cli.py pr create with repo, branch, and base")
-    if not all(token in text for token in ("PR_NUMBER_COUNT", "PR_URL_COUNT", "PR_STATUS_COUNT", "PR creation returned incomplete identity.")):
-        failures.append("(T.2) publication must require complete PR identity")
-    if 'created|existing' not in text:
-        failures.append("(T.3) publication must accept only created or existing PR status")
-    if 'The identified state PR is not open.' not in text:
-        failures.append("(T.4) publication must reject an existing PR that is not open")
-    if 'gh pr merge "$PR_NUMBER" --repo "$REPO" --admin --merge' not in text:
-        failures.append("(T.5) publication must attempt immediate admin merge")
-    if re.search(r"gh pr merge[^\n]*--auto", text):
-        failures.append("(T.6) publication must not use auto merge")
-    if 'MERGED_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state' not in text:
-        failures.append("(T.7) publication must verify merged state")
-    if 'MERGED_AT=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergedAt' not in text:
-        failures.append("(T.8) publication must require mergedAt")
-    if 'PUBLICATION_STATUS=handoff-pending' not in text:
-        failures.append("(T.9) publication must retain an explicit manual-merge handoff")
-    if "Parse exactly one whole-line `PUBLICATION_STATUS`, `PR_NUMBER`, and `PR_URL` from `PUBLICATION_RESULT`" not in text:
-        failures.append("(T.10) publication consumers must validate one complete result identity")
+    if "Parse exactly one whole-line `STATE_PUBLISH_STATUS`, `PR_NUMBER`, and `PR_URL`" not in text:
+        failures.append("(T.10) publication consumers must parse one complete state-publish result")
+    if "Accept only `merged` or `handoff-pending`, a positive PR number, and a non-empty URL" not in text:
+        failures.append("(T.9) publication must accept only merged or handoff-pending outcomes")
+    if "`STATE_PUBLISH_RECOVERY_BRANCH`" not in text:
+        failures.append("(T.11) committed PR-less failure must surface STATE_PUBLISH_RECOVERY_BRANCH")
     if text.count("run the shared state-publication fragment now") != 3:
         failures.append("(U.1) all three marker-producing paths must invoke the shared fragment")
     default_publication = text.find("### Default mode (FILE_MODE=false): state publication before Step 5")
@@ -303,6 +253,16 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(U.6) PR-less failure must preserve its recovery branch")
     if "Once a valid PR exists, the PR is the recovery surface" not in text:
         failures.append("(U.7) valid PR must become the recovery surface")
+    migrated_out = (
+        'git -C "$ANALYSIS_ROOT" worktree add --detach',
+        'git switch -c "$STATE_BRANCH"',
+        'check-ref-format --branch "$STATE_BRANCH"',
+        'ls-remote --exit-code --heads origin',
+        'gh pr merge "$PR_NUMBER"',
+        'gh repo view "$REPO" --json defaultBranchRef',
+    )
+    if any(token in text for token in migrated_out):
+        failures.append("(V.5) migrated inline publication bash must be absent from the fence")
     if 'learn-from-bugs write-state --root "$ANALYSIS_ROOT"' in text:
         failures.append("(V.1) old direct ANALYSIS_ROOT write-state flow must be absent")
     if 'STATE_BRANCH="chore/learn-from-bugs-state-$RUN_DATE' in text:

@@ -179,251 +179,36 @@ Abort on non-zero exit. On success, print the report to the operator and the `RU
 
 ### Shared state-publication fragment
 
-Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote whose slug identifies `$REPO`; the fence verifies this mechanically before creating any branch.
+Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote whose slug identifies `$REPO`; `learn-from-bugs state-publish` verifies this mechanically before creating any branch.
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
-Run the whole fence as one Bash call. It publishes from a disposable clean worktree, so filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`:
+Run the whole fragment as one Bash call. `learn-from-bugs state-publish` owns the entire flow behind `python/cli.py`: it validates the checkout and origin, resolves and fetches the repository default branch, derives and reserves a collision-free state branch, then publishes the marker from a disposable clean detached worktree, so filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`. It invokes `learn-from-bugs write-state` exactly once against that worktree, commits only the marker with `--only`, opens the state PR with a file-backed body, and attempts an immediate `--admin --merge`:
 
 ```bash
 set -euo pipefail
 
-PUBLICATION_RESULT="$RUN_DIR/state-publication-result.env"
-PUBLICATION_PHASE="$RUN_DIR/state-publication-phase"
-PUBLICATION_COMMITTED="$RUN_DIR/state-publication-committed"
-PUBLICATION_PR_CREATED="$RUN_DIR/state-publication-pr-created"
-STATE_OUT_PATH="$RUN_DIR/state-publication-write.env"
-PR_OUT_PATH="$RUN_DIR/state-publication-pr.env"
-PR_BODY_PATH="$RUN_DIR/state-publication-pr-body.md"
-rm -f "$PUBLICATION_RESULT" "$PUBLICATION_PHASE" "$PUBLICATION_COMMITTED" \
-  "$PUBLICATION_PR_CREATED" "$STATE_OUT_PATH" "$PR_OUT_PATH"
-printf '%s\n' setup >"$PUBLICATION_PHASE"
-
-if [ "$(git -C "$ANALYSIS_ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ]; then
-  printf '%s\n' "State publication requires ANALYSIS_ROOT to be a repository checkout." >&2
+STATE_PUBLISH_RESULT="$RUN_DIR/state-publication-result.env"
+if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish \
+  --root "$ANALYSIS_ROOT" \
+  --repo "$REPO" \
+  --run-dir "$RUN_DIR" \
+  --search "$SEARCH" \
+  --state "$STATE" \
+  --selected-count "$ISSUES_SELECTED" \
+  --highest-closed-issue-number-scanned "$HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED" \
+  --run-date "$RUN_DATE" \
+  --scan-started-at "$SCAN_STARTED_AT" \
+  --proposals-file "$RECONCILED_PROPOSALS_PATH" \
+  --base-proposals-file "$RUN_DIR/base-proposals.jsonl" >"$STATE_PUBLISH_RESULT"; then
+  printf '%s\n' "State publication failed; read the STATE_PUBLISH_STATUS reason token in $STATE_PUBLISH_RESULT and the stderr above." >&2
   exit 2
-fi
-if ! git -C "$ANALYSIS_ROOT" remote get-url origin >/dev/null 2>&1; then
-  printf '%s\n' "State publication requires the origin remote." >&2
-  exit 2
-fi
-if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs verify-origin \
-  --root "$ANALYSIS_ROOT" --repo "$REPO" >/dev/null; then
-  printf '%s\n' "State publication requires the ANALYSIS_ROOT origin to identify $REPO." >&2
-  exit 2
-fi
-
-DEFAULT_BRANCH_OUT=$(gh repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name') || exit 2
-DEFAULT_BRANCH_COUNT=$(printf '%s\n' "$DEFAULT_BRANCH_OUT" | sed -n '/./p' | wc -l | tr -d ' ')
-DEFAULT_BRANCH=$(printf '%s\n' "$DEFAULT_BRANCH_OUT" | sed -n '/./p')
-if [ "$DEFAULT_BRANCH_COUNT" -ne 1 ] || [ -z "$DEFAULT_BRANCH" ]; then
-  printf '%s\n' "Could not resolve one repository default branch." >&2
-  exit 2
-fi
-if ! git -C "$ANALYSIS_ROOT" check-ref-format "refs/heads/$DEFAULT_BRANCH"; then
-  printf '%s\n' "The repository default branch is not a valid Git branch." >&2
-  exit 2
-fi
-if ! git -C "$ANALYSIS_ROOT" fetch origin \
-  "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"; then
-  printf '%s\n' "Could not fetch the repository default branch." >&2
-  exit 2
-fi
-DEFAULT_BRANCH_REF="refs/remotes/origin/$DEFAULT_BRANCH"
-if ! git -C "$ANALYSIS_ROOT" rev-parse --verify "$DEFAULT_BRANCH_REF^{commit}" >/dev/null; then
-  printf '%s\n' "The fetched default-branch ref is missing." >&2
-  exit 2
-fi
-
-STATE_TIMESTAMP=$(printf '%s' "$RUN_DATE" | tr -cd 'A-Za-z0-9')
-STATE_RUN_TOKEN=$(basename "$RUN_DIR" | sed 's/[^A-Za-z0-9._-]/-/g')
-if [ -z "$STATE_TIMESTAMP" ] || [ -z "$STATE_RUN_TOKEN" ]; then
-  printf '%s\n' "State publication branch components must not be empty." >&2
-  exit 2
-fi
-STATE_BRANCH="chore/learn-from-bugs-state-$STATE_TIMESTAMP-$STATE_RUN_TOKEN"
-if ! git -C "$ANALYSIS_ROOT" check-ref-format --branch "$STATE_BRANCH" >/dev/null; then
-  printf '%s\n' "The state publication branch is invalid." >&2
-  exit 2
-fi
-if git -C "$ANALYSIS_ROOT" show-ref --verify --quiet "refs/heads/$STATE_BRANCH"; then
-  printf '%s\n' "Refusing to reuse an existing local state publication branch." >&2
-  exit 2
-fi
-REMOTE_BRANCH_RC=0
-git -C "$ANALYSIS_ROOT" ls-remote --exit-code --heads origin \
-  "refs/heads/$STATE_BRANCH" >/dev/null 2>&1 || REMOTE_BRANCH_RC=$?
-if [ "$REMOTE_BRANCH_RC" -eq 0 ]; then
-  printf '%s\n' "Refusing to reuse an existing remote state publication branch." >&2
-  exit 2
-fi
-if [ "$REMOTE_BRANCH_RC" -ne 2 ]; then
-  printf '%s\n' "Could not check the remote state publication branch." >&2
-  exit 2
-fi
-
-STATE_WORKTREE="$RUN_DIR/state-publication-worktree"
-if [ -e "$STATE_WORKTREE" ]; then
-  printf '%s\n' "The state publication worktree path already exists." >&2
-  exit 2
-fi
-if ! git -C "$ANALYSIS_ROOT" worktree add --detach \
-  "$STATE_WORKTREE" "$DEFAULT_BRANCH_REF"; then
-  printf '%s\n' "Could not create the state publication worktree." >&2
-  exit 2
-fi
-
-set +e
-(
-  set -e
-  cd "$STATE_WORKTREE" || exit 2
-  printf '%s\n' branch >"$PUBLICATION_PHASE"
-  git switch -c "$STATE_BRANCH" || exit 2
-
-  printf '%s\n' write-state >"$PUBLICATION_PHASE"
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs write-state \
-    --root "$STATE_WORKTREE" \
-    --repo "$REPO" \
-    --search "$SEARCH" \
-    --state "$STATE" \
-    --selected-count "$ISSUES_SELECTED" \
-    --highest-closed-issue-number-scanned "$HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED" \
-    --run-date "$RUN_DATE" \
-    --scan-started-at "$SCAN_STARTED_AT" \
-    --proposals-file "$RECONCILED_PROPOSALS_PATH" \
-    --base-proposals-file "$RUN_DIR/base-proposals.jsonl" >"$STATE_OUT_PATH" || exit 2
-  STATE_RELPATH_COUNT=$(sed -n 's/^STATE_RELPATH=//p' "$STATE_OUT_PATH" | wc -l | tr -d ' ')
-  STATE_RELPATH=$(sed -n 's/^STATE_RELPATH=//p' "$STATE_OUT_PATH")
-  if [ "$STATE_RELPATH_COUNT" -ne 1 ] || [ -z "$STATE_RELPATH" ]; then
-    printf '%s\n' "write-state did not return exactly one STATE_RELPATH." >&2
-    exit 2
-  fi
-  case "/$STATE_RELPATH/" in
-    *//*|*/./*|*/../*|*"$(printf '\r')"*)
-      printf '%s\n' "STATE_RELPATH must be repository-relative." >&2
-      exit 2
-      ;;
-  esac
-  MARKER_REL="$STATE_RELPATH"
-
-  printf '%s\n' commit >"$PUBLICATION_PHASE"
-  git add -- "$MARKER_REL" || exit 2
-  git commit -m "chore(larch-logs): update learn-from-bugs state" \
-    --only -- "$MARKER_REL" || exit 2
-  : >"$PUBLICATION_COMMITTED"
-  COMMITTED_PATH_COUNT=$(git diff-tree --no-commit-id --name-only -r HEAD | wc -l | tr -d ' ')
-  COMMITTED_PATH=$(git diff-tree --no-commit-id --name-only -r HEAD)
-  if [ "$COMMITTED_PATH_COUNT" -ne 1 ] || [ "$COMMITTED_PATH" != "$MARKER_REL" ]; then
-    printf '%s\n' "The state commit changed more than the marker." >&2
-    exit 2
-  fi
-  cat >"$PR_BODY_PATH" <<'EOF'
-## Summary
-
-Publish the latest `/learn-from-bugs` scan and proposal state.
-EOF
-  printf '%s\n' pr-create >"$PUBLICATION_PHASE"
-  env -u IMPLEMENT_TMPDIR -u SHIP_PR_STATE_FILE \
-    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr create \
-    --repo "$REPO" \
-    --branch "$STATE_BRANCH" \
-    --base "$DEFAULT_BRANCH" \
-    --title "chore(larch-logs): update learn-from-bugs state" \
-    --body-file "$PR_BODY_PATH" >"$PR_OUT_PATH" || exit 2
-  PR_NUMBER_COUNT=$(sed -n 's/^PR_NUMBER=//p' "$PR_OUT_PATH" | wc -l | tr -d ' ')
-  PR_URL_COUNT=$(sed -n 's/^PR_URL=//p' "$PR_OUT_PATH" | wc -l | tr -d ' ')
-  PR_STATUS_COUNT=$(sed -n 's/^PR_STATUS=//p' "$PR_OUT_PATH" | wc -l | tr -d ' ')
-  PR_NUMBER=$(sed -n 's/^PR_NUMBER=//p' "$PR_OUT_PATH")
-  PR_URL=$(sed -n 's/^PR_URL=//p' "$PR_OUT_PATH")
-  PR_STATUS=$(sed -n 's/^PR_STATUS=//p' "$PR_OUT_PATH")
-  if [ "$PR_NUMBER_COUNT" -ne 1 ] || [ "$PR_URL_COUNT" -ne 1 ] || \
-     [ "$PR_STATUS_COUNT" -ne 1 ] || [ -z "$PR_URL" ]; then
-    printf '%s\n' "PR creation returned incomplete identity." >&2
-    exit 2
-  fi
-  case "$PR_NUMBER" in
-    ''|*[!0-9]*|0|0[0-9]*)
-      printf '%s\n' "PR creation returned an invalid number." >&2
-      exit 2
-      ;;
-  esac
-  case "$PR_STATUS" in
-    created|existing) ;;
-    *)
-      printf '%s\n' "PR creation returned an invalid status." >&2
-      exit 2
-      ;;
-  esac
-  : >"$PUBLICATION_PR_CREATED"
-  PR_OPEN_RC=0
-  PR_OPEN_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state') || PR_OPEN_RC=$?
-  if [ "$PR_OPEN_RC" -ne 0 ]; then
-    {
-      printf 'PUBLICATION_STATUS=handoff-pending\n'
-      printf 'PR_NUMBER=%s\n' "$PR_NUMBER"
-      printf 'PR_URL=%s\n' "$PR_URL"
-    } >"$PUBLICATION_RESULT"
-    exit 0
-  fi
-  if [ "$PR_OPEN_STATE" != OPEN ]; then
-    printf '%s\n' "The identified state PR is not open." >&2
-    exit 2
-  fi
-
-  printf '%s\n' merge >"$PUBLICATION_PHASE"
-  MERGE_RC=0
-  gh pr merge "$PR_NUMBER" --repo "$REPO" --admin --merge || MERGE_RC=$?
-  MERGED_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state') || MERGED_STATE=""
-  MERGED_AT=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergedAt --jq '.mergedAt // ""') || MERGED_AT=""
-  if [ "$MERGE_RC" -eq 0 ] && [ "$MERGED_STATE" = MERGED ] && [ -n "$MERGED_AT" ]; then
-    {
-      printf 'PUBLICATION_STATUS=merged\n'
-      printf 'PR_NUMBER=%s\n' "$PR_NUMBER"
-      printf 'PR_URL=%s\n' "$PR_URL"
-    } >"$PUBLICATION_RESULT"
-  else
-    {
-      printf 'PUBLICATION_STATUS=handoff-pending\n'
-      printf 'PR_NUMBER=%s\n' "$PR_NUMBER"
-      printf 'PR_URL=%s\n' "$PR_URL"
-    } >"$PUBLICATION_RESULT"
-  fi
-)
-PUBLICATION_RC=$?
-set -e
-
-CLEANUP_RC=0
-git -C "$ANALYSIS_ROOT" worktree remove --force "$STATE_WORKTREE" || CLEANUP_RC=$?
-if [ "$CLEANUP_RC" -eq 0 ] && \
-   { [ ! -f "$PUBLICATION_COMMITTED" ] || [ -f "$PUBLICATION_PR_CREATED" ]; }; then
-  if git -C "$ANALYSIS_ROOT" show-ref --verify --quiet "refs/heads/$STATE_BRANCH"; then
-    git -C "$ANALYSIS_ROOT" branch -D "$STATE_BRANCH" >/dev/null 2>&1 || CLEANUP_RC=$?
-  fi
-fi
-if [ "$CLEANUP_RC" -ne 0 ] && [ ! -s "$PUBLICATION_RESULT" ]; then
-  printf '%s\n' "State publication cleanup failed; inspect the disposable worktree." >&2
-  exit 2
-fi
-if [ "$CLEANUP_RC" -ne 0 ]; then
-  printf '%s\n' "State publication cleanup failed after publication; inspect the disposable worktree." >&2
-fi
-if [ "$PUBLICATION_RC" -ne 0 ]; then
-  FAILED_PHASE=$(cat "$PUBLICATION_PHASE")
-  if [ -f "$PUBLICATION_COMMITTED" ] && [ ! -f "$PUBLICATION_PR_CREATED" ]; then
-    printf 'State publication failed during %s. Recovery branch: %s\n' \
-      "$FAILED_PHASE" "$STATE_BRANCH" >&2
-  else
-    printf 'State publication failed during %s.\n' "$FAILED_PHASE" >&2
-  fi
-  exit "$PUBLICATION_RC"
 fi
 ```
 
-The fragment invokes `learn-from-bugs write-state` exactly once. It preserves the ISO `RUN_DATE` as marker metadata but removes unsafe characters only from the branch components. All worktree setup and cleanup commands stay anchored with `git -C "$ANALYSIS_ROOT"`. All branch creation, state writing, commit, PR, and merge commands run inside the explicit `STATE_WORKTREE` subshell.
+The verb never publishes with `git add -A`, a bare commit without `--only`, or `--auto` merge, and it keeps every worktree, branch, commit, PR, and merge command anchored to `ANALYSIS_ROOT` or the disposable `STATE_WORKTREE`. It preserves the ISO `RUN_DATE` as marker metadata but removes unsafe characters only from the branch components. On a pre-commit failure it removes the disposable worktree and unpublished branch. On a committed but PR-less failure, it removes the worktree but preserves and reports the recovery branch as `STATE_PUBLISH_RECOVERY_BRANCH`. Once a valid PR exists, the PR is the recovery surface, so the verb removes the local worktree and branch without rolling back the marker commit.
 
-Never use `git add -A`, `git commit -a`, a bare commit without `--only`, or `--auto` merge. On a pre-commit failure, the fragment removes the disposable worktree and unpublished branch. On a committed but PR-less failure, it removes the worktree but preserves and reports the recovery branch. Once a valid PR exists, the PR is the recovery surface, so the fragment removes the local worktree and branch without rolling back the marker commit.
-
-Parse exactly one whole-line `PUBLICATION_STATUS`, `PR_NUMBER`, and `PR_URL` from `PUBLICATION_RESULT`. Accept only `merged` or `handoff-pending`, a positive PR number, and a non-empty URL. `merged` is durable publication. For `handoff-pending`, show the PR number and URL, ask the operator to merge it manually, and describe the state as pending publication. Never claim durable completion for an unmerged PR.
+Parse exactly one whole-line `STATE_PUBLISH_STATUS`, `PR_NUMBER`, and `PR_URL` from `$STATE_PUBLISH_RESULT`. Accept only `merged` or `handoff-pending`, a positive PR number, and a non-empty URL. `merged` is durable publication. For `handoff-pending`, show the PR number and URL, ask the operator to merge it manually, and describe the state as pending publication. Never claim durable completion for an unmerged PR.
 
 ### Default mode (FILE_MODE=false): state publication before Step 5
 
@@ -509,7 +294,7 @@ Treat legitimate full deduplication as a valid handled create outcome only with 
 
 #### State publication after successful create
 
-Only after a successful create pass, including legitimate fully deduplicated results with complete mapping, run the shared state-publication fragment now. Keep `pending-state.json` through publication. On `PUBLICATION_STATUS=merged`, mark it complete. On `PUBLICATION_STATUS=handoff-pending`, retain it with status `handoff-pending` plus the validated PR number and URL. Do not rerun `/issue` merely because marker publication awaits manual merge. On write, commit, or PR failure, stop accurately and retain the filing artifacts and pending state. Durable filing artifacts still precede state publication and remain available after every dry-run, create, marker-write, commit, PR, or merge failure.
+Only after a successful create pass, including legitimate fully deduplicated results with complete mapping, run the shared state-publication fragment now. Keep `pending-state.json` through publication. On `STATE_PUBLISH_STATUS=merged`, mark it complete. On `STATE_PUBLISH_STATUS=handoff-pending`, retain it with status `handoff-pending` plus the validated PR number and URL. Do not rerun `/issue` merely because marker publication awaits manual merge. On write, commit, or PR failure, stop accurately and retain the filing artifacts and pending state. Durable filing artifacts still precede state publication and remain available after every dry-run, create, marker-write, commit, PR, or merge failure.
 
 <!-- step:5 - Follow-up gates -->
 ## Step 5 - Follow-up gates
