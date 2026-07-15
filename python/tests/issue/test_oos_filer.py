@@ -9,10 +9,12 @@ import io
 import json
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 from larch.core import config
 from larch.core.proc import CommandResult
+from larch import io as larch_io
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_filer
@@ -64,6 +66,7 @@ class FakeCli:
         self.fail_blocked_by = False
         self.blocker_probe_rc = 0
         self.checkpoint_rc = 0
+        self.manifest_rc = 0
         self.file_conflict_deps_rc = 0
         self.file_conflict_deps_text: str | None = None
         self.file_conflict_deps_write_output = True
@@ -71,7 +74,7 @@ class FakeCli:
     def __call__(self, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
         if args[:2] == ["run-log", "manifest"]:
-            return _cp(args)
+            return _cp(args, stderr="manifest update failed" if self.manifest_rc else "", rc=self.manifest_rc)
         if args[:2] == ["oos", "disposition-checkpoint"]:
             return _cp(args, stderr="checkpoint failed" if self.checkpoint_rc else "", rc=self.checkpoint_rc)
         if args[:2] == ["oos", "file-conflict-deps"]:
@@ -154,14 +157,74 @@ def _write_oos(tmp_path: Path, text: str) -> None:
 
 
 def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict[str, object]]:
-    monkeypatch.setattr(oos_filer, "_run_cli", fake)
+    original_parse = issue_create.parse_input
+    original_stamp = oos_filer._stamp_manifest
+
+    def parse_input(*, input_file: Path, output_dir: Path) -> issue_create.ParseInputResult:
+        _ = fake(["issue", "parse-input", "--input-file", str(input_file), "--output-dir", str(output_dir)])
+        return original_parse(input_file=input_file, output_dir=output_dir)
+
+    def create_one(parsed: dict[str, object]) -> issue_create.CreateIssueResult:
+        args = ["issue", "create-one", "--title", str(parsed["title"]), "--title-prefix", str(parsed["title_prefix"]), "--body-file", str(parsed["body_file"])]
+        if repo := str(parsed.get("repo", "")):
+            args.extend(["--repo", repo])
+        labels = parsed.get("labels", [])
+        if isinstance(labels, list):
+            for label in cast("list[object]", labels):
+                args.extend(["--label", str(label)])
+        completed = fake(args)
+        fields = larch_io.parse_kv(completed.stdout, cr_strip="strip")
+        if completed.returncode or fields.get("ISSUE_FAILED") == "true":
+            return issue_create.CreateIssueResult(error=fields.get("ISSUE_ERROR", "create failed"), exit_code=completed.returncode or 1)
+        return issue_create.CreateIssueResult(
+            title=fields.get("ISSUE_TITLE", ""),
+            number=fields.get("ISSUE_NUMBER", ""),
+            url=fields.get("ISSUE_URL") or fields.get("ISSUE_DUPLICATE_OF_URL", ""),
+            duplicate=bool(fields.get("ISSUE_DUPLICATE_OF_URL")),
+        )
+
+    def add_blocked_by(*, client: str, blocker: str, repo: str = "", **_kwargs: object) -> issue_create.BlockedByResult:
+        completed = fake(["issue", "add-blocked-by", "--client-issue", client, "--blocker-issue", blocker, *([] if not repo else ["--repo", repo])])
+        fields = larch_io.parse_kv(completed.stdout, cr_strip="strip")
+        return issue_create.BlockedByResult(client=client, blocker=blocker, added=not completed.returncode and fields.get("BLOCKED_BY_FAILED") != "true", error=fields.get("ERROR", ""), exit_code=completed.returncode)
+
+    def cleanup_failed(*, issue: str, repo: str = "") -> issue_create.CleanupResult:
+        completed = fake(["issue", "cleanup-failed", "--issue-number", issue, *([] if not repo else ["--repo", repo])])
+        return issue_create.CleanupResult(issue=issue, closed=completed.returncode == 0)
+
+    def checkpoint(_tmpdir: Path) -> int:
+        return fake(["oos", "disposition-checkpoint", "--implement-tmpdir", str(_tmpdir)]).returncode
+
+    def conflict_deps(*, input_file: Path, output_file: Path) -> tuple[int, str]:
+        completed = fake(["oos", "file-conflict-deps", "--input-file", str(input_file), "--output", str(output_file)])
+        return completed.returncode, completed.stderr or completed.stdout
+
+    def stamp_manifest(_tmpdir: Path, run_id: str, *, value: bool) -> bool:
+        completed = fake(["run-log", "manifest", "--run-id", run_id, "--field", f"steps_ran.step9a1={'true' if value else 'false'}"])
+        if completed.returncode:
+            raise RuntimeError(completed.stderr or completed.stdout)
+        return original_stamp(_tmpdir, run_id, value=value)
+
+    def external_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return fake(args[2:])
+
+    monkeypatch.setattr(issue_create, "parse_input", parse_input)
+    monkeypatch.setattr(issue_create, "create_one", create_one)
+    monkeypatch.setattr(issue_create, "add_blocked_by", add_blocked_by)
+    monkeypatch.setattr(issue_create, "cleanup_failed", cleanup_failed)
+    monkeypatch.setattr(oos_filer, "_run_disposition_checkpoint", checkpoint)
+    monkeypatch.setattr(oos_filer, "_file_conflict_deps", conflict_deps)
+    monkeypatch.setattr(oos_filer, "_stamp_manifest", stamp_manifest)
+    monkeypatch.setattr(oos_filer.subprocess, "run", external_run)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: fake.blocker_probe_rc == 0)  # type: ignore[arg-type]
     monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                              "--context-file", str(tmp_path / "session-env.sh")])
-    return rc, {}
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
+    return rc, json.loads(output.getvalue())
 
 
 def test_empty_batch_writes_zero_statistics_and_stamps_true(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,6 +236,15 @@ def test_empty_batch_writes_zero_statistics_and_stamps_true(tmp_path: Path, monk
     assert any("steps_ran.step9a1=true" in call for call in fake.calls for call in call)
     assert any(call[:2] == ["oos", "disposition-checkpoint"] for call in fake.calls)
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+
+
+def test_oos_filer_keeps_cli_reentry_only_for_external_codex() -> None:
+    source = Path(oos_filer.__file__).read_text(encoding="utf-8")
+    assert "def _run_cli" not in source
+    assert "issue_create.parse_input(" in source
+    assert "issue_create.create_one(" in source
+    assert "issue_create.add_blocked_by(" in source
+    assert "issue_create.cleanup_failed(" in source
 
 
 def test_single_item_files_issue_and_writes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,10 +394,7 @@ def test_security_sidecar_does_not_block_non_security_oos(tmp_path: Path, monkey
     _write_oos(tmp_path, "### OOS_1: Public follow-up\n- **Description**: File this public item.\n")
     fake = FakeCli(tmp_path)
     fake.checkpoint_rc = 3
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc, _payload = _run(tmp_path, fake, monkeypatch)
-    payload = json.loads(buf.getvalue())
+    rc, payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 3
     assert payload["status"] == "security_sidecar_present"
@@ -689,22 +758,8 @@ def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed
     _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
     fake = FakeCli(tmp_path)
     fake.checkpoint_rc = 2
-
-    def run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-        if args[:2] == ["run-log", "manifest"]:
-            return _cp(args, stderr="manifest update failed", rc=1)
-        return fake(args, input_text=input_text)
-
-    monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
-    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                                  "--context-file", str(tmp_path / "session-env.sh")])
-    output = json.loads(buf.getvalue())
+    fake.manifest_rc = 1
+    rc, output = _run(tmp_path, fake, monkeypatch)
     assert rc != 0
     assert output["status"] == "disposition_checkpoint_failed"
     assert output["step9a1_stamped"] is False
@@ -745,16 +800,6 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
         encoding="utf-8",
     )
 
-    def fake_run(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-        _ = input_text
-        if args[:2] == ["oos", "disposition-checkpoint"]:
-            rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
-            return _cp(args, rc=rc)
-        fake.calls.append(args)
-        if args[:2] == ["run-log", "manifest"]:
-            return _cp(args)
-        return _cp(args)
-
     def fake_subprocess_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         if argv[:3] == ["git", "merge-base", "HEAD"]:
             return _cp(argv, stdout="base\n")
@@ -769,12 +814,8 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
         return _cp(argv)
 
     fake = FakeCli(tmp_path)
-    monkeypatch.setattr(oos_filer, "_run_cli", fake_run)
     monkeypatch.setattr(file_oos.subprocess, "run", fake_subprocess_run)
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                              "--context-file", str(tmp_path / "session-env.sh")])
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     accepted = tmp_path / "oos-accepted-main-agent.md"
     assert accepted.is_file()
@@ -788,22 +829,8 @@ def test_success_path_manifest_stamp_failure_returns_zero_with_stamped_false(
     _setup(tmp_path)
     _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
     fake = FakeCli(tmp_path)
-
-    def run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-        if args[:2] == ["run-log", "manifest"]:
-            return _cp(args, stderr="manifest update failed", rc=1)
-        return fake(args, input_text=input_text)
-
-    monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
-    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                                  "--context-file", str(tmp_path / "session-env.sh")])
-    output = json.loads(buf.getvalue())
+    fake.manifest_rc = 1
+    rc, output = _run(tmp_path, fake, monkeypatch)
     # run-statistics must have been written (issued filed OK)
     assert (tmp_path / "larch-logs" / "implement" / "run-1" / "run-statistics.md").is_file()
     # stamp failure is handled gracefully: exit 0, step9a1_stamped=False
@@ -1143,16 +1170,7 @@ def test_priority_provision_failure_still_files_non_priority_survivor(
         return _cp(args, stderr="label failed", rc=1)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
-    monkeypatch.setattr(oos_filer, "_run_cli", fake)
-    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                                  "--context-file", str(tmp_path / "session-env.sh")])
-    payload = json.loads(buf.getvalue())
+    rc, payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 1
     assert payload["status"] == "priority_provision_partial_failure"
@@ -1205,25 +1223,10 @@ def test_priority_label_partial_failure_preserves_cosmetic_survivor(
     def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
         return _cp(args)
 
-    original_run_cli = fake.__call__
-
-    def run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-        if args[:2] == ["issue", "cleanup-failed"]:
-            cleanup_calls.append(args)
-        return original_run_cli(args, input_text=input_text)
-
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
     _stub_priority_label_add(monkeypatch, fail_once=True)
-    monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
-    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                                  "--context-file", str(tmp_path / "session-env.sh")])
-    payload = json.loads(buf.getvalue())
+    rc, payload = _run(tmp_path, fake, monkeypatch)
+    cleanup_calls.extend(call for call in fake.calls if call[:2] == ["issue", "cleanup-failed"])
 
     assert rc == 1
     assert payload["status"] == "priority_label_partial_failure"
@@ -1284,16 +1287,7 @@ def test_multipart_priority_label_failure_stops_later_parts(
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
     _stub_priority_label_add(monkeypatch, fail=True)
-    monkeypatch.setattr(oos_filer, "_run_cli", fake)
-    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                                  "--context-file", str(tmp_path / "session-env.sh")])
-    payload = json.loads(buf.getvalue())
+    rc, payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 1
     assert payload["status"] == "issue_batch_failed"
@@ -1319,20 +1313,13 @@ def test_duplicate_high_risk_label_failure_still_persisted_for_retry(
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
     _stub_priority_label_add(monkeypatch, fail=True)
-    monkeypatch.setattr(oos_filer, "_run_cli", fake)
-    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
-    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
-                                  "--context-file", str(tmp_path / "session-env.sh")])
-    payload = json.loads(buf.getvalue())
+    rc, payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 1
     assert payload["status"] == "priority_label_partial_failure"
-    assert "https://github.com/owner/repo/issues/101" in payload["urls"]
+    urls = payload["urls"]
+    assert isinstance(urls, list)
+    assert "https://github.com/owner/repo/issues/101" in urls
     assert "https://github.com/owner/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
 
 

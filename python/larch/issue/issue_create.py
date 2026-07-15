@@ -57,15 +57,6 @@ def _flat_error(*, text: str, limit: int = 500) -> str:
     return " ".join(redact_secrets_outbound(text).split())[:limit]
 
 
-def _redact_checked(text: str) -> tuple[str | None, int]:
-    try:
-        return redact_secrets_outbound(text), 0
-    except Exception as exc:  # pragma: no cover - defensive seam for tests
-        emit_kv(key="ISSUE_FAILED", value="true")
-        emit_kv(key="ISSUE_ERROR", value=f"redaction:{exc}")
-        return None, 3
-
-
 @dataclass(frozen=True)
 class ParsedItem:
     title: str
@@ -74,6 +65,52 @@ class ParsedItem:
     vote: str = ""
     phase: str = ""
     malformed: bool = False
+
+
+@dataclass(frozen=True)
+class ParseInputResult:
+    """The parsed OOS items and materialized body paths for one input file."""
+
+    items: tuple[ParsedItem, ...] = ()
+    body_paths: tuple[Path | None, ...] = ()
+    mode: str = "generic"
+    error: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class CreateIssueResult:
+    """The durable outcome of one GitHub issue creation request."""
+
+    title: str = ""
+    number: str = ""
+    url: str = ""
+    issue_id: str = ""
+    error: str = ""
+    duplicate: bool = False
+    labels: tuple[str, ...] = ()
+    dry_run: bool = False
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class BlockedByResult:
+    """The outcome of adding one native GitHub blocked-by relationship."""
+
+    client: str
+    blocker: str
+    added: bool
+    error: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class CleanupResult:
+    """The best-effort outcome of closing an orphaned issue."""
+
+    issue: str
+    closed: bool
+    error: str = ""
 
 
 # Mutable parser state: methods update current_* / pending_* / items in place while scanning.
@@ -250,6 +287,51 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
     return state.items, state.parse_mode
 
 
+def parse_input(*, input_file: Path, output_dir: Path) -> ParseInputResult:
+    """Parse one issue-input file and materialize each non-empty body once."""
+    if not input_file.is_file():
+        return ParseInputResult(error=f"input file not found: {input_file}", exit_code=1)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = output_dir.resolve()
+    items, mode = parse_issue_input(input_file.read_text(encoding="utf-8"))
+    body_paths: list[Path | None] = []
+    for item_index, item in enumerate(items, start=1):
+        if not item.body:
+            body_paths.append(None)
+            continue
+        body_path = output_dir / f"item-{item_index}-body.txt"
+        try:
+            body_path.write_text(item.body, encoding="utf-8")
+        except OSError as exc:
+            return ParseInputResult(error=f"failed to write body file {body_path}: {exc}", exit_code=1)
+        body_paths.append(body_path)
+    return ParseInputResult(items=tuple(items), body_paths=tuple(body_paths), mode=mode)
+
+
+def emit_parse_input_result(result: ParseInputResult) -> int:
+    """Emit the stable CLI KV contract for :func:`parse_input`."""
+    if result.exit_code:
+        warn(f"ERROR: {result.error}")
+        return result.exit_code
+    for item_index, item in enumerate(result.items, start=1):
+        emit_kv(key=f"ITEM_{item_index}_TITLE", value=item.title)
+        body_path = result.body_paths[item_index - 1]
+        if body_path is not None:
+            emit_kv(key=f"ITEM_{item_index}_BODY_FILE", value=str(body_path))
+        if item.malformed:
+            emit_kv(key=f"ITEM_{item_index}_MALFORMED", value="true")
+        if item.reviewer:
+            emit_kv(key=f"ITEM_{item_index}_REVIEWER", value=item.reviewer)
+        if item.vote:
+            emit_kv(key=f"ITEM_{item_index}_VOTE_TALLY", value=item.vote)
+        if item.phase:
+            emit_kv(key=f"ITEM_{item_index}_PHASE", value=item.phase)
+    emit_kv(key="ITEMS_TOTAL", value=len(result.items))
+    titles = ", ".join(f"{i}={item.title[:60]}" for i, item in enumerate(result.items, start=1))
+    warn(f"▶ parse-input: {len(result.items)} items parsed (mode={result.mode})" + (f": {titles}" if titles else ""))
+    return 0
+
+
 def parse_input_main(argv: list[str]) -> int:
     input_file = ""
     output_dir = ""
@@ -274,36 +356,7 @@ def parse_input_main(argv: list[str]) -> int:
         warn("ERROR: --output-dir is required")
         warn("Usage: parse-input --input-file FILE --output-dir DIR")
         return 1
-    source = Path(input_file)
-    if not source.is_file():
-        warn(f"ERROR: input file not found: {input_file}")
-        return 1
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_dir = out_dir.resolve()
-    items, mode = parse_issue_input(source.read_text(encoding="utf-8"))
-    for item_index, item in enumerate(items, start=1):
-        emit_kv(key=f"ITEM_{item_index}_TITLE", value=item.title)
-        if item.body:
-            body_path = out_dir / f"item-{item_index}-body.txt"
-            try:
-                body_path.write_text(item.body, encoding="utf-8")
-            except OSError as exc:
-                warn(f"ERROR: failed to write body file {body_path}: {exc}")
-                return 1
-            emit_kv(key=f"ITEM_{item_index}_BODY_FILE", value=str(body_path))
-        if item.malformed:
-            emit_kv(key=f"ITEM_{item_index}_MALFORMED", value="true")
-        if item.reviewer:
-            emit_kv(key=f"ITEM_{item_index}_REVIEWER", value=item.reviewer)
-        if item.vote:
-            emit_kv(key=f"ITEM_{item_index}_VOTE_TALLY", value=item.vote)
-        if item.phase:
-            emit_kv(key=f"ITEM_{item_index}_PHASE", value=item.phase)
-    emit_kv(key="ITEMS_TOTAL", value=len(items))
-    titles = ", ".join(f"{i}={item.title[:60]}" for i, item in enumerate(items, start=1))
-    warn(f"▶ parse-input: {len(items)} items parsed (mode={mode})" + (f": {titles}" if titles else ""))
-    return 0
+    return emit_parse_input_result(parse_input(input_file=Path(input_file), output_dir=Path(output_dir)))
 
 
 def _parse_create_args(argv: list[str]) -> tuple[dict[str, object], str | None]:
@@ -380,26 +433,25 @@ def _is_oos_issue_body(body_content: str) -> bool:
     return body_content == heading or body_content.startswith(f"{heading}\n")
 
 
-def _emit_issue_failed(message: str, *, code: int = 2) -> int:
-    emit_kv(key="ISSUE_FAILED", value="true")
-    emit_kv(key="ISSUE_ERROR", value=message)
-    return code
+def _issue_failed(message: str, *, code: int = 2, title: str = "") -> CreateIssueResult:
+    return CreateIssueResult(title=title, error=message, exit_code=code)
 
 
-def _create_one_body_content(parsed: dict[str, object]) -> tuple[str, int]:
+def _create_one_body_content(parsed: dict[str, object]) -> tuple[str, CreateIssueResult | None]:
     body_file = str(parsed.get("body_file") or "")
     if not body_file:
-        return "", 0
+        return "", None
     path = Path(body_file)
     if not path.is_file():
-        return "", _emit_issue_failed(f"body file not found: {body_file}", code=1)
+        return "", _issue_failed(f"body file not found: {body_file}", code=1)
     body_content = path.read_text(encoding="utf-8")
     if not body_content:
-        return "", 0
-    redacted_body, redaction_rc = _redact_checked(body_content)
-    if redaction_rc:
-        return "", redaction_rc
-    return redacted_body or "", 0
+        return "", None
+    try:
+        redacted_body = redact_secrets_outbound(body_content)
+    except Exception as exc:  # pragma: no cover - defensive seam for tests
+        return "", _issue_failed(f"redaction:{exc}", code=3)
+    return redacted_body, None
 
 
 def _parse_issue_json(output: str) -> tuple[str, str, str] | None:
@@ -456,77 +508,60 @@ def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "")
     warn(f"ROLLBACK_FAILED: could not close orphan issue #{number} ({url}): {detail}. Manually close.")
 
 
-def _resolve_created_issue_id(*, repo: str, number: str, url: str, final_title: str) -> int:
+def _resolve_created_issue_id(*, repo: str, number: str, url: str, final_title: str) -> CreateIssueResult:
     lookup = _gh_read(["api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
-        emit_kv(key="ISSUE_NUMBER", value=number)
-        emit_kv(key="ISSUE_URL", value=url)
-        emit_kv(key="ISSUE_ID", value=issue_id)
-        emit_kv(key="ISSUE_TITLE", value=final_title)
-        return 0
+        return CreateIssueResult(title=final_title, number=number, url=url, issue_id=issue_id)
     if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(text=lookup.stderr or issue_id)})")
+        return _issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(text=lookup.stderr or issue_id)})", title=final_title)
     _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(text=lookup.stderr)}")
+    return _issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(text=lookup.stderr)}", title=final_title)
 
 
-def _resolve_created_from_output(*, repo: str, output: str, final_title: str) -> int:
+def _resolve_created_from_output(*, repo: str, output: str, final_title: str) -> CreateIssueResult:
     parsed = _parse_created_url(output)
     if not parsed:
-        return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(text=output)})")
+        return _issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(text=output)})", title=final_title)
     number, url = parsed
     lookup = _gh_read(["api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
-        emit_kv(key="ISSUE_NUMBER", value=number)
-        emit_kv(key="ISSUE_URL", value=url)
-        emit_kv(key="ISSUE_ID", value=issue_id)
-        emit_kv(key="ISSUE_TITLE", value=final_title)
-        return 0
+        return CreateIssueResult(title=final_title, number=number, url=url, issue_id=issue_id)
     if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(text=lookup.stderr or issue_id)})")
+        return _issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(text=lookup.stderr or issue_id)})", title=final_title)
     _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(text=lookup.stderr)}")
+    return _issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(text=lookup.stderr)}", title=final_title)
 
 
-def _create_fallback(*, repo: str, gh_args: list[str], final_title: str) -> int:
+def _create_fallback(*, repo: str, gh_args: list[str], final_title: str) -> CreateIssueResult:
     created = gh.command(proc, gh_args)
     if created.returncode != 0:
-        return _emit_issue_failed(_flat_error(text=created.stderr))
+        return _issue_failed(_flat_error(text=created.stderr), title=final_title)
     return _resolve_created_from_output(repo=repo, output=created.stdout, final_title=final_title)
 
 
-def create_one_main(argv: list[str]) -> int:
-    parsed, error = _parse_create_args(argv)
-    if error:
-        warn(error)
-        return 1
+def create_one(parsed: dict[str, object]) -> CreateIssueResult:
+    """Create one issue through the typed in-process API."""
     title = str(parsed.get("title") or "")
     if not title:
-        warn("Usage: create-one --title TITLE [--title-prefix PREFIX] [--label L]...")
-        return 1
-    redacted_title, redaction_rc = _redact_checked(title)
-    if redaction_rc:
-        return redaction_rc
-    title = redacted_title or ""
+        return _issue_failed("--title is required", code=1)
+    try:
+        title = redact_secrets_outbound(title)
+    except Exception as exc:  # pragma: no cover - defensive seam for tests
+        return _issue_failed(f"redaction:{exc}", code=3)
     dry_run = bool(parsed.get("dry_run"))
     title_prefix = str(parsed.get("title_prefix") or "")
     final_title = _normalize_title_prefix(title=title, title_prefix=title_prefix)
+    labels_obj = parsed.get("labels")
+    labels = tuple(str(label) for label in labels_obj) if isinstance(labels_obj, list) else ()
     if dry_run:
-        labels_obj = parsed.get("labels")
-        labels = labels_obj if isinstance(labels_obj, list) else []
-        emit_kv(key="DRY_RUN", value="true")
-        emit_kv(key="DRY_RUN_TITLE", value=final_title)
-        emit_kv(key="ISSUE_TITLE", value=final_title)
-        if labels:
-            emit_kv(key="DRY_RUN_LABELS", value=",".join(str(label) for label in labels))
-        return 0
-    body_content, body_rc = _create_one_body_content(parsed)
-    if body_rc:
-        return body_rc
+        return CreateIssueResult(title=final_title, labels=labels, dry_run=True)
+    body_content, body_error = _create_one_body_content(parsed)
+    if body_error is not None:
+        return body_error
     if not title_prefix and _is_oos_issue_body(body_content):
         final_title = _normalize_title_prefix(title=title, title_prefix="[OOS]")
     context_file_str = str(parsed.get("context_file") or "")
@@ -540,19 +575,18 @@ def create_one_main(argv: list[str]) -> int:
             trusted_root=Path(str(parsed["trusted_root"])) if parsed.get("trusted_root") else None,
         )
         if not authorized:
-            emit_kv(key=config.LIVE_MUTATION_REFUSAL_STATUS, value="true")
-            emit_kv(key="ISSUE_FAILED", value="true")
-            emit_kv(key="ISSUE_ERROR", value=f"{config.LIVE_MUTATION_REFUSAL_REASON}:{auth_reason}")
-            return config.EXIT_MUTATION_REFUSED
+            return _issue_failed(
+                f"{config.LIVE_MUTATION_REFUSAL_REASON}:{auth_reason}",
+                code=config.EXIT_MUTATION_REFUSED,
+                title=final_title,
+            )
     repo = str(parsed.get("repo") or "")
     if not repo:
         repo = _resolve_repo()
         if not repo and not dry_run:
-            return _emit_issue_failed("could not determine repo")
-    labels_obj = parsed.get("labels")
-    labels = labels_obj if isinstance(labels_obj, list) else []
-    valid_labels = _valid_labels(repo, [str(label) for label in labels], dry_run=dry_run)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as body_tmp:
+            return _issue_failed("could not determine repo", title=final_title)
+    valid_labels = _valid_labels(repo, list(labels), dry_run=dry_run)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=tempfile.gettempdir(), delete=False) as body_tmp:
         body_tmp.write(body_content)
         body_tmp_path = body_tmp.name
     try:
@@ -565,11 +599,7 @@ def create_one_main(argv: list[str]) -> int:
             json_status = _issue_create_json_status(result.stdout)
             if json_status == "ok":
                 number, url, issue_id = _parse_issue_json(result.stdout) or ("", "", "")
-                emit_kv(key="ISSUE_NUMBER", value=number)
-                emit_kv(key="ISSUE_URL", value=url)
-                emit_kv(key="ISSUE_ID", value=issue_id)
-                emit_kv(key="ISSUE_TITLE", value=final_title)
-                return 0
+                return CreateIssueResult(title=final_title, number=number, url=url, issue_id=issue_id, labels=tuple(valid_labels))
             if json_status == "resolve_id":
                 data = json.loads(result.stdout)
                 return _resolve_created_issue_id(
@@ -580,13 +610,43 @@ def create_one_main(argv: list[str]) -> int:
                 )
             if json_status == "empty_fields":
                 redacted_output = _flat_error(text=result.stdout)
-                return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
+                return _issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})", title=final_title)
             return _resolve_created_from_output(repo=repo, output=result.stdout, final_title=final_title)
         if unknown_json:
             return _create_fallback(repo=repo, gh_args=gh_args, final_title=final_title)
-        return _emit_issue_failed(_flat_error(text=result.stderr))
+        return _issue_failed(_flat_error(text=result.stderr), title=final_title)
     finally:
         Path(body_tmp_path).unlink(missing_ok=True)
+
+
+def emit_create_issue_result(result: CreateIssueResult) -> int:
+    """Emit the stable CLI KV contract for :func:`create_one`."""
+    if result.exit_code:
+        if result.exit_code == config.EXIT_MUTATION_REFUSED:
+            emit_kv(key=config.LIVE_MUTATION_REFUSAL_STATUS, value="true")
+        emit_kv(key="ISSUE_FAILED", value="true")
+        emit_kv(key="ISSUE_ERROR", value=result.error)
+        return result.exit_code
+    if result.dry_run:
+        emit_kv(key="DRY_RUN", value="true")
+        emit_kv(key="DRY_RUN_TITLE", value=result.title)
+        emit_kv(key="ISSUE_TITLE", value=result.title)
+        if result.labels:
+            emit_kv(key="DRY_RUN_LABELS", value=",".join(result.labels))
+        return 0
+    emit_kv(key="ISSUE_NUMBER", value=result.number)
+    emit_kv(key="ISSUE_URL", value=result.url)
+    emit_kv(key="ISSUE_ID", value=result.issue_id)
+    emit_kv(key="ISSUE_TITLE", value=result.title)
+    return 0
+
+
+def create_one_main(argv: list[str]) -> int:
+    parsed, error = _parse_create_args(argv)
+    if error:
+        warn(error)
+        return 1
+    return emit_create_issue_result(create_one(parsed))
 
 
 def allocate_candidates(*, total_items: int, rows_text: str) -> list[int]:
@@ -681,44 +741,23 @@ def _positive_int(value: str) -> bool:
     return value.isdigit() and int(value) > 0
 
 
-def _blocked_failure(*, client: str, blocker: str, message: str, code: int = 2) -> int:
-    emit_kv(key="BLOCKED_BY_FAILED", value="true")
-    emit_kv(key="CLIENT", value=client)
-    emit_kv(key="BLOCKER", value=blocker)
+def _blocked_failure(*, client: str, blocker: str, message: str, code: int = 2) -> BlockedByResult:
     try:
         error_text = _flat_error(text=message)
     except Exception as exc:  # pragma: no cover - defensive seam for tests
-        emit_kv(key="ERROR", value=f"redaction:{exc}")
-        return 3
-    emit_kv(key="ERROR", value=error_text)
-    return code
+        return BlockedByResult(client=client, blocker=blocker, added=False, error=f"redaction:{exc}", exit_code=3)
+    return BlockedByResult(client=client, blocker=blocker, added=False, error=error_text, exit_code=code)
 
 
-def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = time.sleep) -> int:
-    client = ""
-    blocker = ""
-    blocker_id = ""
-    repo = ""
-    index = 0
-    while index < len(argv):
-        arg = argv[index]
-        if arg in {"--client-issue", "--blocker-issue", "--blocker-id", "--repo"} and index + 1 < len(argv):
-            value = argv[index + 1]
-            if arg == "--client-issue":
-                client = value
-            elif arg == "--blocker-issue":
-                blocker = value
-            elif arg == "--blocker-id":
-                blocker_id = value
-            else:
-                repo = value
-            index += 2
-        else:
-            warn(f"Unknown option: {arg}")
-            return 1
-    if not client or not blocker:
-        warn("Usage: add-blocked-by --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO]")
-        return 1
+def add_blocked_by(
+    *,
+    client: str,
+    blocker: str,
+    blocker_id: str = "",
+    repo: str = "",
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> BlockedByResult:
+    """Add one dependency edge with the CLI's retry and idempotency contract."""
     if not _positive_int(value=client) or not _positive_int(value=blocker):
         return _blocked_failure(client=client, blocker=blocker, message="client-issue and blocker-issue must be positive integers", code=1)
     if blocker_id and not _positive_int(value=blocker_id):
@@ -741,7 +780,7 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
             sleep_fn(10)
         elif attempt == THIRD_ATTEMPT:
             sleep_fn(30)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=tempfile.gettempdir(), delete=False) as tmp:
             tmp.write(body)
             tmp_path = tmp.name
         try:
@@ -750,19 +789,53 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
             Path(tmp_path).unlink(missing_ok=True)
         err = result.stderr or result.stdout
         if result.returncode == 0:
-            emit_kv(key="BLOCKED_BY_ADDED", value="true")
-            emit_kv(key="CLIENT", value=client)
-            emit_kv(key="BLOCKER", value=blocker)
-            return 0
+            return BlockedByResult(client=client, blocker=blocker, added=True)
         if re.search(r"HTTP 404|status 404|404 Not Found", err, re.IGNORECASE):
             return _blocked_failure(client=client, blocker=blocker, message=f"feature-unavailable: {err}")
         if re.search(r"HTTP 422", err, re.IGNORECASE) and IDEMPOTENT_RE.search(err):
-            emit_kv(key="BLOCKED_BY_ADDED", value="true")
-            emit_kv(key="CLIENT", value=client)
-            emit_kv(key="BLOCKER", value=blocker)
-            return 0
+            return BlockedByResult(client=client, blocker=blocker, added=True)
         last_error = err
     return _blocked_failure(client=client, blocker=blocker, message=f"all 3 attempts failed: {last_error}")
+
+
+def emit_blocked_by_result(result: BlockedByResult) -> int:
+    """Emit the stable CLI KV contract for :func:`add_blocked_by`."""
+    if result.added:
+        emit_kv(key="BLOCKED_BY_ADDED", value="true")
+    else:
+        emit_kv(key="BLOCKED_BY_FAILED", value="true")
+    emit_kv(key="CLIENT", value=result.client)
+    emit_kv(key="BLOCKER", value=result.blocker)
+    if result.error:
+        emit_kv(key="ERROR", value=result.error)
+    return result.exit_code
+
+
+def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = time.sleep) -> int:
+    values: dict[str, str] = {}
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in {"--client-issue", "--blocker-issue", "--blocker-id", "--repo"} and index + 1 < len(argv):
+            values[arg] = argv[index + 1]
+            index += 2
+        else:
+            warn(f"Unknown option: {arg}")
+            return 1
+    client = values.get("--client-issue", "")
+    blocker = values.get("--blocker-issue", "")
+    if not client or not blocker:
+        warn("Usage: add-blocked-by --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO]")
+        return 1
+    return emit_blocked_by_result(
+        add_blocked_by(
+            client=client,
+            blocker=blocker,
+            blocker_id=values.get("--blocker-id", ""),
+            repo=values.get("--repo", ""),
+            sleep_fn=sleep_fn,
+        )
+    )
 
 
 def _title_archival(title: str) -> bool:
@@ -995,6 +1068,29 @@ def write_sentinel_main(argv: list[str]) -> int:
     return 0
 
 
+def cleanup_failed(*, issue: str, repo: str = "") -> CleanupResult:
+    """Best-effort cleanup used after a partially-created OOS batch."""
+    if not issue.isdigit():
+        return CleanupResult(issue=issue, closed=False, error="invalid or missing --issue-number")
+    if not repo:
+        repo = _resolve_repo()
+        if not repo:
+            return CleanupResult(issue=issue, closed=False, error="could not determine repo")
+    result = gh.issue_close(proc, issue, repo=repo, reason="not planned")
+    if result.returncode == 0:
+        return CleanupResult(issue=issue, closed=True)
+    return CleanupResult(issue=issue, closed=False, error=_flat_error(text=result.stderr))
+
+
+def emit_cleanup_result(result: CleanupResult) -> int:
+    """Emit the stable CLI KV contract for :func:`cleanup_failed`."""
+    emit_kv(key="CLOSED", value=str(result.closed).lower())
+    emit_kv(key="ISSUE", value=result.issue)
+    if result.error:
+        emit_kv(key="ERROR", value=result.error)
+    return 0
+
+
 def cleanup_failed_main(argv: list[str]) -> int:
     issue = ""
     repo = ""
@@ -1009,28 +1105,5 @@ def cleanup_failed_main(argv: list[str]) -> int:
             index += 2
         else:
             warn(f"Unknown option: {arg}")
-            emit_kv(key="CLOSED", value="false")
-            emit_kv(key="ISSUE", value=issue or "unknown")
-            emit_kv(key="ERROR", value=f"unknown option: {arg}")
-            return 0
-    if not issue.isdigit():
-        emit_kv(key="CLOSED", value="false")
-        emit_kv(key="ISSUE", value=issue)
-        emit_kv(key="ERROR", value="invalid or missing --issue-number")
-        return 0
-    if not repo:
-        repo = _resolve_repo()
-        if not repo:
-            emit_kv(key="CLOSED", value="false")
-            emit_kv(key="ISSUE", value=issue)
-            emit_kv(key="ERROR", value="could not determine repo")
-            return 0
-    result = gh.issue_close(proc, issue, repo=repo, reason="not planned")
-    if result.returncode == 0:
-        emit_kv(key="CLOSED", value="true")
-        emit_kv(key="ISSUE", value=issue)
-    else:
-        emit_kv(key="CLOSED", value="false")
-        emit_kv(key="ISSUE", value=issue)
-        emit_kv(key="ERROR", value=_flat_error(text=result.stderr))
-    return 0
+            return emit_cleanup_result(CleanupResult(issue=issue or "unknown", closed=False, error=f"unknown option: {arg}"))
+    return emit_cleanup_result(cleanup_failed(issue=issue, repo=repo))

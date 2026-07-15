@@ -4,11 +4,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 from larch.core import config as _issue_create_config
 from larch.issue import issue_create
@@ -149,6 +149,19 @@ def test_parse_input_oos_and_malformed_body_file(tmp_path: Path, capsys: Any) ->
     assert "ITEM_4_TITLE=title only" in out
     assert "ITEM_4_BODY_FILE=" not in out
     assert (out_dir / "item-1-body.txt").read_text(encoding="utf-8") == "body"
+
+
+def test_parse_input_returns_frozen_typed_result(tmp_path: Path) -> None:
+    input_file = tmp_path / "items.md"
+    input_file.write_text("### OOS_1: first\n- **Description**: body\n", encoding="utf-8")
+
+    result = issue_create.parse_input(input_file=input_file, output_dir=tmp_path / "out")
+
+    assert result.exit_code == 0
+    assert result.items[0].title == "first"
+    assert result.body_paths[0] == (tmp_path / "out" / "item-1-body.txt").resolve()
+    with pytest.raises(FrozenInstanceError):
+        result.mode = "changed"  # type: ignore[misc]  # frozen-result regression assertion
 
 
 def test_parse_input_finding_format_oos_captures_body(tmp_path: Path, capsys: Any) -> None:
