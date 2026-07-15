@@ -2057,24 +2057,24 @@ def _publish_ok_responses() -> list[CommandResult]:
         _result(),                                        # 3  verify-origin
         _result("main\n"),                                # 4  gh repo view defaultBranchRef
         _result(),                                        # 5  check-ref-format refs/heads/main
-        _result(),                                        # 6  fetch
+        _result(),                                        # 6  git.fetch
         _result(),                                        # 7  rev-parse --verify default ref
         _result(),                                        # 8  check-ref-format --branch
-        _result(rc=1),                                    # 9  show-ref local branch (absent)
-        _result(rc=2),                                    # 10 ls-remote (absent)
+        _result(rc=1),                                    # 9  git.local_branch_exists (absent)
+        _result(rc=2),                                    # 10 git.remote_branch_state (absent)
         _result(),                                        # 11 worktree add
         _result(),                                        # 12 switch -c
         _result(f"STATE_RELPATH={_STATE_MARKER_REL}\n"),  # 13 write-state
-        _result(),                                        # 14 git add
-        _result(),                                        # 15 git commit
-        _result(f"{_STATE_MARKER_REL}\n"),                # 16 diff-tree (marker only)
+        _result(),                                        # 14 git.add
+        _result(),                                        # 15 git.commit
+        _result(f"{_STATE_MARKER_REL}\n"),                # 16 git.diff_tree_name_only (marker only)
         _result(_STATE_PR_STDOUT),                        # 17 pr create
         _result("OPEN\n"),                                # 18 pr view state
         _result(),                                        # 19 pr merge
         _result("MERGED\n"),                              # 20 pr view state
         _result("2026-07-14T00:00:00Z\n"),                # 21 pr view mergedAt
         _result(),                                        # 22 worktree remove
-        _result(),                                        # 23 show-ref cleanup (present)
+        _result(),                                        # 23 git.local_branch_exists cleanup (present)
         _result(),                                        # 24 branch -D
     ]
 
@@ -2091,6 +2091,11 @@ def _run_publish(
     run_dir.mkdir(exist_ok=True)
     if precreate_worktree:
         (run_dir / learn_from_bugs.STATE_PUBLISH_WORKTREE_NAME).mkdir()
+    # The typed git.add/git.commit seam runs _assert_branch_write_allowed, which
+    # probes the current branch only when a ship/implement handoff state file is
+    # present. Clear those vars so the offline call sequence stays hermetic.
+    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
     monkeypatch.setattr(
         learn_from_bugs, "_runner", lambda: RecordingRunner.strict_queue(*responses)
     )

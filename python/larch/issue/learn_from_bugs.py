@@ -33,7 +33,7 @@ from larch.core.architectural_guidelines import (
 )
 from larch.core.proc import CommandResult, ProcRunner, Runner
 from larch.errors import ShipError
-from larch.git import gh
+from larch.git import gh, git
 from larch.issue import issue_wire
 from larch.issue.analyze_bugs import resolve_repo
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
@@ -1697,7 +1697,6 @@ STATE_PUBLISH_WRITE_STATE_FAILED: Final = "write-state-failed"
 STATE_PUBLISH_COMMIT_FAILED: Final = "commit-failed"
 STATE_PUBLISH_PR_CREATE_FAILED: Final = "pr-create-failed"
 
-_REMOTE_BRANCH_ABSENT_RC: Final = 2
 _PR_NUMBER_RE: Final = re.compile(r"[1-9][0-9]*")
 _PR_STATUSES: Final = frozenset({"created", "existing"})
 
@@ -1820,7 +1819,7 @@ def _resolve_default_branch(runner: Runner, request: StatePublishRequest) -> tup
             "the repository default branch is not a valid Git branch",
         )
     fetch_spec = f"+refs/heads/{default_branch}:refs/remotes/origin/{default_branch}"
-    if _git(runner, root, ["fetch", "origin", fetch_spec]).returncode != 0:
+    if git.fetch(runner, "origin", fetch_spec, cwd=str(root)).returncode != 0:
         raise StatePublishError(
             STATE_PUBLISH_FETCH_FAILED, "could not fetch the repository default branch"
         )
@@ -1847,19 +1846,18 @@ def _reserve_branch(runner: Runner, root: Path, branch: str) -> None:
         raise StatePublishError(
             STATE_PUBLISH_INVALID_BRANCH, "the state publication branch is invalid"
         )
-    local = _git(runner, root, ["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"])
-    if local.returncode == 0:
+    if git.local_branch_exists(runner, branch, cwd=str(root)):
         raise StatePublishError(
             STATE_PUBLISH_EXISTING_LOCAL_BRANCH,
             "refusing to reuse an existing local state publication branch",
         )
-    remote = _git(runner, root, ["ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{branch}"])
-    if remote.returncode == 0:
+    remote = git.remote_branch_state(runner, f"refs/heads/{branch}", cwd=str(root))
+    if remote.state == "present":
         raise StatePublishError(
             STATE_PUBLISH_EXISTING_REMOTE_BRANCH,
             "refusing to reuse an existing remote state publication branch",
         )
-    if remote.returncode != _REMOTE_BRANCH_ABSENT_RC:
+    if remote.state != "absent":
         raise StatePublishError(
             STATE_PUBLISH_REMOTE_CHECK_FAILED, "could not check the remote state publication branch"
         )
@@ -1903,15 +1901,16 @@ def _write_state_in_worktree(runner: Runner, ctx: _PublishContext) -> str:
 def _commit_marker(
     runner: Runner, ctx: _PublishContext, marker_rel: str, progress: _PublishProgress
 ) -> None:
-    if _git(runner, ctx.worktree, ["add", "--", marker_rel]).returncode != 0:
+    worktree = str(ctx.worktree)
+    if git.add(runner, marker_rel, cwd=worktree).returncode != 0:
         raise StatePublishError(STATE_PUBLISH_COMMIT_FAILED, "could not stage the state marker")
-    commit = _git(
-        runner, ctx.worktree, ["commit", "-m", _STATE_MARKER_SUBJECT, "--only", "--", marker_rel]
+    commit = git.commit(
+        runner, _STATE_MARKER_SUBJECT, only=True, paths=(marker_rel,), cwd=worktree
     )
     if commit.returncode != 0:
         raise StatePublishError(STATE_PUBLISH_COMMIT_FAILED, "could not commit the state marker")
     progress.committed = True
-    changed = _git(runner, ctx.worktree, ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"])
+    changed = git.diff_tree_name_only(runner, "HEAD", cwd=worktree)
     committed_paths = [line for line in changed.stdout.splitlines() if line.strip()]
     if changed.returncode != 0 or committed_paths != [marker_rel]:
         raise StatePublishError(
@@ -2018,10 +2017,13 @@ def _cleanup_worktree(runner: Runner, ctx: _PublishContext, progress: _PublishPr
     removed = _git(runner, root, ["worktree", "remove", "--force", str(ctx.worktree)])
     preserve = progress.committed and not progress.pr_created
     cleanup_failed = removed.returncode != 0
-    if removed.returncode == 0 and not preserve:
-        exists = _git(runner, root, ["show-ref", "--verify", "--quiet", f"refs/heads/{ctx.branch}"])
-        if exists.returncode == 0 and _git(runner, root, ["branch", "-D", ctx.branch]).returncode != 0:
-            cleanup_failed = True
+    if (
+        removed.returncode == 0
+        and not preserve
+        and git.local_branch_exists(runner, ctx.branch, cwd=str(root))
+        and _git(runner, root, ["branch", "-D", ctx.branch]).returncode != 0
+    ):
+        cleanup_failed = True
     if cleanup_failed:
         print(
             f"state publication cleanup failed; inspect the disposable worktree at {ctx.worktree}",
