@@ -128,6 +128,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("analyze-issues", "render-chart"): ("larch.rendering.render_chart", "render_chart_main", False),
     ("analyze-bugs", "prefetch"): ("larch.issue.analyze_bugs", "prefetch_main", False),
     ("analyze-bugs", "ledger"): ("larch.issue.analyze_bugs", "ledger_main", False),
+    ("analyze-bugs", "runtime"): ("larch.issue.analyze_bugs", "runtime_main", False),
     ("analyze-bugs", "report"): ("larch.issue.analyze_bugs", "report_main", False),
     ("analyze-bugs", "sweep"): ("larch.issue.analyze_bugs", "sweep_main", False),
     ("learn-from-bugs", "prepare"): ("larch.issue.learn_from_bugs", "prepare_main", True),

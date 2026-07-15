@@ -70,7 +70,7 @@ MARKER_PHRASE_RE: Final = re.compile(
 )
 ISSUE_REFERENCE_RE: Final = re.compile(r"(?<![A-Za-z0-9])#([1-9][0-9]*)")
 BASELINE_PATH_RE: Final = re.compile(r"^python/[^/]+-baseline\.json$")
-VERIFIED_PREDICATE_VERSION: Final = "final-tier-non-pending-v1"
+VERIFIED_PREDICATE_VERSION: Final = "certifiable-fixed-runtime-v2"
 SWEEP_SCHEMA_VERSION: Final = 1
 SWEEP_DEFAULT_MAX: Final = 20
 SWEEP_INITIAL_WINDOW_SECONDS: Final = 48 * 60 * 60
@@ -99,6 +99,18 @@ SWEEP_PRINTABLE_MIN: Final = 0x20
 SWEEP_LOG_FIELDS: Final = 3
 SWEEP_FINDER_OUTPUT_TOKENS: Final = 400
 SWEEP_REFUTER_OUTPUT_TOKENS: Final = 80
+RUNTIME_RESULTS_NAME: Final = "runtime-results.jsonl"
+RUNTIME_SCHEMA_VERSION: Final = "1"
+RUNTIME_EVIDENCE_CAP: Final = 500
+CERTIFIABLE_FIXED_VERDICTS: Final = frozenset({"CONFIRMED_FIXED", "FIXED_CLEAR", "FIXED_LIKELY"})
+HARNESS_MAP: Final[tuple[tuple[str, str], ...]] = (
+    ("skills/implement/", "test-architectural-guidelines-step"),
+    ("scripts/test-implement-anti-halt.sh", "test-implement-anti-halt"),
+    ("scripts/", "test-lint-bash32"),
+)
+ORCHESTRATION_ZONE_PREFIXES: Final = (
+    "skills/", "scripts/", "hooks/", "agents/", "python/larch/implement/", "python/larch/design/",
+)
 FULL_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 SWEEP_TIMESTAMP_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 SWEEP_FLUSH_SUBJECT_RE: Final = re.compile(r"^chore\(larch-logs\)")
@@ -110,6 +122,28 @@ DIFF_FUNCTION_SYMBOL_RE: Final = re.compile(r"^[+-]\s*(?:async\s+)?def\s+([A-Za-
 DIFF_FIELD_SYMBOL_RE: Final = re.compile(r"^[+-]\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?!=)")
 DIFF_DICT_SUBSCRIPT_SYMBOL_RE: Final = re.compile(r"\[\s*(['\"])([A-Za-z_][A-Za-z0-9_-]*)\1\s*\]")
 DIFF_DICT_LITERAL_SYMBOL_RE: Final = re.compile(r"(?:^|[,{]\s*)(['\"])([A-Za-z_][A-Za-z0-9_-]*)\1\s*:")
+
+
+@dataclass(frozen=True)
+class RuntimeBinding:
+    issue: int
+    cache_key: str
+    fix_sha: str
+
+
+@dataclass(frozen=True)
+class RuntimeComponent:
+    name: str
+    status: str
+    evidence: str = ""
+
+
+@dataclass(frozen=True)
+class RuntimeResult:
+    fix_sha: str
+    bindings: tuple[RuntimeBinding, ...]
+    components: tuple[RuntimeComponent, ...]
+    uncovered_zones: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2302,6 +2336,208 @@ def ledger_main(argv: list[str]) -> int:
     return 0
 
 
+
+def _safe_runtime_path(value: str) -> bool:
+    path = Path(value)
+    return bool(value) and not path.is_absolute() and "\\" not in value and ".." not in path.parts and "." not in path.parts
+
+
+def _runtime_evidence(result: proc.CommandResult) -> str:
+    source = (result.stderr or result.stdout or "").replace("\r", " ").replace("\n", " ")
+    cleaned = "".join(char if char.isprintable() else " " for char in source)
+    return _capped(cleaned.replace("|", "\\|").strip(), RUNTIME_EVIDENCE_CAP)
+
+
+def discover_runtime_tests(*, runner: Runner, fix_sha: str, repo_root: Path) -> tuple[str, ...]:
+    result: proc.CommandResult = runner.run(["git", "diff-tree", "--no-commit-id", "--name-status", "-r", fix_sha])
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise AnalyzeBugsError(f"runtime test discovery for {fix_sha} failed: {detail}")
+    paths: list[str] = []
+    for line in result.stdout.splitlines():
+        status, separator, candidate = line.partition("\t")
+        if not separator or status not in {"A", "M"}:
+            continue
+        if not candidate.startswith("python/tests/") or not _safe_runtime_path(candidate):
+            continue
+        if not (repo_root / candidate).is_file():
+            continue
+        paths.append(candidate)
+    return tuple(sorted(set(paths)))
+
+
+def resolve_runtime_harnesses(paths: Sequence[str]) -> tuple[str, ...]:
+    targets: list[str] = []
+    for prefix, target in HARNESS_MAP:
+        if any(path.startswith(prefix) for path in paths) and target not in targets:
+            targets.append(target)
+    return tuple(targets)
+
+
+def runtime_zone_label(path: str) -> str | None:
+    matches: list[str] = [prefix for prefix in ORCHESTRATION_ZONE_PREFIXES if path.startswith(prefix)]
+    if not matches:
+        return None
+    return max(matches, key=len).rstrip("/")
+
+
+def _runtime_uncovered_zones(paths: Sequence[str]) -> tuple[str, ...]:
+    uncovered: set[str] = set()
+    for path in paths:
+        zone: str | None = runtime_zone_label(path)
+        if zone and not any(path.startswith(prefix) for prefix, _target in HARNESS_MAP):
+            uncovered.add(zone)
+    return tuple(sorted(uncovered))
+
+
+def _runtime_component(name: str, result: proc.CommandResult) -> RuntimeComponent:
+    if result.returncode == 0:
+        return RuntimeComponent(name=name, status="passed")
+    status = "timeout" if result.returncode == config.PROC_TIMEOUT_EXIT_CODE else "failed"
+    return RuntimeComponent(name=name, status=status, evidence=_runtime_evidence(result))
+
+
+def _runtime_result_json(result: RuntimeResult) -> dict[str, object]:
+    return {
+        "schema_version": RUNTIME_SCHEMA_VERSION,
+        "fix_sha": result.fix_sha,
+        "bindings": [asdict(binding) for binding in result.bindings],
+        "components": [asdict(component) for component in result.components],
+        "uncovered_zones": list(result.uncovered_zones),
+    }
+
+
+def _runtime_result_from_mapping(raw: Mapping[str, Any]) -> RuntimeResult:
+    required = {"schema_version", "fix_sha", "bindings", "components", "uncovered_zones"}
+    if set(raw) != required or str(raw.get("schema_version")) != RUNTIME_SCHEMA_VERSION:
+        raise AnalyzeBugsError("malformed runtime result artifact")
+    fix_sha = raw.get("fix_sha")
+    bindings_raw = raw.get("bindings")
+    components_raw = raw.get("components")
+    zones_raw = raw.get("uncovered_zones")
+    if not isinstance(fix_sha, str) or not FULL_SHA_RE.fullmatch(fix_sha) or not isinstance(bindings_raw, list) or not isinstance(components_raw, list) or not isinstance(zones_raw, list):
+        raise AnalyzeBugsError("malformed runtime result artifact")
+    bindings: list[RuntimeBinding] = []
+    for item in bindings_raw:
+        if not isinstance(item, dict) or set(item) != {"issue", "cache_key", "fix_sha"} or isinstance(item["issue"], bool):
+            raise AnalyzeBugsError("malformed runtime result binding")
+        try:
+            issue = int(item["issue"])
+        except (TypeError, ValueError) as exc:
+            raise AnalyzeBugsError("malformed runtime result binding") from exc
+        if issue <= 0 or not isinstance(item["cache_key"], str) or not isinstance(item["fix_sha"], str) or not FULL_SHA_RE.fullmatch(item["fix_sha"]):
+            raise AnalyzeBugsError("malformed runtime result binding")
+        bindings.append(RuntimeBinding(issue=issue, cache_key=item["cache_key"], fix_sha=item["fix_sha"]))
+    components: list[RuntimeComponent] = []
+    for item in components_raw:
+        if not isinstance(item, dict) or set(item) != {"name", "status", "evidence"}:
+            raise AnalyzeBugsError("malformed runtime result component")
+        if not all(isinstance(item[key], str) for key in ("name", "status", "evidence")) or item["status"] not in {"passed", "failed", "timeout", "absent"}:
+            raise AnalyzeBugsError("malformed runtime result component")
+        components.append(RuntimeComponent(name=item["name"], status=item["status"], evidence=item["evidence"]))
+    if not all(isinstance(zone, str) and zone for zone in zones_raw):
+        raise AnalyzeBugsError("malformed runtime uncovered zones")
+    return RuntimeResult(fix_sha=fix_sha, bindings=tuple(bindings), components=tuple(components), uncovered_zones=tuple(zones_raw))
+
+
+def load_runtime_results(path: Path, bundles: Sequence[BundleRecord]) -> dict[str, RuntimeResult]:
+    if not path.exists():
+        return {}
+    expected: set[tuple[int, str, str]] = {(bundle.issue_number, bundle.cache_key, bundle.fix_sha) for bundle in bundles}
+    matched: dict[str, RuntimeResult] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise AnalyzeBugsError(f"malformed runtime result artifact: {path}") from exc
+        if not isinstance(raw, dict):
+            raise AnalyzeBugsError(f"malformed runtime result artifact: {path}")
+        result: RuntimeResult = _runtime_result_from_mapping(cast("Mapping[str, Any]", raw))
+        for binding in result.bindings:
+            key: tuple[int, str, str] = (binding.issue, binding.cache_key, binding.fix_sha)
+            if key not in expected or binding.fix_sha != result.fix_sha:
+                continue
+            if binding.cache_key in matched:
+                raise AnalyzeBugsError(f"duplicate current runtime result for {binding.cache_key}")
+            matched[binding.cache_key] = result
+    return matched
+
+
+def runtime_verify(*, runner: Runner, run_dir: Path, bundles: Sequence[BundleRecord], runtime_max: int, repo_root: Path) -> tuple[tuple[RuntimeResult, ...], int]:
+    if runtime_max < 0:
+        raise AnalyzeBugsError("--runtime-max must be nonnegative")
+    grouped: dict[str, list[BundleRecord]] = {}
+    for bundle in bundles:
+        if not bundle.fix_sha:
+            continue
+        if not FULL_SHA_RE.fullmatch(bundle.fix_sha):
+            raise AnalyzeBugsError(f"runtime verification received invalid fix SHA for issue #{bundle.issue_number}")
+        grouped.setdefault(bundle.fix_sha, []).append(bundle)
+    ranked: list[tuple[str, list[BundleRecord]]] = sorted(grouped.items(), key=lambda item: (-max(bundle.fix_time for bundle in item[1]), item[0]))
+    if runtime_max == 0:
+        _atomic_write_text(run_dir / RUNTIME_RESULTS_NAME, "")
+        _write_json(run_dir / "runtime-summary.json", {"selected_unique_shas": 0, "skipped_unique_shas": len(ranked)})
+        return (), len(ranked)
+    selected: list[tuple[str, list[BundleRecord]]] = ranked[:runtime_max]
+    results: list[RuntimeResult] = []
+    for fix_sha, grouped_bundles in selected:
+        bindings: tuple[RuntimeBinding, ...] = tuple(RuntimeBinding(bundle.issue_number, bundle.cache_key, fix_sha) for bundle in grouped_bundles)
+        touched_paths: tuple[str, ...] = tuple(p for bundle in grouped_bundles for p in bundle.touched_files)
+        tests: tuple[str, ...] = discover_runtime_tests(runner=runner, fix_sha=fix_sha, repo_root=repo_root)
+        components: list[RuntimeComponent] = []
+        if tests:
+            base_temp: Path = run_dir / "runtime-pytest-tmp" / fix_sha
+            command: list[str] = ["python3", "-m", "pytest", "-p", "no:cacheprovider", "--basetemp", str(base_temp), "--", *tests]
+            components.append(_runtime_component("pytest", runner.run(command, timeout=config.ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC, cwd=str(repo_root))))
+        else:
+            components.append(RuntimeComponent(name="pytest", status="absent", evidence="no runnable commit test files"))
+        components.extend(
+            _runtime_component(target, runner.run(["make", target], timeout=config.ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC, cwd=str(repo_root)))
+            for target in resolve_runtime_harnesses(touched_paths)
+        )
+        results.append(RuntimeResult(fix_sha=fix_sha, bindings=bindings, components=tuple(components), uncovered_zones=_runtime_uncovered_zones(touched_paths)))
+    path: Path = run_dir / RUNTIME_RESULTS_NAME
+    _atomic_write_text(path, "".join(json.dumps(_runtime_result_json(result), sort_keys=True) + "\n" for result in results))
+    skipped = len(ranked) - len(selected)
+    _write_json(run_dir / "runtime-summary.json", {"selected_unique_shas": len(results), "skipped_unique_shas": skipped})
+    return tuple(results), skipped
+
+
+def runtime_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python/cli.py analyze-bugs runtime")
+    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--ledger-path", required=True)
+    parser.add_argument("--runtime-max", type=int, default=config.ANALYZE_BUGS_DEFAULT_RUNTIME_MAX)
+    parser.add_argument("--repo-root", required=True)
+    args = parser.parse_args(argv)
+    try:
+        manifest_path = Path(args.manifest)
+        _manifest, bundles = _load_manifest(manifest_path)
+        runner = _runner()
+        results, skipped = runtime_verify(runner=runner, run_dir=Path(args.run_dir), bundles=bundles, runtime_max=args.runtime_max, repo_root=Path(args.repo_root))
+    except AnalyzeBugsError as exc:
+        return _fail(str(exc))
+    _emit_kvs({"RUNTIME_RESULTS_PATH": str(Path(args.run_dir) / RUNTIME_RESULTS_NAME), "RUNTIME_SELECTED_UNIQUE_SHAS": len(results), "RUNTIME_SKIPPED_UNIQUE_SHAS": skipped})
+    return 0
+
+
+def _runtime_overlay(verdict: str, tier: str, reason: str, result: RuntimeResult | None) -> tuple[str, str, str, tuple[str, ...]]:
+    if result is None:
+        return verdict, tier, reason, ()
+    annotations: tuple[str, ...] = tuple(f"UNVERIFIED_RUNTIME: no harness covers {zone}" for zone in result.uncovered_zones)
+    failures: list[RuntimeComponent] = [component for component in result.components if component.status in {"failed", "timeout"}]
+    if failures:
+        detail = "; ".join(f"{component.name} {component.status}: {component.evidence}".rstrip(": ") for component in failures)
+        return "SUSPECT", "RUNTIME", detail, annotations
+    executed: list[RuntimeComponent] = [component for component in result.components if component.status == "passed"]
+    if executed and verdict in CERTIFIABLE_FIXED_VERDICTS:
+        return verdict, "RUNTIME", reason, annotations
+    return verdict, tier, reason, annotations
+
+
 def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, str, tuple[str, ...], bool]:
     if not bundle.required_evidence_complete:
         scans = (
@@ -2325,7 +2561,7 @@ def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) 
 
 
 def _verified_issue(verdict: str, tier: str) -> bool:
-    return bool(tier) and verdict != "NEEDS_DEEP"
+    return tier in {"TRIAGE", "DEEP", "RUNTIME"} and verdict in CERTIFIABLE_FIXED_VERDICTS
 
 
 def _valid_introduced_risk(risk: str, reason: str) -> bool:
@@ -2589,6 +2825,9 @@ def _sweep_state_timestamp() -> str:
 def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> str:
     manifest, bundles = _load_manifest(manifest_path)
     ledger, corrupt_count = load_ledger(ledger_path)
+    runtime_results = load_runtime_results(run_dir / RUNTIME_RESULTS_NAME, bundles)
+    runtime_summary_path = run_dir / "runtime-summary.json"
+    runtime_summary = _load_json(runtime_summary_path) if runtime_summary_path.exists() else {}
     sweep = _validated_sweep_artifact(run_dir=run_dir)
     sweep_artifact = sweep[0] if sweep else None
     selected_sweep_manifest = sweep[1] if sweep else None
@@ -2601,6 +2840,7 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
     class_open_rows: list[tuple[BundleRecord, tuple[str, ...], str]] = []
     verdict_values: list[str] = []
     verified_issues: list[int] = []
+    coverage_gaps: dict[str, set[int]] = {}
     for bundle in bundles:
         record = _record_for_bundle(ledger, bundle)
         verdict, tier, reason, missing, sampled = _final_verdict_with_tier(bundle, record)
@@ -2608,6 +2848,11 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
             verdict = "NEEDS_DEEP"
             tier = ""
             reason = "deep cap truncated this candidate"
+        verdict, tier, reason, annotations = _runtime_overlay(verdict, tier, reason, runtime_results.get(bundle.cache_key))
+        if annotations:
+            reason = "; ".join((reason, *annotations)) if reason else "; ".join(annotations)
+            for annotation in annotations:
+                coverage_gaps.setdefault(annotation, set()).add(bundle.issue_number)
         rows.append((bundle, verdict, tier, reason, missing, sampled))
         selected_risk = _selected_introduced_risk(record)
         if selected_risk and selected_risk[1] != NO_INTRODUCED_RISK:
@@ -2633,6 +2878,8 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
         ]
     )
     detail_rows = [["Issue", "Fix", "Tier", "Verdict", "Reason", "Missing items"]]
+    coverage_gap_rows = [["Coverage gap", "Issues"]]
+    coverage_gap_rows.extend([annotation, _format_issues(sorted(issues))] for annotation, issues in sorted(coverage_gaps.items()))
     for bundle, verdict, tier, reason, missing, _sampled in rows:
         issue_link = f"#{bundle.issue_number}" if not bundle.url else f"[#{bundle.issue_number}]({bundle.url})"
         detail_rows.append([issue_link, _short_sha(bundle.fix_sha), tier or "PENDING", verdict, reason, "; ".join(missing)])
@@ -2710,6 +2957,9 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
         "# Analyze Bugs Report", "", f"Repo: {snapshot.repo}", f"Evidence ref: {manifest.get('evidence_ref', '')}",
         f"Requested: {manifest.get('bugs_requested', '')}", f"Selected: {manifest.get('bugs_selected', '')}", "",
         "## Counts", "", count_table, "", "## Issues", "", _markdown_table(detail_rows), "",
+        "## Harness coverage gaps", "", _markdown_table(coverage_gap_rows) if coverage_gaps else "None.", "",
+        f"Runtime selected unique SHAs: {runtime_summary.get('selected_unique_shas', 0)}",
+        f"Runtime skipped unique SHAs: {runtime_summary.get('skipped_unique_shas', 0)}", "",
         "## Chronic zones", "", _markdown_table(zone_rows) if analytics.chronic_zones else "None.", "",
         "## Fix chains", "", _markdown_table(chain_rows) if analytics.chain_edges else "None.", "",
         "## Baseline-extending fixes", "", _markdown_table(baseline_rows) if analytics.baseline_issues else "None.", "",
