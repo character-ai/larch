@@ -98,7 +98,7 @@ Tier A keeps the current `/larch:issue` filing target:
 
 1. Compose `issue-input` and treat compose output as artifact metadata only.
 2. If dry-run is active, skip dedup and `/larch:issue`, then write the terminal sentinel with `STALL_RECOVERY_REPORT_STATUS=dry-run`.
-3. Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery dedup-tier-a-report`.
+3. Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery dedup-tier-a-report`. It defaults its mutation context to `$IMPLEMENT_TMPDIR/session-env.sh`; an explicit `--context-file` remains available for a trusted file in that same session directory.
 4. Branch only on `STALL_RECOVERY_REPORT_STATUS`.
 5. On `dedup-comment`, skip `/larch:issue`.
 6. On `no-match` or `lookup-failed-open`, call `/larch:issue --input-file ... --no-dedup`.

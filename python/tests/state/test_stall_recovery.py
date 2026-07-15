@@ -2562,7 +2562,6 @@ def test_dedup_tier_a_report_normalizes_helper_output(
     rc = stall_recovery.dedup_tier_a_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--body-file", str(body_file),
-        "--context-file", str(ctx),
     ])
 
     assert rc == 0
@@ -3207,8 +3206,8 @@ def test_classify_generic_publish_tail_without_plan_write_stays_unrecoverable(
     assert "RESUME_HINT=none" in out
 
 
-def test_dedup_tier_a_report_refuses_without_context(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    """dedup-tier-a-report must refuse when no valid context is provided."""
+def test_dedup_tier_a_report_refuses_without_authorized_session(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """dedup-tier-a-report must refuse when its default session context is invalid."""
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     body = tmp_path / "issue-input.md"
     _ = body.write_text("### [Bug] test\nbody text\n", encoding="utf-8")
