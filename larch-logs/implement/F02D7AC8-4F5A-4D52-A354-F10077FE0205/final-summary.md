@@ -51,9 +51,10 @@ Warnings (1):
 
 - **Outcome**: shipping
 - **Duration**: 00:58:31
-- **Cost**: 💰 TOTAL ~$20.31: Claude $8.53, Codex-5.6 $2.51, Codex-mini $0.03, Cursor $5.13 (Composer $4.14, Grok $0.99), Claude (subprocess) $4.11  |  Tokens: 35468k
+- **Cost**: 💰 TOTAL ~$21.74: Claude $9.94, Codex-5.6 $2.51, Codex-mini $0.03, Cursor $5.13 (Composer $4.14, Grok $0.99), Claude (subprocess) $4.13  |  Tokens: 39773k
 - **Issue**: #6991: https://github.com/character-ai/larch/issues/6991
 - **Plan review**: N/A
+- **Plan coverage**: 4/4 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: static-only, producer missing-or-invalid
 - **Code review**: 7/8 accepted
