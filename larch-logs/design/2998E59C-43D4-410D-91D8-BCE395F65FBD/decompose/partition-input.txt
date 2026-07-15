@@ -1,0 +1,138 @@
+### split-7064-1: Harness inventory reconciliation
+
+Partition piece 1 of 2 split from #7064.
+
+**Scope**: Reconcile `Makefile` shard-line assignments, `scripts/residual-bash-paths.txt` stale-entry removal, `scripts/test-harness-shards-coverage.sh` CARVE_OUTS and self-test update, and conditional `.github/workflows/ci.yaml` shard rebalance.
+
+**Firm headings**: Makefile, scripts/residual-bash-paths.txt, scripts/test-harness-shards-coverage.sh
+
+**Acceptance**:
+
+`make test-harness-shards-coverage` and its self-test pass; residual-bash-paths.txt has no stale entries; every remaining Bash harness is in exactly one shard; no pytest recipe is in any shard.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Final harness inventory and CI reconciliation
+
+Partition piece 5 of 5 split from #7004.
+
+**Scope**: Reconcile the final cross-cutting state in `Makefile`, `scripts/test-harness-shards-coverage.sh`, `scripts/residual-bash-paths.txt`, and `docs/linting.md`; sweep mechanical references in `agent-lint.toml` and `ARCHITECTURAL_INVARIANTS.md`; and update `.github/workflows/ci.yaml` or the harness requirements file only if measured shard timings justify a matrix change. Do not introduce new test behavior or defer wiring required by Pieces 2-4.
+
+**Firm headings**: scripts/residual-bash-paths.txt, scripts/test-harness-shards-coverage.sh, docs/linting.md
+
+**Acceptance**:
+
+Every remaining Bash harness belongs to exactly one Bash shard, no pytest recipe is scheduled through the Bash harness inventory, and the residual manifest contains only permitted runtime Bash plus the four delegation smokes. `make test-harness-shards-coverage` and its self-test, residual-Bash lint, retired-script lint, `make py-test`, and `make test-harnesses` pass. Documentation matches the measured inventory. Any CI shard-count change includes timing evidence and remains consistent with Makefile shard definitions. The final parity and line-count audit confirms no lost cases and a net deletion near 6,500-7,500 lines.
+
+**Dependencies (from panel)**: blocked-by Piece 2, Piece 3, Piece 4
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Retire pytest-twin bash harnesses
+
+​#### Problem
+
+The Bash test harnesses total 24,223 lines across 91 files. Four harnesses of 910/939/1,003/258 lines (`test-write-final-report.sh`, `test-step-7a.sh`, `test-oos-disposition-gate.sh`, `test-flush-execution-issues.sh`) test 8-line `exec python3 cli.py` wrapper scripts (verified) whose behavior already has pytest twins (`test_final_report.py` 1,359 lines, `test_step_7a.py` 432, partial coverage for the other two); Makefile:970 runs both lanes. Across 70 files there are ~2,300 lines of copied scaffolding: 193 definitions of fail/pass/assert helper families, mktemp+trap setup in 64, fake-bin PATH stubs for gh/codex/cursor/claude in 11, fake plugin-tree builders in 13, env-file writers in 14. The seven `*-structure.sh` tests (2,951 lines) implement the same prose-pin job with two divergent assertion engines (`test-implement-structure.sh` embeds a private Python mini-framework at lines 13-45; `test-design-structure.sh` is grep-based). The big step harnesses are 80-90% fixture scaffolding by line count.
+
+​#### Goal
+
+Keep a ~30-line smoke test per thin wrapper; move behavior cases into the existing pytest twins; build the missing pytest fixture kit (fake-bin factory, fake plugin tree, env writers) so genuinely-Bash helpers are tested by pytest shelling out to the real script; consolidate the structure tests onto one parameterized pin-checker with per-skill pin tables. No new shared Bash library (policy-compliant: fixtures move to python/tests).
+
+​#### Size
+
+Net reduction 6,500-7,500 lines, and new fixes stop shipping hand-written harness code.
+
+​#### Dependencies
+
+Land after the pytest wire-fixture/session-builder issue (the migrated cases consume that kit).
+
+
+
+### split-7064-2: Documentation and reference sweep
+
+Partition piece 2 of 2 split from #7064.
+
+**Scope**: Sweep `agent-lint.toml` comment blocks for retired harnesses, update I-Outcome-1 in `ARCHITECTURAL_INVARIANTS.md`, and reconcile the harness inventory section of `docs/linting.md`.
+
+**Firm headings**: agent-lint.toml, ARCHITECTURAL_INVARIANTS.md, docs/linting.md
+
+**Acceptance**:
+
+`make lint` passes; agent-lint.toml has no comments referencing deleted test scripts; ARCHITECTURAL_INVARIANTS.md cites only the surviving pytest twin for Step 7a; docs/linting.md inventory section is accurate.
+
+**Dependencies (from proposal)**: blocked-by Piece 1
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Final harness inventory and CI reconciliation
+
+Partition piece 5 of 5 split from #7004.
+
+**Scope**: Reconcile the final cross-cutting state in `Makefile`, `scripts/test-harness-shards-coverage.sh`, `scripts/residual-bash-paths.txt`, and `docs/linting.md`; sweep mechanical references in `agent-lint.toml` and `ARCHITECTURAL_INVARIANTS.md`; and update `.github/workflows/ci.yaml` or the harness requirements file only if measured shard timings justify a matrix change. Do not introduce new test behavior or defer wiring required by Pieces 2-4.
+
+**Firm headings**: scripts/residual-bash-paths.txt, scripts/test-harness-shards-coverage.sh, docs/linting.md
+
+**Acceptance**:
+
+Every remaining Bash harness belongs to exactly one Bash shard, no pytest recipe is scheduled through the Bash harness inventory, and the residual manifest contains only permitted runtime Bash plus the four delegation smokes. `make test-harness-shards-coverage` and its self-test, residual-Bash lint, retired-script lint, `make py-test`, and `make test-harnesses` pass. Documentation matches the measured inventory. Any CI shard-count change includes timing evidence and remains consistent with Makefile shard definitions. The final parity and line-count audit confirms no lost cases and a net deletion near 6,500-7,500 lines.
+
+**Dependencies (from panel)**: blocked-by Piece 2, Piece 3, Piece 4
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Retire pytest-twin bash harnesses
+
+​#### Problem
+
+The Bash test harnesses total 24,223 lines across 91 files. Four harnesses of 910/939/1,003/258 lines (`test-write-final-report.sh`, `test-step-7a.sh`, `test-oos-disposition-gate.sh`, `test-flush-execution-issues.sh`) test 8-line `exec python3 cli.py` wrapper scripts (verified) whose behavior already has pytest twins (`test_final_report.py` 1,359 lines, `test_step_7a.py` 432, partial coverage for the other two); Makefile:970 runs both lanes. Across 70 files there are ~2,300 lines of copied scaffolding: 193 definitions of fail/pass/assert helper families, mktemp+trap setup in 64, fake-bin PATH stubs for gh/codex/cursor/claude in 11, fake plugin-tree builders in 13, env-file writers in 14. The seven `*-structure.sh` tests (2,951 lines) implement the same prose-pin job with two divergent assertion engines (`test-implement-structure.sh` embeds a private Python mini-framework at lines 13-45; `test-design-structure.sh` is grep-based). The big step harnesses are 80-90% fixture scaffolding by line count.
+
+​#### Goal
+
+Keep a ~30-line smoke test per thin wrapper; move behavior cases into the existing pytest twins; build the missing pytest fixture kit (fake-bin factory, fake plugin tree, env writers) so genuinely-Bash helpers are tested by pytest shelling out to the real script; consolidate the structure tests onto one parameterized pin-checker with per-skill pin tables. No new shared Bash library (policy-compliant: fixtures move to python/tests).
+
+​#### Size
+
+Net reduction 6,500-7,500 lines, and new fixes stop shipping hand-written harness code.
+
+​#### Dependencies
+
+Land after the pytest wire-fixture/session-builder issue (the migrated cases consume that kit).
+
+
+
