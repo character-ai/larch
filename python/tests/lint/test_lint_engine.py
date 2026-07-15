@@ -2213,8 +2213,12 @@ def test_required_occurrence_baseline_rejects_missing_file_before_clean_scan(
 ) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "missing.json"
+
+    def clean_detect(_source: SourceFile) -> list[Finding]:
+        return []
+
     rule = _occurrence_rule(
-        detect=lambda _source: [],
+        detect=clean_detect,
         require_baseline=True,
     )
 
