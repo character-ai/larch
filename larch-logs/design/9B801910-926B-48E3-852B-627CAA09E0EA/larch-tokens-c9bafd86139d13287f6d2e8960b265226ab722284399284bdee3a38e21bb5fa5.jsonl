@@ -1,0 +1,23 @@
+{"type":"mark","step":"design Step 0: session setup","ts":"2026-07-15T02:54:37Z"}
+{"type":"vendor","vendor":"codex","input":82194,"output":7269,"cache_read":453666,"cache_create":0,"total":543129,"raw":"codex_plan_draft","ts":"2026-07-15T03:12:53Z","model":"gpt-5.6-sol"}
+{"type":"vendor","vendor":"codex","input":36237,"output":3367,"cache_read":55911,"cache_create":0,"total":95515,"raw":"codex_review","ts":"2026-07-15T04:28:54Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":86755,"output":5700,"cache_read":305255,"cache_create":0,"total":397710,"raw":"codex_review","ts":"2026-07-15T04:29:03Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":49575,"output":4967,"cache_read":216872,"cache_create":0,"total":271414,"raw":"codex_review","ts":"2026-07-15T04:29:09Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":88828,"output":6115,"cache_read":377431,"cache_create":0,"total":472374,"raw":"codex_review","ts":"2026-07-15T04:29:16Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":84759,"output":6318,"cache_read":386648,"cache_create":0,"total":477725,"raw":"codex_review","ts":"2026-07-15T04:29:17Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"cursor","input":180393,"output":11042,"cache_read":1950249,"cache_create":0,"total":2141684,"raw":"cursor_review","ts":"2026-07-15T04:30:22Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":109847,"output":14725,"cache_read":1657092,"cache_create":0,"total":1781664,"raw":"cursor_review","ts":"2026-07-15T04:30:28Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":107900,"output":11886,"cache_read":1867840,"cache_create":0,"total":1987626,"raw":"cursor_review","ts":"2026-07-15T04:30:42Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":129302,"output":13685,"cache_read":3205161,"cache_create":0,"total":3348148,"raw":"cursor_review","ts":"2026-07-15T04:30:46Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":118574,"output":13996,"cache_read":2757496,"cache_create":0,"total":2890066,"raw":"cursor_review","ts":"2026-07-15T04:31:38Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":12830,"output":3550,"cache_read":0,"cache_create":0,"total":16380,"raw":"codex_review","ts":"2026-07-15T04:32:04Z","model":"gpt-5.6-luna"}
+{"type":"vendor","vendor":"codex","input":45334,"output":5104,"cache_read":143379,"cache_create":0,"total":193817,"raw":"codex_review","ts":"2026-07-15T04:34:42Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":54047,"output":5768,"cache_read":184621,"cache_create":0,"total":244436,"raw":"codex_review","ts":"2026-07-15T04:34:49Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":61249,"output":6670,"cache_read":287967,"cache_create":0,"total":355886,"raw":"codex_review","ts":"2026-07-15T04:35:03Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":25341,"output":2953,"cache_read":67937,"cache_create":0,"total":96231,"raw":"codex_review","ts":"2026-07-15T04:35:32Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":51448,"output":3405,"cache_read":109510,"cache_create":0,"total":164363,"raw":"codex_review","ts":"2026-07-15T04:36:17Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":15504,"output":369,"cache_read":24950,"cache_create":0,"total":40823,"raw":"codex_review","ts":"2026-07-15T04:38:16Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":14824,"output":348,"cache_read":23223,"cache_create":0,"total":38395,"raw":"codex_review","ts":"2026-07-15T04:38:17Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":20576,"output":645,"cache_read":41979,"cache_create":0,"total":63200,"raw":"codex_review","ts":"2026-07-15T04:38:20Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":10838,"output":2179,"cache_read":0,"cache_create":0,"total":13017,"raw":"codex_review","ts":"2026-07-15T04:38:36Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"claude_sub","input":9,"output":597,"cache_read":17198,"cache_create":17017,"total":34821,"raw":"claude_review","ts":"2026-07-15T04:55:21Z","model":"claude-haiku-4-5"}

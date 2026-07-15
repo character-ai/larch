@@ -1,0 +1,130 @@
+### split-7297-1: Lint module, tests, and registration
+
+Partition piece 1 of 2 split from #7297.
+
+**Scope**: python/larch/lint/lint_tmpdir_arg_env_fallback.py, python/tmpdir-arg-env-fallback-baseline.json, python/tests/lint/test_lint_tmpdir_arg_env_fallback.py, python/larch/cli.py, python/lint-module-manifest.json, Makefile
+
+**Firm headings**: python/larch/lint/lint_tmpdir_arg_env_fallback.py, python/tmpdir-arg-env-fallback-baseline.json, python/tests/lint/test_lint_tmpdir_arg_env_fallback.py, python/larch/cli.py, python/lint-module-manifest.json, Makefile
+
+**Acceptance**:
+
+python3 -m pytest python/tests/lint/test_lint_tmpdir_arg_env_fallback.py; python3 python/cli.py lint tmpdir-arg-env-fallback; make py-lint-checks-fast includes new check; module-manifest lint passes
+
+**Dependencies (from proposal)**: none
+
+```
+<!--​ larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!--​ larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# Add tmpdir-arg-env-fallback lint so cli verbs fall back to IMPLEMENT_TMPDIR when --tmpdir expands empty
+
+​#### Summary
+
+Two shipped bugs share one mechanical shape: a `cli.py` verb consumed `args.tmpdir` directly while the caller's `--tmpdir "$IMPLEMENT_TMPDIR"` expanded to an empty string, because every fresh Claude Code Bash tool shell starts without `IMPLEMENT_TMPDIR` exported. `Path("")` then resolves to the cwd. #6590 made `bgjob wait` report `BGJOB_STATUS=DEAD BGJOB_DIAG=missing-registry` for live daemons; #7109 made `checks repair-loop` exit with `LOOP_STATUS=tmpdir-validation`, which the stall classifier turned into a terminal `contract-failure` stall on a fixable lint failure. Both were fixed per-site with an `or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")` fallback. Nothing stops the next verb from regressing. Add an AST lint that locks the pattern.
+
+​#### Root cause analysis (independently verified 2026-07-14)
+
+Verified on main: every known site now carries the fallback. `checks_repair_loop_main`, `checks_lint_fix_main`, and `checks_self_edit_log_main` in `python/larch/implement/checks_lint_fix.py` all call `validate_tmpdir(args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))`, and the wait path in `python/larch/bgjob/cli.py` normalizes through `_adapt_tmpdir`, which consults `config.ENV_IMPLEMENT_TMPDIR`. The launcher (`implement-run-$PPID.sh`) exports `IMPLEMENT_TMPDIR` into the child process environment, so the env fallback is always correct for launcher-run verbs; the argv expansion is the unreliable channel (#6090 documents why). The fix pattern exists only as convention; no lint enforces it.
+
+Backing issues: #6590, #7109, #6090. Class relatives #6259 and #6263 (ambient `$TMPDIR` pathologies) are already covered by `lint_tempfile_dir` and guideline `G-IO-3`.
+
+​#### Detection rule (exact)
+
+Scan `python/larch/**/*.py`, excluding `python/tests/`. Flag two AST shapes:
+
+1. A `Call` whose callee resolves to name `validate_tmpdir` (bare name or attribute ending in `.validate_tmpdir`) whose first argument is exactly the attribute `args.tmpdir` (`Attribute(value=Name(id="args"), attr="tmpdir")`).
+2. A `Call` to `Path` whose sole argument is exactly the attribute `args.tmpdir`.
+
+Do not flag when the argument node is instead a `BoolOp(Or)` whose operands include a `Call` to `os.environ.get` whose first argument is `config.ENV_IMPLEMENT_TMPDIR` (accept both `config.ENV_IMPLEMENT_TMPDIR` attribute spelling and a local `ENV_IMPLEMENT_TMPDIR` name). The lint is purely syntactic; it never inspects runtime values.
+
+​#### False-positive handling
+
+A verb that must fail loudly on a missing `--tmpdir` instead of adopting the ambient env is a legitimate strict site; it goes in the baseline with a reason. One known candidate exists at authoring time: the `model.checked_dir(Path(args.tmpdir), label="tmpdir")` site in `python/larch/bgjob/cli.py` consumes a value already normalized upstream by `_adapt_tmpdir`. Baseline that site with exactly that reason; do not refactor it in this issue.
+
+​#### Suppression syntax and baseline policy
+
+Reason-bearing shrink-only baseline at `python/tmpdir-arg-env-fallback-baseline.json`, reusing the `lint_tempfile_dir` baseline machinery: a top-level JSON array, one record per tolerated site, a required non-empty reason per row, an error on unreadable or duplicate rows, and a loud failure on stale rows that no longer match the tree. Expected contents at introduction: the single `bgjob/cli.py` row above.
+
+​#### Integration points
+
+- Module: `python/larch/lint/lint_tmpdir_arg_env_fallback.py`.
+- Registration in `python/larch/cli.py`: `("lint", "tmpdir-arg-env-fallback"): ("larch.lint.lint_tmpdir_arg_env_fallback", "main")`.
+- Baseline: `python/tmpdir-arg-env-fallback-baseline.json`.
+- Wire the verb into the same lint battery that runs `lint tempfile-dir` (Makefile and CI), with parity to sibling lints.
+
+​#### Regression cases (unit tests)
+
+- `validate_tmpdir(args.tmpdir)` is flagged.
+- `val
+
+### split-7297-2: Production site fixes and docs
+
+Partition piece 2 of 2 split from #7297.
+
+**Scope**: python/larch/state/_corpus.py, python/larch/state/admission.py, python/larch/issue/file_oos.py, python/larch/implement/dispatch_step2.py, python/larch/implement/scope_disposition.py, python/larch/bgjob/cli.py, python/tests/bgjob/test_bgjob_cli.py, docs/linting.md
+
+**Firm headings**: docs/linting.md, python/larch/state/_corpus.py, python/larch/state/admission.py, python/larch/issue/file_oos.py, python/larch/implement/dispatch_step2.py, python/larch/implement/scope_disposition.py, python/larch/bgjob/cli.py, python/tests/bgjob/test_bgjob_cli.py
+
+**Acceptance**:
+
+python3 python/cli.py lint tmpdir-arg-env-fallback exits 0; python3 -m pytest python/tests/bgjob/test_bgjob_cli.py passes
+
+**Dependencies (from proposal)**: blocked-by Piece 1
+
+```
+<!--​ larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!--​ larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# Add tmpdir-arg-env-fallback lint so cli verbs fall back to IMPLEMENT_TMPDIR when --tmpdir expands empty
+
+​#### Summary
+
+Two shipped bugs share one mechanical shape: a `cli.py` verb consumed `args.tmpdir` directly while the caller's `--tmpdir "$IMPLEMENT_TMPDIR"` expanded to an empty string, because every fresh Claude Code Bash tool shell starts without `IMPLEMENT_TMPDIR` exported. `Path("")` then resolves to the cwd. #6590 made `bgjob wait` report `BGJOB_STATUS=DEAD BGJOB_DIAG=missing-registry` for live daemons; #7109 made `checks repair-loop` exit with `LOOP_STATUS=tmpdir-validation`, which the stall classifier turned into a terminal `contract-failure` stall on a fixable lint failure. Both were fixed per-site with an `or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")` fallback. Nothing stops the next verb from regressing. Add an AST lint that locks the pattern.
+
+​#### Root cause analysis (independently verified 2026-07-14)
+
+Verified on main: every known site now carries the fallback. `checks_repair_loop_main`, `checks_lint_fix_main`, and `checks_self_edit_log_main` in `python/larch/implement/checks_lint_fix.py` all call `validate_tmpdir(args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))`, and the wait path in `python/larch/bgjob/cli.py` normalizes through `_adapt_tmpdir`, which consults `config.ENV_IMPLEMENT_TMPDIR`. The launcher (`implement-run-$PPID.sh`) exports `IMPLEMENT_TMPDIR` into the child process environment, so the env fallback is always correct for launcher-run verbs; the argv expansion is the unreliable channel (#6090 documents why). The fix pattern exists only as convention; no lint enforces it.
+
+Backing issues: #6590, #7109, #6090. Class relatives #6259 and #6263 (ambient `$TMPDIR` pathologies) are already covered by `lint_tempfile_dir` and guideline `G-IO-3`.
+
+​#### Detection rule (exact)
+
+Scan `python/larch/**/*.py`, excluding `python/tests/`. Flag two AST shapes:
+
+1. A `Call` whose callee resolves to name `validate_tmpdir` (bare name or attribute ending in `.validate_tmpdir`) whose first argument is exactly the attribute `args.tmpdir` (`Attribute(value=Name(id="args"), attr="tmpdir")`).
+2. A `Call` to `Path` whose sole argument is exactly the attribute `args.tmpdir`.
+
+Do not flag when the argument node is instead a `BoolOp(Or)` whose operands include a `Call` to `os.environ.get` whose first argument is `config.ENV_IMPLEMENT_TMPDIR` (accept both `config.ENV_IMPLEMENT_TMPDIR` attribute spelling and a local `ENV_IMPLEMENT_TMPDIR` name). The lint is purely syntactic; it never inspects runtime values.
+
+​#### False-positive handling
+
+A verb that must fail loudly on a missing `--tmpdir` instead of adopting the ambient env is a legitimate strict site; it goes in the baseline with a reason. One known candidate exists at authoring time: the `model.checked_dir(Path(args.tmpdir), label="tmpdir")` site in `python/larch/bgjob/cli.py` consumes a value already normalized upstream by `_adapt_tmpdir`. Baseline that site with exactly that reason; do not refactor it in this issue.
+
+​#### Suppression syntax and baseline policy
+
+Reason-bearing shrink-only baseline at `python/tmpdir-arg-env-fallback-baseline.json`, reusing the `lint_tempfile_dir` baseline machinery: a top-level JSON array, one record per tolerated site, a required non-empty reason per row, an error on unreadable or duplicate rows, and a loud failure on stale rows that no longer match the tree. Expected contents at introduction: the single `bgjob/cli.py` row above.
+
+​#### Integration points
+
+- Module: `python/larch/lint/lint_tmpdir_arg_env_fallback.py`.
+- Registration in `python/larch/cli.py`: `("lint", "tmpdir-arg-env-fallback"): ("larch.lint.lint_tmpdir_arg_env_fallback", "main")`.
+- Baseline: `python/tmpdir-arg-env-fallback-baseline.json`.
+- Wire the verb into the same lint battery that runs `lint tempfile-dir` (Makefile and CI), with parity to sibling lints.
+
+​#### Regression cases (unit tests)
+
+- `validate_tmpdir(args.tmpdir)` is flagged.
+- `val
+

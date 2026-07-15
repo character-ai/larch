@@ -1,0 +1,133 @@
+## Final Design Plan
+
+The plan is very large. Showing the full plan body below.
+
+## Plan
+
+## Approach
+
+Add a syntactic AST ratchet for unsafe direct `args.tmpdir` consumption. Use the shared lint engine for discovery, occurrence identities, reason-bearing baselines, stale-row failures, and exit codes.
+
+The current tree contains six exact `Path(args.tmpdir)` matches, not only the documented bgjob site. Preserve the five other sites' existing semantics while removing their direct AST shape. Baseline only `bgjob/cli.py`, where `_build_spec` receives a normalized value from both production callers.
+
+### NEW: python/larch/lint/lint_tmpdir_arg_env_fallback.py
+
+- Scan tracked production files under `python/larch/**/*.py`.
+- Exclude tests, helper test modules, symlinks, caches, and non-files.
+- Walk scopes in lexical order and assign stable occurrence identities.
+- Flag:
+  - bare or attribute `validate_tmpdir` calls whose first argument is exactly `args.tmpdir`;
+  - `Path` calls whose sole argument is exactly `args.tmpdir`.
+- Leave fallback `BoolOp(Or)` arguments outside the direct-node rule; cover accepted forms containing `os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ...)` or `os.environ.get(ENV_IMPLEMENT_TMPDIR, ...)` as passing fixtures.
+- Report the file, qualified symbol, pattern, occurrence, and source line.
+- Use the shared occurrence-baseline support with inline suppression disabled and strict stale-row failure.
+- Return `0` for clean or fully baselined scans, `1` for new or stale findings, and `2` for malformed input or tool failures.
+- Support guarded baseline regeneration that preserves existing reasons and rejects new rows without a supplied reason.
+
+### NEW: python/tmpdir-arg-env-fallback-baseline.json
+
+- Add one reason-bearing occurrence row for `_build_spec` in `larch/bgjob/cli.py`.
+- State that `_build_spec` is fed by `start_main`’s explicit-or-`IMPLEMENT_TMPDIR` normalization and by `_prepare_adapt_args` / `_adapt_tmpdir` normalization.
+- Keep the baseline sorted, duplicate-free, shrink-only, and limited to this documented site.
+
+### NEW: python/tests/lint/test_lint_tmpdir_arg_env_fallback.py
+
+- Test bare and attribute `validate_tmpdir(args.tmpdir)` findings.
+- Test bare `Path(args.tmpdir)` findings.
+- Test fallback forms using both accepted environment constant spellings.
+- Test `BoolOp` arguments without the exact direct `args.tmpdir` node are ignored rather than expanding the rule’s scope.
+- Test file and line diagnostics.
+- Test reason-bearing baseline suppression.
+- Test missing reasons, duplicate rows, malformed JSON, unreadable baselines, and stale rows fail loudly.
+- Test occurrence identities remain stable across line movement.
+- Test files under `python/tests/` and helper-test paths are ignored.
+- Test the expected live-tree baseline contains no row beyond the documented bgjob site.
+
+### UPDATED: python/tests/bgjob/test_bgjob_cli.py
+
+- Add start-path regression coverage showing an empty or omitted `--tmpdir` uses `IMPLEMENT_TMPDIR` before daemon startup.
+- Assert that no argument and no `IMPLEMENT_TMPDIR` produce `BGJOB_ERROR=missing-tmpdir` and do not invoke daemon startup.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("lint", "tmpdir-arg-env-fallback")` to the new module-level `main`.
+
+### UPDATED: python/lint-module-manifest.json
+
+- Add a sorted `new-module-justified` record for the new lint module.
+- Cite the commissioning issue and explain why this distinct AST rule cannot fit an existing lint host.
+
+### UPDATED: Makefile
+
+- Add `tmpdir-arg-env-fallback` beside `tempfile-dir` in `py-lint-checks-fast`.
+- This shared target supplies local `py-lint` coverage and CI Python lint shard coverage without duplicating the command in `.github/workflows/ci.yaml`.
+- Add a baseline regeneration target that preserves existing reasons and requires an initial reason for new findings.
+- Add focused lint and pytest targets if required by the surrounding Makefile target convention.
+
+### UPDATED: docs/linting.md
+
+- Document the command, scan scope, exact unsafe and accepted AST forms, baseline identity, strict stale-row behavior, regeneration command, and focused test path.
+- State that the lint runs through `py-lint-checks-fast` and the Python CI shard.
+
+### UPDATED: python/larch/state/_corpus.py
+
+- Replace the direct `Path(args.tmpdir)` AST shape with one normalization step that preserves the existing `args.tmpdir` then `args.implement_tmpdir` fallback order.
+
+### UPDATED: python/larch/state/admission.py
+
+- Separate the guarded explicit tmpdir value from its `Path` conversion.
+- Preserve the existing fork bootstrap policy: use the explicit directory when supplied, otherwise create the dedicated scratch directory. Do not adopt ambient `IMPLEMENT_TMPDIR` here.
+
+### UPDATED: python/larch/issue/file_oos.py
+
+- Normalize the CLI tmpdir before constructing `Path`.
+- Preserve required-argument and failure behavior while avoiding cwd resolution from an empty direct value.
+
+### UPDATED: python/larch/implement/dispatch_step2.py
+
+- Resolve the raw tmpdir through the explicit argument and `config.ENV_IMPLEMENT_TMPDIR` fallback before validation.
+- Preserve the existing directory check and canonical environment assignment.
+
+### UPDATED: python/larch/implement/scope_disposition.py
+
+- Keep the parser-level `IMPLEMENT_TMPDIR` default and required-directory failure.
+- Separate raw-value validation from `Path` construction so the direct unsafe AST shape is absent without weakening strict validation.
+
+### UPDATED: python/larch/bgjob/cli.py
+
+- Configure the `bgjob start` parser’s common job arguments with `tmpdir_required=False`, so argparse permits an omitted `--tmpdir` and `start_main` can apply the environment fallback.
+- Before `start_main` calls `_build_spec`, resolve an empty or omitted `args.tmpdir` through `os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")`.
+- On an empty resolved value, emit `BGJOB_ERROR=missing-tmpdir` and return `2`; otherwise assign the normalized value back to `args.tmpdir` before building the spec.
+- Keep `_build_spec` unchanged and retain `_adapt_tmpdir` as the richer adapt-path normalization boundary, including its session mismatch policy.
+- Retain the downstream direct conversion through the documented baseline row only after both production callers normalize their input.
+
+## Edge cases
+
+- Attribute callees such as `module.validate_tmpdir` must match by final attribute name.
+- `Path` calls with extra positional or keyword arguments are outside the exact rule.
+- An environment lookup for another constant must not count as the documented accepted fallback form.
+- Non-direct `BoolOp` arguments are outside the ratchet and must not be reported as direct `args.tmpdir` findings.
+- `bgjob start` must permit an omitted `--tmpdir`, then use `IMPLEMENT_TMPDIR` or fail with `missing-tmpdir`; it must not turn an empty value into `Path("")`.
+- Baseline identities must not depend on line numbers.
+- Syntax, file-read, baseline-read, or baseline-schema failures must not silently skip coverage.
+
+## Failure modes
+
+- Fail if any new direct site appears outside the baseline.
+- Fail if the bgjob baseline row becomes stale after refactoring.
+- Fail if baseline rows lack reasons, duplicate identities, use unsupported keys, or no longer match the tree.
+- Avoid expanding the baseline to accommodate the five additional live matches. Preserve or repair their existing normalization policy instead.
+- Avoid changing CI workflow YAML because CI already invokes the shared Make target.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/lint/test_lint_tmpdir_arg_env_fallback.py`.
+- Run `python3 -m pytest python/tests/bgjob/test_bgjob_cli.py`.
+- Run `python3 python/cli.py lint tmpdir-arg-env-fallback`.
+- Run the changed lint integration through `make py-lint-checks-fast`.
+- Run `python3 -m pytest python/tests/lint/test_lint_module_manifest.py python/tests/test_cli.py`.
+- Run documentation and Python lint checks only for the changed surfaces.
+
+difficulty: MODERATE
+oversize_override: operator
+diff_lines: 440
