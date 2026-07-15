@@ -26,8 +26,10 @@ from larch.core import config
 from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.core import logging_util
+from larch.core.proc import ProcRunner, Runner
 
 from larch.agents import _types
+from larch.agents._model_pins import resolve_model_pins
 from larch.agents._types import (
     _AUTH_RETRY_RC,
     _PROBE_NO_RETRY_RC,
@@ -936,7 +938,7 @@ def _read_plugin_version_best_effort() -> str:
     return "unknown"
 
 
-def status_check_main(argv: list[str] | None = None) -> int:
+def status_check_main(argv: list[str] | None = None, *, runner: Runner | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py status check")
     try:
@@ -964,6 +966,12 @@ def status_check_main(argv: list[str] | None = None) -> int:
         cursor_present=cursor_present,
         skill="status",
     )
+    active_runner = runner if runner is not None else ProcRunner()
+    pins = resolve_model_pins(
+        runner=active_runner,
+        codex_state=degraded.codex_state,
+        cursor_state=degraded.cursor_state,
+    )
     logging_util.emit_kv(key="LARCH_PLUGIN_VERSION", value=version)
     logging_util.emit_kv(key="CODEX_BINARY_FOUND", value=str(codex_binary_found))
     logging_util.emit_kv(key="CURSOR_BINARY_FOUND", value=str(cursor_binary_found))
@@ -976,4 +984,10 @@ def status_check_main(argv: list[str] | None = None) -> int:
         gate_detail = reviewer_result.codex_gate_detail or _current_codex_gate_detail()
         if gate_detail is not None:
             logging_util.emit_kv(key="CODEX_PROBE_DETAIL", value=gate_detail.message)
+    logging_util.emit_kv(key="CURSOR_MODEL_PINS", value=pins.cursor.status)
+    if pins.cursor.detail:
+        logging_util.emit_kv(key="CURSOR_MODEL_PIN_DETAIL", value=pins.cursor.detail)
+    logging_util.emit_kv(key="CODEX_MODEL_PINS", value=pins.codex.status)
+    if pins.codex.detail:
+        logging_util.emit_kv(key="CODEX_MODEL_PIN_DETAIL", value=pins.codex.detail)
     return 0

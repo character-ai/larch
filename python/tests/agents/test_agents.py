@@ -15,13 +15,12 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 import pytest
 
 from larch.agents import agents
 from larch.core import config
 from larch.core import logging_util
+from larch.core.proc import CommandResult
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.agents import _run_external
 from larch.agents import _auth
@@ -34,10 +33,6 @@ from larch.agents import _launch_failure
 from larch.agents import _types
 from larch.design import plan_grammar
 from test_support import completed, ok
-
-if TYPE_CHECKING:
-    from larch.core.proc import CommandResult
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -5977,9 +5972,12 @@ def test_status_check_emits_contract_keys(monkeypatch: pytest.MonkeyPatch, capsy
         "CODEX_STATE=ok",
         "CURSOR_STATE=binary-missing",
         "DEGRADED=true",
+        "CURSOR_MODEL_PINS=skipped",
+        "CODEX_MODEL_PINS=unverifiable",
     ):
         assert key in out
     assert "CODING_BINARY_FOUND" not in out
+    assert "CODEX_MODEL_PIN_DETAIL=" in out
 
 
 def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -5995,6 +5993,8 @@ def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch
     assert "CODEX_STATE=binary-missing" in out
     assert "CURSOR_STATE=binary-missing" in out
     assert "DEGRADED=true" in out
+    assert "CURSOR_MODEL_PINS=skipped" in out
+    assert "CODEX_MODEL_PINS=skipped" in out
 
 
 def test_status_check_appends_current_codex_gate_detail(
@@ -6020,7 +6020,26 @@ def test_status_check_appends_current_codex_gate_detail(
     )
     monkeypatch.setattr(_auth, "_current_codex_gate_detail", lambda: detail)
 
-    assert agents.status_check_main([]) == 0
+    pin_ids = sorted(set(config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY.values()))
+    models_stdout = "Available models\n\n" + "".join(f"{mid} - Display {mid}\n" for mid in pin_ids)
+
+    class _OkModelsRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            _ = timeout, cwd, env, check, stdout, stderr
+            assert tuple(argv) == config.CURSOR_MODEL_LIST_ARGV
+            return CommandResult(tuple(argv), 0, models_stdout, "", 0.01)
+
+    assert agents.status_check_main([], runner=_OkModelsRunner()) == 0
 
     assert capsys.readouterr().out.splitlines() == [
         "LARCH_PLUGIN_VERSION=1.2.3",
@@ -6032,7 +6051,93 @@ def test_status_check_appends_current_codex_gate_detail(
         "CURSOR_STATE=ok",
         "DEGRADED=true",
         "CODEX_PROBE_DETAIL=codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
+        "CURSOR_MODEL_PINS=ok",
+        "CODEX_MODEL_PINS=skipped",
+        "CODEX_MODEL_PIN_DETAIL=vendor probe not ok",
     ]
+
+
+def test_status_check_model_pins_unknown_id(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(_auth, "_read_plugin_version_best_effort", lambda: "1.2.3")
+    monkeypatch.setattr(
+        _auth,
+        "check_reviewers",
+        lambda: agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=True,
+            codex_present=True,
+            cursor_present=True,
+        ),
+    )
+
+    class _MissingPinRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            _ = argv, timeout, cwd, env, check, stdout, stderr
+            return CommandResult(
+                config.CURSOR_MODEL_LIST_ARGV,
+                0,
+                "Available models\n\nother-model - Other\n",
+                "",
+                0.01,
+            )
+
+    assert agents.status_check_main([], runner=_MissingPinRunner()) == 0
+    out = capsys.readouterr().out
+    assert "CURSOR_MODEL_PINS=unknown-id" in out
+    assert "CURSOR_MODEL_PIN_DETAIL=CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY=" in out
+    assert "CODEX_MODEL_PINS=unverifiable" in out
+    assert "DEGRADED=false" in out
+
+
+def test_status_check_model_pins_list_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(_auth, "_read_plugin_version_best_effort", lambda: "1.2.3")
+    monkeypatch.setattr(
+        _auth,
+        "check_reviewers",
+        lambda: agents.CheckReviewersResult(
+            codex_binary_found=False,
+            cursor_binary_found=True,
+            codex_present=False,
+            cursor_present=True,
+        ),
+    )
+
+    class _FailListRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            _ = argv, timeout, cwd, env, check, stdout, stderr
+            return CommandResult(config.CURSOR_MODEL_LIST_ARGV, 1, "", "boom\n", 0.01)
+
+    assert agents.status_check_main([], runner=_FailListRunner()) == 0
+    out = capsys.readouterr().out
+    assert "CURSOR_MODEL_PINS=list-failed" in out
+    assert "CURSOR_MODEL_PIN_DETAIL=cursor agent models exited 1: boom" in out
+    assert "CODEX_MODEL_PINS=skipped" in out
 
 
 def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
