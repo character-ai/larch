@@ -85,17 +85,19 @@ Warnings (41):
 
 ## Architectural invariants
 
-The diff is a pure CLI registry refactoring confined to `python/larch/cli.py`, test files, and `skills/design/SKILL.md`. None of the changed lines touch gate disarmament logic, pause-snapshot allowlists, stale-result identity validation, run-log flush artifact handling, committed artifact content, outcome labeling, panel slot accounting, agent evidence backing, or ship recovery routing. All invariants remain unaffected by this change.
+The changed lines are confined to the CLI dispatch registry, its derived compatibility view, associated test files, a skill-closure baseline JSON, and two prose lines in `skills/design/SKILL.md`. None of the changed code touches gate disarmament conditions, pause snapshot allowlists, stale-result identity validation or fingerprint checks, run-log flush artifact completeness guards, committed artifact content, pre-terminal outcome labels, panel slot accounting, agent evidence backing, or ship recovery routing. All invariants remain unaffected by this change.
 
 ## Architectural guidelines
 
-The changed code follows established conventions throughout. The registry value type widens from a 2-tuple to a 3-tuple by inlining the `machine_stdout` boolean, which consolidates what were two parallel data structures (`_REGISTRY` and the hand-maintained `_MACHINE_STDOUT_KEYS` frozenset) into a single source of truth, consistent with the spirit of defining a convention once and having all consumers derive from it. The `_MACHINE_STDOUT_KEYS` view is now computed from the registry rather than duplicated, eliminating a class of drift that the guidelines discourage. Design-lifecycle verbs are repointed from the monolithic `design_lifecycle` module to focused submodules, and the corresponding SKILL.md prose references are swept in the same change. Review pipeline verbs are similarly repointed and the test mock is updated to match the new module name. A new structural assertion verifies that no registry entry still points at the old `larch.design.design_lifecycle` module. All consuming tests are updated consistently with the registry changes. No deviation from any guideline is introduced by the changed lines.
+The registry value type widens from a 2-tuple to a 3-tuple by adding an inline `machine_stdout` boolean, which consolidates the three previously hand-maintained constants (`_DESIGN_LIFECYCLE_STDOUT_KEYS`, `_MACHINE_STDOUT_KEYS`, and the registry itself) into a single source of truth. The compatibility `_MACHINE_STDOUT_KEYS` view is now derived from the registry with a one-line comprehension and is explicitly documented as not to be hand-maintained, consistent with the principle of defining a convention once and having all selectors derive from it.
+
+Design lifecycle verbs are repointed from the monolithic `design_lifecycle` module to focused submodules (`design_step0`, `design_step0_env`, `design_step1`, `design_router`, `design_session`, `design_terminal`, `design_step2b`, `design_step5b`, `design_step5c`, `design_step6`). Review pipeline verbs are similarly repointed from `review_pipeline` to `review_gather`, `review_dispatch_panel`, `review_collect`, `review_threshold`, `review_core_body`, and `review_prune`. Run-log verbs are repointed from `run_logs` to `run_log_commit` and `run_log_flush`. All consumers of the registry (the main dispatcher, the test suite, skill-structure pins, and the `skills/design/SKILL.md` prose lines that named module paths) are swept in the same change. The test mock for `review core` is updated from `review_pipeline` to `review_core_body`. A new structural assertion verifies that no registry entry still references `larch.design.design_lifecycle`, providing a mechanical fence against reintroduction. The `LEGACY_ASSERTION_LABEL_COUNT` ratchet is decremented by one to account for the removed now-obsolete `_DESIGN_LIFECYCLE_STDOUT_KEYS` extraction check. No guideline deviation is introduced by the changed lines.
 
 ## /implement run 503DCB7A-6FDF-49C0-B53B-B8C2CFA52E2B: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:35:08
-- **Cost**: 💰 TOTAL ~$25.52: Claude $12.19, Codex-5.6 $4.48, Codex-mini $0.01, Cursor $8.18 (Composer $4.70, Grok $3.48), Claude (subprocess) $0.66  |  Tokens: 38377k
+- **Cost**: 💰 TOTAL ~$27.68: Claude $14.35, Codex-5.6 $4.48, Codex-mini $0.01, Cursor $8.18 (Composer $4.70, Grok $3.48), Claude (subprocess) $0.66  |  Tokens: 41771k
 - **Issue**: #7387: https://github.com/character-ai/larch/issues/7387
 - **PR**: #7441: https://github.com/character-ai/larch/pull/7441
 - **Plan review**: N/A
@@ -103,7 +105,7 @@ The changed code follows established conventions throughout. The registry value 
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/2 accepted
-- **Lines (PR diff)**: code +882/-960, larch-logs +611/-0
+- **Lines (PR diff)**: code +883/-961, larch-logs +617/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 41
