@@ -130,6 +130,8 @@ Do not pass `MANIFEST_PATH`, manifest JSON, bundle markdown bodies, `bundle_path
 
 Save the agent JSONL output under `$RUN_DIR/triage-results-N.jsonl`. `analyze-bugs ledger --ingest-triage` rejects rows with missing or mismatched `evidence_token` values by parsing the canonical `evidence_token: <token>` line from each bundle markdown file on disk.
 
+Current triage rows also include `introduced_risk` and its evidence reason. `none found` is the only no-risk sentinel. A completed deep verifier risk takes precedence in reporting; otherwise a valid current triage risk is used. Prior-shape ledger rows remain usable for the existing funnel but are marked legacy and never produce introduced-risk or class-completeness claims.
+
 Ingest each triage result:
 
 ```bash
@@ -165,6 +167,8 @@ python3 "$PWD/python/cli.py" analyze-bugs ledger \
   --ingest-deep "$DEEP_RESULT"
 ```
 
+Current verifier rows separately report `class_complete` and `sibling_sites`. A `CONFIRMED_FIXED` instance can remain class-open when targeted checkout Greps identify sibling `path:symbol` sites. Only completed current-schema verifier rows with that confirmed instance verdict can enter the class-open report section or follow-up body.
+
 ## Stage 3: Report
 
 Render the report from the same explicit paths. When sweep is enabled, this is the sole final rendering step: it validates and merges `sweep-validated.json` only after ledger and deep work complete.
@@ -178,7 +182,7 @@ python3 "$PWD/python/cli.py" analyze-bugs report \
 
 Print the markdown report and the `ANALYZE_BUGS_COST_ESTIMATE=...` line. With sweep, also print `ANALYZE_BUGS_SWEEP_COST_ESTIMATE=...`, selected, skipped, and pending-frontier counts, plus an incomplete-coverage notice when capped work remains. The estimate is marked estimated when Task token usage is unavailable.
 
-The Issues table names the final evidence tier as `MECH`, `TRIAGE`, or `DEEP`. The report then shows chronic zones, directional fix chains, baseline-extending fixes, and the delta since the prior valid run snapshot. A validated sweep adds a `Sweep candidates` table and can create or extend the same follow-up body even when legacy follow-ups are empty. A verified issue has a final non-pending verdict from one of those evidence tiers. Sample calibration always prints the sample size, sampled failures, and triage false-pass rate. When chronic zones exist, the report suggests `/learn-from-bugs` scoped to those zones.
+The Issues table names the final evidence tier as `MECH`, `TRIAGE`, or `DEEP`. The report then shows `Introduced risk` for selected current-schema risk claims and `Instance fixed, class open` for confirmed instances with validated siblings, plus chronic zones, directional fix chains, baseline-extending fixes, and the delta since the prior valid run snapshot. Class-open rows extend the existing approval-gated follow-up body; they never file an issue directly. A validated sweep adds a `Sweep candidates` table and can create or extend the same follow-up body even when legacy follow-ups are empty. A verified issue has a final non-pending verdict from one of those evidence tiers. Sample calibration always prints the sample size, sampled failures, and triage false-pass rate. When chronic zones exist, the report suggests `/learn-from-bugs` scoped to those zones.
 
 On a successful sweep report, `sweep-state.json` sits beside `ledger.jsonl`. It records the pinned discovery watermark and every unselected eligible SHA as a pending frontier, so capped work is retried rather than silently omitted. A first sweep covers only the prior 48 hours.
 

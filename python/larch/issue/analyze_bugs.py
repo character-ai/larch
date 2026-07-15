@@ -46,6 +46,8 @@ PLAN_MALFORMED_REASON: Final = "malformed larch:plan block"
 EVIDENCE_TOKEN_LABEL: Final = "evidence_token"
 EVIDENCE_TOKEN_PATTERN: Final = re.compile(r"^evidence_token: (\S+)$")
 EVIDENCE_TOKEN_SCAN_LINES: Final = 20
+NO_INTRODUCED_RISK: Final = "none found"
+SIBLING_SITE_RE: Final = re.compile(r"^[^:\s]+:[A-Za-z_][A-Za-z0-9_]*$")
 SCAN_REASON_CAP: Final = 500
 SCAN_OK: Final = "ok"
 SCAN_FAILED: Final = "failed"
@@ -217,8 +219,15 @@ class LedgerRecord:
     triage_missing_items: tuple[str, ...] = ()
     triage_needs_deep: bool = False
     triage_evidence_verified: bool = False
+    triage_introduced_risk: str = ""
+    triage_introduced_risk_reason: str = ""
     deep_verdict: str = ""
     deep_reason: str = ""
+    deep_introduced_risk: str = ""
+    deep_introduced_risk_reason: str = ""
+    class_complete: bool = False
+    sibling_sites: tuple[str, ...] = ()
+    legacy_schema: bool = True
     sampled: bool = False
     stages_complete: tuple[str, ...] = ()
     updated_at: int = 0
@@ -240,6 +249,9 @@ class TriageIngest:
     reason: str
     needs_deep: bool
     evidence_token: str
+    introduced_risk: str = ""
+    introduced_risk_reason: str = ""
+    legacy_schema: bool = True
 
 
 @dataclass(frozen=True)
@@ -247,6 +259,11 @@ class DeepIngest:
     issue: int
     verdict: str
     reason: str
+    introduced_risk: str = ""
+    introduced_risk_reason: str = ""
+    class_complete: bool = False
+    sibling_sites: tuple[str, ...] = ()
+    legacy_schema: bool = True
 
 
 @dataclass(frozen=True)
@@ -1328,6 +1345,18 @@ def _ledger_record_from_mapping(raw: Mapping[str, Any]) -> LedgerRecord | None:
     stages = tuple(str(item) for item in stages_raw if isinstance(item, str)) if isinstance(stages_raw, list) else ()
     missing_raw = raw.get("triage_missing_items", [])
     missing = tuple(str(item) for item in missing_raw if isinstance(item, str)) if isinstance(missing_raw, list) else ()
+    sibling_sites_raw = raw.get("sibling_sites", [])
+    sibling_sites = tuple(str(item) for item in sibling_sites_raw if isinstance(item, str)) if isinstance(sibling_sites_raw, list) else ()
+    current_fields = {
+        "triage_introduced_risk",
+        "triage_introduced_risk_reason",
+        "deep_introduced_risk",
+        "deep_introduced_risk_reason",
+        "class_complete",
+        "sibling_sites",
+        "legacy_schema",
+    }
+    current_schema = current_fields <= set(raw)
     return LedgerRecord(
         cache_key=str(raw.get("cache_key") or ""),
         issue=issue,
@@ -1338,8 +1367,15 @@ def _ledger_record_from_mapping(raw: Mapping[str, Any]) -> LedgerRecord | None:
         triage_missing_items=missing,
         triage_needs_deep=bool(raw.get("triage_needs_deep", False)),
         triage_evidence_verified=bool(raw.get("triage_evidence_verified", False)),
+        triage_introduced_risk=str(raw.get("triage_introduced_risk") or ""),
+        triage_introduced_risk_reason=str(raw.get("triage_introduced_risk_reason") or ""),
         deep_verdict=str(raw.get("deep_verdict") or ""),
         deep_reason=str(raw.get("deep_reason") or ""),
+        deep_introduced_risk=str(raw.get("deep_introduced_risk") or ""),
+        deep_introduced_risk_reason=str(raw.get("deep_introduced_risk_reason") or ""),
+        class_complete=raw.get("class_complete") is True,
+        sibling_sites=sibling_sites,
+        legacy_schema=True if not current_schema else raw.get("legacy_schema") is True,
         sampled=bool(raw.get("sampled", False)),
         stages_complete=stages,
         updated_at=int(raw.get("updated_at", 0) or 0) if str(raw.get("updated_at", 0) or 0).lstrip("-").isdigit() else 0,
@@ -1822,8 +1858,15 @@ def _upsert_record(
     triage_missing = base.triage_missing_items if base else ()
     triage_needs_deep = base.triage_needs_deep if base else False
     triage_evidence_verified = base.triage_evidence_verified if base else False
+    triage_introduced_risk = base.triage_introduced_risk if base else ""
+    triage_introduced_risk_reason = base.triage_introduced_risk_reason if base else ""
     deep_verdict = base.deep_verdict if base else ""
     deep_reason = base.deep_reason if base else ""
+    deep_introduced_risk = base.deep_introduced_risk if base else ""
+    deep_introduced_risk_reason = base.deep_introduced_risk_reason if base else ""
+    class_complete = base.class_complete if base else False
+    sibling_sites = base.sibling_sites if base else ()
+    legacy_schema = base.legacy_schema if base else True
     sampled_value = base.sampled if base else False
     if triage:
         stages.add("triage")
@@ -1832,13 +1875,25 @@ def _upsert_record(
         triage_missing = triage.missing_items
         triage_needs_deep = triage.needs_deep
         triage_evidence_verified = True
+        triage_introduced_risk = triage.introduced_risk
+        triage_introduced_risk_reason = triage.introduced_risk_reason
         stages.discard("deep")
         deep_verdict = ""
         deep_reason = ""
+        deep_introduced_risk = ""
+        deep_introduced_risk_reason = ""
+        class_complete = False
+        sibling_sites = ()
+        legacy_schema = triage.legacy_schema
     if deep:
         stages.add("deep")
         deep_verdict = deep.verdict
         deep_reason = deep.reason
+        deep_introduced_risk = deep.introduced_risk
+        deep_introduced_risk_reason = deep.introduced_risk_reason
+        class_complete = deep.class_complete
+        sibling_sites = deep.sibling_sites
+        legacy_schema = deep.legacy_schema
     if sampled is not None:
         sampled_value = sampled
     return LedgerRecord(
@@ -1851,8 +1906,15 @@ def _upsert_record(
         triage_missing_items=triage_missing,
         triage_needs_deep=triage_needs_deep,
         triage_evidence_verified=triage_evidence_verified,
+        triage_introduced_risk=triage_introduced_risk,
+        triage_introduced_risk_reason=triage_introduced_risk_reason,
         deep_verdict=deep_verdict,
         deep_reason=deep_reason,
+        deep_introduced_risk=deep_introduced_risk,
+        deep_introduced_risk_reason=deep_introduced_risk_reason,
+        class_complete=class_complete,
+        sibling_sites=sibling_sites,
+        legacy_schema=legacy_schema,
         sampled=sampled_value,
         stages_complete=tuple(sorted(stages)),
         updated_at=int(time.time()) if updated_at is None else updated_at,
@@ -1931,8 +1993,20 @@ def _strict_keys(raw: Mapping[str, Any], allowed: set[str]) -> bool:
     return set(raw.keys()) == allowed
 
 
+def _introduced_risk_fields(raw: Mapping[str, Any], *, stage: str) -> tuple[str, str] | str:
+    risk = raw.get("introduced_risk")
+    reason = raw.get("introduced_risk_reason")
+    if not isinstance(risk, str) or not risk:
+        return f"{stage} introduced_risk must be a non-empty string"
+    if not isinstance(reason, str) or not reason:
+        return f"{stage} introduced_risk_reason must be a non-empty string"
+    return risk, reason
+
+
 def _parse_triage_row(raw: Mapping[str, Any]) -> TriageIngest | str:
-    if not _strict_keys(raw, {"issue", "verdict", "missing_items", "reason", "needs_deep", "evidence_token"}):
+    legacy_keys = {"issue", "verdict", "missing_items", "reason", "needs_deep", "evidence_token"}
+    current_keys = legacy_keys | {"introduced_risk", "introduced_risk_reason"}
+    if not (_strict_keys(raw, legacy_keys) or _strict_keys(raw, current_keys)):
         return "triage row has unexpected or missing fields"
     issue = raw.get("issue")
     if isinstance(issue, bool) or not isinstance(issue, int) or issue <= 0:
@@ -1952,11 +2026,31 @@ def _parse_triage_row(raw: Mapping[str, Any]) -> TriageIngest | str:
     evidence_token = raw.get("evidence_token")
     if not isinstance(evidence_token, str) or not evidence_token:
         return "triage evidence_token must be a non-empty string"
-    return TriageIngest(issue=issue, verdict=verdict, missing_items=tuple(missing), reason=reason, needs_deep=needs_deep, evidence_token=evidence_token)
+    legacy_schema = _strict_keys(raw, legacy_keys)
+    introduced_risk = ""
+    introduced_risk_reason = ""
+    if not legacy_schema:
+        risk_fields = _introduced_risk_fields(raw, stage="triage")
+        if isinstance(risk_fields, str):
+            return risk_fields
+        introduced_risk, introduced_risk_reason = risk_fields
+    return TriageIngest(
+        issue=issue,
+        verdict=verdict,
+        missing_items=tuple(missing),
+        reason=reason,
+        needs_deep=needs_deep,
+        evidence_token=evidence_token,
+        introduced_risk=introduced_risk,
+        introduced_risk_reason=introduced_risk_reason,
+        legacy_schema=legacy_schema,
+    )
 
 
 def _parse_deep_row(raw: Mapping[str, Any]) -> DeepIngest | str:
-    if not _strict_keys(raw, {"issue", "verdict", "reason"}):
+    legacy_keys = {"issue", "verdict", "reason"}
+    current_keys = legacy_keys | {"introduced_risk", "introduced_risk_reason", "class_complete", "sibling_sites"}
+    if not (_strict_keys(raw, legacy_keys) or _strict_keys(raw, current_keys)):
         return "deep row has unexpected or missing fields"
     issue = raw.get("issue")
     if isinstance(issue, bool) or not isinstance(issue, int) or issue <= 0:
@@ -1967,7 +2061,33 @@ def _parse_deep_row(raw: Mapping[str, Any]) -> DeepIngest | str:
     reason = raw.get("reason")
     if not isinstance(reason, str):
         return "deep reason must be a string"
-    return DeepIngest(issue=issue, verdict=verdict, reason=reason)
+    legacy_schema = _strict_keys(raw, legacy_keys)
+    if legacy_schema:
+        return DeepIngest(issue=issue, verdict=verdict, reason=reason)
+    risk_fields = _introduced_risk_fields(raw, stage="deep")
+    if isinstance(risk_fields, str):
+        return risk_fields
+    class_complete = raw.get("class_complete")
+    if not isinstance(class_complete, bool):
+        return "deep class_complete must be boolean"
+    sibling_sites_raw = raw.get("sibling_sites")
+    if not isinstance(sibling_sites_raw, list) or not all(isinstance(site, str) and SIBLING_SITE_RE.fullmatch(site) for site in sibling_sites_raw):
+        return "deep sibling_sites must be valid path:symbol strings"
+    sibling_sites = tuple(sibling_sites_raw)
+    if class_complete and sibling_sites:
+        return "deep class_complete requires an empty sibling_sites list"
+    if verdict == "CONFIRMED_FIXED" and not class_complete and not sibling_sites:
+        return "deep confirmed-fixed class-open row requires sibling_sites"
+    return DeepIngest(
+        issue=issue,
+        verdict=verdict,
+        reason=reason,
+        introduced_risk=risk_fields[0],
+        introduced_risk_reason=risk_fields[1],
+        class_complete=class_complete,
+        sibling_sites=sibling_sites,
+        legacy_schema=False,
+    )
 
 
 def _triage_evidence_token_for_bundle(bundle: BundleRecord) -> EvidenceTokenLookup:
@@ -2135,6 +2255,30 @@ def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) 
 
 def _verified_issue(verdict: str, tier: str) -> bool:
     return bool(tier) and verdict != "NEEDS_DEEP"
+
+
+def _valid_introduced_risk(risk: str, reason: str) -> bool:
+    return bool(risk) and bool(reason)
+
+
+def _selected_introduced_risk(record: LedgerRecord | None) -> tuple[str, str, str] | None:
+    if record is None or record.legacy_schema:
+        return None
+    if "deep" in record.stages_complete and _valid_introduced_risk(record.deep_introduced_risk, record.deep_introduced_risk_reason):
+        return "DEEP", record.deep_introduced_risk, record.deep_introduced_risk_reason
+    if "triage" in record.stages_complete and _valid_introduced_risk(record.triage_introduced_risk, record.triage_introduced_risk_reason):
+        return "TRIAGE", record.triage_introduced_risk, record.triage_introduced_risk_reason
+    return None
+
+
+def _class_open_siblings(record: LedgerRecord | None) -> tuple[str, ...]:
+    if record is None or record.legacy_schema or "deep" not in record.stages_complete:
+        return ()
+    if record.deep_verdict != "CONFIRMED_FIXED" or record.class_complete or not record.sibling_sites:
+        return ()
+    if not all(SIBLING_SITE_RE.fullmatch(site) for site in record.sibling_sites):
+        return ()
+    return record.sibling_sites
 
 
 def _snapshot_from_mapping(raw: Mapping[str, Any], *, path: Path) -> RunSnapshot:
@@ -2382,6 +2526,8 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
     summary = _load_json(summary_path) if summary_path.exists() else {}
     truncated = {int(item) for item in summary.get("DEEP_TRUNCATED_ISSUES", []) if isinstance(item, int)}
     rows: list[tuple[BundleRecord, str, str, str, tuple[str, ...], bool]] = []
+    introduced_risk_rows: list[tuple[BundleRecord, str, str, str]] = []
+    class_open_rows: list[tuple[BundleRecord, tuple[str, ...], str]] = []
     verdict_values: list[str] = []
     verified_issues: list[int] = []
     for bundle in bundles:
@@ -2392,6 +2538,12 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
             tier = ""
             reason = "deep cap truncated this candidate"
         rows.append((bundle, verdict, tier, reason, missing, sampled))
+        selected_risk = _selected_introduced_risk(record)
+        if selected_risk and selected_risk[1] != NO_INTRODUCED_RISK:
+            introduced_risk_rows.append((bundle, *selected_risk))
+        sibling_sites = _class_open_siblings(record)
+        if sibling_sites:
+            class_open_rows.append((bundle, sibling_sites, record.deep_reason))
         verdict_values.append(verdict)
         if _verified_issue(verdict, tier):
             verified_issues.append(bundle.issue_number)
@@ -2413,15 +2565,40 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
     for bundle, verdict, tier, reason, missing, _sampled in rows:
         issue_link = f"#{bundle.issue_number}" if not bundle.url else f"[#{bundle.issue_number}]({bundle.url})"
         detail_rows.append([issue_link, _short_sha(bundle.fix_sha), tier or "PENDING", verdict, reason, "; ".join(missing)])
+    introduced_risk_table = [["Issue", "Stage", "Risk", "Evidence"]]
+    introduced_risk_table.extend(
+        [
+            f"[#{bundle.issue_number}]({bundle.url})" if bundle.url else f"#{bundle.issue_number}",
+            stage,
+            risk,
+            risk_reason,
+        ]
+        for bundle, stage, risk, risk_reason in introduced_risk_rows
+    )
+    class_open_table = [["Issue", "Fix", "Sibling sites", "Verification"]]
+    class_open_table.extend(
+        [
+            f"[#{bundle.issue_number}]({bundle.url})" if bundle.url else f"#{bundle.issue_number}",
+            _short_sha(bundle.fix_sha),
+            ", ".join(sibling_sites),
+            deep_reason,
+        ]
+        for bundle, sibling_sites, deep_reason in class_open_rows
+    )
     sampled_rows = [(bundle, verdict) for bundle, verdict, _tier, _reason, _missing, sampled in rows if sampled]
     sampled_failures = sum(1 for _bundle, verdict in sampled_rows if verdict in {"INCOMPLETE", "REGRESSED", "NOT_FIXED", "UNVERIFIABLE"})
     sample_rate = (sampled_failures / len(sampled_rows)) if sampled_rows else 0.0
     followups = [(bundle, verdict, reason) for bundle, verdict, _tier, reason, _missing, _sampled in rows if verdict in TERMINAL_FOLLOWUP_VERDICTS]
     followup_path = run_dir / "follow-up-issue.md"
-    if followups or (sweep_artifact and sweep_artifact.candidates):
+    if followups or class_open_rows or (sweep_artifact and sweep_artifact.candidates):
         body_lines = ["# Analyze-bugs follow-up", "", f"Repo: {manifest.get('repo', '')}", "", "Findings:"]
         for bundle, verdict, reason in followups:
             body_lines.append(f"- #{bundle.issue_number}: {verdict}. {reason}")
+        for bundle, sibling_sites, deep_reason in class_open_rows:
+            body_lines.append(
+                f"- #{bundle.issue_number}: Instance fixed, class open. "
+                f"Sibling sites: {', '.join(sibling_sites)}. {deep_reason}"
+            )
         if sweep_artifact and sweep_artifact.candidates:
             body_lines.extend(["", "Sweep candidates:"])
             body_lines.extend(
@@ -2474,6 +2651,10 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
         "## Sample calibration", "", f"Sample size: {len(sampled_rows)}", f"Sampled failures: {sampled_failures}",
         f"Triage false-pass rate: {sample_rate:.2%}", "",
     ]
+    if class_open_rows:
+        parts[10:10] = ["## Instance fixed, class open", "", _markdown_table(class_open_table), ""]
+    if introduced_risk_rows:
+        parts[10:10] = ["## Introduced risk", "", _markdown_table(introduced_risk_table), ""]
     if sweep_artifact and selected_sweep_manifest is not None:
         sweep_rows = [["Merge", "File", "Symbol", "Severity", "Confidence", "Description"]]
         sweep_rows.extend(
@@ -2504,7 +2685,7 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
             parts.append("")
     if corrupt_count:
         parts.extend([f"Ledger corrupt lines quarantined: {corrupt_count}", ""])
-    if followups or (sweep_artifact and sweep_artifact.candidates):
+    if followups or class_open_rows or (sweep_artifact and sweep_artifact.candidates):
         parts.extend(["## Follow-up issue body", "", f"Follow-up body file: {followup_path}", ""])
     if analytics.chronic_zones:
         parts.extend([f"Suggestion: run /learn-from-bugs scoped to {', '.join(zone.zone for zone in analytics.chronic_zones)}.", ""])
