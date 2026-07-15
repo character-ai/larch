@@ -516,7 +516,7 @@ def test_create_branch_ignores_tag_with_same_name() -> None:
                 ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
             ),
             CommandResult(
-                ("git", "checkout", "-b", branch, "origin/main"),
+                ("git", "checkout", "-b", branch, "--no-track", "origin/main"),
                 0,
                 "",
                 "",
@@ -527,6 +527,14 @@ def test_create_branch_ignores_tag_with_same_name() -> None:
     result = pr_module.create_branch(runner, branch=branch)
     assert result.status == "created"
     assert result.exit_code == 0
+    assert [
+        "git",
+        "checkout",
+        "-b",
+        branch,
+        "--no-track",
+        "origin/main",
+    ] in runner.calls
 
 
 def test_create_branch_retries_transient_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -553,13 +561,25 @@ def test_create_branch_retries_transient_fetch(monkeypatch: pytest.MonkeyPatch) 
                 ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
             ),
             CommandResult(
-                ("git", "checkout", "-b", branch, "origin/main"), 0, "", "", 0.01
+                ("git", "checkout", "-b", branch, "--no-track", "origin/main"),
+                0,
+                "",
+                "",
+                0.01,
             ),
         ],
     )
     result = pr_module.create_branch(runner, branch=branch)
     assert result.status == "created"
     assert [call[:2] for call in runner.calls].count(["git", "fetch"]) == 2
+    assert [
+        "git",
+        "checkout",
+        "-b",
+        branch,
+        "--no-track",
+        "origin/main",
+    ] in runner.calls
 
 
 # CLI contract tests migrated from test_pr_cli.py.
