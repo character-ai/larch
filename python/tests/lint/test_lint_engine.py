@@ -1961,7 +1961,7 @@ def _occurrence_rule(**kwargs: object) -> LintRule:
         occurrence_baseline=True,
         allow_inline_suppression=False,
         pathspecs=("python/**/*.py",),
-        **kwargs,  # type: ignore[arg-type]
+        **kwargs,  # type: ignore[arg-type]  # kwargs forwarding not typed in _occurrence_rule call
     )
 
 

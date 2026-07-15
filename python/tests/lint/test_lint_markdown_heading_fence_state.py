@@ -24,8 +24,8 @@ from larch.lint.markdown_heading_fence_state_detector import (
 )
 from tests.lint.test_lint_engine import (
     RecordingRunner,
-    _git_ok_runner,  # type: ignore[reportPrivateUsage]
-    _write_files,  # type: ignore[reportPrivateUsage]
+    _git_ok_runner,  # type: ignore[reportPrivateUsage]  # importing test-internal helpers from sibling test module
+    _write_files,  # type: ignore[reportPrivateUsage]  # importing test-internal helpers from sibling test module
 )
 
 
