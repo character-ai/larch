@@ -21,10 +21,12 @@ Never judge a bundle whose file could not be read. For an unreadable or malforme
 
 Emit strict JSONL only. Emit one object per issue, with exactly these fields:
 
-`{"issue": <int>, "verdict": "FIXED_CLEAR|FIXED_LIKELY|SUSPECT|NEEDS_DEEP", "missing_items": [<strings>], "reason": <string>, "needs_deep": <bool>, "evidence_token": <string>}`
+`{"issue": <int>, "verdict": "FIXED_CLEAR|FIXED_LIKELY|SUSPECT|NEEDS_DEEP", "missing_items": [<strings>], "reason": <string>, "needs_deep": <bool>, "evidence_token": <string>, "introduced_risk": <string>, "introduced_risk_reason": <string>}`
 
 Example:
 
-`{"issue": 123, "verdict": "FIXED_LIKELY", "missing_items": [], "reason": "The bundle diff updates the failing guard and no later revert touches the file.", "needs_deep": false, "evidence_token": "abc123"}`
+`{"issue": 123, "verdict": "FIXED_LIKELY", "missing_items": [], "reason": "The bundle diff updates the failing guard and no later revert touches the file.", "needs_deep": false, "evidence_token": "abc123", "introduced_risk": "none found", "introduced_risk_reason": "The bundle's consumer and scan-status evidence does not identify a plausible introduced defect."}`
 
 Use `FIXED_CLEAR` only when the diff obviously and completely addresses the bug. Use `FIXED_LIKELY` for straightforward fixes with minor residual uncertainty. Use `SUSPECT` when evidence suggests an incomplete or wrong fix. Use `NEEDS_DEEP` for insufficient, ambiguous, risky, unreadable, or malformed evidence.
+
+For `introduced_risk`, name the most plausible defect the fix may have introduced in a consumer, or emit exactly `none found`. Always provide a non-empty `introduced_risk_reason` tied to the bundle evidence. A failed scan-status stanza is insufficient evidence for `FIXED_CLEAR` or `FIXED_LIKELY`; emit a fail-closed verdict instead.

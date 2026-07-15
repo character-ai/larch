@@ -40,7 +40,16 @@ def _write_bundle(path: Path, *, proof: str = EVIDENCE_TOKEN) -> None:
     path.write_text(f"# Bundle\nevidence_token: {proof}\n\nbody\n", encoding="utf-8")
 
 
-def _triage_row(issue: int, verdict: str = "FIXED_CLEAR", *, proof: str = EVIDENCE_TOKEN, reason: str = "clear", needs_deep: bool = False) -> str:
+def _triage_row(
+    issue: int,
+    verdict: str = "FIXED_CLEAR",
+    *,
+    proof: str = EVIDENCE_TOKEN,
+    reason: str = "clear",
+    needs_deep: bool = False,
+    introduced_risk: str = "none found",
+    introduced_risk_reason: str = "The bundle evidence shows no plausible introduced consumer defect.",
+) -> str:
     return json.dumps(
         {
             "issue": issue,
@@ -49,6 +58,32 @@ def _triage_row(issue: int, verdict: str = "FIXED_CLEAR", *, proof: str = EVIDEN
             "reason": reason,
             "needs_deep": needs_deep,
             "evidence_token": proof,
+            "introduced_risk": introduced_risk,
+            "introduced_risk_reason": introduced_risk_reason,
+        },
+        sort_keys=True,
+    ) + "\n"
+
+
+def _deep_row(
+    issue: int,
+    verdict: str = "CONFIRMED_FIXED",
+    *,
+    reason: str = "deep verification confirms the instance fix",
+    introduced_risk: str = "none found",
+    introduced_risk_reason: str = "Targeted checkout search found no introduced consumer defect.",
+    class_complete: bool = True,
+    sibling_sites: list[str] | None = None,
+) -> str:
+    return json.dumps(
+        {
+            "issue": issue,
+            "verdict": verdict,
+            "reason": reason,
+            "introduced_risk": introduced_risk,
+            "introduced_risk_reason": introduced_risk_reason,
+            "class_complete": class_complete,
+            "sibling_sites": sibling_sites or [],
         },
         sort_keys=True,
     ) + "\n"
@@ -623,6 +658,11 @@ def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) 
                 "triage_evidence_verified": True,
                 "deep_verdict": "CONFIRMED_FIXED",
                 "deep_reason": "stale deep verdict",
+                "deep_introduced_risk": "stale risk",
+                "deep_introduced_risk_reason": "stale risk evidence",
+                "class_complete": False,
+                "sibling_sites": ["python/stale.py:parse_rule"],
+                "legacy_schema": False,
                 "sampled": False,
                 "stages_complete": ["deep", "triage"],
                 "updated_at": 1,
@@ -641,6 +681,10 @@ def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) 
     updated = json.loads(ledger.read_text(encoding="utf-8").splitlines()[-1])
     assert updated["deep_verdict"] == ""
     assert updated["deep_reason"] == ""
+    assert updated["deep_introduced_risk"] == ""
+    assert updated["deep_introduced_risk_reason"] == ""
+    assert updated["class_complete"] is False
+    assert updated["sibling_sites"] == []
     assert updated["triage_evidence_verified"] is True
     assert "deep" not in updated["stages_complete"]
 
@@ -1029,6 +1073,111 @@ def test_ledger_ingest_rejects_unexpected_triage_keys(tmp_path: Path) -> None:
     assert payload["INGEST_REJECTED"] == 1
 
 
+def test_agent_rows_accept_only_complete_legacy_or_current_schemas() -> None:
+    legacy_triage: dict[str, object] = {
+        "issue": 1,
+        "verdict": "FIXED_CLEAR",
+        "missing_items": list[str](),
+        "reason": "clear",
+        "needs_deep": False,
+        "evidence_token": EVIDENCE_TOKEN,
+    }
+    current_triage: dict[str, object] = {
+        **legacy_triage,
+        "introduced_risk": "none found",
+        "introduced_risk_reason": "Bundle consumer evidence has no plausible introduced defect.",
+    }
+    parsed_legacy = analyze_bugs._parse_triage_row(legacy_triage)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    parsed_current = analyze_bugs._parse_triage_row(current_triage)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+
+    assert isinstance(parsed_legacy, analyze_bugs.TriageIngest)
+    assert parsed_legacy.legacy_schema is True
+    assert isinstance(parsed_current, analyze_bugs.TriageIngest)
+    assert parsed_current.legacy_schema is False
+    assert isinstance(analyze_bugs._parse_triage_row({**current_triage, "extra": "x"}), str)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    assert isinstance(analyze_bugs._parse_triage_row({key: value for key, value in current_triage.items() if key != "introduced_risk_reason"}), str)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    assert isinstance(analyze_bugs._parse_triage_row({**current_triage, "introduced_risk": ""}), str)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+
+    current_deep = json.loads(_deep_row(1, class_complete=False, sibling_sites=["python/other.py:parse_rule"]))
+    parsed_deep = analyze_bugs._parse_deep_row(current_deep)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+
+    assert isinstance(parsed_deep, analyze_bugs.DeepIngest)
+    assert parsed_deep.sibling_sites == ("python/other.py:parse_rule",)
+    assert isinstance(analyze_bugs._parse_deep_row({**current_deep, "sibling_sites": []}), str)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    assert isinstance(analyze_bugs._parse_deep_row({**current_deep, "class_complete": True}), str)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    assert isinstance(analyze_bugs._parse_deep_row({**current_deep, "sibling_sites": ["not a site"]}), str)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    fail_closed = json.loads(_deep_row(1, verdict="UNVERIFIABLE", class_complete=False))
+    assert isinstance(analyze_bugs._parse_deep_row(fail_closed), analyze_bugs.DeepIngest)  # pyright: ignore[reportPrivateUsage]  # strict schema coverage
+    nonconfirmed_siblings = analyze_bugs.LedgerRecord(
+        cache_key="k2",
+        issue=2,
+        fix_sha="sha",
+        later_history_hash="later",
+        deep_verdict="INCOMPLETE",
+        class_complete=False,
+        sibling_sites=("python/other_parser.py:parse_rule",),
+        legacy_schema=False,
+        stages_complete=("deep",),
+    )
+    assert not analyze_bugs._class_open_siblings(nonconfirmed_siblings)  # pyright: ignore[reportPrivateUsage]  # confirmed-instance report gate coverage
+
+
+def test_legacy_ledger_rows_are_marked_without_refresh(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "legacy", "issue": 1, "fix_sha": "sha", "later_history_hash": "later", "stages_complete": ["triage"]}) + "\n",
+        encoding="utf-8",
+    )
+
+    records, corrupt = analyze_bugs.load_ledger(ledger)
+
+    assert corrupt == 0
+    assert records["legacy"].legacy_schema is True
+
+
+def test_report_renders_current_risk_and_class_open_followup(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    bundle_path = run_dir / "issue-1-bundle.md"
+    _write_bundle(bundle_path)
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, bundle_path=bundle_path))
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps(
+            {
+                "cache_key": "k1",
+                "issue": 1,
+                "fix_sha": "sha",
+                "later_history_hash": "later",
+                "triage_verdict": "FIXED_CLEAR",
+                "triage_reason": "triage clear",
+                "triage_introduced_risk": "none found",
+                "triage_introduced_risk_reason": "Triage found no risk.",
+                "deep_verdict": "CONFIRMED_FIXED",
+                "deep_reason": "One parser literal was fixed; sibling remains.",
+                "deep_introduced_risk": "Consumer accepts an unescaped delimiter",
+                "deep_introduced_risk_reason": "Targeted checkout Grep found the consumer path.",
+                "class_complete": False,
+                "sibling_sites": ["python/other_parser.py:parse_rule"],
+                "legacy_schema": False,
+                "stages_complete": ["deep", "triage"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+    followup = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
+
+    assert "## Introduced risk" in report
+    assert "Consumer accepts an unescaped delimiter" in report
+    assert "## Instance fixed, class open" in report
+    assert "python/other_parser.py:parse_rule" in report
+    assert "Instance fixed, class open" in followup
+    assert "python/other_parser.py:parse_rule" in followup
+
+
 def test_legacy_unverified_triage_requeues_and_does_not_drive_report_or_deep(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -1061,6 +1210,18 @@ def test_bug_fix_triage_agent_grants_read_tool() -> None:
 
     assert "tools: [Read]" in agent
     assert "tools: []" not in agent
+    assert '"introduced_risk"' in agent
+    assert "failed scan-status stanza" in agent
+
+
+def test_bug_fix_verifier_contract_requires_targeted_greps_and_class_fields() -> None:
+    agent = (Path(__file__).resolve().parents[3] / ".claude/agents/bug-fix-verifier.md").read_text(encoding="utf-8")
+
+    assert "Grep against the current checkout for every `introduced_risk` verdict" in agent
+    assert "targeted Grep outside the fixed site" in agent
+    assert '"class_complete"' in agent
+    assert '"sibling_sites"' in agent
+    assert "class_complete=false" in agent
 
 
 def test_cli_dispatches_analyze_bugs_help() -> None:
