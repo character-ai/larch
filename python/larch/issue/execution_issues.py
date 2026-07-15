@@ -22,10 +22,12 @@ from larch.report.run_log_batch import (
     _EXECUTION_ISSUE_CATEGORIES,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the canonical category set.
     _normalize_body_for_hash,  # pyright: ignore[reportPrivateUsage]  # shared writer preserves the established hash grammar.
     _redact_batch_payload,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the existing fail-closed redaction path.
+    execution_issue_identity,
 )
 
 VALIDATION_FAILED_RC = 2
 _WARNINGS_CATEGORY = "Warnings"
+_RESOLUTION_EVENT = "resolved"
 
 
 def emit_kv( *,key: str, value: object) -> None:
@@ -42,6 +44,39 @@ def sha256_file(path: str | Path) -> str:
 
 def normalize_body_for_hash(text: str) -> str:
     return _normalize_body_for_hash(text)
+
+
+def execution_issue_id(*, category: str, body: str) -> str:
+    """Return the stable identity used by append and resolution ledger records."""
+    return execution_issue_identity(category=category, body=body)
+
+
+def execution_issue_resolution_record(*, category: str, entry: str, resolution: str) -> str:
+    """Serialize an append-only resolution event for an execution-issue record."""
+    return json.dumps({
+        "event": _RESOLUTION_EVENT,
+        "issue_ids": [execution_issue_id(category=category, body=entry)],
+        "resolution": resolution,
+    }, separators=(",", ":"), sort_keys=True)
+
+
+def execution_issue_batch_has_resolution(*, batch_text: str, category: str, entry: str) -> bool:
+    """Whether the ledger already records this entry as resolved."""
+    issue_id = execution_issue_id(category=category, body=entry)
+    for raw in batch_text.splitlines():
+        try:
+            row: object = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        row_dict = cast("dict[str, object]", row)
+        if row_dict.get("event") != _RESOLUTION_EVENT:
+            continue
+        issue_ids = row_dict.get("issue_ids")
+        if isinstance(issue_ids, list) and issue_id in issue_ids:
+            return True
+    return False
 
 
 def _is_fence(line: str) -> bool:
@@ -365,6 +400,27 @@ def append_execution_issue(log: Path, *, category: str, entry: str) -> None:
         text = "\n".join(lines).rstrip() + "\n"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(text, encoding="utf-8")
+
+
+def resolve_execution_issue(log: Path, *, entry: str) -> bool:
+    """Remove an open entry from the mutable log after its durable resolution.
+
+    Committed batches remain append-only: callers first append
+    :func:`execution_issue_resolution_record`, then use this helper to prevent a
+    still-live copy from being merged back into the final report.
+    """
+    if log.is_symlink() or (log.exists() and not log.is_file()):
+        raise OSError(f"refusing to resolve through non-regular log file: {log}")
+    if not log.is_file():
+        return False
+    lines = log.read_text(encoding="utf-8").splitlines()
+    try:
+        lines.remove(entry)
+    except ValueError:
+        return False
+    text = "\n".join(lines).rstrip() + "\n"
+    log.write_text(text, encoding="utf-8")
+    return True
 
 
 def append_execution_issue_main(argv: list[str] | None = None) -> int:

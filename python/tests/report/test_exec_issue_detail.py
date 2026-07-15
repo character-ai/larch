@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from larch.core import config
 from larch.core.proc import CommandResult
 from larch.report import exec_issue_detail
+from larch.report.run_log_batch import execution_issue_identity
 
 if TYPE_CHECKING:
     import pytest
@@ -27,6 +28,25 @@ def test_parses_markdown_sections_fence_aware_and_ignores_other_sections() -> No
     assert exec_issue_detail.count_issue_groups(groups) == (1, 1)
     assert groups.exec_issues[0].display_text == "lint: drift"
     assert groups.warnings[0].display_text == "plain warning"
+
+
+def test_resolution_event_hides_an_earlier_ndjson_issue_and_keeps_later_recurrence(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    body = "- transient blocker\n  with diagnostic context\n"
+    issue_id = execution_issue_identity(category="Tool Failures", body=body)
+    records = [
+        {"category": "Tool Failures", "body": body},
+        {"event": "resolved", "issue_ids": [issue_id], "resolution": "recovered"},
+        {"category": "Tool Failures", "body": body},
+    ]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8",
+    )
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert exec_issue_detail.count_load_result(result) == (1, 0)
 
 
 def test_section_heading_inside_open_fence_is_boundary() -> None:
