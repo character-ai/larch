@@ -2,6 +2,9 @@
   "schema_version": 1,
   "modules": [
     {"module": "lint_agent_tool_contract.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_awk_multibyte_regex.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_bare_grep_probe.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_bash32.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_bg_wait_coverage.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_codex_exec_auth.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_common.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

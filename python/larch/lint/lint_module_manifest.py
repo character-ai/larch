@@ -40,6 +40,9 @@ RECORD_KEYS = frozenset({"module", "host_decision", "justification", "source_iss
 LEGACY_SEED_MODULES = frozenset(
     {
         "lint_agent_tool_contract.py",
+        "lint_awk_multibyte_regex.py",
+        "lint_bare_grep_probe.py",
+        "lint_bash32.py",
         "lint_bg_wait_coverage.py",
         "lint_codex_exec_auth.py",
         "lint_common.py",
