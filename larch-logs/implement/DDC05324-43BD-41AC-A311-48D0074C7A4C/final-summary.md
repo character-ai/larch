@@ -47,11 +47,21 @@ Exec Issues (2):
 Warnings (1):
   1. code-review panel (round 1): dynamic reviewer slot drop/failure detected (failed=1, dropped=1, stragglers=2); review continued with the remaining panel output.
 
+## Architectural invariants
+
+The changed code does not touch any invariant-governed surface. The new lint module (`lint_tmpdir_arg_env_fallback.py`), the `bgjob/cli.py` env-fallback addition, the `dispatch_step2.py` env-var constant fix, the mechanical refactors in `scope_disposition.py`, `file_oos.py`, `admission.py`, and `_corpus.py`, and the associated tests and docs updates are all confined to lint enforcement, a runtime env-fallback improvement, and code-quality cleanup. None of these changes touch gate disarmament inputs, pause snapshot contents or resume guards, step-result staleness validation, run-log flush or commit paths, outcome label writes, panel slot accounting, machine-parsed agent verdict machinery, or ship recovery routing. All invariants hold.
+
+## Architectural guidelines
+
+The changed code conforms to the applicable architectural guidelines. No G-* identifier is triggered.
+
+The diff implements a class-level fix across six production sites (`bgjob/cli.py`, `dispatch_step2.py`, `scope_disposition.py`, `file_oos.py`, `state/_corpus.py`, `state/admission.py`) and mechanizes enforcement via a new `lint_tmpdir_arg_env_fallback` lint module, which is consistent with the fix-the-class and prefer-mechanical-enforcement directions. The new module is registered in `cli.py` via a `main(argv)->int` entry, satisfying the uniform CLI surface contract. The bare `"IMPLEMENT_TMPDIR"` string literal in `dispatch_step2.py` is replaced with `config.ENV_IMPLEMENT_TMPDIR`, and the corresponding grandfathered baseline entries in `env-via-config-constant-baseline.json` are pruned. The new module manifest entry carries `host_decision: "new-module-justified"`, names the two nearest candidate hosts (`lint_tempfile_dir`, `lint_env_via_config_constant`), explains why each is insufficient in shape and baseline schema, and references the commissioning issue. The sole grandfathered site in `python/tmpdir-arg-env-fallback-baseline.json` carries an explicit documented reason. New tests in `test_bgjob_cli.py` and the comprehensive `test_lint_tmpdir_arg_env_fallback.py` cover the changed recovery-path behavior and lint engine contract. The docs/linting.md prose and Makefile `.PHONY` and regen targets are updated in the same change as the new lint surface.
+
 ## /implement run DDC05324-43BD-41AC-A311-48D0074C7A4C: shipping
 
 - **Outcome**: shipping
 - **Duration**: 03:14:25
-- **Cost**: 💰 TOTAL ~$15.77: Claude $1.64, Codex-5.6 $4.90, Codex-mini $0.00, Cursor $4.97 (Composer $1.98, Grok $2.99), Claude (subprocess) $4.26  |  Tokens: 18008k
+- **Cost**: 💰 TOTAL ~$17.49: Claude $3.35, Codex-5.6 $4.90, Codex-mini $0.00, Cursor $4.97 (Composer $1.98, Grok $2.99), Claude (subprocess) $4.27  |  Tokens: 20254k
 - **Issue**: #7297: https://github.com/character-ai/larch/issues/7297
 - **Plan review**: N/A
 - **Plan coverage**: 14/14 firm headings; band: advisory; disposition: none; todos_left: 0
