@@ -499,6 +499,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "skill-closure-growth"): ("larch.lint.lint_skill_closure_growth", "main"),
     ("lint", "run-log-run-id"): ("larch.lint.lint_run_log_run_id", "main"),
     ("lint", "run-log-walkers"): ("larch.lint.lint_run_log_walkers", "main"),
+    ("lint", "module-manifest"): ("larch.lint.lint_module_manifest", "main"),
     ("voting", "findings-classification-header"): ("larch.review.voting", "findings_classification_header_main"),
     ("voting", "code-review-classification-header"): ("larch.review.voting", "code_review_classification_header_main"),
     ("voting", "vote-for-id"): ("larch.review.voting", "vote_for_id_main"),
