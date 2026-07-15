@@ -97,7 +97,7 @@ def test_resolve_cursor_model_pins_skipped_when_vendor_not_ok() -> None:
     runner = _ScriptedRunner(CommandResult(config.CURSOR_MODEL_LIST_ARGV, 0, "", "", 0.01))
     result = _model_pins.resolve_cursor_model_pins(runner=runner, vendor_state="binary-missing")
     assert result.status == config.MODEL_PINS_STATUS_SKIPPED
-    assert runner.calls == []
+    assert not runner.calls
 
 
 def test_resolve_codex_model_pins_unverifiable_when_ok() -> None:
