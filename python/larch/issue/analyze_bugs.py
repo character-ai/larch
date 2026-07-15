@@ -46,6 +46,12 @@ PLAN_MALFORMED_REASON: Final = "malformed larch:plan block"
 EVIDENCE_TOKEN_LABEL: Final = "evidence_token"
 EVIDENCE_TOKEN_PATTERN: Final = re.compile(r"^evidence_token: (\S+)$")
 EVIDENCE_TOKEN_SCAN_LINES: Final = 20
+SCAN_REASON_CAP: Final = 500
+SCAN_OK: Final = "ok"
+SCAN_FAILED: Final = "failed"
+SCAN_NOT_RUN: Final = "not-run"
+GREP_LINE_FIELDS: Final = 3
+GREP_LINE_WITH_REF_FIELDS: Final = 4
 LEGACY_TRIAGE_WARN_LIMIT: Final = 20
 HISTORICAL_MARKER_BACKFILL_LIMIT: Final = 50
 PYTHON_ZONE_PARTS: Final = 3
@@ -95,6 +101,10 @@ SWEEP_RELEASE_SUBJECT_RE: Final = re.compile(r"^Release v")
 SWEEP_PY_DEF_RE: Final = re.compile(r"^\+\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 SWEEP_PY_CLASS_RE: Final = re.compile(r"^\+\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
 SWEEP_PY_CONST_RE: Final = re.compile(r"^\+\s*([A-Z][A-Z0-9_]{2,})\s*=")
+DIFF_FUNCTION_SYMBOL_RE: Final = re.compile(r"^[+-]\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+DIFF_FIELD_SYMBOL_RE: Final = re.compile(r"^[+-]\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?!=)")
+DIFF_DICT_SUBSCRIPT_SYMBOL_RE: Final = re.compile(r"\[\s*(['\"])([A-Za-z_][A-Za-z0-9_-]*)\1\s*\]")
+DIFF_DICT_LITERAL_SYMBOL_RE: Final = re.compile(r"(?:^|[,{]\s*)(['\"])([A-Za-z_][A-Za-z0-9_-]*)\1\s*:")
 
 
 @dataclass(frozen=True)
@@ -116,6 +126,19 @@ class FixEvidence:
     source: str
     ambiguous: bool = False
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    """Outcome of a required local evidence scan."""
+
+    status: str
+    stdout: str = ""
+    reason: str = ""
+
+    @property
+    def complete(self) -> bool:
+        return self.status == SCAN_OK
 
 
 @dataclass(frozen=True)
@@ -141,6 +164,30 @@ class BundleRecord:
     marker_fingerprint: str = ""
     zones: tuple[str, ...] = ()
     baseline_extended: bool = False
+    changed_symbols: tuple[str, ...] = ()
+    consumer_paths: tuple[str, ...] = ()
+    consumer_references: tuple[str, ...] = ()
+    scan_files: tuple[str, ...] = ()
+    diff_scan_status: str = SCAN_OK
+    diff_scan_reason: str = ""
+    consumer_scan_status: str = SCAN_OK
+    consumer_scan_reason: str = ""
+    later_history_scan_status: str = SCAN_OK
+    later_history_scan_reason: str = ""
+    revert_scan_status: str = SCAN_OK
+    revert_scan_reason: str = ""
+
+    @property
+    def required_evidence_complete(self) -> bool:
+        return all(
+            status == SCAN_OK
+            for status in (
+                self.diff_scan_status,
+                self.consumer_scan_status,
+                self.later_history_scan_status,
+                self.revert_scan_status,
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -777,6 +824,24 @@ def _git_stdout(runner: Runner, argv: Sequence[str]) -> str:
     return result.stdout
 
 
+def _scan_failure_reason(*, description: str, stdout: str, stderr: str) -> str:
+    detail = stderr.strip() or stdout.strip() or "command returned a non-zero exit status"
+    normalized = re.sub(r"\s+", " ", detail)
+    return f"{description}: {normalized[:SCAN_REASON_CAP]}"
+
+
+def _required_git_scan(runner: Runner, argv: Sequence[str], *, description: str, no_match_ok: bool = False) -> ScanResult:
+    """Run a required evidence command without collapsing failures into absence."""
+    result = runner.run(argv)
+    if result.returncode == 0 or (no_match_ok and result.returncode == 1):
+        return ScanResult(status=SCAN_OK, stdout=result.stdout)
+    return ScanResult(
+        status=SCAN_FAILED,
+        stdout=result.stdout,
+        reason=_scan_failure_reason(description=description, stdout=result.stdout, stderr=result.stderr),
+    )
+
+
 def zone_for_path(path: str) -> str:
     """Map a repository-relative path to its stable analytics zone."""
     parts = [part for part in Path(path).parts if part not in {"", "."}]
@@ -838,17 +903,102 @@ def _touched_files(runner: Runner, *, fix_sha: str) -> tuple[str, ...]:
     return tuple(files)
 
 
-def _later_history(runner: Runner, *, fix_sha: str, evidence_ref: str, files: Sequence[str]) -> str:
-    if not fix_sha or not files:
-        return ""
-    return _git_stdout(runner, ["git", "log", f"{fix_sha}..{evidence_ref}", "--format=%H:%s", "--", *files])
+def _later_history(runner: Runner, *, fix_sha: str, evidence_ref: str, files: Sequence[str]) -> ScanResult:
+    if not fix_sha:
+        return ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
+    if not files:
+        return ScanResult(status=SCAN_OK)
+    return _required_git_scan(
+        runner,
+        ["git", "log", f"{fix_sha}..{evidence_ref}", "--format=%H:%s", "--", *files],
+        description="later-history scan failed",
+    )
 
 
-def _later_history_hash(*, fix_sha: str, evidence_ref: str, files: Sequence[str], later_history: str) -> str:
+def _revert_scan(runner: Runner, *, fix_sha: str, evidence_ref: str, files: Sequence[str]) -> ScanResult:
+    if not fix_sha:
+        return ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
+    if not files:
+        return ScanResult(status=SCAN_OK)
+    return _required_git_scan(
+        runner,
+        ["git", "log", f"{fix_sha}..{evidence_ref}", "--regexp-ignore-case", "--grep", "revert", "--format=%H:%s", "--", *files],
+        description="revert scan failed",
+    )
+
+
+def _changed_symbols(diff: str) -> tuple[str, ...]:
+    symbols: set[str] = set()
+    for line in diff.splitlines():
+        if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
+            continue
+        for pattern in (DIFF_FUNCTION_SYMBOL_RE, DIFF_FIELD_SYMBOL_RE):
+            match = pattern.match(line)
+            if match:
+                symbols.add(match.group(1))
+        for pattern in (DIFF_DICT_SUBSCRIPT_SYMBOL_RE, DIFF_DICT_LITERAL_SYMBOL_RE):
+            for match in pattern.finditer(line):
+                symbols.add(match.group(2))
+    return tuple(sorted(symbols))
+
+
+def _consumer_line(line: str) -> tuple[str, int] | None:
+    fields = line.split(":", 3)
+    if len(fields) >= GREP_LINE_FIELDS and fields[1].isdecimal():
+        return fields[0], int(fields[1])
+    if len(fields) >= GREP_LINE_WITH_REF_FIELDS and fields[2].isdecimal():
+        return fields[1], int(fields[2])
+    return None
+
+
+def _cross_language_consumer(path: str) -> bool:
+    return path.endswith((".sh", "SKILL.md")) or path.startswith("hooks/")
+
+
+def _find_consumers(runner: Runner, *, evidence_ref: str, symbols: Sequence[str], touched_files: Sequence[str]) -> tuple[ScanResult, tuple[str, ...], tuple[str, ...]]:
+    if not symbols:
+        return ScanResult(status=SCAN_OK), (), ()
+    touched = set(touched_files)
+    references: set[tuple[str, int, str]] = set()
+    for symbol in symbols:
+        scan = _required_git_scan(
+            runner,
+            ["git", "grep", "-n", "-F", "-e", symbol, evidence_ref],
+            description=f"consumer scan failed for symbol {symbol}",
+            no_match_ok=True,
+        )
+        if not scan.complete:
+            return scan, (), ()
+        for line in scan.stdout.splitlines():
+            parsed = _consumer_line(line)
+            if parsed is None:
+                continue
+            path, line_number = parsed
+            if path not in touched:
+                references.add((path, line_number, symbol))
+    ordered = tuple(sorted(references))
+    paths = tuple(sorted({path for path, _line_number, _symbol in ordered}))
+    rendered = tuple(
+        f"{path}:{line_number}: `{symbol}`" + (" [cross-language]" if _cross_language_consumer(path) else "")
+        for path, line_number, symbol in ordered
+    )
+    return ScanResult(status=SCAN_OK), paths, rendered
+
+
+def _later_history_hash(
+    *,
+    fix_sha: str,
+    evidence_ref: str,
+    files: Sequence[str],
+    later_history: str,
+    scan_states: Sequence[tuple[str, str, str]] = (),
+) -> str:
     hasher = hashlib.sha256()
     hasher.update(f"fix={fix_sha}\nref={evidence_ref}\n".encode())
     for path in files:
         hasher.update(f"file={path}\n".encode())
+    for name, status, reason in scan_states:
+        hasher.update(f"scan={name}\0{status}\0{reason}\n".encode())
     hasher.update(later_history.encode())
     return hasher.hexdigest()
 
@@ -874,6 +1024,18 @@ def _extract_evidence_token(bundle_text: str) -> str | None:
     return None
 
 
+def _scan_status_lines(*, name: str, scan: ScanResult) -> list[str]:
+    lines = [f"Status: {scan.status}"]
+    if scan.reason:
+        lines.append(f"Failure: {scan.reason}")
+    return [f"## {name}", *lines]
+
+
+def _incomplete_evidence_reason(*, scans: Sequence[tuple[str, ScanResult]]) -> str:
+    incomplete = [f"{name} ({scan.reason or scan.status})" for name, scan in scans if not scan.complete]
+    return "required evidence incomplete: " + "; ".join(incomplete)
+
+
 def build_bundle_record(
     *,
     runner: Runner,
@@ -892,8 +1054,50 @@ def build_bundle_record(
     marker_references, marker_fingerprint = _marker_evidence(issue.title, stripped_body)
     zones = _zones_for_files(touched)
     baseline_extended = _baseline_extended(touched)
-    later = _later_history(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=touched)
-    later_hash = _later_history_hash(fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=touched, later_history=later)
+    if fix.fix_sha:
+        diff_scan = _required_git_scan(
+            runner,
+            ["git", "show", "--unified=1", "--format=medium", fix.fix_sha],
+            description="fix-diff scan failed",
+        )
+        symbols = _changed_symbols(diff_scan.stdout) if diff_scan.complete else ()
+        if diff_scan.complete:
+            consumer_scan, consumer_paths, consumer_references = _find_consumers(
+                runner,
+                evidence_ref=evidence_ref,
+                symbols=symbols,
+                touched_files=touched,
+            )
+        else:
+            consumer_scan = ScanResult(status=SCAN_FAILED, reason="consumer scan skipped because fix-diff scan failed")
+            consumer_paths = ()
+            consumer_references = ()
+    else:
+        diff_scan = ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
+        consumer_scan = ScanResult(status=SCAN_NOT_RUN, reason="fix SHA is unavailable")
+        symbols = ()
+        consumer_paths = ()
+        consumer_references = ()
+    scan_files = tuple(dict.fromkeys((*touched, *consumer_paths)))
+    later_scan = _later_history(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=scan_files)
+    revert_scan = _revert_scan(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=scan_files)
+    scans = (
+        ("fix-diff", diff_scan),
+        ("consumer", consumer_scan),
+        ("later-history", later_scan),
+        ("revert", revert_scan),
+    )
+    if fix.fix_sha and any(not scan.complete for _name, scan in scans):
+        incomplete_reason = _incomplete_evidence_reason(scans=scans)
+        mechanical = "NEEDS_DEEP"
+        reason = f"{reason}; {incomplete_reason}" if reason else incomplete_reason
+    later_hash = _later_history_hash(
+        fix_sha=fix.fix_sha,
+        evidence_ref=evidence_ref,
+        files=scan_files,
+        later_history=later_scan.stdout,
+        scan_states=tuple((name, scan.status, scan.reason) for name, scan in scans),
+    )
     cache_key = _cache_key(
         issue_number=issue.number,
         fix_sha=fix.fix_sha,
@@ -904,8 +1108,6 @@ def build_bundle_record(
 
     body_path = run_dir / f"issue-{issue.number}-body.md"
     bundle_path = run_dir / f"issue-{issue.number}-bundle.md"
-    diff = _git_stdout(runner, ["git", "show", "--unified=1", "--format=medium", fix.fix_sha]) if fix.fix_sha else ""
-    revert_scan = _git_stdout(runner, ["git", "log", f"{fix.fix_sha}..{evidence_ref}", "--regexp-ignore-case", "--grep", "revert", "--format=%H:%s", "--", *touched]) if fix.fix_sha and touched else ""
     evidence_token = secrets.token_hex(16)
     _atomic_write_text(body_path, _capped(stripped_body, body_cap))
     bundle = "\n".join(
@@ -926,14 +1128,26 @@ def build_bundle_record(
             "## Touched files",
             "\n".join(touched) or "(none)",
             "",
-            "## Later commits touching those files",
-            later or "(none)",
+            "## Changed symbols",
+            "\n".join(symbols) or "(none)",
+            "",
+            *_scan_status_lines(name="Consumers of changed symbols", scan=consumer_scan),
+            "\n".join(consumer_references) or "(none)",
+            "",
+            "## Later commits touching evidence files",
+            f"Status: {later_scan.status}",
+            f"Failure: {later_scan.reason}" if later_scan.reason else "",
+            later_scan.stdout or "(none)",
             "",
             "## Revert scan",
-            revert_scan or "(none)",
+            f"Status: {revert_scan.status}",
+            f"Failure: {revert_scan.reason}" if revert_scan.reason else "",
+            revert_scan.stdout or "(none)",
             "",
             "## Capped fix diff",
-            _capped(diff, diff_cap),
+            f"Status: {diff_scan.status}",
+            f"Failure: {diff_scan.reason}" if diff_scan.reason else "",
+            _capped(diff_scan.stdout, diff_cap),
             "",
         ]
     )
@@ -959,6 +1173,18 @@ def build_bundle_record(
         marker_fingerprint=marker_fingerprint,
         zones=zones,
         baseline_extended=baseline_extended,
+        changed_symbols=symbols,
+        consumer_paths=consumer_paths,
+        consumer_references=consumer_references,
+        scan_files=scan_files,
+        diff_scan_status=diff_scan.status,
+        diff_scan_reason=diff_scan.reason,
+        consumer_scan_status=consumer_scan.status,
+        consumer_scan_reason=consumer_scan.reason,
+        later_history_scan_status=later_scan.status,
+        later_history_scan_reason=later_scan.reason,
+        revert_scan_status=revert_scan.status,
+        revert_scan_reason=revert_scan.reason,
     )
 
 
@@ -1067,6 +1293,18 @@ def _bundle_from_mapping(row: Mapping[str, Any]) -> BundleRecord:
         marker_fingerprint=str(row.get("marker_fingerprint") or ""),
         zones=tuple(str(item) for item in row.get("zones", []) if isinstance(item, str)),
         baseline_extended=bool(row.get("baseline_extended", False)),
+        changed_symbols=tuple(str(item) for item in row.get("changed_symbols", []) if isinstance(item, str)),
+        consumer_paths=tuple(str(item) for item in row.get("consumer_paths", []) if isinstance(item, str)),
+        consumer_references=tuple(str(item) for item in row.get("consumer_references", []) if isinstance(item, str)),
+        scan_files=tuple(str(item) for item in row.get("scan_files", []) if isinstance(item, str)),
+        diff_scan_status=str(row.get("diff_scan_status") or SCAN_OK),
+        diff_scan_reason=str(row.get("diff_scan_reason") or ""),
+        consumer_scan_status=str(row.get("consumer_scan_status") or SCAN_OK),
+        consumer_scan_reason=str(row.get("consumer_scan_reason") or ""),
+        later_history_scan_status=str(row.get("later_history_scan_status") or SCAN_OK),
+        later_history_scan_reason=str(row.get("later_history_scan_reason") or ""),
+        revert_scan_status=str(row.get("revert_scan_status") or SCAN_OK),
+        revert_scan_reason=str(row.get("revert_scan_reason") or ""),
     )
 
 
@@ -1173,6 +1411,8 @@ def load_ledger(path: Path) -> tuple[dict[str, LedgerRecord], int]:
 
 
 def _record_for_bundle(ledger: Mapping[str, LedgerRecord], bundle: BundleRecord) -> LedgerRecord | None:
+    if not bundle.required_evidence_complete:
+        return None
     record = ledger.get(bundle.cache_key)
     if record and record.fix_sha == bundle.fix_sha and record.later_history_hash == bundle.later_history_hash:
         return record
@@ -1194,6 +1434,8 @@ def _triage_complete(record: LedgerRecord | None, *, refresh: bool) -> bool:
 def _unverified_legacy_triage_issues(*, bundles: Sequence[BundleRecord], ledger: Mapping[str, LedgerRecord]) -> list[int]:
     issues: list[int] = []
     for bundle in bundles:
+        if not bundle.required_evidence_complete:
+            continue
         record = _record_for_bundle(ledger, bundle)
         if record and "triage" in record.stages_complete and not record.triage_evidence_verified:
             issues.append(bundle.issue_number)
@@ -1480,6 +1722,8 @@ def _priority_deep_candidates(
     by_priority: list[tuple[int, BundleRecord, LedgerRecord | None, str]] = []
     risk_priorities = {"chain-linked": 3, "chronic-zone": 4, "cross-language": 5, "size": 6}
     for bundle in bundles:
+        if not bundle.required_evidence_complete:
+            continue
         record = _record_for_bundle(ledger, bundle)
         if bundle.fix_sha and _complete(record, "deep", refresh=refresh):
             continue
@@ -1817,6 +2061,10 @@ def ledger_ingest(*, run_dir: Path, ledger_path: Path, manifest_path: Path, tria
             print(f"WARN: rejected line {lineno}: issue not in current manifest", file=sys.stderr)
             rejected += 1
             continue
+        if not bundle.required_evidence_complete:
+            print(f"WARN: rejected line {lineno}: required evidence is incomplete", file=sys.stderr)
+            rejected += 1
+            continue
         base = ledger.get(bundle.cache_key)
         if isinstance(parsed, TriageIngest):
             evidence_error = _validate_triage_evidence_token(parsed, bundle)
@@ -1864,6 +2112,14 @@ def ledger_main(argv: list[str]) -> int:
 
 
 def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, str, tuple[str, ...], bool]:
+    if not bundle.required_evidence_complete:
+        scans = (
+            ("fix-diff", ScanResult(bundle.diff_scan_status, reason=bundle.diff_scan_reason)),
+            ("consumer", ScanResult(bundle.consumer_scan_status, reason=bundle.consumer_scan_reason)),
+            ("later-history", ScanResult(bundle.later_history_scan_status, reason=bundle.later_history_scan_reason)),
+            ("revert", ScanResult(bundle.revert_scan_status, reason=bundle.revert_scan_reason)),
+        )
+        return "NEEDS_DEEP", "MECH", _incomplete_evidence_reason(scans=scans), (), False
     if record and record.deep_verdict:
         return record.deep_verdict, "DEEP", record.deep_reason, (), record.sampled
     if bundle.mechanical_verdict and bundle.mechanical_verdict != "NEEDS_DEEP":

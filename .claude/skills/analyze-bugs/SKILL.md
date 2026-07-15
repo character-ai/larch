@@ -58,6 +58,21 @@ Parse only whole-line `KEY=value` records from stdout:
 
 Abort if any required path key is missing. Do not guess an active run.
 
+Each bundle records changed symbols from the fix diff and a `Consumers of changed
+symbols` section. Consumers outside the touched files are tagged
+`cross-language` when they are shell, skill Markdown, or hook surfaces. The
+later-history and revert scans use the touched files plus successfully resolved
+consumer paths; `touched_files` remains the analytics-only fix-file set.
+
+Every required diff, consumer, later-history, and revert scan has an explicit
+status in the bundle. A command failure is a failure stanza, never empty
+evidence; only `git grep` exit `1` means a successful no-match. Incomplete
+required evidence forces `NEEDS_DEEP` and cannot produce `FIXED_CLEAR`,
+`FIXED_LIKELY`, or `CONFIRMED_FIXED`, including from cached results. The
+widened file set and scan status are part of `later_history_hash`, which
+invalidates existing successful cache entries once; incomplete scans bypass
+cached certification evidence.
+
 ## Sweep stages (only with `--sweep`)
 
 Run these stages after prefetch and before the ledger or deep stages. Every Python fence is a fail-closed boundary: a non-zero exit stops the skill before any following Task dispatch or legacy stage. The sweep does not write `sweep-state.json` here; Stage 3 writes it only after the final report and follow-up body succeed.
