@@ -225,6 +225,15 @@ def test_design_structure_pin(pin: StructurePin) -> None:
     evaluate_pin(pin)
 
 
+def test_triage_close_replacement_bug_prefix_contract() -> None:
+    text = _read_text("skills/triage/SKILL.md")
+    assert (
+        'For every replacement call, pass `--title-prefix "[BUG] [TRIAGED]"`'
+        in text
+    )
+    assert "from a non-bug or a `valid` verdict" in text
+
+
 def _run_specialized(skill: str) -> list[str]:
     mod_name = SPECIALIZED_MODULES[skill]
     mod = importlib.import_module(f".{mod_name}", package=__package__)
