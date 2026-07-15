@@ -162,7 +162,7 @@ def _replay_warn_error(path: Path) -> None:
     )
     for key, values in rows.items():
         for value in values:
-            print(f"{key}={value}")
+            logging_util.emit_kv(key=key, value=value)
 
 
 def _classify_input(path: Path) -> str:
@@ -451,12 +451,7 @@ def _copy_if_file(*, source: Path, dest: Path) -> None:
 
 
 def _ledger_row_has_escalation_evidence(row: str) -> bool:
-    values: dict[str, str] = {}
-    for field in row.split("\t"):
-        if "=" not in field:
-            continue
-        key, _, value = field.partition("=")
-        values[key] = value
+    values = larch_io.parse_kv("\n".join(row.split("\t")))
     site = values.get("site", "")
     trigger = values.get("trigger", "")
     if not site or not trigger:
