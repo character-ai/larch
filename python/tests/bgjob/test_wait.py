@@ -122,7 +122,7 @@ def test_wait_rechecks_result_when_registry_unlinked_after_result_check(
     result = model.result_env_path(tmpdir=tmp_path, step="demo-step")
     larch_io.write_kvs(path=result, values=[("BGJOB_RC", "timeout"), ("BGJOB_ELAPSED_S", "1")])
 
-    real_read_result = wait._read_result
+    real_read_result = wait._read_result  # pyright: ignore[reportPrivateUsage]
     call_count = {"n": 0}
 
     def race_read_result(path: Path) -> dict[str, str] | None:
