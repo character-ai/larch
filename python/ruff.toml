@@ -593,6 +593,9 @@ ignore = [
     "C901",
     "PLR0911",
 ]
+"lint_unreachable_branch.py" = [
+    "F401",
+]
 "merge.py" = [
     "C901",
     "PLR0911",

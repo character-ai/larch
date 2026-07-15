@@ -22,10 +22,10 @@ from larch.lint.engine import (
 )
 from larch.lint.unreachable_branch_detector import (
     SUPPRESSION,
-    Finding,  # noqa: F401 - re-exported for equivalence/detector tests
+    Finding,  # type: ignore[reportUnusedImport]  # re-exported for equivalence/detector tests
     is_production_source_path,
-    iter_source_files,  # noqa: F401 - re-exported for equivalence/detector tests
-    scan_file,  # noqa: F401 - re-exported for equivalence/detector tests
+    iter_source_files,  # type: ignore[reportUnusedImport]  # re-exported for equivalence/detector tests
+    scan_file,  # type: ignore[reportUnusedImport]  # re-exported for equivalence/detector tests
     scan_module,
 )
 
