@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import json
 from pathlib import Path
 
@@ -511,6 +512,29 @@ def test_baseline_check_passes_when_live_metrics_match(tmp_path: Path, capsys: p
     _ = write_baseline_from_live(tmp_path)
 
     assert scg.main(["--root", str(tmp_path)]) == 0, capsys.readouterr().err
+
+
+def test_write_defaults_root_to_current_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scanned_roots: list[Path] = []
+    written_paths: list[Path] = []
+
+    def fake_scan_all(root: Path) -> list[scg.SkillClosureResult]:
+        scanned_roots.append(root)
+        return []
+
+    def fake_write_baseline(path: Path, _results: Iterable[scg.SkillClosureResult]) -> None:
+        written_paths.append(path)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(scg, "scan_all", fake_scan_all)
+    monkeypatch.setattr(scg, "write_baseline", fake_write_baseline)
+
+    assert scg.main(["--write"]) == 0
+
+    assert scanned_roots == [tmp_path]
+    assert written_paths == [tmp_path / "python/skill-closure-baseline.json"]
 
 
 def test_baseline_check_fails_when_skill_md_lines_grow(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
