@@ -354,6 +354,96 @@ def test_build_bundle_discovers_cross_language_consumers_and_widens_evidence_sca
     assert "scripts/consumer.sh:9: `old_name` [cross-language]" in bundle_text
 
 
+def test_build_bundle_excludes_log_artifacts_and_records_consumer_cap(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(7, "[BUG] common symbol", "CLOSED", "COMPLETED", "body", "u", "", ())
+    consumer_hits = "\n".join(
+        ["origin/main:larch-logs/run.md:1: status"]
+        + [f"origin/main:consumers/{index:02d}.py:1: status" for index in range(analyze_bugs.PREFETCH_CONSUMER_CAP + 1)]
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result("deadbeef\x1fFixes #7\x1e"),
+            _result(),
+            _result(),
+            _result("python/larch/issue/model.py\n"),
+            _result("1\n"),
+            _result("2\t0\tpython/larch/issue/model.py\n"),
+            _result("+ def status() -> None:\n"),
+            _result(consumer_hits),
+            _result(),
+            _result(),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+
+    assert len(bundle.consumer_paths) == analyze_bugs.PREFETCH_CONSUMER_CAP
+    assert bundle.consumers_truncated
+    assert all(not path.startswith("larch-logs/") for path in bundle.consumer_paths)
+    assert runner.calls[7][-3:] == ["--", ".", ":(exclude)larch-logs"]
+    assert "Notice: consumers truncated to 40 paths" in Path(bundle.bundle_path).read_text(encoding="utf-8")
+
+
+def test_history_scans_batch_pathspecs_and_deduplicate_history() -> None:
+    first_path = "a" * 17_000
+    second_path = "b" * 17_000
+    runner = RecordingRunner(
+        responses=[_result("one:subject\n"), _result("one:subject\ntwo:subject\n")],
+        strict=True,
+    )
+
+    scan = analyze_bugs._later_history(  # pyright: ignore[reportPrivateUsage]  # argv batching coverage
+        runner,
+        fix_sha="deadbeef",
+        evidence_ref="origin/main",
+        files=(first_path, second_path),
+    )
+
+    assert scan == analyze_bugs.ScanResult(status=analyze_bugs.SCAN_OK, stdout="one:subject\ntwo:subject\n")
+    assert len(runner.calls) == 2
+    assert runner.calls[0][-1] == first_path
+    assert runner.calls[1][-1] == second_path
+
+
+def test_history_scan_preserves_single_batch_output() -> None:
+    runner = RecordingRunner(responses=[_result("one:subject\none:subject\n")], strict=True)
+
+    scan = analyze_bugs._later_history(  # pyright: ignore[reportPrivateUsage]  # compatibility coverage
+        runner,
+        fix_sha="deadbeef",
+        evidence_ref="origin/main",
+        files=("python/larch/issue/model.py",),
+    )
+
+    assert scan == analyze_bugs.ScanResult(status=analyze_bugs.SCAN_OK, stdout="one:subject\none:subject\n")
+
+
+def test_sweep_consumer_search_excludes_log_artifacts() -> None:
+    runner = RecordingRunner(
+        responses=[_result("larch-logs/run.md:1: status\npython/larch/issue/consumer.py:2: status\n")],
+        strict=True,
+    )
+
+    hits, truncated = analyze_bugs._discover_consumers(  # pyright: ignore[reportPrivateUsage]  # sibling scan coverage
+        runner,
+        symbols=("status",),
+        defining_paths=("python/larch/issue/model.py",),
+    )
+
+    assert hits == (analyze_bugs.SweepConsumerHit("python/larch/issue/consumer.py", 2, "status"),)
+    assert not truncated
+    assert runner.calls[0][-2:] == [":(exclude)python/larch/issue/model.py", ":(exclude)larch-logs"]
+
+
 def test_failed_required_evidence_blocks_cached_certification(tmp_path: Path) -> None:
     issue = analyze_bugs.IssueRecord(7, "[BUG] diff failure", "CLOSED", "COMPLETED", "body", "u", "", ())
     runner = RecordingRunner(
