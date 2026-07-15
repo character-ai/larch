@@ -349,6 +349,14 @@ repos:
         always_run: true
         files: ^python/.*\.py$|^python/markdown-heading-fence-state-baseline\.json$
 
+      - id: lint-doc-pointer-paths
+        name: Lint dead path pointers in AGENTS.md and SECURITY.md
+        entry: python3 python/cli.py lint doc-pointer-paths
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^(AGENTS\.md|SECURITY\.md|python/larch/lint/lint_doc_pointer_paths\.py|python/tests/lint/test_lint_doc_pointer_paths\.py|python/lint-module-manifest\.json)$
+
       - id: lint-self-disarmable-gate
         name: Lint self-disarmable hard gates (I-Gate-1)
         entry: python3 python/cli.py lint self-disarmable-gate

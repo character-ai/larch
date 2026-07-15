@@ -39,7 +39,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-doc-pointer-paths lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -57,7 +57,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal wire-artifact-pairing tempfile-dir markdown-heading-fence-state self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal wire-artifact-pairing tempfile-dir markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -249,12 +249,18 @@ lint-prefix-case-variant:
 test-lint-guideline-no-exception:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_guideline_no_exception.py -q
 
-.PHONY: lint-markdown-heading-fence-state test-lint-markdown-heading-fence-state lint-self-disarmable-gate test-lint-self-disarmable-gate lint-unreachable-branch test-lint-unreachable-branch lint-pylint-skip-file test-lint-pylint-skip-file
+.PHONY: lint-markdown-heading-fence-state test-lint-markdown-heading-fence-state lint-doc-pointer-paths test-lint-doc-pointer-paths lint-self-disarmable-gate test-lint-self-disarmable-gate lint-unreachable-branch test-lint-unreachable-branch lint-pylint-skip-file test-lint-pylint-skip-file
 lint-markdown-heading-fence-state:
 	$(PYTHON) python/cli.py lint markdown-heading-fence-state
 
 test-lint-markdown-heading-fence-state:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_markdown_heading_fence_state.py -q
+
+lint-doc-pointer-paths:
+	$(PYTHON) python/cli.py lint doc-pointer-paths
+
+test-lint-doc-pointer-paths:
+	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_doc_pointer_paths.py -q
 
 lint-self-disarmable-gate:
 	$(PYTHON) python/cli.py lint self-disarmable-gate
