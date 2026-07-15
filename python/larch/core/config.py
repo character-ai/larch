@@ -761,6 +761,29 @@ ENV_LARCH_QUIET_PID: Final = "LARCH_QUIET_PID"
 ENV_LARCH_DESIGN_DRAFTER: Final = "LARCH_DESIGN_DRAFTER"
 ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
 EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30
+# /status model-pin resolution statuses (soft health report; never abort /status).
+MODEL_PINS_STATUS_OK: Final = "ok"
+MODEL_PINS_STATUS_UNKNOWN_ID: Final = "unknown-id"
+MODEL_PINS_STATUS_LIST_FAILED: Final = "list-failed"
+MODEL_PINS_STATUS_UNPARSEABLE: Final = "unparseable"
+MODEL_PINS_STATUS_UNVERIFIABLE: Final = "unverifiable"
+MODEL_PINS_STATUS_SKIPPED: Final = "skipped"
+MODEL_PINS_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        MODEL_PINS_STATUS_OK,
+        MODEL_PINS_STATUS_UNKNOWN_ID,
+        MODEL_PINS_STATUS_LIST_FAILED,
+        MODEL_PINS_STATUS_UNPARSEABLE,
+        MODEL_PINS_STATUS_UNVERIFIABLE,
+        MODEL_PINS_STATUS_SKIPPED,
+    }
+)
+# Cursor model-list argv (G-Ext-1): `cursor agent models` — same family as probe
+# `cursor agent -p`; equivalent to the `cursor-agent models` surface.
+CURSOR_MODEL_LIST_ARGV: Final[tuple[str, ...]] = ("cursor", "agent", "models")
+CURSOR_MODEL_LIST_HEADER: Final = "Available models"
+# Pinned grammar: `<id> - <display name>` (one line each). Fail closed otherwise.
+CURSOR_MODEL_LIST_LINE_RE: Final = r"^([A-Za-z0-9][A-Za-z0-9._+-]*) - .+$"
 EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT: Final = "claude-haiku-4-5"
 CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
 CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.6-luna"
