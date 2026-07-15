@@ -85,24 +85,25 @@ Warnings (41):
 
 ## Architectural invariants
 
-The diff is a pure CLI registry refactoring confined to `python/larch/cli.py` and corresponding test and skill files. It widens the registry value type from a 2-tuple to a 3-tuple by inlining a `machine_stdout` boolean, removes the two hand-maintained frozensets in favour of a dynamically derived view, and repoints several design-lifecycle, review, and run-log commands from monolithic modules to focused submodules. No invariant governing gate disarmament, pause snapshot completeness, stale-result identity validation, run-log flush artifact completeness, committed artifact content, outcome labeling, panel slot accounting, agent evidence backing, or ship recovery routing is touched by any changed line.
+The diff is a pure CLI registry refactoring confined to `python/larch/cli.py`, test files, and `skills/design/SKILL.md`. None of the changed lines touch gate disarmament logic, pause-snapshot allowlists, stale-result identity validation, run-log flush artifact handling, committed artifact content, outcome labeling, panel slot accounting, agent evidence backing, or ship recovery routing. All invariants remain unaffected by this change.
 
 ## Architectural guidelines
 
-The diff modifies `python/larch/cli.py` and related test files to consolidate the CLI registry format and repoint design and review verb entries to their defining modules; no guideline deviation is introduced by the changed code.
+The changed code follows established conventions throughout. The registry value type widens from a 2-tuple to a 3-tuple by inlining the `machine_stdout` boolean, which consolidates what were two parallel data structures (`_REGISTRY` and the hand-maintained `_MACHINE_STDOUT_KEYS` frozenset) into a single source of truth, consistent with the spirit of defining a convention once and having all consumers derive from it. The `_MACHINE_STDOUT_KEYS` view is now computed from the registry rather than duplicated, eliminating a class of drift that the guidelines discourage. Design-lifecycle verbs are repointed from the monolithic `design_lifecycle` module to focused submodules, and the corresponding SKILL.md prose references are swept in the same change. Review pipeline verbs are similarly repointed and the test mock is updated to match the new module name. A new structural assertion verifies that no registry entry still points at the old `larch.design.design_lifecycle` module. All consuming tests are updated consistently with the registry changes. No deviation from any guideline is introduced by the changed lines.
 
-## /implement run 503DCB7A-6FDF-49C0-B53B-B8C2CFA52E2B: shipping
+## /implement run 503DCB7A-6FDF-49C0-B53B-B8C2CFA52E2B: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:35:08
-- **Cost**: 💰 TOTAL ~$21.03: Claude $7.70, Codex-5.6 $4.48, Codex-mini $0.01, Cursor $8.18 (Composer $4.70, Grok $3.48), Claude (subprocess) $0.66  |  Tokens: 30826k
+- **Cost**: 💰 TOTAL ~$25.52: Claude $12.19, Codex-5.6 $4.48, Codex-mini $0.01, Cursor $8.18 (Composer $4.70, Grok $3.48), Claude (subprocess) $0.66  |  Tokens: 38377k
 - **Issue**: #7387: https://github.com/character-ai/larch/issues/7387
+- **PR**: #7441: https://github.com/character-ai/larch/pull/7441
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +882/-960, larch-logs +611/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 41
