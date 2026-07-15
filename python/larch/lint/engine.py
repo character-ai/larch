@@ -169,7 +169,7 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901 - rule field validatio
             f"lint rule syntax_policy is unsupported: {rule.syntax_policy!r}"
         )
     if rule.pathspecs is not None:
-        if not isinstance(rule.pathspecs, tuple) or not rule.pathspecs:
+        if not rule.pathspecs:
             raise ScanError("lint rule pathspecs must be a non-empty tuple when set")
         for item in rule.pathspecs:
             if not _is_single_line(item):
@@ -468,7 +468,7 @@ def _validate_finding(  # noqa: C901, PLR0912 - finding field validation is inte
         raise ScanError(
             "finding pattern_name must be a non-empty single-line string when present"
         )
-    if occurrence is not None and (not isinstance(occurrence, int) or occurrence < 1):
+    if occurrence is not None and occurrence < 1:
         raise ScanError("finding occurrence must be a positive int when present")
     has_occurrence = pattern_name is not None or occurrence is not None
     if has_occurrence and (pattern_name is None or occurrence is None):
