@@ -1,7 +1,7 @@
 ---
 name: analyze-bugs
 description: "Use when auditing recent [BUG] issues with a low-cost cached verification funnel. Dev-only; report-only unless follow-up filing is approved."
-argument-hint: "[-n COUNT] [--deep-max M] [--deep-model sonnet|opus|fable] [--refresh] [--sample K] [--sweep] [--sweep-max N] [--repo owner/name]"
+argument-hint: "[-n COUNT] [--deep-max M] [--runtime-max M] [--deep-model sonnet|opus|fable] [--refresh] [--sample K] [--sweep] [--sweep-max N] [--repo owner/name]"
 allowed-tools: Bash, Read, Task, AskUserQuestion, Skill
 ---
 
@@ -17,6 +17,7 @@ Parse `$ARGUMENTS` and forward only these flags:
 
 - `-n COUNT`, `--count COUNT`: number of newest issues whose title is `[BUG]` after stripping known lifecycle prefixes and matching case-insensitively. Default: `200`.
 - `--deep-max M`: maximum deep verifier tasks. Default: `30`.
+- `--runtime-max M`: maximum newest unique fix SHAs to execute for coordinator-side runtime verification. Default: `10`; `0` disables runtime execution.
 - `--deep-model sonnet|opus|fable`: model alias for deep checks. Default: `sonnet`.
 - `--refresh`: ignore matching ledger skips for this run.
 - `--sample K`: deterministic calibration sample from triage clear or likely rows. Default: `3`. Pass `--sample 0` to disable calibration.
@@ -24,7 +25,11 @@ Parse `$ARGUMENTS` and forward only these flags:
 - `--sweep-max N`: cap selected sweep merges. Default: `20`; requires `--sweep` and must be a positive integer.
 - `--repo OWNER/REPO`: explicit GitHub repo. Default: `gh repo view`.
 
-Parse `--sweep` and `--sweep-max` before prefetch. Reject `--sweep-max` without `--sweep`, invalid or non-positive values, and unknown flags before spending Task tokens. Forward only the legacy prefetch flags (`-n` / `--count`, `--repo`, and their existing prefetch controls); never forward sweep controls to `analyze-bugs prefetch`.
+Parse `--sweep`, `--sweep-max`, and `--runtime-max` before prefetch. Reject `--sweep-max` without `--sweep`, negative runtime budgets, invalid values, and unknown flags before spending Task tokens. Retain `RUNTIME_MAX` through Stage 3. Forward only the legacy prefetch flags (`-n` / `--count`, `--repo`, and their existing prefetch controls); never forward sweep or runtime controls to `analyze-bugs prefetch`.
+
+## Evidence tiers
+
+`MECH` is coordinator static evidence, `TRIAGE` is a token-verified read-only triage result, `DEEP` is a completed read-only deep-verifier result, and `RUNTIME` is coordinator execution evidence. Only certifiable fixed verdicts can be promoted to `RUNTIME`; a runtime failure or timeout becomes `SUSPECT` and is never verified.
 
 ## Preflight
 
@@ -169,9 +174,23 @@ python3 "$PWD/python/cli.py" analyze-bugs ledger \
 
 Current verifier rows separately report `class_complete` and `sibling_sites`. A `CONFIRMED_FIXED` instance can remain class-open when targeted checkout Greps identify sibling `path:symbol` sites. Only completed current-schema verifier rows with that confirmed instance verdict can enter the class-open report section or follow-up body.
 
-## Stage 3: Report
+## Stage 3: Runtime verification
 
-Render the report from the same explicit paths. When sweep is enabled, this is the sole final rendering step: it validates and merges `sweep-validated.json` only after ledger and deep work complete.
+After all ledger and deep processing, run the coordinator-only runtime stage before the sole report invocation. It makes no GitHub or vendor calls and does not change agent read-only contracts.
+
+```bash
+python3 "$PWD/python/cli.py" analyze-bugs runtime \
+  --run-dir "$RUN_DIR" \
+  --manifest "$MANIFEST_PATH" \
+  --ledger-path "$LEDGER_PATH" \
+  --runtime-max "$RUNTIME_MAX"
+```
+
+The coordinator selects newest unique fix SHAs, runs each selected SHA once, and fans its evidence out to every matching manifest binding. It discovers only added or modified `python/tests/` paths, never invokes pytest without paths, disables the on-repository cache provider, and places pytest temporary paths under the run directory. Mapped harnesses run with the same bounded timeout. Failures and timeouts become bounded `SUSPECT` evidence without aborting later SHA groups. Passing runtime checks promote only `CONFIRMED_FIXED`, `FIXED_CLEAR`, or `FIXED_LIKELY` to `RUNTIME`; `SUSPECT` is not verified. Uncovered orchestration zones remain static and render as `UNVERIFIED_RUNTIME` in the harness-gap section. Print the selected and skipped unique-SHA counts from the command KVs.
+
+## Stage 4: Report
+
+Render the report from the same explicit paths. This is the sole final rendering step: it validates and merges `sweep-validated.json` only after ledger, deep, and runtime work complete.
 
 ```bash
 python3 "$PWD/python/cli.py" analyze-bugs report \
@@ -182,7 +201,7 @@ python3 "$PWD/python/cli.py" analyze-bugs report \
 
 Print the markdown report and the `ANALYZE_BUGS_COST_ESTIMATE=...` line. With sweep, also print `ANALYZE_BUGS_SWEEP_COST_ESTIMATE=...`, selected, skipped, and pending-frontier counts, plus an incomplete-coverage notice when capped work remains. The estimate is marked estimated when Task token usage is unavailable.
 
-The Issues table names the final evidence tier as `MECH`, `TRIAGE`, or `DEEP`. The report then shows `Introduced risk` for selected current-schema risk claims and `Instance fixed, class open` for confirmed instances with validated siblings, plus chronic zones, directional fix chains, baseline-extending fixes, and the delta since the prior valid run snapshot. Class-open rows extend the existing approval-gated follow-up body; they never file an issue directly. A validated sweep adds a `Sweep candidates` table and can create or extend the same follow-up body even when legacy follow-ups are empty. A verified issue has a final non-pending verdict from one of those evidence tiers. Sample calibration always prints the sample size, sampled failures, and triage false-pass rate. When chronic zones exist, the report suggests `/learn-from-bugs` scoped to those zones.
+The Issues table names the final evidence tier as `MECH`, `TRIAGE`, `DEEP`, or `RUNTIME`. `RUNTIME` requires actual passing execution and a certifiable fixed verdict; absent checks preserve the static tier. Runtime failures and timeouts produce `SUSPECT` and are excluded from verified accounting. The report then shows `Introduced risk` for selected current-schema risk claims and `Instance fixed, class open` for confirmed instances with validated siblings, plus chronic zones, directional fix chains, baseline-extending fixes, and the delta since the prior valid run snapshot. Class-open rows extend the existing approval-gated follow-up body; they never file an issue directly. A validated sweep adds a `Sweep candidates` table and can create or extend the same follow-up body even when legacy follow-ups are empty. A verified issue has a final non-pending verdict from one of those evidence tiers. Sample calibration always prints the sample size, sampled failures, and triage false-pass rate. When chronic zones exist, the report suggests `/learn-from-bugs` scoped to those zones.
 
 On a successful sweep report, `sweep-state.json` sits beside `ledger.jsonl`. It records the pinned discovery watermark and every unselected eligible SHA as a pending frontier, so capped work is retried rather than silently omitted. A first sweep covers only the prior 48 hours.
 
