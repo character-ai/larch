@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+The changed code only migrates KEY=value readers onto shared `larch.io` helpers and shrinks the kv-codec baseline; it does not weaken any absolute gate, persistence, identity, run-log, panel, agent, or ship invariant.
+
+## Architectural guidelines
+
+The changed call sites route wire KEY=value reads through `larch.io` with explicit duplicate policies, shrink the kv-codec baseline without widening it, and pin migrated semantics with characterization tests, so the diff aligns with the wire-I/O and migration guidelines rather than departing from them.
+
 ## /implement run F6E3C55B-FC34-4CA1-8CBA-0B48711A20FD: shipping
 
 - **Outcome**: shipping
