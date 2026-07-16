@@ -1524,6 +1524,376 @@ def complexity_history_events(
     return grouped
 
 
+# Skill-closure rows are aggregate records, not source-level findings.  Keep
+# their exact schema and ratchet policy here with the other engine-owned
+# baseline contracts, while closure discovery remains in its dedicated module.
+SKILL_CLOSURE_RATCHETED_TARGETS = ("design", "implement", "review", "panel-tier")
+SKILL_CLOSURE_FILE_RATCHET_TARGETS = frozenset({"panel-tier"})
+SKILL_CLOSURE_METRIC_FIELDS = (
+    "skill_md_lines",
+    "skill_md_estimated_tokens",
+    "skill_md_content_estimated_tokens",
+    "closure_lines",
+    "closure_estimated_tokens",
+    "closure_content_estimated_tokens",
+)
+SKILL_CLOSURE_CONDITIONAL_METRIC_FIELDS = (
+    "conditional_lines",
+    "conditional_estimated_tokens",
+    "conditional_content_estimated_tokens",
+)
+_SKILL_CLOSURE_CONDITIONAL_TO_EAGER_METRIC = {
+    "conditional_lines": "closure_lines",
+    "conditional_estimated_tokens": "closure_estimated_tokens",
+    "conditional_content_estimated_tokens": "closure_content_estimated_tokens",
+}
+_SKILL_CLOSURE_FIELDS = frozenset(
+    {
+        "skill",
+        *SKILL_CLOSURE_METRIC_FIELDS,
+        "files",
+        *SKILL_CLOSURE_CONDITIONAL_METRIC_FIELDS,
+        "conditional_files",
+    }
+)
+SKILL_CLOSURE_BASELINE_KEYS = _SKILL_CLOSURE_FIELDS
+
+
+@dataclass(frozen=True)
+class SkillClosureBaselineRow:
+    """One immutable aggregate skill-closure baseline record."""
+
+    skill: str
+    skill_md_lines: int
+    skill_md_estimated_tokens: int
+    skill_md_content_estimated_tokens: int
+    closure_lines: int
+    closure_estimated_tokens: int
+    closure_content_estimated_tokens: int
+    files: tuple[str, ...]
+    conditional_lines: int
+    conditional_estimated_tokens: int
+    conditional_content_estimated_tokens: int
+    conditional_files: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SkillClosureGrowthArgs:
+    """Validated arguments for the skill-closure growth lint command."""
+
+    root: Path
+    write: bool
+    skill: str | None
+
+
+@dataclass(frozen=True)
+class SkillClosureReportArgs:
+    """Validated arguments for the skill-closure report command."""
+
+    root: Path
+
+
+def parse_skill_closure_report_argv(
+    argv: Sequence[str], *, default_root: Path
+) -> SkillClosureReportArgs | None:
+    """Parse the established scan-only skill-closure report command surface."""
+    parser = argparse.ArgumentParser(
+        prog="cli.py skill-closure report",
+        description="Report and ratchet always-loaded prompt-source closure size.",
+    )
+    _ = parser.add_argument("--root", default=str(default_root))
+    try:
+        parsed = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return None
+    return SkillClosureReportArgs(root=Path(cast("str", parsed.root)).resolve())
+
+
+def parse_skill_closure_growth_argv(
+    argv: Sequence[str], *, default_root: Path
+) -> SkillClosureGrowthArgs | None:
+    """Parse the established skill-closure growth command surface."""
+    parser = argparse.ArgumentParser(
+        prog="cli.py lint skill-closure-growth",
+        description="Report and ratchet always-loaded prompt-source closure size.",
+    )
+    _ = parser.add_argument("--root", default=str(default_root))
+    _ = parser.add_argument(
+        "--write", action="store_true", help="regenerate the committed baseline"
+    )
+    _ = parser.add_argument(
+        "--skill", choices=SKILL_CLOSURE_RATCHETED_TARGETS, help="check one ratcheted target"
+    )
+    try:
+        parsed = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return None
+    write = bool(parsed.write)
+    skill = cast("str | None", parsed.skill)
+    if write and skill is not None:
+        print("--skill is check-only; --write regenerates all ratcheted targets", file=sys.stderr)
+        return None
+    return SkillClosureGrowthArgs(
+        root=Path(cast("str", parsed.root)).resolve(), write=write, skill=skill
+    )
+
+
+def _skill_closure_metric(
+    value: object, *, source: str, index: int, field: str
+) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ScanError(f"{source}: record {index} has invalid {field}")
+    return value
+
+
+def _skill_closure_files(
+    value: object, *, source: str, index: int, field: str, allow_empty: bool
+) -> tuple[str, ...]:
+    if not isinstance(value, list) or (not value and not allow_empty):
+        raise ScanError(f"{source}: record {index} has invalid {field}")
+    paths: list[str] = []
+    for raw in cast("list[object]", value):
+        if (
+            not isinstance(raw, str)
+            or not _nonempty_single_line(raw)
+            or raw.startswith("/")
+            or "\\" in raw
+        ):
+            raise ScanError(f"{source}: record {index} has invalid {field}")
+        path = Path(raw)
+        if path.as_posix() != raw or any(
+            part in {"", ".", ".."} for part in path.parts
+        ):
+            raise ScanError(f"{source}: record {index} has invalid {field}")
+        paths.append(raw)
+    if len(paths) != len(set(paths)):
+        raise ScanError(f"{source}: record {index} has duplicate {field}")
+    return tuple(paths)
+
+
+def _skill_closure_row(
+    raw: object, *, source: str, index: int
+) -> SkillClosureBaselineRow:
+    if not isinstance(raw, dict):
+        raise ScanError(f"{source}: record {index} must be an object")
+    record = cast("Mapping[str, object]", raw)
+    if frozenset(record) != _SKILL_CLOSURE_FIELDS:
+        raise ScanError(
+            f"{source}: record {index} must have exactly {sorted(_SKILL_CLOSURE_FIELDS)}"
+        )
+    skill = record["skill"]
+    if not isinstance(skill, str) or skill not in SKILL_CLOSURE_RATCHETED_TARGETS:
+        raise ScanError(f"{source}: record {index} has invalid skill")
+    return SkillClosureBaselineRow(
+        skill=skill,
+        skill_md_lines=_skill_closure_metric(
+            record["skill_md_lines"], source=source, index=index, field="skill_md_lines"
+        ),
+        skill_md_estimated_tokens=_skill_closure_metric(
+            record["skill_md_estimated_tokens"],
+            source=source,
+            index=index,
+            field="skill_md_estimated_tokens",
+        ),
+        skill_md_content_estimated_tokens=_skill_closure_metric(
+            record["skill_md_content_estimated_tokens"],
+            source=source,
+            index=index,
+            field="skill_md_content_estimated_tokens",
+        ),
+        closure_lines=_skill_closure_metric(
+            record["closure_lines"], source=source, index=index, field="closure_lines"
+        ),
+        closure_estimated_tokens=_skill_closure_metric(
+            record["closure_estimated_tokens"],
+            source=source,
+            index=index,
+            field="closure_estimated_tokens",
+        ),
+        closure_content_estimated_tokens=_skill_closure_metric(
+            record["closure_content_estimated_tokens"],
+            source=source,
+            index=index,
+            field="closure_content_estimated_tokens",
+        ),
+        files=_skill_closure_files(
+            record["files"], source=source, index=index, field="files", allow_empty=False
+        ),
+        conditional_lines=_skill_closure_metric(
+            record["conditional_lines"],
+            source=source,
+            index=index,
+            field="conditional_lines",
+        ),
+        conditional_estimated_tokens=_skill_closure_metric(
+            record["conditional_estimated_tokens"],
+            source=source,
+            index=index,
+            field="conditional_estimated_tokens",
+        ),
+        conditional_content_estimated_tokens=_skill_closure_metric(
+            record["conditional_content_estimated_tokens"],
+            source=source,
+            index=index,
+            field="conditional_content_estimated_tokens",
+        ),
+        conditional_files=_skill_closure_files(
+            record["conditional_files"],
+            source=source,
+            index=index,
+            field="conditional_files",
+            allow_empty=True,
+        ),
+    )
+
+
+def _validate_skill_closure_rows(
+    rows: Sequence[SkillClosureBaselineRow], *, source: str
+) -> list[SkillClosureBaselineRow]:
+    skills = [row.skill for row in rows]
+    if len(skills) != len(set(skills)) or frozenset(skills) != frozenset(
+        SKILL_CLOSURE_RATCHETED_TARGETS
+    ):
+        raise ScanError(f"{source}: baseline must contain one row per ratcheted target")
+    return sorted(rows, key=lambda row: row.skill)
+
+
+def parse_skill_closure_baseline(text: str, *, source: str) -> list[SkillClosureBaselineRow]:
+    """Parse exact aggregate closure records and reject incomplete target sets."""
+    try:
+        decoded = cast("object", json.loads(text))
+    except json.JSONDecodeError as exc:
+        raise ScanError(f"{source}: cannot load baseline: {exc}") from exc
+    if not isinstance(decoded, list):
+        raise ScanError(f"{source}: baseline must be a top-level JSON array")
+    rows = [
+        _skill_closure_row(raw, source=source, index=index)
+        for index, raw in enumerate(cast("list[object]", decoded), start=1)
+    ]
+    return _validate_skill_closure_rows(rows, source=source)
+
+
+def load_skill_closure_baseline(
+    path: str | Path, *, root: Path
+) -> list[SkillClosureBaselineRow]:
+    """Trusted-read and parse a complete aggregate closure baseline."""
+    destination = _validate_baseline_path(path, root=root, write_mode=False)
+    if not _baseline_exists(destination, root=root):
+        raise ScanError(f"baseline not found: {destination}")
+    try:
+        text = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"cannot read baseline {destination}: {exc}") from exc
+    return parse_skill_closure_baseline(text, source=str(destination))
+
+
+def skill_closure_row_record(row: SkillClosureBaselineRow) -> dict[str, object]:
+    """Render one aggregate record using the committed canonical fields."""
+    return {
+        "skill": row.skill,
+        "skill_md_lines": row.skill_md_lines,
+        "skill_md_estimated_tokens": row.skill_md_estimated_tokens,
+        "skill_md_content_estimated_tokens": row.skill_md_content_estimated_tokens,
+        "closure_lines": row.closure_lines,
+        "closure_estimated_tokens": row.closure_estimated_tokens,
+        "closure_content_estimated_tokens": row.closure_content_estimated_tokens,
+        "files": list(row.files),
+        "conditional_lines": row.conditional_lines,
+        "conditional_estimated_tokens": row.conditional_estimated_tokens,
+        "conditional_content_estimated_tokens": row.conditional_content_estimated_tokens,
+        "conditional_files": list(row.conditional_files),
+    }
+
+
+def serialize_skill_closure_baseline(rows: Sequence[SkillClosureBaselineRow]) -> str:
+    """Serialize complete aggregate closure rows byte-stably."""
+    ordered = _validate_skill_closure_rows(rows, source="skill-closure baseline")
+    records = [skill_closure_row_record(row) for row in ordered]
+    return json.dumps(records, indent=2, sort_keys=True) + "\n"
+
+
+def write_skill_closure_baseline(
+    path: str | Path, *, root: Path, rows: Sequence[SkillClosureBaselineRow]
+) -> list[SkillClosureBaselineRow]:
+    """Atomically write a complete baseline and prove byte/record read-back."""
+    destination = _validate_baseline_path(
+        path, root=root, write_mode=True, create_missing_parents=True
+    )
+    intended = serialize_skill_closure_baseline(rows)
+    expected = parse_skill_closure_baseline(intended, source=str(destination))
+    try:
+        larch_io.trusted_atomic_write(destination, intended, root=root)
+        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
+    if read_back != intended:
+        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
+    parsed = parse_skill_closure_baseline(read_back, source=str(destination))
+    if parsed != expected:
+        raise ScanError(f"baseline read-back records differ after write: {destination}")
+    return parsed
+
+
+def _skill_closure_conditional_growth_allowed(
+    live: SkillClosureBaselineRow, baseline: SkillClosureBaselineRow, metric: str
+) -> bool:
+    moved_to_conditional = (
+        set(baseline.files) - set(baseline.conditional_files)
+    ) & set(live.conditional_files)
+    if not moved_to_conditional:
+        return False
+    eager_metric = _SKILL_CLOSURE_CONDITIONAL_TO_EAGER_METRIC[metric]
+    live_total = getattr(live, eager_metric) + getattr(live, metric)
+    baseline_total = getattr(baseline, eager_metric) + getattr(baseline, metric)
+    return live_total <= baseline_total
+
+
+def skill_closure_growth_violations(
+    live_rows: Sequence[SkillClosureBaselineRow],
+    baseline_rows: Sequence[SkillClosureBaselineRow],
+) -> list[str]:
+    """Compare selected live aggregate rows against a complete typed baseline."""
+    _validate_skill_closure_rows(baseline_rows, source="skill-closure baseline")
+    selected = list(live_rows)
+    if not selected or len({row.skill for row in selected}) != len(selected):
+        raise ScanError("live skill-closure rows must select unique ratcheted targets")
+    if any(row.skill not in SKILL_CLOSURE_RATCHETED_TARGETS for row in selected):
+        raise ScanError("live skill-closure rows contain an invalid ratcheted target")
+    baseline_by_skill = {row.skill: row for row in baseline_rows}
+    violations: list[str] = []
+    for live in selected:
+        baseline = baseline_by_skill[live.skill]
+        violations.extend(
+            f"{live.skill}: {metric} {getattr(live, metric)} > baseline {getattr(baseline, metric)}"
+            for metric in SKILL_CLOSURE_METRIC_FIELDS
+            if getattr(live, metric) > getattr(baseline, metric)
+        )
+        if live.skill == "review":
+            violations.extend(
+                f"{live.skill}: {metric} {getattr(live, metric)} > baseline {getattr(baseline, metric)}"
+                for metric in SKILL_CLOSURE_CONDITIONAL_METRIC_FIELDS
+                if getattr(live, metric) > getattr(baseline, metric)
+                and not _skill_closure_conditional_growth_allowed(live, baseline, metric)
+            )
+        baseline_files = set(baseline.files) | set(baseline.conditional_files)
+        live_files = set(live.files) | set(live.conditional_files)
+        violations.extend(
+            f"{live.skill}: baseline-tracked file dropped {path}"
+            for path in sorted(baseline_files - live_files)
+        )
+        if live.skill in SKILL_CLOSURE_FILE_RATCHET_TARGETS:
+            violations.extend(
+                f"{live.skill}: files added {path}"
+                for path in live.files
+                if path not in set(baseline.files)
+            )
+    return violations
+
+
 # These intentionally-small schemas cover lints whose identities do not fit the
 # location/metric/occurrence baseline families above.  Keeping them here gives
 # those lints the same trusted read, strict JSON, duplicate, and atomic-write
@@ -1935,7 +2305,30 @@ def _validate_baseline_component(path: Path, *, is_parent: bool) -> bool:
     return True
 
 
-def _validate_baseline_path(raw: str | Path, *, root: Path, write_mode: bool) -> Path:
+def _create_baseline_parent(path: Path) -> None:
+    """Create one absent baseline parent and immediately revalidate its type."""
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ScanError(f"failed to inspect baseline path {path}: {exc}") from exc
+    else:
+        raise ScanError(f"baseline parent changed while validating: {path}")
+    try:
+        path.mkdir()
+    except OSError as exc:
+        raise ScanError(f"failed to create baseline parent {path}: {exc}") from exc
+    _ = _validate_baseline_component(path, is_parent=True)
+
+
+def _validate_baseline_path(
+    raw: str | Path,
+    *,
+    root: Path,
+    write_mode: bool,
+    create_missing_parents: bool = False,
+) -> Path:
     text = str(raw)
     if not _is_single_line(text):
         raise ScanError("baseline path must be a non-empty single-line path")
@@ -1954,10 +2347,14 @@ def _validate_baseline_path(raw: str | Path, *, root: Path, write_mode: bool) ->
     components = relative.parts
     for index, component in enumerate(components):
         current = current / component
-        exists = _validate_baseline_component(
-            current,
-            is_parent=index < len(components) - 1,
-        )
+        is_parent = index < len(components) - 1
+        try:
+            exists = _validate_baseline_component(current, is_parent=is_parent)
+        except ScanError:
+            if not (write_mode and create_missing_parents and is_parent):
+                raise
+            _create_baseline_parent(current)
+            exists = True
         if not exists:
             break
     if write_mode and not absolute.parent.is_dir():

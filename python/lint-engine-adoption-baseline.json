@@ -88,22 +88,6 @@
     "rule_id": "engine-adoption"
   },
   {
-    "anchor": "baseline-io",
-    "line": 852,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_skill_closure_growth.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 763,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_skill_closure_growth.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
     "anchor": "argparse-construction",
     "line": 20,
     "message": "legacy ArgumentParser construction outside shared lint engine",

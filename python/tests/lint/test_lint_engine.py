@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import pytest
 from larch.lint import engine as lint_engine
@@ -139,6 +140,55 @@ def test_identity_baseline_writer_rejects_mismatched_rows_before_writing(
         )
 
     assert baseline.read_text(encoding="utf-8") == "[]\n"
+
+
+def test_skill_closure_baseline_committed_payload_is_byte_stable(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[3]
+    payload = (repo / "python" / "skill-closure-baseline.json").read_text(
+        encoding="utf-8"
+    )
+    baseline = tmp_path / "python" / "skill-closure-baseline.json"
+    baseline.parent.mkdir()
+    _ = baseline.write_text(payload, encoding="utf-8")
+
+    rows = lint_engine.load_skill_closure_baseline(
+        "python/skill-closure-baseline.json", root=tmp_path
+    )
+    written = lint_engine.write_skill_closure_baseline(
+        "python/skill-closure-baseline.json", root=tmp_path, rows=rows
+    )
+
+    assert written == rows
+    assert baseline.read_text(encoding="utf-8") == payload
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda payload: payload.pop(),
+        lambda payload: payload.append(dict(payload[0])),
+        lambda payload: payload.append({**payload[0], "skill": "unknown"}),
+        lambda payload: payload[0].update({"closure_lines": True}),
+        lambda payload: payload[0].update({"files": ["../outside.md"]}),
+        lambda payload: payload[0].update({"files": ["skills\\design\\SKILL.md"]}),
+        lambda payload: payload[0].update({"unknown": 1}),
+    ],
+)
+def test_skill_closure_baseline_parser_rejects_untrusted_aggregate_rows(
+    mutation: Callable[[list[dict[str, object]]], None],
+) -> None:
+    repo = Path(__file__).resolve().parents[3]
+    payload = json.loads(
+        (repo / "python" / "skill-closure-baseline.json").read_text(encoding="utf-8")
+    )
+    assert isinstance(payload, list)
+    records = [dict(item) for item in cast("list[dict[str, object]]", payload)]
+    mutation(records)
+
+    with pytest.raises(lint_engine.ScanError):
+        _ = lint_engine.parse_skill_closure_baseline(
+            json.dumps(records), source="fixture"
+        )
 
 
 def _rule(
