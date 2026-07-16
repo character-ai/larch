@@ -41,11 +41,19 @@ codex/plan-fidelity-vote              │                                       
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+The changed code introduces a new lint rule, two opt-in engine fields, a baseline file, and associated Makefile and documentation updates. None of these touch any invariant surface: no hard gate trigger is altered or disarmed, no gate variant path is introduced or changed, no pause snapshot or step-result persistence logic is touched, and no run-log flush, commit, outcome-label, panel-slot, agent-verdict, or ship-lifecycle code is modified. All changed code is confined to the lint engine extension and its rule, test, manifest, and documentation satellites.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run 86415A5A-A1AB-4DCD-9F4E-B573ECFE2C7A: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:37:42
-- **Cost**: 💰 TOTAL ~$15.11: Claude $1.79, Codex-5.6 $4.58, Codex-mini $0.02, Cursor $7.55 (Composer $3.04, Grok $4.51), Claude (subprocess) $1.17  |  Tokens: 21324k
+- **Cost**: 💰 TOTAL ~$18.65: Claude $5.33, Codex-5.6 $4.58, Codex-mini $0.02, Cursor $7.55 (Composer $3.04, Grok $4.51), Claude (subprocess) $1.17  |  Tokens: 27303k
 - **Issue**: #7434: https://github.com/character-ai/larch/issues/7434
 - **Plan review**: N/A
 - **Plan coverage**: 9/9 firm headings; band: advisory; disposition: none; todos_left: 0
