@@ -79,6 +79,14 @@ NEEDS_USER_POSTMERGE_MAIN_CI_FAIL: Final = "postmerge-main-ci-fail"
 NEEDS_USER_FLAKY_DEFECT_UNFIXED: Final = "flaky-defect-unfixed"
 NEEDS_USER_SCOPE_DISPOSITION: Final = "scope-disposition"
 NEEDS_USER_ARCHITECTURAL_ASSESSMENTS: Final = "architectural-assessments"
+SHIP_STALL_STEP_MAIN_CI: Final = "main-ci"
+SHIP_STALL_STEP_MERGE: Final = "merge"
+SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH: Final = "postmerge-push-watch"
+SHIP_STALL_STEPS: Final[frozenset[str]] = frozenset({
+    SHIP_STALL_STEP_MAIN_CI,
+    SHIP_STALL_STEP_MERGE,
+    SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH,
+})
 NEEDS_USER_REASON_TOKENS: Final = (
     NEEDS_USER_FIRST_FIXER_NON_HEALTH,
     NEEDS_USER_CI_FIX_EXHAUSTED,

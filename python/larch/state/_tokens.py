@@ -260,6 +260,8 @@ def _safe_outcome(value: str) -> bool:
 def _safe_step(value: str, *, generic: bool) -> bool:
     if generic and value in _GENERIC_STEPS:
         return True
+    if value in config.SHIP_STALL_STEPS:
+        return True
     if value in {"bump-branch-guard", "merge-loop-iteration-cap", "rebase-failed"}:
         return True
     if re.fullmatch(r"[2-9]|1[0-5]", value):

@@ -807,8 +807,8 @@ def _postmerge_main_health_gate(
         if not _main_health_sidecar_bootstrapped(working.tmpdir):
             return None
         return _missing_main_health_sidecar_result(
-            ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
-            step="postmerge-push-watch",
+            ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH),
+            step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH,
             counters=counters,
         )
     _write_ship_state(
@@ -825,9 +825,9 @@ def _postmerge_main_health_gate(
         if fetch.returncode != 0:
             detail = "post-merge push watch could not refresh origin/main"
             _write_terminal_state(
-                ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
+                ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH),
                 result=Outcome.STALLED,
-                step="postmerge-push-watch",
+                step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH,
                 iteration=counters.iteration,
                 rebase_count=counters.rebase_count,
                 fix_attempts=counters.fix_attempts,
@@ -844,9 +844,9 @@ def _postmerge_main_health_gate(
     if not merged_head:
         detail = "post-merge push watch could not resolve merged main HEAD"
         _write_terminal_state(
-            ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
+            ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH),
             result=Outcome.STALLED,
-            step="postmerge-push-watch",
+            step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH,
             iteration=counters.iteration,
             rebase_count=counters.rebase_count,
             fix_attempts=counters.fix_attempts,
@@ -956,9 +956,9 @@ def _postmerge_main_health_gate(
             main_repair_head=repair_head,
         )
     _write_terminal_state(
-        ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
+        ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH),
         result=Outcome.STALLED,
-        step="postmerge-push-watch",
+        step=config.SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH,
         iteration=counters.iteration,
         rebase_count=counters.rebase_count,
         fix_attempts=counters.fix_attempts,
@@ -1015,8 +1015,8 @@ def _premerge_main_health_gate(
         if not _main_health_sidecar_bootstrapped(working.tmpdir):
             return None
         return _missing_main_health_sidecar_result(
-            ctx=working.with_(stall_tracking=True, stall_step="main-ci"),
-            step="main-ci",
+            ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_MAIN_CI),
+            step=config.SHIP_STALL_STEP_MAIN_CI,
             counters=counters,
         )
     base_head = _resolve_premerge_main_health_sha(
@@ -1027,9 +1027,9 @@ def _premerge_main_health_gate(
     if not base_head:
         detail = f"pre-merge main-health gate could not resolve origin/{base_ref} HEAD"
         _write_terminal_state(
-            ctx=working.with_(stall_tracking=True, stall_step="main-ci"),
+            ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_MAIN_CI),
             result=Outcome.STALLED,
-            step="main-ci",
+            step=config.SHIP_STALL_STEP_MAIN_CI,
             iteration=counters.iteration,
             rebase_count=counters.rebase_count,
             fix_attempts=counters.fix_attempts,
@@ -1082,11 +1082,11 @@ def _premerge_main_health_gate(
         _write_terminal_state(
             ctx=working.with_(
                 stall_tracking=True,
-                stall_step="main-ci",
+                stall_step=config.SHIP_STALL_STEP_MAIN_CI,
                 final_bail_reason=config.NEEDS_USER_MAIN_CI_FAIL,
             ),
             result=Outcome.NEEDS_USER_INPUT,
-            step="main-ci",
+            step=config.SHIP_STALL_STEP_MAIN_CI,
             iteration=counters.iteration,
             rebase_count=counters.rebase_count,
             fix_attempts=counters.fix_attempts,
@@ -1103,9 +1103,9 @@ def _premerge_main_health_gate(
             main_health_head_sha=health.head_sha or base_head,
         )
     _write_terminal_state(
-        ctx=working.with_(stall_tracking=True, stall_step="main-ci"),
+        ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_MAIN_CI),
         result=Outcome.STALLED,
-        step="main-ci",
+        step=config.SHIP_STALL_STEP_MAIN_CI,
         iteration=counters.iteration,
         rebase_count=counters.rebase_count,
         fix_attempts=counters.fix_attempts,
@@ -1900,11 +1900,11 @@ def run_ship(
                 _write_terminal_state(
                     ctx=working.with_(
                         stall_tracking=True,
-                        stall_step="merge",
+                        stall_step=config.SHIP_STALL_STEP_MERGE,
                         final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
                     ),
                     result=Outcome.NEEDS_USER_INPUT,
-                    step="merge",
+                    step=config.SHIP_STALL_STEP_MERGE,
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
@@ -1914,7 +1914,7 @@ def run_ship(
                     runner=runner,
                     ctx=working.with_(
                         stall_tracking=True,
-                        stall_step="merge",
+                        stall_step=config.SHIP_STALL_STEP_MERGE,
                         final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
                     ),
                     cwd=repo_root,
@@ -1946,9 +1946,9 @@ def run_ship(
                     else merged.error or f"merge did not complete: {merged.result}"
                 )
                 _write_terminal_state(
-                    ctx=working.with_(stall_tracking=True, stall_step="merge"),
+                    ctx=working.with_(stall_tracking=True, stall_step=config.SHIP_STALL_STEP_MERGE),
                     result=Outcome.STALLED,
-                    step="merge",
+                    step=config.SHIP_STALL_STEP_MERGE,
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
