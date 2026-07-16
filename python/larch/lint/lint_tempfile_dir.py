@@ -7,41 +7,33 @@ python/tempfile-dir-baseline.json with a required reason per row.
 
 from __future__ import annotations
 
-import argparse
 import ast
-import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 
+from larch.core import proc
 from larch.lint.engine import (
-    first_duplicate as _first_duplicate,
+    Finding as EngineFinding,
+    LintRule,
+    RuleCli,
+    SourceFile,
     is_exempt_python_source,
-    normalize_python_file_path,
+    is_production_python_path,
     ordered_ast_child_nodes,
     qualified_symbol,
+    run_rule_cli,
 )
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "tempfile-dir-baseline.json"
+SUPPRESSION_TOKEN = "lint-tempfile-dir"
 ALLOWED_CALLEES = frozenset({"mkstemp", "mkdtemp", "NamedTemporaryFile", "TemporaryDirectory"})
 BASELINE_KEYS = frozenset({"file", "qualified_symbol", "callee", "occurrence", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__"})
 MODULE_SYMBOL = "<module>"
-
-
-class Record(TypedDict):
-    file: str
-    qualified_symbol: str
-    callee: str
-    occurrence: int
-    reason: str
-
-
-class BaselineError(ValueError):
-    """Raised when the baseline cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -54,24 +46,6 @@ class Finding:
 
     def key(self) -> tuple[str, str, str, int]:
         return (self.file, self.qualified_symbol, self.callee, self.occurrence)
-
-
-def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
-    if not isinstance(value, str) or not value:
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized = normalize_python_file_path(value)
-    parts = normalized.split("/")
-    if (  # pylint: disable=too-many-boolean-expressions  # 7-condition path-component guard; splitting would obscure intent
-        normalized != value
-        or normalized.startswith("/")
-        or not normalized.startswith("larch/")
-        or not normalized.endswith(".py")
-        or "" in parts
-        or "." in parts
-        or ".." in parts
-    ):
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    return normalized
 
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
@@ -170,217 +144,61 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     )
     return findings
 
-
-def _record_key(record: Record) -> tuple[str, str, str, int]:
-    return (
-        record["file"],
-        record["qualified_symbol"],
-        record["callee"],
-        record["occurrence"],
+def detect(source: SourceFile) -> list[EngineFinding]:
+    """Adapt tempfile findings to the shared baseline engine."""
+    if not source.path.startswith("python/larch/"):
+        return []
+    tree = cast("ast.Module", source.python_ast)
+    legacy: list[Finding] = []
+    _collect_scope(
+        tree.body,
+        prefix=(),
+        normalized_file=source.path.removeprefix("python/"),
+        findings=legacy,
     )
-
-
-def _finding_sort_key(finding: Finding) -> tuple[str, str, str, int]:
-    return finding.key()
-
-
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    file_name = _validate_normalized_file(record["file"], source=source, index=index)
-    qualified_symbol = record["qualified_symbol"]
-    callee = record["callee"]
-    occurrence = record["occurrence"]
-    reason = record["reason"]
-    if not isinstance(qualified_symbol, str) or not qualified_symbol:
-        raise BaselineError(f"{source}: record {index} has invalid qualified_symbol")
-    if not isinstance(callee, str) or callee not in ALLOWED_CALLEES:
-        raise BaselineError(f"{source}: record {index} has invalid callee")
-    if not isinstance(occurrence, int) or isinstance(occurrence, bool) or occurrence < 1:
-        raise BaselineError(f"{source}: record {index} has invalid occurrence")
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: record {index} has invalid reason")
-    return {
-        "file": file_name,
-        "qualified_symbol": qualified_symbol,
-        "callee": callee,
-        "occurrence": occurrence,
-        "reason": reason,
-    }
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the committed baseline."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    records = [_validate_record(item, index=index, source=path) for index, item in enumerate(cast("list[object]", data))]
-    duplicate = _first_duplicate(_record_key(record) for record in records)
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {format_key(duplicate)}")
-    return records
-
-
-def _collect_all(larch_dir: Path) -> list[Finding]:
-    findings: list[Finding] = []
-    for path in iter_source_files(larch_dir):
-        findings.extend(scan_file(path, larch_dir=larch_dir))
-    return findings
-
-
-def _check_duplicate_live(findings: list[Finding]) -> str | None:
-    duplicate = _first_duplicate(finding.key() for finding in findings)
-    if duplicate is None:
-        return None
-    return f"duplicate live identity {format_key(duplicate)}"
-
-
-def format_key(key: tuple[str, str, str, int]) -> str:
-    file_name, qualified_symbol, callee, occurrence = key
-    return f"{file_name}:{qualified_symbol} {callee}#{occurrence}"
-
-
-def serialize_baseline(records: list[Record]) -> str:
-    """Return canonical sorted JSON for the baseline."""
-    ordered = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(
-    findings: list[Finding],
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> list[Record]:
-    preserved: dict[tuple[str, str, str, int], str] = {}
-    if baseline_path.is_file():
-        preserved = {_record_key(record): record["reason"] for record in load_baseline(baseline_path)}
-    reason_default = initial_reason.strip() if initial_reason is not None else None
-    records: list[Record] = []
-    missing: list[str] = []
-    for finding in sorted(findings, key=_finding_sort_key):
-        reason = preserved.get(finding.key()) or reason_default
-        if reason is None:
-            missing.append(format_key(finding.key()))
-            continue
-        records.append(
-            {
-                "file": finding.file,
-                "qualified_symbol": finding.qualified_symbol,
-                "callee": finding.callee,
-                "occurrence": finding.occurrence,
-                "reason": reason,
-            }
+    return [
+        EngineFinding(
+            path=source.path,
+            line=finding.lineno,
+            rule_id="tempfile-dir",
+            message=f"calls tempfile.{finding.callee} without dir=",
+            qualified_symbol=finding.qualified_symbol,
+            pattern_name=finding.callee,
+            occurrence=finding.occurrence,
         )
-    if missing:
-        joined = "\n  ".join(missing)
-        raise BaselineError("missing baseline reasons for live tempfile findings:\n  " + joined)
-    return records
+        for finding in legacy
+    ]
 
 
-def _run_write(
-    larch_dir: Path,
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> int:
-    try:
-        findings = _collect_all(larch_dir)
-        duplicate = _check_duplicate_live(findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-        records = _records_for_write(
-            findings,
-            baseline_path=baseline_path,
-            initial_reason=initial_reason,
-        )
-    except BaselineError as exc:
-        print(f"lint-tempfile-dir: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    print(f"lint-tempfile-dir: wrote {len(records)} records to {baseline_path}", file=sys.stderr)
-    return 0
-
-
-def _run_check(larch_dir: Path, *, baseline_path: Path) -> int:
-    try:
-        baseline_records = load_baseline(baseline_path)
-        findings = _collect_all(larch_dir)
-        duplicate = _check_duplicate_live(findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-    except BaselineError as exc:
-        print(f"lint-tempfile-dir: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_keys = frozenset(_record_key(record) for record in baseline_records)
-    new_findings: list[Finding] = []
-    warned: list[Finding] = []
-    for finding in sorted(findings, key=_finding_sort_key):
-        if finding.key() in baseline_keys:
-            warned.append(finding)
-        else:
-            new_findings.append(finding)
-    for finding in warned:
-        print(
-            "warning: "
-            f"{finding.file}:{finding.qualified_symbol} calls tempfile.{finding.callee} "
-            f"occurrence {finding.occurrence} line {finding.lineno} (baselined)",
-            file=sys.stderr,
-        )
-    for finding in new_findings:
-        print(
-            f"{finding.file}:{finding.qualified_symbol} calls tempfile.{finding.callee} "
-            f"occurrence {finding.occurrence} line {finding.lineno}; pass an explicit dir=",
-            file=sys.stderr,
-        )
-    return 1 if new_findings else 0
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint tempfile-dir", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from live AST scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason used for live findings without preserved baseline reasons.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+RULE = LintRule(
+    rule_id="tempfile-dir",
+    description="Ratchet tempfile creation toward explicit scratch directories",
+    detect=detect,
+    syntax_policy="skip",
+    suppression_token=SUPPRESSION_TOKEN,
+    pathspecs=("python/larch",),
+    source_filter=is_production_python_path,
+    occurrence_baseline=True,
+    occurrence_pattern_field="callee",
+    require_baseline=True,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root = Path(str(parsed.root)).resolve()
-    larch_dir = root / "python" / "larch"
-    if not larch_dir.is_dir():
-        print(f"lint-tempfile-dir: larch directory not found: {larch_dir}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_path = root / "python" / BASELINE_FILENAME
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-tempfile-dir: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(larch_dir, baseline_path=baseline_path, initial_reason=initial_reason)
-    return _run_check(larch_dir, baseline_path=baseline_path)
+    """Run the tempfile-directory ratchet or regenerate its baseline."""
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        rule=RULE,
+        cli=RuleCli(
+            prog="cli.py lint tempfile-dir",
+            description=__doc__,
+            baseline_filename=BASELINE_FILENAME,
+            error_label="lint-tempfile-dir",
+            scoped_paths=("python/larch",),
+            strict_stale=False,
+        ),
+        runner=proc.ProcRunner(),
+    )
 
 
 if __name__ == "__main__":

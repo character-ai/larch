@@ -2178,6 +2178,96 @@ def test_occurrence_normalized_condition_round_trip_and_field_order(
     ]
 
 
+def test_occurrence_baseline_accepts_rule_specific_field_name(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    row = {
+        "file": "larch/mod.py",
+        "qualified_symbol": "run",
+        "callee": "mkstemp",
+        "occurrence": 1,
+        "reason": "kept",
+    }
+    _write_baseline(baseline, [row])
+
+    def _detect(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="calls tempfile.mkstemp without dir=",
+                qualified_symbol="run",
+                pattern_name="mkstemp",
+                occurrence=1,
+            )
+        ]
+
+    rule = _occurrence_rule(detect=_detect, occurrence_pattern_field="callee")
+    code, out, err = _invoke(
+        rule,
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="bootstrap",
+    )
+
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+    assert json.loads(baseline.read_text(encoding="utf-8")) == [row]
+
+
+def test_occurrence_baseline_accepts_ordered_multi_field_identity(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    row = {
+        "file": "larch/mod.py",
+        "qualified_symbol": "run",
+        "token": "[DONE]",
+        "context": "startswith",
+        "occurrence": 1,
+        "reason": "kept",
+    }
+    _write_baseline(baseline, [row])
+
+    def _detect(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="uses a lifecycle title token",
+                qualified_symbol="run",
+                occurrence=1,
+                occurrence_values=(("token", "[DONE]"), ("context", "startswith")),
+            )
+        ]
+
+    rule = LintRule(
+        rule_id="demo-rule",
+        description="demo",
+        detect=_detect,
+        syntax_policy="fail",
+        suppression_token="demo",  # noqa: S106 - fixture pragma token, not secret
+        occurrence_baseline=True,
+        occurrence_fields=("token", "context"),
+    )
+    code, out, err = _invoke(
+        rule,
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+    )
+
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+
+
 def test_occurrence_absent_baseline_clean_and_live(tmp_path: Path) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "missing.json"

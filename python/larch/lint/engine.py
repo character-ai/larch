@@ -39,7 +39,8 @@ PYTHON_EXCLUDED_DIRS = frozenset(
     {".git", "node_modules", ".venv", ".agents", "__pycache__"}
 )
 SyntaxPolicy = Literal["fail", "skip", "raise"]
-OccurrencePatternField = Literal["pattern_name", "normalized_condition"]
+OccurrencePatternField = str
+OccurrenceFields = tuple[str, ...]
 SourceFilter = Callable[[str], bool]
 DuplicateKey = TypeVar("DuplicateKey", bound=Hashable)
 _MARKDOWN_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^`~]*)$")
@@ -114,6 +115,7 @@ class Finding:
     anchor: str | None = None
     pattern_name: str | None = None
     occurrence: int | None = None
+    occurrence_values: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -184,6 +186,7 @@ class LintRule:
     occurrence_baseline: bool = False
     stale_baseline_on_clean_scan: bool = False
     occurrence_pattern_field: OccurrencePatternField = "pattern_name"
+    occurrence_fields: OccurrenceFields | None = None
     require_baseline: bool = False
     prepare_corpus: PrepareCorpus | None = None
 
@@ -265,6 +268,7 @@ class RuleCli:
     error_label: str | None = None
     default_root: Path = Path(__file__).resolve().parents[3]
     scoped_paths: tuple[str, ...] | None = None
+    strict_stale: bool = True
 
 
 def run_rule_cli(
@@ -323,7 +327,7 @@ def run_rule_cli(
         baseline_path=root / "python" / cli.baseline_filename,
         write_baseline=write_baseline,
         initial_reason=None if initial_reason is None else str(initial_reason),
-        strict_stale=not write_baseline,
+        strict_stale=cli.strict_stale and not write_baseline,
     )
 
 
@@ -341,6 +345,13 @@ def _is_exact_bool(value: object) -> bool:
     return isinstance(value, bool)
 
 
+def _occurrence_field_names(rule: LintRule) -> OccurrenceFields:
+    """Return the ordered legacy JSON fields that identify one occurrence."""
+    if rule.occurrence_fields is None:
+        return (rule.occurrence_pattern_field,)
+    return rule.occurrence_fields
+
+
 def _validate_rule(rule: LintRule) -> None:  # noqa: C901, PLR0912 - rule field validation is intentional
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
@@ -352,10 +363,18 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901, PLR0912 - rule field 
         raise ScanError("lint rule require_baseline must be a bool")
     if not _is_exact_bool(rule.stale_baseline_on_clean_scan):
         raise ScanError("lint rule stale_baseline_on_clean_scan must be a bool")
-    if rule.occurrence_pattern_field not in ("pattern_name", "normalized_condition"):
+    if not _is_single_line(rule.occurrence_pattern_field):
         raise ScanError(
-            "lint rule occurrence_pattern_field must be "
-            "'pattern_name' or 'normalized_condition'"
+            "lint rule occurrence_pattern_field must be a non-empty single-line string"
+        )
+    occurrence_fields = _occurrence_field_names(rule)
+    if not rule.occurrence_baseline and rule.occurrence_fields is not None:
+        raise ScanError("occurrence_fields requires rule.occurrence_baseline")
+    if len(set(occurrence_fields)) != len(occurrence_fields) or any(
+        not _is_single_line(field) for field in occurrence_fields
+    ):
+        raise ScanError(
+            "lint rule occurrence_fields must contain unique non-empty single-line strings"
         )
     if (
         not rule.occurrence_baseline
@@ -645,6 +664,7 @@ def _validate_finding(  # noqa: C901, PLR0912 - finding field validation is inte
     anchor = finding.anchor
     pattern_name = finding.pattern_name
     occurrence = finding.occurrence
+    occurrence_values = finding.occurrence_values
     if path != source.path:
         raise ScanError(f"finding path {path!r} does not match source {source.path!r}")
     if rule_id != rule.rule_id:
@@ -674,10 +694,25 @@ def _validate_finding(  # noqa: C901, PLR0912 - finding field validation is inte
         )
     if occurrence is not None and occurrence < 1:
         raise ScanError("finding occurrence must be a positive int when present")
-    has_occurrence = pattern_name is not None or occurrence is not None
-    if has_occurrence and (pattern_name is None or occurrence is None):
+    occurrence_fields = _occurrence_field_names(rule)
+    has_occurrence = pattern_name is not None or occurrence is not None or occurrence_values
+    if occurrence_values:
+        if not rule.occurrence_baseline:
+            raise ScanError("finding occurrence_values require rule.occurrence_baseline")
+        if tuple(key for key, _ in occurrence_values) != occurrence_fields or any(
+            not _is_single_line(key) or not _is_single_line(value)
+            for key, value in occurrence_values
+        ):
+            raise ScanError(
+                "finding occurrence_values must match the rule occurrence_fields"
+            )
+    if has_occurrence and occurrence is None:
+        raise ScanError("finding occurrence requires a positive occurrence value")
+    if has_occurrence and not occurrence_values and occurrence_fields and (
+        pattern_name is None or len(occurrence_fields) != 1
+    ):
         raise ScanError(
-            "finding pattern_name and occurrence must be provided together"
+            "finding occurrence baseline requires values for every occurrence field"
         )
     if rule.occurrence_baseline:
         if not has_occurrence or qualified_symbol is None:
@@ -704,6 +739,7 @@ def _validate_finding(  # noqa: C901, PLR0912 - finding field validation is inte
         anchor=anchor,
         pattern_name=pattern_name,
         occurrence=occurrence,
+        occurrence_values=occurrence_values,
     )
 
 
@@ -857,10 +893,16 @@ class OccurrenceBaselineRow:
     pattern_name: str
     occurrence: int
     reason: str
+    values: tuple[tuple[str, str], ...] = ()
 
     @property
-    def identity(self) -> tuple[str, str, str, int]:
-        return (self.path, self.qualified_symbol, self.pattern_name, self.occurrence)
+    def occurrence_values(self) -> tuple[tuple[str, str], ...]:
+        """Return explicit fields, retaining the original single-field constructor."""
+        return self.values or (("pattern_name", self.pattern_name),)
+
+    @property
+    def identity(self) -> tuple[object, ...]:
+        return (self.path, self.qualified_symbol, *self.occurrence_values, self.occurrence)
 
 
 BaselineRow: TypeAlias = (
@@ -885,7 +927,7 @@ def _baseline_sort_key(row: BaselineRow) -> tuple[object, ...]:
         "occurrence",
         row.path,
         row.qualified_symbol,
-        row.pattern_name,
+        row.occurrence_values,
         row.occurrence,
     )
 
@@ -900,8 +942,9 @@ def _baseline_row_display(row: BaselineRow) -> str:
     if isinstance(row, SymbolMetricBaselineRow):
         return f"{row.path}:{row.qualified_symbol}: {row.rule_id} metric {row.metric}"
     file_name = _occurrence_json_file(row.path)
+    values = " ".join(f"{key}={value}" for key, value in row.occurrence_values)
     return (
-        f"{file_name}:{row.qualified_symbol} {row.pattern_name}#{row.occurrence}"
+        f"{file_name}:{row.qualified_symbol} {values}#{row.occurrence}"
     )
 
 
@@ -1003,11 +1046,10 @@ def _occurrence_baseline_row(
     *,
     index: int,
     source: str,
-    pattern_field: OccurrencePatternField,
+    occurrence_fields: OccurrenceFields,
 ) -> OccurrenceBaselineRow:
     file_name = record["file"]
     qualified_symbol = record["qualified_symbol"]
-    pattern_name = record[pattern_field]
     occurrence = record["occurrence"]
     reason = record["reason"]
     if not isinstance(file_name, str):
@@ -1015,8 +1057,12 @@ def _occurrence_baseline_row(
     path = _occurrence_repo_path(file_name, source=source, index=index)
     if not _is_single_line(qualified_symbol):
         raise ScanError(f"{source}: baseline row {index} has invalid qualified_symbol")
-    if not _is_single_line(pattern_name):
-        raise ScanError(f"{source}: baseline row {index} has invalid {pattern_field}")
+    values: list[tuple[str, str]] = []
+    for field_name in occurrence_fields:
+        value = record[field_name]
+        if not _is_single_line(value):
+            raise ScanError(f"{source}: baseline row {index} has invalid {field_name}")
+        values.append((field_name, cast("str", value)))
     if (
         not isinstance(occurrence, int)
         or isinstance(occurrence, bool)
@@ -1028,37 +1074,56 @@ def _occurrence_baseline_row(
     return OccurrenceBaselineRow(
         path,
         cast("str", qualified_symbol),
-        cast("str", pattern_name),
+        values[0][1] if values else "",
         occurrence,
         cast("str", reason),
+        tuple(values),
     )
 
 
-def _parse_baseline_row(raw: object, *, index: int, source: str) -> BaselineRow:
+def _parse_baseline_row(
+    raw: object,
+    *,
+    index: int,
+    source: str,
+    occurrence_fields: OccurrenceFields,
+) -> BaselineRow:
     if not isinstance(raw, dict):
         raise ScanError(f"{source}: baseline row {index} must be an object")
     record = cast("dict[str, object]", raw)
     generic_keys = frozenset({"path", "line", "rule_id", "message", "reason"})
     anchored_generic_keys = generic_keys | {"anchor"}
     symbol_keys = frozenset({"path", "rule_id", "qualified_symbol", "metric", "reason"})
-    occurrence_pattern_keys = frozenset(
-        {"file", "qualified_symbol", "pattern_name", "occurrence", "reason"}
-    )
-    occurrence_normalized_keys = frozenset(
-        {"file", "qualified_symbol", "normalized_condition", "occurrence", "reason"}
+    occurrence_keys = frozenset(
+        {"file", "qualified_symbol", *occurrence_fields, "occurrence", "reason"}
     )
     keys = frozenset(record)
     if keys in {generic_keys, anchored_generic_keys}:
         return _generic_baseline_row(record, index=index, source=source)
     if keys == symbol_keys:
         return _symbol_metric_baseline_row(record, index=index, source=source)
-    if keys == occurrence_pattern_keys:
+    if keys == occurrence_keys:
         return _occurrence_baseline_row(
-            record, index=index, source=source, pattern_field="pattern_name"
+            record,
+            index=index,
+            source=source,
+            occurrence_fields=occurrence_fields,
         )
-    if keys == occurrence_normalized_keys:
-        return _occurrence_baseline_row(
-            record, index=index, source=source, pattern_field="normalized_condition"
+    if occurrence_fields == ("pattern_name",) and keys == frozenset(
+        {"file", "qualified_symbol", "normalized_condition", "occurrence", "reason"}
+    ):
+        parsed = _occurrence_baseline_row(
+            record,
+            index=index,
+            source=source,
+            occurrence_fields=("normalized_condition",),
+        )
+        return OccurrenceBaselineRow(
+            parsed.path,
+            parsed.qualified_symbol,
+            parsed.pattern_name,
+            parsed.occurrence,
+            parsed.reason,
         )
     raise ScanError(f"{source}: baseline row {index} has unsupported keys")
 
@@ -1081,7 +1146,12 @@ def _validate_baseline_rows(
     return validated
 
 
-def _parse_baseline_text(text: str, *, source: str) -> list[BaselineRow]:
+def _parse_baseline_text(
+    text: str,
+    *,
+    source: str,
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
+) -> list[BaselineRow]:
     try:
         decoded = cast("object", json.loads(text))
     except json.JSONDecodeError as exc:
@@ -1090,7 +1160,12 @@ def _parse_baseline_text(text: str, *, source: str) -> list[BaselineRow]:
         raise ScanError(f"{source}: baseline must be a top-level JSON array")
     raw_rows = cast("list[object]", decoded)
     rows = [
-        _parse_baseline_row(raw, index=index, source=source)
+        _parse_baseline_row(
+            raw,
+            index=index,
+            source=source,
+            occurrence_fields=occurrence_fields,
+        )
         for index, raw in enumerate(raw_rows)
     ]
     return _validate_baseline_rows(rows, source=source)
@@ -1144,12 +1219,21 @@ def _validate_baseline_path(raw: str | Path, *, root: Path, write_mode: bool) ->
     return absolute
 
 
-def _load_baseline(path: Path, *, root: Path) -> list[BaselineRow]:
+def _load_baseline(
+    path: Path,
+    *,
+    root: Path,
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
+) -> list[BaselineRow]:
     try:
         text = larch_io.read_trusted_text(path, root=root, reject_cr=True)
     except (OSError, UnicodeError, ValueError) as exc:
         raise ScanError(f"failed to read baseline {path}: {exc}") from exc
-    return _parse_baseline_text(text, source=f"baseline {path}")
+    return _parse_baseline_text(
+        text,
+        source=f"baseline {path}",
+        occurrence_fields=occurrence_fields,
+    )
 
 
 def _baseline_exists(path: Path, *, root: Path) -> bool:
@@ -1159,10 +1243,21 @@ def _baseline_exists(path: Path, *, root: Path) -> bool:
         raise ScanError(f"failed to inspect baseline {path}: {exc}") from exc
 
 
-def _project_finding(finding: Finding) -> BaselineRow:
+def _finding_occurrence_values(
+    finding: Finding, *, occurrence_fields: OccurrenceFields
+) -> tuple[tuple[str, str], ...]:
+    if finding.occurrence_values:
+        return finding.occurrence_values
+    if len(occurrence_fields) == 1 and finding.pattern_name is not None:
+        return ((occurrence_fields[0], finding.pattern_name),)
+    return ()
+
+
+def _project_finding(
+    finding: Finding, *, occurrence_fields: OccurrenceFields = ("pattern_name",)
+) -> BaselineRow:
     if (
-        finding.pattern_name is not None
-        and finding.occurrence is not None
+        finding.occurrence is not None
         and finding.qualified_symbol is not None
     ):
         if finding.metric is not None:
@@ -1172,9 +1267,10 @@ def _project_finding(finding: Finding) -> BaselineRow:
         return OccurrenceBaselineRow(
             finding.path,
             finding.qualified_symbol,
-            finding.pattern_name,
+            finding.pattern_name or "",
             finding.occurrence,
             "",
+            _finding_occurrence_values(finding, occurrence_fields=occurrence_fields),
         )
     if finding.qualified_symbol is None and finding.metric is None:
         return GenericBaselineRow(
@@ -1193,8 +1289,13 @@ def _project_finding(finding: Finding) -> BaselineRow:
     )
 
 
-def _project_findings(findings: Sequence[Finding]) -> list[BaselineRow]:
-    rows = [_project_finding(finding) for finding in findings]
+def _project_findings(
+    findings: Sequence[Finding], *, occurrence_fields: OccurrenceFields = ("pattern_name",)
+) -> list[BaselineRow]:
+    rows = [
+        _project_finding(finding, occurrence_fields=occurrence_fields)
+        for finding in findings
+    ]
     kinds = {_baseline_kind(row) for row in rows}
     if len(kinds) > 1:
         raise ScanError("baseline-active findings have mixed row shapes")
@@ -1243,7 +1344,8 @@ def _ensure_compatible_shapes(
 
 
 def _baseline_comparison(
-    live_rows: Sequence[BaselineRow], baseline_rows: Sequence[BaselineRow]
+    live_rows: Sequence[BaselineRow],
+    baseline_rows: Sequence[BaselineRow],
 ) -> tuple[list[BaselineRow], list[BaselineRow]]:
     _ensure_compatible_shapes(live_rows, baseline_rows)
     indexed = {_baseline_identity(row): row for row in baseline_rows}
@@ -1251,8 +1353,8 @@ def _baseline_comparison(
     seen: set[tuple[object, ...]] = set()
     for row in live_rows:
         identity = _baseline_identity(row)
-        seen.add(identity)
         prior = indexed.get(identity)
+        seen.add(identity)
         if prior is None:
             active.append(row)
         elif isinstance(row, SymbolMetricBaselineRow):
@@ -1266,32 +1368,39 @@ def _baseline_comparison(
 
 
 def _occurrence_record(
-    row: OccurrenceBaselineRow, *, pattern_field: OccurrencePatternField
+    row: OccurrenceBaselineRow, *, occurrence_fields: OccurrenceFields
 ) -> dict[str, object]:
     file_name = _occurrence_json_file(row.path)
-    if pattern_field == "normalized_condition":
+    values = dict(row.occurrence_values)
+    if row.values == () and len(occurrence_fields) == 1:
+        values = {occurrence_fields[0]: row.pattern_name}
+    if occurrence_fields == ("normalized_condition",):
         # Legacy unreachable-branch field order (occurrence before condition).
         return {
             "file": file_name,
             "qualified_symbol": row.qualified_symbol,
             "occurrence": row.occurrence,
-            "normalized_condition": row.pattern_name,
+            "normalized_condition": values["normalized_condition"],
             "reason": row.reason,
         }
-    return {
+    record: dict[str, object] = {
         "file": file_name,
         "qualified_symbol": row.qualified_symbol,
-        "pattern_name": row.pattern_name,
-        "occurrence": row.occurrence,
-        "reason": row.reason,
     }
+    record.update(values)
+    record["occurrence"] = row.occurrence
+    record["reason"] = row.reason
+    return record
 
 
 def _serialized_baseline(
     rows: Sequence[BaselineRow],
     *,
-    occurrence_pattern_field: OccurrencePatternField = "pattern_name",
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
+    occurrence_pattern_field: OccurrencePatternField | None = None,
 ) -> str:
+    if occurrence_pattern_field is not None:
+        occurrence_fields = (occurrence_pattern_field,)
     records: list[dict[str, object]] = []
     for row in sorted(rows, key=_baseline_sort_key):
         if isinstance(row, GenericBaselineRow):
@@ -1318,7 +1427,7 @@ def _serialized_baseline(
         else:
             # Preserve legacy field order and omit sort_keys for byte-stable rewrites.
             records.append(
-                _occurrence_record(row, pattern_field=occurrence_pattern_field)
+                _occurrence_record(row, occurrence_fields=occurrence_fields)
             )
     if rows and isinstance(rows[0], OccurrenceBaselineRow):
         return json.dumps(records, indent=2) + "\n"
@@ -1370,6 +1479,7 @@ def _rows_for_write(
                     row.pattern_name,
                     row.occurrence,
                     reason,
+                    row.values,
                 )
             )
     return written
@@ -1380,10 +1490,10 @@ def _publish_baseline(
     *,
     root: Path,
     rows: Sequence[BaselineRow],
-    occurrence_pattern_field: OccurrencePatternField = "pattern_name",
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
 ) -> None:
     intended = _serialized_baseline(
-        rows, occurrence_pattern_field=occurrence_pattern_field
+        rows, occurrence_fields=occurrence_fields
     )
     try:
         larch_io.trusted_atomic_write(path, intended, root=root)
@@ -1396,7 +1506,11 @@ def _publish_baseline(
     if read_back != intended:
         raise ScanError(f"baseline read-back bytes differ after write: {path}")
     try:
-        parsed = _parse_baseline_text(read_back, source=f"baseline {path}")
+        parsed = _parse_baseline_text(
+            read_back,
+            source=f"baseline {path}",
+            occurrence_fields=occurrence_fields,
+        )
     except ScanError as exc:
         raise ScanError(f"baseline read-back validation failed: {exc}") from exc
     if parsed != sorted(rows, key=_baseline_sort_key):
@@ -1470,13 +1584,19 @@ def _validate_baseline_options(
 
 
 def _findings_for_active_rows(
-    findings: Sequence[Finding], active_rows: Sequence[BaselineRow]
+    findings: Sequence[Finding],
+    active_rows: Sequence[BaselineRow],
+    *,
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
 ) -> list[Finding]:
     active = {_baseline_identity(row) for row in active_rows}
     rendered = [
         finding
         for finding in findings
-        if _baseline_identity(_project_finding(finding)) in active
+        if _baseline_identity(
+            _project_finding(finding, occurrence_fields=occurrence_fields)
+        )
+        in active
     ]
     rendered.sort(
         key=lambda item: (
@@ -1501,9 +1621,9 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
     initial_reason: str | None,
     strict_stale: bool,
     paths: Sequence[str | Path] | None,
-    occurrence_pattern_field: OccurrencePatternField = "pattern_name",
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
 ) -> tuple[int, list[Finding], list[str]]:
-    live_rows = _project_findings(collected)
+    live_rows = _project_findings(collected, occurrence_fields=occurrence_fields)
     if write_baseline:
         written = _rows_for_write(
             live_rows, baseline_rows, initial_reason=initial_reason
@@ -1512,7 +1632,7 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
             destination,
             root=root,
             rows=written,
-            occurrence_pattern_field=occurrence_pattern_field,
+            occurrence_fields=occurrence_fields,
         )
         return EXIT_CLEAN, [], []
     scoped_baseline = _selected_baseline_rows(baseline_rows, root=root, paths=paths)
@@ -1525,7 +1645,9 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
         raise StrictStaleError(warnings)
     return (
         EXIT_FINDINGS if active_rows else EXIT_CLEAN,
-        _findings_for_active_rows(collected, active_rows),
+        _findings_for_active_rows(
+            collected, active_rows, occurrence_fields=occurrence_fields
+        ),
         warnings,
     )
 
@@ -1567,7 +1689,11 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
                 baseline_path, root=repo_root, write_mode=write_baseline
             )
             if _baseline_exists(destination, root=repo_root):
-                baseline_rows = _load_baseline(destination, root=repo_root)
+                baseline_rows = _load_baseline(
+                    destination,
+                    root=repo_root,
+                    occurrence_fields=_occurrence_field_names(rule),
+                )
                 if rule.occurrence_baseline:
                     if baseline_rows and _baseline_kind(baseline_rows[0]) != "occurrence":
                         raise ScanError(
@@ -1619,7 +1745,7 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
                 initial_reason=initial_reason,
                 strict_stale=strict_stale,
                 paths=paths,
-                occurrence_pattern_field=rule.occurrence_pattern_field,
+                occurrence_fields=_occurrence_field_names(rule),
             )
     except StrictStaleError as exc:
         for warning in exc.warnings:
