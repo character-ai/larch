@@ -43,24 +43,25 @@ codex/plan-fidelity-vote              │                                      �
 
 ## Architectural invariants
 
-The changed code introduces a new lint module, its baseline, Makefile targets, docs, manifest entry, and cli.py registration. None of the changed lines touch workflow gates, pause/resume snapshots, step-result identity or consumption logic, run-log flush paths, panel slot accounting, agent verdict machinery, or ship recovery routes, so no invariant is implicated.
+The changed code adds a new lint module (`lint_engine_adoption.py`), its baseline JSON, Makefile targets, `docs/linting.md` prose, a manifest entry, a `cli.py` registration, and a test suite — and the CI fix converts five `== []` assertions to `not` in the test file. None of these changes touch workflow gates, pause/resume snapshot allowlists, step-result identity or consumption logic, run-log flush paths, panel slot accounting, agent verdict machinery, or ship recovery routes. No invariant is implicated.
 
 ## Architectural guidelines
 
-The changed code raises no guideline concerns.
+The implementation and the CI fix are clean against all applicable guidelines.
 
-## /implement run 88BB80B3-4D08-4B3B-AC1C-3E33CF1AD077: shipping
+## /implement run 88BB80B3-4D08-4B3B-AC1C-3E33CF1AD077: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:41:31
-- **Cost**: 💰 TOTAL ~$17.24: Claude $2.53, Codex-5.6 $3.80, Codex-mini $0.03, Cursor $8.65 (Composer $4.66, Grok $3.99), Claude (subprocess) $2.23  |  Tokens: 24535k
+- **Cost**: 💰 TOTAL ~$19.28: Claude $4.57, Codex-5.6 $3.80, Codex-mini $0.03, Cursor $8.65 (Composer $4.66, Grok $3.99), Claude (subprocess) $2.23  |  Tokens: 28104k
 - **Issue**: #6992: https://github.com/character-ai/larch/issues/6992
+- **PR**: #7506: https://github.com/character-ai/larch/pull/7506
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1585/-1, larch-logs +674/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
