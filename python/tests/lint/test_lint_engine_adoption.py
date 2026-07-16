@@ -130,7 +130,7 @@ def test_detect_ignores_comments_docstrings_strings_refs_and_subclasses() -> Non
         "def main() -> int:\n"
         "    return 0\n"
     )
-    assert lint.detect(_source("lint_clean_refs.py", text)) == []
+    assert not lint.detect(_source("lint_clean_refs.py", text))
 
 
 def test_engine_adoption_via_main_run_rule_exempts_parser_only() -> None:
@@ -147,7 +147,7 @@ def test_engine_adoption_via_main_run_rule_exempts_parser_only() -> None:
         "    return run_rule(RULE, root, runner)\n"
     )
     findings = lint.detect(_source("lint_adopted.py", text))
-    assert findings == []
+    assert not findings
 
 
 def test_engine_import_without_main_call_does_not_exempt() -> None:
@@ -176,7 +176,7 @@ def test_aliased_run_rule_import_with_main_delegation_exempts() -> None:
         "    parser = argparse.ArgumentParser()\n"
         "    return engine_run(RULE, root, runner)\n"
     )
-    assert lint.detect(_source("lint_aliased_engine.py", text)) == []
+    assert not lint.detect(_source("lint_aliased_engine.py", text))
 
 
 def test_unrelated_run_rule_name_does_not_exempt() -> None:
@@ -279,7 +279,7 @@ def test_unrelated_json_and_non_baseline_files_are_clean() -> None:
         "    _ = path.read_text(encoding='utf-8')\n"
         "    return len(payload)\n"
     )
-    assert lint.detect(_source("lint_json_clean.py", text)) == []
+    assert not lint.detect(_source("lint_json_clean.py", text))
 
 
 def test_adopted_module_still_reports_baseline_io() -> None:
@@ -329,13 +329,13 @@ def test_stable_identity_after_line_movement() -> None:
 
 def test_out_of_scope_paths_ignored() -> None:
     text = "import argparse\n\ndef main() -> int:\n    argparse.ArgumentParser()\n    return 0\n"
-    assert lint.detect(
+    assert not lint.detect(
         SourceFile(
             path="python/larch/other.py",
             text=text,
             lines=tuple(text.splitlines()),
         )
-    ) == []
+    )
 
 
 def test_run_rule_unbaselined_debt_exits_one(tmp_path: Path) -> None:
