@@ -21,6 +21,7 @@ from larch.review.review_types import (
     code_review_classification_required_fields,
 )
 from tests.support.review_wire import vote_lines
+from tests.support.foundation import make_keepalive_consumer_fixture
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
@@ -2014,16 +2015,9 @@ def test_resolve_voter_calibration_log_root_review_keepalive_when_session_stale(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    consumer = tmp_path / "consumer"
-    (consumer / "larch-logs").mkdir(parents=True)
-    plugin = tmp_path / "plugin"
-    (plugin / "larch-logs").mkdir(parents=True)
-    implement = tmp_path / "implement"
-    implement.mkdir()
-    review = implement / "round-1"
-    review.mkdir()
-    (implement / "session-env.sh").write_text("# stale session without repo anchors\n", encoding="utf-8")
-    (review / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
+    consumer, plugin, _implement, review = make_keepalive_consumer_fixture(
+        tmp_path, session_text="# stale session without repo anchors\n"
+    )
     monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.chdir(plugin)

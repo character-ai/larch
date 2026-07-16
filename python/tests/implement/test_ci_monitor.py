@@ -1646,6 +1646,7 @@ def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], 
         "python-lint": ("ruff", "pylint"),
         "python-pyright": ("pyright",),
         "python-lint-duplicate-code": ("pylint",),
+        "duplicate-code-full": ("pylint",),
     }
     responses: dict[tuple[str, ...], CommandResult] = {
         ("python3", "-m", "pip", "install", "-q", "-r", req_dev): ok(("python3", "-m", "pip", "install")),
@@ -1661,6 +1662,7 @@ def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], 
         ("python-lint", ("ruff", "pylint")),
         ("python-pyright", ("pyright",)),
         ("python-lint-duplicate-code", ("pylint",)),
+        ("duplicate-code-full", ("pylint",)),
     ],
 )
 def test_prepare_python_toolchain_split_tools(

@@ -21,6 +21,7 @@ from larch.lint.engine import (
     is_production_python_path,
     iter_python_source_files,
     ordered_ast_child_nodes,
+    try_read_python_ast,
     qualified_symbol,
     Finding as EngineFinding,
     LintRule,
@@ -217,13 +218,8 @@ def _collect_scope(
 
 def scan_file(path: Path, *, python_dir: Path, importer_pkg: str, importer_tier: int) -> list[Finding]:
     """Return all layering violations for one source file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+    tree = try_read_python_ast(path)
+    if tree is None:
         return []
     ctx = _ScopeCtx(
         normalized_file=path.relative_to(python_dir).as_posix(),

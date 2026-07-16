@@ -17,6 +17,7 @@ import pytest
 from larch.agents import agent_voters
 from larch.core import proc
 from larch.report import tokens
+from tests.support.foundation import make_keepalive_consumer_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
@@ -1185,16 +1186,7 @@ def test_dispatch_voters_omits_calibration_after_snapshot_failure(tmp_path: Path
 
 
 def test_dispatch_voters_keepalive_consumer_log_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    consumer = tmp_path / "consumer"
-    (consumer / "larch-logs").mkdir(parents=True)
-    plugin = tmp_path / "plugin"
-    (plugin / "larch-logs").mkdir(parents=True)
-    implement = tmp_path / "implement"
-    implement.mkdir()
-    review = implement / "round-1"
-    review.mkdir()
-    (implement / "session-env.sh").write_text("# no anchors\n", encoding="utf-8")
-    (review / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
+    consumer, plugin, _implement, review = make_keepalive_consumer_fixture(tmp_path)
     captured: list[str] = []
 
     def _fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:

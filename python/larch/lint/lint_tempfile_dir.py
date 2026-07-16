@@ -22,6 +22,7 @@ from larch.lint.engine import (
     iter_python_source_files,
     is_production_python_path,
     ordered_ast_child_nodes,
+    try_read_python_ast,
     qualified_symbol,
     run_rule_cli,
 )
@@ -123,13 +124,8 @@ def _collect_scope(
 
 def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     """Return tempfile-without-dir findings for one source file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+    tree = try_read_python_ast(path)
+    if tree is None:
         return []
     findings: list[Finding] = []
     _collect_scope(

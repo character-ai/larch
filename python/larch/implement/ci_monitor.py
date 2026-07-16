@@ -1063,7 +1063,7 @@ def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
         return ("make", "py-lint-main")
     if name == "python-pyright":
         return ("make", "py-typecheck")
-    if name == "python-lint-duplicate-code":
+    if name in ("python-lint-duplicate-code", "duplicate-code-full"):
         return ("make", "py-lint-duplicate-code")
     if name == "python-tests":
         return ("make", "py-test")
@@ -1072,7 +1072,12 @@ def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
 
 def prepare_python_toolchain(*, runner: Runner, name: str, cwd: str | None = None) -> bool:
     """Port of _prepare_python_job_toolchain."""
-    if name in ("python-lint", "python-pyright", "python-lint-duplicate-code"):
+    if name in (
+        "python-lint",
+        "python-pyright",
+        "python-lint-duplicate-code",
+        "duplicate-code-full",
+    ):
         req = _REPO_ROOT / "python" / "requirements-dev.txt"
         if req.is_file():
             _ = runner.run(
@@ -1080,7 +1085,7 @@ def prepare_python_toolchain(*, runner: Runner, name: str, cwd: str | None = Non
                 cwd=cwd,
             )
         # Each split Python lint job verifies only the tools it runs.
-        if name == "python-lint-duplicate-code":
+        if name in ("python-lint-duplicate-code", "duplicate-code-full"):
             tools = ("pylint",)
         elif name == "python-pyright":
             tools = ("pyright",)

@@ -1,7 +1,7 @@
 name: Duplicate code
 
-# The full Pylint duplicate-code scan is retained for operator-triggered
-# baseline maintenance. PRs run the differential gate in ci.yaml instead.
+# The full Pylint duplicate-code scan is also available for operator-triggered
+# baseline maintenance. ci.yaml runs it as the required branch-protection gate.
 # Threshold lives in python/.pylintrc (min-similarity-lines); see issue #4480.
 on:
   workflow_dispatch:

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint import lint_lifecycle_prefix_literal as llpll
-from tests.support.lint_repo import init_repo
+from tests.support.lint_repo import init_repo, write_python_files
 
 
 def _record(
@@ -34,11 +34,7 @@ def _record(
 
 
 def _write_project(root: Path, *, files: dict[str, str], baseline: object | None) -> None:
-    python_dir = root / "python"
-    for relpath, source in files.items():
-        path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
+    python_dir = write_python_files(root, files)
     if baseline is not None:
         _ = (python_dir / llpll.BASELINE_FILENAME).write_text(
             json.dumps(baseline), encoding="utf-8"

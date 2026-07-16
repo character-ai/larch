@@ -173,7 +173,7 @@ There are three pre-commit-driven paths:
 
 `.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, `test-harnesses` matrix cells, and `agent-sync` all use it for `actions/setup-python` pip caching and `pip install -r`.
 
-Pylint duplicate-code (`R0801`) has two modes. PR `ci.yaml` runs `make py-lint-duplicate-code-diff`, which materializes the merge base and `HEAD`, compares changed Python files against the complete corpus, and uses the committed merge-base baseline to recognize existing clone families. It fails only for new or expanded normalized clone families. The full baseline ratchet remains `make py-lint-duplicate-code` in the manually dispatched `.github/workflows/duplicate-code.yaml` workflow.
+Pylint duplicate-code (`R0801`) has two CI modes. The PR `duplicate-code` job runs `make py-lint-duplicate-code-diff`, which materializes the merge base and `HEAD`, compares changed Python files against the complete corpus, and uses the committed merge-base baseline to recognize existing clone families. It gives fast feedback for new or expanded normalized clone families. The required `duplicate-code-full` job runs `make py-lint-duplicate-code` against the complete checkout on pull requests and `main`; branch protection requires that exact job name. The manually dispatched `.github/workflows/duplicate-code.yaml` workflow remains available for deliberate baseline maintenance.
 
 ## Shellcheck Engine
 

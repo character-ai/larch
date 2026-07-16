@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint import lint_subprocess_via_runner as lsvr
-from tests.support.lint_repo import init_repo
+from tests.support.lint_repo import init_repo, write_python_files
 
 
 def _record(
@@ -36,11 +36,7 @@ def _write_project(
     baseline: object,
     exemptions: object | None = None,
 ) -> None:
-    python_dir = root / "python"
-    for relpath, source in files.items():
-        path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
+    python_dir = write_python_files(root, files)
     _ = (python_dir / lsvr.BASELINE_FILENAME).write_text(json.dumps(baseline), encoding="utf-8")
     if exemptions is not None:
         _ = (python_dir / lsvr.EXEMPTIONS_FILENAME).write_text(

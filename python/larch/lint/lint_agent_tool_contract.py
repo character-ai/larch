@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch.lint import lint_common
 from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
@@ -47,7 +48,6 @@ FAIL_CLOSED_RES = (
     re.compile(r"\bRead\s+fails\b", re.IGNORECASE),
     re.compile(r"\bfail[\s-]+closed\b", re.IGNORECASE),
 )
-MIN_QUOTED_LENGTH = 2
 TOOLS_KEY_RE = re.compile(r"^tools\s*:\s*(.*)$")
 BLOCK_LIST_ITEM_RE = re.compile(r"^\s+-\s*(.+)$")
 
@@ -123,50 +123,15 @@ def extract_frontmatter(text: str) -> Frontmatter | None:
 
 
 def _strip_inline_comment(value: str) -> str:
-    in_single = False
-    in_double = False
-    for index, char in enumerate(value):
-        if char == "'" and not in_double:
-            in_single = not in_single
-        elif char == '"' and not in_single:
-            in_double = not in_double
-        elif char == "#" and not in_single and not in_double and (index == 0 or value[index - 1].isspace()):
-            return value[:index].rstrip()
-    return value.strip()
+    return lint_common.strip_inline_comment(value)
 
 
 def _strip_quotes(value: str) -> str:
-    stripped: str = value.strip()
-    if len(stripped) >= MIN_QUOTED_LENGTH and stripped[0] == stripped[-1] and stripped[0] in {"'", '"'}:
-        return stripped[1:-1]
-    return stripped
+    return lint_common.strip_surrounding_quotes(value)
 
 
 def _split_inline_list(inner: str) -> tuple[str, ...] | None:
-    items: list[str] = []
-    current: list[str] = []
-    in_single = False
-    in_double = False
-    for char in inner:
-        if char == "'" and not in_double:
-            in_single = not in_single
-            current.append(char)
-        elif char == '"' and not in_single:
-            in_double = not in_double
-            current.append(char)
-        elif char == "," and not in_single and not in_double:
-            token: str = _strip_quotes("".join(current))
-            if token:
-                items.append(token)
-            current = []
-        else:
-            current.append(char)
-    if in_single or in_double:
-        return None
-    token = _strip_quotes("".join(current))
-    if token:
-        items.append(token)
-    return tuple(items)
+    return lint_common.split_quoted_csv(inner)
 
 
 def _parse_inline_tools(value: str) -> tuple[str, ...] | None:

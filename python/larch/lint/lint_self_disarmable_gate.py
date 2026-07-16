@@ -19,7 +19,7 @@ from pathlib import Path
 
 from larch.core import proc
 from larch.lint import self_disarmable_gate_detector as _detector
-from larch.lint.engine import LintRule, SourceFile, run_rule
+from larch.lint.engine import LintRule, SourceFile, parse_argparse_args, run_rule
 
 # Re-exports for callers that import from this module.
 Finding = _detector.Finding
@@ -87,12 +87,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
         description=__doc__,
     )
     _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+    return parse_argparse_args(parser, argv)
 
 
 def main(argv: list[str] | None = None) -> int:

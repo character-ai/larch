@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import ast
-import contextlib
-import io
 import json
 from pathlib import Path
 
@@ -16,12 +14,14 @@ from larch.lint.engine import (
     EXIT_ERROR,
     EXIT_FINDINGS,
     Finding,
-    run_rule,
 )
 from tests.lint.test_lint_engine import (
-    RecordingRunner,
     _git_ok_runner,  # type: ignore[reportPrivateUsage]  # importing test-internal helpers from sibling test module
     _write_files,  # type: ignore[reportPrivateUsage]  # importing test-internal helpers from sibling test module
+)
+from tests.support.lint_repo import (
+    make_lint_main_invoker,
+    make_python_baseline_rule_invoker,
 )
 
 VIOLATING = (
@@ -62,37 +62,10 @@ def _record(
     }
 
 
-def _invoke_main(root: Path, argv: list[str]) -> tuple[int, str, str]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = lint.main(["--root", str(root), *argv])
-    return code, stdout.getvalue(), stderr.getvalue()
-
-
-def _invoke_rule(
-    root: Path,
-    runner: RecordingRunner,
-    *,
-    write_baseline: bool = False,
-    initial_reason: str | None = None,
-    strict_stale: bool = True,
-    baseline_name: str = lint.BASELINE_FILENAME,
-) -> tuple[int, str, str]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = run_rule(
-            lint.RULE,
-            root,
-            runner,
-            paths=None,
-            baseline_path=root / "python" / baseline_name,
-            write_baseline=write_baseline,
-            initial_reason=initial_reason,
-            strict_stale=False if write_baseline else strict_stale,
-        )
-    return code, stdout.getvalue(), stderr.getvalue()
+_invoke_main = make_lint_main_invoker(lint.main)
+_invoke_rule = make_python_baseline_rule_invoker(
+    lint.RULE, lint.BASELINE_FILENAME, non_strict_when_writing=True
+)
 
 
 @pytest.mark.parametrize(

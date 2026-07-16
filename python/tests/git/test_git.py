@@ -16,6 +16,7 @@ from larch.errors import ShipError
 from larch.core.proc import CommandResult, ProcRunner
 from larch.implement import phantom
 from test_support import RecordingRunner
+from tests.support.foundation import make_adverse_push_repo
 
 
 @dataclass
@@ -839,35 +840,7 @@ def _run_adverse_git(repo: Path, *args: str) -> str:
 
 
 def _make_adverse_push_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
-    origin = tmp_path / "origin.git"
-    source = tmp_path / "source"
-    repo = tmp_path / "repo"
-    _ = subprocess.run(["git", "init", "--bare", "-q", str(origin)], check=True)
-    _ = subprocess.run(["git", "init", "-q", "-b", "main", str(source)], check=True)
-    _ = _run_adverse_git(source, "config", "user.email", "test@example.com")
-    _ = _run_adverse_git(source, "config", "user.name", "Test")
-    _ = (source / "README.md").write_text("base\n", encoding="utf-8")
-    _ = _run_adverse_git(source, "add", "README.md")
-    _ = _run_adverse_git(source, "commit", "-q", "-m", "base")
-    _ = _run_adverse_git(source, "remote", "add", "origin", str(origin))
-    _ = _run_adverse_git(source, "push", "-q", "-u", "origin", "main")
-    _ = _run_adverse_git(origin, "symbolic-ref", "HEAD", "refs/heads/main")
-    _ = subprocess.run(["git", "clone", "-q", str(origin), str(repo)], check=True)
-    _ = _run_adverse_git(repo, "config", "user.email", "test@example.com")
-    _ = _run_adverse_git(repo, "config", "user.name", "Test")
-    _ = _run_adverse_git(repo, "checkout", "-q", "-b", "feature-x", "origin/main")
-    _ = _run_adverse_git(repo, "push", "-q", "-u", "origin", "feature-x")
-    _ = _run_adverse_git(repo, "branch", "--set-upstream-to=origin/main", "feature-x")
-    _ = _run_adverse_git(repo, "config", "push.default", "upstream")
-    _ = (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
-    _ = _run_adverse_git(repo, "add", "feature.txt")
-    _ = _run_adverse_git(repo, "commit", "-q", "-m", "feature")
-    return (
-        repo,
-        origin,
-        _run_adverse_git(repo, "rev-parse", "origin/feature-x"),
-        _run_adverse_git(origin, "rev-parse", "refs/heads/main"),
-    )
+    return make_adverse_push_repo(tmp_path)
 
 
 def test_force_push_with_lease_expecting_ignores_adverse_tracking(tmp_path: Path) -> None:

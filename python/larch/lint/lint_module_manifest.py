@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import proc
-from larch.lint.engine import EXIT_ERROR, Finding, LintRule, ScanError, SourceFile, run_rule
+from larch.lint.engine import EXIT_ERROR, Finding, LintRule, ScanError, SourceFile, parse_argparse_args, run_rule
 
 RULE_ID = "module-manifest"
 SUPPRESSION_TOKEN = "lint-module-manifest"
@@ -252,12 +252,7 @@ def _build_rule(root: Path) -> LintRule:
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
     parser = argparse.ArgumentParser(prog="cli.py lint module-manifest", description=__doc__)
     _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+    return parse_argparse_args(parser, argv)
 
 
 def main(argv: list[str] | None = None, *, runner: proc.Runner | None = None) -> int:
