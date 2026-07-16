@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+The changed rendering helper extraction, caller rewires, baseline shrinks, and tests do not touch gates, pause/resume snapshots, stale-result consumption, run-log flush or commit fields, panel slots, agent verdict contracts, or ship recovery routes, so the invariants remain satisfied.
+
+## Architectural guidelines
+
+The change extracts shared rendering helpers into a cycle-free leaf module, removes a file-wide pylint skip with matching baseline shrinks, keeps I/O and error behavior equivalent, and adds focused tests, with no meaningful guideline deviation in the diff.
+
 ## /implement run 6913D058-6296-4F52-A6A4-B6354030D142: shipping
 
 - **Outcome**: shipping
