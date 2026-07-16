@@ -208,7 +208,7 @@ py-lint-duplicate-code:
 	# explicit combinations indices on the configured checker-owned Symilar
 	# instance. It does not shard file slices or pre-scan through _iter_sims. Kept
 	# out of `py-lint` (which disables duplicate-code via .pylintrc) so the main
-	# lint pass parallelizes. The committed baseline is maintained by the manual workflow.
+	# lint pass parallelizes. The dedicated full CI job enforces the committed baseline.
 	$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc --baseline python/duplicate-code-baseline.json
 
 py-lint-duplicate-code-diff:

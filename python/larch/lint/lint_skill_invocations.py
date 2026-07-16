@@ -37,28 +37,11 @@ def extract_frontmatter_and_body(text: str) -> tuple[str | None, str, int]:
 
 
 def _strip_quotes(value: str) -> str:
-    value = value.strip()
-    if len(value) >= MIN_QUOTED_LENGTH and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
+    return lint_common.strip_surrounding_quotes(value)
 
 
 def _strip_inline_comment(value: str) -> str:
-    in_single = False
-    in_double = False
-    for index, char in enumerate(value):
-        if char == "'" and not in_double:
-            in_single = not in_single
-        elif char == '"' and not in_single:
-            in_double = not in_double
-        elif (
-            char == "#"
-            and not in_single
-            and not in_double
-            and (index == 0 or value[index - 1].isspace())
-        ):
-            return value[:index].rstrip()
-    return value.strip()
+    return lint_common.strip_inline_comment(value)
 
 
 def _quotes_balanced(value: str) -> bool:
@@ -73,30 +56,8 @@ def _quotes_balanced(value: str) -> bool:
 
 
 def _split_flow_list_inner(inner: str) -> list[str] | None:
-    items: list[str] = []
-    current: list[str] = []
-    in_single = False
-    in_double = False
-    for char in inner:
-        if char == "'" and not in_double:
-            in_single = not in_single
-            current.append(char)
-        elif char == '"' and not in_single:
-            in_double = not in_double
-            current.append(char)
-        elif char == "," and not in_single and not in_double:
-            item = _strip_quotes("".join(current).strip())
-            if item:
-                items.append(item)
-            current = []
-        else:
-            current.append(char)
-    if in_single or in_double:
-        return None
-    item = _strip_quotes("".join(current).strip())
-    if item:
-        items.append(item)
-    return items
+    items = lint_common.split_quoted_csv(inner)
+    return None if items is None else list(items)
 
 
 def _parse_allowed_tools_tokens(value: str) -> list[str] | None:

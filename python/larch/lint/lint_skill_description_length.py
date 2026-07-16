@@ -10,7 +10,6 @@ from larch.lint.lint_common import LintError
 
 MAX_DESCRIPTION_CHARS = 200
 GLOB_PATTERNS = ("skills/*/SKILL.md", ".claude/skills/*/SKILL.md")
-MIN_QUOTED_LENGTH = 2
 DESCRIPTION_REGEX = re.compile(r"^description\s*:\s*(.*)$")
 
 
@@ -29,30 +28,11 @@ def extract_frontmatter(text: str) -> str | None:
 
 
 def _strip_inline_comment(value: str) -> str:
-    value = value.strip()
-    if not value:
-        return value
-    if value[0] not in {"'", '"'}:
-        for index, char in enumerate(value):
-            if char == "#" and (index == 0 or value[index - 1].isspace()):
-                return value[:index].rstrip()
-        return value
-    in_single = False
-    in_double = False
-    for index, char in enumerate(value):
-        if char == "'" and not in_double:
-            in_single = not in_single
-        elif char == '"' and not in_single:
-            in_double = not in_double
-        elif char == "#" and not in_single and not in_double and index > 0 and value[index - 1].isspace():
-            return value[:index].rstrip()
-    return value
+    return lint_common.strip_inline_comment(value)
 
 
 def _strip_surrounding_quotes(value: str) -> str:
-    if len(value) >= MIN_QUOTED_LENGTH and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
+    return lint_common.strip_surrounding_quotes(value)
 
 
 def extract_description_value(frontmatter: str) -> str | None:

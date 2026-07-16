@@ -14,20 +14,18 @@ identity is ``(path, rule_id, fixed message, class anchor)``.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TypedDict
 
 from larch.core import proc
 from larch.lint.engine import (
-    EXIT_ERROR,
     Finding,
     LintRule,
+    RuleCli,
     SourceFile,
-    run_rule,
+    run_rule_cli,
 )
 
 RULE_ID = "engine-adoption"
@@ -604,63 +602,23 @@ RULE = LintRule(
     require_baseline=True,
 )
 
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint engine-adoption",
-        description=__doc__,
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from the live scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason for live findings that have no preserved baseline reason.",
-    )
-    _ = parser.add_argument(
-        "--strict-stale",
-        action="store_true",
-        help="Fail when the baseline contains rows with no matching live finding.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(
+    prog="cli.py lint engine-adoption",
+    description=__doc__,
+    baseline_filename=BASELINE_FILENAME,
+    error_label="lint-engine-adoption",
+    strict_stale=False,
+    strict_stale_option=True,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint engine-adoption``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return EXIT_ERROR
-    root = Path(str(parsed.root)).resolve()
-    baseline_path = root / "python" / BASELINE_FILENAME
-    initial_reason = parsed.initial_reason
-    if initial_reason is not None and not str(initial_reason).strip():
-        print(
-            "lint-engine-adoption: --initial-reason must be non-empty",
-            file=sys.stderr,
-        )
-        return EXIT_ERROR
-    write_baseline = bool(parsed.write)
-    strict_stale = bool(parsed.strict_stale) and not write_baseline
-    return run_rule(
-        RULE,
-        root,
-        proc.ProcRunner(),
-        baseline_path=baseline_path,
-        write_baseline=write_baseline,
-        initial_reason=None if initial_reason is None else str(initial_reason),
-        strict_stale=strict_stale,
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        rule=RULE,
+        cli=CLI,
+        runner=proc.ProcRunner(),
     )
 
 

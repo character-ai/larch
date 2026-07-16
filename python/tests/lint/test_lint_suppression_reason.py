@@ -1,22 +1,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from larch.lint import lint_suppression_reason as lsr
-
-
-def _git_init(root: Path) -> None:
-    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
-    _ = subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
-    _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-    _ = subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture", "--allow-empty"], cwd=root, check=True
-    )
+from tests.support.lint_repo import init_repo, write_python_files
 
 
 def _record(
@@ -40,16 +30,12 @@ def _record(
 
 
 def _write_project(root: Path, *, files: dict[str, str], baseline: object | None = None) -> None:
-    python_dir = root / "python"
-    for relpath, source in files.items():
-        path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
+    python_dir = write_python_files(root, files)
     if baseline is not None:
         baseline_path = python_dir / lsr.BASELINE_FILENAME
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
         _ = baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
-    _git_init(root)
+    init_repo(root)
 
 
 def _module(comment: str) -> str:
@@ -390,7 +376,7 @@ def test_non_utf8_source_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[s
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_bytes(b"\xff\xfe")
     _ = (python_dir / lsr.BASELINE_FILENAME).write_text("[]", encoding="utf-8")
-    _git_init(tmp_path)
+    init_repo(tmp_path)
 
     assert lsr.main(["--root", str(tmp_path)]) == 2
     assert "UTF-8" in capsys.readouterr().err

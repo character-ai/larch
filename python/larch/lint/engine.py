@@ -443,10 +443,41 @@ class RuleCli:
     default_root: Path = Path(__file__).resolve().parents[3]
     scoped_paths: tuple[str, ...] | None = None
     strict_stale: bool = True
+    strict_stale_option: bool = False
     resolve_root: bool = True
 
 
 RootCliAction: TypeAlias = Callable[[Path], int]
+
+
+def parse_argparse_args(
+    parser: argparse.ArgumentParser, argv: Sequence[str]
+) -> argparse.Namespace | None:
+    """Parse argv, preserving the lint CLI help and error exit contract."""
+    try:
+        return parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return None
+
+
+def read_python_source_ast(path: Path) -> tuple[str, ast.Module] | None:
+    """Read and parse Python source, returning ``None`` for an unavailable AST."""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        return source, ast.parse(source)
+    except SyntaxError:
+        return None
+
+
+def try_read_python_ast(path: Path) -> ast.Module | None:
+    """Read and parse a Python file, returning ``None`` for an unavailable AST."""
+    parsed = read_python_source_ast(path)
+    return None if parsed is None else parsed[1]
 
 
 def parse_lint_argv(
@@ -478,11 +509,14 @@ def parse_lint_argv(
             "--initial-reason",
             help="Reason for live findings that have no preserved baseline reason.",
         )
-    try:
-        parsed = parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
+    if cli.strict_stale_option:
+        _ = parser.add_argument(
+            "--strict-stale",
+            action="store_true",
+            help="Fail when the baseline contains rows with no matching live finding.",
+        )
+    parsed = parse_argparse_args(parser, argv)
+    if parsed is None:
         return None
 
     initial_reason = getattr(parsed, "initial_reason", None)
@@ -531,7 +565,12 @@ def run_rule_cli(
         baseline_path=root / "python" / cli.baseline_filename,
         write_baseline=write_baseline,
         initial_reason=initial_reason,
-        strict_stale=cli.strict_stale and not write_baseline,
+        strict_stale=(
+            bool(parsed.strict_stale)
+            if cli.strict_stale_option
+            else cli.strict_stale
+        )
+        and not write_baseline,
     )
 
 

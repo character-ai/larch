@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 from pathlib import Path
 from typing import cast
@@ -15,13 +13,12 @@ from larch.lint.engine import (
     EXIT_FINDINGS,
     Finding,
     SourceFile,
-    run_rule,
 )
 from tests.lint.test_lint_engine import (
-    RecordingRunner,
     _git_ok_runner,  # type: ignore[reportPrivateUsage]  # shared helper from sibling lint test module
     _write_files,  # type: ignore[reportPrivateUsage]  # shared helper from sibling lint test module
 )
+from tests.support.lint_repo import make_engine_rule_invoker
 
 SCOPE = "python/larch/lint"
 
@@ -49,30 +46,7 @@ def _baseline_row(
     }
 
 
-def _invoke(
-    root: Path,
-    runner: RecordingRunner,
-    *,
-    paths: list[str] | None = None,
-    baseline_path: str | Path | None = None,
-    write_baseline: bool = False,
-    initial_reason: str | None = None,
-    strict_stale: bool = False,
-) -> tuple[int, str, str]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = run_rule(
-            lint.RULE,
-            root,
-            runner,
-            paths=paths,
-            baseline_path=baseline_path,
-            write_baseline=write_baseline,
-            initial_reason=initial_reason,
-            strict_stale=strict_stale,
-        )
-    return code, stdout.getvalue(), stderr.getvalue()
+_invoke = make_engine_rule_invoker(lint.RULE)
 
 
 def test_allow_inline_suppression_is_false() -> None:

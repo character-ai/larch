@@ -10,11 +10,66 @@ from pathlib import Path
 
 from larch.lint.engine import RuleCli, run_root_cli
 
+MATCHING_QUOTE_MIN_LENGTH = 2
 GIT = shutil.which("git") or "git"
 
 
 class LintError(Exception):
     """Raised for internal errors (file unreadable, non-UTF-8 bytes). Exit 2."""
+
+
+def strip_inline_comment(value: str) -> str:
+    """Remove a whitespace-prefixed YAML comment outside paired quotes."""
+    in_single = False
+    in_double = False
+    for index, char in enumerate(value):
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double and (index == 0 or value[index - 1].isspace()):
+            return value[:index].rstrip()
+    return value.strip()
+
+
+def strip_surrounding_quotes(value: str) -> str:
+    """Return a trimmed scalar with one matching quote pair removed."""
+    stripped = value.strip()
+    if (
+        len(stripped) >= MATCHING_QUOTE_MIN_LENGTH
+        and stripped[0] == stripped[-1]
+        and stripped[0] in {"'", '"'}
+    ):
+        return stripped[1:-1]
+    return stripped
+
+
+def split_quoted_csv(value: str) -> tuple[str, ...] | None:
+    """Split comma-separated YAML flow-list content while respecting quotes."""
+    items: list[str] = []
+    current: list[str] = []
+    in_single = False
+    in_double = False
+    for char in value:
+        if char == "'" and not in_double:
+            in_single = not in_single
+            current.append(char)
+        elif char == '"' and not in_single:
+            in_double = not in_double
+            current.append(char)
+        elif char == "," and not in_single and not in_double:
+            token = strip_surrounding_quotes("".join(current))
+            if token:
+                items.append(token)
+            current = []
+        else:
+            current.append(char)
+    if in_single or in_double:
+        return None
+    token = strip_surrounding_quotes("".join(current))
+    if token:
+        items.append(token)
+    return tuple(items)
 
 
 def git_rooted(root: Path) -> bool:

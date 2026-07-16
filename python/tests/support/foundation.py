@@ -10,7 +10,10 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self, TypeVar
+from typing import TYPE_CHECKING, Any, Self, TypeVar
+
+if TYPE_CHECKING:
+    import pytest
 
 from larch.agents import collect_results
 from larch.core.proc import CommandResult
@@ -51,9 +54,12 @@ __all__ = [
     "completed",
     "gh_pr_view",
     "gh_result",
+    "make_adverse_push_repo",
+    "make_checks_session",
     "make_committed_repo",
     "make_design_tmpdir",
     "make_implement_tmpdir",
+    "make_keepalive_consumer_fixture",
     "make_run_context",
     "make_zero_findings_plan_review_fake_cli",
     "merge_admin_responses",
@@ -73,6 +79,25 @@ __all__ = [
 
 def _empty_calls() -> list[list[str]]:
     return []
+
+
+def make_keepalive_consumer_fixture(
+    tmp_path: Path, *, session_text: str = "# no anchors\n"
+) -> tuple[Path, Path, Path, Path]:
+    """Create consumer, plugin, implementation, and keepalive review fixtures."""
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    plugin = tmp_path / "plugin"
+    (plugin / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    _ = (implement / "session-env.sh").write_text(session_text, encoding="utf-8")
+    _ = (review / ".larch-keepalive").write_text(
+        f"CLONE_PATH={consumer}\n", encoding="utf-8"
+    )
+    return consumer, plugin, implement, review
 
 
 def _empty_results() -> list[CommandResult]:
@@ -379,6 +404,69 @@ def make_committed_repo(
         capture_output=True,
     )
     return repo.resolve()
+
+
+def make_checks_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, bgjob_daemon: Any
+) -> tuple[Path, Path]:
+    """Create the standard implementation-checks session fixture."""
+    repo = make_committed_repo(tmp_path)
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _ = (impl / "session-env.sh").write_text(f"REPO_ROOT={repo.resolve()}\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(ROOT))
+    monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
+
+    def fake_owner_identity(_pid: str | None) -> object:
+        return object()
+
+    monkeypatch.setattr(
+        bgjob_daemon, "owner_identity_from_env", fake_owner_identity
+    )  # pyright: ignore[reportArgumentType] - test double need not construct OwnerIdentity.
+    return impl, repo
+
+
+def _fixture_git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],  # noqa: S607 - fixed executable in a disposable Git fixture
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def make_adverse_push_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
+    """Create a feature branch whose tracking ref is deliberately adversarial."""
+    origin = tmp_path / "origin.git"
+    source = tmp_path / "source"
+    repo = tmp_path / "repo"
+    _ = subprocess.run(
+        ["git", "init", "--bare", "-q", str(origin)],  # noqa: S607 - fixed executable in a disposable Git fixture
+        check=True,
+    )
+    _ = subprocess.run(
+        ["git", "init", "-q", "-b", "main", str(source)],  # noqa: S607 - fixed executable in a disposable Git fixture
+        check=True,
+    )
+    _ = _fixture_git(source, "config", "user.email", "test@example.com")
+    _ = _fixture_git(source, "config", "user.name", "Test")
+    _ = (source / "README.md").write_text("base\n", encoding="utf-8")
+    for args in (("add", "README.md"), ("commit", "-q", "-m", "base"), ("remote", "add", "origin", str(origin)), ("push", "-q", "-u", "origin", "main")):
+        _ = _fixture_git(source, *args)
+    _ = _fixture_git(origin, "symbolic-ref", "HEAD", "refs/heads/main")
+    _ = subprocess.run(
+        ["git", "clone", "-q", str(origin), str(repo)],  # noqa: S607 - fixed executable in a disposable Git fixture
+        check=True,
+    )
+    _ = _fixture_git(repo, "config", "user.email", "test@example.com")
+    _ = _fixture_git(repo, "config", "user.name", "Test")
+    for args in (("checkout", "-q", "-b", "feature-x", "origin/main"), ("push", "-q", "-u", "origin", "feature-x"), ("branch", "--set-upstream-to=origin/main", "feature-x"), ("config", "push.default", "upstream")):
+        _ = _fixture_git(repo, *args)
+    _ = (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _ = _fixture_git(repo, "add", "feature.txt")
+    _ = _fixture_git(repo, "commit", "-q", "-m", "feature")
+    return repo, origin, _fixture_git(repo, "rev-parse", "origin/feature-x"), _fixture_git(origin, "rev-parse", "refs/heads/main")
 
 
 def write_required_plan_coverage(

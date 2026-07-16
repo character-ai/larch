@@ -23,7 +23,10 @@ from larch.lint.engine import (
     LintRule,
     SourceFile,
     ordered_ast_child_nodes,
+    parse_argparse_args,
     qualified_symbol,
+    try_read_python_ast,
+    read_python_source_ast,
     run_rule,
 )
 
@@ -102,14 +105,8 @@ class ModuleResolver:
         cached = self._tree_cache.get(ref.path)
         if ref.path in self._tree_cache:
             return cached
-        try:
-            source = ref.path.read_text(encoding="utf-8")
-        except OSError:
-            self._tree_cache[ref.path] = None
-            return None
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
+        tree = try_read_python_ast(ref.path)
+        if tree is None:
             self._tree_cache[ref.path] = None
             return None
         self._tree_cache[ref.path] = tree
@@ -527,14 +524,10 @@ def _collect_scope(
 
 def scan_file(path: Path, *, python_dir: Path, resolver: ModuleResolver) -> list[Finding]:
     """Return monkeypatch facade-binding findings for one test file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
+    parsed = read_python_source_ast(path)
+    if parsed is None:
         return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
+    source, tree = parsed
     normalized_file = path.relative_to(python_dir).as_posix()
     current = ModuleRef(_module_name_for_path(path, python_dir=python_dir), path)
     imports = _build_import_map(tree, current=current, resolver=resolver)
@@ -633,12 +626,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
         "--initial-reason",
         help="Reason used for live findings without preserved baseline reasons.",
     )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+    return parse_argparse_args(parser, argv)
 
 
 def main(argv: list[str] | None = None) -> int:
