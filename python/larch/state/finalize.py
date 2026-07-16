@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from larch.core import config, process_identity
 from larch import io as larch_io
@@ -534,17 +534,25 @@ def _rename_issue(
     issue = ctx.issue_number or ctx.issue
     if not issue or ctx.repo_unavailable:
         return "skipped"
-    current = ctx.pr_title or f"Issue {issue}"
     result = gh.issue_view_field_read(runner, str(issue), "title,state", repo=ctx.repo, cwd=cwd)
     if result.returncode != 0:
         return "failed"
+    current = ""
+    issue_state = ""
     try:
-        data: Any = json.loads(result.stdout or "{}")
-        if state == "stalled" and str(data.get("state", "")).upper() != "OPEN":
-            return "skipped"
-        current = str(data.get("title") or current)
+        parsed: object = json.loads(result.stdout or "{}")
+        if isinstance(parsed, dict):
+            data = cast("dict[str, object]", parsed)
+            title = data.get("title")
+            if isinstance(title, str) and title.strip():
+                current = title
+                issue_state = str(data.get("state", ""))
     except json.JSONDecodeError:
+        pass
+    if not current:
         return "failed"
+    if state == "stalled" and issue_state.upper() != "OPEN":
+        return "skipped"
     try:
         _ = tracking_issue.rename(
             runner,

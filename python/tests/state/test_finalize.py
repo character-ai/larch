@@ -96,6 +96,21 @@ def test_title_matches_empty_expected_rejected() -> None:
     assert not finalize._title_matches(actual="Anything", expected="", pr_number=7)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    ["", "{}", '{"title":"","state":"OPEN"}', '{"title":null,"state":"OPEN"}', "[]"],
+)
+def test_rename_issue_fails_without_a_valid_issue_title(tmp_path: Path, payload: str) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "view"), 0, payload, "", 0.01)],
+    )
+
+    status = finalize._rename_issue(runner=runner, ctx=_ctx(tmp_path), state="done", cwd=str(tmp_path))
+
+    assert status == "failed"
+    assert not any(call[1:3] == ["issue", "edit"] for call in runner.calls)
+
+
 def test_postmerge_skips_draft_without_done_manifest(tmp_path: Path) -> None:
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, draft=True)
