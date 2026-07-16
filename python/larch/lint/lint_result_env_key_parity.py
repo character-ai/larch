@@ -7,23 +7,39 @@ that drift apart (a missing ``ROUNDS_COMPLETED`` on a zero-findings path, a
 ``detail`` field populated in one writer but not its twin) recurred as a class
 that per-incident fixes never closed. Existing divergences are grandfathered in
 a reason-bearing, shrink-only baseline.
+
+Engine rule wrapper: corpus preparation groups sibling writers cross-file, then
+per-source detection emits engine findings. ``main`` delegates to
+``larch.lint.engine.run_rule`` so baseline check, write, and reason validation
+stay identical to sibling engine rules.
 """
 
 from __future__ import annotations
 
 import argparse
 import ast
-import json
 import sys
-from collections.abc import Iterable
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, TypedDict, cast
+from typing import Final
 
-TOOL_FAILURE_EXIT = 2
+from larch.core import proc
+from larch.lint.engine import (
+    EXIT_ERROR,
+    Finding,
+    LintRule,
+    ScanError,
+    SourceFile,
+    run_rule,
+)
+
+RULE_ID = "result-env-key-parity"
+SUPPRESSION_TOKEN = "lint-result-env-key-parity"
 BASELINE_FILENAME = "result-env-key-parity-baseline.json"
-BASELINE_KEYS = frozenset({"basename", "path", "key", "reason"})
-PRAGMA = "# lint-result-env-key-parity: ok"
+PATHSPECS = ("python/larch",)
+SCOPE_PREFIX = "python/larch/"
+SELF_REL = "python/larch/lint/lint_result_env_key_parity.py"
 WRITER_EXACT_NAMES = frozenset({"phase_driver_write_result_env", "write_result_env"})
 WRITER_SUFFIX = "_write_result_env"
 EXCLUDED_DIR_PARTS = frozenset({"__pycache__"})
@@ -44,101 +60,22 @@ class WriterCall:
     line: int
     basename: str
     keys: frozenset[str]
-    suppressed: bool
 
 
 @dataclass(frozen=True)
-class Violation:
-    basename: str
-    path: str
-    line: int
-    key: str
+class PreparedCorpus:
+    """Cross-file grouping: required keys per basename and writers per source."""
 
-    def identity(self) -> tuple[str, str, str]:
-        return (self.basename, self.path, self.key)
+    required: dict[str, frozenset[str]]
+    writers_by_path: dict[str, tuple[WriterCall, ...]]
 
 
-class BaselineRow(TypedDict):
-    basename: str
-    path: str
-    key: str
-    reason: str
-
-
-class BaselineError(ValueError):
-    """Raised when a baseline file cannot be trusted."""
-
-
-def _json_load(path: Path, *, label: str) -> list[object]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read {label}: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: {label} must be a top-level JSON array")
-    return cast("list[object]", data)
-
-
-def _first_duplicate(keys: Iterable[tuple[str, ...]]) -> tuple[str, ...] | None:
-    seen: set[tuple[str, ...]] = set()
-    for key in keys:
-        if key in seen:
-            return key
-        seen.add(key)
-    return None
-
-
-def _validate_baseline_row(item: object, *, index: int, source: Path) -> BaselineRow:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: baseline row {index} must be an object")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: baseline row {index} must have exactly {sorted(BASELINE_KEYS)}")
-    values = {name: record[name] for name in BASELINE_KEYS}
-    for name, value in values.items():
-        if not isinstance(value, str) or not value.strip():
-            raise BaselineError(f"{source}: baseline row {index} has invalid {name}")
-    return {
-        "basename": cast("str", values["basename"]),
-        "path": cast("str", values["path"]),
-        "key": cast("str", values["key"]),
-        "reason": cast("str", values["reason"]),
-    }
-
-
-def load_baseline(path: Path) -> list[BaselineRow]:
-    """Load and validate the committed baseline. Missing baseline means none."""
-    if not path.is_file():
-        return []
-    rows = [_validate_baseline_row(item, index=index, source=path) for index, item in enumerate(_json_load(path, label="baseline"))]
-    duplicate = _first_duplicate((row["basename"], row["path"], row["key"]) for row in rows)
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {':'.join(duplicate)}")
-    return rows
-
-
-def _iter_python_files(root: Path) -> list[Path]:
-    base = root / "python" / "larch"
-    if not base.is_dir():
-        return []
-    self_name = Path(__file__).name
-    result: list[Path] = []
-    for path in sorted(base.rglob("*.py")):
-        if not path.is_file() or path.is_symlink():
-            continue
-        if EXCLUDED_DIR_PARTS.intersection(path.parts) or path.name == self_name:
-            continue
-        result.append(path)
-    return result
-
-
-def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
+def _in_scope(path: str) -> bool:
+    if not path.startswith(SCOPE_PREFIX) or not path.endswith(".py"):
+        return False
+    if path == SELF_REL:
+        return False
+    return not EXCLUDED_DIR_PARTS.intersection(path.split("/"))
 
 
 def _callee_name(node: ast.Call) -> str | None:
@@ -219,17 +156,11 @@ def _literal_keys(node: ast.Call) -> frozenset[str] | None:
     return None
 
 
-def _has_pragma(line: str) -> bool:
-    index = line.find(PRAGMA)
-    return index != -1 and bool(line[index + len(PRAGMA) :].strip())
-
-
-def _collect_file(*, rel: str, source: str) -> list[WriterCall]:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+def _collect_source(source: SourceFile) -> list[WriterCall]:
+    """Return literal result-env writer calls in one source, or none on error."""
+    if not source.is_python or source.python_syntax_error() is not None:
         return []
-    lines = source.splitlines()
+    tree = source.python_ast
     calls: list[WriterCall] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -243,107 +174,99 @@ def _collect_file(*, rel: str, source: str) -> list[WriterCall]:
         keys = _literal_keys(node)
         if keys is None:
             continue
-        line_index = node.lineno - 1
-        source_line = lines[line_index] if 0 <= line_index < len(lines) else ""
-        calls.append(WriterCall(path=rel, line=node.lineno, basename=basename, keys=keys, suppressed=_has_pragma(source_line)))
+        calls.append(WriterCall(path=source.path, line=node.lineno, basename=basename, keys=keys))
     return calls
 
 
-def collect_violations(root: Path) -> list[Violation]:
-    """Return unsuppressed key-parity violations across sibling result-env writers."""
-    writers: list[WriterCall] = []
-    for path in _iter_python_files(root):
-        writers.extend(_collect_file(rel=path.relative_to(root).as_posix(), source=_read_text(path)))
+def prepare_corpus(sources: Sequence[SourceFile]) -> PreparedCorpus:
+    """Group sibling writers across the corpus and compute per-basename required keys."""
+    writers_by_path: dict[str, tuple[WriterCall, ...]] = {}
     by_basename: dict[str, list[WriterCall]] = {}
-    for writer in writers:
-        by_basename.setdefault(writer.basename, []).append(writer)
-    violations: list[Violation] = []
+    for source in sources:
+        calls = _collect_source(source)
+        if not calls:
+            continue
+        writers_by_path[source.path] = tuple(calls)
+        for call in calls:
+            by_basename.setdefault(call.basename, []).append(call)
+    required: dict[str, frozenset[str]] = {}
     for basename, group in by_basename.items():
         if len(group) < MIN_SIBLING_WRITERS:
             continue
         union = frozenset[str]().union(*(writer.keys for writer in group))
-        required = union - OPTIONAL_KEYS.get(basename, frozenset())
-        for writer in group:
-            if writer.suppressed:
-                continue
-            violations.extend(
-                Violation(basename=basename, path=writer.path, line=writer.line, key=key)
-                for key in sorted(required - writer.keys)
+        required[basename] = union - OPTIONAL_KEYS.get(basename, frozenset())
+    return PreparedCorpus(required=required, writers_by_path=writers_by_path)
+
+
+def detect(source: SourceFile, *, prepared: PreparedCorpus) -> list[Finding]:
+    """Emit a finding for each key a source writer omits versus its siblings."""
+    findings: list[Finding] = []
+    for writer in prepared.writers_by_path.get(source.path, ()):
+        required = prepared.required.get(writer.basename)
+        if required is None:
+            continue
+        findings.extend(
+            Finding(
+                path=source.path,
+                line=writer.line,
+                rule_id=RULE_ID,
+                message=f"{writer.basename} writer missing key {key} present in sibling writers",
+                anchor=f"{writer.basename}:{key}",
             )
-    return sorted(violations, key=lambda violation: (violation.basename, violation.path, violation.line, violation.key))
+            for key in sorted(required - writer.keys)
+        )
+    return findings
 
 
-def _message(violation: Violation) -> str:
-    return (
-        f"{violation.path}:{violation.line}: result-env-key-parity: "
-        f"{violation.basename} writer missing key {violation.key} present in sibling writers"
+def build_rule() -> LintRule:
+    """Build a fresh engine rule with a corpus-preparation closure."""
+    state: list[PreparedCorpus | None] = [None]
+
+    def _prepare(sources: Sequence[SourceFile]) -> None:
+        state[0] = prepare_corpus(sources)
+
+    def _detect(source: SourceFile) -> list[Finding]:
+        prepared = state[0]
+        if prepared is None:
+            raise ScanError("prepare_corpus was not called before detect")
+        return detect(source, prepared=prepared)
+
+    return LintRule(
+        rule_id=RULE_ID,
+        description=(
+            "Ratchet result-env writers toward key-set parity across sibling "
+            "writers of the same target basename."
+        ),
+        detect=_detect,
+        syntax_policy="skip",
+        suppression_token=SUPPRESSION_TOKEN,
+        allow_inline_suppression=True,
+        pathspecs=PATHSPECS,
+        source_filter=_in_scope,
+        require_baseline=True,
+        prepare_corpus=_prepare,
     )
 
 
-def serialize_baseline(rows: list[BaselineRow]) -> str:
-    ordered = sorted(rows, key=lambda row: (row["basename"], row["path"], row["key"]))
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(violations: list[Violation], *, baseline_rows: list[BaselineRow], initial_reason: str | None) -> list[BaselineRow]:
-    preserved = {(row["basename"], row["path"], row["key"]): row for row in baseline_rows}
-    default_reason = initial_reason.strip() if initial_reason is not None else None
-    records: list[BaselineRow] = []
-    missing: list[str] = []
-    seen: set[tuple[str, str, str]] = set()
-    for violation in violations:
-        identity = violation.identity()
-        if identity in seen:
-            continue
-        seen.add(identity)
-        old = preserved.get(identity)
-        if old is not None:
-            records.append(old)
-        elif default_reason:
-            records.append({"basename": violation.basename, "path": violation.path, "key": violation.key, "reason": default_reason})
-        else:
-            missing.append(":".join(identity))
-    if missing:
-        raise BaselineError("missing baseline reasons for live result-env key-parity violations:\n  " + "\n  ".join(missing))
-    return records
-
-
-def _run_write(root: Path, *, baseline_path: Path, initial_reason: str | None) -> int:
-    try:
-        baseline_rows = load_baseline(baseline_path)
-        violations = collect_violations(root)
-        records = _records_for_write(violations, baseline_rows=baseline_rows, initial_reason=initial_reason)
-    except BaselineError as exc:
-        print(f"lint-result-env-key-parity: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    print(f"lint-result-env-key-parity: wrote {len(records)} records to {baseline_path}", file=sys.stderr)
-    return 0
-
-
-def _run_check(root: Path, *, baseline_path: Path) -> int:
-    try:
-        baseline_rows = load_baseline(baseline_path)
-        violations = collect_violations(root)
-    except BaselineError as exc:
-        print(f"lint-result-env-key-parity: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baselined = {(row["basename"], row["path"], row["key"]) for row in baseline_rows}
-    new = [violation for violation in violations if violation.identity() not in baselined]
-    warned = [violation for violation in violations if violation.identity() in baselined]
-    for violation in warned:
-        print(f"warning: {_message(violation)} (baselined)", file=sys.stderr)
-    for violation in new:
-        print(_message(violation), file=sys.stderr)
-    return 1 if new else 0
-
-
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint result-env-key-parity", description=__doc__)
-    _ = parser.add_argument("positional_root", nargs="?", help="Optional repository root.")
-    _ = parser.add_argument("--root", help="Repository root (overrides positional root).")
-    _ = parser.add_argument("--write", action="store_true", help=f"Regenerate {BASELINE_FILENAME} from live violations.")
-    _ = parser.add_argument("--initial-reason", help="Reason used for new live violations during --write.")
+    parser = argparse.ArgumentParser(
+        prog="cli.py lint result-env-key-parity",
+        description=__doc__,
+    )
+    _ = parser.add_argument(
+        "--root",
+        default=str(Path(__file__).resolve().parents[3]),
+        help="Repository root (default: checkout containing this module).",
+    )
+    _ = parser.add_argument(
+        "--write",
+        action="store_true",
+        help=f"Regenerate {BASELINE_FILENAME} from the live scan.",
+    )
+    _ = parser.add_argument(
+        "--initial-reason",
+        help="Reason for live findings that have no preserved baseline reason.",
+    )
     try:
         return parser.parse_args(argv)
     except SystemExit as exc:
@@ -353,23 +276,28 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry registered as ``python3 python/cli.py lint result-env-key-parity``."""
     parsed = _parse_args(argv if argv is not None else sys.argv[1:])
     if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root_text = cast("str | None", parsed.root) or cast("str | None", parsed.positional_root)
-    root = Path(root_text).resolve() if root_text else Path(__file__).resolve().parents[3]
-    python_dir = root / "python"
-    if not python_dir.is_dir():
-        print(f"lint-result-env-key-parity: python directory not found: {python_dir}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_path = python_dir / BASELINE_FILENAME
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-result-env-key-parity: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(root, baseline_path=baseline_path, initial_reason=initial_reason)
-    return _run_check(root, baseline_path=baseline_path)
+        return EXIT_ERROR
+    root = Path(str(parsed.root)).resolve()
+    baseline_path = root / "python" / BASELINE_FILENAME
+    initial_reason = parsed.initial_reason
+    if initial_reason is not None and not str(initial_reason).strip():
+        print(
+            "lint-result-env-key-parity: --initial-reason must be non-empty",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    write_baseline = bool(parsed.write)
+    return run_rule(
+        build_rule(),
+        root,
+        proc.ProcRunner(),
+        baseline_path=baseline_path,
+        write_baseline=write_baseline,
+        initial_reason=None if initial_reason is None else str(initial_reason),
+    )
 
 
 if __name__ == "__main__":

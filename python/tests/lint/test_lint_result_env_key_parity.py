@@ -1,16 +1,31 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+from collections.abc import Sequence
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from larch.lint import lint_result_env_key_parity as lrp
+from larch.lint.engine import (
+    EXIT_CLEAN,
+    EXIT_ERROR,
+    EXIT_FINDINGS,
+    Finding,
+    SourceFile,
+    run_rule,
+)
+from tests.lint.test_lint_engine import (
+    _git_ok_runner,  # type: ignore[reportPrivateUsage]  # shared helper from sibling lint test module
+    _write_files,  # type: ignore[reportPrivateUsage]  # shared helper from sibling lint test module
+)
 
+if TYPE_CHECKING:
+    import pytest
 
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_text(text, encoding="utf-8")
+REL_A = "python/larch/writer_a.py"
+REL_B = "python/larch/writer_b.py"
 
 
 def _writer_src(basename: str, keys: list[str], *, pragma: bool = False, dynamic: bool = False) -> str:
@@ -33,115 +48,209 @@ def _writer_src(basename: str, keys: list[str], *, pragma: bool = False, dynamic
     )
 
 
-def _project(root: Path) -> None:
-    (root / "python" / "larch").mkdir(parents=True, exist_ok=True)
+def _source(rel: str, text: str) -> SourceFile:
+    return SourceFile(path=rel, text=text, lines=tuple(text.splitlines()))
 
 
-def _writer(root: Path, name: str, basename: str, keys: list[str], *, pragma: bool = False, dynamic: bool = False) -> None:
-    _write(root / "python" / "larch" / name, _writer_src(basename, keys, pragma=pragma, dynamic=dynamic))
+def _findings(sources: Sequence[SourceFile]) -> list[Finding]:
+    prepared = lrp.prepare_corpus(sources)
+    collected: list[Finding] = []
+    for source in sources:
+        collected.extend(lrp.detect(source, prepared=prepared))
+    return collected
 
 
-def _seed_baseline(root: Path, rows: list[dict[str, str]]) -> None:
-    _write(root / "python" / lrp.BASELINE_FILENAME, json.dumps(rows))
+def _finding_row(finding: Finding, *, reason: str = "grandfathered") -> dict[str, object]:
+    return {
+        "path": finding.path,
+        "line": finding.line,
+        "rule_id": finding.rule_id,
+        "message": finding.message,
+        "reason": reason,
+        "anchor": finding.anchor,
+    }
 
 
-def test_identical_key_sets_pass(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A", "B"])
-
-    assert lrp.main(["--root", str(tmp_path)]) == 0
-
-
-def test_missing_key_fails_and_names_basename_path_and_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"])
-
-    assert lrp.main(["--root", str(tmp_path)]) == 1
-    err = capsys.readouterr().err
-    assert "python/larch/writer_b.py:" in err
-    assert "result-env-key-parity: slot.env writer missing key B present in sibling writers" in err
+def _seed_baseline(root: Path, rows: list[dict[str, object]]) -> Path:
+    path = root / "python" / lrp.BASELINE_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
-def test_optional_key_suppresses_violation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"])
+def _run(
+    root: Path,
+    tracked: Sequence[str],
+    *,
+    baseline_path: Path,
+    write_baseline: bool = False,
+    initial_reason: str | None = None,
+) -> tuple[int, str, str]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = run_rule(
+            lrp.build_rule(),
+            root,
+            _git_ok_runner(root, tracked),
+            baseline_path=baseline_path,
+            write_baseline=write_baseline,
+            initial_reason=initial_reason,
+        )
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+# --- detection (corpus prepare + per-source detect) ---------------------------
+
+
+def test_identical_key_sets_produce_no_finding() -> None:
+    sources = [
+        _source(REL_A, _writer_src("slot.env", ["A", "B"])),
+        _source(REL_B, _writer_src("slot.env", ["A", "B"])),
+    ]
+    assert not _findings(sources)
+
+
+def test_missing_key_names_basename_path_and_key() -> None:
+    sources = [
+        _source(REL_A, _writer_src("slot.env", ["A", "B"])),
+        _source(REL_B, _writer_src("slot.env", ["A"])),
+    ]
+    findings = _findings(sources)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.path == REL_B
+    assert finding.rule_id == lrp.RULE_ID
+    assert finding.message == "slot.env writer missing key B present in sibling writers"
+    assert finding.anchor == "slot.env:B"
+
+
+def test_optional_key_suppresses_violation(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(lrp.OPTIONAL_KEYS, "slot.env", frozenset({"B"}))
+    sources = [
+        _source(REL_A, _writer_src("slot.env", ["A", "B"])),
+        _source(REL_B, _writer_src("slot.env", ["A"])),
+    ]
+    assert not _findings(sources)
 
-    assert lrp.main(["--root", str(tmp_path)]) == 0
+
+def test_dynamic_kv_argument_is_skipped_without_violation() -> None:
+    sources = [
+        _source(REL_A, _writer_src("slot.env", ["A", "B"])),
+        _source(REL_B, _writer_src("slot.env", [], dynamic=True)),
+    ]
+    assert not _findings(sources)
+
+
+def test_single_writer_is_never_a_violation() -> None:
+    sources = [_source(REL_A, _writer_src("solo.env", ["A", "B", "C"]))]
+    assert not _findings(sources)
+
+
+# --- engine run (discovery, pragma, baseline) ---------------------------------
 
 
 def test_pragma_on_call_line_suppresses_violation(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"], pragma=True)
+    _write_files(
+        tmp_path,
+        {
+            REL_A: _writer_src("slot.env", ["A", "B"]),
+            REL_B: _writer_src("slot.env", ["A"], pragma=True),
+        },
+    )
+    baseline_path = _seed_baseline(tmp_path, [])
+    code, out, _err = _run(tmp_path, [REL_A, REL_B], baseline_path=baseline_path)
+    assert code == EXIT_CLEAN
+    assert out == ""
 
-    assert lrp.main(["--root", str(tmp_path)]) == 0
+
+def test_unbaselined_violation_exits_one(tmp_path: Path) -> None:
+    _write_files(
+        tmp_path,
+        {REL_A: _writer_src("slot.env", ["A", "B"]), REL_B: _writer_src("slot.env", ["A"])},
+    )
+    baseline_path = _seed_baseline(tmp_path, [])
+    code, out, _err = _run(tmp_path, [REL_A, REL_B], baseline_path=baseline_path)
+    assert code == EXIT_FINDINGS
+    assert f"{REL_B}:" in out
+    assert "slot.env writer missing key B present in sibling writers" in out
 
 
 def test_baseline_record_suppresses_and_shrinks(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"])
-    _seed_baseline(
+    sources = [
+        _source(REL_A, _writer_src("slot.env", ["A", "B"])),
+        _source(REL_B, _writer_src("slot.env", ["A"])),
+    ]
+    findings = _findings(sources)
+    _write_files(
         tmp_path,
-        [{"basename": "slot.env", "path": "python/larch/writer_b.py", "key": "B", "reason": "grandfathered"}],
+        {REL_A: _writer_src("slot.env", ["A", "B"]), REL_B: _writer_src("slot.env", ["A"])},
     )
 
-    assert lrp.main(["--root", str(tmp_path)]) == 0
+    baseline_path = _seed_baseline(tmp_path, [_finding_row(findings[0])])
+    code, _out, _err = _run(tmp_path, [REL_A, REL_B], baseline_path=baseline_path)
+    assert code == EXIT_CLEAN
 
-    _seed_baseline(tmp_path, [])
-    assert lrp.main(["--root", str(tmp_path)]) == 1
-
-
-def test_dynamic_kv_argument_is_skipped_without_violation(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", [], dynamic=True)
-
-    assert lrp.main(["--root", str(tmp_path)]) == 0
-
-
-def test_single_writer_is_never_a_violation(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "solo.env", ["A", "B", "C"])
-
-    assert lrp.main(["--root", str(tmp_path)]) == 0
+    _ = _seed_baseline(tmp_path, [])
+    code, _out, _err = _run(tmp_path, [REL_A, REL_B], baseline_path=baseline_path)
+    assert code == EXIT_FINDINGS
 
 
 def test_write_seeds_reason_and_check_then_passes(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"])
+    _write_files(
+        tmp_path,
+        {REL_A: _writer_src("slot.env", ["A", "B"]), REL_B: _writer_src("slot.env", ["A"])},
+    )
+    baseline_path = _seed_baseline(tmp_path, [])
 
-    assert lrp.main(["--root", str(tmp_path), "--write", "--initial-reason", "grandfathered divergent writers"]) == 0
-    rows = json.loads((tmp_path / "python" / lrp.BASELINE_FILENAME).read_text(encoding="utf-8"))
-    assert rows == [{"basename": "slot.env", "path": "python/larch/writer_b.py", "key": "B", "reason": "grandfathered divergent writers"}]
-    assert lrp.main(["--root", str(tmp_path)]) == 0
+    code, _out, _err = _run(
+        tmp_path,
+        [REL_A, REL_B],
+        baseline_path=baseline_path,
+        write_baseline=True,
+        initial_reason="grandfathered divergent writers",
+    )
+    assert code == EXIT_CLEAN
+    rows = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert len(rows) == 1
+    assert rows[0]["path"] == REL_B
+    assert rows[0]["anchor"] == "slot.env:B"
+    assert rows[0]["reason"] == "grandfathered divergent writers"
+
+    code, _out, _err = _run(tmp_path, [REL_A, REL_B], baseline_path=baseline_path)
+    assert code == EXIT_CLEAN
 
 
 def test_write_without_initial_reason_for_new_violation_exits_2(tmp_path: Path) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"])
+    _write_files(
+        tmp_path,
+        {REL_A: _writer_src("slot.env", ["A", "B"]), REL_B: _writer_src("slot.env", ["A"])},
+    )
+    baseline_path = _seed_baseline(tmp_path, [])
+    code, _out, _err = _run(
+        tmp_path, [REL_A, REL_B], baseline_path=baseline_path, write_baseline=True
+    )
+    assert code == EXIT_ERROR
 
-    assert lrp.main(["--root", str(tmp_path), "--write"]) == 2
+
+def test_malformed_baseline_reason_exits_2(tmp_path: Path) -> None:
+    sources = [
+        _source(REL_A, _writer_src("slot.env", ["A", "B"])),
+        _source(REL_B, _writer_src("slot.env", ["A"])),
+    ]
+    findings = _findings(sources)
+    _write_files(
+        tmp_path,
+        {REL_A: _writer_src("slot.env", ["A", "B"]), REL_B: _writer_src("slot.env", ["A"])},
+    )
+    baseline_path = _seed_baseline(tmp_path, [_finding_row(findings[0], reason="")])
+    code, _out, _err = _run(tmp_path, [REL_A, REL_B], baseline_path=baseline_path)
+    assert code == EXIT_ERROR
 
 
-@pytest.mark.parametrize(
-    "baseline",
-    [
-        [{"basename": "slot.env", "path": "python/larch/w.py", "key": "B", "reason": ""}],
-        [{"basename": "slot.env", "path": "python/larch/w.py", "key": "B"}],
-        [{"basename": "slot.env", "path": "python/larch/w.py", "key": "B", "reason": "x", "extra": "no"}],
-    ],
-)
-def test_malformed_baseline_exits_2(tmp_path: Path, baseline: object) -> None:
-    _project(tmp_path)
-    _writer(tmp_path, "writer_a.py", "slot.env", ["A", "B"])
-    _writer(tmp_path, "writer_b.py", "slot.env", ["A"])
-    _write(tmp_path / "python" / lrp.BASELINE_FILENAME, json.dumps(baseline))
+def test_main_empty_initial_reason_exits_2() -> None:
+    assert lrp.main(["--initial-reason", ""]) == EXIT_ERROR
 
-    assert lrp.main(["--root", str(tmp_path)]) == 2
+
+def test_main_missing_repository_exits_2() -> None:
+    assert lrp.main(["--root", "/no/such/repo/for/result-env-key-parity"]) == EXIT_ERROR
