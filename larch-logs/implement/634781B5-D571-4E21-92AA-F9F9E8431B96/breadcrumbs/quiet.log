@@ -18,6 +18,9 @@ ci_monitor: CI status query #2 in progress after 15s
 ci_monitor: poll 2/180 pending after 18s; sleeping 10s
 ci_monitor: CI status query #3 in progress after 28s
 ci_monitor: CI fail after 32s -> evaluate_failure
+=== larch-quiet-ship.py-29112.log ===
+ship.py: pre-pr-reentry: de-terminalized prior phase stalled -> assessments
+=== larch-quiet-ship.py-34870.log ===
 === larch-quiet-ship.py-8000.log ===
 === larch-quiet-ship.py-98480.log ===
 ship.py: pr-prep: postbump/Flush+Push
