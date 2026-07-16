@@ -333,7 +333,7 @@ def test_settle_skips_dedup_on_ready_marker_resume(tmp_path: Path) -> None:
     )
     result = step35_settle_for(request=_request(design, round_num="4"), runners=runners)
     assert result.exit_rc == 0
-    assert dedup_calls == []
+    assert not dedup_calls
 
 
 def test_settle_force_dedup_overrides_marker(tmp_path: Path) -> None:
