@@ -76,7 +76,7 @@ def phase_driver_write_result_env(
     *,
     path: str | Path,
     kvs: Iterable[tuple[str, str] | str],
-    allow_keys: Iterable[str] = PHASE_RESULT_ENV_ALLOW_KEYS,
+    allow_keys: Iterable[str] | None = None,
 ) -> None:
     """Atomically write allowlisted KEY=VALUE records to a result-env file.
 
@@ -84,7 +84,7 @@ def phase_driver_write_result_env(
     refused, keys must be allowlisted shell variable names, and values may not
     contain CR/LF bytes.
     """
-    allowed = set(allow_keys)
+    allowed = set(PHASE_RESULT_ENV_ALLOW_KEYS if allow_keys is None else allow_keys)
     dest = Path(path)
     if dest.is_symlink():
         raise OSError(f"refusing to write symlink result env: {dest}")

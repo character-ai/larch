@@ -809,13 +809,15 @@ def _append_clarify_failure(
 ) -> None:
     """Record a clarify warning through the shared design failure logger."""
     _ = design_core.append_failure(
-        plugin_root=plugin_root,
-        design_tmpdir=design_tmpdir,
-        site=site,
-        tool=tool,
-        exit_code=exit_code,
-        category="Warnings",
-        output_file=output_file,
+        request=design_core.FailureLogRequest(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            site=site,
+            tool=tool,
+            exit_code=exit_code,
+            category="Warnings",
+            output_file=output_file,
+        ),
         env=env,
         runner=proc.run,
     )

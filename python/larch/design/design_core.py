@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
@@ -241,12 +242,43 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
     return [sys.executable, str(plugin_root / "python" / "cli.py"), *args]
 
 
-def append_failure(*, plugin_root: Path, design_tmpdir: Path, site: str, tool: str, exit_code: int | str, category: str, output_file: Path, env: Mapping[str, str] | None = None, runner: Callable[..., proc.CommandResult] = proc.run) -> bool:
+@dataclass(frozen=True)
+class FailureLogRequest:
+    """One structured request to record a design execution failure."""
+
+    plugin_root: Path
+    design_tmpdir: Path
+    site: str
+    tool: str
+    exit_code: int | str
+    category: str
+    output_file: Path
+
+
+def append_failure(
+    *,
+    request: FailureLogRequest,
+    env: Mapping[str, str] | None = None,
+    runner: Callable[..., proc.CommandResult] = proc.run,
+) -> bool:
+    """Append one failure record through the canonical run-log command."""
     result = runner(
-        _cli_cmd(plugin_root, "run-log", "append-failure", "--log", str(design_tmpdir / "execution-issues.md"), "--site", site, "--tool", tool, "--exit-code", str(exit_code), "--category", category, "--output-file", str(output_file), "--redact"),
+        _cli_cmd(request.plugin_root, "run-log", "append-failure", "--log", str(request.design_tmpdir / "execution-issues.md"), "--site", request.site, "--tool", request.tool, "--exit-code", str(request.exit_code), "--category", request.category, "--output-file", str(request.output_file), "--redact"),
         env={**os.environ, **env} if env is not None else None,
     )
     return result.returncode == 0
 
 
-_append_failure = append_failure
+def _append_failure(*, plugin_root: Path, design_tmpdir: Path, site: str, tool: str, exit_code: int | str, category: str, output_file: Path) -> bool:
+    """Compatibility wrapper for established design failure-log call sites."""
+    return append_failure(
+        request=FailureLogRequest(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            site=site,
+            tool=tool,
+            exit_code=exit_code,
+            category=category,
+            output_file=output_file,
+        )
+    )
