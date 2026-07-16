@@ -1,9 +1,10 @@
-"""Ratchet ad-hoc raw ``KEY=value`` readers toward :mod:`larch.io`.
+"""Ratchet ad-hoc raw ``KEY=value`` readers and issue emitters toward shared owners.
 
-The scan deliberately targets only reader-shaped split loops and shell
-``awk -F=`` / ``cut -d=`` forms.  It does not flag ordinary option or
-tab-delimited parsing.  Existing bootstrap and compatibility debt is kept in
-the strict, reason-bearing baseline; inline comments cannot suppress a gate.
+The scan deliberately targets only reader-shaped split loops, shell
+``awk -F=`` / ``cut -d=`` forms, and the two migrated issue emitter modules.
+It does not flag ordinary option or tab-delimited parsing. Existing bootstrap
+and compatibility debt is kept in the strict, reason-bearing baseline; inline
+comments cannot suppress a gate.
 """
 
 from __future__ import annotations
@@ -23,7 +24,12 @@ SUPPRESSION_TOKEN = "lint-kv-codec"
 BASELINE_FILENAME = "kv-codec-baseline.json"
 PYTHON_PREFIX = "python/larch/"
 SHELL_PREFIXES = ("scripts/", "skills/")
-OWNER_PATHS = frozenset({"python/larch/io.py", "python/larch/core/env_file.py"})
+READER_OWNER_PATHS = frozenset({"python/larch/io.py", "python/larch/core/env_file.py"})
+EMITTER_OWNER_PATH = "python/larch/core/logging_util.py"
+EMITTER_GUARDED_PATHS = frozenset({
+    "python/larch/issue/issue_create.py",
+    "python/larch/issue/execution_issues.py",
+})
 SPLIT_ARGUMENT_COUNT = 2
 
 
@@ -49,8 +55,11 @@ def _is_option_loop(node: ast.AST) -> bool:
 
 
 def _python_findings(source: SourceFile) -> list[Finding]:
-    if not source.path.startswith(PYTHON_PREFIX) or source.path in OWNER_PATHS:
+    if not source.path.startswith(PYTHON_PREFIX):
         return []
+    findings = _emitter_findings(source)
+    if source.path in READER_OWNER_PATHS:
+        return findings
     calls: dict[int, ast.Call] = {}
     for node in ast.walk(source.python_ast):
         if not isinstance(node, (ast.For, ast.AsyncFor, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
@@ -61,10 +70,43 @@ def _python_findings(source: SourceFile) -> list[Finding]:
             if _is_split_equals(child):
                 call = cast("ast.Call", child)
                 calls[call.lineno] = call
-    return [
+    findings.extend(
         _split_finding(source, call, occurrence=occurrence)
         for occurrence, call in enumerate(calls.values(), start=1)
-    ]
+    )
+    return findings
+
+
+def _emitter_findings(source: SourceFile) -> list[Finding]:
+    if source.path == EMITTER_OWNER_PATH:
+        return []
+    findings: list[Finding] = []
+    for node in ast.walk(source.python_ast):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "emit_kv":
+            findings.append(_emitter_finding(source, node.lineno, "private emit_kv definition"))
+        elif source.path in EMITTER_GUARDED_PATHS and isinstance(node, ast.Call) and _is_kv_print(node):
+            findings.append(_emitter_finding(source, node.lineno, "ad-hoc KEY=value print wrapper"))
+    return findings
+
+
+def _is_kv_print(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Name) or node.func.id != "print" or not node.args:
+        return False
+    first = node.args[0]
+    return (
+        isinstance(first, ast.JoinedStr)
+        and any(isinstance(value, ast.Constant) and value.value == "=" for value in first.values)
+    )
+
+
+def _emitter_finding(source: SourceFile, line: int, detail: str) -> Finding:
+    return Finding(
+        path=source.path,
+        line=line,
+        rule_id=RULE_ID,
+        message=f"{detail}; use larch.core.logging_util.emit_kv",
+        anchor=f"emitter={detail}:{line}",
+    )
 
 
 def _split_finding(source: SourceFile, call: ast.Call, *, occurrence: int) -> Finding:
@@ -134,7 +176,7 @@ def detect(source: SourceFile) -> list[Finding]:
 
 RULE = LintRule(
     rule_id=RULE_ID,
-    description="Ratchet raw KEY=value parsing toward the shared codec",
+    description="Ratchet raw KEY=value parsing and emission toward shared codecs",
     detect=detect,
     syntax_policy="fail",
     suppression_token=SUPPRESSION_TOKEN,

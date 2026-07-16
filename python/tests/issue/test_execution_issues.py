@@ -319,6 +319,22 @@ def test_refresh_execution_issues_empty_tmpdir_argv_falls_back_to_env(
     assert "REFRESHED=true" in capsys.readouterr().out
 
 
+def test_refresh_execution_issues_missing_tmpdir_emits_exact_kv_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+
+    rc = execution_issues.refresh_execution_issues_main([])
+
+    captured = capsys.readouterr()
+    assert rc == execution_issues.VALIDATION_FAILED_RC
+    assert captured.out == (
+        "REFRESHED=false\n"
+        "ERROR=--implement-tmpdir is required or IMPLEMENT_TMPDIR must be set\n"
+    )
+
+
 def test_flush_execution_issues_main_emits_kv_contract(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -337,6 +353,16 @@ def test_flush_execution_issues_main_emits_kv_contract(
     out = capsys.readouterr().out
     assert "FLUSH_STATUS=" in out
     assert "RECORDS=" in out
+
+
+def test_flush_execution_issues_usage_emits_exact_kv_contract(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = execution_issues.flush_execution_issues_main([])
+
+    captured = capsys.readouterr()
+    assert rc == execution_issues.VALIDATION_FAILED_RC
+    assert captured.out == "FLUSH_STATUS=failed\nRECORDS=0\nERROR=usage\n"
 
 
 def test_flush_execution_issues_safety_net_preserves_source_log(tmp_path: Path) -> None:

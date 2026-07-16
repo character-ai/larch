@@ -128,12 +128,18 @@ def sanitize_list(text: str) -> str:
     return "".join(ch for ch in text if ch.isalnum() or ch in "_,=:-")
 
 
-def emit_kv(*, key: str, value: str | int | bool) -> None:
-    """Write a scalar KEY=value row without permitting line injection."""
+def emit_kv(*, key: str, value: str | int | bool, stream: TextIO | None = None) -> None:
+    """Write one scalar KEY=value row to the contract stream or an explicit stream."""
     rendered = "true" if value is True else "false" if value is False else str(value)
+    if "\n" in key or "\r" in key:
+        raise ValueError(f"emit_kv key {key!r} contains newline or carriage-return")
     if "\n" in rendered or "\r" in rendered:
         raise ValueError(f"emit_kv value for {key!r} contains newline or carriage-return")
-    emit(f"{key}={rendered}")
+    if stream is None:
+        emit(f"{key}={rendered}")
+        return
+    _ = stream.write(f"{key}={rendered}\n")
+    stream.flush()
 
 
 def diagnostic(message: str) -> None:

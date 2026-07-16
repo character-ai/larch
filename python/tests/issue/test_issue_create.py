@@ -1037,6 +1037,41 @@ def test_write_sentinel_stderr_only(tmp_path: Path, capsys: Any) -> None:
     assert "ISSUES_CREATED=1" in target.read_text(encoding="utf-8")
 
 
+def test_write_sentinel_sanitizes_hostile_usage_error(capsys: Any) -> None:
+    rc = issue_create.write_sentinel_main(["--unknown\nFORGED=value"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == ""
+    assert captured.err == "ERROR=Unknown argument: --unknownFORGED=value\n"
+
+
+def test_create_result_sanitizes_hostile_diagnostic(capsys: Any) -> None:
+    rc = issue_create.emit_create_issue_result(
+        issue_create.CreateIssueResult(error="create failed\nFORGED=value", exit_code=2)
+    )
+
+    assert rc == 2
+    assert capsys.readouterr().out == "ISSUE_FAILED=true\nISSUE_ERROR=create failedFORGED=value\n"
+
+
+def test_blocked_by_result_sanitizes_hostile_diagnostic(capsys: Any) -> None:
+    rc = issue_create.emit_blocked_by_result(
+        issue_create.BlockedByResult(
+            client="1",
+            blocker="2",
+            added=False,
+            error="dependency failed\rFORGED=value",
+            exit_code=2,
+        )
+    )
+
+    assert rc == 2
+    assert capsys.readouterr().out == (
+        "BLOCKED_BY_FAILED=true\nCLIENT=1\nBLOCKER=2\nERROR=dependency failedFORGED=value\n"
+    )
+
+
 def test_create_one_refuses_without_authorization(capsys: Any) -> None:
     """Non-dry-run create-one must refuse when no context-file or operator-invoked."""
     rc = issue_create.create_one_main(["--title", "Test issue", "--repo", "owner/repo"])

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import cast
 from larch import io as larch_io
 from larch.core import config
+from larch.core import logging_util
 from larch.report import exec_issue_detail
 from larch.report.run_log_batch import (
     _EXECUTION_ISSUE_CATEGORIES,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the canonical category set.
@@ -28,10 +29,6 @@ from larch.report.run_log_batch import (
 VALIDATION_FAILED_RC = 2
 _WARNINGS_CATEGORY = "Warnings"
 _RESOLUTION_EVENT = "resolved"
-
-
-def emit_kv( *,key: str, value: object) -> None:
-    print(f"{key}={value}")
 
 
 def sha256_file(path: str | Path) -> str:
@@ -336,18 +333,18 @@ def flush_execution_issues_safety_net_main(argv: list[str] | None = None) -> int
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv(key="FLUSH_STATUS", value="failed")
-        emit_kv(key="RECORDS", value=0)
-        emit_kv(key="ERROR", value="usage")
+        logging_util.emit_kv(key="FLUSH_STATUS", value="failed")
+        logging_util.emit_kv(key="RECORDS", value=0)
+        logging_util.emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
     rc, status, records, append_log = flush_execution_issues_safety_net(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
-    emit_kv(key="FLUSH_STATUS", value=status)
-    emit_kv(key="RECORDS", value=records)
+    logging_util.emit_kv(key="FLUSH_STATUS", value=status)
+    logging_util.emit_kv(key="RECORDS", value=records)
     if append_log:
-        emit_kv(key="APPEND_LOG_FILE", value=append_log)
+        logging_util.emit_kv(key="APPEND_LOG_FILE", value=append_log)
     if rc == VALIDATION_FAILED_RC:
-        emit_kv(key="ERROR", value=append_log or "validation failed")
+        logging_util.emit_kv(key="ERROR", value=append_log or "validation failed")
     return rc
 
 
@@ -362,18 +359,18 @@ def flush_execution_issues_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv(key="FLUSH_STATUS", value="failed")
-        emit_kv(key="RECORDS", value=0)
-        emit_kv(key="ERROR", value="usage")
+        logging_util.emit_kv(key="FLUSH_STATUS", value="failed")
+        logging_util.emit_kv(key="RECORDS", value=0)
+        logging_util.emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
     rc, status, records, append_log = flush_execution_issues(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
-    emit_kv(key="FLUSH_STATUS", value=status)
-    emit_kv(key="RECORDS", value=records)
+    logging_util.emit_kv(key="FLUSH_STATUS", value=status)
+    logging_util.emit_kv(key="RECORDS", value=records)
     if append_log:
-        emit_kv(key="APPEND_LOG_FILE", value=append_log)
+        logging_util.emit_kv(key="APPEND_LOG_FILE", value=append_log)
     if rc == VALIDATION_FAILED_RC:
-        emit_kv(key="ERROR", value=append_log or "validation failed")
+        logging_util.emit_kv(key="ERROR", value=append_log or "validation failed")
     return rc
 
 
@@ -475,16 +472,16 @@ def refresh_execution_issues_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv(key="REFRESHED", value="false")
-        emit_kv(key="ERROR", value="usage")
+        logging_util.emit_kv(key="REFRESHED", value="false")
+        logging_util.emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
-        emit_kv(key="REFRESHED", value="false")
-        emit_kv(key="ERROR", value="--implement-tmpdir is required or IMPLEMENT_TMPDIR must be set")
+        logging_util.emit_kv(key="REFRESHED", value="false")
+        logging_util.emit_kv(key="ERROR", value="--implement-tmpdir is required or IMPLEMENT_TMPDIR must be set")
         return VALIDATION_FAILED_RC
     rc, refreshed, reason = refresh_execution_issues(Path(raw_tmpdir), best_effort=args.best_effort)
-    emit_kv(key="REFRESHED", value=str(refreshed).lower())
+    logging_util.emit_kv(key="REFRESHED", value=refreshed)
     if reason:
-        emit_kv(key="REASON" if refreshed else "ERROR", value=reason)
+        logging_util.emit_kv(key="REASON" if refreshed else "ERROR", value=reason)
     return rc
