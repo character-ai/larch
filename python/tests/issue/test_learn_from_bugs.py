@@ -12,6 +12,7 @@ import pytest
 from larch.core import config
 from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
+from larch.design import design_log_ship
 from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX
 from test_support import RecordingRunner, RunCall
@@ -2059,11 +2060,10 @@ def _publish_ok_responses() -> list[CommandResult]:
         _result(),                                        # 20 push
         _result(_STATE_PR_STDOUT),                        # 21 pr create
         _result("OPEN\n"),                                # 22 pr view state
-        _result(),                                        # 23 pr merge
-        _result("MERGED\n"),                              # 24 pr view state
-        _result("2026-07-14T00:00:00Z\n"),                # 25 pr view mergedAt
-        _result(),                                        # 26 switch main
-        _result(),                                        # 27 pull --ff-only
+        _result("MERGED\n"),                              # 23 pr view state
+        _result("2026-07-14T00:00:00Z\n"),                # 24 pr view mergedAt
+        _result(),                                        # 25 switch main
+        _result(),                                        # 26 pull --ff-only
     ]
 
 
@@ -2074,6 +2074,8 @@ def _run_publish(
     responses: list[CommandResult],
     *,
     runner: RecordingRunner | None = None,
+    ci_merge_result: design_log_ship.DesignLogMergeResult | None = None,
+    ci_merge_calls: list[tuple[int, str, str | None, str | None]] | None = None,
 ) -> tuple[int, dict[str, str]]:
     run_dir = tmp_path / "run"
     run_dir.mkdir(exist_ok=True)
@@ -2084,6 +2086,21 @@ def _run_publish(
     monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
     active_runner = runner if runner is not None else RecordingRunner.strict_queue(*responses)
     monkeypatch.setattr(learn_from_bugs, "_runner", lambda: active_runner)
+
+    def fake_ci_merge(
+        received_runner: RecordingRunner,
+        *,
+        pr: int,
+        repo: str,
+        cwd: str | None,
+        merge_cwd: str | None,
+    ) -> design_log_ship.DesignLogMergeResult:
+        assert received_runner is active_runner
+        if ci_merge_calls is not None:
+            ci_merge_calls.append((pr, repo, cwd, merge_cwd))
+        return ci_merge_result or design_log_ship.DesignLogMergeResult(ok=True)
+
+    monkeypatch.setattr(design_log_ship, "run_design_log_ci_merge", fake_ci_merge)
     rc = learn_from_bugs.state_publish_main(
         [
             "--root", str(tmp_path),
@@ -2115,19 +2132,25 @@ def test_state_publish_fresh_success_merges(
     assert out["PR_URL"] == "https://github.com/o/r/pull/7"
 
 
-def test_state_publish_fresh_success_requests_admin_squash(
+def test_state_publish_waits_for_required_ci_then_admin_squash_merges(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     responses = _publish_ok_responses()
     runner = RecordingRunner.strict_queue(*responses)
+    calls: list[tuple[int, str, str | None, str | None]] = []
 
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses, runner=runner)
+    rc, out = _run_publish(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        responses,
+        runner=runner,
+        ci_merge_calls=calls,
+    )
 
     assert rc == 0
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
-    assert runner.calls[22] == [  # lint-gh-argv-literal: ok exact regression assertion
-        "gh", "pr", "merge", "7", "--repo", "o/r", "--squash", "--admin",
-    ]
+    assert calls == [(7, "o/r", str(tmp_path), str(tmp_path))]
 
 
 def test_state_publish_invalid_branch_name(
@@ -2192,10 +2215,17 @@ def test_state_publish_unmerged_pr_handoff(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     responses = _publish_ok_responses()
-    responses[22] = _result(rc=1)       # admin merge does not complete
-    responses[23] = _result("OPEN\n")   # PR still open, not merged
-    responses[24] = _result()           # no mergedAt timestamp
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
+    responses[22] = _result("OPEN\n")   # PR still open, not merged
+    responses[23] = _result()           # no mergedAt timestamp
+    rc, out = _run_publish(
+        monkeypatch,
+        capsys,
+        tmp_path,
+        responses,
+        ci_merge_result=design_log_ship.DesignLogMergeResult(
+            ok=False, detail="required checks failed"
+        ),
+    )
     assert rc == 0
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_HANDOFF_PENDING
     assert out["PR_NUMBER"] == "7"
