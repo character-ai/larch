@@ -188,6 +188,8 @@ class LintRule:
     occurrence_pattern_field: OccurrencePatternField = "pattern_name"
     occurrence_fields: OccurrenceFields | None = None
     require_baseline: bool = False
+    warn_matching_baseline: bool = False
+    exclude_tracked_symlinks: bool = False
     prepare_corpus: PrepareCorpus | None = None
 
 
@@ -363,6 +365,10 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901, PLR0912 - rule field 
         raise ScanError("lint rule require_baseline must be a bool")
     if not _is_exact_bool(rule.stale_baseline_on_clean_scan):
         raise ScanError("lint rule stale_baseline_on_clean_scan must be a bool")
+    if not _is_exact_bool(rule.warn_matching_baseline):
+        raise ScanError("lint rule warn_matching_baseline must be a bool")
+    if not _is_exact_bool(rule.exclude_tracked_symlinks):
+        raise ScanError("lint rule exclude_tracked_symlinks must be a bool")
     if not _is_single_line(rule.occurrence_pattern_field):
         raise ScanError(
             "lint rule occurrence_pattern_field must be a non-empty single-line string"
@@ -444,6 +450,7 @@ def _discover_tracked_paths(
     *,
     pathspecs: Sequence[str] | None = None,
     source_filter: SourceFilter | None = None,
+    exclude_tracked_symlinks: bool = False,
 ) -> list[str]:
     # Scope ls-files when callers pass pathspecs so sparse checkouts that omit
     # unrelated trees (for example CI excluding larch-logs/) do not fail
@@ -470,6 +477,9 @@ def _discover_tracked_paths(
             check_filesystem=False,
         )
         if source_filter is not None and not source_filter(lexical_rel):
+            continue
+        # Opt-in skip after lexical filtering and before filesystem normalize.
+        if exclude_tracked_symlinks and (root / entry).is_symlink():
             continue
         rel = _normalize_repo_relative_path(entry, root=root, label="discovered path")
         if rel in seen:
@@ -1531,17 +1541,13 @@ def _scan_findings(
         discovery_pathspecs = [
             _validate_requested_path(item, root=root)[0] for item in paths
         ]
-    if rule.source_filter is None:
-        tracked = _discover_tracked_paths(
-            root, runner, pathspecs=discovery_pathspecs
-        )
-    else:
-        tracked = _discover_tracked_paths(
-            root,
-            runner,
-            pathspecs=discovery_pathspecs,
-            source_filter=rule.source_filter,
-        )
+    tracked = _discover_tracked_paths(
+        root,
+        runner,
+        pathspecs=discovery_pathspecs,
+        source_filter=rule.source_filter,
+        exclude_tracked_symlinks=rule.exclude_tracked_symlinks,
+    )
     selected = _filter_tracked_paths(tracked, root=root, paths=paths)
     if rule.source_filter is not None:
         selected = [rel for rel in selected if rule.source_filter(rel)]
@@ -1611,6 +1617,36 @@ def _findings_for_active_rows(
     return rendered
 
 
+def _matching_baseline_findings(
+    findings: Sequence[Finding],
+    *,
+    baseline_rows: Sequence[BaselineRow],
+    active_rows: Sequence[BaselineRow],
+    occurrence_fields: OccurrenceFields = ("pattern_name",),
+) -> list[Finding]:
+    """Return live findings whose identities are grandfathered (matched, not new)."""
+    baseline_ids = {_baseline_identity(row) for row in baseline_rows}
+    active_ids = {_baseline_identity(row) for row in active_rows}
+    matched: list[Finding] = []
+    for finding in findings:
+        identity = _baseline_identity(
+            _project_finding(finding, occurrence_fields=occurrence_fields)
+        )
+        if identity in baseline_ids and identity not in active_ids:
+            matched.append(finding)
+    matched.sort(
+        key=lambda item: (
+            item.path,
+            item.line,
+            item.rule_id,
+            item.message,
+            item.qualified_symbol or "",
+            item.metric if item.metric is not None else -1,
+        )
+    )
+    return matched
+
+
 def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
     collected: Sequence[Finding],
     *,
@@ -1622,6 +1658,7 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
     strict_stale: bool,
     paths: Sequence[str | Path] | None,
     occurrence_fields: OccurrenceFields = ("pattern_name",),
+    warn_matching_baseline: bool = False,
 ) -> tuple[int, list[Finding], list[str]]:
     live_rows = _project_findings(collected, occurrence_fields=occurrence_fields)
     if write_baseline:
@@ -1641,6 +1678,16 @@ def _run_with_baseline(  # noqa: PLR0913 - keeps baseline data flow explicit.
         f"warning: stale baseline row: {_baseline_row_display(row)}"
         for row in stale_rows
     ]
+    if warn_matching_baseline:
+        warnings.extend(
+            f"warning: matching baseline finding: {render_finding(finding)}"
+            for finding in _matching_baseline_findings(
+                collected,
+                baseline_rows=scoped_baseline,
+                active_rows=active_rows,
+                occurrence_fields=occurrence_fields,
+            )
+        )
     if strict_stale and stale_rows:
         raise StrictStaleError(warnings)
     return (
@@ -1746,6 +1793,7 @@ def run_rule(  # noqa: C901, PLR0912, PLR0913 - public API preserves direct keyw
                 strict_stale=strict_stale,
                 paths=paths,
                 occurrence_fields=_occurrence_field_names(rule),
+                warn_matching_baseline=rule.warn_matching_baseline,
             )
     except StrictStaleError as exc:
         for warning in exc.warnings:

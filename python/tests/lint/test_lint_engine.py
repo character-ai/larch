@@ -109,6 +109,8 @@ def _rule(
     require_baseline: bool = False,
     stale_baseline_on_clean_scan: bool = False,
     occurrence_pattern_field: str = "pattern_name",
+    warn_matching_baseline: bool = False,
+    exclude_tracked_symlinks: bool = False,
 ) -> LintRule:
     def _default_detect(source: SourceFile) -> list[Finding]:
         return [
@@ -133,6 +135,8 @@ def _rule(
         require_baseline=require_baseline,
         stale_baseline_on_clean_scan=stale_baseline_on_clean_scan,
         occurrence_pattern_field=occurrence_pattern_field,  # type: ignore[arg-type]  # str literal narrower than OccurrencePatternField; test helper widens to str
+        warn_matching_baseline=warn_matching_baseline,
+        exclude_tracked_symlinks=exclude_tracked_symlinks,
     )
 
 
@@ -1185,6 +1189,98 @@ def test_generic_baseline_match_new_stale_and_strict_stale(tmp_path: Path) -> No
         "warning: stale baseline row: removed.py:1: demo-rule old\n"
         "strict_stale rejected stale baseline rows\n"
     )
+
+
+def test_warn_matching_baseline_emits_warning_without_failing(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("a.py")])
+    runner = _git_ok_runner(tmp_path, ["a.py"])
+
+    silent_code, silent_out, silent_err = _invoke(
+        _rule(warn_matching_baseline=False),
+        tmp_path,
+        runner,
+        baseline_path="baseline.json",
+    )
+    assert silent_code == EXIT_CLEAN
+    assert silent_out == ""
+    assert silent_err == ""
+
+    warn_runner = _git_ok_runner(tmp_path, ["a.py"])
+    warn_code, warn_out, warn_err = _invoke(
+        _rule(warn_matching_baseline=True),
+        tmp_path,
+        warn_runner,
+        baseline_path="baseline.json",
+    )
+    assert warn_code == EXIT_CLEAN
+    assert warn_out == ""
+    assert warn_err == (
+        "warning: matching baseline finding: a.py:1: demo-rule hit\n"
+    )
+
+
+def test_exclude_tracked_symlinks_skips_symlink_keeps_fail_closed(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"real.py": "x = 1\n", "other.py": "y = 1\n"})
+    link = tmp_path / "link.py"
+    link.symlink_to(tmp_path / "other.py")
+
+    def detect(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="hit",
+            )
+        ]
+
+    skip_runner = _git_ok_runner(tmp_path, ["real.py", "link.py"])
+    skip_code, skip_out, skip_err = _invoke(
+        _rule(detect=detect, exclude_tracked_symlinks=True),
+        tmp_path,
+        skip_runner,
+    )
+    assert skip_code == EXIT_FINDINGS
+    assert skip_out == "real.py:1: demo-rule hit\n"
+    assert skip_err == ""
+
+    fail_runner = _git_ok_runner(tmp_path, ["real.py", "link.py"])
+    fail_code, fail_out, fail_err = _invoke(
+        _rule(detect=detect, exclude_tracked_symlinks=False),
+        tmp_path,
+        fail_runner,
+    )
+    assert fail_code == EXIT_ERROR
+    assert fail_out == ""
+    assert "symlink" in fail_err
+
+    bad_runner = _git_ok_runner(tmp_path, ["missing.py"])
+    bad_code, bad_out, bad_err = _invoke(
+        _rule(detect=detect, exclude_tracked_symlinks=True),
+        tmp_path,
+        bad_runner,
+    )
+    assert bad_code == EXIT_ERROR
+    assert bad_out == ""
+    assert "does not exist" in bad_err
+
+
+def test_warn_matching_and_exclude_symlink_reject_non_bool(tmp_path: Path) -> None:
+    rule = _rule()
+    object.__setattr__(rule, "warn_matching_baseline", 1)  # type: ignore[misc]
+    code, _, err = _invoke(rule, tmp_path, _git_ok_runner(tmp_path, []))
+    assert code == EXIT_ERROR
+    assert "warn_matching_baseline" in err
+
+    rule2 = _rule()
+    object.__setattr__(rule2, "exclude_tracked_symlinks", 1)  # type: ignore[misc]
+    code2, _, err2 = _invoke(rule2, tmp_path, _git_ok_runner(tmp_path, []))
+    assert code2 == EXIT_ERROR
+    assert "exclude_tracked_symlinks" in err2
 
 
 def test_anchored_generic_baseline_ignores_line_movement(tmp_path: Path) -> None:

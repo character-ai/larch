@@ -43,6 +43,7 @@
     {"module": "lint_skill_description_length.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_skill_invocations.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_skill_md_flag_signature.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_status_routing_truthiness.py", "host_decision": "new-module-justified", "justification": "unreachable_branch_detector.py proves later path contradiction after a return, while this rule classifies the first reachable boolean decision using same-scope status semantics (#7434).", "source_issue": 7434},
     {"module": "lint_subprocess_via_runner.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_suppression_reason.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_tempfile_dir.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

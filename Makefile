@@ -57,7 +57,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir tmpdir-arg-env-fallback markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir tmpdir-arg-env-fallback markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -87,7 +87,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-tmpdir-arg-env-fallback-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-kv-codec-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-markdown-heading-fence-state-baseline
+.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-tmpdir-arg-env-fallback-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-kv-codec-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-status-routing-truthiness-baseline regen-markdown-heading-fence-state-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -229,6 +229,16 @@ regen-unreachable-branch-baseline:
 		$(PYTHON) python/cli.py lint unreachable-branch --write --initial-reason 'grandfathered unreachable branch pre-unreachable-branch ratchet'; \
 	fi
 
+regen-status-routing-truthiness-baseline:
+	# Regenerate python/status-routing-truthiness-baseline.json from live AST scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/status-routing-truthiness-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint status-routing-truthiness --write; \
+	else \
+		$(PYTHON) python/cli.py lint status-routing-truthiness --write --initial-reason 'pre-existing status truthiness before the status-routing-truthiness ratchet'; \
+	fi
+
 regen-markdown-heading-fence-state-baseline:
 	# Regenerate python/markdown-heading-fence-state-baseline.json from live AST scan.
 	# Routine regen preserves matching per-record reasons; the bootstrap reason
@@ -259,7 +269,7 @@ lint-prefix-case-variant:
 test-lint-guideline-no-exception:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_guideline_no_exception.py -q
 
-.PHONY: lint-markdown-heading-fence-state test-lint-markdown-heading-fence-state lint-doc-pointer-paths test-lint-doc-pointer-paths lint-self-disarmable-gate test-lint-self-disarmable-gate lint-unreachable-branch test-lint-unreachable-branch lint-pylint-skip-file test-lint-pylint-skip-file
+.PHONY: lint-markdown-heading-fence-state test-lint-markdown-heading-fence-state lint-doc-pointer-paths test-lint-doc-pointer-paths lint-self-disarmable-gate test-lint-self-disarmable-gate lint-unreachable-branch test-lint-unreachable-branch lint-status-routing-truthiness test-lint-status-routing-truthiness lint-pylint-skip-file test-lint-pylint-skip-file
 lint-markdown-heading-fence-state:
 	$(PYTHON) python/cli.py lint markdown-heading-fence-state
 
@@ -283,6 +293,12 @@ lint-unreachable-branch:
 
 test-lint-unreachable-branch:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_unreachable_branch.py -q
+
+lint-status-routing-truthiness:
+	$(PYTHON) python/cli.py lint status-routing-truthiness
+
+test-lint-status-routing-truthiness:
+	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_status_routing_truthiness.py -q
 
 lint-pylint-skip-file:
 	$(PYTHON) python/cli.py lint pylint-skip-file
