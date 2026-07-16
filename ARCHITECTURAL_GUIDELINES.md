@@ -187,6 +187,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: when a gate acts on an outcome that has both a value and a reason, branch on the reason before stalling; reserve the hard-stall for reasons that denote a genuine defect (`compose-materialization-failed`, `unknown`, read/redaction failures) and route transient reasons (`unavailable`) to `Outcome.NEEDS_USER_INPUT` so the dispatcher maps them to `NEXT_ACTION=operator-bail` and the operator decides from the run-log assessment receipt. The assessor already retried before declaring `unavailable`, so an automated reship is not a useful recovery there.
 - Deviate when: a transient failure has a bounded, idempotent in-process retry that the gate itself owns and that converges before any stall is written.
 
+### G-Idem-5: Define a step's failure classes and their retry policy in one registry; a new failure class lands with an explicit retryable-or-terminal decision and a distinct reason token, never by falling through to a default branch
+- Why: the findings-aggregator retry gate enumerated retryable classes one incident at a time; four separate bugs (#4868, #4881, #5077, #5222, #5503) each added one missing class after a recoverable failure had already degraded a round, and #5971 shipped a retry whose comment claimed empty-output coverage the condition did not provide. A default non-retryable fall-through hides every class nobody has hit yet.
+- Guidance: keep one table per step mapping failure-class token to retryable, terminal, or operator-bail; make validators return tokens from that table only; when adding a class, decide its policy in the same change and give it a distinct reason token (G-CLI-2) so logs and classifiers can branch on it.
+- Deviate when: a helper has exactly one failure class and a registry would be pure overhead; say so at the return site.
+
 ## Determinism and identity
 
 ### G-Det-1: Derive a stable cross-run identity (hash, dedup key) only from durable content, excluding run ids, paths, line hints, timestamps, and filesystem state
@@ -218,6 +223,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: when a skill or dispatcher inlines payloads into an agent prompt, compute the worst case from the cap constants that own the payload (diff cap, body cap, batch size) and check that it fits the transport; when it cannot, pass paths and grant the agent a Read tool.
 - Deviate when: the payload is bounded small by construction, such as a fixed-format single record; note the bound where the dispatch is defined.
 
+### G-Orch-7: Classify outcomes from structured fields first (phase, exit code, event type); never let a token scan over aggregated or quoted text decide a route on its own
+- Why: substring classifiers repeatedly matched their token inside unrelated evidence: `preterminal-outcome` in normal post-merge flush output re-shipped a merged run (#6907), a lint-fix success was logged as an auth failure because the token scan ran before the exit-code check (#7074), `NOT_SUBSTANTIVE` in reviewer prose downgraded four healthy slots (#4935), a policy-rejection scan matched grep output quoting historical logs and killed a live voter (#6577, #6603), and a merge error was classified by whichever phrase appeared first (#4256).
+- Guidance: branch on the owning structured state before any text match: phase, merge result, exit code, or a structured event type. When a token scan is unavoidable, scope it to the machine-authored field that carries the token, exclude quoted or echoed content, and guard it with the phase check first.
+- Deviate when: doing last-resort forensics over legacy free-text logs where no structured field exists; label the result as heuristic.
+
 ## Observability and telemetry
 
 ### G-Obs-1: Keep telemetry writes best-effort, count-only, and fail-soft; a write failure skips the metric without failing the parent, and telemetry never stores prompt or payload text
@@ -241,6 +251,16 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: a report renderer that aligned rows started each bar at a fixed offset instead of the longest row label plus one, which misaligned every row in the chart (#5587, #5753).
 - Guidance: a renderer that aligns multiple rows computes column widths, bar start offsets, and bar lengths from the maximum across all rows in the render pass, not from a per-row value or a hardcoded constant; compute the maximum in a first pass, then render.
 - Deviate when: the renderer draws a single row, so there is no cross-row maximum to compute.
+
+### G-Obs-7: Reconcile mid-flight warnings and execution-issue entries at terminal render; an entry that a later successful retry invalidated is retracted or annotated stale, and summary counters are derived from the committed artifacts they claim to summarize
+- Why: an under-quorum warning written during a failed first tally survived a clean retry and reported a healthy run as degraded (#5334); a stale needs-user handoff was primed into exec issues on merged runs (#7171, #7167); the normal deferred-transcript success path emitted a warning on every run (#5238); a clean assessment was rendered as a warning (#5234); and final summaries counted in-memory lists that disagreed with the committed execution-issues log (#6025, #4882).
+- Guidance: write operator-facing warnings from terminal state, or reconcile the append-only log at terminal render: drop or annotate entries whose condition a later attempt cleared, and compute summary counts by reading the committed sibling artifact, not a parallel in-memory counter.
+- Deviate when: an audit trail must stay append-only for integrity; annotate staleness instead of deleting, and keep the summary derived from the annotated view.
+
+### G-Obs-8: Bound captured evidence by whole structural units (records, jobs, lines of one stream), and emit an explicit truncation marker naming what was dropped; never byte-tail or line-tail a multi-unit artifact silently
+- Why: tailing the last 100 lines of a multi-job CI log concatenation silently discarded every failing job but the last, forcing one fix-push-rerun cycle per defect (#6437); a 32KB byte tail started mid-JSON-line, and the truncated fragment bypassed the sanitizer and could re-trigger a false kill (#6603); an unbounded title enumeration exceeded a hard external cap and failed filing exactly on the largest audits (#5792).
+- Guidance: cut at unit boundaries (drop the partial first line of a tail window; keep whole jobs or records), prefer per-unit caps over global byte caps, and when anything is dropped, write a marker naming the dropped units and where the full artifact lives.
+- Deviate when: a hard external cap constrains the marker itself; keep the marker minimal but never omit it.
 
 ## Skill authoring and context economy
 

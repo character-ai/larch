@@ -121,6 +121,22 @@ skill's inlining assumption failed at the configured caps (#6671). Mechanical
 backing: `python3 python/cli.py lint agent-tool-contract` over agent
 frontmatter, plus fail-closed prompt language in the triage agent definition.
 
+### I-Lane-1: A role's agent lanes share one dispatch, retry, and accounting surface
+
+Every lane of a given agent role (reviewer, voter, drafter, fixer, assessor)
+is launched, retried, excused, and counted by the same shared surface as its
+sibling lanes: one slot manifest, one waterfall, one retry policy, one
+accounting path. A lane-specific carve-out never silently skips the shared
+surface; it ships with a parity note naming exactly what differs and why.
+Evidence of violation: voter-1 ran outside the waterfall and was never
+re-dispatched (#5837, #5448), dispatch success was keyed to a single voter
+(#5637), dynamic reviewers were excluded from failure thresholds and slot
+accounting (#5529) and launched without the shared render scaffold (#4841),
+self-review wrote no tally artifact (#4424, #4618), and the same
+empty-output retry was re-implemented lane by lane (#5677, #5732, #5971, #5605, #5674).
+Mechanical backing: partial, via the shared waterfall and
+slot manifests; carve-outs are caught in review against this entry.
+
 ## Ship lifecycle
 
 ### I-Ship-1: A recovery route never applies pre-merge mutations to a merged or closed PR
