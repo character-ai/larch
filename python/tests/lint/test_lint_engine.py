@@ -512,6 +512,8 @@ def test_source_loading_revalidates_and_converts_oserror(
         _runner: RecordingRunner,
         *,
         pathspecs: Sequence[str] | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
+        source_filter: Callable[[str], bool] | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
+        exclude_tracked_symlinks: bool = False,  # noqa: ARG001  # pylint: disable=unused-argument
     ) -> list[str]:
         source.unlink()
         source.symlink_to(outside)
