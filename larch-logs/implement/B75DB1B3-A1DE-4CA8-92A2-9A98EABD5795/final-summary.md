@@ -9,6 +9,14 @@ Warnings (5):
   2. Step 8-pre-ship — phantom untracked files: 3 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally) ×3
   3. Deviation from G-Cfg-1 (define every wire/path literal once): the change establishes the module-private constant `PYTHON_PREFIX = "python/"` in the three sibling ports `python/larch/lint/lint_env_v...
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run B75DB1B3-A1DE-4CA8-92A2-9A98EABD5795: shipping
 
 - **Outcome**: shipping
