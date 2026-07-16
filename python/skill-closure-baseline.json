@@ -1,7 +1,7 @@
 [
   {
-    "closure_content_estimated_tokens": 55005,
-    "closure_estimated_tokens": 55158,
+    "closure_content_estimated_tokens": 54765,
+    "closure_estimated_tokens": 54918,
     "closure_lines": 1735,
     "conditional_content_estimated_tokens": 19300,
     "conditional_estimated_tokens": 19371,
@@ -33,13 +33,13 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 26526,
-    "skill_md_estimated_tokens": 26580,
+    "skill_md_content_estimated_tokens": 26286,
+    "skill_md_estimated_tokens": 26340,
     "skill_md_lines": 693
   },
   {
-    "closure_content_estimated_tokens": 48887,
-    "closure_estimated_tokens": 49009,
+    "closure_content_estimated_tokens": 48379,
+    "closure_estimated_tokens": 48502,
     "closure_lines": 1375,
     "conditional_content_estimated_tokens": 18717,
     "conditional_estimated_tokens": 18764,
@@ -67,8 +67,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 35808,
-    "skill_md_estimated_tokens": 35890,
+    "skill_md_content_estimated_tokens": 35301,
+    "skill_md_estimated_tokens": 35383,
     "skill_md_lines": 879
   },
   {
