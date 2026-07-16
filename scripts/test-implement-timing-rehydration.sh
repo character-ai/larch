@@ -2,6 +2,7 @@
 # Structural timing/telemetry rehydration checks for /implement.
 
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 skill_file="skills/implement/SKILL.md"

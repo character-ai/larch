@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Step 8+ autonomous CI-fix prose harness (ci-fixer subagent round loop).
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 python3 <<'PY'

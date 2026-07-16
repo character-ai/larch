@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-sessionstart-statusline.sh — offline harness for the SessionStart statusline hook.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"

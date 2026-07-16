@@ -2,6 +2,7 @@
 # test-render-cost-line-callsites.sh — python3 python/cli.py token render-cost-line is standalone-only post #2714.
 # Literal contract pins intentionally use backticks inside single-quoted grep needles.
 # shellcheck disable=SC2016
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }

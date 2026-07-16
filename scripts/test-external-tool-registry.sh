@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regression test for scripts/external-tool-registry.sh.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

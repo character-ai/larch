@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-lint-literal-counts.sh - Regression harness for python3 python/cli.py lint literal-counts.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

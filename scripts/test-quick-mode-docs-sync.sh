@@ -70,6 +70,7 @@
 # positive-anchor check will enforce the new contract across all targets once
 # updated. Keep this script and its sibling .md in sync in the same PR.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 export LC_ALL=C
 

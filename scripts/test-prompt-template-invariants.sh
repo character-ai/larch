@@ -5,6 +5,7 @@
 # structured-output demands, and acceptable-output examples.
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 isolation_probe=false
@@ -14,7 +15,6 @@ fi
 
 # This harness deliberately triggers malformed agent outputs. Do not let its
 # expected diagnostics append to a caller's live session artifacts.
-unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH LARCH_TOKEN_LEDGER
 unset LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 

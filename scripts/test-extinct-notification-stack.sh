@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # test-extinct-notification-stack.sh — ensure the retired notification guard stack stays removed.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Regression check that prompt source files do not hardcode max-effort prose.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"

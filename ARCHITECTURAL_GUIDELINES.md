@@ -374,6 +374,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: land a fail-closed gate in the same change or release as every producer that satisfies it, or later, never earlier. Update author guidance in the same change or release as every new ship-blocking contract, or in an earlier change or release, never later. Before a gate reads persisted state, verify every live writer path persists it and test the producer and gate together.
 - Deviate when: a separate migration completes the producer and gate wire-up only when it lands in the same change as the gate or in an earlier same-release change already released before the gate becomes consumer-visible. A gate and its producer in one artifact are already atomic.
 
+### G-Gate-2: Pair every automated-PR producer with a durable, session-independent merge backstop
+- Why: automated PRs whose only merge path is the producing session accumulate unmerged when that session dies or the in-run merge fails, and each unmerged PR is a silent data-loss or drift window (#5213, #5306, #7454, #7510).
+- Guidance: when a flow creates PRs mechanically (log flushes, state markers, release chores), land a session-independent reconciler in the same change: a sweep or scheduled job that finds the flow's PRs by its exact branch or title convention and merges or escalates them. Share the convention constant between the producer and the backstop selector. Treat the in-run merge as an optimization, never as the only merge path.
+- Deviate when: the PR intentionally awaits human review or is operator-authored; then the documented manual handoff is the backstop, and the producing flow must say so explicitly in its terminal output.
+
 ## Prevention discipline
 
 ### G-Prevent-1: Prevention machinery names its host before it is commissioned

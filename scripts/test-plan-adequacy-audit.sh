@@ -2,6 +2,7 @@
 # shellcheck disable=SC2016
 # Editorial invariant: plan-adequacy audit reference wiring in /implement.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"

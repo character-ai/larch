@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # test-token-vendor-scrapers.sh — offline regression harness for vendor token extraction.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 # Keep this offline harness independent from a caller's live session state.
-unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH LARCH_TOKEN_LEDGER
 unset LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 

@@ -41,6 +41,7 @@
 #   0 — no hard failures (EXPECTED_FAIL > 0 is still allowed)
 #   1 — at least one hard failure (first failing assertion listed on stderr)
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
