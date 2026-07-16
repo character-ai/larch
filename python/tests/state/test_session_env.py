@@ -280,20 +280,31 @@ def test_read_key_rejects_carriage_return_injection(tmp_path: Path) -> None:
 
 def test_validate_design_tmpdir_main_accepts_allowlisted_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
 
     rc = session_env.validate_design_tmpdir_main([str(tmp_path / "sub")])
 
     assert rc == 0
 
 
-def test_validate_design_tmpdir_main_requires_path(capsys: pytest.CaptureFixture[str]) -> None:
+def test_validate_design_tmpdir_main_requires_path(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
     rc = session_env.validate_design_tmpdir_main([])
 
     assert rc == 2
     assert "path is required" in capsys.readouterr().err
 
 
-def test_validate_design_tmpdir_main_rejects_disallowed_prefix(capsys: pytest.CaptureFixture[str]) -> None:
+def test_validate_design_tmpdir_main_rejects_disallowed_prefix(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
     rc = session_env.validate_design_tmpdir_main(["/var/tmp/x"])
 
     assert rc == 2
@@ -313,6 +324,7 @@ def test_validate_design_tmpdir_main_writes_no_quiet_log_before_allowlist(
     try:
         monkeypatch.setenv("TMPDIR", str(tmp_path))
         monkeypatch.setenv("DESIGN_TMPDIR", str(disallowed))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
 
         rc = session_env.validate_design_tmpdir_main([str(disallowed)])
 
