@@ -340,10 +340,14 @@ Automatically create a GitHub issue containing the research question, full repor
 Capture token spend by running `python3 python/cli.py token lane-write/lane-report report` with the same arguments as Step 4:
 
 ```bash
+# lint-consecutive-bash: ok token snapshot feeds deferred issue-body composition refactor
 TOKEN_SPEND=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-report \
   --dir "$RESEARCH_TMPDIR" 2>/dev/null || echo "_(token telemetry unavailable)_")
+```
 
-# Write to $RESEARCH_TMPDIR/research-issue-body.md.
+Write to `$RESEARCH_TMPDIR/research-issue-body.md` via Bash:
+
+```bash
 {
   echo "**Research question**: $RESEARCH_QUESTION"
   echo "**Branch**: $CURRENT_BRANCH"

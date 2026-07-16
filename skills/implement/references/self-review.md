@@ -25,10 +25,14 @@ Print `> **🔶 /implement 5: code review: self-review mode (Claude subagent)**`
 **⚠ Bgjob foreground launch required: use the foreground bgjob launcher, not legacy immediate-background mode. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>`.**
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review # lint-consecutive-bash: ok self-review bgjob launch precedes the repeated wait fence
+```
 
-# The launcher uses BUDGET_S=14700 and routes completion through the bgjob result env.
-# After BGJOB_STATUS=STARTED, repeat this exact command on BGJOB_STATUS=WAIT.
+The self-review launcher uses `BUDGET_S=14700` and routes completion through the bgjob result env.
+
+Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
+
+```bash
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-checks-step5-self-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 

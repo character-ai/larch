@@ -46,6 +46,7 @@ LEGACY_SEED_MODULES = frozenset(
         "lint_common.py",
         "lint_complexity_baseline.py",
         "lint_complexity_debt.py",
+        "lint_consecutive_bash.py",
         "lint_em_dash_output.py",
         "lint_env_via_config_constant.py",
         "lint_flat_tests.py",

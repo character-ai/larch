@@ -625,6 +625,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "layering"): ("larch.lint.lint_layering", "main", False),
     ("lint", "pylint-shard"): ("larch.lint.pylint_sharding", "main", False),
     ("lint", "codex-exec-auth"): ("larch.lint.lint_codex_exec_auth", "main", False),
+    ("lint", "consecutive-bash"): ("larch.lint.lint_consecutive_bash", "main", False),
     ("lint", "bg-wait-coverage"): ("larch.lint.lint_bg_wait_coverage", "main", False),
     ("skill-closure", "report"): ("larch.lint.lint_skill_closure_growth", "report_main", False),
     ("skill-closure", "ledger"): ("larch.lint.skill_closure_ledger", "ledger_main", False),

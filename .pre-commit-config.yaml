@@ -684,6 +684,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-consecutive-bash
+        name: lint consecutive bash tool-call fences
+        entry: python3 python/cli.py lint consecutive-bash
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: lint-bg-wait-coverage
         name: lint background wait marker coverage
         entry: python3 python/cli.py lint bg-wait-coverage
