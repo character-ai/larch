@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 import json
 from pathlib import Path
+import subprocess
 from types import MethodType
 from typing import Self
 
@@ -68,6 +69,54 @@ def _write_modules(root: Path, names: Sequence[str], source: str) -> None:
 
 def _run(root: Path, *, jobs: int = 1) -> duplicate_code.DuplicateCodeResult:
     return duplicate_code.run_duplicate_code(root=root, rcfile=root / ".pylintrc", jobs=jobs)
+
+
+def _git(repository: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repository), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def _commit(repository: Path, message: str) -> str:
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", message)
+    return _git(repository, "rev-parse", "HEAD")
+
+
+def _differential_repository(tmp_path: Path) -> tuple[Path, Path]:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.email", "tests@example.invalid")
+    _git(repository, "config", "user.name", "Duplicate-code tests")
+    root = repository / "python"
+    root.mkdir()
+    _write_rc(root)
+    return repository, root
+
+
+def _differential_run(root: Path, base: str) -> duplicate_code.DifferentialEvaluation:
+    return duplicate_code.run_differential_duplicate_code(
+        root=root,
+        rcfile=root / ".pylintrc",
+        baseline=root / "duplicate-code-baseline.json",
+        comparison_base=base,
+        jobs=1,
+    )
+
+
+def _differential_base_commit(repository: Path, root: Path, message: str) -> str:
+    result = _run(root)
+    duplicate_code._write_baseline(
+        path=root / "duplicate-code-baseline.json",
+        observations=result.observations,
+        initial_reason="base clone family",
+    )
+    return _commit(repository, message)
 
 
 def _observation(*lines: str, modules: tuple[str, str] = ("a", "b")) -> duplicate_code.DuplicateObservation:
@@ -800,3 +849,166 @@ def test_import_failure_exits_2(
     captured = capsys.readouterr()
     assert rc == 2
     assert "API drift" in captured.err
+
+
+def test_differential_rejects_new_clone_family(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py"], _module(5))
+    _write_modules(root, ["other.py"], _module(5, prefix="OTHER"))
+    base = _differential_base_commit(repository, root, "base")
+    _write_modules(root, ["copied.py"], _module(5))
+    _commit(repository, "copy block")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 1
+    assert not evaluation.expanded
+    assert [cluster.members for cluster in evaluation.new] == [("a.py", "copied.py")]
+
+
+def test_differential_rejects_expanded_existing_clone_family(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py", "b.py"], _module(5))
+    base = _differential_base_commit(repository, root, "base debt")
+    _write_modules(root, ["copied.py"], _module(5))
+    _commit(repository, "expand debt")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 1
+    assert not evaluation.new
+    assert [cluster.members for cluster in evaluation.expanded] == [("a.py", "b.py", "copied.py")]
+
+
+def test_differential_allows_unchanged_preexisting_clone_family(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py", "b.py"], _module(5))
+    base = _differential_base_commit(repository, root, "base debt")
+    _write_modules(root, ["unrelated.py"], _module(5, prefix="UNRELATED"))
+    _commit(repository, "unrelated edit")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 0
+    assert not evaluation.new
+    assert not evaluation.expanded
+
+
+def test_differential_allows_a_change_outside_python(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py", "b.py"], _module(5))
+    base = _differential_base_commit(repository, root, "base debt")
+    (repository / "README.md").write_text("documentation\n", encoding="utf-8")
+    _commit(repository, "documentation")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 0
+
+
+def test_changed_pair_selection_is_changed_times_all_without_self_pairs(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+
+    result = duplicate_code.run_duplicate_code(
+        root=tmp_path,
+        rcfile=tmp_path / ".pylintrc",
+        jobs=1,
+        changed_modules={"b"},
+    )
+
+    assert result.pair_count == 2
+    assert all("b" in observation.modules for observation in result.observations)
+
+
+def test_differential_allows_moved_lines_in_existing_clone(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py", "b.py"], _module(5))
+    base = _differential_base_commit(repository, root, "base debt")
+    (root / "a.py").write_text("HEADER = 1\n" + _module(5), encoding="utf-8")
+    _commit(repository, "move clone")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 0
+
+
+def test_differential_allows_deleted_clone_member(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py", "b.py"], _module(5))
+    base = _differential_base_commit(repository, root, "base debt")
+    (root / "a.py").unlink()
+    _commit(repository, "remove debt")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 0
+
+
+def test_differential_checks_production_against_test_paths(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["production.py"], _module(5))
+    _write_modules(root, ["tests/test_unrelated.py"], _module(5, prefix="TEST"))
+    base = _differential_base_commit(repository, root, "base")
+    _write_modules(root, ["tests/test_copied.py"], _module(5))
+    _commit(repository, "copy into test")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 1
+    assert [cluster.members for cluster in evaluation.new] == [("production.py", "tests/test_copied.py")]
+
+
+def test_differential_rename_does_not_look_like_new_debt(tmp_path: Path) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py", "b.py"], _module(5))
+    base = _differential_base_commit(repository, root, "base debt")
+    _git(repository, "mv", "python/a.py", "python/renamed.py")
+    _commit(repository, "rename member")
+
+    evaluation = _differential_run(root, base)
+
+    assert evaluation.exit_code == 0
+
+
+def test_differential_unavailable_base_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repository, root = _differential_repository(tmp_path)
+    _write_modules(root, ["a.py"], _module(5))
+    _commit(repository, "base")
+
+    rc = duplicate_code.duplicate_code_main(
+        [
+            "--root",
+            str(root),
+            "--rcfile",
+            str(root / ".pylintrc"),
+            "--baseline",
+            str(root / "duplicate-code-baseline.json"),
+            "--diff-base",
+            "missing",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "rev-parse" in captured.err
+
+
+def test_changed_python_paths_rejects_malformed_git_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, _ = _differential_repository(tmp_path)
+
+    def malformed_git_bytes(*arguments: object, **keywords: object) -> bytes:
+        _, _ = arguments, keywords
+        return b"R100\0python/old.py\0"
+
+    monkeypatch.setattr(duplicate_code, "_git_bytes", malformed_git_bytes)
+
+    with pytest.raises(duplicate_code.DuplicateCodeError, match="truncated"):
+        duplicate_code._changed_python_paths(
+            repository=repository,
+            base_commit="base",
+            candidate_commit="candidate",
+            root_relative="python",
+        )

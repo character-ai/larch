@@ -1,30 +1,18 @@
 name: Duplicate code
 
-# Pylint's duplicate-code (R0801) similarities checker is incorrect under -j>1
-# (workers each see only a slice of files), so it must run single-process and
-# is slow. It is too slow to gate every PR, so it runs only on merge to main
-# instead of in the PR CI workflow (.github/workflows/ci.yaml). Threshold lives
-# in python/.pylintrc (min-similarity-lines); see issue #4480.
+# The full Pylint duplicate-code scan is retained for operator-triggered
+# baseline maintenance. PRs run the differential gate in ci.yaml instead.
+# Threshold lives in python/.pylintrc (min-similarity-lines); see issue #4480.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
-  issues: write
 
 env:
   # Force JavaScript-based actions (e.g. actions/setup-python) onto Node.js 24
   # to suppress the Node 20 deprecation warning. Mirrors .github/workflows/ci.yaml.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  ISSUE_TITLE: "[CI] Duplicate-code ratchet failure"
-  ISSUE_MARKER: "<!-- larch:duplicate-code-ratchet -->"
-
-concurrency:
-  group: duplicate-code-ratchet-main
-  cancel-in-progress: false
 
 jobs:
   python-lint-duplicate-code:
@@ -48,21 +36,3 @@ jobs:
           SECONDS=0
           make py-lint-duplicate-code
           echo "duplicate-code wall time: ${SECONDS}s"
-      - name: Create or update duplicate-code tracking issue
-        if: ${{ failure() && steps.duplicate_code.outcome == 'failure' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          body="$(printf '%s\n\nDuplicate-code baseline ratchet failed on %s.\n\nRun: %s\n\nReproduce locally: make py-lint-duplicate-code' "${ISSUE_MARKER}" "${GITHUB_SHA}" "${run_url}")"
-          issue_number="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "${ISSUE_TITLE} in:title" --json number,title --jq '[.[] | select(.title == env.ISSUE_TITLE) | .number][0] // empty')"
-          if [ -z "${issue_number}" ]; then
-            issue_url="$(gh issue create --repo "${GITHUB_REPOSITORY}" --title "${ISSUE_TITLE}" --body "${body}")"
-            issue_number="${issue_url##*/}"
-          else
-            gh issue edit "${issue_number}" --repo "${GITHUB_REPOSITORY}" --body "${body}"
-          fi
-          verified="$(gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}" --json title,body,url)"
-          test "$(printf '%s' "${verified}" | jq -r '.title')" = "${ISSUE_TITLE}"
-          printf '%s' "${verified}" | jq -e --arg marker "${ISSUE_MARKER}" --arg run_url "${run_url}" '.body | contains($marker) and contains($run_url)' >/dev/null

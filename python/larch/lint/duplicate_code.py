@@ -14,13 +14,18 @@ import argparse
 import configparser
 import contextlib
 import hashlib
+import io
 import itertools
 import json
 import multiprocessing
 import os
+import re
 import stat
+import subprocess
 import sys
-from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
+import tarfile
+import tempfile
+from collections.abc import Callable, Collection, Generator, Iterable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +42,7 @@ DEFAULT_BASELINE = "python/duplicate-code-baseline.json"
 HASH_PREFIX_LEN: Final = 16
 CONTENT_HASH_SEPARATOR: Final = "\0"
 MODULE_PAIR_SIZE: Final = 2
+GIT_REVISION_RE: Final = re.compile(r"(?:[0-9a-fA-F]{7,64}|HEAD(?:~[0-9]+)?|[A-Za-z0-9][A-Za-z0-9._/-]*)")
 BASELINE_RECORD_KEYS: Final = frozenset({"modules", "hash", "lines", "normalized_lines", "reason"})
 SIMILARITY_FLAGS = (
     "ignore-comments",
@@ -167,6 +173,39 @@ class DuplicateCodeResult:
     files: tuple[str, ...]
     pair_count: int
     observations: tuple[DuplicateObservation, ...] = ()
+    module_paths: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class ChangedPythonPaths:
+    """The old and new Python paths touched by one Git comparison."""
+
+    base: tuple[str, ...]
+    candidate: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DifferentialCluster:
+    """A content-addressed clone family, independent of line locations."""
+
+    normalized_lines: tuple[str, ...]
+    members: tuple[str, ...]
+
+    @property
+    def content_hash(self) -> str:
+        return _content_hash(self.normalized_lines)
+
+
+@dataclass(frozen=True)
+class DifferentialEvaluation:
+    """The differential gate outcome, with only introduced debt failing."""
+
+    new: tuple[DifferentialCluster, ...]
+    expanded: tuple[DifferentialCluster, ...]
+
+    @property
+    def exit_code(self) -> int:
+        return 1 if self.new or self.expanded else 0
 
 
 class DuplicateCodeError(Exception):
@@ -295,13 +334,14 @@ def _ingest_files( *,linter: Any, checker: Any, fileitems: Sequence[Any], backen
     return tuple(scanned)
 
 
-def run_duplicate_code(
+def run_duplicate_code(  # noqa: PLR0913 - preserves the established public runner API
     *,
     root: Path,
     rcfile: Path,
     jobs: int | None = None,
     stdout: TextIO | None = None,
     include_clusters: bool = True,
+    changed_modules: Collection[str] | None = None,
 ) -> DuplicateCodeResult:
     config = DuplicateCodeConfig.load(root=root.resolve(), rcfile=rcfile.resolve())
     backend = _import_pylint_backend()
@@ -311,7 +351,8 @@ def run_duplicate_code(
         linter, checker, fileitems = _bootstrap_linter(config=config, backend=backend)
         files = _ingest_files(linter=linter, checker=checker, fileitems=fileitems, backend=backend)
         linesets = tuple(checker.linesets)
-        pairs: list[tuple[int, int]] = list(itertools.combinations(range(len(linesets)), 2))
+        module_paths = _module_paths(root=config.root, fileitems=fileitems)
+        pairs = _pairs_for_modules(linesets=linesets, changed_modules=changed_modules)
         commonalities = _find_commonalities(symilar=checker, linesets=linesets, pairs=pairs, jobs=_resolve_jobs(requested=jobs, pair_count=len(pairs)))
         observations = _observations_from_commonalities(commonalities)
         if include_clusters:
@@ -332,7 +373,327 @@ def run_duplicate_code(
         files=files,
         pair_count=len(pairs),
         observations=tuple(observations),
+        module_paths=module_paths,
     )
+
+
+def _module_paths(*, root: Path, fileitems: Sequence[Any]) -> tuple[tuple[str, str], ...]:
+    """Return Pylint module names mapped to root-relative source paths."""
+    module_paths: list[tuple[str, str]] = []
+    for fileitem in fileitems:
+        try:
+            relative = Path(str(fileitem.filepath)).resolve().relative_to(root).as_posix()
+        except ValueError as exc:
+            raise DuplicateCodeError(
+                f"duplicate-code file escaped root: {fileitem.filepath}"
+            ) from exc
+        module_paths.append((str(fileitem.name), relative))
+    return tuple(module_paths)
+
+
+def _pairs_for_modules(*, linesets: Sequence[Any], changed_modules: Collection[str] | None) -> list[tuple[int, int]]:
+    """Build all pairs or the deduplicated ``changed x all`` subset."""
+    if changed_modules is None:
+        return list(itertools.combinations(range(len(linesets)), 2))
+    changed = set(changed_modules)
+    return [
+        (first, second)
+        for first, second in itertools.combinations(range(len(linesets)), 2)
+        if str(linesets[first].name) in changed or str(linesets[second].name) in changed
+    ]
+
+
+def run_differential_duplicate_code(
+    *, root: Path, rcfile: Path, baseline: Path, comparison_base: str, jobs: int | None = None
+) -> DifferentialEvaluation:
+    """Fail only clone families introduced between ``comparison_base`` and HEAD.
+
+    Both source trees come from Git archives, so the result cannot combine a
+    staged file from one revision with an unstaged file from another. The base
+    scan is complete to preserve existing clone-family membership; the
+    candidate scan compares only pairs containing a changed Python module. The
+    committed base baseline supplies the complete old family membership without
+    turning every ordinary PR into a full base scan.
+    """
+    resolved_root = root.resolve()
+    resolved_rcfile = rcfile.resolve()
+    try:
+        rcfile_relative = resolved_rcfile.relative_to(resolved_root)
+    except ValueError as exc:
+        raise DuplicateCodeError(
+            f"differential rcfile must be inside root: {resolved_rcfile}"
+        ) from exc
+    try:
+        baseline_relative = baseline.resolve().relative_to(resolved_root)
+    except ValueError as exc:
+        raise DuplicateCodeError(
+            f"differential baseline must be inside root: {baseline.resolve()}"
+        ) from exc
+    repository = _repository_root(resolved_root)
+    root_relative = _repo_relative(repository=repository, path=resolved_root)
+    base_revision = _validated_revision(comparison_base)
+    base_commit = _git_text(repository, "rev-parse", "--verify", f"{base_revision}^{{commit}}")
+    candidate_commit = _git_text(repository, "rev-parse", "--verify", "HEAD^{commit}")
+    changed_paths = _changed_python_paths(
+        repository=repository,
+        base_commit=base_commit,
+        candidate_commit=candidate_commit,
+        root_relative=root_relative,
+    )
+    with _materialized_root(repository=repository, commit=base_commit, root_relative=root_relative) as base_root:
+        with _materialized_root(
+            repository=repository, commit=candidate_commit, root_relative=root_relative
+        ) as candidate_root:
+            base_module_paths = _discover_module_paths(
+                root=base_root, rcfile=base_root / rcfile_relative
+            )
+            candidate_module_paths = _discover_module_paths(
+                root=candidate_root, rcfile=candidate_root / rcfile_relative
+            )
+            base_records = _read_baseline(
+                path=base_root / baseline_relative,
+                allow_missing=False,
+            )
+            base_changed_members = _members_for_paths(
+                module_paths=base_module_paths, paths=changed_paths.base
+            )
+            candidate_changed_modules = _modules_for_paths(
+                module_paths=candidate_module_paths, paths=changed_paths.candidate
+            )
+            candidate = run_duplicate_code(
+                root=candidate_root,
+                rcfile=candidate_root / rcfile_relative,
+                jobs=jobs,
+                include_clusters=False,
+                changed_modules=candidate_changed_modules,
+            )
+    return _evaluate_differential(
+        base_families=_families_from_records(
+            records=base_records,
+            module_paths=base_module_paths,
+        ),
+        candidate=candidate,
+        base_changed_members=base_changed_members,
+    )
+
+
+def _repository_root(path: Path) -> Path:
+    return Path(_git_text(path, "rev-parse", "--show-toplevel")).resolve()
+
+
+def _validated_revision(revision: str) -> str:
+    if not GIT_REVISION_RE.fullmatch(revision):
+        raise DuplicateCodeError(f"invalid Git revision: {revision!r}")
+    return revision
+
+
+def _repo_relative(*, repository: Path, path: Path) -> str:
+    try:
+        return path.relative_to(repository).as_posix()
+    except ValueError as exc:
+        raise DuplicateCodeError(f"duplicate-code root is outside repository: {path}") from exc
+
+
+def _git_text(repository: Path, *arguments: str) -> str:
+    try:
+        completed = subprocess.run(  # lint-subprocess-via-runner: ok lint utility requires raw Git output for archive and NUL-safe paths
+            ["git", "-C", str(repository), *arguments],  # noqa: S607 - Git is a required runtime dependency.
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else str(exc)
+        raise DuplicateCodeError(f"git {' '.join(arguments)} failed: {detail}") from exc
+    output = completed.stdout.strip()
+    if not output:
+        raise DuplicateCodeError(f"git {' '.join(arguments)} returned no output")
+    return output
+
+
+def _git_bytes(repository: Path, *arguments: str, allow_empty: bool = False) -> bytes:
+    try:
+        completed = subprocess.run(  # lint-subprocess-via-runner: ok lint utility requires raw Git output for archive and NUL-safe paths
+            ["git", "-C", str(repository), *arguments],  # noqa: S607 - Git is a required runtime dependency.
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        detail = exc.stderr.decode("utf-8", errors="replace").strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+        raise DuplicateCodeError(f"git {' '.join(arguments)} failed: {detail}") from exc
+    if not completed.stdout and not allow_empty:
+        raise DuplicateCodeError(f"git {' '.join(arguments)} returned no content")
+    return completed.stdout
+
+
+def _changed_python_paths(  # noqa: C901 - parses Git's status-dependent NUL record shape
+    *, repository: Path, base_commit: str, candidate_commit: str, root_relative: str
+) -> ChangedPythonPaths:
+    raw = _git_bytes(
+        repository,
+        "diff",
+        "--name-status",
+        "-z",
+        "--find-renames",
+        base_commit,
+        candidate_commit,
+        "--",
+        root_relative,
+        allow_empty=True,
+    )
+    fields = raw.decode("utf-8", errors="surrogateescape").split("\0")
+    if fields[-1] != "":
+        raise DuplicateCodeError("git diff --name-status returned malformed NUL-delimited output")
+    base_paths: set[str] = set()
+    candidate_paths: set[str] = set()
+    index = 0
+    while index < len(fields) - 1:
+        status = fields[index]
+        index += 1
+        if not status:
+            raise DuplicateCodeError("git diff --name-status returned an empty status")
+        if status[0] in {"R", "C"}:
+            if index + 1 >= len(fields) - 1:
+                raise DuplicateCodeError("git diff --name-status truncated a rename or copy record")
+            old_path, new_path = fields[index], fields[index + 1]
+            index += 2
+            if status[0] == "R":
+                _add_changed_path(base_paths, old_path, root_relative=root_relative)
+            _add_changed_path(candidate_paths, new_path, root_relative=root_relative)
+            continue
+        if index >= len(fields) - 1:
+            raise DuplicateCodeError("git diff --name-status truncated a change record")
+        path = fields[index]
+        index += 1
+        if status[0] not in {"A", "D", "M", "T"}:
+            raise DuplicateCodeError(f"git diff --name-status returned unsupported status: {status}")
+        if status[0] != "A":
+            _add_changed_path(base_paths, path, root_relative=root_relative)
+        if status[0] != "D":
+            _add_changed_path(candidate_paths, path, root_relative=root_relative)
+    return ChangedPythonPaths(base=tuple(sorted(base_paths)), candidate=tuple(sorted(candidate_paths)))
+
+
+def _add_changed_path(paths: set[str], raw_path: str, *, root_relative: str) -> None:
+    prefix = f"{root_relative}/"
+    if not raw_path.startswith(prefix):
+        raise DuplicateCodeError(f"git diff returned a path outside root: {raw_path!r}")
+    relative = raw_path.removeprefix(prefix)
+    path = Path(relative)
+    if not relative or path.is_absolute() or ".." in path.parts or path.suffix != ".py":
+        return
+    paths.add(path.as_posix())
+
+
+@contextlib.contextmanager
+def _materialized_root(*, repository: Path, commit: str, root_relative: str) -> Generator[Path]:
+    archive = _git_bytes(repository, "archive", "--format=tar", commit, root_relative)
+    with tempfile.TemporaryDirectory(
+        prefix="larch-duplicate-code-", dir=tempfile.gettempdir()
+    ) as directory:
+        destination = Path(directory)
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as contents:
+            for member in contents.getmembers():
+                member_path = Path(member.name)
+                if (
+                    member_path.is_absolute()
+                    or ".." in member_path.parts
+                    or member.issym()
+                    or member.islnk()
+                    or not (member.isdir() or member.isfile())
+                ):
+                    raise DuplicateCodeError(f"git archive contained unsafe member: {member.name!r}")
+                contents.extract(member, destination)
+        root = destination / root_relative
+        if not root.is_dir():
+            raise DuplicateCodeError(f"git archive did not materialize root: {root_relative}")
+        yield root
+
+
+def _discover_module_paths(*, root: Path, rcfile: Path) -> tuple[tuple[str, str], ...]:
+    config = DuplicateCodeConfig.load(root=root.resolve(), rcfile=rcfile.resolve())
+    backend = _import_pylint_backend()
+    if not config.root.is_dir():
+        raise DuplicateCodeError(f"missing root: {config.root}")
+    with _pushd(config.root):
+        _, _, fileitems = _bootstrap_linter(config=config, backend=backend)
+        return _module_paths(root=config.root, fileitems=fileitems)
+
+
+def _modules_for_paths(*, module_paths: Sequence[tuple[str, str]], paths: Sequence[str]) -> set[str]:
+    path_set = set(paths)
+    return {module for module, path in module_paths if path in path_set}
+
+
+def _members_for_paths(*, module_paths: Sequence[tuple[str, str]], paths: Sequence[str]) -> set[str]:
+    path_set = set(paths)
+    return {path for _, path in module_paths if path in path_set}
+
+
+def _families_from_result(result: DuplicateCodeResult) -> dict[tuple[str, ...], frozenset[str]]:
+    paths_by_module = dict(result.module_paths)
+    families: dict[tuple[str, ...], set[str]] = {}
+    for observation in result.observations:
+        try:
+            members = (paths_by_module[observation.modules[0]], paths_by_module[observation.modules[1]])
+        except KeyError as exc:
+            raise DuplicateCodeError(f"duplicate-code observation references unknown module: {exc.args[0]}") from exc
+        families.setdefault(observation.normalized_lines, set()).update(members)
+    return {content: frozenset(members) for content, members in families.items()}
+
+
+def _families_from_records(
+    *, records: Sequence[BaselineRecord], module_paths: Sequence[tuple[str, str]]
+) -> dict[tuple[str, ...], frozenset[str]]:
+    paths_by_module = dict(module_paths)
+    families: dict[tuple[str, ...], set[str]] = {}
+    for record in records:
+        try:
+            members = (paths_by_module[record.modules[0]], paths_by_module[record.modules[1]])
+        except KeyError as exc:
+            raise DuplicateCodeError(
+                f"duplicate-code base baseline references unknown module: {exc.args[0]}"
+            ) from exc
+        families.setdefault(record.normalized_lines, set()).update(members)
+    return {content: frozenset(members) for content, members in families.items()}
+
+
+def _evaluate_differential(
+    *,
+    base_families: dict[tuple[str, ...], frozenset[str]],
+    candidate: DuplicateCodeResult,
+    base_changed_members: set[str],
+) -> DifferentialEvaluation:
+    candidate_families = _families_from_result(candidate)
+    new: list[DifferentialCluster] = []
+    expanded: list[DifferentialCluster] = []
+    for content, candidate_members in candidate_families.items():
+        base_members = base_families.get(content)
+        stable_members = candidate_members if base_members is None else (base_members - base_changed_members) | candidate_members
+        cluster = DifferentialCluster(normalized_lines=content, members=tuple(sorted(stable_members)))
+        if base_members is None:
+            new.append(cluster)
+        elif stable_members > base_members:
+            expanded.append(cluster)
+    return DifferentialEvaluation(
+        new=tuple(sorted(new, key=_differential_cluster_sort_key)),
+        expanded=tuple(sorted(expanded, key=_differential_cluster_sort_key)),
+    )
+
+
+def _differential_cluster_sort_key(cluster: DifferentialCluster) -> tuple[tuple[str, ...], str]:
+    return cluster.members, cluster.content_hash
+
+
+def _render_differential_diagnostics(evaluation: DifferentialEvaluation) -> str:
+    lines: list[str] = []
+    for label, clusters in (("new", evaluation.new), ("expanded", evaluation.expanded)):
+        lines.extend(
+            f"duplicate-code differential {label}: {', '.join(cluster.members)} "
+            f"({len(cluster.normalized_lines)} normalized lines, {cluster.content_hash})"
+            for cluster in clusters
+        )
+    return "\n".join(lines) + ("\n" if lines else "")
 
 
 def _observations_from_commonalities(commonalities: Sequence[Any]) -> list[DuplicateObservation]:
@@ -937,6 +1298,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--initial-reason",
         help="Reason required for new identities while regenerating a baseline.",
     )
+    parser.add_argument(
+        "--diff-base",
+        help="Git revision to compare with HEAD; enables the differential PR gate.",
+    )
     return parser
 
 
@@ -947,10 +1312,25 @@ def duplicate_code_main(argv: Sequence[str] | None = None) -> int:
         emit_digest = bool(args.emit_cluster_digest)
         write_baseline = bool(args.write)
         initial_reason = None if args.initial_reason is None else str(args.initial_reason)
+        diff_base = None if args.diff_base is None else str(args.diff_base)
         if initial_reason is not None and not write_baseline:
             raise DuplicateCodeError("--initial-reason requires --write")
         if write_baseline and emit_digest:
             raise DuplicateCodeError("--write cannot be combined with --emit-cluster-digest")
+        if diff_base is not None:
+            if write_baseline or emit_digest:
+                raise DuplicateCodeError("--diff-base cannot be combined with --write or --emit-cluster-digest")
+            evaluation = run_differential_duplicate_code(
+                root=Path(str(args.root)),
+                rcfile=Path(str(args.rcfile)),
+                baseline=Path(str(args.baseline)),
+                comparison_base=diff_base,
+                jobs=args.jobs if args.jobs is None else int(args.jobs),
+            )
+            diagnostics = _render_differential_diagnostics(evaluation)
+            if diagnostics:
+                print(diagnostics, file=sys.stderr, end="")
+            return evaluation.exit_code
         result = run_duplicate_code(
             root=Path(str(args.root)),
             rcfile=Path(str(args.rcfile)),
