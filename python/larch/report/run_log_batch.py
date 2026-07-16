@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from collections.abc import Callable
 
 from larch.core.architectural_guidelines import (
@@ -28,6 +29,7 @@ from larch import io as larch_io
 from larch.errors import ShipError
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_TEST_COMPAT_PROC = proc  # Tests patch the historical module-level process seam.
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _VOTE_OUTPUT_TRUNCATE_BYTES = 2048
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -334,7 +336,7 @@ def _read_state_kv(*, state_file: str | None, key: str) -> str:
 def _path_is_repo_related(path: Path) -> bool:
     candidate = path.resolve(strict=False)
     roots: list[Path] = []
-    active = proc.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"])
+    active = repo_root_probe(options=RepoRootProbeOptions(git_cwd=Path.cwd()))
     if active.returncode == 0 and active.stdout.strip():
         roots.append(Path(active.stdout.strip()).resolve(strict=False))
     roots.append(_REPO_ROOT.resolve(strict=False))

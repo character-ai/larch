@@ -18,6 +18,7 @@ from pathlib import Path
 
 from larch.core import config
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.git import gh
 from larch.issue import title_match
 from larch.state import session_env as _session_env_report
@@ -443,7 +444,7 @@ def _tier_a_allowed(*, tmpdir: Path, args: argparse.Namespace) -> bool:
         or read_kv(path=tmpdir / "ship-pr-state.sh", key="REPO_ROOT", default="")
     )
     if not root:
-        completed = subprocess.run(["/usr/bin/git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+        completed = repo_root_probe(options=RepoRootProbeOptions(git_bin="/usr/bin/git"))
         root = completed.stdout.strip() if completed.returncode == 0 else ""
     return bool(root) and (Path(root) / "skills" / "implement" / "SKILL.md").is_file()
 

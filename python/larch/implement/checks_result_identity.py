@@ -15,6 +15,7 @@ from typing import Final, Literal
 from larch import io as larch_io
 from larch.core import config
 from larch.core.proc import Runner, run as proc_run
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 _HEX_SHA_RE: Final = re.compile(r"^[0-9a-f]{7,64}$")
 _HEX_FP_RE: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -59,10 +60,10 @@ def validate_repo_root(repo_root: str | Path, *, runner: Runner | None = None) -
         raise ChecksIdentityError(f"repo root could not be resolved: {exc}") from exc
     if resolved.is_symlink() or not resolved.is_dir():
         raise ChecksIdentityError("resolved repo root must be a non-symlink directory")
-    if runner is None:
-        result = proc_run(["git", "-C", str(resolved), "rev-parse", "--show-toplevel"], cwd=str(resolved))
-    else:
-        result = runner.run(["git", "-C", str(resolved), "rev-parse", "--show-toplevel"], cwd=str(resolved))
+    result = repo_root_probe(
+        runner=runner,
+        options=RepoRootProbeOptions(git_cwd=resolved, runner_cwd=resolved),
+    )
     if result.returncode != 0 or not result.stdout.strip():
         raise ChecksIdentityError("repo root is not a git repository")
     toplevel = Path(result.stdout.strip()).resolve()

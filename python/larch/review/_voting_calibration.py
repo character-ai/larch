@@ -19,7 +19,6 @@ from typing import NamedTuple, cast
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
-from larch.core import proc
 from larch.core import repo_roots
 from larch.core.repo_roots import plugin_root as _plugin_root
 from larch.report import run_log_corpus
@@ -818,7 +817,7 @@ def _resolve_design_calibration_repo_root(design_tmpdir: Path) -> Path | None:
     # Inline design_terminal._resolve_working_tree_root to avoid cyclic import.
     resolved = _session_env_value(session=design_tmpdir / "source-env.sh", key="REPO_ROOT")
     if not resolved:
-        _r = proc.run(["git", "rev-parse", "--show-toplevel"])
+        _r = repo_roots.repo_root_probe()
         if _r.returncode == 0:
             resolved = _r.stdout.strip()
     if not resolved:

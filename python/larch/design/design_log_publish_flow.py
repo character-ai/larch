@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import config, proc, redact
+from larch.core import config, proc, redact, repo_roots
 from larch.design import design_publish
 from larch.git import gh
 from larch.design.design_summary import resolve_summary_mode
@@ -388,7 +388,7 @@ def _publish_design_logs(
     ``.completed/`` sentinels; pause snapshots retain the top-level sentinel
     directory so resume can restore provenance evidence without synthesizing it.
     """
-    top = _run(["git", "rev-parse", "--show-toplevel"])
+    top = repo_roots.repo_root_probe(run=_run)
     repo_root = top.stdout.strip()
     if top.returncode != 0 or not repo_root:
         return (False, "", "", "", "0")
@@ -546,7 +546,7 @@ def _default_outcome_for_reason(reason: str) -> str:
 
 
 def _repo_root_for_assessment_check() -> Path | None:
-    top = _run(["git", "rev-parse", "--show-toplevel"])
+    top = repo_roots.repo_root_probe(run=_run)
     repo_root = top.stdout.strip()
     if top.returncode != 0 or not repo_root:
         return None
@@ -673,7 +673,7 @@ def run_log_publish(request: LogPublishRequest) -> LogPublishResult:
         for cmd in ("git", "gh"):
             if shutil.which(cmd) is None:
                 return _failed_publish_result()
-        repo_root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
+        repo_root = repo_roots.repo_root_probe(run=_run).stdout.strip()
         if not repo_root:
             return _failed_publish_result()
         dry_run_repo_root = Path(repo_root)

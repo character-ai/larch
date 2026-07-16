@@ -5,9 +5,16 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
-from larch.core.repo_roots import consumer_repo_root, plugin_root
+from larch.core.proc import CommandResult
+from larch.core.repo_roots import (
+    consumer_repo_root,
+    plugin_root,
+    repo_root_from_probe,
+    repo_root_probe,
+    RepoRootProbeOptions,
+)
 
 if TYPE_CHECKING:
     import pytest
@@ -87,3 +94,44 @@ def test_plugin_root_uses_fallback_when_environment_is_empty(tmp_path: Path, mon
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
 
     assert plugin_root(fallback / ".") == fallback.resolve()
+
+
+def test_repo_root_probe_preserves_runner_diagnostics_and_paths(tmp_path: Path) -> None:
+    captured: list[tuple[list[str], str | None, float | None, bool]] = []
+
+    class FakeRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            del env, stdout, stderr
+            captured.append((list(argv), cwd, timeout, check))
+            return CommandResult(tuple(argv), 19, "", "not a repository", 0.0)
+
+    result = repo_root_probe(
+        runner=FakeRunner(),
+        options=RepoRootProbeOptions(
+            git_cwd=tmp_path / "git-cwd",
+            runner_cwd=tmp_path / "runner-cwd",
+            git_bin="/usr/bin/git",
+            timeout=2.0,
+            check=True,
+        ),
+    )
+
+    assert result.returncode == 19
+    assert result.stderr == "not a repository"
+    assert repo_root_from_probe(result) is None
+    assert captured == [(
+        ["/usr/bin/git", "-C", str(tmp_path / "git-cwd"), "rev-parse", "--show-toplevel"],
+        str(tmp_path / "runner-cwd"),
+        2.0,
+        True,
+    )]

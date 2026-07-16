@@ -30,6 +30,7 @@ from typing import NamedTuple, cast
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core.repo_roots import repo_root_probe
 from larch.report import run_log_corpus
 from larch.report.run_log_batch import append_execution_issue
 from larch.review import voting
@@ -437,7 +438,7 @@ def _count_rejected_from_ndjson(path: Path) -> int:
 
 
 def _count_inline_triage(commit_range: str) -> int:
-    repo = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True, check=False)  # noqa: S607
+    repo = repo_root_probe()
     if repo.returncode != 0:
         raise ValueError("not inside a git work tree (need commit-range scan)")
     root = repo.stdout.strip()

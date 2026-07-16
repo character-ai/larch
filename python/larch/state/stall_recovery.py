@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from larch.core import config
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 # ---------------------------------------------------------------------------
 # Imports from submodules
@@ -53,6 +54,8 @@ from larch.state._report import (
     dedup_tier_a_report,
 )
 from larch.state._report import _redact_text  # noqa: F401  # pylint: disable=unused-import
+
+_TEST_COMPAT_SUBPROCESS = subprocess  # Tests patch the historical module-level process seam.
 
 # ---------------------------------------------------------------------------
 # Module-level constants (CLI-specific)
@@ -99,7 +102,7 @@ def is_larch_dev_clone(args: argparse.Namespace) -> int:
         return 0
     root = getattr(args, "working_tree_root", "") or ""
     if not root:
-        completed = subprocess.run(["/usr/bin/git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+        completed = repo_root_probe(options=RepoRootProbeOptions(git_bin="/usr/bin/git"))
         root = completed.stdout.strip() if completed.returncode == 0 else ""
     dev_clone = bool(root) and (Path(root) / "skills" / "implement" / "SKILL.md").is_file()
     emit(key="LARCH_DEV_CLONE", value="true" if dev_clone else "false")

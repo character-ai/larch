@@ -22,6 +22,7 @@ from larch.core.retry import with_transient_retry
 from larch.core import logging_util
 from larch.implement import phantom
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _GIT_STAGE_BASE = 1
@@ -451,7 +452,7 @@ def _ps_git_process_matches_repo(*, line: str, git_dir: Path, repo_root: Path | 
 
 def _repo_scoped_git_process_detected(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool | None:
     git_dir = lock_path.parent
-    root_result = _run(runner, ["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+    root_result = repo_root_probe(runner=runner, options=RepoRootProbeOptions(runner_cwd=cwd))
     repo_root = Path(root_result.stdout.strip()) if root_result.returncode == 0 and root_result.stdout.strip() else None
     proc_root = Path("/proc")
     if proc_root.is_dir():
