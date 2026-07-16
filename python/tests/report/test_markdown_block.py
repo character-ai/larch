@@ -187,7 +187,7 @@ def test_replace_block_direct_helper_warn_callback(tmp_path: Path) -> None:
         warn=warnings.append,
     )
     assert target.read_text(encoding="utf-8") == "NEW\n"
-    assert warnings == []
+    assert not warnings
 
 
 @pytest.mark.skipif(getattr(os, "geteuid", lambda: 0)() == 0, reason="root bypasses file permissions")
