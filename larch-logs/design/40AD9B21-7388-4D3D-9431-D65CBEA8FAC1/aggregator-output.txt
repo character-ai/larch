@@ -1,0 +1,13 @@
+### FINDING_1: Failure-only owner path is skipped after lint failure
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: The owner-path issue step uses an outcome-only condition, which inherits the default `success()` requirement and is therefore skipped when the duplicate-code step fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Require `if: ${{ failure() && steps.duplicate_code.outcome == 'failure' }}` and retain the outcome check
+
+### FINDING_2: Baseline rows can grandfather multiple live observations
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: A single baseline row can match multiple distinct shorter live windows, allowing multiple new clusters to pass merely because they collectively represent one stored baseline observation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Require an injective baseline-to-live match; treat surplus observations as new or ambiguity errors, and add the two-window regression test

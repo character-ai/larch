@@ -1,0 +1,7 @@
+1	workflow permissions alone do not authenticate `gh`, so the failure handler may be unable to create or update the tracking issue.
+1	reconstructing hashes from raw source slices or an ad hoc normalizer can diverge from pylint symilar’s stripped-line and filtering semantics.
+1	merged `duplicatecluster` objects contain aggregate spans and line counts but no per-observation text, so multi-span or transitive clusters can collapse distinct same-pair identities or assign one pair’s allowance to another.
+1	a still-reportable duplicate that shrinks changes its full hash, becoming new plus stale and preventing the intended shrink-only drain.
+1	setup or dependency failures could incorrectly create or overwrite the duplicate-code tracking issue.
+2	the owner-path issue step uses an outcome-only condition, which inherits the default `success()` requirement and is therefore skipped when the duplicate-code step fails.
+2	a single baseline row can match multiple distinct shorter live windows, allowing multiple new clusters to pass merely because they collectively represent one stored baseline observation.
