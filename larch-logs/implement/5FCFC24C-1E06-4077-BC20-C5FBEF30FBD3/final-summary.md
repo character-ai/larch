@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run 5FCFC24C-1E06-4077-BC20-C5FBEF30FBD3: shipping
 
 - **Outcome**: shipping
