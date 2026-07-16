@@ -868,14 +868,15 @@ def _read_handoff_fields(*, handoff: Path) -> tuple[list[str], dict[str, str]]:
         lines = handoff.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         raise ValueError(f"cannot read assessment handoff: {exc}") from exc
+    parsed = larch_io.parse_kv(
+        "\n".join(lines),
+        duplicate_policy="all",
+    )
     fields: dict[str, str] = {}
-    for line in lines:
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in fields:
+    for key, values in parsed.items():
+        if len(values) > 1:
             raise ValueError(f"duplicate handoff key: {key}")
-        fields[key] = value
+        fields[key] = values[0]
     return lines, fields
 
 

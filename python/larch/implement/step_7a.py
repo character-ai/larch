@@ -279,9 +279,12 @@ def _generate_code_flow_diagram(
     if retry_sidecar.is_file():
         first_rc = ""
         with contextlib.suppress(OSError, ValueError):
-            for line in retry_sidecar.read_text(encoding="utf-8").splitlines():
-                if line.startswith("FIRST_RC="):
-                    first_rc = line.split("=", 1)[1].strip()
+            first_rc = larch_io.read_kv(
+                path=retry_sidecar,
+                key="FIRST_RC",
+                default="",
+                duplicate_policy="last",
+            ).strip()
         retry_msg = f"code-flow subprocess transient (rc={first_rc}); retried once"
         run_log_batch.append_execution_issue(
             log_file=implement_tmpdir / "execution-issues.md",

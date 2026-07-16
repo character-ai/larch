@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 
+from larch import io as larch_io
 from larch.agents import agents
 from larch.core import logging_util
 from larch.core import retry
@@ -107,7 +108,10 @@ def parse_collector_records(text: str) -> list[dict[str, str]]:
                 records.append(current)
                 current = None
             continue
-        key, value = line.split("=", 1)
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        if not parsed:
+            continue
+        key, value = next(iter(parsed.items()))
         if key == "REVIEWER_FILE":
             if current is not None:
                 records.append(current)

@@ -1566,7 +1566,9 @@ def write_tally_main(argv: list[str]) -> int:
             if not line:
                 continue
             if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", line):
-                logging_util.emit_kv(key=line.split("=", 1)[0], value=line.split("=", 1)[1])
+                parsed = larch_io.parse_kv(line, duplicate_policy="first")
+                key, value = next(iter(parsed.items()))
+                logging_util.emit_kv(key=key, value=value)
             else:
                 logging_util.emit(line)
         return result.returncode

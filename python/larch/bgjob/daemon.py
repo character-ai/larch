@@ -126,9 +126,13 @@ def _merge_rows(path: Path | None) -> list[tuple[str, str]]:
         tokens = line.split()
         if len(tokens) < _MIN_PACKED_ROW_TOKENS or any(_PACKED_ROW_TOKEN_RE.fullmatch(token) is None for token in tokens):
             continue
-        for token in tokens:
-            key, value = token.split("=", 1)
-            if not key or key in reserved:
+        packed = larch_io.parse_kv(
+            "\n".join(tokens),
+            duplicate_policy="last",
+            skip_empty_key=True,
+        )
+        for key, value in packed.items():
+            if key in reserved:
                 continue
             merged[key] = model.reject_line_value(value, label=key)
     return list(merged.items())
