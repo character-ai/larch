@@ -1,4 +1,21 @@
 [lint]
+# Rule configuration preserving larch strictness that agent-lint now owns
+# after the local linters were retired (issue #7553). The 200-char skill
+# description cap mirrors the retired `lint skill-description-length`; the
+# inline-path-prefixes mirror the retired `lint doc-pointer-paths` approved
+# prefix set so D005 validates the same Tier-1 doc path pointers.
+desc-truncated-max-chars = 200
+inline-path-prefixes = [
+  "python/",
+  "skills/",
+  "scripts/",
+  "docs/",
+  "hooks/",
+  "agents/",
+  ".claude/",
+  ".claude-plugin/",
+  ".github/",
+]
 suppress = [
   "body-too-long",
   "script-deps-missing",
@@ -25,14 +42,12 @@ suppress = [
   # template defines the generic archetype (1 section); the specialists narrow
   # it to focus areas. CI's focus-area enum check covers drift prevention.
   "template-count-mismatch",
-  # tools-unknown (S040) is suppressed because agent-lint 2.3.2's built-in
-  # tool registry predates the `Monitor` tool (introduced in Claude Code
-  # after the agent-lint release shipped). `Monitor` is a first-party
+  # tools-unknown (S040) is suppressed because agent-lint 2.4.0's built-in
+  # tool registry still does not recognize the `Monitor` tool (a first-party
   # Claude Code tool used by loop-driver SKILL.md files for passive
-  # log-tailing observability. Suppression is global because agent-lint
-  # 2.3.2 does not support per-file or per-token exceptions for this rule.
-  # Revisit when agent-lint is upgraded — once the registry includes
-  # Monitor, remove this entry.
+  # log-tailing observability). Suppression is global because agent-lint
+  # does not support per-file or per-token exceptions for this rule.
+  # Revisit when a future agent-lint upgrade adds Monitor to the registry.
   "tools-unknown",
   # template-marker-missing (A006) requires every agent file to carry the
   # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
@@ -47,6 +62,10 @@ suppress = [
   # python3 python/cli.py generate code-reviewer-agent --check via scripts/generators.tsv)
   # + the existing CI pin on the focus-area enum.
   "template-marker-missing",
+  # S021 cannot preserve the one-command launcher fence contract enforced by
+  # scripts/test-implement-fence-shape.sh. Keep the stricter local
+  # consecutive-bash lint, which supports reviewed line-level exceptions.
+  "consecutive-bash",
 ]
 
 # scripts/test-sessionstart-health.sh is the regression test for the
@@ -97,14 +116,9 @@ suppress = [
 # black-box regression harness. Both are Makefile-only from agent-lint's
 # reachability perspective, so both are excluded with their sibling contracts.
 #
-# scripts/lint-renderer-substitution-safety.sh and scripts/lint-bare-grep-probe.sh are
-# pre-commit / Makefile-only lints. The renderer-substitution and bare-grep
-# harnesses remain shell-based and are excluded with their sibling contracts.
-#
-# scripts/lint-bare-grep-probe.sh is a pre-commit / Makefile-only lint that
-# rejects bare top-level grep probes in orchestrator-facing markdown fences
-# (closes #3104). scripts/test-lint-bare-grep-probe.sh is its black-box
-# harness. Same reachability pattern as the other lint family above.
+# scripts/lint-renderer-substitution-safety.sh is a pre-commit / Makefile-only
+# lint. The renderer-substitution harness remains shell-based and is excluded
+# with its sibling contract.
 #
 # scripts/lint-awk-multibyte-regex.sh is a pre-commit / Makefile-only lint for
 # non-ASCII bytes inside dynamic awk regex contexts (closes #3134).
@@ -142,7 +156,7 @@ suppress = [
 # `<path>/SKILL.md § <heading>` citation in skills/shared/subskill-invocation.md
 # (closes #236). The harness enforces heading-anchor resolution against the
 # referenced SKILL.md files — a contract orthogonal to the invocation-wording
-# contract enforced by `python3 python/cli.py lint skill-invocations`. It is referenced
+# contract enforced by the pinned `agent-lint` rule S058. It is referenced
 # only from Makefile (test-subskill-anchors target) and
 # scripts/test-subskill-anchors.md (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
@@ -751,10 +765,6 @@ exclude = [
   "scripts/lint-renderer-substitution-safety.md",
   "scripts/test-lint-renderer-substitution-safety.sh",
   "scripts/test-lint-renderer-substitution-safety.md",
-  "scripts/lint-bare-grep-probe.sh",
-  "scripts/lint-bare-grep-probe.md",
-  "scripts/test-lint-bare-grep-probe.sh",
-  "scripts/test-lint-bare-grep-probe.md",
   # python/cli.py agent launch-codex-exec — markdown-fence + lint-fix-loop launcher-variable indirection.
   "python/cli.py agent launch-codex-exec",
   "python/agents.py",

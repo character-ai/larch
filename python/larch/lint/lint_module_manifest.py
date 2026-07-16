@@ -39,9 +39,7 @@ RECORD_KEYS = frozenset({"module", "host_decision", "justification", "source_iss
 # code-level constant, never derived from the manifest or the filesystem.
 LEGACY_SEED_MODULES = frozenset(
     {
-        "lint_agent_tool_contract.py",
         "lint_awk_multibyte_regex.py",
-        "lint_bare_grep_probe.py",
         "lint_bash32.py",
         "lint_bg_wait_coverage.py",
         "lint_codex_exec_auth.py",
@@ -53,7 +51,6 @@ LEGACY_SEED_MODULES = frozenset(
         "lint_env_via_config_constant.py",
         "lint_flat_tests.py",
         "lint_gh_argv_literal.py",
-        "lint_gh_body_inline.py",
         "lint_guideline_no_exception.py",
         "lint_guidelines_note_wrapper_bypass.py",
         "lint_keyword_only.py",
@@ -72,11 +69,7 @@ LEGACY_SEED_MODULES = frozenset(
         "lint_run_log_walkers.py",
         "lint_self_disarmable_gate.py",
         "lint_shared_convention_regex.py",
-        "lint_skill_awk_field_refs.py",
         "lint_skill_closure_growth.py",
-        "lint_skill_description_length.py",
-        "lint_skill_invocations.py",
-        "lint_skill_md_flag_signature.py",
         "lint_subprocess_via_runner.py",
         "lint_suppression_reason.py",
         "lint_tempfile_dir.py",

@@ -586,10 +586,6 @@ ignore = [
     "C901",
     "PLR0912",
 ]
-"lint_skill_invocations.py" = [
-    "C901",
-    "PLR0911",
-]
 "lint_unreachable_branch.py" = [
     "F401",
 ]

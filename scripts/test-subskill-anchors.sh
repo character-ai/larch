@@ -36,7 +36,7 @@
 # one run are reported (the script does NOT short-circuit on first).
 #
 # Scope: this harness scans only skills/shared/subskill-invocation.md.
-# It is a companion to python3 python/cli.py lint skill-invocations, which
+# It is a companion to the pinned agent-lint rule S058, which
 # enforces a different contract (sub-skill invocation wording inside
 # SKILL.md bodies). Together they give two orthogonal doc guardrails:
 # heading-anchor resolution (this script) and invocation phrasing

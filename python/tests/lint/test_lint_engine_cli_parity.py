@@ -8,9 +8,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint import (
-    lint_agent_tool_contract,
     lint_complexity_debt,
-    lint_doc_pointer_paths,
     lint_gh_argv_literal,
     lint_git_push_refspec,
     lint_harness_session_env,
@@ -20,15 +18,12 @@ from larch.lint import (
     lint_run_log_run_id,
     lint_run_log_walkers,
     lint_shared_convention_regex,
-    lint_skill_md_flag_signature,
     lint_tier1a,
 )
 
 LintMain = Callable[[list[str] | None], int]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ROOT_ONLY_COMMANDS: tuple[tuple[str, LintMain, int], ...] = (
-    ("agent-tool-contract", lint_agent_tool_contract.main, 2),
-    ("doc-pointer-paths", lint_doc_pointer_paths.main, 2),
     ("gh-argv-literal", lint_gh_argv_literal.main, 2),
     ("git-push-refspec", lint_git_push_refspec.main, 2),
     ("guidelines-note-wrapper-bypass", lint_guidelines_note_wrapper_bypass.main, 2),
@@ -38,7 +33,6 @@ ROOT_ONLY_COMMANDS: tuple[tuple[str, LintMain, int], ...] = (
     ("run-log-run-id", lint_run_log_run_id.main, 2),
     ("run-log-walkers", lint_run_log_walkers.main, 2),
     ("shared-convention-regex", lint_shared_convention_regex.main, 2),
-    ("skill-md-flag-signature", lint_skill_md_flag_signature.main, 0),
     ("tier1a-size", lint_tier1a.main, 2),
 )
 

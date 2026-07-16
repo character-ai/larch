@@ -4,7 +4,7 @@
 PYTHON ?= python3
 PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NSEMS_MAX") >= 0 else 1)' 2>/dev/null || printf '1')
 
-.PHONY: py-lint py-lint-main py-lint-checks-fast py-lint-shard py-typecheck py-lint-duplicate-code py-test lint lint-only lint-run-log-walkers test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-flush-vendor-failure-diagnostics test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-issue-query test-anti-improvised-wakeup test-audit-runs test-sessionstart test-sweep-design-logs test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-preflight-args test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-skill-invocations test-lint-skill-md-flag-signature test-lint-codex-exec-auth test-lint-literal-counts test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-lint-bare-grep-probe test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-launch-cursor-ci test-launch-claude-ci test-launch-codex-ci test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-parse-codex-usage test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-check-topology-rule-paths test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-implement-fork-env test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-pause-skill test-fluff-analysis test-rejected-analysis
+.PHONY: py-lint py-lint-main py-lint-checks-fast py-lint-shard py-typecheck py-lint-duplicate-code py-test lint lint-only lint-run-log-walkers test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-flush-vendor-failure-diagnostics test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-issue-query test-anti-improvised-wakeup test-audit-runs test-sessionstart test-sweep-design-logs test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-preflight-args test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-codex-exec-auth test-lint-literal-counts test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-launch-cursor-ci test-launch-claude-ci test-launch-codex-ci test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-parse-codex-usage test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-check-topology-rule-paths test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-implement-fork-env test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-pause-skill test-fluff-analysis test-rejected-analysis
 
 .PHONY: regen-duplicate-code-baseline
 .PHONY: py-lint-duplicate-code-diff
@@ -17,7 +17,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
-.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline agent-sync lint-harness-session-env test-lint-harness-session-env
+.PHONY: lint-bash32 test-lint-bash32 agent-sync lint-harness-session-env test-lint-harness-session-env
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
 .PHONY: lint-guideline-no-exception test-lint-guideline-no-exception
 .PHONY: lint-flat-tests test-lint-flat-tests
@@ -33,15 +33,15 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
-.PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-lint-skill-awk-field-refs test-lint-skill-description-length
-.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
+.PHONY: lint-renderer-substitution-safety test-lint-renderer-substitution-safety
+.PHONY: lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: lint-tier1a-size test-lint-tier1a-size
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-doc-pointer-paths lint-only
+lint: test-harnesses lint-bash32 lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -59,7 +59,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
+	for chk in complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -163,7 +163,6 @@ lint-guideline-no-exception:
 LINT_TEST_DESCRIPTORS := \
 	guideline-no-exception|python/tests/lint/test_lint_guideline_no_exception.py \
 	markdown-heading-fence-state|python/tests/lint/test_lint_markdown_heading_fence_state.py \
-	doc-pointer-paths|python/tests/lint/test_lint_doc_pointer_paths.py \
 	self-disarmable-gate|python/tests/lint/test_lint_self_disarmable_gate.py \
 	unreachable-branch|python/tests/lint/test_lint_unreachable_branch.py \
 	status-routing-truthiness|python/tests/lint/test_lint_status_routing_truthiness.py \
@@ -176,12 +175,8 @@ LINT_TEST_DESCRIPTORS := \
 	bg-wait-coverage|python/tests/lint/test_lint_bg_wait_coverage.py \
 	flat-tests|python/tests/lint/test_lint_flat_tests.py \
 	readability-preamble|python/tests/lint/test_lint_readability_preamble.py \
-	skill-md-flag-signature|python/tests/lint/test_lint_skill_md_flag_signature.py \
-	skill-awk-field-refs|python/tests/lint/test_lint_skill_awk_field_refs.py \
-	skill-description-length|python/tests/lint/test_lint_skill_description_length.py \
 	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
 	skill-closure-growth|python/tests/lint/test_lint_skill_closure_growth.py \
-	skill-invocations|python/tests/lint/test_lint_skill_invocations.py \
 	harness-session-env|python/tests/lint/test_lint_harness_session_env.py
 
 lint_test_descriptor_parts = $(subst |,$(space),$1)
@@ -251,18 +246,6 @@ lint-em-dash-output:
 lint-renderer-substitution-safety:
 	bash scripts/lint-renderer-substitution-safety.sh
 
-lint-skill-md-flag-signature:
-	python3 python/cli.py lint skill-md-flag-signature
-
-lint-skill-awk-field-refs:
-	python3 python/cli.py lint skill-awk-field-refs
-
-lint-skill-description-length:
-	python3 python/cli.py lint skill-description-length
-
-lint-bare-grep-probe:
-	python3 python/cli.py lint bare-grep-probe
-
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth
 
@@ -292,7 +275,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
+test-harnesses-2: test-harness-shards-coverage test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
@@ -704,10 +687,6 @@ test-lint-renderer-substitution-safety:
 .PHONY: test-lint-makefile-contracts
 test-lint-makefile-contracts:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_makefile_contracts.py -q
-
-
-test-lint-bare-grep-probe:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-bare-grep-probe.sh
 
 
 test-launch-codex-exec:
@@ -1209,9 +1188,6 @@ lint-bash32:
 
 lint-harness-session-env:
 	python3 python/cli.py lint harness-session-env
-
-lint-gh-body-inline:
-	python3 python/cli.py lint gh-body-inline
 
 markdownlint:
 	pre-commit run markdownlint --all-files

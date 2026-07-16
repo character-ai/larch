@@ -7,11 +7,9 @@ import argparse
 import re
 import sys
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core.residual_bash import read_residual_paths
-from larch.lint.engine import fenced_markdown_lines
 
 _SHELL_SUFFIXES = (".sh", ".inc.bash")
 _EXCLUDED_PARTS = frozenset({".git", "node_modules", "larch-logs", ".venv", ".agents"})
@@ -49,14 +47,6 @@ def _residual_shell_paths(root: Path) -> list[Path]:
     if manifest.is_file():
         return [root / rel for rel in read_residual_paths(root) if (root / rel).is_file()]
     return _walk(root, _SHELL_SUFFIXES)
-
-
-def _markdown_paths(root: Path) -> list[Path]:
-    candidates = [root / "skills", root / ".claude/skills"]
-    return sorted(
-        path for base in candidates if base.is_dir() for path in base.rglob("*.md")
-        if path.is_file() and not path.is_symlink() and "larch-logs" not in path.parts
-    )
 
 
 def _has_nonascii(value: str) -> bool:
@@ -269,192 +259,6 @@ def scan_bash32(root: Path, requested: Iterable[str] = ()) -> tuple[list[str], l
     return findings, skipped
 
 
-@dataclass(frozen=True)
-class _Token:
-    value: str
-    quoted: bool = False
-
-
-def _tokens(line: str) -> list[_Token]:
-    result: list[_Token] = []
-    value = ""
-    quoted = False
-    quote = ""
-    index = 0
-    operators = ("||", "&&", "|&", ">>", ">&", ">|", "<<", "<&", "<>")
-    while index < len(line):
-        char = line[index]
-        if quote:
-            if char == quote:
-                quote = ""
-            elif char == "\\" and quote == '"' and index + 1 < len(line):
-                value += line[index + 1]
-                index += 1
-            else:
-                value += char
-            index += 1
-            continue
-        if char in "'\"":
-            quote = char
-            quoted = True
-        elif char == "\\" and index + 1 < len(line):
-            value += line[index + 1]
-            index += 1
-        elif char in " \t":
-            if value:
-                result.append(_Token(value, quoted))
-            value, quoted = "", False
-        elif char == "#" and not value:
-            break
-        elif char in "|&><;(){}":
-            if value:
-                result.append(_Token(value, quoted))
-            value, quoted = "", False
-            operator = next((item for item in operators if line.startswith(item, index)), char)
-            result.append(_Token(operator))
-            index += len(operator) - 1
-        else:
-            value += char
-        index += 1
-    if value:
-        result.append(_Token(value, quoted))
-    return result
-
-
-_BOUNDARIES = frozenset({"|", "||", "&&", ";", "&", "|&", ")", "}", "then"})
-_REDIRECTS = frozenset({">", ">>", "<", "<<", "<>", ">|", ">&", "<&"})
-_GREP_FAMILY = frozenset({"grep", "rg", "ripgrep"})
-
-
-def _command_index(tokens: list[_Token], start: int) -> int:
-    index = start
-    while index < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[index].value):
-        index += 1
-    if index < len(tokens) and tokens[index].value == "if":
-        index += 1
-        if index < len(tokens) and tokens[index].value == "!":
-            index += 1
-    while index < len(tokens) and tokens[index].value in {"!", "then", "else", "elif", "do", "(", "{"}:
-        index += 1
-    if index < len(tokens) and tokens[index].value == "command":
-        index += 1
-    return index
-
-
-def _segments(tokens: list[_Token]) -> Iterable[tuple[int, int, str | None]]:
-    start = 0
-    previous: str | None = None
-    for index, token in enumerate(tokens):
-        if not token.quoted and token.value in {"|", "||", "&&", ";", "&", "|&"}:
-            yield start, index, previous
-            start, previous = index + 1, token.value
-    yield start, len(tokens), previous
-
-
-def _grep_args(tokens: list[_Token], index: int, end: int) -> list[_Token]:
-    result: list[_Token] = []
-    skip_redirect_target = False
-    for token in tokens[index + 1:end]:
-        if not token.quoted and token.value in {")", "}"}:
-            break
-        if skip_redirect_target:
-            skip_redirect_target = False
-            continue
-        if not token.quoted and token.value in _REDIRECTS:
-            skip_redirect_target = True
-            continue
-        result.append(token)
-    return result
-
-
-def _grep_arg_status(args: list[_Token]) -> tuple[bool, bool]:
-    pattern_seen = False
-    skip_next = False
-    skipped_value_is_path = False
-    parent_ascent = False
-    has_path = False
-    skip_quoted_operator_operand = False
-    value_options = {"-e", "--regexp", "-f", "--file", "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not", "-A", "--after-context", "-B", "--before-context", "-C", "--context", "-m", "--max-count", "--max-depth", "--sort", "--sortr", "--engine", "--encoding", "--colors", "--ignore-file", "--path-separator", "--replace", "--pre", "--pre-glob", "-j", "--threads", "--max-columns", "--label", "--include", "--exclude", "--exclude-dir"}
-    for token in args:
-        value = token.value
-        if skip_quoted_operator_operand:
-            skip_quoted_operator_operand = False
-            continue
-        if skip_next:
-            if skipped_value_is_path and re.search(r"(^|/)\.\.(/|$)", value):
-                parent_ascent = True
-            skip_next = False
-            skipped_value_is_path = False
-            continue
-        if value.startswith("-") and value != "-":
-            base = value.split("=", 1)[0]
-            if re.match(r"^-f.+", value):
-                base = "-f"
-            if base in value_options and "=" not in value and not re.match(r"^-[ABCm]\d+$", value) and not re.match(r"^-[ef].+", value):
-                skip_next = True
-                skipped_value_is_path = base in {"-f", "--file"}
-            if base in {"-e", "--regexp", "-f", "--file"} or re.match(r"^-[ef].+", value):
-                pattern_seen = True
-            if base in {"-f", "--file"}:
-                option_value = value.split("=", 1)[1] if "=" in value else value[2:] if re.match(r"^-f.+", value) else ""
-                if option_value and re.search(r"(^|/)\.\.(/|$)", option_value):
-                    parent_ascent = True
-            continue
-        if not pattern_seen:
-            pattern_seen = True
-            continue
-        if token.quoted and value in _BOUNDARIES | _REDIRECTS:
-            if pattern_seen:
-                skip_quoted_operator_operand = True
-            continue
-        if value in {"-", "/dev/stdin"}:
-            continue
-        has_path = True
-        if re.search(r"(^|/)\.\.(/|$)", value):
-            parent_ascent = True
-    return has_path, parent_ascent
-
-
-def scan_bare_grep(root: Path) -> list[str]:
-    findings: list[str] = []
-    for path in _markdown_paths(root):
-        rel = _repo_path(root, path)
-        lines = _read_lines(path)
-        if lines is None:
-            continue
-        for markdown_line in fenced_markdown_lines(lines):
-            if markdown_line.language not in {"bash", "sh", "shell"}:
-                continue
-            line = markdown_line.text
-            if _suppressed(line, "lint-bare-grep-probe") or re.match(r"^\s*#", line):
-                continue
-            tokens = _tokens(line)
-            for start, end, prior in _segments(tokens):
-                index = _command_index(tokens, start)
-                if index >= end or tokens[index].value not in _GREP_FAMILY:
-                    continue
-                command = tokens[index].value
-                args = _grep_args(tokens, index, end)
-                pipe_fed = prior in {"|", "|&"}
-                raw_segment = [token.value for token in tokens[start:index]]
-                bare = command == "grep" and "command" not in raw_segment and "(" not in raw_segment
-                has_path, parent_ascent = _grep_arg_status(args)
-                segment = tokens[index:end]
-                has_devnull = any(
-                    not token.quoted and token.value == "<" and position + 1 < len(segment)
-                    and segment[position + 1].value == "/dev/null"
-                    for position, token in enumerate(segment)
-                )
-                if bare and not pipe_fed:
-                    reason = "if grep ... ; then" if "if" in raw_segment else "bare grep statement"
-                    findings.append(_report(rel, markdown_line.number, f"lint-bare-grep-probe: bare top-level grep in bash fence ({reason}); use `command grep` or `( grep ... )` with an explicit path or < /dev/null"))
-                elif parent_ascent:
-                    findings.append(_report(rel, markdown_line.number, f"lint-bare-grep-probe: parent-directory ascent in grep-family path operand; use an absolute path or known bounded root instead of ../ ascents ({command})"))
-                elif not pipe_fed and not has_devnull and not has_path:
-                    findings.append(_report(rel, markdown_line.number, f"lint-bare-grep-probe: no-path rg/grep probe may block on stdin in background mode; pass an explicit path or < /dev/null ({command})"))
-    return findings
-
-
 def main(kind: str, argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=f"cli.py lint {kind}")
     _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
@@ -469,9 +273,8 @@ def main(kind: str, argv: list[str] | None = None) -> int:
         print(f"lint-{kind}: --root is not a directory: {root}", file=sys.stderr)
         return 2
     if kind == "awk-multibyte-regex":
-        findings, diagnostics = scan_awk_multibyte(root), []
-    elif kind == "bare-grep-probe":
-        findings, diagnostics = scan_bare_grep(root), []
+        findings = scan_awk_multibyte(root)
+        diagnostics: list[str] = []
     else:
         findings, diagnostics = scan_bash32(root, args.files)
     for value in diagnostics + findings:

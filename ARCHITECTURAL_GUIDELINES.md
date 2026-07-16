@@ -293,7 +293,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Bash-2: Keep orchestrator-facing Bash probes bounded and exit-code-safe; prefer a bounded CLI over a discovery grep, pass an explicit path, and guard expected no-match with `|| true`
 - Why: a bare top-level `grep` in a Claude Code Bash block can abort the block, and a pathless grep-family probe can hang on open stdin (BASH_AUTHORING.md §1). A bounded `cli.py … --help` often answers the question with no scan at all.
-- Deviate when: a rare reviewed fixture, tagged on that line with `# lint-bare-grep-probe: ok <reason>`.
+- Deviate when: a rare reviewed fixture, suppressed inline through the pinned `agent-lint` rule S061 (bare-grep-probe) exception mechanism.
 
 ### G-Bash-3: Keep committed shell scripts compatible with macOS system Bash 3.2 unless the script documents a narrower runtime
 - Mechanized: `make lint-bash32` covers Bash 3.2 constructs; `make lint-renderer-substitution-safety` covers the renderer replacement hazard.

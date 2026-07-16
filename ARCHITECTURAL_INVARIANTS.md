@@ -118,7 +118,7 @@ worst case computed from the owning cap constants; when it cannot, it passes
 paths and grants a Read tool. Evidence of violation: a toolless triage agent
 play-acted tool calls and fabricated JSONL verdicts, and the dispatching
 skill's inlining assumption failed at the configured caps (#6671). Mechanical
-backing: `python3 python/cli.py lint agent-tool-contract` over agent
+backing: the pinned `agent-lint` release rules A012 and A013 over agent
 frontmatter, plus fail-closed prompt language in the triage agent definition.
 
 ### I-Lane-1: A role's agent lanes share one dispatch, retry, and accounting surface
