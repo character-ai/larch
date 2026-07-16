@@ -21,7 +21,6 @@ from larch.git import gh
 from larch.design.design_summary import resolve_summary_mode
 from larch.report.run_log_batch import append_execution_issue
 
-_PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
     r"(secret survived scrubbing|scrub_log_secrets|scrub-log-secrets|scrubber|scrub_error)",
     re.IGNORECASE,
@@ -395,7 +394,6 @@ def _publish_design_logs(
         return (False, "", "", "", "0")
     branch = f"larch-logs/design-{request.run_id}"
     cli = str(request.plugin_root / "python" / "cli.py")
-    repo_args = ["--repo", request.repo] if request.repo else []
     wt_parent = _design_log_worktree_parent(request.design_tmpdir)
     worktree = wt_parent / "wt"
     branch_created = False
@@ -496,38 +494,32 @@ def _publish_design_logs(
             )
             keep_branch_for_recovery = True
             return (False, "", "", branch, scrub_violations)
-        body_file = wt_parent / "pr-body.txt"
-        _ = body_file.write_text(
-            f"Automated design log directory for run {request.run_id}. "
-            f"Merged once required CI checks pass (issue #{request.issue}).\n",
-            encoding="utf-8",
-        )
-        pr = gh.command(
-            proc,
-            [
-                "pr",
-                "create",
-                "--head",
-                branch,
-                "--base",
-                _default_base_ref(repo_root),
-                "--title",
-                f"chore(larch-logs): design run {request.run_id} (issue #{request.issue})",
-                "--body-file",
-                str(body_file),
-                *repo_args,
-            ],
-            cwd=repo_root,
-        )
-        if pr.returncode != 0:
+        try:
+            pr, _ = gh.pr_create(
+                proc,
+                repo=request.repo or None,
+                branch=branch,
+                base=_default_base_ref(repo_root),
+                title=(
+                    f"chore(larch-logs): design run {request.run_id} "
+                    f"(issue #{request.issue})"
+                ),
+                body=(
+                    f"Automated design log directory for run {request.run_id}. "
+                    f"Merged once required CI checks pass (issue #{request.issue}).\n"
+                ),
+                assignee=None,
+                cwd=repo_root,
+            )
+        except gh.ShipError as exc:
             print(
-                f"design log-publish: gh pr create failed; pushed branch {branch} kept for recovery: {pr.stderr.strip()}",
+                f"design log-publish: gh pr create failed; pushed branch {branch} "
+                f"kept for recovery: {exc}",
                 file=sys.stderr,
             )
             return (False, "", "", branch, scrub_violations)
-        pr_url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
-        match: re.Match[str] | None = _PR_URL_RE.search(pr_url)
-        pr_number = match.group(1) if match else ""
+        pr_number = str(pr.number)
+        pr_url = pr.url
         # Launch the wait-then-admin-merge waiter detached so the log PR squashes
         # in once required CI checks pass, without stalling the /design orchestrator
         # on CI (preserving the non-blocking goal of #4404). GitHub-native --auto
@@ -538,10 +530,9 @@ def _publish_design_logs(
         # bypassing only the review gate (#4524). Best-effort: a launch failure
         # leaves the PR open for manual/CI merge and the working tree is already
         # clean either way.
-        if pr_number:
-            _spawn_detached_admin_merge(
-                cli=cli, pr_number=pr_number, repo=request.repo, repo_root=repo_root
-            )
+        _spawn_detached_admin_merge(
+            cli=cli, pr_number=pr_number, repo=request.repo, repo_root=repo_root
+        )
         return (True, pr_number, pr_url, "", scrub_violations)
     finally:
         _ = _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo_root)
