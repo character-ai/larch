@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import RuleCli, comment_tokens_by_line, iter_python_source_files, run_root_cli
+from larch.lint.engine import RuleCli, comment_tokens_by_line, iter_all_python_source_files, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 PUSH_COMMAND_ELEMENTS = 2
@@ -100,11 +100,7 @@ def _run(root: Path) -> int:
     try:
         findings = [
             finding
-            for path in iter_python_source_files(
-                python_dir,
-                is_exempt=lambda _path: False,
-                excluded_dirs=frozenset(),
-            )
+            for path in iter_all_python_source_files(python_dir)
             for finding in scan_file(path, root=root)
         ]
     except RuntimeError as exc:

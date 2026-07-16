@@ -257,6 +257,18 @@ def iter_python_source_files(
     return files
 
 
+def iter_all_python_source_files(
+    root: Path, *, excluded_relpaths: frozenset[str] = frozenset()
+) -> list[Path]:
+    """Return all regular Python files, including test fixtures, in a rule scope."""
+    return iter_python_source_files(
+        root,
+        is_exempt=lambda _path: False,
+        excluded_dirs=frozenset(),
+        excluded_relpaths=excluded_relpaths,
+    )
+
+
 def qualified_symbol(prefix: tuple[str, ...], *, module_symbol: str = "<module>") -> str:
     """Render a nested AST scope as its stable baseline symbol."""
     return ".".join(prefix) if prefix else module_symbol

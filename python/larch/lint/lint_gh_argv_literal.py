@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import RuleCli, comment_tokens_by_line, iter_python_source_files, run_root_cli
+from larch.lint.engine import RuleCli, comment_tokens_by_line, iter_all_python_source_files, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 EXEMPT_SUBTREE = Path("larch/git")
@@ -75,11 +75,8 @@ def _run(root: Path) -> int:
     try:
         findings = [
             finding
-            for path in iter_python_source_files(
-                python_dir,
-                is_exempt=lambda _path: False,
-                excluded_dirs=frozenset(),
-                excluded_relpaths=frozenset({EXEMPT_SUBTREE.as_posix()}),
+            for path in iter_all_python_source_files(
+                python_dir, excluded_relpaths=frozenset({EXEMPT_SUBTREE.as_posix()})
             )
             for finding in scan_file(path, root=root)
         ]
