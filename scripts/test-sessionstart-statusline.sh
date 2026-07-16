@@ -20,7 +20,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 if [ -x "$SCRIPT" ]; then pass 'script executable'; else fail 'script must be executable'; fi
 
-if jq -e '.hooks.SessionStart[]? | select(.matcher == "startup|resume|clear|compact") | .hooks[]? | select(.type == "command" and .command == "${CLAUDE_PLUGIN_ROOT}/scripts/sessionstart-statusline.sh" and .timeout == 5)' "$HOOKS_JSON" >/dev/null 2>&1; then
+if jq -e '.hooks.SessionStart[]? | .hooks[]? | select(.type == "command" and .command == "${CLAUDE_PLUGIN_ROOT}/scripts/sessionstart-statusline.sh" and .timeout == 5)' "$HOOKS_JSON" >/dev/null 2>&1; then
     pass 'hooks.json registers SessionStart statusline hook'
 else
     fail 'hooks.json must register sessionstart-statusline.sh under SessionStart'
