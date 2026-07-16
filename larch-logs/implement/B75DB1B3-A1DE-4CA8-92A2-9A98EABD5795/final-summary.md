@@ -17,20 +17,21 @@ Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
-## /implement run B75DB1B3-A1DE-4CA8-92A2-9A98EABD5795: shipping
+## /implement run B75DB1B3-A1DE-4CA8-92A2-9A98EABD5795: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 01:32:16
-- **Cost**: 💰 TOTAL ~$1.30: Claude/GLM-5.2 token $14.29 (estimated $0.95), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.35  |  Tokens: 47941k
+- **Cost**: 💰 TOTAL ~$1.93: Claude/GLM-5.2 token $23.66 (estimated $1.58), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.35  |  Tokens: 79518k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7534: https://github.com/character-ai/larch/issues/7534
+- **PR**: #7550: https://github.com/character-ai/larch/pull/7550
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1105/-1952, larch-logs +244/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 5
