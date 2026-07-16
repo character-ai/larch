@@ -9,25 +9,26 @@ Warnings (1):
 
 ## Architectural invariants
 
-The Step 3.5 settle Bash-to-Python port preserves gate persistence, pause handling, fail-closed postplan rc parsing, and Gate B marker/phase behavior without weakening any absolute invariant.
+The Step 3.5 settle Bash-to-Python port still runs Gate B marker/phase persistence, pause-save, fail-closed POSTPLAN_RC parsing, and site dispatch without weakening any absolute invariant.
 
 ## Architectural guidelines
 
-The prior session-env wire-file parse fork is gone: round-key loading now goes through the shared IO helper with explicit policy flags, and the rest of the settle change stays within the guideline set.
+Round-key loading stays on the shared wire-file IO helper with explicit policy flags, and the settle port plus consumer/doc updates remain within the guideline set.
 
-## /implement run 7EF68E4D-1E6E-4964-BA22-009B18C73159: shipping
+## /implement run 7EF68E4D-1E6E-4964-BA22-009B18C73159: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 00:54:34
-- **Cost**: 💰 TOTAL ~$5.27: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $5.27  |  Tokens: 4656k
+- **Cost**: 💰 TOTAL ~$5.32: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $5.32  |  Tokens: 4725k
 - **Issue**: #7484: https://github.com/character-ai/larch/issues/7484
+- **PR**: #7515: https://github.com/character-ai/larch/pull/7515
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: 3/4 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +995/-666, larch-logs +168/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
