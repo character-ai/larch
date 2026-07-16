@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import shlex
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+
+from larch.core.proc import CommandResult
 
 from test_support import (
     CLI,
@@ -14,6 +17,7 @@ from test_support import (
     IMPLEMENT_BASELINE_KEYS,
     ROOT,
     RecordingRunner,
+    RunCall,
     completed,
     make_design_tmpdir,
     make_implement_tmpdir,
@@ -234,6 +238,84 @@ def test_default_queue_returns_explicit_default_after_exhaustion() -> None:
     runner = RecordingRunner.default_queue(default)
 
     assert runner.run(("git", "status")) is default
+
+
+def test_ordered_responses_return_in_queue_order() -> None:
+    runner = RecordingRunner(responses=[ok(("git", "one")), ok(("git", "two"))])
+
+    assert runner.run(("git", "a")).argv == ("git", "one")
+    assert runner.run(("git", "b")).argv == ("git", "two")
+    assert runner.calls == [["git", "a"], ["git", "b"]]
+
+
+def test_matcher_mismatch_reports_index_expected_actual_and_remaining() -> None:
+    runner = RecordingRunner(
+        responses=[ok(("git", "status")), ok(("git", "log"))],
+        matchers=[["git", "status"], ["git", "diff"]],
+    )
+
+    assert runner.run(("git", "status")).argv == ("git", "status")
+    with pytest.raises(
+        AssertionError,
+        match=r"call 1: argv \['git', 'log'\].*\['git', 'diff'\].*1 queued response",
+    ):
+        _ = runner.run(("git", "log"))
+
+
+def test_matcher_accepts_predicate() -> None:
+    def is_gh(argv: Sequence[str]) -> bool:
+        return bool(argv) and argv[0] == "gh"
+
+    runner = RecordingRunner(default=ok(("gh",)), matchers=[is_gh])
+
+    assert runner.run(("gh", "pr", "view")).argv == ("gh",)
+
+
+def test_on_call_observes_options_and_propagates_exceptions() -> None:
+    seen: list[RunCall] = []
+
+    def observe(call: RunCall) -> None:
+        seen.append(call)
+        if "boom" in call.argv:
+            msg = "callback boom"
+            raise RuntimeError(msg)
+
+    runner = RecordingRunner(default=ok(("x",)), on_call=observe)
+
+    _ = runner.run(("git", "status"), cwd="/w", timeout=3.0)
+    assert seen[0].cwd == "/w"
+    assert seen[0].timeout == 3.0
+    with pytest.raises(RuntimeError, match="callback boom"):
+        _ = runner.run(("boom",))
+
+
+def test_records_capture_full_call_options() -> None:
+    runner = RecordingRunner(default=ok(("x",)))
+
+    _ = runner.run(("git", "commit"), cwd="/repo", env={"A": "b"}, check=True, timeout=1.5)
+
+    call = runner.records[0]
+    assert call.argv == ("git", "commit")
+    assert call.cwd == "/repo"
+    assert call.env == {"A": "b"}
+    assert call.check is True
+    assert call.timeout == 1.5
+
+
+def test_route_fds_writes_payload_and_blanks_routed_stream(tmp_path: Path) -> None:
+    out = tmp_path / "out.txt"
+    runner = RecordingRunner(
+        responses=[CommandResult(("child",), 0, "hello", "warn", 0.01)],
+        route_fds=True,
+    )
+
+    with out.open("w", encoding="utf-8") as handle:
+        result = runner.run(("child",), stdout=handle.fileno())
+
+    assert out.read_text(encoding="utf-8") == "hellowarn"
+    assert result.stdout == ""
+    assert result.stderr == "warn"
+    assert result.argv == ("child",)
 
 
 def test_repo_root_and_cli_use_shared_path_contract() -> None:

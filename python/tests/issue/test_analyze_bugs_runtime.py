@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import json
 from pathlib import Path
 
@@ -11,30 +10,11 @@ import pytest
 from larch.core.proc import CommandResult
 from larch.issue import analyze_bugs
 
+from test_support import RecordingRunner
+
 
 SHA_A = "a" * 40
 SHA_B = "b" * 40
-
-
-class RuntimeRunner:
-    def __init__(self, results: list[CommandResult]) -> None:
-        self.results = results
-        self.calls: list[tuple[tuple[str, ...], float | None, str | None]] = []
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        del env, check, stdout, stderr
-        self.calls.append((tuple(argv), timeout, cwd))
-        return self.results.pop(0)
 
 
 def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
@@ -65,7 +45,7 @@ def test_discover_runtime_tests_keeps_only_live_added_or_modified_tests(tmp_path
     test_file = tmp_path / "python/tests/issue/test_live.py"
     test_file.parent.mkdir(parents=True)
     _ = test_file.write_text("def test_live(): pass\n", encoding="utf-8")
-    runner = RuntimeRunner([_result("A\tpython/tests/issue/test_live.py\nM\tpython/tests/issue/missing.py\nD\tpython/tests/issue/deleted.py\nM\tpython/larch/issue/analyze_bugs.py\nA\t../unsafe.py\n")])
+    runner = RecordingRunner(responses=[_result("A\tpython/tests/issue/test_live.py\nM\tpython/tests/issue/missing.py\nD\tpython/tests/issue/deleted.py\nM\tpython/larch/issue/analyze_bugs.py\nA\t../unsafe.py\n")], strict=True)
 
     assert analyze_bugs.discover_runtime_tests(runner=runner, fix_sha=SHA_A, repo_root=tmp_path) == ("python/tests/issue/test_live.py",)
 
@@ -83,7 +63,7 @@ def test_harness_resolution_and_zone_labels_are_deterministic() -> None:
 
 
 def test_runtime_verify_never_runs_pytest_without_discovered_paths(tmp_path: Path) -> None:
-    runner = RuntimeRunner([_result("")])
+    runner = RecordingRunner(responses=[_result("")], strict=True)
     results, skipped = analyze_bugs.runtime_verify(
         runner=runner,
         run_dir=tmp_path,
@@ -94,13 +74,13 @@ def test_runtime_verify_never_runs_pytest_without_discovered_paths(tmp_path: Pat
 
     assert skipped == 0
     assert results[0].components == (analyze_bugs.RuntimeComponent("pytest", "absent", "no runnable commit test files"),)
-    assert all(call[0][:3] != ("python3", "-m", "pytest") for call in runner.calls)
+    assert all(call.argv[:3] != ("python3", "-m", "pytest") for call in runner.records)
 
 
 def test_runtime_max_zero_replaces_artifact_without_running_commands(tmp_path: Path) -> None:
     artifact = tmp_path / analyze_bugs.RUNTIME_RESULTS_NAME
     _ = artifact.write_text("stale\n", encoding="utf-8")
-    runner = RuntimeRunner([])
+    runner = RecordingRunner(responses=[], strict=True)
 
     results, skipped = analyze_bugs.runtime_verify(
         runner=runner,
@@ -121,7 +101,7 @@ def test_runtime_verify_runs_exact_pytest_argv_and_fans_out_same_sha(tmp_path: P
     test_file = tmp_path / "python/tests/issue/test_live.py"
     test_file.parent.mkdir(parents=True)
     _ = test_file.write_text("def test_live(): pass\n", encoding="utf-8")
-    runner = RuntimeRunner([_result("M\tpython/tests/issue/test_live.py\n"), _result(), _result()])
+    runner = RecordingRunner(responses=[_result("M\tpython/tests/issue/test_live.py\n"), _result(), _result()], strict=True)
     bundles = [
         _bundle(issue=1, cache_key="one", sha=SHA_A, files=("skills/implement/SKILL.md",), fix_time=2),
         _bundle(issue=2, cache_key="two", sha=SHA_A, files=("skills/implement/SKILL.md",), fix_time=1),
@@ -131,10 +111,10 @@ def test_runtime_verify_runs_exact_pytest_argv_and_fans_out_same_sha(tmp_path: P
 
     assert skipped == 0
     assert [binding.issue for binding in results[0].bindings] == [1, 2]
-    pytest_argv = runner.calls[1][0]
+    pytest_argv = runner.records[1].argv
     assert pytest_argv[:7] == ("python3", "-m", "pytest", "-p", "no:cacheprovider", "--basetemp", str(tmp_path / "runtime-pytest-tmp" / SHA_A))
     assert pytest_argv[7:] == ("--", "python/tests/issue/test_live.py")
-    assert runner.calls[2][0] == ("make", "test-architectural-guidelines-step")
+    assert runner.records[2].argv == ("make", "test-architectural-guidelines-step")
 
 
 @pytest.mark.parametrize("status", ["failed", "timeout"])

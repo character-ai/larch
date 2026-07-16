@@ -22,6 +22,8 @@ import review_test_support as rts
 from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
+from test_support import RecordingRunner
+
 ROOT = rts.ROOT
 CLI = rts.CLI
 REVIEW_PIPELINE = ROOT / "python" / "larch" / "review" / "review_pipeline.py"
@@ -2730,23 +2732,7 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
     manifest = review_tmpdir / "panel-manifest.ndjson"
     diff_file = tmp_path / "diff.txt"
     diff_file.write_text("diff --git a/a b/a\n", encoding="utf-8")
-    calls: list[list[str]] = []
-
-    class Runner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> proc.CommandResult:
-            _ = timeout, cwd, env, check, stdout, stderr
-            calls.append([str(item) for item in argv])
-            return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
+    runner = RecordingRunner(default=proc.CommandResult((), 0, "rendered prompt\n", "", 0.0))
 
     count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
         scout_manifest=scout_manifest,
@@ -2755,11 +2741,11 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
         mode="diff",
         context={"diff_file": str(diff_file)},
         codex_available=False,
-        runner=Runner()
+        runner=runner
     )
 
     assert count == 1
-    render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
+    render_call = next(call for call in runner.calls if call[2:4] == ["render", "specialist"])
     assert "--findings-ledger-file" in render_call
     assert render_call[render_call.index("--findings-ledger-file") + 1] == str(review_tmpdir / "findings-ledger.tsv")
     assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
@@ -2804,23 +2790,7 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
         encoding="utf-8",
     )
     manifest = round_dir / "panel-manifest.ndjson"
-    calls: list[list[str]] = []
-
-    class Runner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> proc.CommandResult:
-            _ = timeout, cwd, env, check, stdout, stderr
-            calls.append([str(item) for item in argv])
-            return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
+    runner = RecordingRunner(default=proc.CommandResult((), 0, "rendered prompt\n", "", 0.0))
 
     count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
         scout_manifest=scout_manifest,
@@ -2830,11 +2800,11 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
         context={"diff_file": str(tmp_path / "diff.txt")},
         codex_available=False,
         session_env_path=str(session_env),
-        runner=Runner()
+        runner=runner
     )
 
     assert count == 1
-    render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
+    render_call = next(call for call in runner.calls if call[2:4] == ["render", "specialist"])
     assert render_call[render_call.index("--findings-ledger-file") + 1] == str(impl / "findings-ledger.tsv")
     assert render_call[render_call.index("--session-env-path") + 1] == str(session_env)
     assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
