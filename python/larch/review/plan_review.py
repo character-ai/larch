@@ -953,10 +953,6 @@ def step3b_entry_main(argv: list[str] | None = None) -> int:
     return _delegate_step3_script(script_name="design-step3b-entry.sh", argv=argv or [])
 
 
-def step3b_sanitize_main(argv: list[str] | None = None) -> int:
-    return _delegate_step3_script(script_name="design-step3b-sanitize.sh", argv=argv or [])
-
-
 def step3b_tail_main(argv: list[str] | None = None) -> int:
     return _delegate_step3_script(script_name="design-step3b-tail.sh", argv=argv or [])
 

@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 55014,
-    "closure_estimated_tokens": 55167,
-    "closure_lines": 1736,
+    "closure_content_estimated_tokens": 54969,
+    "closure_estimated_tokens": 55122,
+    "closure_lines": 1735,
     "conditional_content_estimated_tokens": 19286,
     "conditional_estimated_tokens": 19357,
     "conditional_files": [
@@ -33,9 +33,9 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 26562,
-    "skill_md_estimated_tokens": 26616,
-    "skill_md_lines": 694
+    "skill_md_content_estimated_tokens": 26524,
+    "skill_md_estimated_tokens": 26578,
+    "skill_md_lines": 693
   },
   {
     "closure_content_estimated_tokens": 48700,
