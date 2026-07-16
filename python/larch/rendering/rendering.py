@@ -57,7 +57,7 @@ VOTER_ARCHETYPES = {
 Apply the full Review Acceptance Rubric. Prioritize **is it real**: verify the cited file:line and trigger. Vote YES only for real triggerable defects (logic, boundary, None/type, race, exception/cleanup, or security). Default NO when the code does not show the defect.""",
     "plan-fidelity-completeness": """**Archetype lens: plan fidelity and completeness.**
 
-Apply the full Review Acceptance Rubric. Prioritize **is it in scope**. For each item, silently map it to a supplied-plan requirement or decide none exists; do not cite, quote, or mention that mapping. Vote YES when the feature is incomplete, broken, unverifiable, or regressed without it, including missing required tests, docs, artifacts, or cleanup. Plan-required deliverable omissions override default-test-to-OOS and rubric gate 4 for this lens; optional work stays NO/OOS. With no plan context (for example `/review --diff`), judge the diff and ballot scope; missing plan context is not an automatic NO.""",
+Apply the full Review Acceptance Rubric. Prioritize **is it in scope**. For each item, silently map it to a supplied-plan requirement or decide none exists; do not cite, quote, or mention that mapping. Vote YES when the feature is incomplete, broken, unverifiable, or regressed without it, including missing required tests, docs, artifacts, cleanup, or a diff-introduced second behavioral owner when reuse fits approved scope. Plan-required deliverable omissions override default-test-to-OOS and rubric gate 4 for this lens; optional work stays NO/OOS. With no plan context (for example `/review --diff`), judge the diff and ballot scope; missing plan context is not an automatic NO.""",
     "pragmatism-cost": """**Archetype lens: pragmatism and cost.**
 
 Apply the full Review Acceptance Rubric. Prioritize **is it worth it**. Vote NO on speculative robustness, style, best-practice churn, premature configurability, unrequested refactors, micro-optimizations, and portability speculation. Vote YES when necessary or clearly proportionate. Defer to validity on correctness and security.""",
@@ -873,7 +873,7 @@ def _render_specialist_text(args: argparse.Namespace, *, architectural_guideline
         stable_chunks.append("""
 **Competition notice**: A 3-voter panel scores findings. Accepted in-scope findings with a strict majority of YES voters rating `major` earn +2; other accepted in-scope findings earn +1. In-scope findings with at least 1 YES but below acceptance cost -0.25; 0 YES costs -1. OOS files only when accepted and a strict majority of YES voters rate it `major`; non-fileable OOS is logged only. Pruning uses unweighted accepted-minus-rejected counts.
 
-Panel voters apply the **Review Acceptance Rubric** (`skills/shared/review-acceptance-rubric.md`): YES only when the feature would be incomplete, broken, unverifiable, or regressed without it. "Legitimate but not necessary" is NO; place real-but-not-necessary issues in Out-of-Scope.
+Panel voters apply the **Review Acceptance Rubric** (`skills/shared/review-acceptance-rubric.md`): YES only when the feature would be incomplete, broken, unverifiable, or regressed without it, including a diff-introduced second behavioral owner when reuse fits approved scope. "Legitimate but not necessary" is NO; place real-but-not-necessary issues in Out-of-Scope.
 """)
         if args.competition_notice_file:
             stable_chunks.append("\n" + _read_text(Path(args.competition_notice_file)))
@@ -1161,7 +1161,7 @@ def render_voter_main(argv: list[str]) -> int:
         rubric = _read_text(REPO_ROOT / "skills" / "shared" / "review-acceptance-rubric.md").split("\n---", 1)[0].rstrip("\n")
         out = [
             f"You are a {args.panel_role}.",
-            "Use the Review Acceptance Rubric: vote YES only when the fix is necessary because the feature would be incomplete, broken, unverifiable, or regressed. Otherwise vote NO.",
+            "Use the Review Acceptance Rubric: vote YES only when the fix is necessary because the feature would be incomplete, broken, unverifiable, or regressed, including a diff-introduced second behavioral owner when reuse fits approved scope. Otherwise vote NO.",
             'Default-deny: if unsure, vote NO. "Legitimate but not necessary" is NO and belongs Out-of-Scope.',
             "**Severity floor (mandatory):** Vote **NO** on in-scope nits. Latent findings are NO unless they are genuine Correctness defects on the feature path or Introduced-regressions (gates 2/3). Judge OOS rows only for filing-worthiness.",
             "**Panel severity rubric:** `major` = data loss, security exposure, corruption, blocked merge, required-workflow breakage, or wrong feature-path behavior. `minor` = necessary but limited-impact. `nit` = style, wording, polish, or cleanup. Use `major` only for matching impact.",

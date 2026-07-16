@@ -19,7 +19,7 @@ Before implementing:
 **Minimum code that solves the problem. Nothing speculative.**
 
 - No unasked features.
-- No single-use abstractions.
+- Reuse existing owners. Extract shared logic only when this change would otherwise duplicate it; do not add speculative single-use abstractions.
 - No unrequested flexibility or configurability.
 - No error handling for impossible scenarios.
 - If 50 lines can replace 200, rewrite.
@@ -32,7 +32,7 @@ Ask: "Would a senior engineer call this overcomplicated?" If yes, simplify.
 
 When editing existing code:
 - Do not improve adjacent code, comments, or formatting.
-- Do not refactor unbroken code.
+- Do not refactor unbroken code, except for the narrow extraction needed to avoid duplication introduced by this change.
 - Match existing style.
 - Mention unrelated dead code. Do not delete it.
 

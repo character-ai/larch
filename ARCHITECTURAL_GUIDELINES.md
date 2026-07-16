@@ -14,6 +14,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: when fixing a bug in recovery or orchestration machinery (implement steps, ship and postmerge routing, bgjob, design publish and resume, CI fixer, stall classifiers), add or extend an offline harness or test case that replays the failure and passes with the fix. Close criteria is reproduced-then-passed, not merged or CI-green.
 - Deviate when: the failure requires live vendor or GitHub state that no harness can replay; say so in the PR and name the manual verification performed.
 
+### G-Dup-1: Keep one owner for each behavior
+- Why: parallel implementations of the same contract drift, so later bug or prompt changes must reconcile them after the mismatch becomes visible.
+- Guidance: before adding or materially expanding behavior, search for an existing implementation and canonical owner. Reuse or extend that owner. If both sites need the behavior, extract the shared part into the owning module and include that file in the plan. Do not create a second owner merely to keep the diff inside one file.
+- Deviate when: copies are generated output, contract-fixed snapshots or fixtures, or an intentional fork with an independent lifecycle; name the sibling in the plan and explain why the implementations should diverge.
+
 ## Python coding practices
 
 ### G-Py-1: Pass composite data as frozen dataclasses

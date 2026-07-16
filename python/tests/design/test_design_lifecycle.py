@@ -6216,6 +6216,22 @@ def test_compose_drafter_prompt_includes_dialectic_instructions(tmp_path: Path) 
     assert "promoted only after postplan succeeds" in prompt
 
 
+def test_compose_drafter_prompt_matches_inline_reuse_and_ownership_duty(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    design_step2b._compose_drafter_prompt(design_tmpdir=design, plugin_root=CLI.parent.parent)  # pyright: ignore[reportPrivateUsage]
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    assert "Reuse and ownership subsection under Approach" in prompt
+    assert "likely owners or sibling implementations searched" in prompt
+    assert "every required extraction owner in firm or ### MAY_UPDATE: file scope" in prompt
+    assert "Documentation-only, data-only, generated-output, and fixture-only changes are exempt" in prompt
+    inline = (CLI.parent.parent / "skills" / "design" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Reuse and ownership" in inline
+    assert "name searched owners or siblings" in inline
+    assert "scope each extraction owner firm or `### MAY_UPDATE:`" in inline
+    assert "Exempt docs, data, generated output, and fixtures" in inline
+
+
 def _step2b_design_fixture(design: Path) -> None:
     (design / "approach-synthesis.txt").write_text("NO_SKETCHES\n", encoding="utf-8")
     (design / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")

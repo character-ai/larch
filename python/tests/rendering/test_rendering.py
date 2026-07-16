@@ -167,6 +167,10 @@ def test_generated_implementers_include_scout_sidecar(monkeypatch: pytest.Monkey
     assert "SCOUT_MANIFEST_PATH" in cursor_text
     assert "optional best-effort" in cursor_text
     assert "cursor-modified-history" in cursor_text
+    for text in (codex_text, cursor_text):
+        assert "dyn-reuse" in text
+        assert "plan-scope-insufficient-reuse-owner" in text
+        assert "`needs_qa` resolves ambiguity only within approved scope" in text
 
 
 def test_topology_header_uses_python_invocation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1556,6 +1560,21 @@ def test_checked_in_reviewer_prompt_surfaces_use_legitimacy_cap() -> None:
         text = path.read_text(encoding="utf-8")
         assert "highest-legitimacy concrete items" in text, str(path)
         assert "highest-materiality" not in text, str(path)
+
+
+def test_checked_in_reviewer_prompt_surfaces_include_current_change_duplication_gate() -> None:
+    surfaces = [
+        REPO_ROOT / "skills" / "shared" / "reviewer-templates.md",
+        REPO_ROOT / "agents" / "code-reviewer.md",
+        *sorted((REPO_ROOT / "agents").glob("reviewer-*.md")),
+        *sorted((REPO_ROOT / "agents" / "pre-rendered").glob("reviewer-*-body.txt")),
+    ]
+
+    assert surfaces
+    for path in surfaces:
+        text = path.read_text(encoding="utf-8")
+        assert "independent implementation of behavior already owned in-repo" in text, str(path)
+        assert "Pre-existing duplication" in text or "pre-existing duplication" in text, str(path)
 
 
 def test_render_voter_oos_rules_mention_genuine_concrete_non_duplicate(

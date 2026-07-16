@@ -108,6 +108,8 @@ Before placing ANY finding under In-Scope Findings, apply the Review Acceptance 
 
 "Cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice," "while we're here," refactors, renames, added configurability, defensive handling for inputs the feature cannot produce, performance / micro-optimization claims when the feature already meets its stated performance requirement, and cross-shell / cross-OS / tool-version portability speculation for shells, platforms, or tool versions the project does not target are Out-of-Scope signals, never In-Scope.
 
+A current plan or diff also introduces harm when it adds an independent implementation of behavior already owned in-repo and reuse or shared extraction fits approved scope. Removing that new second owner is not a general refactor. Keep consolidation of pre-existing duplication Out-of-Scope. Exclude repeated syntax, generated output, assertion-by-duplication fixtures, and documented intentional forks.
+
 Default test findings to Out-of-Scope. A test is In-Scope only when it covers a new, currently uncovered, risk-bearing execution path THIS feature introduces. A test that could merely exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact is a Nit → Out-of-Scope, never In-Scope.
 
 Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This is not license to require optional tests or docs the plan did not mandate. Name or cite the matching plan requirement.

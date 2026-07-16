@@ -304,7 +304,7 @@ Drafter inline-retry dispatch is post-apply only. It maps postplan rc `10` to `i
 When `$DESIGN_TMPDIR/dirty-tree-detected.env` has `STAGE=step-2b-drafter` and `RECOVERY_REQUIRED=true`, prompt once using `$DESIGN_TMPDIR/.dirty-tree-prompted-step-2b-drafter` before inline fallback or postplan. On **Restore a clean tree and continue**, verify clean via `dirty-tree checkpoint` or `step2b-drafter-baseline.porcelain`, write `RECOVERY_REQUIRED=false`, and resume inline fallback. On **Cancel this design run**, preserve `$DESIGN_TMPDIR` and exit. Never draft or postplan while recovery is required.
 Before writing the plan, inspect the codebase (relevant files, patterns, architecture) and create a concrete implementation plan. See CLAUDE.md for repo conventions.
 Apply this emphasis before drafting:
-"Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
+"Plan the **smallest change**. Avoid unneeded scope and abstractions. Prefer one file unless that would create a second behavioral owner; then plan the smallest shared-owner extraction."
 Read `$DESIGN_TMPDIR/approach-synthesis.txt`; it contains `NO_SKETCHES`, the sentinel that no planning panel ran. Draft from direct code/doc inspection.
 Read non-empty `$DESIGN_TMPDIR/discussion-round1.md`; preserve its scope boundaries, hard constraints, and explicit user refusals.
 Read `$DESIGN_TMPDIR/design-outline.md` only when non-empty and `.outline-approved` exists; treat approved Goals, Non-goals, and Surfaces as binding scope.
@@ -314,7 +314,7 @@ Produce a plan that includes:
 **MANDATORY: READ ENTIRE FILE before drafting the implementation plan: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 - **Files to modify/create**: Use one section with per-file headings. Each heading names exactly one path and starts with `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:`; use `### MAY_UPDATE:` for conditional scope. At least one ASCII space must follow `###`; extra space before `:` is tolerated. Concatenated forms like `###NEW:` are not scout / plan-size headings.
-- **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.
+- **Approach**: Describe strategy. For behavior changes, include **Reuse and ownership**: name searched owners or siblings, the chosen or new canonical owner, and scope each extraction owner firm or `### MAY_UPDATE:`. Exempt docs, data, generated output, and fixtures.
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.

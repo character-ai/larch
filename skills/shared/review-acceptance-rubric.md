@@ -11,8 +11,9 @@ issue). To be accepted in-scope, a finding must clear at least one of these gate
    a missing case the spec requires).
 3. Introduced regression or harm — the change itself introduces a security vulnerability, a
    data-loss or data-corruption path, or a breaking change to an existing caller, contract, or
-   CLI/wire surface — even if the new feature works. (You do not ship a regression and file an
-   issue about it.)
+   CLI/wire surface — even if the new feature works. A change also introduces harm when it adds
+   an independent implementation of behavior already owned in-repo, and reuse or shared
+   extraction fits the approved scope. (You do not ship a regression and file an issue about it.)
 4. Necessary test — **Default a test finding to Out-of-Scope.** It clears this gate as in-scope
    only if it covers a new, currently-uncovered, risk-bearing execution path that THIS feature
    introduces, AND the test is proportionate to the behavior's risk and size. A test that could
@@ -41,6 +42,11 @@ call/scan", "micro-cache this") when the feature already meets its stated perfor
 requirement, and cross-shell / cross-OS / tool-version portability speculation for shells,
 platforms, or tool versions the project does not target.
 
+Consolidating pre-existing duplication remains Out-of-Scope. Removing a second implementation
+introduced by the current plan or diff is not a general refactor and may be accepted in-scope.
+Exclude repeated syntax, generated output, fixtures whose duplication is the assertion, and
+documented intentional forks.
+
 Out-of-Scope is the safe harbor, not the trash. A real finding that fails the necessity gate
 belongs on the Out-of-Scope list, where it can still be accepted as a tracked GitHub issue.
 Deferring a good idea is the correct outcome, not a loss.
@@ -68,7 +74,11 @@ The following surfaces embed this rubric's necessity-gate language. When the rub
 - `agents/reviewer-code-robustness.md` — generated (re-run `python3 python/cli.py generate reviewer-code-robustness-agent`)
 - `agents/reviewer-security-structure-tests.md` — generated (re-run `python3 python/cli.py generate reviewer-security-structure-tests-agent`)
 - `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-correctness.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-security.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-structure.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
 - `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `agents/pre-rendered/reviewer-*-body.txt` — generated from every specialist above (re-run `python3 python/cli.py generate pre-rendered-reviewer-prompts`)
 - `python/cli.py render plan-review` — plan-review external prompts
 - `python/cli.py render specialist` — code-review external prompts (competition notice)
 - `skills/design/references/plan-review-runtime.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `python/cli.py render plan-review` and `python/cli.py render voter`
