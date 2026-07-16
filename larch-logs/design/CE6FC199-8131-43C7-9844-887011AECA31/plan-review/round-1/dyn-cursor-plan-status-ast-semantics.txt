@@ -1,0 +1,29 @@
+Reviewing the plan against the shared lint engine and similar detectors in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/lint/lint_status_routing_truthiness.py:LintRule	[SCOPE-REDUCTION] suppression_token omits required lint- prefix	Plan sets rule ID and suppression_token to status-routing-truthiness, but scope/docs require # lint-status-routing-truthiness: ok. engine._scan_source matches rule.suppression_token literally (engine.py:1434-1435, _apply_inline_suppressions). Wrong token makes every same-line suppression a no-op while empty-reason tests still pass via ScanError.	Set SUPPRESSION/RULE_ID/suppression_token to lint-status-routing-truthiness; keep CLI subcommand status-routing-truthiness per lint_unreachable_branch.py:30-31,71 and cli.py:600.
+1	in_scope	major	correctness	python/larch/lint/lint_status_routing_truthiness.py:detect	Engine-managed suppression contract not pinned against sibling detector-side pattern	Plan says engine-managed same-line suppression and count occurrences before suppression, but every engine-backed occurrence peer sets allow_inline_suppression=False and filters in-detector (lint_unreachable_branch.py:72, unreachable_branch_detector.py:359-377). Copying that pattern renumbers identities when suppressions move and breaks docs/linting.md:153.	Pin allow_inline_suppression=True (default), keep detect() free of pragma filtering, increment occurrence for every bare lexical site (including pragma-covered lines), emit findings for all sites, and add test_occurrence_is_assigned_before_pragma_suppression modeled on test_lint_subprocess_via_runner.py:128-148.
+1	in_scope	major	correctness	python/larch/lint/lint_status_routing_truthiness.py:normalize_expr	normalized_condition identity algorithm unspecified	Plan requires one stable AST representation for evidence, messages, and normalized_condition baseline keys but does not name the repo helper. Ad hoc unparsing can reshuffle baseline identities across runs or Python versions.	Pin normalize_expr to ast.dump(..., annotate_fields=False) like unreachable_branch_detector.py:98-105 and reuse the same string for evidence keys and EngineFinding.pattern_name.
+1	in_scope	minor	correctness	python/larch/lint/lint_status_routing_truthiness.py:LintRule	LintRule baseline fields not fully pinned	Plan names occurrence baseline and normalized_condition but omits explicit require_baseline=True and stale_baseline_on_clean_scan=False used by lint_unreachable_branch.py:75-78.	Omit stale_baseline_on_clean_scan or set False; set require_baseline=True, occurrence_baseline=True, occurrence_pattern_field=normalized_condition to match unreachable-branch contract.
+1	out_of_scope	minor	correctness	python/tests/lint/test_lint_status_routing_truthiness.py	Ordering-comparison negative case not listed	Scope says ordering comparisons must pass, but plan test bullets only cover equality/identity/membership/is None/len/any/all. Low risk because Compare nodes are already excluded from bare-truthiness detection.	Add an ordering-comparison pass fixture only if a prototype falsely flags Compare operands.
+
+## Findings
+
+### 1. [major / correctness] Suppression token must use the `lint-` prefix
+
+The plan binds both `rule_id` and `suppression_token` to `status-routing-truthiness`, while the scope anchor and planned `docs/linting.md` entry document `# lint-status-routing-truthiness: ok <reason>`. In this repo, CLI names drop the prefix (`unreachable-branch`) but `LintRule.suppression_token` keeps it (`lint-unreachable-branch` in `unreachable_branch_detector.py` and `lint_unreachable_branch.py`). The shared engine builds pragma regexes from `suppression_token` only (`engine.py`). If the new rule omits `lint-`, inline suppressions never match and grandfathering cannot work as specified.
+
+### 2. [major / correctness] Engine-managed suppression needs an explicit contract
+
+The plan correctly wants engine-managed suppression and occurrence assignment before suppression, but it does not pin how that differs from `lint_unreachable_branch`, which sets `allow_inline_suppression=False` and skips suppressed sites inside the detector. That sibling behavior contradicts `docs/linting.md` (“occurrence numbers are assigned before baseline or pragma suppression”). For this rule, the plan should require the engine-default path: `detect()` emits every bare site with a stable pre-suppression occurrence index, and the engine applies same-line filtering afterward. A regression test mirroring `test_occurrence_is_assigned_before_pragma_suppression` is the right guard.
+
+### 3. [major / correctness] Pin `normalized_condition` to `ast.dump`
+
+Occurrence baselines key on `normalized_condition` / `pattern_name`. The plan says “one stable AST representation” but does not point at the existing `normalize_expr` in `unreachable_branch_detector.py`, which uses `ast.dump(..., annotate_fields=False)`. Without that pin, two implementers could produce incompatible baseline identities for the same source.
+
+### 4. [minor / correctness] Pin remaining `LintRule` baseline knobs
+
+The approach section lists occurrence baseline and `normalized_condition`, but not `require_baseline=True` or `stale_baseline_on_clean_scan=False`. `lint_unreachable_branch.py` pins both. Adding them keeps fail-closed behavior aligned with neighboring occurrence ratchets.
+
+### [OUT_OF_SCOPE] Ordering-comparison test gap
+
+The scope says ordering comparisons must pass, but the planned test list does not name that case. Because bare-truthiness detection targets `if`/`while`/BoolOp/`not`/`bool()` nodes rather than `Compare` operands, this is unlikely to break acceptance. A dedicated negative test is optional polish, not a plan blocker.
