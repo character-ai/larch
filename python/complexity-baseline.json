@@ -5702,6 +5702,34 @@
     "history": []
   },
   {
+    "file": "larch/report/markdown_block.py",
+    "code": "C901",
+    "qualified_symbol": "replace_markdown_block",
+    "metric": 16,
+    "added_at": "2026-07-16",
+    "history": [
+      {
+        "date": "2026-07-16",
+        "metric": 16
+      }
+    ],
+    "reason": "marker-delimited block recovery state machine consolidated from tokens.py and timing.py _replace_block (issue anchored plan: contract-unification DEDUP)"
+  },
+  {
+    "file": "larch/report/markdown_block.py",
+    "code": "PLR0912",
+    "qualified_symbol": "replace_markdown_block",
+    "metric": 16,
+    "added_at": "2026-07-16",
+    "history": [
+      {
+        "date": "2026-07-16",
+        "metric": 16
+      }
+    ],
+    "reason": "marker-delimited block recovery state machine consolidated from tokens.py and timing.py _replace_block (issue anchored plan: contract-unification DEDUP)"
+  },
+  {
     "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_failed_reviewers",
@@ -6169,23 +6197,7 @@
   {
     "file": "larch/report/timing.py",
     "code": "C901",
-    "qualified_symbol": "_replace_block",
-    "metric": 16,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/timing.py",
-    "code": "C901",
     "qualified_symbol": "timing_report_main",
-    "metric": 16,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/timing.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_replace_block",
     "metric": 16,
     "added_at": "legacy",
     "history": []
@@ -6227,14 +6239,6 @@
     "code": "PLR0915",
     "qualified_symbol": "timing_report_main",
     "metric": 54,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "code": "C901",
-    "qualified_symbol": "_replace_block",
-    "metric": 16,
     "added_at": "legacy",
     "history": []
   },
@@ -6299,14 +6303,6 @@
     "code": "PLR0911",
     "qualified_symbol": "token_report",
     "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_replace_block",
-    "metric": 16,
     "added_at": "legacy",
     "history": []
   },
