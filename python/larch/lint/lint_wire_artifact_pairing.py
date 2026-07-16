@@ -8,7 +8,6 @@ reason-bearing baseline.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import json
 import re
@@ -18,6 +17,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict, cast
+
+from larch.lint.engine import (
+    IdentityLintCli,
+    ScanError,
+    WireArtifactPairingBaselineRow,
+    compare_identity_baseline,
+    load_identity_baseline,
+    parse_identity_lint_argv,
+    write_identity_baseline,
+)
 
 TOOL_FAILURE_EXIT = 2
 MANIFEST_FILENAME = "wire-artifact-manifest.json"
@@ -44,12 +53,6 @@ Kind = Literal["basename", "relative_path"]
 class ManifestRow(TypedDict):
     artifact: str
     kind: Kind
-
-
-class BaselineRow(TypedDict):
-    artifact: str
-    side: str
-    reason: str
 
 
 @dataclass(frozen=True)
@@ -112,35 +115,6 @@ def load_manifest(path: Path) -> list[ManifestRow]:
     return rows
 
 
-def _validate_baseline_row(item: object, *, index: int, source: Path) -> BaselineRow:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: baseline row {index} must be an object")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: baseline row {index} must have exactly {sorted(BASELINE_KEYS)}")
-    artifact = record["artifact"]
-    side = record["side"]
-    reason = record["reason"]
-    if not isinstance(artifact, str) or not artifact:
-        raise BaselineError(f"{source}: baseline row {index} has invalid artifact")
-    if not isinstance(side, str) or side not in SIDES:
-        raise BaselineError(f"{source}: baseline row {index} has invalid side")
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: baseline row {index} has invalid reason")
-    return {"artifact": artifact, "side": side, "reason": reason}
-
-
-def load_baseline(path: Path) -> list[BaselineRow]:
-    """Load and validate the committed baseline. Missing baseline means none."""
-    if not path.is_file():
-        return []
-    rows = [_validate_baseline_row(item, index=index, source=path) for index, item in enumerate(_json_load(path, label="baseline"))]
-    duplicate = _first_duplicate((row["artifact"],) for row in rows)
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {duplicate[0]}")
-    return rows
-
-
 def _first_duplicate(keys: Iterable[tuple[str, ...]]) -> tuple[str, ...] | None:
     seen: set[tuple[str, ...]] = set()
     for key in keys:
@@ -148,6 +122,18 @@ def _first_duplicate(keys: Iterable[tuple[str, ...]]) -> tuple[str, ...] | None:
             return key
         seen.add(key)
     return None
+
+
+def _load_pairing_baseline(path: Path, *, root: Path) -> list[WireArtifactPairingBaselineRow]:
+    """Keep the legacy one-row-per-artifact policy above engine row identity."""
+    rows = load_identity_baseline(
+        path, root=root, kind="wire_artifact_pairing", allow_missing=True
+    )
+    typed = [row for row in rows if isinstance(row, WireArtifactPairingBaselineRow)]
+    duplicate = _first_duplicate((row.artifact,) for row in typed)
+    if duplicate is not None:
+        raise ScanError(f"{path}: duplicate baseline artifact {duplicate[0]}")
+    return typed
 
 
 def _is_excluded_python_path(relative: Path) -> bool:
@@ -385,104 +371,89 @@ def collect_findings(root: Path, manifest_rows: list[ManifestRow]) -> list[Findi
     return sorted(findings, key=lambda finding: finding.key())
 
 
-def serialize_baseline(rows: list[BaselineRow]) -> str:
-    ordered = sorted(rows, key=lambda row: row["artifact"])
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(
-    findings: list[Finding],
-    *,
-    baseline_rows: list[BaselineRow],
-    initial_reason: str | None,
-) -> list[BaselineRow]:
-    preserved = {row["artifact"]: row for row in baseline_rows}
-    default_reason = initial_reason.strip() if initial_reason is not None else None
-    records: list[BaselineRow] = []
-    missing: list[str] = []
-    for finding in findings:
-        old = preserved.get(finding.artifact)
-        if old is not None:
-            records.append(old)
-        elif default_reason:
-            records.append({"artifact": finding.artifact, "side": "intentionally-one-sided", "reason": default_reason})
-        else:
-            missing.append(f"{finding.kind}:{finding.artifact}")
-    if missing:
-        raise BaselineError("missing baseline reasons for live wire artifacts:\n  " + "\n  ".join(missing))
-    return records
-
-
 def _run_write(root: Path, *, manifest_path: Path, baseline_path: Path, initial_reason: str | None) -> int:
     try:
         manifest_rows = load_manifest(manifest_path)
-        baseline_rows = load_baseline(baseline_path)
+        baseline_rows = _load_pairing_baseline(baseline_path, root=root)
         findings = collect_findings(root, manifest_rows)
-        records = _records_for_write(findings, baseline_rows=baseline_rows, initial_reason=initial_reason)
-    except BaselineError as exc:
+        preserved_sides = {row.artifact: row.side for row in baseline_rows}
+        records = [
+            WireArtifactPairingBaselineRow(
+                finding.artifact,
+                cast("Literal['external-writer', 'external-reader', 'intentionally-one-sided']", preserved_sides.get(finding.artifact, "intentionally-one-sided")),
+                "",
+            )
+            for finding in findings
+        ]
+        written = write_identity_baseline(
+            baseline_path, root=root, kind="wire_artifact_pairing", live_rows=records,
+            baseline_rows=baseline_rows, initial_reason=initial_reason,
+        )
+    except (BaselineError, ScanError) as exc:
         print(f"lint-wire-artifact-pairing: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    print(f"lint-wire-artifact-pairing: wrote {len(records)} records to {baseline_path}", file=sys.stderr)
+    print(f"lint-wire-artifact-pairing: wrote {len(written)} records to {baseline_path}", file=sys.stderr)
     return 0
 
 
 def _run_check(root: Path, *, manifest_path: Path, baseline_path: Path) -> int:
     try:
         manifest_rows = load_manifest(manifest_path)
-        baseline_rows = load_baseline(baseline_path)
-        baseline_artifacts = frozenset(row["artifact"] for row in baseline_rows)
+        baseline_rows = _load_pairing_baseline(baseline_path, root=root)
         findings = collect_findings(root, manifest_rows)
-    except BaselineError as exc:
+    except (BaselineError, ScanError) as exc:
         print(f"lint-wire-artifact-pairing: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
-    new_findings = [finding for finding in findings if finding.artifact not in baseline_artifacts]
-    warned = [finding for finding in findings if finding.artifact in baseline_artifacts]
-    for finding in warned:
+    live_rows = [
+        WireArtifactPairingBaselineRow(
+            finding.artifact,
+            cast("Literal['external-writer', 'external-reader', 'intentionally-one-sided']", next((row.side for row in baseline_rows if row.artifact == finding.artifact), "intentionally-one-sided")),
+            "",
+        )
+        for finding in findings
+    ]
+    new_rows, _stale, warned_rows = compare_identity_baseline(live_rows, baseline_rows)
+    new_artifacts = {row.artifact for row in new_rows if isinstance(row, WireArtifactPairingBaselineRow)}
+    warned_artifacts = {row.artifact for row in warned_rows if isinstance(row, WireArtifactPairingBaselineRow)}
+    for finding in findings:
+        if finding.artifact not in warned_artifacts:
+            continue
         print(
             f"warning: {finding.kind}:{finding.artifact} has reader evidence but no production writer (baselined)",
             file=sys.stderr,
         )
-    for finding in new_findings:
+    for finding in findings:
+        if finding.artifact not in new_artifacts:
+            continue
         print(
             f"{finding.kind}:{finding.artifact} has reader evidence but no production writer; add a writer or baseline a one-sided artifact",
             file=sys.stderr,
         )
-    return 1 if new_findings else 0
+    return 1 if new_rows else 0
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint wire-artifact-pairing", description=__doc__)
-    _ = parser.add_argument("positional_root", nargs="?", help="Optional repository root.")
-    _ = parser.add_argument("--root", help="Repository root (overrides positional root).")
-    _ = parser.add_argument("--write", action="store_true", help=f"Regenerate {BASELINE_FILENAME} from live findings.")
-    _ = parser.add_argument("--initial-reason", help="Reason used for new live findings during --write.")
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = IdentityLintCli(
+    prog="cli.py lint wire-artifact-pairing", description=__doc__ or "",
+    baseline_filename=BASELINE_FILENAME, writable=True, positional_root=True,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = parse_identity_lint_argv(
+        argv if argv is not None else sys.argv[1:], cli=CLI,
+        default_root=Path(__file__).resolve().parents[3],
+    )
     if parsed is None:
         return TOOL_FAILURE_EXIT
-    root_text = cast("str | None", parsed.root) or cast("str | None", parsed.positional_root)
-    root = Path(root_text).resolve() if root_text else Path(__file__).resolve().parents[3]
+    root = parsed.root
     python_dir = root / "python"
     if not python_dir.is_dir():
         print(f"lint-wire-artifact-pairing: python directory not found: {python_dir}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
     manifest_path = python_dir / MANIFEST_FILENAME
     baseline_path = python_dir / BASELINE_FILENAME
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-wire-artifact-pairing: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(root, manifest_path=manifest_path, baseline_path=baseline_path, initial_reason=initial_reason)
+    if parsed.write_baseline:
+        return _run_write(root, manifest_path=manifest_path, baseline_path=baseline_path, initial_reason=parsed.initial_reason)
     return _run_check(root, manifest_path=manifest_path, baseline_path=baseline_path)
 
 
