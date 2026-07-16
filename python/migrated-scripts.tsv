@@ -10,6 +10,17 @@
 # Format: path<TAB>retired_by
 # Retired script manifest for the sh-to-py migration.
 # Rules:
+skills/design/scripts/design-step-prelude.sh	#7483
+skills/design/scripts/design-step-prelude.md	#7483
+skills/design/scripts/design-step3-continuation-entry.sh	#7483
+skills/design/scripts/design-step3-continuation-entry.md	#7483
+skills/design/scripts/design-step3-entry-preview.sh	#7483
+skills/design/scripts/design-step3-entry-preview.md	#7483
+skills/design/scripts/design-step3-entry-state.sh	#7483
+skills/design/scripts/design-step3-entry-state.md	#7483
+skills/design/scripts/design-step3-gate-b-bypass.sh	#7483
+skills/design/scripts/design-step3-gate-b-bypass.md	#7483
+skills/design/scripts/test-design-step3-entry-symlink.sh	#7483
 python/ci_cli.py	#3783
 python/gh_cli.py	#3783
 python/git_cli.py	#3783

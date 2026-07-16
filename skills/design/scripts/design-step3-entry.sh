@@ -39,7 +39,7 @@ if [ "$REENTRY" = true ]; then
   rm -f "$DESIGN_TMPDIR/oos-aggregate-pool.md"
 fi
 rm -f "$DESIGN_TMPDIR/.pause-save-complete"
-"$SCRIPT_DIR/design-step3-entry-state.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review step3-entry-state --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"
 [ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
 if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review snapshot-pre-review \
   --design-tmpdir "$DESIGN_TMPDIR"; then
@@ -105,4 +105,4 @@ if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" scope-anchor validate \
   printf '%s\n' "**⚠ Step 3: plan-review-scope-anchor.txt failed validation; aborting before reviewer launch**" >&2
   _step3_entry_panel_init_failed_exit scope-anchor-validation-failure
 fi
-"$SCRIPT_DIR/design-step3-entry-preview.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review step3-entry-preview --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"

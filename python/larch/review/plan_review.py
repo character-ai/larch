@@ -26,6 +26,7 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.core import config
 from larch.report import progress_file
+from larch.design import design_session
 from larch.design.design_terminal import (
     json_get_bool_main as design_json_get_bool_main,
     phase_driver_read_result_env,
@@ -33,6 +34,7 @@ from larch.design.design_terminal import (
 )
 from larch.git.repo_roots import consumer_repo_root
 from larch.review import plan_review_round
+from larch.review import plan_review_loop
 from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
 from larch.review.plan_review_common import (
     POSTPLAN_RC_OPERATOR,
@@ -866,6 +868,96 @@ def step3_entry(argv: Sequence[str]) -> int:
     _write_atomic(path=anchor, content=redact.stdout if redact.stdout.endswith("\n") else redact.stdout + "\n")
     _emit_kv(key="SCOPE_ANCHOR_FILE", value=str(anchor))
     return 0
+
+
+def _load_step3_session(argv: Sequence[str]) -> tuple[design_session.DesignSessionRequest, list[str]]:
+    """Rehydrate a small Step 3 entry request and retain its non-session args."""
+    session_args: list[str] = []
+    remaining: list[str] = []
+    value_flags = {"--session-env-path", "--claude-pid", "--plugin-root"}
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token in value_flags:
+            if index + 1 >= len(argv):
+                remaining.append(token)
+                index += 1
+            else:
+                session_args.extend((token, argv[index + 1]))
+                index += 2
+        else:
+            remaining.append(token)
+            index += 1
+    return design_session.load_design_session_request(session_args), remaining
+
+
+def step3_entry_preview_main(argv: list[str] | None = None) -> int:
+    try:
+        request, remaining = _load_step3_session(argv or [])
+    except design_session.DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    parser = argparse.ArgumentParser(prog="cli.py plan-review step3-entry-preview")
+    _ = parser.parse_args(remaining)
+    design_tmpdir = Path(request.design_tmpdir) if request.design_tmpdir else None
+    if design_tmpdir is not None and (design_tmpdir / ".pause-requested").is_file():
+        return design_session.pause_save_for_request(design_tmpdir=design_tmpdir)
+    allowed, _message = design_session.session_env.validate_design_tmpdir(request.design_tmpdir)
+    if allowed and design_tmpdir is not None and design_tmpdir.is_dir() and (design_tmpdir / ".step3-entry-plan-printed").exists():
+        return 0
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        rc = plan_review_loop.emit_design_plan_preview([
+            "--design-tmpdir", request.design_tmpdir, "--variant", "step3",
+        ])
+    if rc != 0:
+        return rc
+    text = output.getvalue()
+    _ = sys.stdout.write(text)
+    _ = sys.stdout.write("\n")
+    if design_tmpdir is not None and design_tmpdir.is_dir() and "## Plan Candidate for Review" in text:
+        with contextlib.suppress(OSError):
+            (design_tmpdir / ".step3-entry-plan-printed").touch()
+    return 0
+
+
+def step3_entry_state_main(argv: list[str] | None = None) -> int:
+    try:
+        request, remaining = _load_step3_session(argv or [])
+    except design_session.DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    parser = argparse.ArgumentParser(prog="cli.py plan-review step3-entry-state")
+    _ = parser.parse_args(remaining)
+    design_tmpdir = Path(request.design_tmpdir) if request.design_tmpdir else None
+    if design_tmpdir is not None and (design_tmpdir / ".pause-requested").is_file():
+        return design_session.pause_save_for_request(design_tmpdir=design_tmpdir)
+    rc = step3_state_main(["--design-tmpdir", request.design_tmpdir, "--direct-review-entry"])
+    if rc == 0:
+        design_session.mark_design_timing(label="design Step 3 — plan review")
+    return rc
+
+
+def step3_gate_b_bypass_main(argv: list[str] | None = None) -> int:
+    try:
+        request, remaining = _load_step3_session(argv or [])
+    except design_session.DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    parser = argparse.ArgumentParser(prog="cli.py plan-review step3-gate-b-bypass")
+    _ = parser.parse_args(remaining)
+    if design_session.session_env.require_plugin_root() != 0:
+        return 1
+    if not request.design_tmpdir:
+        print("/design Step 3 gate-b-bypass: DESIGN_TMPDIR required", file=sys.stderr)
+        return 1
+    design_tmpdir = Path(request.design_tmpdir)
+    if (design_tmpdir / ".pause-requested").is_file():
+        return design_session.pause_save_for_request(design_tmpdir=design_tmpdir)
+    if (design_tmpdir / ".completed" / "step-3.5").is_file():
+        print("STEP3_STATE=skipped-step-3.5-present")
+        return 0
+    return step3_state_main(["--design-tmpdir", request.design_tmpdir, "--gate-b-bypass"])
 
 
 # ---------------------------------------------------------------------------

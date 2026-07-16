@@ -141,6 +141,21 @@ class WrapperArgs:
 
 
 @dataclass(frozen=True)
+class DesignSessionRequest:
+    """Rehydrated request shared by the small /design entry points."""
+
+    claude_plugin_root: str
+    design_tmpdir: str
+    issue_number: str
+    repo: str
+    claude_pid: str
+
+
+class DesignSessionRequestError(ValueError):
+    """A session-env path cannot safely provide a generated-wrapper request."""
+
+
+@dataclass(frozen=True)
 class PostplanResult:
     postplan_rc: int
     stdout_lines: str
@@ -411,6 +426,29 @@ def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
     return session_env.finalize_wrapper_env(merged)
 
 
+def load_design_session_request(argv: Sequence[str]) -> DesignSessionRequest:
+    """Load the generated-wrapper request shape without sourcing shell code."""
+    parsed = _parse_common_wrapper_args(argv)
+    source = Path(parsed.session_env_path) if parsed.session_env_path else None
+    if source is not None and source.is_symlink():
+        trusted = session_env.resolve_trusted_design_session_env_source(
+            path=source, claude_pid=parsed.claude_pid
+        )
+        if trusted is None:
+            raise DesignSessionRequestError(
+                f"/design wrapper: refusing untrusted session-env symlink: {parsed.session_env_path}"
+            )
+    merged = _rehydrate_wrapper_env(parsed)
+    os.environ.update(merged)
+    return DesignSessionRequest(
+        claude_plugin_root=merged["CLAUDE_PLUGIN_ROOT"],
+        design_tmpdir=merged["DESIGN_TMPDIR"],
+        issue_number=merged["ISSUE_NUMBER"],
+        repo=merged["REPO"],
+        claude_pid=parsed.claude_pid,
+    )
+
+
 def _design_require_plugin_root() -> int:
     rc = session_env.require_plugin_root()
     if rc != 0:
@@ -473,6 +511,11 @@ def _run_pause_save_terminal(*, design_tmpdir: Path, ctx: Ctx | None = None) -> 
     return rc
 
 
+def pause_save_for_request(*, design_tmpdir: Path) -> int:
+    """Run the existing pause owner for a rehydrated small-entry request."""
+    return _call_pause_save(design_tmpdir=design_tmpdir)
+
+
 def _maybe_timing_mark(*, label: str, ctx: Ctx | None = None) -> None:
     plugin_root = ctx.claude_plugin_root if ctx is not None else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root or plugin_root == "${CLAUDE_PLUGIN_ROOT}":
@@ -487,6 +530,11 @@ def _maybe_timing_mark(*, label: str, ctx: Ctx | None = None) -> None:
             stderr=subprocess.DEVNULL,
             check=False,
         )
+
+
+def mark_design_timing(*, label: str) -> None:
+    """Best-effort design timing mark for a rehydrated small-entry request."""
+    _maybe_timing_mark(label=label)
 
 
 def _capture_stdout(*, callable_obj: Callable[..., int], argv: Sequence[str]) -> tuple[int, str]:
@@ -516,3 +564,48 @@ def _capture_stdout_stderr(*, callable_obj: Callable[..., int], argv: Sequence[s
 def _print_text(text: str) -> None:
     if text:
         print(text, end="" if text.endswith("\n") else "\n")
+
+
+def prelude_main(argv: Sequence[str]) -> int:
+    try:
+        request = load_design_session_request(argv)
+    except DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if not request.design_tmpdir:
+        return 0
+    pause_requested = Path(request.design_tmpdir) / ".pause-requested"
+    if not pause_requested.is_file():
+        return 0
+    return _call_pause_save(design_tmpdir=Path(request.design_tmpdir))
+
+
+def step3_continuation_entry_main(argv: Sequence[str]) -> int:
+    try:
+        request = load_design_session_request(argv)
+    except DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if _design_require_plugin_root() != 0:
+        return 1
+    if not request.design_tmpdir:
+        print("/design Step 3 continuation-entry: DESIGN_TMPDIR required", file=sys.stderr)
+        return 1
+    ok, _message = session_env.validate_design_tmpdir(request.design_tmpdir)
+    if not ok:
+        return 2
+    design_tmpdir = Path(request.design_tmpdir).resolve()
+    with contextlib.suppress(FileNotFoundError):
+        (design_tmpdir / ".step3-entry-plan-printed").unlink()
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _call_pause_save(design_tmpdir=design_tmpdir)
+    # Local import prevents the design/review package edge from becoming a
+    # module-level cycle while retaining the existing plan-review state owner.
+    from larch.review import plan_review  # noqa: PLC0415 - avoids a design/review module cycle
+
+    rc = plan_review.step3_state_main([
+        "--design-tmpdir", str(design_tmpdir), "--auto-continuation-entry",
+    ])
+    if rc == 0:
+        _maybe_timing_mark(label="design Step 3 — auto-continuation entry")
+    return rc

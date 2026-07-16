@@ -264,17 +264,10 @@ exclude = [
   # and larch bumps agent-lint. Detection is intentionally degraded for
   # these paths; make lint-retired-scripts remains a partial backstop.
   # Remove this block after that agent-lint upgrade restores real reachability.
-  "skills/design/scripts/design-step-prelude.sh",
-  "skills/design/scripts/design-step-prelude.md",
   "skills/design/scripts/design-clarify.sh",
   "skills/design/scripts/design-clarify.md",
   "skills/design/scripts/test-design-clarify.sh",
   "skills/design/scripts/test-design-clarify.md",
-  "skills/design/scripts/design-step3-continuation-entry.md",
-  "skills/design/scripts/design-step3-entry-preview.sh",
-  "skills/design/scripts/design-step3-entry-preview.md",
-  "skills/design/scripts/design-step3-entry-state.sh",
-  "skills/design/scripts/design-step3-entry-state.md",
   "skills/design/scripts/design-step3-entry.sh",
   "skills/design/scripts/design-step3-entry.md",
   "skills/design/scripts/test-design-step3-entry.sh",
@@ -289,7 +282,6 @@ exclude = [
   "skills/design/scripts/test-design-step3-mav.md",
   "skills/design/scripts/test-step3-review-cap.sh",
   "skills/design/scripts/test-step3-review-cap.md",
-  "skills/design/scripts/design-step3-gate-b-bypass.md",
   "skills/design/scripts/design-step35.sh",
   "skills/design/scripts/design-step35.md",
   "skills/design/scripts/design-step35-settle.sh",

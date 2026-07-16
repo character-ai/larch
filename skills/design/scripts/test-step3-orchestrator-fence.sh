@@ -9,7 +9,7 @@ apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
     local _repo_root="$REPO_ROOT"
     CLAUDE_PLUGIN_ROOT="$_repo_root" SESSION_ENV_PATH="" CLAUDE_PID="test" DESIGN_TMPDIR="$design_tmpdir" ISSUE_NUMBER=1 \
-      "$_repo_root/skills/design/scripts/design-step3-gate-b-bypass.sh" \
+      python3 "$_repo_root/python/cli.py" plan-review step3-gate-b-bypass \
       --plugin-root "$_repo_root" \
       --session-env-path /dev/null >/dev/null
 }
