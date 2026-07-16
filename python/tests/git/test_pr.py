@@ -740,7 +740,7 @@ def _mutating_calls(runner: RecordingRunner) -> list[list[str]]:
         call
         for call in runner.calls
         if call[:3]
-        in (["git", "push", "-u"], ["gh", "pr", "create"], ["gh", "pr", "edit"])  # lint-gh-argv-literal: ok fixture assertion
+        in (["git", "push", "-u"], ["gh", "pr", "create"], ["gh", "pr", "edit"])  # lint-gh-argv-literal: ok fixture assertion # lint-git-push-refspec: ok fixture prefix assertion
     ]
 
 

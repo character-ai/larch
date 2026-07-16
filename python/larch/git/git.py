@@ -795,9 +795,10 @@ def force_push_with_lease_expecting(
     cwd: str | None = None,
 ) -> CommandResult:
     lease = f"{refspec}:{expected_oid}"
+    push_refspec = f"{refspec}:{refspec}"
     return _run(
         runner,
-        ["git", "push", f"--force-with-lease={lease}", remote],
+        ["git", "push", f"--force-with-lease={lease}", remote, push_refspec],
         cwd=cwd,
     )
 
@@ -1015,7 +1016,7 @@ def force_push_recovery(
             lease = f"refs/heads/{resolved_branch}:{expected_remote_oid}"
             return _run(
                 runner,
-                ["git", "push", f"--force-with-lease={lease}", remote],
+                ["git", "push", f"--force-with-lease={lease}", remote, refspec],
                 cwd=cwd,
             )
         return force_push_with_lease(runner, remote, refspec, cwd=cwd)

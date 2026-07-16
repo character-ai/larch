@@ -550,7 +550,10 @@ def _rebase_push_force_with_lease(
         if not git.try_current_branch(runner, cwd=cwd):
             return False, f"Not on a branch (detached HEAD) before push attempt {push_attempt}"
         def attempt_push() -> tuple[CommandResult, int, str]:
-            result = runner.run(["git", "push", lease_arg], cwd=cwd)
+            result = runner.run(
+                ["git", "push", lease_arg, push_remote, f"HEAD:refs/heads/{branch}"],
+                cwd=cwd,
+            )
             return result, result.returncode, result.stdout + result.stderr
 
         push_result = retry.with_transient_retry(attempt_push).value

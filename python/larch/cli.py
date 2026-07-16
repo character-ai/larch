@@ -588,6 +588,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "keyword-only"): ("larch.lint.lint_keyword_only", "main", False),
     ("lint", "subprocess-via-runner"): ("larch.lint.lint_subprocess_via_runner", "main", False),
     ("lint", "gh-argv-literal"): ("larch.lint.lint_gh_argv_literal", "main", False),
+    ("lint", "git-push-refspec"): ("larch.lint.lint_git_push_refspec", "main", False),
     ("lint", "wire-artifact-pairing"): ("larch.lint.lint_wire_artifact_pairing", "main", False),
     ("lint", "tempfile-dir"): ("larch.lint.lint_tempfile_dir", "main", False),
     ("lint", "tmpdir-arg-env-fallback"): ("larch.lint.lint_tmpdir_arg_env_fallback", "main", False),
