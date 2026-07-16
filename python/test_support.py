@@ -87,9 +87,10 @@ def _empty_records() -> list[RunCall]:
     return []
 
 
-def capture_start(captured: list[T]) -> Callable[[T], int]:
+def capture_start(captured: list[T]) -> Callable[..., int]:
     """Return a successful starter fake that records its specification."""
-    def fake_start(spec: T) -> int:
+    def fake_start(spec: T, *, options: object | None = None) -> int:
+        del options
         captured.append(spec)
         return 0
 

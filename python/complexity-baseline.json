@@ -394,24 +394,8 @@
   {
     "file": "larch/agents/_launch_failure.py",
     "code": "C901",
-    "qualified_symbol": "classify_launch_failure",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/agents/_launch_failure.py",
-    "code": "C901",
     "qualified_symbol": "resolve_model_args",
     "metric": 19,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/agents/_launch_failure.py",
-    "code": "PLR0911",
-    "qualified_symbol": "classify_launch_failure",
-    "metric": 10,
     "added_at": "legacy",
     "history": []
   },
@@ -1523,7 +1507,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "C901",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 16,
+    "metric": 15,
     "added_at": "legacy",
     "history": []
   },
@@ -1563,7 +1547,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0912",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 17,
+    "metric": 16,
     "added_at": "legacy",
     "history": []
   },
@@ -1579,7 +1563,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0915",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 64,
+    "metric": 60,
     "added_at": "legacy",
     "history": []
   },
@@ -1755,7 +1739,7 @@
     "file": "larch/design/design_postplan.py",
     "code": "C901",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 33,
+    "metric": 31,
     "added_at": "legacy",
     "history": []
   },
@@ -1771,7 +1755,7 @@
     "file": "larch/design/design_postplan.py",
     "code": "PLR0912",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 29,
+    "metric": 27,
     "added_at": "legacy",
     "history": []
   },
@@ -1779,7 +1763,7 @@
     "file": "larch/design/design_postplan.py",
     "code": "PLR0915",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 119,
+    "metric": 117,
     "added_at": "legacy",
     "history": []
   },
@@ -1972,14 +1956,6 @@
     "code": "C901",
     "qualified_symbol": "_decode_ansi_c_quoted",
     "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/design/design_step0_env.py",
-    "code": "C901",
-    "qualified_symbol": "_load_source_env",
-    "metric": 11,
     "added_at": "legacy",
     "history": []
   },
@@ -2403,7 +2379,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "C901",
     "qualified_symbol": "auto_fix_plan_commands_main",
-    "metric": 28,
+    "metric": 26,
     "added_at": "legacy",
     "history": []
   },
@@ -2411,7 +2387,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "C901",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 23,
+    "metric": 21,
     "added_at": "legacy",
     "history": []
   },
@@ -2499,7 +2475,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0912",
     "qualified_symbol": "auto_fix_plan_commands_main",
-    "metric": 29,
+    "metric": 27,
     "added_at": "legacy",
     "history": []
   },
@@ -2507,7 +2483,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0912",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 25,
+    "metric": 23,
     "added_at": "legacy",
     "history": []
   },
@@ -2547,7 +2523,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "auto_fix_plan_commands_main",
-    "metric": 155,
+    "metric": 153,
     "added_at": "legacy",
     "history": []
   },
@@ -2555,7 +2531,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 118,
+    "metric": 115,
     "added_at": "legacy",
     "history": []
   },
@@ -3680,18 +3656,10 @@
     "history": []
   },
   {
-    "file": "larch/implement/ship_seed.py",
-    "code": "C901",
-    "qualified_symbol": "_write_initial_ship_state",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/implement/ship_state.py",
     "code": "C901",
     "qualified_symbol": "_write_ship_state",
-    "metric": 28,
+    "metric": 25,
     "added_at": "legacy",
     "history": []
   },
@@ -3699,7 +3667,7 @@
     "file": "larch/implement/ship_state.py",
     "code": "PLR0912",
     "qualified_symbol": "_write_ship_state",
-    "metric": 29,
+    "metric": 25,
     "added_at": "legacy",
     "history": []
   },
@@ -3715,7 +3683,7 @@
     "file": "larch/implement/ship_state.py",
     "code": "PLR0915",
     "qualified_symbol": "_write_ship_state",
-    "metric": 69,
+    "metric": 52,
     "added_at": "legacy",
     "history": []
   },
@@ -8527,7 +8495,7 @@
     "file": "larch/state/session_env.py",
     "code": "C901",
     "qualified_symbol": "read_keys_main",
-    "metric": 17,
+    "metric": 14,
     "added_at": "legacy",
     "history": []
   },
@@ -8632,16 +8600,8 @@
   {
     "file": "larch/state/session_env.py",
     "code": "PLR0912",
-    "qualified_symbol": "local_cleanup_main",
-    "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/state/session_env.py",
-    "code": "PLR0912",
     "qualified_symbol": "read_keys_main",
-    "metric": 17,
+    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -8683,7 +8643,7 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
     "qualified_symbol": "local_cleanup_main",
-    "metric": 54,
+    "metric": 52,
     "added_at": "legacy",
     "history": []
   },
@@ -8789,7 +8749,7 @@
     "file": "tests/skills/_structure_design_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 69,
+    "metric": 61,
     "added_at": "legacy",
     "history": []
   },
@@ -8797,7 +8757,7 @@
     "file": "tests/skills/_structure_design_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 57,
+    "metric": 50,
     "added_at": "legacy",
     "history": []
   },
@@ -8805,7 +8765,7 @@
     "file": "tests/skills/_structure_design_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 160,
+    "metric": 136,
     "added_at": "legacy",
     "history": []
   },
@@ -8813,17 +8773,37 @@
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 129,
+    "metric": 130,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-07-16",
+        "metric": 130
+      }
+    ],
+    "reason": "Structure pins for thin implement wrappers add require/forbid branches in run()",
+    "operator_override": {
+      "reason": "Issue #7540 ports remaining implement step scripts to thin Python wrappers; structure pins must follow into dispatch_* modules and bump C901 once inside the 14-day window after the PLR0915 pin growth.",
+      "issue": 7540
+    }
   },
   {
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 126,
+    "metric": 127,
     "added_at": "legacy",
-    "history": []
+    "history": [
+      {
+        "date": "2026-07-16",
+        "metric": 127
+      }
+    ],
+    "reason": "Structure pins for thin implement wrappers add require/forbid branches in run()",
+    "operator_override": {
+      "reason": "Issue #7540 ports remaining implement step scripts to thin Python wrappers; structure pins must follow into dispatch_* modules and bump PLR0912 once inside the 14-day window after the same-day C901 growth.",
+      "issue": 7540
+    }
   },
   {
     "file": "tests/skills/_structure_implement_specialized.py",

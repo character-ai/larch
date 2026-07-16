@@ -823,7 +823,7 @@ def test_step18_gate_clear(tmp_path: Path) -> None:
     assert "STALL_TRACKING_FINALIZE=false" in text, "gate clear finalize KV"
     assert "STALL_TRACKING_SESSION=false" in text, "gate clear session KV"
     assert "STALL_RECOVERY_REQUIRED=false" in text, "gate clear recovery KV"
-    assert "⏩ 18a: stall recovery — no stall detected" in text, "gate clear breadcrumb"
+    assert "⏩ 18a: stall recovery; no stall detected" in text, "gate clear breadcrumb"
     assert not log.exists(), "gate clear should not invoke finalize stubs"
 
 

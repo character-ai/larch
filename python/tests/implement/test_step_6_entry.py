@@ -15,7 +15,8 @@ if TYPE_CHECKING:
     from larch.bgjob import model
 
 
-def _start_ok(_spec: model.JobSpec) -> int:
+def _start_ok(_spec: model.JobSpec, *, options: object | None = None) -> int:
+    del options
     return 0
 
 

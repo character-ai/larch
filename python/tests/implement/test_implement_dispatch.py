@@ -194,7 +194,8 @@ def test_bgjob_contract_unification_step5_review_uses_custom_merge_spec(
     monkeypatch.setattr(dispatch_commit_route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
     captured: list[bgjob_model.JobSpec] = []
 
-    def fake_start(spec: bgjob_model.JobSpec) -> int:
+    def fake_start(spec: bgjob_model.JobSpec, *, options: object | None = None) -> int:
+        del options
         captured.append(spec)
         return 0
 
@@ -2413,7 +2414,7 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
     captured = capsys.readouterr()
     assert "STALL_TRACKING_MEMORY=false\n" in captured.out
     assert "STALL_RECOVERY_REQUIRED=false\n" in captured.out
-    assert "⏩ 18a: stall recovery — no stall detected\n" in captured.out
+    assert "⏩ 18a: stall recovery; no stall detected\n" in captured.out
     assert "IMPLEMENT_OUTCOME_SUCCEEDED=false\n" in captured.out
     assert "---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n" in captured.out
     assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
