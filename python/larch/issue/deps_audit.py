@@ -16,6 +16,12 @@ from larch.issue import blocker
 from larch.issue import combine_issues
 from larch.git import gh
 from larch.issue import issue_wire
+from larch.issue.open_rows import (
+    emit_json as _emit_json,
+    load_json_file as _load_json_file,
+    open_issue_rows_read,
+    positive_int_value as _positive_int_value,
+)
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
@@ -29,31 +35,6 @@ _MANAGED_PREFIXES = {
 }
 _REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _LARCH_CONTROL_RE = re.compile(r"<!--\s*larch:", re.IGNORECASE)
-
-
-def _emit_json(payload: dict[str, Any]) -> int:
-    json.dump(payload, sys.stdout, sort_keys=True)
-    sys.stdout.write("\n")
-    return 0
-
-
-def _load_json_file(path: str, *, desc: str) -> Any:
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValueError(f"{desc}: file not found: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{desc}: invalid JSON: {exc}") from exc
-
-
-def _positive_int_value(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int) and value > 0:
-        return value
-    if isinstance(value, str) and value.isdigit() and int(value) > 0:
-        return int(value)
-    return None
 
 
 def _non_negative_int_value(value: Any) -> int | None:
@@ -253,33 +234,13 @@ def _read_existing_edges(*, repo: str, issue: int) -> tuple[set[tuple[int, int]]
 
 def _fetch_open_issue_rows(repo: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
     try:
-        rows = gh.issue_list_read(
-            proc,
-            repo=repo,
-            state="open",
-            fields=("number", "title", "state", "labels", "body"),
-            limit=100000,
-        )
+        rows = open_issue_rows_read(proc, repo=repo)
     except ShipError as exc:
         reason = str(exc)
         if "JSON parse failed" in reason:
             return [], [_warning(f"open issue JSON invalid: {exc}", code="json_invalid")], 1
         return [], [_warning(f"open issue fetch failed: {reason}", code="gh_api_failed")], 1
-    issues: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        number = _positive_int_value(row.get("number"))
-        if number is None or str(row.get("state") or "").casefold() != "open":
-            continue
-        issues.append({
-            "number": number,
-            "title": str(row.get("title") or ""),
-            "state": "open",
-            "labels": row.get("labels", []),
-            "body": str(row.get("body") or ""),
-        })
-    return sorted(issues, key=lambda item: int(item["number"])), [], 0
+    return [row.as_dict() for row in rows], [], 0
 
 
 def _fetch_snapshot(repo: str, *, include_comments: bool, output_dir: Path | None = None) -> tuple[dict[str, Any], int]:

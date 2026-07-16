@@ -16,6 +16,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch.issue import blocker
+from larch.issue.open_rows import (
+    emit_json as _emit_json,
+    load_json_file as _load_json_file,
+    open_issue_rows_read,
+    positive_int_value as _positive_int_value,
+)
 from larch.git import gh
 from larch.core import config
 from larch.core import proc
@@ -42,34 +48,9 @@ def _resolve_repo(explicit: str = "") -> str | None:
     return gh.resolve_repo(proc)
 
 
-def _emit_json(payload: dict[str, Any]) -> int:
-    json.dump(payload, sys.stdout, sort_keys=True)
-    sys.stdout.write("\n")
-    return 0
-
-
-def _load_json_file(path: str, *, desc: str) -> Any:
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValueError(f"{desc}: file not found: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{desc}: invalid JSON: {exc}") from exc
-
-
 def _fail_json_error(message: str) -> int:
     print(f"ERROR={message}", file=sys.stderr)
     return 1
-
-
-def _positive_int_value(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int) and value > 0:
-        return value
-    if isinstance(value, str) and value.isdigit() and int(value) > 0:
-        return int(value)
-    return None
 
 
 def _parse_issue_csv(raw: str, *, arg_name: str = "--issues") -> list[int]:
@@ -682,36 +663,15 @@ def list_open_main(argv: list[str] | None = None) -> int:
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
-    warnings: list[dict[str, str]] = []
     try:
-        rows = gh.issue_list_read(
-            proc,
-            repo=repo,
-            state="open",
-            fields=("number", "title", "state", "labels", "body"),
-            limit=100000,
-        )
+        rows = open_issue_rows_read(proc, repo=repo)
     except ShipError as exc:
         reason = str(exc)
         code = "json_invalid" if "JSON parse failed" in reason else "gh_api_failed"
         message = str(exc) if code == "json_invalid" else "failed to list open issues"
         _emit_json({"status": "failed", "issues": [], "warnings": [{"code": code, "message": message}]})
         return 1
-    issues: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        number = _positive_int_value(row.get("number"))
-        if number is None or str(row.get("state") or "").casefold() != "open":
-            continue
-        issues.append({
-            "number": number,
-            "title": str(row.get("title") or ""),
-            "state": "open",
-            "labels": row.get("labels", []),
-            "body": str(row.get("body") or ""),
-        })
-    return _emit_json({"status": "ok", "issues": sorted(issues, key=lambda item: item["number"]), "warnings": warnings})
+    return _emit_json({"status": "ok", "issues": [row.as_dict() for row in rows], "warnings": []})
 
 
 def _parse_issue_number(text: str) -> str:
