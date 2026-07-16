@@ -1940,6 +1940,20 @@ def test_local_cleanup_flush_orphan_non_flush_and_squash_gap(tmp_path: Path) -> 
     assert _git(["rev-parse", "HEAD"], cwd=squash_repo).stdout.strip() == expected
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git required for local-cleanup integration tests")
+def test_local_cleanup_reports_branch_delete_failure(tmp_path: Path) -> None:
+    repo = _setup_remote_repo(tmp_path, "branch-delete-failure")
+    worktree = tmp_path / "feature-worktree"
+    _git(["worktree", "add", "-q", str(worktree), "feature"], cwd=repo)
+
+    result = _run_local_cleanup(repo)
+
+    assert "CLEANUP_SUCCESS=false" in result.stdout
+    assert "BRANCH_DELETED=false" in result.stdout
+    assert "Failed to delete local branch feature" in result.stderr
+    assert _git(["branch", "--show-current"], cwd=worktree).stdout.strip() == "feature"
+
+
 def test_write_and_clear_implement_env_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))

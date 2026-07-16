@@ -336,9 +336,14 @@ def _local_cleanup(
         return LocalCleanupResult(cleanup_success=False, current_branch=current, branch_deleted=False)
     branch_check = runner.run(["git", "check-ref-format", "--branch", branch], cwd=cwd)
     if branch_check.returncode != 0:
+        return LocalCleanupResult(cleanup_success=False, current_branch=current, branch_deleted=False)
+    branch_ref = runner.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=cwd)
+    if branch_ref.returncode == 1:
         return LocalCleanupResult(cleanup_success=True, current_branch=current, branch_deleted=False)
+    if branch_ref.returncode != 0:
+        return LocalCleanupResult(cleanup_success=False, current_branch=current, branch_deleted=False)
     deleted = runner.run(["git", "branch", "-D", "--", branch], cwd=cwd).returncode == 0
-    return LocalCleanupResult(cleanup_success=True, current_branch=current, branch_deleted=deleted)
+    return LocalCleanupResult(cleanup_success=deleted, current_branch=current, branch_deleted=deleted)
 
 
 def postbump(
@@ -497,6 +502,14 @@ def postmerge(
 
     cleanup = _local_cleanup(runner=runner, branch=branch, cwd=cwd)
     cleanup_status = "success" if cleanup.cleanup_success else "partial"
+    if not cleanup.cleanup_success:
+        return FinalizeResult(
+            Outcome.STALLED,
+            "local-cleanup-failed",
+            f"failed to delete local branch {branch}",
+            local_cleanup_status=cleanup_status,
+            branch_deleted=cleanup.branch_deleted,
+        )
 
     expected_title = ctx.pr_title or ""
     actual = git.log_subject(runner, "HEAD", cwd=cwd)
