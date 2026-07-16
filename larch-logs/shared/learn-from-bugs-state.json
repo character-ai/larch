@@ -1,5 +1,5 @@
 {
-  "highest_closed_issue_number_scanned": 7415,
+  "highest_closed_issue_number_scanned": 7557,
   "proposals": [
     {
       "filed_issue": 7145,
@@ -144,13 +144,29 @@
       "status": "pending",
       "target": "fix:lifecycle-prefix-mutation-consolidation",
       "type": "fix"
+    },
+    {
+      "filed_issue": null,
+      "id": "harness-session-env-neutralization-lint",
+      "run_date": "2026-07-16T18:22:28Z",
+      "status": "proposed",
+      "target": "module:python/larch/lint/lint_harness_session_env.py",
+      "type": "lint"
+    },
+    {
+      "filed_issue": null,
+      "id": "automated-pr-merge-backstop-guideline",
+      "run_date": "2026-07-16T18:22:28Z",
+      "status": "proposed",
+      "target": "ARCHITECTURAL_GUIDELINES.md#G-Gate-2",
+      "type": "guideline"
     }
   ],
   "repo": "character-ai/larch",
-  "run_date": "2026-07-16T08:04:27Z",
-  "scan_started_at": "2026-07-16T07:58:55Z",
+  "run_date": "2026-07-16T18:22:28Z",
+  "scan_started_at": "2026-07-16T18:08:53Z",
   "schema_version": 2,
   "search": "[BUG] in:title",
-  "selected_count": 9,
+  "selected_count": 260,
   "state": "closed"
 }
