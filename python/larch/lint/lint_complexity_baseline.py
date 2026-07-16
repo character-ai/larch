@@ -260,17 +260,23 @@ def _load_ruff_items(result: RuffResult) -> list[object]:
     return cast("list[object]", data)
 
 
-def _parse_live_records(*, items: Sequence[object], python_dir: Path) -> tuple[list[ComplexityLiveRow], list[str]]:
+def _parse_live_records(  # noqa: C901 - parses untrusted Ruff JSON at one boundary.
+    *, items: Sequence[object], python_dir: Path
+) -> tuple[list[ComplexityLiveRow], list[str]]:
     rows: list[ComplexityLiveRow] = []
     failures: list[str] = []
     source_cache: dict[str, str] = {}
     span_cache: dict[str, list[SymbolSpan]] = {}
     for item in items:
-        if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
+        if not isinstance(item, dict):
             failures.append("<unknown>: malformed ruff JSON item")
             continue
-        mapping = cast("Mapping[str, object]", item)
-        filename = normalize_file_path(cast("str", mapping["filename"]))
+        mapping = cast("dict[str, object]", item)
+        raw_filename = mapping.get("filename")
+        if not isinstance(raw_filename, str):
+            failures.append("<unknown>: malformed ruff JSON item")
+            continue
+        filename = normalize_file_path(raw_filename)
         if is_exempt_path(filename):
             continue
         source = source_cache.get(filename)

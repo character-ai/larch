@@ -1261,10 +1261,12 @@ def _complexity_history(value: object, *, source: str, index: int, today: date) 
         raise ScanError(f"{source}: record {index} has invalid history")
     entries: list[ComplexityHistoryEntry] = []
     previous: date | None = None
-    for item in value:
-        if not isinstance(item, dict) or frozenset(item) != _COMPLEXITY_HISTORY_FIELDS:
+    for raw_item in cast("list[object]", value):
+        if not isinstance(raw_item, dict):
             raise ScanError(f"{source}: record {index} has malformed history entry")
-        entry = cast("Mapping[str, object]", item)
+        entry = cast("dict[str, object]", raw_item)
+        if frozenset(entry) != _COMPLEXITY_HISTORY_FIELDS:
+            raise ScanError(f"{source}: record {index} has malformed history entry")
         event_date = _complexity_date(entry["date"], source=source, index=index, field="history date", today=today)
         parsed_date = date.fromisoformat(event_date)
         if previous is not None and parsed_date < previous:
@@ -1275,9 +1277,11 @@ def _complexity_history(value: object, *, source: str, index: int, today: date) 
 
 
 def _complexity_override(value: object, *, source: str, index: int) -> ComplexityOperatorOverride:
-    if not isinstance(value, dict) or frozenset(value) != _COMPLEXITY_OVERRIDE_FIELDS:
+    if not isinstance(value, dict):
         raise ScanError(f"{source}: record {index} has invalid operator_override")
-    override = cast("Mapping[str, object]", value)
+    override = cast("dict[str, object]", value)
+    if frozenset(override) != _COMPLEXITY_OVERRIDE_FIELDS:
+        raise ScanError(f"{source}: record {index} has invalid operator_override")
     if not _nonempty_single_line(override["reason"]):
         raise ScanError(f"{source}: record {index} has invalid operator_override reason")
     issue = override["issue"]
@@ -1323,7 +1327,7 @@ def _parse_complexity_row(  # noqa: C901 - exact legacy schema validation is int
     return ComplexityBaselineRow(
         cast("str", file_name), cast("ComplexityCode", code), cast("str", symbol),
         _complexity_metric(record["metric"], source=source, index=index),
-        added_at, history, cast("int | None", source_issue), cast("str | None", reason), override,
+        added_at, history, source_issue, cast("str | None", reason), override,
     )
 
 
@@ -1338,7 +1342,12 @@ def parse_complexity_baseline(
     if not isinstance(decoded, list):
         raise ScanError(f"{source}: baseline must be a top-level JSON array")
     checked_today = today or datetime.now(UTC).date()
-    rows = [_parse_complexity_row(row, source=source, index=index, strict=strict, today=checked_today) for index, row in enumerate(decoded)]
+    rows = [
+        _parse_complexity_row(
+            row, source=source, index=index, strict=strict, today=checked_today
+        )
+        for index, row in enumerate(cast("list[object]", decoded))
+    ]
     duplicates = complexity_duplicate_identities(rows)
     if duplicates:
         raise ScanError("duplicate baseline complexity identities:\n" + "\n".join(duplicates))
@@ -1437,7 +1446,7 @@ def migrate_complexity_baseline(
     rows = parse_complexity_baseline(text, source=str(destination), strict=False, today=today)
     migrated_count = sum(
         isinstance(raw, dict) and ("added_at" not in raw or "history" not in raw)
-        for raw in decoded
+        for raw in cast("list[object]", decoded)
     )
     before = {row.identity: row.metric for row in rows}
     migrated = [

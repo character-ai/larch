@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
-from typing import cast
-
 import pytest
 
 from larch import cli
@@ -507,6 +505,9 @@ def test_engine_rejects_symlinked_complexity_baseline(tmp_path: Path) -> None:
 def test_engine_write_fails_closed_when_read_back_bytes_differ(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    def mismatched_read(*_args: object, **_kwargs: object) -> str:
+        return "[]\n"
+
     python_dir = tmp_path / "python"
     python_dir.mkdir()
     baseline_path = python_dir / "complexity-baseline.json"
@@ -516,7 +517,7 @@ def test_engine_write_fails_closed_when_read_back_bytes_differ(
     monkeypatch.setattr(
         engine.larch_io,
         "read_trusted_text",
-        lambda *_args, **_kwargs: "[]\n",
+        mismatched_read,
     )
     with pytest.raises(engine.ScanError, match="read-back bytes differ"):
         _ = engine.write_complexity_baseline(
@@ -1006,7 +1007,7 @@ def test_dated_seed_is_not_a_bump_and_equal_dates_are_deterministic() -> None:
             history=[{"date": "2026-07-10", "metric": 11}],
         ),
     ]
-    validated: list[Record] = [cast("Record", record) for record in records]
+    validated: list[Record] = records
     failures = lcb.repeat_bump_failures(validated)
     assert len(failures) == 1
     assert "[PLR0911] metric 9; 2026-07-10 [PLR0912] metric 11" in failures[0]
