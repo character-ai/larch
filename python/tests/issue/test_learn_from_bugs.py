@@ -2040,27 +2040,30 @@ def _publish_ok_responses() -> list[CommandResult]:
         _result("true\n"),                                # 1  rev-parse --is-inside-work-tree
         _result(),                                        # 2  remote get-url origin
         _result(),                                        # 3  verify-origin
-        _result("main\n"),                                # 4  gh repo view defaultBranchRef
-        _result(),                                        # 5  check-ref-format refs/heads/main
-        _result(),                                        # 6  git.fetch
-        _result(),                                        # 7  rev-parse --verify default ref
-        _result(),                                        # 8  check-ref-format --branch
-        _result(rc=1),                                    # 9  git.local_branch_exists (absent)
-        _result(rc=2),                                    # 10 git.remote_branch_state (absent)
-        _result(),                                        # 11 worktree add
-        _result(),                                        # 12 switch -c
-        _result(f"STATE_RELPATH={_STATE_MARKER_REL}\n"),  # 13 write-state
-        _result(),                                        # 14 git.add
-        _result(),                                        # 15 git.commit
-        _result(f"{_STATE_MARKER_REL}\n"),                # 16 git.diff_tree_name_only (marker only)
-        _result(_STATE_PR_STDOUT),                        # 17 pr create
-        _result("OPEN\n"),                                # 18 pr view state
-        _result(),                                        # 19 pr merge
-        _result("MERGED\n"),                              # 20 pr view state
-        _result("2026-07-14T00:00:00Z\n"),                # 21 pr view mergedAt
-        _result(),                                        # 22 worktree remove
-        _result(),                                        # 23 git.local_branch_exists cleanup (present)
-        _result(),                                        # 24 branch -D
+        _result(),                                        # 4  clean status
+        _result("main\n"),                                # 5  gh repo view defaultBranchRef
+        _result(),                                        # 6  check-ref-format refs/heads/main
+        _result(),                                        # 7  git.fetch
+        _result(),                                        # 8  rev-parse --verify default ref
+        _result("main\n"),                                # 9  current branch
+        _result("a" * 40 + "\n"),                         # 10 HEAD
+        _result("a" * 40 + "\n"),                         # 11 origin/main
+        _result(),                                        # 12 check-ref-format --branch
+        _result(rc=1),                                    # 13 local branch absent
+        _result(rc=2),                                    # 14 remote branch absent
+        _result(),                                        # 15 switch -c
+        _result(f"STATE_RELPATH={_STATE_MARKER_REL}\n"),  # 16 write-state
+        _result(),                                        # 17 git.add
+        _result(),                                        # 18 git.commit
+        _result(f"{_STATE_MARKER_REL}\n"),                # 19 git.diff_tree_name_only
+        _result(),                                        # 20 push
+        _result(_STATE_PR_STDOUT),                        # 21 pr create
+        _result("OPEN\n"),                                # 22 pr view state
+        _result(),                                        # 23 pr merge
+        _result("MERGED\n"),                              # 24 pr view state
+        _result("2026-07-14T00:00:00Z\n"),                # 25 pr view mergedAt
+        _result(),                                        # 26 switch main
+        _result(),                                        # 27 pull --ff-only
     ]
 
 
@@ -2070,13 +2073,10 @@ def _run_publish(
     tmp_path: Path,
     responses: list[CommandResult],
     *,
-    precreate_worktree: bool = False,
     runner: RecordingRunner | None = None,
 ) -> tuple[int, dict[str, str]]:
     run_dir = tmp_path / "run"
     run_dir.mkdir(exist_ok=True)
-    if precreate_worktree:
-        (run_dir / learn_from_bugs.STATE_PUBLISH_WORKTREE_NAME).mkdir()
     # The typed git.add/git.commit seam runs _assert_branch_write_allowed, which
     # probes the current branch only when a ship/implement handoff state file is
     # present. Clear those vars so the offline call sequence stays hermetic.
@@ -2125,7 +2125,7 @@ def test_state_publish_fresh_success_requests_admin_squash(
 
     assert rc == 0
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
-    assert runner.calls[18] == [  # lint-gh-argv-literal: ok exact regression assertion
+    assert runner.calls[22] == [  # lint-gh-argv-literal: ok exact regression assertion
         "gh", "pr", "merge", "7", "--repo", "o/r", "--squash", "--admin",
     ]
 
@@ -2133,7 +2133,7 @@ def test_state_publish_fresh_success_requests_admin_squash(
 def test_state_publish_invalid_branch_name(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = [*_publish_ok_responses()[:7], _result(rc=1)]
+    responses = [*_publish_ok_responses()[:11], _result(rc=1)]
     rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
     assert rc == 2
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_INVALID_BRANCH
@@ -2143,7 +2143,7 @@ def test_state_publish_invalid_branch_name(
 def test_state_publish_refuses_existing_local_branch(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = [*_publish_ok_responses()[:8], _result()]
+    responses = [*_publish_ok_responses()[:12], _result()]
     rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
     assert rc == 2
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_EXISTING_LOCAL_BRANCH
@@ -2152,7 +2152,7 @@ def test_state_publish_refuses_existing_local_branch(
 def test_state_publish_refuses_existing_remote_branch(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = [*_publish_ok_responses()[:9], _result()]
+    responses = [*_publish_ok_responses()[:13], _result()]
     rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
     assert rc == 2
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_EXISTING_REMOTE_BRANCH
@@ -2161,25 +2161,25 @@ def test_state_publish_refuses_existing_remote_branch(
 def test_state_publish_remote_check_failure(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = [*_publish_ok_responses()[:9], _result(rc=128)]
+    responses = [*_publish_ok_responses()[:13], _result(rc=128)]
     rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
     assert rc == 2
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_REMOTE_CHECK_FAILED
 
 
-def test_state_publish_worktree_path_collision(
+def test_state_publish_uses_current_checkout_not_worktree(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = _publish_ok_responses()[:10]
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses, precreate_worktree=True)
-    assert rc == 2
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_WORKTREE_COLLISION
+    runner = RecordingRunner.strict_queue(*_publish_ok_responses())
+    rc, _out = _run_publish(monkeypatch, capsys, tmp_path, _publish_ok_responses(), runner=runner)
+    assert rc == 0
+    assert all("worktree" not in " ".join(call) for call in runner.calls)
 
 
 def test_state_publish_pr_create_failure_reports_recovery_branch(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = [*_publish_ok_responses()[:16], _result(rc=1), _result()]
+    responses = [*_publish_ok_responses()[:20], _result(rc=1)]
     rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
     assert rc == 2
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_PR_CREATE_FAILED
@@ -2192,9 +2192,9 @@ def test_state_publish_unmerged_pr_handoff(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     responses = _publish_ok_responses()
-    responses[18] = _result(rc=1)       # admin merge does not complete
-    responses[19] = _result("OPEN\n")   # PR still open, not merged
-    responses[20] = _result()           # no mergedAt timestamp
+    responses[22] = _result(rc=1)       # admin merge does not complete
+    responses[23] = _result("OPEN\n")   # PR still open, not merged
+    responses[24] = _result()           # no mergedAt timestamp
     rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
     assert rc == 0
     assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_HANDOFF_PENDING

@@ -247,9 +247,9 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(U.3) filing handoff must not retry successful issue creation")
     if "status `handoff-pending` plus the validated PR number and URL" not in text:
         failures.append("(U.4) filing handoff must persist PR identity in pending state")
-    if "filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`" not in text:
-        failures.append("(U.5) disposable publication must leave the operator checkout untouched")
-    if "On a committed but PR-less failure, it removes the worktree but preserves and reports the recovery branch" not in text:
+    if "requires a clean current checkout on the synced default branch" not in text:
+        failures.append("(U.5) publication must require a clean synced current checkout")
+    if "On a committed but PR-less failure it preserves and reports the recovery branch" not in text:
         failures.append("(U.6) PR-less failure must preserve its recovery branch")
     if "Once a valid PR exists, the PR is the recovery surface" not in text:
         failures.append("(U.7) valid PR must become the recovery surface")
