@@ -284,8 +284,6 @@ exclude = [
   "skills/design/scripts/test-step3-review-cap.md",
   "skills/design/scripts/design-step35.sh",
   "skills/design/scripts/design-step35.md",
-  "skills/design/scripts/design-step3b-entry.sh",
-  "skills/design/scripts/design-step3b-entry.md",
   "skills/design/scripts/design-step3b-tail.sh",
   "skills/design/scripts/design-step3b-tail.md",
   "skills/design/scripts/test-design-step3b-tail.sh",

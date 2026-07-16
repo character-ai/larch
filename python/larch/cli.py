@@ -322,7 +322,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("plan-review", "step3-entry-state"): ("larch.review.plan_review", "step3_entry_state_main", True),
     ("plan-review", "step3-gate-b-bypass"): ("larch.review.plan_review", "step3_gate_b_bypass_main", True),
     ("plan-review", "step3-mav"): ("larch.review.plan_review", "step3_mav_main", True),
-    ("plan-review", "step3b-entry"): ("larch.review.plan_review", "step3b_entry_main", True),
+    ("design", "step3b-entry"): ("larch.design.design_step3b", "step3b_entry_main", True),
     ("plan-review", "step3b-tail"): ("larch.review.plan_review", "step3b_tail_main", True),
     ("plan-review", "emit-rejected"): ("larch.review.plan_review", "emit_rejected_main", True),
     ("plan-review", "step35"): ("larch.review.plan_review", "step35_main", True),

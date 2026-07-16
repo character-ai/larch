@@ -36,7 +36,6 @@ def run(repo_root: Path) -> list[str]:
 
     skill = p("skills/design/SKILL.md")
     migrated = p("python/migrated-scripts.tsv")
-    step3b = p("skills/design/scripts/design-step3b-entry.sh")
 
     result = subprocess.run(
         ["python3", str(p("python/cli.py")), "lint", "skill-closure-growth", "--skill", "design"],
@@ -97,27 +96,13 @@ def run(repo_root: Path) -> list[str]:
     for row in ('print("POSTPLAN_RC=11")', 'print("POSTPLAN_STATUS=pause-save")'):
         if row in shared: failures.append(f"shared postplan body must not print {row[7:-2]} directly")
 
-    def classifier(plan_text: str) -> str | None:
-        # The legacy test sources the shell function after removing its mode
-        # dispatch. Keep the same execution rather than duplicating its policy.
-        source = read(step3b)
-        source = source.split('case "${MODE:-}" in', 1)[0]
+    def classifier(plan_text: str) -> str:
+        from larch.design.design_step3b import diagram_required
+
         with tempfile.TemporaryDirectory() as tmp:
-            tmpdir = Path(tmp)
-            source_path = tmpdir / "step3b-entry-source.sh"
-            _ = (tmpdir / "plan.txt").write_text(plan_text, encoding="utf-8")
-            _ = source_path.write_text(source, encoding="utf-8")
-            result = subprocess.run(
-                ["bash", "-c", 'set -euo pipefail; . "$1" --; classify_diagram_required', "_", str(source_path)],
-                cwd=repo_root, env={"DESIGN_TMPDIR": str(tmpdir), "CLAUDE_PLUGIN_ROOT": str(repo_root)},
-                capture_output=True, text=True,
-            )
-            if result.returncode != 0:
-                return None
-            # Strip bracketed-paste / ANSI noise some interactive bashes emit.
-            cleaned = re.sub(r"\x1b\[[?0-9;]*[A-Za-z]", "", result.stdout)
-            cleaned = cleaned.strip()
-            return cleaned.splitlines()[-1].strip() if cleaned else ""
+            plan_file = Path(tmp) / "plan.txt"
+            _ = plan_file.write_text(plan_text, encoding="utf-8")
+            return "true" if diagram_required(plan_file=plan_file) else "false"
     for expected, plan_text, label in (
         ("false", "## Files to modify/create\n### MAY_UPDATE: docs/issue-anchored-plan.md", "MAY_UPDATE docs path must not require diagram"),
         ("false", "## Files to modify/create\n### MAY_UPDATE: `docs/issue-anchored-plan.md`", "MAY_UPDATE backtick docs path must not require diagram"),
