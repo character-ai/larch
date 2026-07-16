@@ -1,5 +1,5 @@
 {
-  "highest_closed_issue_number_scanned": 7417,
+  "highest_closed_issue_number_scanned": 7454,
   "proposals": [
     {
       "filed_issue": 7145,
@@ -45,7 +45,7 @@
       "filed_issue": null,
       "id": "variant-path-gate-persistence-invariant",
       "run_date": "2026-07-15T07:43:36Z",
-      "status": "proposed",
+      "status": "adopted",
       "target": "ARCHITECTURAL_INVARIANTS.md#I-Gate-2",
       "type": "invariant"
     },
@@ -53,7 +53,7 @@
       "filed_issue": null,
       "id": "pattern-match-hint-confirmation-guideline",
       "run_date": "2026-07-15T07:43:36Z",
-      "status": "proposed",
+      "status": "adopted",
       "target": "ARCHITECTURAL_GUIDELINES.md#G-Ext-5",
       "type": "guideline"
     },
@@ -61,7 +61,7 @@
       "filed_issue": 7452,
       "id": "result-env-key-parity-lint",
       "run_date": "2026-07-15T16:31:26Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "module:python/larch/lint/lint_result_env_key_parity.py",
       "type": "lint"
     },
@@ -69,7 +69,7 @@
       "filed_issue": 7452,
       "id": "shared-lane-machinery-invariant",
       "run_date": "2026-07-15T16:31:26Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "ARCHITECTURAL_INVARIANTS.md#I-Lane-1",
       "type": "invariant"
     },
@@ -77,7 +77,7 @@
       "filed_issue": 7452,
       "id": "retry-class-registry-guideline",
       "run_date": "2026-07-15T16:31:26Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "ARCHITECTURAL_GUIDELINES.md#G-Idem-5",
       "type": "guideline"
     },
@@ -85,7 +85,7 @@
       "filed_issue": 7452,
       "id": "classifier-structured-evidence-guideline",
       "run_date": "2026-07-15T16:31:26Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "ARCHITECTURAL_GUIDELINES.md#G-Orch-7",
       "type": "guideline"
     },
@@ -93,7 +93,7 @@
       "filed_issue": 7452,
       "id": "midflight-warning-reconciliation-guideline",
       "run_date": "2026-07-15T16:31:26Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "ARCHITECTURAL_GUIDELINES.md#G-Obs-7",
       "type": "guideline"
     },
@@ -101,16 +101,56 @@
       "filed_issue": 7452,
       "id": "structural-truncation-marker-guideline",
       "run_date": "2026-07-15T16:31:26Z",
-      "status": "proposed",
+      "status": "pending",
       "target": "ARCHITECTURAL_GUIDELINES.md#G-Obs-8",
       "type": "guideline"
+    },
+    {
+      "filed_issue": null,
+      "id": "git-push-explicit-refspec-lint",
+      "run_date": "2026-07-15T20:30:28Z",
+      "status": "proposed",
+      "target": "module:python/larch/lint/lint_git_push_refspec.py",
+      "type": "lint"
+    },
+    {
+      "filed_issue": null,
+      "id": "lifecycle-prefix-mutation-owner-rule",
+      "run_date": "2026-07-15T20:30:28Z",
+      "status": "proposed",
+      "target": "module:python/larch/lint/lint_shared_convention_regex.py",
+      "type": "lint"
+    },
+    {
+      "filed_issue": null,
+      "id": "push-ambient-config-regression-test",
+      "run_date": "2026-07-15T20:30:28Z",
+      "status": "proposed",
+      "target": "python/tests/git/test_rebase.py",
+      "type": "test"
+    },
+    {
+      "filed_issue": null,
+      "id": "push-sibling-sites-explicit-refspec",
+      "run_date": "2026-07-15T20:30:28Z",
+      "status": "proposed",
+      "target": "fix:push-sibling-sites-explicit-refspec",
+      "type": "fix"
+    },
+    {
+      "filed_issue": null,
+      "id": "lifecycle-prefix-mutation-consolidation",
+      "run_date": "2026-07-15T20:30:28Z",
+      "status": "proposed",
+      "target": "fix:lifecycle-prefix-mutation-consolidation",
+      "type": "fix"
     }
   ],
   "repo": "character-ai/larch",
-  "run_date": "2026-07-15T16:31:26Z",
-  "scan_started_at": "2026-07-15T07:57:30Z",
+  "run_date": "2026-07-15T20:30:28Z",
+  "scan_started_at": "2026-07-15T20:21:59Z",
   "schema_version": 2,
   "search": "[BUG] in:title",
-  "selected_count": 558,
+  "selected_count": 28,
   "state": "closed"
 }
