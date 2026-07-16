@@ -9,14 +9,18 @@ module can stay engine-backed.
 from __future__ import annotations
 
 import ast
-import io
 import re
-import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import ScanError, is_exempt_python_source, qualified_symbol
+from larch.lint.engine import (
+    ScanError,
+    comment_tokens_by_line,
+    is_exempt_python_source,
+    qualified_symbol,
+    suppression_reason,
+)
 
 SUPPRESSION = "lint-markdown-heading-fence-state"
 PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s+(\S.*)$")
@@ -56,29 +60,6 @@ def is_production_source_path(rel_path: str) -> bool:
         return False
     under_python = rel_path[len(PYTHON_TREE_PREFIX) :]
     return not bool(EXCLUDED_DIRS.intersection(Path(under_python).parts))
-
-
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError:
-        return {}
-    return {line: tuple(values) for line, values in comments.items()}
-
-
-def _suppression_reason(
-    lineno: int, *, comments_by_line: Mapping[int, tuple[str, ...]]
-) -> str | None:
-    for comment in comments_by_line.get(lineno, ()):
-        match = PRAGMA_RE.search(comment)
-        if match is not None:
-            return match.group(1).strip()
-        if EMPTY_PRAGMA_RE.search(comment) is not None:
-            return ""
-    return None
 
 
 def _literal_string(node: ast.AST) -> str | None:
@@ -173,7 +154,12 @@ class _ScopeState:
 
 
 def _record_heading_regex(state: _ScopeState, *, name: str, lineno: int) -> None:
-    reason = _suppression_reason(lineno, comments_by_line=state.comments_by_line)
+    reason = suppression_reason(
+        lineno,
+        comments_by_line=state.comments_by_line,
+        pragma_re=PRAGMA_RE,
+        empty_pragma_re=EMPTY_PRAGMA_RE,
+    )
     if reason is not None:
         if reason == "":
             raise ScanError(
@@ -527,7 +513,7 @@ def _scan_expr(
 
 def scan_text(repo_path: str, source: str, *, tree: ast.Module) -> list[HeadingFenceHit]:
     """Return heading-regex-without-fence hits for one already-parsed source."""
-    comments_by_line = _comment_tokens_by_line(source)
+    comments_by_line = comment_tokens_by_line(source)
     fence_helpers = _collect_fence_helpers(tree)
     state = _ScopeState(
         heading_regexes={},

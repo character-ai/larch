@@ -27,6 +27,7 @@ from larch.lint.engine import (
     Finding as EngineFinding,
     LintRule,
     SourceFile,
+    iter_python_source_files,
     run_rule,
 )
 
@@ -158,15 +159,11 @@ def _is_excluded_relative_path(relative: Path) -> bool:
 
 def iter_source_files(python_dir: Path) -> list[Path]:
     """Return production Python files under python/, sorted."""
-    result: list[Path] = []
-    for path in sorted(python_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink():
-            continue
-        relative: Path = path.relative_to(python_dir)
-        if _is_excluded_relative_path(relative):
-            continue
-        result.append(path)
-    return result
+    return iter_python_source_files(
+        python_dir,
+        is_exempt=lambda path: _is_excluded_relative_path(path.relative_to(python_dir)),
+        excluded_dirs=frozenset(),
+    )
 
 
 def _read_source(path: Path, *, python_dir: Path) -> str:

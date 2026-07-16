@@ -7,15 +7,13 @@ intentional raw argv assertions only with a same-line, reason-bearing pragma.
 from __future__ import annotations
 
 import ast
-import io
 import re
 import sys
-import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import RuleCli, run_root_cli
+from larch.lint.engine import RuleCli, comment_tokens_by_line, iter_python_source_files, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 EXEMPT_SUBTREE = Path("larch/git")
@@ -30,26 +28,12 @@ class Finding:
 
 def iter_source_files(python_dir: Path) -> list[Path]:
     """Return sorted regular, non-symlink Python files in the complete scope."""
-    files: list[Path] = []
-    for path in sorted(python_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink():
-            continue
-        relative = path.relative_to(python_dir)
-        if relative.is_relative_to(EXEMPT_SUBTREE):
-            continue
-        files.append(path)
-    return files
-
-
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError as exc:
-        raise RuntimeError(f"cannot tokenize source: {exc}") from exc
-    return {line: tuple(values) for line, values in comments.items()}
+    return iter_python_source_files(
+        python_dir,
+        is_exempt=lambda _path: False,
+        excluded_dirs=frozenset(),
+        excluded_relpaths=frozenset({EXEMPT_SUBTREE.as_posix()}),
+    )
 
 
 def _is_fixture_pragma(
@@ -78,7 +62,7 @@ def scan_file(path: Path, *, root: Path) -> list[Finding]:
         tree = ast.parse(source, filename=relative)
     except SyntaxError as exc:
         raise RuntimeError(f"{relative}: cannot parse source: {exc}") from exc
-    comments_by_line = _comment_tokens_by_line(source)
+    comments_by_line = comment_tokens_by_line(source)
     findings: list[Finding] = []
     for node in ast.walk(tree):
         if not _is_raw_gh_argv(node):

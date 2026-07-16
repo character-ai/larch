@@ -8,15 +8,18 @@ bypassing the re-pin attempt with ``_invalidate_guidelines_note``.
 from __future__ import annotations
 
 import ast
-import io
 import re
 import sys
-import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import RuleCli, run_root_cli
+from larch.lint.engine import (
+    RuleCli,
+    comment_tokens_by_line,
+    iter_python_source_files,
+    run_root_cli,
+)
 
 TOOL_FAILURE_EXIT = 2
 TARGET_CALLEE = "_invalidate_guidelines_note"
@@ -42,29 +45,13 @@ def is_exempt_path(path: Path) -> bool:
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
-    result: list[Path] = []
-    for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
-            continue
-        relative: Path = path.relative_to(larch_dir.parent)
-        normalized: str = relative.as_posix()
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        if normalized in {OWNER_RELPATH, LINT_MODULE_RELPATH}:
-            continue
-        result.append(path)
-    return result
-
-
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError:
-        return {}
-    return {line: tuple(values) for line, values in comments.items()}
+    return iter_python_source_files(
+        larch_dir.parent,
+        scope=Path("larch"),
+        is_exempt=is_exempt_path,
+        excluded_dirs=EXCLUDED_DIRS,
+        excluded_relpaths=frozenset({OWNER_RELPATH, LINT_MODULE_RELPATH}),
+    )
 
 
 def _is_suppressed(finding: Finding, *, comments_by_line: Mapping[int, tuple[str, ...]]) -> bool:
@@ -91,7 +78,7 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
         tree: ast.Module = ast.parse(source)
     except SyntaxError as exc:
         raise RuntimeError(f"{normalized_file}: cannot parse source: {exc}") from exc
-    comments_by_line: dict[int, tuple[str, ...]] = _comment_tokens_by_line(source)
+    comments_by_line: dict[int, tuple[str, ...]] = comment_tokens_by_line(source)
     findings: list[Finding] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _is_target_call(node):

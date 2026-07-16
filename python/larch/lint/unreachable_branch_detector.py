@@ -9,18 +9,19 @@ analysis and compatibility adapters.
 from __future__ import annotations
 
 import ast
-import io
 import re
-import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from larch.lint.engine import (
     ScanError,
+    comment_tokens_by_line,
     is_exempt_python_source,
+    iter_python_source_files,
     normalize_python_file_path,
     qualified_symbol,
+    suppression_reason,
 )
 
 SUPPRESSION = "lint-unreachable-branch"
@@ -61,38 +62,12 @@ def is_production_source_path(rel_path: str) -> bool:
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
-    result: list[Path] = []
-    for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
-            continue
-        relative = path.relative_to(larch_dir.parent)
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        result.append(path)
-    return result
-
-
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError:
-        return {}
-    return {line: tuple(values) for line, values in comments.items()}
-
-
-def _suppression_reason(
-    lineno: int, *, comments_by_line: Mapping[int, tuple[str, ...]]
-) -> str | None:
-    for comment in comments_by_line.get(lineno, ()):
-        match = PRAGMA_RE.search(comment)
-        if match is not None:
-            return match.group(1).strip()
-        if EMPTY_PRAGMA_RE.search(comment) is not None:
-            return ""
-    return None
+    return iter_python_source_files(
+        larch_dir.parent,
+        scope=Path("larch"),
+        is_exempt=is_exempt_path,
+        excluded_dirs=EXCLUDED_DIRS,
+    )
 
 
 def normalize_expr(node: ast.AST | None) -> str:
@@ -356,9 +331,11 @@ def _scan_unreachable_tail(
                 candidate = _body_returns_value(cursor.body)
                 if candidate == returned:
                     lineno = getattr(cursor, "lineno", 0)
-                    reason = _suppression_reason(
+                    reason = suppression_reason(
                         lineno if isinstance(lineno, int) else 0,
                         comments_by_line=comments_by_line,
+                        pragma_re=PRAGMA_RE,
+                        empty_pragma_re=EMPTY_PRAGMA_RE,
                     )
                     if reason == "":
                         raise ScanError(
@@ -441,7 +418,12 @@ def _scan_if(
                 None,
             )
             if returned is not None and matching_prior is not None:
-                reason = _suppression_reason(lineno, comments_by_line=comments_by_line)
+                reason = suppression_reason(
+                    lineno,
+                    comments_by_line=comments_by_line,
+                    pragma_re=PRAGMA_RE,
+                    empty_pragma_re=EMPTY_PRAGMA_RE,
+                )
                 if reason == "":
                     raise ScanError(
                         f"{normalized_file}:{lineno}: empty {SUPPRESSION} suppression reason"
@@ -526,7 +508,7 @@ def scan_module(
     source: str,
 ) -> list[Finding]:
     """Scan one parsed module; ``normalized_file`` is relative to ``python/``."""
-    comments_by_line = _comment_tokens_by_line(source)
+    comments_by_line = comment_tokens_by_line(source)
     findings: list[Finding] = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

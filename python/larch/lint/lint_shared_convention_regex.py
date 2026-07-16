@@ -11,16 +11,19 @@ the single source of truth:
 from __future__ import annotations
 
 import ast
-import io
 import re
 import sys
-import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from larch.issue.title_match import BUG_PREFIX
-from larch.lint.engine import RuleCli, run_root_cli
+from larch.lint.engine import (
+    RuleCli,
+    comment_tokens_by_line,
+    iter_python_source_files,
+    run_root_cli,
+)
 
 TOOL_FAILURE_EXIT = 2
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
@@ -46,18 +49,13 @@ def is_exempt_path(path: Path) -> bool:
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
-    result: list[Path] = []
-    for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_path(path):
-            continue
-        relative: Path = path.relative_to(larch_dir.parent)
-        normalized: str = relative.as_posix()
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        if normalized in ALLOWLIST_RELPATHS or normalized == LINT_MODULE_RELPATH:
-            continue
-        result.append(path)
-    return result
+    return iter_python_source_files(
+        larch_dir.parent,
+        scope=Path("larch"),
+        is_exempt=is_exempt_path,
+        excluded_dirs=EXCLUDED_DIRS,
+        excluded_relpaths=ALLOWLIST_RELPATHS | frozenset({LINT_MODULE_RELPATH}),
+    )
 
 
 def _literal_text(node: ast.AST) -> str | None:
@@ -255,17 +253,6 @@ def _lifecycle_prefix_strip_findings(tree: ast.Module, *, normalized_file: str) 
     return findings
 
 
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError:
-        return {}
-    return {line: tuple(values) for line, values in comments.items()}
-
-
 def _is_suppressed(finding: Finding, *, comments_by_line: Mapping[int, tuple[str, ...]]) -> bool:
     return any(PRAGMA_RE.search(comment) for comment in comments_by_line.get(finding.lineno, ()))
 
@@ -281,7 +268,7 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
         tree: ast.Module = ast.parse(source)
     except SyntaxError as exc:
         raise RuntimeError(f"{normalized_file}: cannot parse source: {exc}") from exc
-    comments_by_line: dict[int, tuple[str, ...]] = _comment_tokens_by_line(source)
+    comments_by_line: dict[int, tuple[str, ...]] = comment_tokens_by_line(source)
     findings: list[Finding] = []
     findings.extend(_module_assignment_findings(tree, normalized_file=normalized_file))
     findings.extend(_compile_call_findings(tree, normalized_file=normalized_file))

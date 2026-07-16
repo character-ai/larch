@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -83,6 +84,35 @@ def _write_files(root: Path, files: Mapping[str, str]) -> None:
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(text, encoding="utf-8")
+
+
+def test_comment_and_suppression_helpers_return_reason() -> None:
+    comments = lint_engine.comment_tokens_by_line("value = 1  # lint-rule: ok documented\n")
+
+    assert lint_engine.suppression_reason(
+        1,
+        comments_by_line=comments,
+        pragma_re=re.compile(r"#\s*lint-rule:\s*ok\s+(\S.*)$"),
+        empty_pragma_re=re.compile(r"#\s*lint-rule:\s*ok\s*$"),
+    ) == "documented"
+
+
+def test_iter_python_source_files_applies_scope_and_exemptions(tmp_path: Path) -> None:
+    _write_files(
+        tmp_path,
+        {
+            "larch/keep.py": "",
+            "larch/tests/test_skip.py": "",
+            "larch/vendor/skip.py": "",
+            "other.py": "",
+        },
+    )
+
+    assert [path.relative_to(tmp_path).as_posix() for path in lint_engine.iter_python_source_files(
+        tmp_path,
+        scope=Path("larch"),
+        excluded_dirs=frozenset({"tests", "vendor"}),
+    )] == ["larch/keep.py"]
 
 
 def _git_ok_runner(root: Path, tracked: Sequence[str]) -> RecordingRunner:

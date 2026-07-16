@@ -30,6 +30,7 @@ from larch.lint.engine import (
     RuleCli,
     SourceFile,
     is_exempt_python_source,
+    iter_python_source_files,
     ordered_ast_child_nodes,
     qualified_symbol,
     run_rule_cli,
@@ -90,18 +91,12 @@ OccurrenceKey = tuple[str, str, str, str, str]
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
-    result: list[Path] = []
-    for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
-            continue
-        relative: Path = path.relative_to(larch_dir.parent)
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        normalized: str = relative.as_posix()
-        if normalized in ALLOWLIST_RELPATHS:
-            continue
-        result.append(path)
-    return result
+    return iter_python_source_files(
+        larch_dir.parent,
+        scope=Path("larch"),
+        excluded_dirs=EXCLUDED_DIRS,
+        excluded_relpaths=ALLOWLIST_RELPATHS,
+    )
 
 
 def is_production_source_path(rel_path: str) -> bool:

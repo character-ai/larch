@@ -10,9 +10,7 @@ Provides corpus-based preparation and per-source detection over
 from __future__ import annotations
 
 import ast
-import io
 import re
-import tokenize
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +19,7 @@ from typing import cast
 from larch.lint.engine import Finding as EngineFinding
 from larch.lint.engine import ScanError  # re-export; do not define a local ScanError
 from larch.lint.engine import SourceFile
+from larch.lint.engine import comment_tokens_by_line, suppression_reason
 
 SUPPRESSION = "lint-self-disarmable-gate"
 PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s+(\S.*)$")
@@ -54,29 +53,6 @@ class PreparedCorpus:
     """In-memory context built from corpus preparation."""
 
     resolution: MetadataResolution
-
-
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError:
-        return {}
-    return {line: tuple(values) for line, values in comments.items()}
-
-
-def _suppression_reason(
-    lineno: int, *, comments_by_line: Mapping[int, tuple[str, ...]]
-) -> str | None:
-    for comment in comments_by_line.get(lineno, ()):
-        match = PRAGMA_RE.search(comment)
-        if match is not None:
-            return match.group(1).strip()
-        if EMPTY_PRAGMA_RE.search(comment) is not None:
-            return ""
-    return None
 
 
 def _dataclass_fields(node: ast.ClassDef) -> frozenset[str]:
@@ -227,7 +203,12 @@ def _emit(
     message: str,
     comments_by_line: Mapping[int, tuple[str, ...]],
 ) -> None:
-    reason = _suppression_reason(lineno, comments_by_line=comments_by_line)
+    reason = suppression_reason(
+        lineno,
+        comments_by_line=comments_by_line,
+        pragma_re=PRAGMA_RE,
+        empty_pragma_re=EMPTY_PRAGMA_RE,
+    )
     if reason is not None:
         if reason == "":
             raise ScanError(
@@ -395,7 +376,7 @@ def _scan_module(
     meta_fields: frozenset[str],
 ) -> list[Finding]:
     """Scan one module AST; return compat ``Finding`` list."""
-    comments_by_line = _comment_tokens_by_line(source_text)
+    comments_by_line = comment_tokens_by_line(source_text)
     findings: list[Finding] = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
