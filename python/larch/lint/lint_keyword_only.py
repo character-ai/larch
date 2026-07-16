@@ -27,8 +27,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
+from larch.lint.engine import (
+    IdentityLintCli,
+    KeywordOnlyBaselineRow,
+    ScanError,
+    compare_identity_baseline,
+    load_identity_baseline,
+    parse_identity_lint_argv,
+    write_identity_baseline,
+)
+
 TOOL_FAILURE_EXIT = 2
-BASELINE_KEYS = frozenset({"file", "qualified_symbol"})
 EXEMPTION_KEYS = frozenset({"file", "qualified_symbol", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 SELF_LIKE = frozenset({"self", "cls"})
@@ -394,50 +403,6 @@ def iter_source_files(python_dir: Path) -> list[Path]:
     )
 
 
-def _record_key(r: Record) -> tuple[str, str]:
-    return (r["file"], r["qualified_symbol"])
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the baseline JSON array."""
-    try:
-        raw: str = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    try:
-        data: object = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    items: list[object] = cast("list[object]", data)
-    result: list[Record] = []
-    for i, item in enumerate(items):
-        if not isinstance(item, dict):
-            raise BaselineError(
-                f"{path}: record {i} must have exactly {sorted(BASELINE_KEYS)}"
-            )
-        record: dict[str, object] = cast("dict[str, object]", item)
-        if set(record) != set(BASELINE_KEYS):
-            raise BaselineError(
-                f"{path}: record {i} must have exactly {sorted(BASELINE_KEYS)}"
-            )
-        file_val: object = record["file"]
-        sym_val: object = record["qualified_symbol"]
-        if not isinstance(file_val, str) or not file_val:
-            raise BaselineError(f"{path}: record {i} has invalid file")
-        if not isinstance(sym_val, str) or not sym_val:
-            raise BaselineError(f"{path}: record {i} has invalid qualified_symbol")
-        result.append({"file": file_val, "qualified_symbol": sym_val})
-    return result
-
-
-def serialize_baseline(records: list[Record]) -> str:
-    """Return canonical baseline JSON: key-sorted, 2-space indent, trailing newline."""
-    ordered: list[Record] = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
-
-
 def _collect_all(
     python_dir: Path, *, exemption_keys: frozenset[tuple[str, str]]
 ) -> list[Record]:
@@ -450,84 +415,82 @@ def _collect_all(
 
 
 def _run_write(
+    root: Path,
     python_dir: Path,
     *,
     baseline_path: Path,
     exemption_keys: frozenset[tuple[str, str]],
 ) -> int:
-    records: list[Record] = _collect_all(python_dir, exemption_keys=exemption_keys)
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
+    records = [
+        KeywordOnlyBaselineRow(record["file"], record["qualified_symbol"])
+        for record in _collect_all(python_dir, exemption_keys=exemption_keys)
+    ]
+    try:
+        existing = load_identity_baseline(
+            baseline_path, root=root, kind="keyword_only"
+        )
+        written = write_identity_baseline(
+            baseline_path, root=root, kind="keyword_only", live_rows=records, baseline_rows=existing
+        )
+    except ScanError as exc:
+        print(f"lint-keyword-only: {exc}", file=sys.stderr)
+        return TOOL_FAILURE_EXIT
     print(
-        f"lint-keyword-only: wrote {len(records)} records to {baseline_path}",
+        f"lint-keyword-only: wrote {len(written)} records to {baseline_path}",
         file=sys.stderr,
     )
     return 0
 
 
 def _run_check(
+    root: Path,
     python_dir: Path,
     *,
     baseline_path: Path,
     exemption_keys: frozenset[tuple[str, str]],
 ) -> int:
     try:
-        baseline_records: list[Record] = load_baseline(baseline_path)
-    except BaselineError as exc:
+        baseline_records = load_identity_baseline(
+            baseline_path, root=root, kind="keyword_only"
+        )
+    except ScanError as exc:
         print(f"lint-keyword-only: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
-    baseline_set: frozenset[tuple[str, str]] = frozenset(
-        _record_key(r) for r in baseline_records
-    )
-    live_records: list[Record] = _collect_all(python_dir, exemption_keys=exemption_keys)
-    new_violations: list[Record] = []
-    warned: list[Record] = []
-    for rec in live_records:
-        key: tuple[str, str] = _record_key(rec)
-        if key in baseline_set:
-            warned.append(rec)
-        else:
-            new_violations.append(rec)
+    live_records = [
+        KeywordOnlyBaselineRow(record["file"], record["qualified_symbol"])
+        for record in _collect_all(python_dir, exemption_keys=exemption_keys)
+    ]
+    new_rows, _stale, matched_rows = compare_identity_baseline(live_records, baseline_records)
+    new_violations = [row for row in new_rows if isinstance(row, KeywordOnlyBaselineRow)]
+    warned = [row for row in matched_rows if isinstance(row, KeywordOnlyBaselineRow)]
     for rec in warned:
         print(
-            f"warning: {rec['file']}:{rec['qualified_symbol']} missing * (baselined)",
+            f"warning: {rec.file}:{rec.qualified_symbol} missing * (baselined)",
             file=sys.stderr,
         )
     for rec in new_violations:
         print(
-            f"{rec['file']}:{rec['qualified_symbol']} missing *"
+            f"{rec.file}:{rec.qualified_symbol} missing *"
             f" (2+ positional non-self/cls params)",
             file=sys.stderr,
         )
     return 1 if new_violations else 0
 
 
-def _parse_args(argv: list[str]) -> argparse_module.Namespace | None:
-    parser = argparse_module.ArgumentParser(
-        prog="cli.py lint keyword-only", description=__doc__
-    )
-    _ = parser.add_argument(
-        "--root", default=str(Path(__file__).resolve().parents[3])
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help="Regenerate keyword-only-baseline.json from live AST scan.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = IdentityLintCli(
+    prog="cli.py lint keyword-only", description=__doc__ or "",
+    baseline_filename="keyword-only-baseline.json", writable=True,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed: argparse_module.Namespace | None = _parse_args(
-        argv=argv if argv is not None else sys.argv[1:]
+    parsed = parse_identity_lint_argv(
+        argv if argv is not None else sys.argv[1:], cli=CLI,
+        default_root=Path(__file__).resolve().parents[3],
     )
     if parsed is None:
         return TOOL_FAILURE_EXIT
-    root: Path = Path(parsed.root).resolve()
+    root = parsed.root
     python_dir: Path = root / "python"
     if not python_dir.is_dir():
         print(
@@ -542,12 +505,12 @@ def main(argv: list[str] | None = None) -> int:
     except BaselineError as exc:
         print(f"lint-keyword-only: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
-    if parsed.write:
+    if parsed.write_baseline:
         return _run_write(
-            python_dir=python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
+            root, python_dir=python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
         )
     return _run_check(
-        python_dir=python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
+        root, python_dir=python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
     )
 
 

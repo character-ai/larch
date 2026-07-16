@@ -96,6 +96,51 @@ def _git_ok_runner(root: Path, tracked: Sequence[str]) -> RecordingRunner:
     )
 
 
+@pytest.mark.parametrize(
+    ("filename", "kind"),
+    [
+        ("keyword-only-baseline.json", "keyword_only"),
+        ("wire-artifact-pairing-baseline.json", "wire_artifact_pairing"),
+        ("renderer-golden-tests-baseline.json", "renderer_golden_tests"),
+        ("guideline-no-exception-baseline.json", "guideline_no_exception"),
+    ],
+)
+def test_identity_baseline_schemas_parse_committed_payloads(
+    filename: str, kind: lint_engine.IdentityBaselineKind
+) -> None:
+    repo = Path(__file__).resolve().parents[3]
+    payload = (repo / "python" / filename).read_text(encoding="utf-8")
+
+    rows = lint_engine.parse_identity_baseline(
+        payload, kind=kind, source=filename
+    )
+
+    assert lint_engine.serialize_identity_baseline(rows) == payload
+
+
+def test_identity_baseline_writer_rejects_mismatched_rows_before_writing(
+    tmp_path: Path
+) -> None:
+    baseline = tmp_path / "python" / "keyword-only-baseline.json"
+    baseline.parent.mkdir()
+    _ = baseline.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(lint_engine.ScanError, match="wrong schema"):
+        _ = lint_engine.write_identity_baseline(
+            baseline,
+            root=tmp_path,
+            kind="keyword_only",
+            live_rows=[
+                lint_engine.RendererGoldenTestsBaselineRow(
+                    "larch/report/demo.py", "_render_demo", "reason"
+                )
+            ],
+            baseline_rows=[],
+        )
+
+    assert baseline.read_text(encoding="utf-8") == "[]\n"
+
+
 def _rule(
     *,
     detect: Callable[[SourceFile], list[Finding]] | None = None,

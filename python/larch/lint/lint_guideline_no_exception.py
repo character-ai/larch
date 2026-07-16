@@ -3,30 +3,29 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
 
 from larch.core.architectural_guidelines import (
     GUIDELINE_HEADING_RE,
     GUIDELINES_FILENAME,
     _MARKDOWN_HEADING_RE,  # pyright: ignore[reportPrivateUsage]  # plan requires the shared parser boundary regex.
 )
+from larch.lint.engine import (
+    GuidelineNoExceptionBaselineRow,
+    IdentityLintCli,
+    ScanError,
+    compare_identity_baseline,
+    load_identity_baseline,
+    parse_identity_lint_argv,
+)
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "guideline-no-exception-baseline.json"
-BASELINE_KEYS = frozenset({"guideline_id", "reason"})
 GUIDELINE_ID_RE = re.compile(r"^G-[A-Za-z0-9-]+-\d+$")
 NO_EXCEPTION_DEVIATE_RE = re.compile(r"^- Deviate when:\s*(n/a|never)\b")
-
-
-class Record(TypedDict):
-    guideline_id: str
-    reason: str
 
 
 class BaselineError(ValueError):
@@ -55,54 +54,6 @@ class Finding:
 
 def _format_record_id(record_id: str) -> str:
     return record_id
-
-
-def _validate_guideline_id(value: object, *, source: Path, index: int) -> str:
-    if not isinstance(value, str) or GUIDELINE_ID_RE.fullmatch(value) is None:
-        raise BaselineError(f"{source}: record {index} has invalid guideline_id")
-    return value
-
-
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    guideline_id: str = _validate_guideline_id(record["guideline_id"], source=source, index=index)
-    reason: object = record["reason"]
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: record {index} has invalid reason")
-    return {"guideline_id": guideline_id, "reason": reason}
-
-
-def _first_duplicate(values: list[str]) -> str | None:
-    seen: set[str] = set()
-    for value in values:
-        if value in seen:
-            return value
-        seen.add(value)
-    return None
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the committed no-exception baseline."""
-    try:
-        data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError) as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    records: list[Record] = [
-        _validate_record(item, index=index, source=path)
-        for index, item in enumerate(cast("list[object]", data))
-    ]
-    duplicate: str | None = _first_duplicate([record["guideline_id"] for record in records])
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {_format_record_id(duplicate)}")
-    return records
 
 
 def _read_guidelines(path: Path) -> str:
@@ -203,65 +154,61 @@ def _finding_sort_key(finding: Finding) -> tuple[str, int]:
     return (finding.guideline_id, finding.deviate_line)
 
 
-def _run_check(*, guidelines_path: Path, baseline_path: Path) -> int:
+def _run_check(*, root: Path, guidelines_path: Path, baseline_path: Path) -> int:
     try:
-        baseline_records: list[Record] = load_baseline(baseline_path)
+        baseline_records = load_identity_baseline(
+            baseline_path, root=root, kind="guideline_no_exception"
+        )
         findings: list[Finding] = scan_guidelines(guidelines_path)
-    except BaselineError as exc:
+    except (BaselineError, ScanError) as exc:
         print(f"lint-guideline-no-exception: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
-    baseline_keys: frozenset[str] = frozenset(record["guideline_id"] for record in baseline_records)
-    live_keys: frozenset[str] = frozenset(finding.key() for finding in findings)
-    new_findings: list[Finding] = []
-    warned: list[Finding] = []
+    live_rows = [GuidelineNoExceptionBaselineRow(finding.guideline_id, "") for finding in findings]
+    new_rows, stale_rows, warned_rows = compare_identity_baseline(live_rows, baseline_records)
+    new_ids = {row.guideline_id for row in new_rows if isinstance(row, GuidelineNoExceptionBaselineRow)}
+    warned_ids = {row.guideline_id for row in warned_rows if isinstance(row, GuidelineNoExceptionBaselineRow)}
     for finding in sorted(findings, key=_finding_sort_key):
-        if finding.key() in baseline_keys:
-            warned.append(finding)
-        else:
-            new_findings.append(finding)
-    stale_keys: list[str] = sorted(baseline_keys - live_keys)
-    for finding in warned:
+        if finding.guideline_id not in warned_ids:
+            continue
         print(
             f"warning: {finding.guideline_id} line {finding.deviate_line} "
             "has a no-exception deviate clause (baselined)",
             file=sys.stderr,
         )
-    for finding in new_findings:
+    for finding in sorted(findings, key=_finding_sort_key):
+        if finding.guideline_id not in new_ids:
+            continue
         print(
             f"{GUIDELINES_FILENAME}:{finding.deviate_line}: {finding.guideline_id} "
             "has a no-exception deviate clause; promote it, add a real deviate clause, "
             f"or add a reason to {BASELINE_FILENAME}",
             file=sys.stderr,
         )
-    for key in stale_keys:
-        print(f"stale baseline row: {_format_record_id(key)}", file=sys.stderr)
-    return 1 if new_findings or stale_keys else 0
+    for row in stale_rows:
+        if isinstance(row, GuidelineNoExceptionBaselineRow):
+            print(f"stale baseline row: {_format_record_id(row.guideline_id)}", file=sys.stderr)
+    return 1 if new_rows or stale_rows else 0
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint guideline-no-exception",
-        description=__doc__,
-    )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = IdentityLintCli(
+    prog="cli.py lint guideline-no-exception", description=__doc__ or "",
+    baseline_filename=BASELINE_FILENAME,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = parse_identity_lint_argv(
+        argv if argv is not None else sys.argv[1:], cli=CLI,
+        default_root=Path(__file__).resolve().parents[3],
+    )
     if parsed is None:
         return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
+    root = parsed.root
     if not root.is_dir():
         print(f"lint-guideline-no-exception: --root is not a directory: {root}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
     return _run_check(
-        guidelines_path=root / GUIDELINES_FILENAME,
+        root=root, guidelines_path=root / GUIDELINES_FILENAME,
         baseline_path=root / "python" / BASELINE_FILENAME,
     )
 

@@ -568,8 +568,6 @@ def test_committed_tree_projection_covers_legacy_and_spares_engine() -> None:
         )
     live_ids = {(f.path, f.rule_id, f.message, f.anchor) for f in live}
     assert live_ids == identities
-    keyword = f"{SCOPE}/lint_keyword_only.py"
-    assert any(row[0] == keyword and row[3] == lint.ANCHOR_ARGPARSE for row in live_ids)
     for clean in (
         f"{SCOPE}/lint_engine_adoption.py",
         f"{SCOPE}/lint_pylint_skip_file.py",
@@ -579,5 +577,9 @@ def test_committed_tree_projection_covers_legacy_and_spares_engine() -> None:
         f"{SCOPE}/lint_module_manifest.py",
         f"{SCOPE}/lint_tmpdir_arg_env_fallback.py",
         f"{SCOPE}/lint_self_disarmable_gate.py",
+        f"{SCOPE}/lint_keyword_only.py",
+        f"{SCOPE}/lint_wire_artifact_pairing.py",
+        f"{SCOPE}/lint_renderer_golden_tests.py",
+        f"{SCOPE}/lint_guideline_no_exception.py",
     ):
         assert not any(row[0] == clean for row in live_ids)

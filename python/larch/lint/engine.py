@@ -1080,6 +1080,126 @@ BaselineRow: TypeAlias = (
 )
 
 
+# These intentionally-small schemas cover lints whose identities do not fit the
+# location/metric/occurrence baseline families above.  Keeping them here gives
+# those lints the same trusted read, strict JSON, duplicate, and atomic-write
+# contract without weakening their committed payloads into free-form records.
+IdentityBaselineKind = Literal[
+    "keyword_only", "wire_artifact_pairing", "renderer_golden_tests", "guideline_no_exception"
+]
+
+
+@dataclass(frozen=True)
+class KeywordOnlyBaselineRow:
+    """Reason-less identity for one keyword-only exception."""
+
+    file: str
+    qualified_symbol: str
+
+    @property
+    def identity(self) -> tuple[str, str]:
+        return (self.file, self.qualified_symbol)
+
+
+@dataclass(frozen=True)
+class WireArtifactPairingBaselineRow:
+    """Reason-bearing identity for an intentionally one-sided artifact."""
+
+    artifact: str
+    side: Literal["external-writer", "external-reader", "intentionally-one-sided"]
+    reason: str
+
+    @property
+    def identity(self) -> tuple[str, str]:
+        return (self.artifact, self.side)
+
+
+@dataclass(frozen=True)
+class RendererGoldenTestsBaselineRow:
+    """Reason-bearing identity for one renderer test-coverage exception."""
+
+    file: str
+    function_name: str
+    reason: str
+
+    @property
+    def identity(self) -> tuple[str, str]:
+        return (self.file, self.function_name)
+
+
+@dataclass(frozen=True)
+class GuidelineNoExceptionBaselineRow:
+    """Reason-bearing identity for one guideline exception."""
+
+    guideline_id: str
+    reason: str
+
+    @property
+    def identity(self) -> tuple[str]:
+        return (self.guideline_id,)
+
+
+IdentityBaselineRow: TypeAlias = (
+    KeywordOnlyBaselineRow
+    | WireArtifactPairingBaselineRow
+    | RendererGoldenTestsBaselineRow
+    | GuidelineNoExceptionBaselineRow
+)
+
+
+@dataclass(frozen=True)
+class IdentityLintCli:
+    """Shared CLI shape for an identity-baseline lint with a custom scanner."""
+
+    prog: str
+    description: str
+    baseline_filename: str
+    writable: bool = False
+    positional_root: bool = False
+
+
+@dataclass(frozen=True)
+class IdentityLintArgs:
+    """Validated operator arguments for an identity-baseline lint."""
+
+    root: Path
+    write_baseline: bool
+    initial_reason: str | None
+
+
+def parse_identity_lint_argv(
+    argv: Sequence[str], *, cli: IdentityLintCli, default_root: Path
+) -> IdentityLintArgs | None:
+    """Parse a custom-scanner lint's compatible root/write command surface."""
+    parser = argparse.ArgumentParser(prog=cli.prog, description=cli.description)
+    if cli.positional_root:
+        _ = parser.add_argument("positional_root", nargs="?", help="Optional repository root.")
+        _ = parser.add_argument("--root", help="Repository root (overrides positional root).")
+    else:
+        _ = parser.add_argument("--root", default=str(default_root))
+    if cli.writable:
+        _ = parser.add_argument("--write", action="store_true", help=f"Regenerate {cli.baseline_filename} from live findings.")
+        _ = parser.add_argument("--initial-reason", help="Reason used for new live findings during --write.")
+    try:
+        parsed = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return None
+    root_text = (
+        cast("str | None", parsed.root) or cast("str | None", getattr(parsed, "positional_root", None))
+    )
+    initial_reason = cast("str | None", getattr(parsed, "initial_reason", None))
+    if initial_reason is not None and not _nonempty_single_line(initial_reason):
+        print("--initial-reason must be non-empty", file=sys.stderr)
+        return None
+    return IdentityLintArgs(
+        root=Path(root_text).resolve() if root_text else default_root.resolve(),
+        write_baseline=bool(getattr(parsed, "write", False)),
+        initial_reason=initial_reason,
+    )
+
+
 def _baseline_kind(row: BaselineRow) -> BaselineKind:
     if isinstance(row, GenericBaselineRow):
         return "generic"
@@ -1425,6 +1545,221 @@ def _baseline_exists(path: Path, *, root: Path) -> bool:
         return larch_io.trusted_file_present(path, root=root)
     except OSError as exc:
         raise ScanError(f"failed to inspect baseline {path}: {exc}") from exc
+
+
+def _identity_baseline_kind(row: IdentityBaselineRow) -> IdentityBaselineKind:
+    if isinstance(row, KeywordOnlyBaselineRow):
+        return "keyword_only"
+    if isinstance(row, WireArtifactPairingBaselineRow):
+        return "wire_artifact_pairing"
+    if isinstance(row, RendererGoldenTestsBaselineRow):
+        return "renderer_golden_tests"
+    return "guideline_no_exception"
+
+
+def identity_baseline_identity(row: IdentityBaselineRow) -> tuple[object, ...]:
+    """Return a schema's stable, reason-free baseline identity."""
+    return row.identity
+
+
+def identity_baseline_sort_key(row: IdentityBaselineRow) -> tuple[object, ...]:
+    """Return deterministic schema-local ordering for a typed identity row."""
+    return (_identity_baseline_kind(row), *row.identity)
+
+
+def _validate_identity_row_kinds(
+    rows: Sequence[IdentityBaselineRow], *, kind: IdentityBaselineKind, source: str
+) -> None:
+    """Reject a mixed or caller-mismatched schema before comparison or publication."""
+    if any(_identity_baseline_kind(row) != kind for row in rows):
+        raise ScanError(f"{source}: identity baseline rows use the wrong schema")
+
+
+def _require_identity_keys(
+    record: Mapping[str, object], *, expected: frozenset[str], index: int, source: str
+) -> None:
+    keys = frozenset(record)
+    if keys != expected:
+        raise ScanError(f"{source}: baseline row {index} has unsupported keys")
+
+
+def _keyword_only_identity_row(record: Mapping[str, object], *, index: int, source: str) -> KeywordOnlyBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"file", "qualified_symbol"}), index=index, source=source)
+    file_name, symbol = record["file"], record["qualified_symbol"]
+    if not _is_single_line(file_name) or not _is_single_line(symbol):
+        raise ScanError(f"{source}: baseline row {index} has invalid keyword-only identity")
+    return KeywordOnlyBaselineRow(cast("str", file_name), cast("str", symbol))
+
+
+def _wire_artifact_identity_row(record: Mapping[str, object], *, index: int, source: str) -> WireArtifactPairingBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"artifact", "side", "reason"}), index=index, source=source)
+    artifact, side, reason = record["artifact"], record["side"], record["reason"]
+    allowed_sides = {"external-writer", "external-reader", "intentionally-one-sided"}
+    if not _nonempty_single_line(artifact) or side not in allowed_sides or not _nonempty_single_line(reason):
+        raise ScanError(f"{source}: baseline row {index} has invalid wire-artifact row")
+    return WireArtifactPairingBaselineRow(cast("str", artifact), cast("Literal['external-writer', 'external-reader', 'intentionally-one-sided']", side), cast("str", reason))
+
+
+def _renderer_identity_row(record: Mapping[str, object], *, index: int, source: str) -> RendererGoldenTestsBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"file", "function_name", "reason"}), index=index, source=source)
+    file_name, function_name, reason = record["file"], record["function_name"], record["reason"]
+    normalized = normalize_python_file_path(file_name) if isinstance(file_name, str) else ""
+    invalid_path = not _is_single_line(file_name) or normalized != file_name or not normalized.startswith("larch/report/") or not normalized.endswith(".py") or bool({"", ".", ".."}.intersection(normalized.split("/")))
+    if invalid_path or not _nonempty_single_line(function_name) or not _nonempty_single_line(reason):
+        raise ScanError(f"{source}: baseline row {index} has invalid renderer row")
+    return RendererGoldenTestsBaselineRow(cast("str", file_name), cast("str", function_name), cast("str", reason))
+
+
+def _guideline_identity_row(record: Mapping[str, object], *, index: int, source: str) -> GuidelineNoExceptionBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"guideline_id", "reason"}), index=index, source=source)
+    guideline_id, reason = record["guideline_id"], record["reason"]
+    if (
+        not _nonempty_single_line(guideline_id)
+        or re.fullmatch(r"G-[A-Za-z][A-Za-z0-9-]*-\d+", cast("str", guideline_id)) is None
+        or not _nonempty_single_line(reason)
+    ):
+        raise ScanError(f"{source}: baseline row {index} has invalid guideline row")
+    return GuidelineNoExceptionBaselineRow(cast("str", guideline_id), cast("str", reason))
+
+
+def _identity_baseline_row(record: Mapping[str, object], *, kind: IdentityBaselineKind, index: int, source: str) -> IdentityBaselineRow:
+    if kind == "keyword_only":
+        return _keyword_only_identity_row(record, index=index, source=source)
+    if kind == "wire_artifact_pairing":
+        return _wire_artifact_identity_row(record, index=index, source=source)
+    if kind == "renderer_golden_tests":
+        return _renderer_identity_row(record, index=index, source=source)
+    return _guideline_identity_row(record, index=index, source=source)
+
+
+def parse_identity_baseline(
+    text: str, *, kind: IdentityBaselineKind, source: str
+) -> list[IdentityBaselineRow]:
+    """Parse one exact identity schema, rejecting unknown, missing, and duplicate rows."""
+    try:
+        decoded = cast("object", json.loads(text))
+    except json.JSONDecodeError as exc:
+        raise ScanError(f"{source}: invalid JSON baseline: {exc.msg}") from exc
+    if not isinstance(decoded, list):
+        raise ScanError(f"{source}: baseline must be a top-level JSON array")
+    raw_rows = cast("list[object]", decoded)
+    rows = [
+        _identity_baseline_row(cast("Mapping[str, object]", raw), kind=kind, index=index, source=source)
+        if isinstance(raw, dict)
+        else _identity_baseline_row({}, kind=kind, index=index, source=source)
+        for index, raw in enumerate(raw_rows)
+    ]
+    identities: set[tuple[object, ...]] = set()
+    for row in rows:
+        identity = identity_baseline_identity(row)
+        if identity in identities:
+            raise ScanError(f"{source}: duplicate baseline identity")
+        identities.add(identity)
+    return sorted(rows, key=identity_baseline_sort_key)
+
+
+def load_identity_baseline(
+    path: str | Path,
+    *,
+    root: Path,
+    kind: IdentityBaselineKind,
+    allow_missing: bool = False,
+) -> list[IdentityBaselineRow]:
+    """Read an exact identity baseline through the engine's trusted-file policy."""
+    destination = _validate_baseline_path(path, root=root, write_mode=False)
+    if not _baseline_exists(destination, root=root):
+        if allow_missing:
+            return []
+        raise ScanError(f"failed to read baseline {destination}: file does not exist")
+    try:
+        text = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"cannot read baseline {destination}: {exc}") from exc
+    return parse_identity_baseline(text, kind=kind, source=f"baseline {destination}")
+
+
+def serialize_identity_baseline(rows: Sequence[IdentityBaselineRow]) -> str:
+    """Serialize typed identity rows in their legacy field order."""
+    records: list[dict[str, object]] = []
+    for row in sorted(rows, key=identity_baseline_sort_key):
+        if isinstance(row, KeywordOnlyBaselineRow):
+            records.append({"file": row.file, "qualified_symbol": row.qualified_symbol})
+        elif isinstance(row, WireArtifactPairingBaselineRow):
+            records.append({"artifact": row.artifact, "side": row.side, "reason": row.reason})
+        elif isinstance(row, RendererGoldenTestsBaselineRow):
+            records.append({"file": row.file, "function_name": row.function_name, "reason": row.reason})
+        else:
+            records.append({"guideline_id": row.guideline_id, "reason": row.reason})
+    return json.dumps(records, indent=2) + "\n"
+
+
+def compare_identity_baseline(
+    live_rows: Sequence[IdentityBaselineRow], baseline_rows: Sequence[IdentityBaselineRow]
+) -> tuple[list[IdentityBaselineRow], list[IdentityBaselineRow], list[IdentityBaselineRow]]:
+    """Return new, stale, and matching rows by each schema's stable identity."""
+    if live_rows and baseline_rows and _identity_baseline_kind(live_rows[0]) != _identity_baseline_kind(baseline_rows[0]):
+        raise ScanError("live findings and baseline rows use different shapes")
+    baseline_by_id = {identity_baseline_identity(row): row for row in baseline_rows}
+    live_ids = {identity_baseline_identity(row) for row in live_rows}
+    new = [row for row in live_rows if identity_baseline_identity(row) not in baseline_by_id]
+    stale = [row for row in baseline_rows if identity_baseline_identity(row) not in live_ids]
+    matched = [row for row in live_rows if identity_baseline_identity(row) in baseline_by_id]
+    return (
+        sorted(new, key=identity_baseline_sort_key),
+        sorted(stale, key=identity_baseline_sort_key),
+        sorted(matched, key=identity_baseline_sort_key),
+    )
+
+
+def write_identity_baseline(  # noqa: PLR0913 - public baseline-write contract is explicit.
+    path: str | Path,
+    *,
+    root: Path,
+    kind: IdentityBaselineKind,
+    live_rows: Sequence[IdentityBaselineRow],
+    baseline_rows: Sequence[IdentityBaselineRow],
+    initial_reason: str | None = None,
+) -> list[IdentityBaselineRow]:
+    """Preserve reasons, atomically write, and byte/structure-read-back an identity baseline."""
+    destination = _validate_baseline_path(path, root=root, write_mode=True)
+    _validate_identity_row_kinds(live_rows, kind=kind, source="live findings")
+    _validate_identity_row_kinds(baseline_rows, kind=kind, source="baseline")
+    previous = {identity_baseline_identity(row): row for row in baseline_rows}
+    written: list[IdentityBaselineRow] = []
+    missing_reason_ids: list[tuple[object, ...]] = []
+    for row in live_rows:
+        prior = previous.get(identity_baseline_identity(row))
+        if isinstance(row, KeywordOnlyBaselineRow):
+            written.append(row)
+            continue
+        reason = getattr(prior, "reason", None) if prior is not None else initial_reason
+        if not _nonempty_single_line(reason):
+            missing_reason_ids.append(identity_baseline_identity(row))
+            continue
+        if isinstance(row, WireArtifactPairingBaselineRow):
+            written.append(WireArtifactPairingBaselineRow(row.artifact, row.side, cast("str", reason)))
+        elif isinstance(row, RendererGoldenTestsBaselineRow):
+            written.append(RendererGoldenTestsBaselineRow(row.file, row.function_name, cast("str", reason)))
+        else:
+            written.append(GuidelineNoExceptionBaselineRow(row.guideline_id, cast("str", reason)))
+    if missing_reason_ids:
+        labels = "\n  ".join(":".join(str(value) for value in identity) for identity in missing_reason_ids)
+        raise ScanError(
+            "missing baseline reasons for live findings; supply initial_reason:\n  " + labels
+        )
+    intended = serialize_identity_baseline(written)
+    try:
+        larch_io.trusted_atomic_write(destination, intended, root=root)
+        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
+    if read_back != intended:
+        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
+    parsed = parse_identity_baseline(read_back, kind=kind, source=f"baseline {destination}")
+    ordered = sorted(written, key=identity_baseline_sort_key)
+    if parsed != ordered:
+        raise ScanError(f"baseline read-back records differ after write: {destination}")
+    return ordered
 
 
 def _finding_occurrence_values(
