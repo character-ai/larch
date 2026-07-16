@@ -30,13 +30,20 @@ def _probe(value: str, *, rc: int = 0) -> Callable[[Sequence[str]], int]:
     return fake_probe
 
 
+def _finalize(rc: int) -> Callable[[Sequence[str]], int]:
+    def fake_finalize(_argv: Sequence[str]) -> int:
+        return rc
+
+    return fake_finalize
+
+
 @pytest.mark.parametrize(("probe", "expected"), [("DIALECTIC_GATEC_DEBATE_REQUIRED=false", "foreground"), ("DIALECTIC_GATEC_DEBATE_REQUIRED=true", "background")])
 def test_finalize_maps_every_probe_value_and_writes_sidecar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], probe: str, expected: str,
 ) -> None:
     design = make_design_tmpdir(tmp_path)
     args = _args(design, plugin_root=Path.cwd())
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", lambda _argv: 0)
+    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe(probe))
 
     assert design_step3b.step3b_entry_main([*args, "--mode", "finalize"]) == 0
@@ -54,7 +61,7 @@ def test_finalize_rejects_missing_duplicate_or_malformed_probe_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], probe: str,
 ) -> None:
     design = make_design_tmpdir(tmp_path)
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", lambda _argv: 0)
+    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe(probe))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "finalize"]) == 1
@@ -66,7 +73,7 @@ def test_finalize_preserves_child_failure_and_does_not_complete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
     design = make_design_tmpdir(tmp_path)
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", lambda _argv: 7)
+    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(7))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "finalize"]) == 7
     assert "FINALIZE failed" in capsys.readouterr().err
@@ -77,7 +84,7 @@ def test_finalize_probe_failure_keeps_diagnostics_and_does_not_complete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
     design = make_design_tmpdir(tmp_path)
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", lambda _argv: 0)
+    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe("probe failure", rc=9))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "finalize"]) == 9
@@ -91,9 +98,9 @@ def test_finalize_fresh_entry_replaces_stale_resume_sidecar(
     design = make_design_tmpdir(tmp_path)
     completed = design / ".completed"
     completed.mkdir()
-    (completed / "step-3b").touch()
-    (design / ".step4-mode.env").write_text("STEP4_MODE=background\n", encoding="utf-8")
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", lambda _argv: 0)
+    _ = (completed / "step-3b").touch()
+    _ = (design / ".step4-mode.env").write_text("STEP4_MODE=background\n", encoding="utf-8")
+    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe("DIALECTIC_GATEC_DEBATE_REQUIRED=false"))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "entry"]) == 0
@@ -106,11 +113,11 @@ def test_diagram_required_clears_stale_artifacts_without_completion(
     design = make_design_tmpdir(tmp_path)
     completed = design / ".completed"
     completed.mkdir()
-    (completed / "step-4").touch()
-    (completed / "step-5b").touch()
-    (design / "plan.txt").write_text("### UPDATED: python/larch/design/design_step3b.py\n", encoding="utf-8")
+    _ = (completed / "step-4").touch()
+    _ = (completed / "step-5b").touch()
+    _ = (design / "plan.txt").write_text("### UPDATED: python/larch/design/design_step3b.py\n", encoding="utf-8")
     for name in ("architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log"):
-        (design / name).touch()
+        _ = (design / name).touch()
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "diagram"]) == 0
     assert capsys.readouterr().out == "DIAGRAM_REQUIRED=true\n"
@@ -124,11 +131,11 @@ def test_diagram_skip_writes_only_skip_completion_artifacts(
     design = make_design_tmpdir(tmp_path)
     completed = design / ".completed"
     completed.mkdir()
-    (completed / "step-4").touch()
-    (completed / "step-5b").touch()
-    (design / "plan.txt").write_text("### MAY_UPDATE: docs/guide.md\n", encoding="utf-8")
-    (design / "architecture-diagram.md").touch()
-    (design / "architecture-diagram.candidate.md").touch()
+    _ = (completed / "step-4").touch()
+    _ = (completed / "step-5b").touch()
+    _ = (design / "plan.txt").write_text("### MAY_UPDATE: docs/guide.md\n", encoding="utf-8")
+    _ = (design / "architecture-diagram.md").touch()
+    _ = (design / "architecture-diagram.candidate.md").touch()
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "diagram"]) == 0
     assert capsys.readouterr().out.startswith("DIAGRAM_REQUIRED=false\n")

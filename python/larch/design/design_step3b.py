@@ -195,10 +195,10 @@ def _unlink_diagram_artifacts(*, design_tmpdir: Path, names: Sequence[str]) -> N
 def _run_diagram(*, design_tmpdir: Path) -> int:
     completed = design_tmpdir / ".completed"
     if not (completed / "step-4").is_file():
-        print("**⚠ 5b.5: missing .completed/step-4 — Gate C approval incomplete; repair Step 4 before diagram", file=sys.stderr)
+        print("**⚠ 5b.5: missing .completed/step-4; Gate C approval incomplete; repair Step 4 before diagram", file=sys.stderr)
         return 1
     if not (completed / "step-5b").is_file():
-        print("**⚠ 5b.5: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before diagram", file=sys.stderr)
+        print("**⚠ 5b.5: missing .completed/step-5b; OOS filing incomplete; repair Step 5b before diagram", file=sys.stderr)
         return 1
     paused = _pause_if_requested(design_tmpdir=design_tmpdir)
     if paused is not None:
