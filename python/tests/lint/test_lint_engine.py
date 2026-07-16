@@ -2388,6 +2388,119 @@ def test_occurrence_projection_derives_pattern_name_from_first_value() -> None:
     assert row.occurrence_values == (("token", "[DONE]"), ("context", "startswith"))
 
 
+def _symbol_optional_detect(source: SourceFile) -> list[Finding]:
+    return [
+        Finding(
+            path=source.path,
+            line=1,
+            rule_id="demo-rule",
+            message="suppression lacks a reason occurrence 1",
+            qualified_symbol=None,
+            occurrence=1,
+            occurrence_values=(("kind", "noqa"), ("text", "noqa")),
+        )
+    ]
+
+
+_DEMO_TOKEN = "lint-demo"
+
+
+def _symbol_optional_rule() -> LintRule:
+    return LintRule(
+        rule_id="demo-rule",
+        description="demo symbol-optional occurrence rule",
+        detect=_symbol_optional_detect,
+        syntax_policy="skip",
+        suppression_token=_DEMO_TOKEN,
+        allow_inline_suppression=False,
+        pathspecs=("python/**/*.py",),
+        occurrence_baseline=True,
+        occurrence_fields=("kind", "text"),
+        occurrence_symbol_optional=True,
+    )
+
+
+def test_occurrence_symbol_optional_round_trips_without_qualified_symbol(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    original = (
+        json.dumps(
+            [
+                {
+                    "file": "larch/mod.py",
+                    "kind": "noqa",
+                    "text": "noqa",
+                    "occurrence": 1,
+                    "reason": "known",
+                }
+            ],
+            indent=2,
+        )
+        + "\n"
+    )
+    _ = baseline.write_text(original, encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    rule = _symbol_optional_rule()
+    # Byte-stable rewrite: no shadow qualified_symbol is synthesized or serialized.
+    code, _out, _err = _invoke(rule, tmp_path, runner, baseline_path=baseline, write_baseline=True)
+    assert code == EXIT_CLEAN
+    assert baseline.read_text(encoding="utf-8") == original
+    # Check mode: the matched finding exits clean.
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, _out, _err = _invoke(rule, tmp_path, runner, baseline_path=baseline)
+    assert code == EXIT_CLEAN
+
+
+def test_occurrence_symbol_optional_rejects_symbol_less_findings_without_flag(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    _ = baseline.write_text("[]\n", encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    rule = LintRule(
+        rule_id="demo-rule",
+        description="demo symbol-required occurrence rule",
+        detect=_symbol_optional_detect,
+        syntax_policy="skip",
+        suppression_token=_DEMO_TOKEN,
+        allow_inline_suppression=False,
+        pathspecs=("python/**/*.py",),
+        occurrence_baseline=True,
+        occurrence_fields=("kind", "text"),
+    )
+    code, _out, err = _invoke(rule, tmp_path, runner, baseline_path=baseline)
+    assert code == EXIT_ERROR
+    assert "require qualified_symbol" in err
+
+
+def test_stale_as_finding_returns_exit_1_without_raising(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row(reason="gone")], indent=2) + "\n", encoding="utf-8"
+    )
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+
+    def _no_findings(_source: SourceFile) -> list[Finding]:
+        return []
+
+    rule = LintRule(
+        rule_id="demo-rule",
+        description="demo stale-as-finding occurrence rule",
+        detect=_no_findings,
+        syntax_policy="skip",
+        suppression_token=_DEMO_TOKEN,
+        allow_inline_suppression=False,
+        pathspecs=("python/**/*.py",),
+        occurrence_baseline=True,
+        require_baseline=True,
+        stale_as_finding=True,
+    )
+    code, _out, err = _invoke(rule, tmp_path, runner, baseline_path=baseline)
+    assert code == EXIT_FINDINGS
+    assert "stale baseline row" in err
+
+
+
 def test_multi_field_occurrence_baseline_writes_back_without_pattern_name() -> None:
     """The occurrence codec must parse the row it serializes without a shadow field."""
     finding = Finding(

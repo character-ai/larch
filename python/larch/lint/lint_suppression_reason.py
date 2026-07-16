@@ -1,30 +1,38 @@
 """Ratchet lint and type suppressions toward same-line reasons.
 
-Scans production modules under ``python/**/*.py`` for suppression-family
-comments that do not use a reason-bearing form. Existing unexplained
-suppressions are grandfathered in ``python/suppression-reason-baseline.json``
-with a required reason per row.
+Thin engine-backed rule: detection tokenizes production modules under
+``python/**/*.py`` for suppression-family comments that do not use a
+reason-bearing form. Existing unexplained suppressions are grandfathered in
+``python/suppression-reason-baseline.json`` with a required reason per row.
+The occurrence identity omits ``qualified_symbol`` (suppression scans are not
+scoped to an AST symbol), so the rule opts into symbol-optional occurrence
+rows and treats stale rows as findings (exit 1) rather than engine errors.
 """
 
 from __future__ import annotations
 
 import argparse
 import io
-import json
 import re
 import sys
 import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from re import Pattern
-from typing import TypedDict, cast
+from typing import cast
 
-from larch.lint.engine import first_duplicate as _first_duplicate
-from larch.lint.engine import normalize_python_file_path
+from larch.core import proc
+from larch.lint.engine import (
+    EXIT_ERROR,
+    Finding as EngineFinding,
+    LintRule,
+    SourceFile,
+    run_rule,
+)
 
-TOOL_FAILURE_EXIT = 2
+RULE_ID = "suppression-reason"
+SUPPRESSION_TOKEN = "lint-suppression-reason"
 BASELINE_FILENAME = "suppression-reason-baseline.json"
-BASELINE_KEYS = frozenset({"file", "suppression_kind", "text", "occurrence", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 EXCLUDED_DIRS = frozenset(
     {
@@ -54,18 +62,6 @@ KIND_PYLINT_SKIP_FILE = "pylint-skip-file"
 KIND_TYPE_IGNORE = "type-ignore"
 KIND_PYRIGHT_IGNORE = "pyright-ignore"
 KIND_PYRIGHT_REPORT = "pyright-report"
-SUPPORTED_KINDS = frozenset(
-    {
-        KIND_NOQA,
-        KIND_RUFF_NOQA,
-        KIND_PYLINT_DISABLE,
-        KIND_PYLINT_DISABLE_NEXT,
-        KIND_PYLINT_SKIP_FILE,
-        KIND_TYPE_IGNORE,
-        KIND_PYRIGHT_IGNORE,
-        KIND_PYRIGHT_REPORT,
-    }
-)
 
 SUPPRESSION_PREFIX = r"(?:^|;\s*)"
 NOQA_FAMILY_RE = re.compile(SUPPRESSION_PREFIX + r"(?P<label>ruff:\s*noqa|noqa)\b", re.IGNORECASE)
@@ -118,18 +114,11 @@ REASON_SUPPRESSION_PREFIX_RE = re.compile(
     r"pyright:\s*(?:ignore(?:\[[^\]]+\])?|report[A-Za-z0-9_]+\s*=\s*false))",
     re.IGNORECASE,
 )
-
-
-class Record(TypedDict):
-    file: str
-    suppression_kind: str
-    text: str
-    occurrence: int
-    reason: str
+PYTHON_PREFIX = "python/"
 
 
 class BaselineError(ValueError):
-    """Raised when the source tree or baseline cannot be trusted."""
+    """Raised when the source tree cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -159,36 +148,12 @@ class SegmentMatch:
     reason: str | None = None
 
 
-def _bad_path_parts(parts: list[str]) -> bool:
-    return "" in parts or "." in parts or ".." in parts
-
-
 def _is_exempt_name(name: str) -> bool:
     return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
 
 
 def _is_excluded_relative_path(relative: Path) -> bool:
     return bool(EXCLUDED_DIRS.intersection(relative.parts)) or _is_exempt_name(relative.name)
-
-
-def _invalid_normalized_parts(normalized: str, parts: list[str]) -> bool:
-    return (
-        normalized.startswith("/")
-        or not normalized.endswith(".py")
-        or _bad_path_parts(parts)
-        or bool(EXCLUDED_DIRS.intersection(parts))
-        or _is_exempt_name(parts[-1])
-    )
-
-
-def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
-    if not isinstance(value, str) or not value:
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized: str = normalize_python_file_path(value)
-    parts: list[str] = normalized.split("/")
-    if normalized != value or _invalid_normalized_parts(normalized, parts):
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    return normalized
 
 
 def iter_source_files(python_dir: Path) -> list[Path]:
@@ -428,233 +393,127 @@ def _with_occurrences(drafts: list[FindingDraft], *, normalized_file: str) -> li
     return findings
 
 
-def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
-    """Return suppression comments missing accepted same-line reasons."""
-    normalized_file: str = path.relative_to(python_dir).as_posix()
-    source: str = _read_source(path, python_dir=python_dir)
+def findings_from_source(source: str, *, normalized_file: str) -> list[Finding]:
+    """Tokenize one source buffer and return suppression findings with occurrences."""
     drafts: list[FindingDraft] = _drafts_for_source(source, normalized_file=normalized_file)
     return _with_occurrences(drafts, normalized_file=normalized_file)
 
 
-def _record_key(record: Record) -> tuple[str, str, str, int]:
-    return (record["file"], record["suppression_kind"], record["text"], record["occurrence"])
+def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
+    """Return suppression comments missing accepted same-line reasons."""
+    normalized_file: str = path.relative_to(python_dir).as_posix()
+    source: str = _read_source(path, python_dir=python_dir)
+    return findings_from_source(source, normalized_file=normalized_file)
 
 
-def _finding_sort_key(finding: Finding) -> tuple[str, str, str, int]:
-    return finding.key()
+def is_production_source_path(rel_path: str) -> bool:
+    """Pre-load filter for repo-relative suppression scan paths."""
+    if not rel_path.startswith(PYTHON_PREFIX) or not rel_path.endswith(".py"):
+        return False
+    relative: Path = Path(rel_path[len(PYTHON_PREFIX) :])
+    return not _is_excluded_relative_path(relative)
 
 
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    file_name: str = _validate_normalized_file(record["file"], source=source, index=index)
-    suppression_kind: object = record["suppression_kind"]
-    text: object = record["text"]
-    occurrence: object = record["occurrence"]
-    reason: object = record["reason"]
-    if not isinstance(suppression_kind, str) or suppression_kind not in SUPPORTED_KINDS:
-        raise BaselineError(f"{source}: record {index} has invalid suppression_kind")
-    if not isinstance(text, str) or not text.strip():
-        raise BaselineError(f"{source}: record {index} has invalid text")
-    if not isinstance(occurrence, int) or isinstance(occurrence, bool) or occurrence < 1:
-        raise BaselineError(f"{source}: record {index} has invalid occurrence")
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: record {index} has invalid reason")
-    return {
-        "file": file_name,
-        "suppression_kind": suppression_kind,
-        "text": text,
-        "occurrence": occurrence,
-        "reason": reason,
-    }
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the committed baseline."""
-    try:
-        data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError) as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    records: list[Record] = [
-        _validate_record(item, index=index, source=path)
-        for index, item in enumerate(cast("list[object]", data))
-    ]
-    duplicate: tuple[str, str, str, int] | None = _first_duplicate(_record_key(record) for record in records)
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {format_key(duplicate)}")
-    return records
-
-
-def _collect_all(python_dir: Path) -> list[Finding]:
-    findings: list[Finding] = []
-    for path in iter_source_files(python_dir):
-        findings.extend(scan_file(path, python_dir=python_dir))
-    return findings
-
-
-def _check_duplicate_live(findings: list[Finding]) -> str | None:
-    duplicate: tuple[str, str, str, int] | None = _first_duplicate(finding.key() for finding in findings)
-    if duplicate is None:
-        return None
-    return f"duplicate live identity {format_key(duplicate)}"
-
-
-def format_key(key: tuple[str, str, str, int]) -> str:
-    file_name, suppression_kind, text, occurrence = key
-    return f"{file_name}:{suppression_kind} {text}#{occurrence}"
-
-
-def serialize_baseline(records: list[Record]) -> str:
-    """Return canonical sorted JSON for the baseline."""
-    ordered: list[Record] = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(
-    findings: list[Finding],
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> list[Record]:
-    preserved: dict[tuple[str, str, str, int], str] = {}
-    has_baseline = baseline_path.is_file()
-    if has_baseline:
-        preserved = {_record_key(record): record["reason"] for record in load_baseline(baseline_path)}
-    reason_default: str | None = initial_reason.strip() if initial_reason is not None and not has_baseline else None
-    records: list[Record] = []
-    missing: list[str] = []
-    for finding in sorted(findings, key=_finding_sort_key):
-        reason: str | None = preserved.get(finding.key()) or reason_default
-        if reason is None:
-            missing.append(format_key(finding.key()))
-            continue
-        records.append(
-            {
-                "file": finding.file,
-                "suppression_kind": finding.suppression_kind,
-                "text": finding.text,
-                "occurrence": finding.occurrence,
-                "reason": reason,
-            }
-        )
-    if missing:
-        joined: str = "\n  ".join(missing)
-        raise BaselineError("missing baseline reasons for live suppression findings:\n  " + joined)
-    return records
-
-
-def _run_write(
-    python_dir: Path,
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> int:
-    try:
-        findings: list[Finding] = _collect_all(python_dir)
-        duplicate: str | None = _check_duplicate_live(findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-        records: list[Record] = _records_for_write(
-            findings,
-            baseline_path=baseline_path,
-            initial_reason=initial_reason,
-        )
-    except BaselineError as exc:
-        print(f"lint-suppression-reason: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    try:
-        _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    except OSError as exc:
-        print(f"lint-suppression-reason: {baseline_path}: cannot write baseline: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    print(f"lint-suppression-reason: wrote {len(records)} records to {baseline_path}", file=sys.stderr)
-    return 0
-
-
-def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
-    try:
-        baseline_records: list[Record] = load_baseline(baseline_path)
-        findings: list[Finding] = _collect_all(python_dir)
-        duplicate: str | None = _check_duplicate_live(findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-    except BaselineError as exc:
-        print(f"lint-suppression-reason: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_keys: frozenset[tuple[str, str, str, int]] = frozenset(
-        _record_key(record) for record in baseline_records
+def to_engine_finding(finding: Finding) -> EngineFinding:
+    """Adapt one suppression finding to the shared engine finding shape."""
+    return EngineFinding(
+        path=f"{PYTHON_PREFIX}{finding.file}",
+        line=finding.lineno,
+        rule_id=RULE_ID,
+        message=(
+            f"{finding.suppression_kind} suppression lacks an accepted "
+            f"same-line reason: {finding.text}"
+        ),
+        qualified_symbol=None,
+        occurrence=finding.occurrence,
+        occurrence_values=(
+            ("suppression_kind", finding.suppression_kind),
+            ("text", finding.text),
+        ),
     )
-    live_keys: frozenset[tuple[str, str, str, int]] = frozenset(finding.key() for finding in findings)
-    new_findings: list[Finding] = []
-    warned: list[Finding] = []
-    for finding in sorted(findings, key=_finding_sort_key):
-        if finding.key() in baseline_keys:
-            warned.append(finding)
-        else:
-            new_findings.append(finding)
-    stale_keys: list[tuple[str, str, str, int]] = sorted(baseline_keys - live_keys)
-    for finding in warned:
-        print(
-            "warning: "
-            f"{finding.file}:{finding.lineno} {finding.suppression_kind} "
-            f"suppression lacks an accepted reason (baselined): {finding.text}",
-            file=sys.stderr,
-        )
-    for finding in new_findings:
-        print(
-            f"{finding.file}:{finding.lineno} {finding.suppression_kind} "
-            f"suppression lacks an accepted same-line reason: {finding.text}",
-            file=sys.stderr,
-        )
-    for key in stale_keys:
-        print(f"stale baseline row: {format_key(key)}", file=sys.stderr)
-    return 1 if new_findings or stale_keys else 0
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
+def detect(source: SourceFile) -> list[EngineFinding]:
+    """Engine detector entry: tokenize one source and emit symbol-free findings."""
+    if not source.is_python or not is_production_source_path(source.path):
+        return []
+    normalized_file = source.path.removeprefix(PYTHON_PREFIX)
+    findings = findings_from_source(source.text, normalized_file=normalized_file)
+    return [to_engine_finding(finding) for finding in findings]
+
+
+RULE = LintRule(
+    rule_id=RULE_ID,
+    description=(
+        "Ratchet lint and type suppressions toward same-line reasons"
+    ),
+    detect=detect,
+    syntax_policy="raise",
+    suppression_token=SUPPRESSION_TOKEN,
+    allow_inline_suppression=False,
+    pathspecs=("python",),
+    source_filter=is_production_source_path,
+    occurrence_baseline=True,
+    occurrence_fields=("suppression_kind", "text"),
+    occurrence_symbol_optional=True,
+    require_baseline=True,
+    stale_as_finding=True,
+    warn_matching_baseline=True,
+)
+
+
+def _parse_args(argv: list[str]) -> tuple[str, bool, str | None] | None:
     parser = argparse.ArgumentParser(prog="cli.py lint suppression-reason", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
+    _ = parser.add_argument(
+        "--root",
+        default=str(Path(__file__).resolve().parents[3]),
+        help="Repository root (default: checkout containing this module).",
+    )
     _ = parser.add_argument(
         "--write",
         action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from live suppression scan.",
+        help=f"Regenerate {BASELINE_FILENAME} from the live suppression scan.",
     )
     _ = parser.add_argument(
         "--initial-reason",
         help="Reason used for live findings without preserved baseline reasons.",
     )
     try:
-        return parser.parse_args(argv)
+        parsed = parser.parse_args(argv)
     except SystemExit as exc:
         if exc.code == 0:
             raise
         return None
+    return str(parsed.root), bool(parsed.write), parsed.initial_reason
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
+    """CLI entry registered as ``python3 python/cli.py lint suppression-reason``."""
+    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
     if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
-    python_dir: Path = root / "python"
-    if not python_dir.is_dir():
-        print(f"lint-suppression-reason: python directory not found: {python_dir}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_path: Path = python_dir / BASELINE_FILENAME
-    initial_reason: str | None = cast("str | None", parsed.initial_reason)
+        return EXIT_ERROR
+    root_str, write_baseline, initial_reason = parsed
+    root = Path(root_str).resolve()
     if initial_reason is not None and not initial_reason.strip():
         print("lint-suppression-reason: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(python_dir, baseline_path=baseline_path, initial_reason=initial_reason)
-    return _run_check(python_dir, baseline_path=baseline_path)
+        return EXIT_ERROR
+    baseline_path = root / "python" / BASELINE_FILENAME
+    # Legacy policy: --initial-reason only seeds new rows when the baseline is
+    # absent. Once a baseline exists, every new row needs its own preserved
+    # reason and the engine fail-closes without a seed.
+    if write_baseline and baseline_path.is_file():
+        seed_reason: str | None = None
+    else:
+        seed_reason = None if initial_reason is None else initial_reason.strip()
+    return run_rule(
+        RULE,
+        root,
+        proc.ProcRunner(),
+        baseline_path=baseline_path,
+        write_baseline=write_baseline,
+        initial_reason=seed_reason,
+        strict_stale=False,
+    )
 
 
 if __name__ == "__main__":

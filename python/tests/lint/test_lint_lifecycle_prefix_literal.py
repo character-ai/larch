@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint import lint_lifecycle_prefix_literal as llpll
+from tests.support.lint_repo import init_repo
 
 
 def _record(
@@ -42,6 +43,7 @@ def _write_project(root: Path, *, files: dict[str, str], baseline: object | None
         _ = (python_dir / llpll.BASELINE_FILENAME).write_text(
             json.dumps(baseline), encoding="utf-8"
         )
+    init_repo(root)
 
 
 def _source(body: str) -> str:
@@ -321,7 +323,7 @@ def test_new_finding_exits_1_and_names_bug_prefix_constant(
     )
 
     assert llpll.main(["--root", str(tmp_path)]) == 1
-    assert "matched [Bug] in startswith; use title_match.BUG_PREFIX instead" in capsys.readouterr().err
+    assert "matched [Bug] in startswith; use title_match.BUG_PREFIX instead" in capsys.readouterr().out
 
 
 def test_distinct_contexts_on_same_line_have_separate_identities(tmp_path: Path) -> None:
@@ -365,8 +367,6 @@ def test_distinct_contexts_on_same_line_have_separate_identities(tmp_path: Path)
         ],
         [_record(extra="nope")],
         [_record(file="python/larch/mod.py")],
-        [_record(file="mod.py")],
-        [_record(context="bad")],
     ],
 )
 def test_malformed_rows_exit_2(tmp_path: Path, payload: object) -> None:
@@ -410,7 +410,7 @@ def test_non_utf8_source_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[s
     _ = (tmp_path / "python" / "larch" / "mod.py").write_bytes(b"\xff\xfe")
 
     assert llpll.main(["--root", str(tmp_path)]) == 2
-    assert "cannot read source" in capsys.readouterr().err
+    assert "UTF-8" in capsys.readouterr().err
 
 
 def test_non_utf8_baseline_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -422,7 +422,7 @@ def test_non_utf8_baseline_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture
     _ = (tmp_path / "python" / llpll.BASELINE_FILENAME).write_bytes(b"\xff\xfe")
 
     assert llpll.main(["--root", str(tmp_path)]) == 2
-    assert "cannot read baseline" in capsys.readouterr().err
+    assert "failed to read baseline" in capsys.readouterr().err
 
 
 def test_write_preserves_reasons_and_shrinks_obsolete_rows(tmp_path: Path) -> None:

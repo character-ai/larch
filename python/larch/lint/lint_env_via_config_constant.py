@@ -1,62 +1,54 @@
 """Ratchet bare os.environ literals toward config.ENV_* constants.
 
-Scans production modules under python/**/*.py for os.environ accesses whose string
-literal already has a matching ENV_* constant in python/larch/core/config.py. Existing debt
-is grandfathered in env-via-config-constant-baseline.json with a required reason
-per row. New bare literals fail unless covered by an explicit exemption or an
-inline pragma.
+Thin engine-backed rule: detection scans production modules under
+``python/**/*.py`` for os.environ accesses whose string literal already has a
+matching ENV_* constant in ``python/larch/core/config.py``. Existing debt is
+grandfathered in ``python/env-via-config-constant-baseline.json`` with a
+required reason per row. New bare literals fail unless covered by an explicit
+exemption or an inline pragma.
 """
 
 from __future__ import annotations
 
-import argparse
 import ast
-import json
 import re
 import sys
-from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
+from larch.core import proc
 from larch.lint.engine import (
-    first_duplicate as _first_duplicate,
+    EXIT_ERROR,
+    Finding as EngineFinding,
+    LintRule,
+    RuleCli,
+    SourceFile,
+    has_inline_pragma,
     is_exempt_python_source,
+    load_json_array,
     normalize_python_file_path,
-    ordered_ast_child_nodes,
-    qualified_symbol,
+    parse_lint_argv,
+    run_rule,
+    scan_python_file,
+    walk_scopes,
 )
+from larch.lint.engine import BaselineError
 
-TOOL_FAILURE_EXIT = 2
+RULE_ID = "env-via-config-constant"
+SUPPRESSION_TOKEN = "lint-env-via-config-constant"
 BASELINE_FILENAME = "env-via-config-constant-baseline.json"
 EXEMPTIONS_FILENAME = "env-via-config-constant-exemptions.json"
-BASELINE_KEYS = frozenset(
-    {"file", "qualified_symbol", "env_name", "constant", "access", "occurrence", "reason"}
-)
 EXEMPTION_KEYS = frozenset({"file", "reason", "env_name", "constant"})
 REQUIRED_EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
-# Virtual-environment and vendored trees live under python/ but are not larch
-# production modules; skip them so rglob never lints third-party packages.
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__"})
-# Config module's current home, relative to python/ (posix-normalized). The flat
-# python/ tree is migrating to a package layout (larch/core/ is the first subdir);
-# update this single constant when config.py moves again.
 CONFIG_RELPATH = "larch/core/config.py"
-ACCESS_KINDS = frozenset({"get", "subscript_load", "subscript_store"})
 MODULE_SYMBOL = "<module>"
 PRAGMA_RE = re.compile(r"#\s*lint-env-via-config-constant:\s*ok\s+(\S.*)$")
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-env-via-config-constant:\s*ok\s+(\S.*)$")
-
-
-class Record(TypedDict):
-    file: str
-    qualified_symbol: str
-    env_name: str
-    constant: str
-    access: str
-    occurrence: int
-    reason: str
+PYTHON_PREFIX = "python/"
 
 
 class Exemption(TypedDict):
@@ -64,10 +56,6 @@ class Exemption(TypedDict):
     reason: str
     env_name: NotRequired[str]
     constant: NotRequired[str]
-
-
-class BaselineError(ValueError):
-    """Raised when a baseline, exemption, or config file cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -121,6 +109,16 @@ def iter_source_files(python_dir: Path) -> list[Path]:
             continue
         result.append(path)
     return result
+
+
+def is_production_source_path(rel_path: str) -> bool:
+    """Pre-load filter for repo-relative env-via-config scan paths."""
+    if not rel_path.startswith(PYTHON_PREFIX) or not rel_path.endswith(".py"):
+        return False
+    under = Path(rel_path[len(PYTHON_PREFIX) :])
+    if EXCLUDED_DIRS.intersection(under.parts) or is_exempt_python_source(under):
+        return False
+    return under.as_posix() != CONFIG_RELPATH
 
 
 def _env_assignments(tree: ast.Module) -> dict[str, list[str]]:
@@ -213,60 +211,56 @@ def _collect_scope(
     env_constants: dict[str, str],
     findings: list[Finding],
 ) -> None:
-    occurrence = 0
-    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
+    def enter_scope(symbol: str) -> Callable[[ast.AST], None]:
+        occurrence = 0
 
-    def walk(node: ast.AST) -> None:
-        nonlocal occurrence
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _collect_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                env_constants=env_constants,
-                findings=findings,
-            )
-            return
-        if isinstance(node, ast.ClassDef):
-            _collect_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                env_constants=env_constants,
-                findings=findings,
-            )
-            return
-        access = _env_access(node)
-        if access is not None:
+        def handle(node: ast.AST) -> None:
+            nonlocal occurrence
+            access = _env_access(node)
+            if access is None:
+                return
             env_name, access_kind = access
             constant = env_constants.get(env_name)
-            if constant is not None and not env_name.endswith("_SH"):
-                occurrence += 1
-                lineno = getattr(node, "lineno", 0)
-                findings.append(
-                    Finding(
-                        file=normalized_file,
-                        qualified_symbol=symbol,
-                        env_name=env_name,
-                        constant=constant,
-                        access=access_kind,
-                        occurrence=occurrence,
-                        lineno=lineno if isinstance(lineno, int) else 0,
-                    )
+            if constant is None or env_name.endswith("_SH"):
+                return
+            occurrence += 1
+            lineno = getattr(node, "lineno", 0)
+            findings.append(
+                Finding(
+                    file=normalized_file,
+                    qualified_symbol=symbol,
+                    env_name=env_name,
+                    constant=constant,
+                    access=access_kind,
+                    occurrence=occurrence,
+                    lineno=lineno if isinstance(lineno, int) else 0,
                 )
-        for child in ordered_ast_child_nodes(node):
-            walk(child)
+            )
 
-    for statement in body:
-        walk(statement)
+        return handle
+
+    walk_scopes(body, prefix=prefix, module_symbol=MODULE_SYMBOL, enter_scope=enter_scope)
 
 
 def scan_file(path: Path, *, python_dir: Path, env_constants: dict[str, str]) -> list[Finding]:
     """Return all bare env literal findings for one source file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
+    return scan_python_file(
+        path,
+        python_dir=python_dir,
+        collect=lambda tree, normalized_file, findings: _collect_scope(
+            tree.body,
+            prefix=(),
+            normalized_file=normalized_file,
+            env_constants=env_constants,
+            findings=findings,
+        ),
+    )
+
+
+def findings_from_source(
+    source: str, *, normalized_file: str, env_constants: dict[str, str]
+) -> list[Finding]:
+    """Return raw env findings for one source buffer."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -275,103 +269,11 @@ def scan_file(path: Path, *, python_dir: Path, env_constants: dict[str, str]) ->
     _collect_scope(
         tree.body,
         prefix=(),
-        normalized_file=path.relative_to(python_dir).as_posix(),
+        normalized_file=normalized_file,
         env_constants=env_constants,
         findings=findings,
     )
     return findings
-
-
-def _record_key(record: Record) -> tuple[str, str, str, str, str, int]:
-    return (
-        record["file"],
-        record["qualified_symbol"],
-        record["env_name"],
-        record["constant"],
-        record["access"],
-        record["occurrence"],
-    )
-
-
-def _relocation_key(item: Finding | Record) -> tuple[str, str, str, str, str, int]:
-    if isinstance(item, Finding):
-        return (
-            Path(item.file).name,
-            item.qualified_symbol,
-            item.env_name,
-            item.constant,
-            item.access,
-            item.occurrence,
-        )
-    return (
-        Path(item["file"]).name,
-        item["qualified_symbol"],
-        item["env_name"],
-        item["constant"],
-        item["access"],
-        item["occurrence"],
-    )
-
-
-def _finding_sort_key(finding: Finding) -> tuple[str, str, str, str, str, int]:
-    return finding.key()
-
-
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    file_name = _validate_normalized_file(record["file"], source=source, index=index, kind="record")
-    qualified_symbol = record["qualified_symbol"]
-    env_name = record["env_name"]
-    constant = record["constant"]
-    access = record["access"]
-    occurrence = record["occurrence"]
-    reason = record["reason"]
-    if not isinstance(qualified_symbol, str) or not qualified_symbol:
-        raise BaselineError(f"{source}: record {index} has invalid qualified_symbol")
-    if not isinstance(env_name, str) or not env_name:
-        raise BaselineError(f"{source}: record {index} has invalid env_name")
-    if not isinstance(constant, str) or not constant.startswith("ENV_"):
-        raise BaselineError(f"{source}: record {index} has invalid constant")
-    if not isinstance(access, str) or access not in ACCESS_KINDS:
-        raise BaselineError(f"{source}: record {index} has invalid access")
-    if not isinstance(occurrence, int) or isinstance(occurrence, bool) or occurrence < 1:
-        raise BaselineError(f"{source}: record {index} has invalid occurrence")
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: record {index} has invalid reason")
-    return {
-        "file": file_name,
-        "qualified_symbol": qualified_symbol,
-        "env_name": env_name,
-        "constant": constant,
-        "access": access,
-        "occurrence": occurrence,
-        "reason": reason,
-    }
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the committed baseline."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    items = cast("list[object]", data)
-    records = [
-        _validate_record(item, index=index, source=path)
-        for index, item in enumerate(items)
-    ]
-    duplicate = _first_duplicate(_record_key(record) for record in records)
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {format_key(duplicate)}")
-    return records
 
 
 def _validate_optional_scope(record: dict[str, object], *, key: str, index: int, source: Path) -> str | None:
@@ -410,32 +312,11 @@ def _validate_exemption(item: object, *, index: int, source: Path) -> Exemption:
 
 def load_exemptions(path: Path) -> list[Exemption]:
     """Load optional env exemptions. Missing file means no exemptions."""
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read exemptions: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: exemptions must be a top-level JSON array")
-    items = cast("list[object]", data)
+    items = load_json_array(path, label="exemptions")
     return [
         _validate_exemption(item, index=index, source=path)
         for index, item in enumerate(items)
     ]
-
-
-def _has_inline_pragma(
-    finding: Finding, *, source_lines_by_file: dict[str, tuple[str, ...]]
-) -> bool:
-    lines = source_lines_by_file.get(finding.file, ())
-    index = finding.lineno - 1
-    if 0 <= index < len(lines) and PRAGMA_RE.search(lines[index]):
-        return True
-    previous = index - 1
-    return 0 <= previous < len(lines) and STANDALONE_PRAGMA_RE.match(lines[previous]) is not None
 
 
 def _exemption_matches(*, finding: Finding, exemption: Exemption) -> bool:
@@ -452,228 +333,33 @@ def _exemption_matches(*, finding: Finding, exemption: Exemption) -> bool:
     return finding.constant == constant
 
 
-def _source_lines(path: Path) -> tuple[str, ...]:
-    try:
-        return tuple(path.read_text(encoding="utf-8").splitlines())
-    except OSError:
-        return ()
-
-
-def _collect_all(
-    python_dir: Path, *, env_constants: dict[str, str]
-) -> tuple[list[Finding], dict[str, tuple[str, ...]]]:
-    findings: list[Finding] = []
-    source_lines_by_file: dict[str, tuple[str, ...]] = {}
-    for path in iter_source_files(python_dir):
-        normalized = path.relative_to(python_dir).as_posix()
-        source_lines_by_file[normalized] = _source_lines(path)
-        findings.extend(scan_file(path, python_dir=python_dir, env_constants=env_constants))
-    return findings, source_lines_by_file
-
-
-def _check_duplicate_live(findings: list[Finding]) -> str | None:
-    duplicate = _first_duplicate(finding.key() for finding in findings)
-    if duplicate is None:
-        return None
-    return f"duplicate live identity {format_key(duplicate)}"
-
-
-def _filter_suppressed(
-    findings: list[Finding],
-    *,
-    exemptions: list[Exemption],
-    source_lines_by_file: dict[str, tuple[str, ...]],
-) -> list[Finding]:
-    return [
-        finding
-        for finding in findings
-        if not any(
-            _exemption_matches(finding=finding, exemption=exemption)
-            for exemption in exemptions
-        )
-        and not _has_inline_pragma(finding, source_lines_by_file=source_lines_by_file)
-    ]
-
-
-def format_key(key: tuple[str, str, str, str, str, int]) -> str:
-    file_name, qualified_symbol, env_name, constant, access, occurrence = key
-    return f"{file_name}:{qualified_symbol} {env_name}/{constant} {access}#{occurrence}"
-
-
-def _format_relocation_key(key: tuple[str, str, str, str, str, int]) -> str:
-    file_name, qualified_symbol, env_name, constant, access, occurrence = key
-    return f"{file_name}:{qualified_symbol} {env_name}/{constant} {access}#{occurrence}"
-
-
-def serialize_baseline(records: list[Record]) -> str:
-    """Return canonical sorted JSON for the baseline."""
-    ordered = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(
-    findings: list[Finding],
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> list[Record]:
-    preserved: dict[tuple[str, str, str, str, str, int], str] = {}
-    baseline_relocation_counts: Counter[tuple[str, str, str, str, str, int]] = Counter()
-    relocation_reasons: dict[tuple[str, str, str, str, str, int], str] = {}
-    has_baseline = baseline_path.is_file()
-    if has_baseline:
-        baseline_records = load_baseline(baseline_path)
-        preserved = {_record_key(record): record["reason"] for record in baseline_records}
-        baseline_relocation_counts = Counter(_relocation_key(record) for record in baseline_records)
-        relocation_reasons = {
-            _relocation_key(record): record["reason"]
-            for record in baseline_records
-            if baseline_relocation_counts[_relocation_key(record)] == 1
-        }
-    live_relocation_counts = Counter(_relocation_key(finding) for finding in findings)
-    reason_default = initial_reason.strip() if initial_reason is not None else None
-    records: list[Record] = []
-    missing: list[str] = []
-    for finding in sorted(findings, key=_finding_sort_key):
-        reason = preserved.get(finding.key())
-        relocation_key = _relocation_key(finding)
-        baseline_relocation_count = baseline_relocation_counts[relocation_key]
-        live_relocation_count = live_relocation_counts[relocation_key]
-        if (
-            reason is None
-            and baseline_relocation_count == 1
-            and live_relocation_count == 1
-        ):
-            reason = relocation_reasons[relocation_key]
-        elif reason is None and has_baseline and (
-            baseline_relocation_count > 1 or live_relocation_count > 1
-        ):
-            raise BaselineError(
-                "ambiguous relocation key for live env finding "
-                f"{format_key(finding.key())}: {_format_relocation_key(relocation_key)}"
-            )
-        if reason is None and reason_default:
-            reason = reason_default
-        if reason is None:
-            missing.append(format_key(finding.key()))
-            continue
-        records.append(
-            {
-                "file": finding.file,
-                "qualified_symbol": finding.qualified_symbol,
-                "env_name": finding.env_name,
-                "constant": finding.constant,
-                "access": finding.access,
-                "occurrence": finding.occurrence,
-                "reason": reason,
-            }
-        )
-    if missing:
-        joined = "\n  ".join(missing)
-        raise BaselineError("missing baseline reasons for live env findings:\n  " + joined)
-    return records
-
-
-def _run_write(
-    python_dir: Path,
-    *,
-    baseline_path: Path,
-    exemptions: list[Exemption],
-    env_constants: dict[str, str],
-    initial_reason: str | None,
-) -> int:
-    try:
-        all_findings, source_lines_by_file = _collect_all(python_dir, env_constants=env_constants)
-        duplicate = _check_duplicate_live(all_findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-        findings = _filter_suppressed(
-            all_findings,
-            exemptions=exemptions,
-            source_lines_by_file=source_lines_by_file,
-        )
-        records = _records_for_write(
-            findings,
-            baseline_path=baseline_path,
-            initial_reason=initial_reason,
-        )
-    except BaselineError as exc:
-        print(f"lint-env-via-config-constant: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    print(
-        f"lint-env-via-config-constant: wrote {len(records)} records to {baseline_path}",
-        file=sys.stderr,
+def _has_inline_pragma(finding: Finding, *, lines: tuple[str, ...]) -> bool:
+    return has_inline_pragma(
+        finding.lineno,
+        lines,
+        pragma_re=PRAGMA_RE,
+        standalone_pragma_re=STANDALONE_PRAGMA_RE,
     )
-    return 0
 
 
-def _run_check(
-    python_dir: Path,
-    *,
-    baseline_path: Path,
-    exemptions: list[Exemption],
-    env_constants: dict[str, str],
-) -> int:
-    try:
-        baseline_records = load_baseline(baseline_path)
-        all_findings, source_lines_by_file = _collect_all(python_dir, env_constants=env_constants)
-        duplicate = _check_duplicate_live(all_findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-    except BaselineError as exc:
-        print(f"lint-env-via-config-constant: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_keys = frozenset(_record_key(record) for record in baseline_records)
-    live_findings = _filter_suppressed(
-        all_findings,
-        exemptions=exemptions,
-        source_lines_by_file=source_lines_by_file,
+def to_engine_finding(finding: Finding) -> EngineFinding:
+    """Adapt one env finding to the shared engine finding shape."""
+    return EngineFinding(
+        path=f"{PYTHON_PREFIX}{finding.file}",
+        line=finding.lineno,
+        rule_id=RULE_ID,
+        message=(
+            f"{finding.qualified_symbol} uses os.environ literal {finding.env_name!r} "
+            f"for {finding.constant} access {finding.access} occurrence {finding.occurrence}"
+        ),
+        qualified_symbol=finding.qualified_symbol,
+        occurrence=finding.occurrence,
+        occurrence_values=(
+            ("env_name", finding.env_name),
+            ("constant", finding.constant),
+            ("access", finding.access),
+        ),
     )
-    new_findings: list[Finding] = []
-    warned: list[Finding] = []
-    for finding in sorted(live_findings, key=_finding_sort_key):
-        if finding.key() in baseline_keys:
-            warned.append(finding)
-        else:
-            new_findings.append(finding)
-    for finding in warned:
-        print(
-            "warning: "
-            f"{finding.file}:{finding.qualified_symbol} uses os.environ literal {finding.env_name!r} "
-            f"for {finding.constant} access {finding.access} occurrence {finding.occurrence} (baselined)",
-            file=sys.stderr,
-        )
-    for finding in new_findings:
-        print(
-            f"{finding.file}:{finding.qualified_symbol} uses os.environ literal {finding.env_name!r} "
-            f"for {finding.constant} access {finding.access} occurrence {finding.occurrence}; "
-            "use the config constant or document an exemption",
-            file=sys.stderr,
-        )
-    return 1 if new_findings else 0
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint env-via-config-constant", description=__doc__
-    )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from live AST scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason used for live findings without preserved baseline reasons.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
 
 
 def _allow_duplicate_policy(config_path: Path) -> bool:
@@ -685,47 +371,78 @@ def _allow_duplicate_policy(config_path: Path) -> bool:
         return False
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root = Path(str(parsed.root)).resolve()
+def build_rule(root: Path) -> LintRule:
+    """Build an engine rule closed over config constants and exemptions for ``root``."""
     python_dir = root / "python"
-    if not python_dir.is_dir():
-        print(
-            f"lint-env-via-config-constant: python directory not found: {python_dir}",
-            file=sys.stderr,
-        )
-        return TOOL_FAILURE_EXIT
-    baseline_path = python_dir / BASELINE_FILENAME
-    exemptions_path = python_dir / EXEMPTIONS_FILENAME
     config_path = python_dir.joinpath(*CONFIG_RELPATH.split("/"))
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-env-via-config-constant: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
+    env_constants = parse_config_constants(
+        config_path,
+        allow_duplicate_values=_allow_duplicate_policy(config_path),
+    )
+    exemptions = load_exemptions(python_dir / EXEMPTIONS_FILENAME)
+
+    def detect(source: SourceFile) -> list[EngineFinding]:
+        if not source.is_python or not is_production_source_path(source.path):
+            return []
+        normalized_file = source.path.removeprefix(PYTHON_PREFIX)
+        raw = findings_from_source(
+            source.text, normalized_file=normalized_file, env_constants=env_constants
+        )
+        lines = source.lines
+        return [
+            to_engine_finding(finding)
+            for finding in raw
+            if not any(_exemption_matches(finding=finding, exemption=exemption) for exemption in exemptions)
+            and not _has_inline_pragma(finding, lines=lines)
+        ]
+
+    return LintRule(
+        rule_id=RULE_ID,
+        description=(
+            "Ratchet bare os.environ literals toward config.ENV_* constants"
+        ),
+        detect=detect,
+        syntax_policy="skip",
+        suppression_token=SUPPRESSION_TOKEN,
+        allow_inline_suppression=False,
+        pathspecs=("python",),
+        source_filter=is_production_source_path,
+        occurrence_baseline=True,
+        occurrence_fields=("env_name", "constant", "access"),
+        require_baseline=True,
+        warn_matching_baseline=True,
+    )
+
+
+CLI = RuleCli(
+    prog="cli.py lint env-via-config-constant",
+    description=__doc__,
+    baseline_filename=BASELINE_FILENAME,
+    error_label="lint-env-via-config-constant",
+    scoped_paths=None,
+    strict_stale=False,
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry registered as ``python3 python/cli.py lint env-via-config-constant``."""
+    parsed = parse_lint_argv(argv if argv is not None else sys.argv[1:], cli=CLI)
+    if parsed is None:
+        return EXIT_ERROR
+    root = Path(str(parsed.root)).resolve()
     try:
-        exemptions = load_exemptions(exemptions_path)
-        env_constants = parse_config_constants(
-            config_path,
-            allow_duplicate_values=_allow_duplicate_policy(config_path),
-        )
+        rule = build_rule(root)
     except BaselineError as exc:
-        print(f"lint-env-via-config-constant: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(
-            python_dir,
-            baseline_path=baseline_path,
-            exemptions=exemptions,
-            env_constants=env_constants,
-            initial_reason=initial_reason,
-        )
-    return _run_check(
-        python_dir,
-        baseline_path=baseline_path,
-        exemptions=exemptions,
-        env_constants=env_constants,
+        print(f"{CLI.error_label}: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    return run_rule(
+        rule,
+        root,
+        proc.ProcRunner(),
+        baseline_path=root / "python" / BASELINE_FILENAME,
+        write_baseline=bool(parsed.write),
+        initial_reason=cast("str | None", parsed.initial_reason),
+        strict_stale=False,
     )
 
 
