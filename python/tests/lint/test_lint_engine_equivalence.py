@@ -2,9 +2,10 @@
 
 Test-only surface. Golden fixtures under fixtures/lint_engine_equivalence/
 materialize synthetic repositories below tmp_path. The markdown adapter calls
-``lint_markdown_heading_fence_state.detect`` directly on SourceFile values;
-unreachable-branch and self-disarmable-gate still use their legacy scan_file
-APIs until those ports land.
+``lint_markdown_heading_fence_state.detect`` directly on SourceFile values.
+Other adapters still call legacy scan/detect helpers (unreachable-branch,
+self-disarmable-gate, monkeypatch-facade-binding) so goldens pin detector
+output independently of engine CLI wiring.
 """
 
 from __future__ import annotations
