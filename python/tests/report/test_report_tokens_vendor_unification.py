@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-# pylint: disable=unused-argument
-
 import json
 from pathlib import Path
 
@@ -56,7 +54,7 @@ def _calibration_total(report: dict[str, object], tmp_path: Path) -> int:
     run = tmp_path / "run"
     run.mkdir()
     _ = (run / "token-report.json").write_text(json.dumps(report), encoding="utf-8")
-    timing = dc._token_timing("implement", run, dc.AnalyzerState())  # type: ignore[reportPrivateUsage]
+    timing = dc._token_timing("implement", run, dc.AnalyzerState())  # type: ignore[reportPrivateUsage]  # test asserts cross-path agreement via the private timing builder
     assert timing.token_total is not None
     return timing.token_total
 
