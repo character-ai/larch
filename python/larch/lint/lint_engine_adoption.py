@@ -19,6 +19,7 @@ import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from larch.core import proc
 from larch.lint.engine import (
@@ -344,6 +345,14 @@ def _is_json_call(node: ast.Call, *, bindings: _ImportBindings) -> bool:
     return f"__func__.{name}" in bindings.json_modules
 
 
+class _PathKwargs(TypedDict):
+    """Keyword bundle forwarded to :func:`_expr_is_baseline_path`."""
+
+    str_bindings: dict[str, str]
+    path_ctors: frozenset[str]
+    baseline_names: frozenset[str]
+
+
 def _is_direct_baseline_io_call(
     node: ast.Call,
     *,
@@ -351,7 +360,7 @@ def _is_direct_baseline_io_call(
     bindings: _ImportBindings,
     baseline_names: frozenset[str],
 ) -> bool:
-    path_kwargs = {
+    path_kwargs: _PathKwargs = {
         "str_bindings": str_bindings,
         "path_ctors": bindings.path_ctors,
         "baseline_names": baseline_names,
@@ -481,7 +490,7 @@ def _helper_call_passes_baseline(
     if callee is None or callee not in helpers:
         return False
     sinking = helpers[callee]
-    path_kwargs = {
+    path_kwargs: _PathKwargs = {
         "str_bindings": ctx.str_bindings,
         "path_ctors": ctx.path_ctors,
         "baseline_names": ctx.baseline_names,

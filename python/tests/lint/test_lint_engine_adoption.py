@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+from typing import cast
 
 from larch.lint import lint_engine_adoption as lint
 from larch.lint.engine import (
@@ -550,8 +551,9 @@ def test_committed_tree_projection_covers_legacy_and_spares_engine() -> None:
     repo = Path(__file__).resolve().parents[3]
     baseline_path = repo / "python" / lint.BASELINE_FILENAME
     assert baseline_path.is_file()
-    rows = json.loads(baseline_path.read_text(encoding="utf-8"))
-    assert isinstance(rows, list)
+    raw = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert isinstance(raw, list)
+    rows = cast("list[dict[str, object]]", raw)
     identities = {
         (row["path"], row["rule_id"], row["message"], row["anchor"]) for row in rows
     }
