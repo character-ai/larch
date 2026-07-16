@@ -3707,7 +3707,7 @@ def test_fresh_fallback_hydrates_modes_and_preserves_counters(
     assert "PR_URL=\n" in state
 
 
-def test_done_merged_resume_is_idempotent_without_manifest_status(
+def test_done_merged_resume_runs_idempotent_postmerge_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -3722,13 +3722,47 @@ def test_done_merged_resume_is_idempotent_without_manifest_status(
         "pr_view",
         lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "MERGED", "head_ref": "feat"})(),
     )
-    monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")))
+    postmerge_calls: list[bool] = []
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok _resume_done_result resolves ship's imported binding
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: postmerge_calls.append(True) or ship.ShipResult(Outcome.OK),
+    )
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
     assert result.detail == "already done"
+    assert postmerge_calls == [True]
+
+
+def test_done_merged_resume_preserves_postmerge_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=done\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.gh, "pr_view", lambda *_a, **_k: _merged_pr_view())
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok _resume_done_result resolves ship's imported binding
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: ship.ShipResult(Outcome.STALLED, detail="local cleanup failed"),
+    )
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok _resume_done_result resolves ship's imported binding
+        ship,
+        "reconcile_committed_stalled_summary_if_recovered",
+        lambda *_a, **_k: None,
+    )
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "local cleanup failed"
 
 
 def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
@@ -3783,10 +3817,11 @@ def test_done_resume_post_merge_reconciliation_skip_falls_through_to_done(
         "pr_view",
         lambda *_a, **_k: _merged_pr_view(),
     )
-    monkeypatch.setattr(
-        ship.finalize,
-        "postmerge",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")),
+    postmerge_calls: list[bool] = []
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok _resume_done_result resolves ship's imported binding
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: postmerge_calls.append(True) or ship.ShipResult(Outcome.OK),
     )
     flush_calls = _force_recovered_reconciliation_post_merge_skip(monkeypatch)
 
@@ -3800,6 +3835,7 @@ def test_done_resume_post_merge_reconciliation_skip_falls_through_to_done(
     assert result.outcome is Outcome.OK
     assert result.detail == "already done"
     assert flush_calls == [True]
+    assert postmerge_calls == [True]
     assert "PHASE=done\n" in state
     assert "PHASE=stalled\n" not in state
     assert "STALL_STEP=run-log-reconciliation\n" not in state
