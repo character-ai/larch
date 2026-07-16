@@ -14,16 +14,15 @@ from pathlib import Path
 from typing import Any
 
 from larch import io as larch_io
+from larch.core import config
+from larch.core.repo_roots import plugin_root as resolve_plugin_root
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
-def _plugin_root() -> Path:
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if env_root:
-        return Path(env_root)
-    tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+def _plugin_root_fallback() -> Path:
+    tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if tmpdir:
         plugin_env = Path(tmpdir) / "plugin-root.env"
         if plugin_env.is_file():
@@ -156,7 +155,7 @@ def step_16(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    plugin_root = _plugin_root()
+    plugin_root = resolve_plugin_root(_plugin_root_fallback())
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
@@ -223,7 +222,7 @@ def step_16_16a(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    plugin_root = _plugin_root()
+    plugin_root = resolve_plugin_root(_plugin_root_fallback())
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
@@ -264,7 +263,7 @@ def step_17(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    plugin_root = _plugin_root()
+    plugin_root = resolve_plugin_root(_plugin_root_fallback())
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
@@ -355,7 +354,7 @@ def step_16_17(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    plugin_root = _plugin_root()
+    plugin_root = resolve_plugin_root(_plugin_root_fallback())
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)

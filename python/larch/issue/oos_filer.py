@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import proc
 from larch.errors import ShipError
 from larch.git import gh
+from larch.core.repo_roots import consumer_repo_root
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_priority
@@ -82,10 +83,7 @@ def _run_id(*, tmpdir: Path, state: dict[str, str]) -> str:
 
 
 def _repo_root() -> Path:
-    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True, check=False)  # noqa: S607
-    if result.returncode == 0 and result.stdout.strip():
-        return Path(result.stdout.strip())
-    return Path.cwd()
+    return consumer_repo_root() or Path.cwd()
 
 
 def _is_security_block(block: str) -> bool:

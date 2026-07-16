@@ -11,7 +11,7 @@ from larch import io as larch_io
 from larch.calibration import difficulty
 from collections.abc import Sequence
 
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root, plugin_root
 from larch.design.design_session import step2b5_next_action_for
 from larch.design.design_terminal import phase_driver_write_result_env
 
@@ -43,13 +43,6 @@ POSTPLAN_RESULT_ENV_ALLOW = frozenset({
     "VALIDATE_LOG_FILE",
     "VALIDATE_MISSING_SCRIPT_COUNT",
 })
-
-
-def _plugin_root() -> Path:
-    env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if env:
-        return Path(env)
-    return Path(__file__).resolve().parents[3]
 
 
 def _parse_kv(text: str) -> dict[str, str]:
@@ -185,7 +178,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         print(f"design-postplan-emit.sh: design tmpdir not a directory: {design_tmpdir}", file=sys.stderr)
         return 2
 
-    root = _plugin_root()
+    root = plugin_root(Path(__file__).resolve().parents[3])
     result_env = design_tmpdir / ".design-postplan-emit-result.env"
     run_params_path = design_tmpdir / "run-params.json"
     partition_requested = "false"

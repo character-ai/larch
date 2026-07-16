@@ -18,6 +18,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import run_context
 from larch.git import pr_body
+from larch.core.repo_roots import plugin_root
 from larch.issue import execution_issues
 from larch.implement.dispatch_helpers import result_env_capture_rows
 from larch.core import proc
@@ -70,10 +71,6 @@ def _result_env_capture(path: Path | None) -> Generator[None, None, None]:
         _result_rows = prior
 
 
-def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
-
-
 def _emit_arg_failure(*, bail_reason: str) -> int:
     emit(key="DIAGRAM_STATUS", value="failed")
     emit(key="DIAGRAM_REASON", value="")
@@ -120,7 +117,7 @@ def _is_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(_plugin_root() / "python" / "cli.py"), *args],
+        [sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), *args],
         text=True,
         capture_output=True,
         check=False,
@@ -169,7 +166,7 @@ def _run_log_flush(
     _run_cli("token", "mark", "Step 8 — ship PR")
     env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
     subprocess.run(
-        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 8 — ship PR"],
+        [sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), "timing", "mark", "Step 8 — ship PR"],
         env=env,
         check=False,
     )
@@ -371,7 +368,7 @@ def _run_step7a_inner(
     _run_cli("token", "mark", "Step 7a — pre-ship")
     # lint-subprocess-via-runner: ok timing-mark needs LARCH_TIMING_SKILL env; _run_cli does not support custom env
     subprocess.run(
-        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 7a — pre-ship"],
+        [sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), "timing", "mark", "Step 7a — pre-ship"],
         env={**os.environ, "LARCH_TIMING_SKILL": "implement"},
         check=False,
     )
@@ -515,7 +512,7 @@ def _launch_step7a_bgjob(spec: Step7aBgjobLaunch) -> int:
         str(merge_result_env),
         "--",
         sys.executable,
-        str(_plugin_root() / "python" / "cli.py"),
+        str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"),
         "implement",
         "step-7a",
         "--implement-tmpdir",

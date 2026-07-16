@@ -16,6 +16,7 @@ from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.git import gh
+from larch.core.repo_roots import plugin_root
 from larch.issue import file_oos
 from larch.issue import oos_priority
 from larch.review.review_types import is_security_block_text, parse_blocks
@@ -35,15 +36,8 @@ _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
 
 
-def _plugin_root() -> Path:
-    env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if env:
-        return Path(env)
-    return Path(__file__).resolve().parents[3]
-
-
 def _run_cli(*args: str, capture: bool = False, stderr_path: Path | None = None) -> subprocess.CompletedProcess[str]:
-    root = _plugin_root()
+    root = plugin_root(Path(__file__).resolve().parents[3])
     command = [sys.executable, str(root / "python" / "cli.py"), *args]
     if capture:
         return subprocess.run(command, capture_output=True, text=True, check=False)

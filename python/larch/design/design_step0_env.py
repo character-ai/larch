@@ -98,10 +98,6 @@ PARSE_VALIDATION_RC = 3
 CONFIGURATION_ERROR_RC = 2
 
 
-def _plugin_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 class Step0WrapperNs(argparse.Namespace):
     session_env_path: str
     claude_pid: str

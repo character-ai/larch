@@ -15,17 +15,14 @@ import sys
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import plugin_root as _plugin_root
 from larch.review.review_types import parse_findings, read_finding_text
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
-
-
-def _plugin_root() -> Path:
-    return Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, str(_PLUGIN_ROOT))).resolve()
+_PLUGIN_ROOT_RESOLVER = _plugin_root
 
 
 def _emit_kv(*, key: str, value: str | int | bool) -> None:

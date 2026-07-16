@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 
 from larch.core import architectural_guidelines
 from larch.design import design_oos
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 
 from larch.design.design_core import _append_failure
 from larch.design.design_router import _parse_stdout_kv

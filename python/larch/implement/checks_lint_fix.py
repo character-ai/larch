@@ -38,6 +38,7 @@ from larch.core import external_defaults
 from larch.core import proc
 from larch.core import redact
 from larch.git import git
+from larch.core.repo_roots import plugin_root
 from larch.issue import execution_issues
 from larch.lint import lint_complexity_baseline
 from larch.outcomes import Outcome, StepResult
@@ -359,12 +360,8 @@ class RepairLoopBgjobLaunch:
     repo_root: str
 
 
-def _plugin_root() -> Path:
-    return Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
-
-
 def _run_cli(*args: str) -> CommandResult:
-    return proc.run([sys.executable, str(_plugin_root() / "python" / "cli.py"), *args])
+    return proc.run([sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), *args])
 
 
 def _repair_loop_step_slug(site: str) -> str:
@@ -405,7 +402,7 @@ def _launch_repair_loop_bgjob(spec: RepairLoopBgjobLaunch) -> int:
         str(merge_result_env),
         "--",
         sys.executable,
-        str(_plugin_root() / "python" / "cli.py"),
+        str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"),
         "checks",
         "repair-loop",
         "--tmpdir",

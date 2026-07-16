@@ -21,6 +21,7 @@ from larch.review import findings_ledger
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import plugin_root
 from larch.review.dispatch_shared import (
     DispatchState,
     VoterPromptResult,
@@ -63,12 +64,8 @@ class ValidationError(RuntimeError):
     pass
 
 
-def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))).resolve()
-
-
 def _cli_path() -> Path:
-    return _plugin_root() / "python" / "cli.py"
+    return plugin_root(_PLUGIN_ROOT) / "python" / "cli.py"
 
 
 def _cli_argv(*subcommand: str) -> list[str]:
@@ -464,7 +461,7 @@ def dispatch_voters(opts: Options) -> int:
         "--review-tmpdir",
         opts.review_tmpdir,
         "--plugin-root",
-        str(_plugin_root()),
+        str(plugin_root(_PLUGIN_ROOT)),
         "--dispatch-label",
         DISPATCH_LABEL,
         *_parse_rate_ctx_args(bounded_diff=bounded_diff, bounded_plan=bounded_plan),

@@ -44,6 +44,7 @@ from larch.review.dispatch_shared import (
     with_manifest_attribution,
 )
 from larch.report.run_log_batch import append_execution_issue
+from larch.core.repo_roots import plugin_root
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.state.session_env import validate_design_tmpdir
 
@@ -104,7 +105,7 @@ def _static_slot_rows(
     _ = round_num
     rows: list[dict[str, object]] = []
     codex_slots = codex_present == "true"
-    cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
+    cli = [sys.executable, str(plugin_root(_REPO_ROOT) / "python" / "cli.py"), "render", "plan-review"]
     static_slots = [slot for slot in topology_slots("design.plan_review_panel") if slot.archetype != "generic"]
     for slot in static_slots:
         if slot.tool == "codex" and not codex_slots:
@@ -198,7 +199,7 @@ def _generic_plan_codex_row(
     proc = subprocess.run(
         [
             sys.executable,
-            str(_plugin_root() / "python" / "cli.py"),
+            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
             "render",
             "plan-review",
             "--vendor",
@@ -240,10 +241,6 @@ def _generic_plan_codex_row(
     row["model_role"] = role
     row["resolved_model"] = resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
     return row
-
-def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
-
 
 def _emit(*, key: str, value: object = "") -> None:
     logging_util.emit_kv(key=key, value=str(value))
@@ -329,7 +326,7 @@ def _dynamic_slot_rows(
     # body-file and substituted for the fixed role line, inheriting the rest of the
     # scaffold. On a render miss `_slot_row` keeps the existing one-line fallback, exactly
     # as the static path does.
-    cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
+    cli = [sys.executable, str(plugin_root(_REPO_ROOT) / "python" / "cli.py"), "render", "plan-review"]
     rows: list[dict[str, object]] = []
     failures: list[tuple[str, str, int]] = []
     for tool, slot, focus, prompt in dynamic:
@@ -473,7 +470,7 @@ def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tup
     proc = subprocess.run(
         [
             sys.executable,
-            str(_plugin_root() / "python" / "cli.py"),
+            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
             "review",
             "reviewer-prune",
             "filter",
@@ -572,7 +569,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     if waterfall:
         cmd = [waterfall]
     else:
-        cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+        cmd = [sys.executable, str(plugin_root(_REPO_ROOT) / "python" / "cli.py"), "agent", "dispatch-waterfall"]
     panel_env = build_panel_dispatch_env(
         artifact_dir=round_dir,
         site="design Step 3",
@@ -658,7 +655,7 @@ def _fresh_calibration_stats_file(*, design: Path) -> str | None:
         work_dir=design,
         snapshot_argv=[
             sys.executable,
-            str(_plugin_root() / "python" / "cli.py"),
+            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
             "voter-calibration",
             "snapshot",
         ],
@@ -679,7 +676,7 @@ def _make_voter_prompt(
     payload_sidecar = prompt_file.with_name(prompt_file.name + ".payload-bytes")
     args = [
         sys.executable,
-        str(_plugin_root() / "python" / "cli.py"),
+        str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
         "render",
         "voter",
         "--ballot-file",
@@ -712,7 +709,7 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
     return validate_parse_rate_result(
         [
             sys.executable,
-            str(_plugin_root() / "python" / "cli.py"),
+            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
             "voting",
             "parse-rate-retry",
             "--ballot-file",
@@ -722,7 +719,7 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
             "--review-tmpdir",
             str(design),
             "--plugin-root",
-            str(_plugin_root()),
+            str(plugin_root(_REPO_ROOT)),
             "--dispatch-label",
             _DISPATCH_LABEL,
             "--retry-prefix-kind",
@@ -749,7 +746,7 @@ def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path, env: 
     return subprocess.run(
         [
             _AGENT_LAUNCH_PYTHON,
-            str(_plugin_root() / "python" / "cli.py"),
+            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
             "agent",
             "launch-claude-review",
             "--output",
@@ -1025,7 +1022,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     )
     wf_args = [
         sys.executable,
-        str(_plugin_root() / "python" / "cli.py"),
+        str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
         "agent",
         "dispatch-waterfall",
         "--slots-file",
@@ -1135,7 +1132,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     effective_proc = larch_proc.run(
         [
             sys.executable,
-            str(_plugin_root() / "python" / "cli.py"),
+            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
             "voting",
             "effective-judges",
             f"{state.voter_1_status}\t{state.voter_1_path}\t{state.voter_1_parse_rate_status}",
@@ -1150,7 +1147,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         warn_proc = larch_proc.run(
             [
                 sys.executable,
-                str(_plugin_root() / "python" / "cli.py"),
+                str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
                 "voting",
                 "degraded-warning",
                 str(effective),

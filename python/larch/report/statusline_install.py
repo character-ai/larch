@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch import io as larch_io
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
 LOCAL_SETTINGS = Path(".claude") / "settings.local.json"

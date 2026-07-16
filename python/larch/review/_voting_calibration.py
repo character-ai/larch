@@ -20,7 +20,8 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.git import repo_roots
+from larch.core import repo_roots
+from larch.core.repo_roots import plugin_root as _plugin_root
 from larch.report import run_log_corpus
 from larch.review.review_types import (
     JudgeSeverity,
@@ -84,10 +85,6 @@ def valid_panel_severity(token: str) -> str | None:
     normalized = token.strip().lower()
     normalized = _LEGACY_SEVERITY_MAP.get(normalized, normalized)
     return normalized if normalized in _SEVERITY_VALUES else None
-
-
-def _plugin_root() -> Path:
-    return Path(__file__).resolve().parents[3]
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +767,7 @@ def _reject_plugin_calibration_root(root: Path) -> Path | None:
             if resolved == Path(plugin).resolve():
                 return None
     with suppress(OSError):
-        if resolved == _plugin_root().resolve():
+        if resolved == _plugin_root(Path(__file__).resolve().parents[3], use_env=False):
             return None
     return root
 

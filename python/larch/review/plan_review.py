@@ -32,7 +32,7 @@ from larch.design.design_terminal import (
     phase_driver_read_result_env,
     phase_driver_write_result_env,
 )
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 from larch.review import plan_review_round
 from larch.review import plan_review_loop
 from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float

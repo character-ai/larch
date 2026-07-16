@@ -657,7 +657,7 @@ def test_step0_session_threads_repo_root_to_design_env_and_progress(tmp_path: Pa
         return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[:4] == ["git", "-C", str(subdir), "rev-parse"]:
+        if list(cmd[:4]) == ["git", "-C", str(subdir), "rev-parse"]:
             return subprocess.CompletedProcess(cmd, 0, str(repo) + "\n", "")
         joined = " ".join(cmd)
         if "session" in joined and "setup" in joined:

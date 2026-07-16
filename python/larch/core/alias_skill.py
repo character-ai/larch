@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import re
 import sys
-from pathlib import Path
 
 from larch.core import proc
+from larch.core.repo_roots import consumer_repo_root
 
 PUBLIC_STYLE_LINE = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
 DEV_STYLE_LINE = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**"
@@ -90,12 +90,10 @@ def resolve_target_main(argv: list[str]) -> int:
     if re.match(r"^[a-z][a-z0-9-]*$", name) is None:
         print(f"ERROR: alias-name '{name}' is invalid (must match ^[a-z][a-z0-9-]*$)", file=sys.stderr)
         return 1
-    result = proc.run(["git", "rev-parse", "--show-toplevel"])
-    repo_root = result.stdout.strip()
-    if result.returncode != 0 or not repo_root:
+    root = consumer_repo_root(run=proc.run)
+    if root is None:
         print("ERROR: not in a git repository", file=sys.stderr)
         return 1
-    root = Path(repo_root)
     plugin_repo = (root / ".claude-plugin/plugin.json").is_file() and (root / "skills/implement/SKILL.md").is_file()
     target_dir = root / "skills" / name if plugin_repo and not private else root / ".claude" / "skills" / name
     print(f"REPO_ROOT={root}")

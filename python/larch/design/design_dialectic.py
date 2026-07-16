@@ -23,6 +23,8 @@ import tempfile
 import time
 from collections.abc import Callable, Sequence
 
+from larch.core.repo_roots import plugin_root
+
 
 
 AUTO_CANDIDATES = "dialectic-clarifier-candidates.json"
@@ -108,11 +110,6 @@ class StatusSidecar:
 
 class DialecticShapeError(ValueError):
     """Raised for invalid external dialectic JSON/request shape."""
-
-
-def _plugin_root() -> Path:
-    env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    return Path(env) if env else Path(__file__).resolve().parents[3]
 
 
 def _validate_design_tmpdir(design_tmpdir: str | Path) -> Path:
@@ -627,7 +624,7 @@ def _ballot_text(*, candidates: CandidateSet, steelmen: dict[tuple[str, str], st
 def _launcher_argv(*, design: Path, prompt: Path, output: Path, timeout: int, task_kind: str) -> list[str]:
     return [
         sys.executable,
-        str(_plugin_root() / "python" / "cli.py"),
+        str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"),
         "agent",
         "launch-claude-subprocess",
         "--prompt-file",
