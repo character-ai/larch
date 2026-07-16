@@ -1,5 +1,6 @@
 """Characterize shared-codec behavior at migrated /design call sites."""
-# pyright: reportPrivateUsage=false  # tests deliberately pin private migration seams
+# These tests deliberately pin private migration seams.
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
