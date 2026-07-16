@@ -2,40 +2,24 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import re
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypeAlias
+
+from larch.lint import engine
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_RELPATH = Path("python/skill-closure-baseline.json")
-GATED_SKILLS = ("design", "implement", "review")
+GATED_SKILLS = engine.SKILL_CLOSURE_RATCHETED_TARGETS[:3]
 PANEL_TIER_TARGET = "panel-tier"
-RATCHETED_TARGETS = (*GATED_SKILLS, PANEL_TIER_TARGET)
-FILE_RATCHET_TARGETS = frozenset({PANEL_TIER_TARGET})
-METRIC_FIELDS = (
-    "skill_md_lines",
-    "skill_md_estimated_tokens",
-    "skill_md_content_estimated_tokens",
-    "closure_lines",
-    "closure_estimated_tokens",
-    "closure_content_estimated_tokens",
-)
-CONDITIONAL_METRIC_FIELDS = (
-    "conditional_lines",
-    "conditional_estimated_tokens",
-    "conditional_content_estimated_tokens",
-)
-CONDITIONAL_TO_CLOSURE_METRIC = {
-    "conditional_lines": "closure_lines",
-    "conditional_estimated_tokens": "closure_estimated_tokens",
-    "conditional_content_estimated_tokens": "closure_content_estimated_tokens",
-}
-BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files", *CONDITIONAL_METRIC_FIELDS, "conditional_files"})
+RATCHETED_TARGETS = engine.SKILL_CLOSURE_RATCHETED_TARGETS
+FILE_RATCHET_TARGETS = engine.SKILL_CLOSURE_FILE_RATCHET_TARGETS
+METRIC_FIELDS = engine.SKILL_CLOSURE_METRIC_FIELDS
+CONDITIONAL_METRIC_FIELDS = engine.SKILL_CLOSURE_CONDITIONAL_METRIC_FIELDS
+BASELINE_KEYS = engine.SKILL_CLOSURE_BASELINE_KEYS
 PLUGIN_ROOT_PREFIX = "${CLAUDE_PLUGIN_ROOT}/"
 CONDITIONAL_SECTIONS_BY_SKILL: dict[str, frozenset[str]] = {
     "design": frozenset(
@@ -86,27 +70,8 @@ CONDITIONAL_REFERENCE_RE = re.compile(
 )
 
 
-class BaselineRowDict(TypedDict):
-    skill: str
-    skill_md_lines: int
-    skill_md_estimated_tokens: int
-    skill_md_content_estimated_tokens: int
-    closure_lines: int
-    closure_estimated_tokens: int
-    closure_content_estimated_tokens: int
-    files: list[str]
-    conditional_lines: int
-    conditional_estimated_tokens: int
-    conditional_content_estimated_tokens: int
-    conditional_files: list[str]
-
-
 class ScanError(ValueError):
     """Raised when closure scanning cannot produce a trusted result."""
-
-
-class BaselineError(ValueError):
-    """Raised when the committed closure baseline cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -116,52 +81,8 @@ class FileMetrics:
     content_estimated_tokens: int
 
 
-@dataclass(frozen=True)
-class SkillClosureResult:
-    skill: str
-    skill_md_lines: int
-    skill_md_estimated_tokens: int
-    skill_md_content_estimated_tokens: int
-    closure_lines: int
-    closure_estimated_tokens: int
-    closure_content_estimated_tokens: int
-    files: tuple[str, ...]
-    conditional_lines: int
-    conditional_estimated_tokens: int
-    conditional_content_estimated_tokens: int
-    conditional_files: tuple[str, ...]
-
-    def to_baseline_row(self) -> BaselineRowDict:
-        return {
-            "skill": self.skill,
-            "skill_md_lines": self.skill_md_lines,
-            "skill_md_estimated_tokens": self.skill_md_estimated_tokens,
-            "skill_md_content_estimated_tokens": self.skill_md_content_estimated_tokens,
-            "closure_lines": self.closure_lines,
-            "closure_estimated_tokens": self.closure_estimated_tokens,
-            "closure_content_estimated_tokens": self.closure_content_estimated_tokens,
-            "files": list(self.files),
-            "conditional_lines": self.conditional_lines,
-            "conditional_estimated_tokens": self.conditional_estimated_tokens,
-            "conditional_content_estimated_tokens": self.conditional_content_estimated_tokens,
-            "conditional_files": list(self.conditional_files),
-        }
-
-
-@dataclass(frozen=True)
-class BaselineRow:
-    skill: str
-    skill_md_lines: int
-    skill_md_estimated_tokens: int
-    skill_md_content_estimated_tokens: int
-    closure_lines: int
-    closure_estimated_tokens: int
-    closure_content_estimated_tokens: int
-    files: tuple[str, ...]
-    conditional_lines: int
-    conditional_estimated_tokens: int
-    conditional_content_estimated_tokens: int
-    conditional_files: tuple[str, ...]
+SkillClosureResult: TypeAlias = engine.SkillClosureBaselineRow
+BaselineRow: TypeAlias = engine.SkillClosureBaselineRow
 
 
 @dataclass(frozen=True)
@@ -597,183 +518,16 @@ def scan_all(root: Path) -> list[SkillClosureResult]:
     return [scan_target(root, target) for target in RATCHETED_TARGETS]
 
 
-def _validate_int(value: object, *, source: Path, index: int, key: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise BaselineError(f"{source}: record {index} has invalid {key}")
-    return value
-
-
-def _validate_files(value: object, *, source: Path, index: int, key: str, allow_empty: bool = False) -> tuple[str, ...]:
-    if not isinstance(value, list) or (not value and not allow_empty):
-        raise BaselineError(f"{source}: record {index} has invalid {key}")
-    entries = cast("list[object]", value)
-    result: list[str] = []
-    for item in entries:
-        if not isinstance(item, str) or not item or item.startswith("/"):
-            raise BaselineError(f"{source}: record {index} has invalid {key}")
-        path = Path(item)
-        if any(part in {"", ".", ".."} for part in path.parts):
-            raise BaselineError(f"{source}: record {index} has invalid {key}")
-        result.append(path.as_posix())
-    if len(set(result)) != len(result):
-        raise BaselineError(f"{source}: record {index} has duplicate {key}")
-    return tuple(result)
-
-
-def _validate_baseline_row(item: object, *, source: Path, index: int) -> BaselineRow:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must be an object")
-    row = cast("dict[str, object]", item)
-    if set(row.keys()) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    skill = row["skill"]
-    if not isinstance(skill, str) or skill not in RATCHETED_TARGETS:
-        raise BaselineError(f"{source}: record {index} has invalid skill")
-    return BaselineRow(
-        skill=skill,
-        skill_md_lines=_validate_int(row["skill_md_lines"], source=source, index=index, key="skill_md_lines"),
-        skill_md_estimated_tokens=_validate_int(
-            row["skill_md_estimated_tokens"],
-            source=source,
-            index=index,
-            key="skill_md_estimated_tokens",
-        ),
-        skill_md_content_estimated_tokens=_validate_int(
-            row["skill_md_content_estimated_tokens"],
-            source=source,
-            index=index,
-            key="skill_md_content_estimated_tokens",
-        ),
-        closure_lines=_validate_int(row["closure_lines"], source=source, index=index, key="closure_lines"),
-        closure_estimated_tokens=_validate_int(
-            row["closure_estimated_tokens"],
-            source=source,
-            index=index,
-            key="closure_estimated_tokens",
-        ),
-        closure_content_estimated_tokens=_validate_int(
-            row["closure_content_estimated_tokens"],
-            source=source,
-            index=index,
-            key="closure_content_estimated_tokens",
-        ),
-        files=_validate_files(row["files"], source=source, index=index, key="files"),
-        conditional_lines=_validate_int(
-            row["conditional_lines"],
-            source=source,
-            index=index,
-            key="conditional_lines",
-        ),
-        conditional_estimated_tokens=_validate_int(
-            row["conditional_estimated_tokens"],
-            source=source,
-            index=index,
-            key="conditional_estimated_tokens",
-        ),
-        conditional_content_estimated_tokens=_validate_int(
-            row["conditional_content_estimated_tokens"],
-            source=source,
-            index=index,
-            key="conditional_content_estimated_tokens",
-        ),
-        conditional_files=_validate_files(
-            row["conditional_files"],
-            source=source,
-            index=index,
-            key="conditional_files",
-            allow_empty=True,
-        ),
+def write_baseline(path: Path, results: Iterable[SkillClosureResult]) -> None:
+    root = path.parent.parent if path.parent.name == "python" else path.parent
+    _ = engine.write_skill_closure_baseline(
+        path,
+        root=root,
+        rows=list(results),
     )
 
 
-def load_baseline(path: Path) -> list[BaselineRow]:
-    try:
-        raw: object = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise BaselineError(f"baseline not found: {path}") from exc
-    except UnicodeDecodeError as exc:
-        raise BaselineError(f"cannot read baseline {path}: {exc}") from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise BaselineError(f"cannot read baseline {path}: {exc}") from exc
-    if not isinstance(raw, list):
-        raise BaselineError(f"{path}: baseline must be a top-level array")
-    entries = cast("list[object]", raw)
-    rows = [_validate_baseline_row(item, source=path, index=index) for index, item in enumerate(entries, start=1)]
-    skills = [row.skill for row in rows]
-    if sorted(skills) != sorted(RATCHETED_TARGETS) or len(set(skills)) != len(skills):
-        raise BaselineError(f"{path}: baseline must contain one row per ratcheted target")
-    return rows
-
-
-def _canonical_json(results: Iterable[SkillClosureResult]) -> str:
-    rows = [result.to_baseline_row() for result in sorted(results, key=lambda item: item.skill)]
-    return json.dumps(rows, indent=2, sort_keys=True) + "\n"
-
-
-def write_baseline(path: Path, results: Iterable[SkillClosureResult]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_text(_canonical_json(results), encoding="utf-8")
-
-
-def _conditional_growth_allowed_by_tier_move(result: SkillClosureResult, row: BaselineRow, metric: str) -> bool:
-    moved_to_conditional = (set(row.files) - set(row.conditional_files)) & set(result.conditional_files)
-    if not moved_to_conditional:
-        return False
-    eager_metric = CONDITIONAL_TO_CLOSURE_METRIC[metric]
-    live_combined = getattr(result, eager_metric) + getattr(result, metric)
-    baseline_combined = getattr(row, eager_metric) + getattr(row, metric)
-    return live_combined <= baseline_combined
-
-
-def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRow]) -> list[str]:
-    baseline_by_skill = {row.skill: row for row in baseline}
-    violations: list[str] = []
-    for result in live:
-        row = baseline_by_skill[result.skill]
-        for metric in METRIC_FIELDS:
-            live_value = getattr(result, metric)
-            baseline_value = getattr(row, metric)
-            if live_value > baseline_value:
-                violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
-        if result.skill == "review":
-            for metric in CONDITIONAL_METRIC_FIELDS:
-                live_value = getattr(result, metric)
-                baseline_value = getattr(row, metric)
-                if live_value > baseline_value:
-                    if _conditional_growth_allowed_by_tier_move(result, row, metric):
-                        continue
-                    violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
-        baseline_tracked_files = set(row.files) | set(row.conditional_files)
-        live_tracked_files = set(result.files) | set(result.conditional_files)
-        violations.extend(
-            f"{result.skill}: baseline-tracked file dropped {rel}"
-            for rel in sorted(baseline_tracked_files - live_tracked_files)
-        )
-        if result.skill in FILE_RATCHET_TARGETS:
-            baseline_files = set(row.files)
-            violations.extend(
-                f"{result.skill}: files added {rel}"
-                for rel in result.files
-                if rel not in baseline_files
-            )
-    return violations
-
-
-def _parse_args(argv: list[str], *, prog: str, allow_write: bool) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path.cwd()))
-    if allow_write:
-        _ = parser.add_argument("--write", action="store_true", help="regenerate the committed baseline")
-        _ = parser.add_argument("--skill", choices=RATCHETED_TARGETS, help="check one ratcheted target")
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
-def _coerce_root(root_text: str, *, prog: str) -> Path | None:
+def _coerce_root(root_text: str | Path, *, prog: str) -> Path | None:
     root = Path(root_text).resolve()
     if not root.is_dir():
         print(f"{prog}: --root is not a directory: {root}", file=sys.stderr)
@@ -811,10 +565,8 @@ def _print_report(results: list[SkillClosureResult]) -> None:
 
 
 def report_main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(
-        argv if argv is not None else sys.argv[1:],
-        prog="cli.py skill-closure report",
-        allow_write=False,
+    parsed = engine.parse_skill_closure_report_argv(
+        argv if argv is not None else sys.argv[1:], default_root=Path.cwd()
     )
     if parsed is None:
         return TOOL_FAILURE_EXIT
@@ -831,10 +583,8 @@ def report_main(argv: list[str] | None = None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(
-        argv if argv is not None else sys.argv[1:],
-        prog="cli.py lint skill-closure-growth",
-        allow_write=True,
+    parsed = engine.parse_skill_closure_growth_argv(
+        argv if argv is not None else sys.argv[1:], default_root=Path.cwd()
     )
     if parsed is None:
         return TOOL_FAILURE_EXIT
@@ -842,19 +592,19 @@ def main(argv: list[str] | None = None) -> int:
     if root is None:
         return TOOL_FAILURE_EXIT
     try:
-        if parsed.write and parsed.skill:
-            raise BaselineError("--skill is check-only; --write regenerates all ratcheted targets")
         if parsed.write:
             results = scan_all(root)
             write_baseline(root / BASELINE_RELPATH, results)
             return 0
         results = [scan_target(root, parsed.skill)] if parsed.skill else scan_all(root)
-        baseline = load_baseline(root / BASELINE_RELPATH)
-    except (BaselineError, ScanError) as exc:
+        baseline = engine.load_skill_closure_baseline(BASELINE_RELPATH, root=root)
+    except (engine.ScanError, ScanError) as exc:
         print(f"lint skill-closure-growth: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
 
-    violations = _growth_violations(results, baseline)
+    violations = engine.skill_closure_growth_violations(
+        results, baseline
+    )
     if not violations:
         return 0
     for violation in violations:
