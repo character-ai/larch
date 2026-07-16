@@ -1417,18 +1417,14 @@ def write_complexity_baseline(
     destination = _validate_baseline_path(path, root=root, write_mode=True)
     intended = serialize_complexity_baseline(rows)
     checked_today = today or datetime.now(UTC).date()
-    expected = parse_complexity_baseline(intended, source=f"baseline {destination}", today=checked_today)
-    try:
-        larch_io.trusted_atomic_write(destination, intended, root=root)
-        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
-    if read_back != intended:
-        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
-    parsed = parse_complexity_baseline(read_back, source=f"baseline {destination}", today=checked_today)
-    if parsed != expected:
-        raise ScanError(f"baseline read-back records differ after write: {destination}")
-    return parsed
+    return _write_baseline_with_readback(
+        destination,
+        root=root,
+        intended=intended,
+        parse=lambda text: parse_complexity_baseline(
+            text, source=f"baseline {destination}", today=checked_today
+        ),
+    )
 
 
 def migrate_complexity_baseline(
@@ -1824,18 +1820,12 @@ def write_skill_closure_baseline(
         path, root=root, write_mode=True, create_missing_parents=True
     )
     intended = serialize_skill_closure_baseline(rows)
-    expected = parse_skill_closure_baseline(intended, source=str(destination))
-    try:
-        larch_io.trusted_atomic_write(destination, intended, root=root)
-        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
-    if read_back != intended:
-        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
-    parsed = parse_skill_closure_baseline(read_back, source=str(destination))
-    if parsed != expected:
-        raise ScanError(f"baseline read-back records differ after write: {destination}")
-    return parsed
+    return _write_baseline_with_readback(
+        destination,
+        root=root,
+        intended=intended,
+        parse=lambda text: parse_skill_closure_baseline(text, source=str(destination)),
+    )
 
 
 def _skill_closure_conditional_growth_allowed(
@@ -2388,6 +2378,28 @@ def _baseline_exists(path: Path, *, root: Path) -> bool:
         raise ScanError(f"failed to inspect baseline {path}: {exc}") from exc
 
 
+def _write_baseline_with_readback(
+    destination: Path,
+    *,
+    root: Path,
+    intended: str,
+    parse: Callable[[str], T],
+) -> T:
+    """Atomically publish canonical bytes and verify their typed read-back."""
+    expected = parse(intended)
+    try:
+        larch_io.trusted_atomic_write(destination, intended, root=root)
+        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
+    if read_back != intended:
+        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
+    parsed = parse(read_back)
+    if parsed != expected:
+        raise ScanError(f"baseline read-back records differ after write: {destination}")
+    return parsed
+
+
 def _identity_baseline_kind(row: IdentityBaselineRow) -> IdentityBaselineKind:
     if isinstance(row, KeywordOnlyBaselineRow):
         return "keyword_only"
@@ -2589,14 +2601,14 @@ def write_identity_baseline(  # noqa: PLR0913 - public baseline-write contract i
             "missing baseline reasons for live findings; supply initial_reason:\n  " + labels
         )
     intended = serialize_identity_baseline(written)
-    try:
-        larch_io.trusted_atomic_write(destination, intended, root=root)
-        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
-    if read_back != intended:
-        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
-    parsed = parse_identity_baseline(read_back, kind=kind, source=f"baseline {destination}")
+    parsed = _write_baseline_with_readback(
+        destination,
+        root=root,
+        intended=intended,
+        parse=lambda text: parse_identity_baseline(
+            text, kind=kind, source=f"baseline {destination}"
+        ),
+    )
     ordered = sorted(written, key=identity_baseline_sort_key)
     if parsed != ordered:
         raise ScanError(f"baseline read-back records differ after write: {destination}")
