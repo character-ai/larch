@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint.lint_codex_exec_auth import main
+from tests.lint.conftest import lint_runner
 
 
 def write(path: Path, *lines: str) -> None:
@@ -12,9 +13,7 @@ def write(path: Path, *lines: str) -> None:
     _ = path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def test_clean_and_allowlisted_launcher(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

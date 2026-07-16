@@ -2543,28 +2543,6 @@
   },
   {
     "modules": [
-      "tests.lint.test_lint_gh_argv_literal",
-      "tests.lint.test_lint_git_push_refspec"
-    ],
-    "hash": "bfb2412183be3660",
-    "lines": 11,
-    "normalized_lines": [
-      "class CaptureResult(Protocol):",
-      "err: str",
-      "class CaptureFixture(Protocol):",
-      "def readouterr(self) -> CaptureResult: ...",
-      "for relpath, source in files.items():",
-      "path = root / \"python\" / relpath",
-      "path.parent.mkdir(parents=True, exist_ok=True)",
-      "_ = path.write_text(source, encoding=\"utf-8\")",
-      "_write_project(",
-      "tmp_path,",
-      "files={"
-    ],
-    "reason": "findings predate the duplicate-code shrink-only ratchet"
-  },
-  {
-    "modules": [
       "tests.lint.test_lint_lifecycle_prefix_literal",
       "tests.lint.test_lint_subprocess_via_runner"
     ],

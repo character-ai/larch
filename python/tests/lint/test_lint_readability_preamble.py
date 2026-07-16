@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint.lint_readability_preamble import main
+from tests.lint.conftest import lint_runner
 
 EXTERNAL = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
@@ -23,9 +24,7 @@ def manifest(root: Path, rows: str) -> None:
     write(root / "scripts/lint-readability-preamble.tsv", rows)
 
 
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def test_valid_external_orchestrator_and_skill_coverage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

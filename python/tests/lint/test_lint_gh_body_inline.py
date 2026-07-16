@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint.lint_gh_body_inline import main
+from tests.lint.conftest import lint_runner
 
 
 BODY = "--" + "body"
@@ -18,9 +19,7 @@ def write(path: Path, text: str) -> None:
     _ = path.write_text(text, encoding="utf-8")
 
 
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def test_clean_tree(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

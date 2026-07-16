@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from larch.lint import lint_guidelines_note_wrapper_bypass as lgnwb
+from tests.lint.conftest import write_project as _write_project
 
 
 class CaptureResult(Protocol):
@@ -14,14 +15,6 @@ class CaptureResult(Protocol):
 
 class CaptureFixture(Protocol):
     def readouterr(self) -> CaptureResult: ...
-
-
-def _write_project(root: Path, *, files: dict[str, str]) -> None:
-    python_dir: Path = root / "python"
-    for relpath, source in files.items():
-        path: Path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
 
 
 def _module(body: str) -> str:

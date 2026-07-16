@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.lint.lint_em_dash_output import main
+from tests.lint.conftest import lint_runner
 
 if TYPE_CHECKING:
     import pytest
@@ -15,9 +16,7 @@ def write(root: Path, rel: str, text: str) -> None:
     _ = path.write_text(text, encoding="utf-8")
 
 
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def test_clean_python_output_string(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

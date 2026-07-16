@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.lint.lint_skill_md_flag_signature import main
+from tests.lint.conftest import lint_runner, write_skill
 
 if TYPE_CHECKING:
     import pytest
@@ -15,15 +16,7 @@ def write_script(path: Path, *flags: str) -> None:
     _ = path.write_text(f'#!/usr/bin/env bash\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in\n{arms}    *) exit 2 ;;\n  esac\ndone\n', encoding="utf-8")
 
 
-def write_skill(root: Path, rel: str, body: str) -> None:
-    path = root / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_text(body, encoding="utf-8")
-
-
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def test_known_flag_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
