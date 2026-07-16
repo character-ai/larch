@@ -113,6 +113,7 @@ from larch.implement.dispatch_leg import (
 
 # --- step 0 bootstrap ---
 from larch.implement.dispatch_bootstrap import (
+    step0_bootstrap_main,
     step0_degraded_gate_main,
 )
 
@@ -216,6 +217,7 @@ from larch.implement.dispatch_step18 import (
     _resolve_stall_memory_layer,
     _stall_layer_active,
     step_18_gate_finalize_main,
+    step_18_main,
 )
 
 # --- recovery paths and implement commit ---

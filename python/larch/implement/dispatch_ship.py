@@ -1003,17 +1003,19 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
     return 0
 
 
-def step8_ship_main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(prog="cli.py implement step-8-ship").parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
+_STEP8_SHIP_STEP = "implement-step8-ship"
+
+
+def _step8_ship_child(*, implement_tmpdir: Path, merge_result_env: str) -> int:
     state_file = implement_tmpdir / "ship-pr-state.sh"
+
     def state(*, key: str, default: str = "") -> str:
         return _read_kv_file(path=state_file, key=key, default=default)
+
     branch = os.environ.get("BRANCH_NAME", "") or state(key="BRANCH_NAME")
-    issue = os.environ.get("ISSUE_NUMBER", "") or state(key="ISSUE_NUMBER")
+    issue = os.environ.get(config.ENV_ISSUE_NUMBER, "") or state(key="ISSUE_NUMBER")
     run_id = os.environ.get("RUN_ID", "") or state(key="RUN_ID")
-    repo = os.environ.get("REPO", "") or state(key="REPO")
+    repo = os.environ.get(config.ENV_REPO, "") or state(key="REPO")
     merge = _env_value(name="merge") or state(key="MERGE", default="false") or "false"
     draft = _env_value(name="draft") or state(key="DRAFT", default="false") or "false"
     forked = _env_value(name="forked_target") or state(key="FORKED_TARGET", default="false") or "false"
@@ -1032,14 +1034,60 @@ def step8_ship_main(argv: list[str] | None = None) -> int:
     print("→ phantom-probe: 8-pre-ship", file=sys.stderr)
     with contextlib.redirect_stdout(sys.stderr):
         _emit_phantom_probe_with_warn("8-pre-ship")
-    expected_session_id = (implement_tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (implement_tmpdir / "session-id").is_file() else ""
+    expected_session_id = (
+        (implement_tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
+        if (implement_tmpdir / "session-id").is_file()
+        else ""
+    )
     return _run_cli_forward([
         "ship", "pr", "--branch", branch, "--issue", issue, "--repo", repo, "--run-id", run_id,
         "--tmpdir", str(implement_tmpdir), "--manifest-path", manifest, "--state-file", str(state_file),
         "--tool-label", tool, "--merge", merge, "--draft", draft, "--forked", forked,
         "--repo-unavailable", repo_unavailable, "--no-admin-fallback", no_admin or "false", "--no-logs-commit", no_logs or "false",
+        "--result-env-path", merge_result_env,
         "--expected-session-id", expected_session_id, "--expected-tmpdir-basename-prefix", _clone_expected_tmpdir_prefix(),
     ])
+
+
+def step8_ship_main(argv: list[str] | None = None) -> int:
+    from larch.bgjob import adapt as bgjob_adapt  # noqa: PLC0415 - lint-layering: ok Step 8 outer adapter uses shared bgjob adapt options
+    from larch.implement.dispatch_commit_route import (  # noqa: PLC0415 - lint-layering: ok Step 8 reuses shared bgjob request helpers
+        BgjobRequest,
+        _bgjob_spec,
+        _run_adapter,
+        _safe_merge_env,
+    )
+
+    parser = argparse.ArgumentParser(prog="cli.py implement step-8-ship")
+    parser.add_argument("--bgjob-child", action="store_true")
+    parser.add_argument("--merge-result-env", default="")
+    args = parser.parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    if args.bgjob_child:
+        if not args.merge_result_env:
+            print("step-8-ship: --merge-result-env is required in child mode", file=sys.stderr)
+            return 2
+        return _step8_ship_child(implement_tmpdir=implement_tmpdir, merge_result_env=args.merge_result_env)
+    try:
+        merge_env = _safe_merge_env(
+            tmpdir=implement_tmpdir,
+            raw=implement_tmpdir / "bgjob" / f"{_STEP8_SHIP_STEP}.merge.env",
+        )
+        spec = _bgjob_spec(
+            BgjobRequest(
+                tmpdir=implement_tmpdir,
+                step=_STEP8_SHIP_STEP,
+                budget_s=21600,
+                verb="step-8-ship",
+                public_args=(),
+                merge_result_env=merge_env,
+            )
+        )
+    except (OSError, RuntimeError, UnicodeError, ValueError):
+        print("BGJOB_ERROR=invalid-input")
+        return 2
+    return _run_adapter(spec, options=bgjob_adapt.AdaptOptions(replace_completed_result=True))
 
 
 def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: Path) -> None:

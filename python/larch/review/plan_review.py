@@ -696,6 +696,11 @@ def prelaunch_failure(argv: Sequence[str]) -> int:
 
 
 def step35(argv: Sequence[str]) -> int:
+    from larch.state.session_env import require_plugin_root  # noqa: PLC0415 - lint-layering: ok Step 3.5 entry owns the shared plugin-root guard
+
+    plugin_rc = require_plugin_root()
+    if plugin_rc != 0:
+        return plugin_rc
     parser = argparse.ArgumentParser(prog="cli.py plan-review step35")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))

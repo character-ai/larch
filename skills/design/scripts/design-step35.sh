@@ -62,16 +62,16 @@ while [ "$#" -gt 0 ]; do
 done
 
 design_require_plugin_root() {
-  _cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
-  if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-    printf '%s\n' "/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort" >&2
-    exit 1
-  fi
-  if [ "${CLAUDE_PLUGIN_ROOT:-}" = "$_cpr_literal" ]; then
-    printf '%s\n' "/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal ${_cpr_literal}; abort" >&2
-    exit 1
-  fi
+  _cpr_literal='${CLAUDE_PLUGIN_ROOT}'
+  _cpr_cli_root="${CLAUDE_PLUGIN_ROOT:-}"
+  case "${_cpr_cli_root}" in
+    ""|"$_cpr_literal")
+      _cpr_cli_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+      CLAUDE_PLUGIN_ROOT="$_cpr_cli_root"
+      ;;
+  esac
   export CLAUDE_PLUGIN_ROOT
+  python3 "${_cpr_cli_root}/python/cli.py" session require-plugin-root || exit $?
 }
 
 design_source_env_optional() {
@@ -82,6 +82,7 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+design_require_plugin_root
 mkdir -p "$DESIGN_TMPDIR/.completed"
 case "${STEP3_REVIEW_LOOP_STATUS:-}" in
   postplan-failed)

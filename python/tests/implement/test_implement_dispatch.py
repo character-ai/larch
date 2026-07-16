@@ -151,38 +151,20 @@ def _write_step2_baseline(tmpdir: Path) -> None:
     (tmpdir / "step2-baseline.txt").write_text(f"{head}\n", encoding="utf-8")
 
 
-@pytest.mark.parametrize(
-    (
-        "case_name",
-        "script_relpath",
-        "slug_literal",
-        "step_arg_literal",
-    ),
-    [
-        (
-            "step8",
-            Path("skills/implement/scripts/step-8-ship.sh"),
-            'STEP="implement-step8-ship"',
-            '--step "$STEP"',
-        ),
-    ],
-)
-def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
-    case_name: str,
-    script_relpath: Path,
-    slug_literal: str,
-    step_arg_literal: str,
-) -> None:
-    _ = case_name
+def test_step8_ship_thin_wrapper_reuses_shared_owner_pid_resolution() -> None:
+    """step-8-ship is a thin Python wrapper; owner pid lives in shared _bgjob_spec."""
     root: Path = Path(__file__).resolve().parents[3]
-    source: str = (root / script_relpath).read_text(encoding="utf-8")
-
-    assert "bgjob adapt" in source
-    assert slug_literal in source
-    assert step_arg_literal in source
-    assert '--owner-pid "${LARCH_CLAUDE_PID:-$PPID}"' in source
-    assert "--replace-completed-result" in source
-    assert "--sentinel" not in source
+    wrapper = (root / "skills" / "implement" / "scripts" / "step-8-ship.sh").read_text(encoding="utf-8")
+    assert 'implement step-8-ship "$@"' in wrapper
+    assert "bgjob adapt" not in wrapper
+    assert "--owner-pid" not in wrapper
+    assert "--sentinel" not in wrapper
+    ship_src = (root / "python" / "larch" / "implement" / "dispatch_ship.py").read_text(encoding="utf-8")
+    assert "_bgjob_spec" in ship_src
+    assert "replace_completed_result=True" in ship_src
+    helper_src = (root / "python" / "larch" / "implement" / "dispatch_commit_route.py").read_text(encoding="utf-8")
+    assert 'os.environ.get("LARCH_CLAUDE_PID")' in helper_src
+    assert "owner_identity_from_env" in helper_src
 
 
 @pytest.mark.parametrize(
@@ -192,6 +174,7 @@ def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
         ("step-5-review.sh", "step-5-review"),
         ("step-5-resume.sh", "step-5-resume"),
         ("step-6-entry.sh", "step-6-entry"),
+        ("step-8-ship.sh", "step-8-ship"),
     ],
 )
 def test_converted_bgjob_launchers_are_thin_wrappers(script_name: str, verb: str) -> None:
@@ -211,7 +194,8 @@ def test_bgjob_contract_unification_step5_review_uses_custom_merge_spec(
     monkeypatch.setattr(dispatch_commit_route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
     captured: list[bgjob_model.JobSpec] = []
 
-    def fake_start(spec: bgjob_model.JobSpec) -> int:
+    def fake_start(spec: bgjob_model.JobSpec, *, options: object | None = None) -> int:
+        del options
         captured.append(spec)
         return 0
 
@@ -2388,11 +2372,22 @@ def _install_step18_finalize(
     rc: int = 0,
     stdout: str = "EMIT_BODY=false\n",
 ) -> None:
-    def fake_run(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(list(args))
-        return subprocess.CompletedProcess(list(args), rc, stdout, "finalize stderr\n" if rc else "")
+    def fake_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
+        calls.append([
+            "step-18-finalize",
+            str(implement_tmpdir),
+            "--step17-emitted",
+            step17_emitted,
+        ])
+        if stdout:
+            sys.stdout.write(stdout)
+            sys.stdout.flush()
+        if rc:
+            sys.stderr.write("finalize stderr\n")
+            sys.stderr.flush()
+        return rc
 
-    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(dispatch_step18, "_step18_finalize", fake_finalize)
 
 
 def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
@@ -2419,7 +2414,7 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
     captured = capsys.readouterr()
     assert "STALL_TRACKING_MEMORY=false\n" in captured.out
     assert "STALL_RECOVERY_REQUIRED=false\n" in captured.out
-    assert "⏩ 18a: stall recovery: no stall detected\n" in captured.out
+    assert "⏩ 18a: stall recovery; no stall detected\n" in captured.out
     assert "IMPLEMENT_OUTCOME_SUCCEEDED=false\n" in captured.out
     assert "---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n" in captured.out
     assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
@@ -2431,15 +2426,12 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
         "--in-memory-stall-tracking",
         "false",
     ]]
-    assert Path(finalize_calls[0][0]).name == "bash"
-    assert finalize_calls[0][1:] == [
-        str(tmp / "larch-run.sh"),
-        "skills/implement/scripts/step-18.sh",
-        "--phase",
-        "finalize",
+    assert finalize_calls == [[
+        "step-18-finalize",
+        str(tmp),
         "--step17-emitted",
         "true",
-    ]
+    ]]
 
 
 def test_step18_gate_finalize_empty_tmpdir_argv_falls_back_to_env(

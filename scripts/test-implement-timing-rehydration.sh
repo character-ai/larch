@@ -45,8 +45,10 @@ PY
 # Invariant B: the Python Step 5 adapter and the Step 18 wrapper own telemetry.
 command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not rehydrate telemetry keys'
 command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not mark implement timing'
-command grep -Fq 'LARCH_TIMING_LEDGER' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not resolve LARCH_TIMING_LEDGER'
-command grep -Fq 'LARCH_TIMING_SKILL=implement' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not mark implement timing'
+command grep -Fq 'LARCH_TIMING_LEDGER' python/larch/implement/dispatch_helpers.py || fail 'dispatch_helpers does not resolve LARCH_TIMING_LEDGER'
+command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not rehydrate telemetry keys'
+command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not mark implement timing'
+command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not delegate to Python step-18'
 
 # run_dispatch_main now lives in dispatch_step2.py; check there and fall back to implement_dispatch.py
 ( command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/dispatch_step2.py || command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/implement_dispatch.py ) || fail 'run_dispatch_main does not rehydrate telemetry keys'
@@ -91,20 +93,20 @@ if errors:
 print(f'plugin-root guards={guard_count} awk-fallbacks={awk_count}')
 PY
 
-# Invariant E (#3425): closing marks stay inside step-18.sh before teardown.
-finalizer="skills/implement/scripts/step-18.sh"
+# Invariant E (#3425): closing marks stay inside step-18 Python finalize before teardown.
+finalizer="python/larch/implement/dispatch_step18.py"
 done_mark_line=$(awk '/Step 18 — done/ {print NR; exit}' "$finalizer")
-teardown_line=$(awk '/implement-finalize teardown/ {print NR; exit}' "$finalizer")
-[ -n "$done_mark_line" ] || fail 'step-18.sh lacks Step 18 done mark'
-[ -n "$teardown_line" ] || fail 'step-18.sh lacks implement-finalize teardown'
-[ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in step-18.sh'
+teardown_line=$(awk '/implement-finalize/ {print NR; exit}' "$finalizer")
+[ -n "$done_mark_line" ] || fail 'dispatch_step18.py lacks Step 18 done mark'
+[ -n "$teardown_line" ] || fail 'dispatch_step18.py lacks implement-finalize teardown'
+[ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in dispatch_step18.py'
 finalize_invocations=$(command grep -Fc '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh' "$skill_file" || true)
 [ "$finalize_invocations" -eq 1 ] || fail "expected one step-18.sh invocation in SKILL.md, found $finalize_invocations"
 command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
-command grep -Fq 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks exact teardown argv'
-command grep -Fq 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED"' "$finalizer" || fail 'step-18.sh lacks live step18b argv'
-command grep -Fq 'print_summary_markers' "$finalizer" || fail 'step-18.sh lacks marker helper'
-command grep -Fq 'set +e' "$finalizer" || fail 'step-18.sh lacks set +e tolerance blocks'
+command grep -Fq '"implement-finalize", "teardown"' "$finalizer" || fail 'dispatch_step18.py lacks exact teardown argv'
+command grep -Fq '"final-report", "step18b"' "$finalizer" || fail 'dispatch_step18.py lacks live step18b argv'
+command grep -Fq 'def _print_summary_markers' "$finalizer" || fail 'dispatch_step18.py lacks marker helper'
+command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh must remain a thin Python delegate'
 
 # Invariant F (#4286): round timing duplicate probe returns success when the row exists.
 step5_resume="python/larch/implement/dispatch_commit_route.py"

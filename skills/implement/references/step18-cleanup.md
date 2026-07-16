@@ -14,7 +14,7 @@ Standalone `step-18.sh --phase finalize` remains only on the stall-recovery brea
 
 Resolve `STALL_TRACKING` from four layers: in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` semantics. A fifth derived signal joins them: an identity-checked dead bgjob registry row for a checks-commit-route site (`implement-step3-checks`, `implement-checks-step5-self-review`), covering a process killed before it wrote `STALL_TRACKING`; see `stall-recovery.md` `RESUME_HINT=checks-commit-route-retry`.
 
-Treat all five layers with the inverted all-false-or-empty rule: a layer is active when it is not `false` and not empty. Skip active-stall recovery only when every layer is false or empty. The composite emits `⏩ 18a: stall recovery — no stall detected` when `STALL_RECOVERY_REQUIRED=false` on the green path.
+Treat all five layers with the inverted all-false-or-empty rule: a layer is active when it is not `false` and not empty. Skip active-stall recovery only when every layer is false or empty. The composite emits `⏩ 18a: stall recovery; no stall detected` when `STALL_RECOVERY_REQUIRED=false` on the green path.
 
 Parse `STALL_RECOVERY_REQUIRED` and `STALL_TRACKING_*` from captured composite stdout. Route active stall work on `NEXT_ACTION=stall-recovery`, not by re-entering a separate gate phase. `STALL_RECOVERY_REQUIRED=true` is diagnostic confirmation for that branch.
 

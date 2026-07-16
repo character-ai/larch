@@ -222,39 +222,36 @@ def run(repo_root: Path) -> list[str]:
         forbid("python/larch/review/review_and_fix.py", '"git", "add", "--pathspec-from-file"', "staging owned by commit_main only")
         require("python/larch/review/review_and_fix.py", '"--only",\n        "--pathspec-from-file"', "commit-fixes pathspec-only commit")
         require("python/larch/implement/dispatch_helpers.py", "LARCH_TIMING_LEDGER", "commit-implementation telemetry self-rehydration")
-        require("skills/implement/scripts/step-18.sh", "--phase gate", "step-18 phase gate argv")
-        require("skills/implement/scripts/step-18.sh", "--phase finalize", "step-18 phase finalize argv")
-        require("skills/implement/scripts/step-18.sh", "_stall_layer_active", "step-18 stall predicate helper")
-        require("skills/implement/scripts/step-18.sh", "STALL_TRACKING_MEMORY_ARG", "step-18 stall-tracking memory arg")
-        require("skills/implement/scripts/step-18.sh", "STALL_TRACKING_DISK=", "step-18 stall disk layer")
-        require("skills/implement/scripts/step-18.sh", "STALL_TRACKING_FINALIZE=", "step-18 stall finalize layer")
-        require("skills/implement/scripts/step-18.sh", "STALL_TRACKING_SESSION=", "step-18 stall session layer")
-        require("skills/implement/scripts/step-18.sh", "STALL_RECOVERY_REQUIRED=", "step-18 stall recovery kv")
-        require("skills/implement/scripts/step-18.sh", "set +e", "step-18 non-aborting blocks")
-        require("skills/implement/scripts/step-18.sh", 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED"', "step-18 live step18b path")
-        require("skills/implement/scripts/step-18.sh", "print_summary_markers", "step-18 marker helper")
-        require("skills/implement/scripts/step-18.sh", "---LARCH-SUMMARY-FINAL-BEGIN---", "step-18 begin marker")
-        require("skills/implement/scripts/step-18.sh", "_restore_finalize=false", "step-18 restore gate")
-        require("skills/implement/scripts/step-18.sh", 'restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"', "step-18 restore finalize argv")
-        require("skills/implement/scripts/step-18.sh", 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"', "step-18 exact teardown argv")
-        require("skills/implement/scripts/step-18.sh", "LARCH_CLAUDE_PID:-$PPID", "step-18 claude pid fallback")
-        require("skills/implement/scripts/step-18.sh", "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement", "step-18 timing env")
+        require("skills/implement/scripts/step-18.sh", 'implement step-18 "$@"', "step-18 wrapper delegates to Python")
+        forbid("skills/implement/scripts/step-18.sh", "print_summary_markers", "step-18 wrapper must not retain finalize helpers")
+        require("python/larch/implement/dispatch_step18.py", "def step_18_main", "step-18 Python entry present")
+        require("python/larch/implement/dispatch_step18.py", "def _step18_finalize", "step-18 finalize owned by Python")
+        require("python/larch/implement/dispatch_step18.py", "---LARCH-SUMMARY-FINAL-BEGIN---", "step-18 begin marker in Python")
+        require("python/larch/implement/dispatch_step18.py", "restore-finalize-state", "step-18 restore finalize argv in Python")
+        require("python/larch/implement/dispatch_step18.py", "implement-finalize", "step-18 teardown argv in Python")
+        require("python/larch/implement/dispatch_step18.py", "final-report", "step-18 live step18b path in Python")
         forbid("skills/implement/scripts/step-18.sh", 'cleanup.sh" --help', "step-18 must not resurrect cleanup smoke")
         forbid("skills/implement/scripts/step-18.sh", "token report --full", "step-18 must not resurrect full token report")
         forbid("skills/implement/scripts/step-18.sh", "Step 18 — cleanup", "step-18 must not resurrect cleanup telemetry mark")
-        require("skills/implement/scripts/step-0-bootstrap.sh", "CALLER_ENV_PATH=*) CALLER_ENV_PATH=", "step-0 fork metadata caller-env parse")
-        require("skills/implement/scripts/step-0-bootstrap.sh", "UPSTREAM_REPO=*) UPSTREAM_REPO=", "step-0 fork metadata upstream parse")
-        require("skills/implement/scripts/step-0-bootstrap.sh", "preflight-tmpdir.env", "step-0 preflight tmpdir resume persistence")
-        require("skills/implement/scripts/step-0-bootstrap.sh", "read_session_key FORKED_TARGET", "step-0 resume fork metadata rehydration")
+        require("skills/implement/scripts/step-0-bootstrap.sh", 'implement step-0-bootstrap "$@"', "step-0 bootstrap wrapper delegates to Python")
+        forbid("skills/implement/scripts/step-0-bootstrap.sh", "rehydrate_plugin_root", "step-0 bootstrap wrapper must not retain rehydrate helpers")
+        require("python/larch/implement/dispatch_bootstrap.py", "def step0_bootstrap_main", "step-0 bootstrap Python entry present")
+        require("python/larch/implement/dispatch_bootstrap.py", "preflight-tmpdir.env", "step-0 preflight tmpdir resume persistence in Python")
+        require("python/larch/implement/dispatch_bootstrap.py", "FORKED_TARGET", "step-0 resume fork metadata rehydration in Python")
+        require("python/larch/implement/dispatch_bootstrap.py", "CALLER_ENV_PATH", "step-0 fork metadata caller-env parse in Python")
+        require("python/larch/implement/dispatch_bootstrap.py", "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Python")
         require("python/larch/state/bootstrap.py", "preflight-tmpdir.env", "bootstrap preflight tmpdir persistence")
-        require("skills/implement/scripts/step-8-ship.sh", "read_state_key", "step-8 ship state rehydration")
+        require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Python")
+        forbid("skills/implement/scripts/step-8-ship.sh", "read_state_key", "step-8 ship wrapper must not retain state rehydration")
         require("skills/implement/scripts/step-8-python-guard.sh", "sys.version_info >= (3, 11)", "step-8 shared python 3.11 guard")
         require("skills/implement/scripts/step-8-python-guard.sh", '"outcome":"STALLED"', "step-8 shared stalled JSON stdout")
         require("skills/implement/scripts/step-8-python-guard.sh", "exit 4", "step-8 shared stale-python exit 4")
-        require("skills/implement/scripts/step-8-ship.sh", "step-8-python-guard.sh", "step-8 ship delegates python guard")
-        require("skills/implement/scripts/step-8-ship.sh", 'python/cli.py" implement clone-tag', "step-8 ship uses clone-tag CLI")
+        require("python/larch/implement/dispatch_ship.py", "step8_python_guard_main", "step-8 ship delegates python guard in Python")
         require("python/larch/implement/dispatch_helpers.py", "def clone_tag_main", "implement clone-tag CLI handler")
-        require("skills/implement/scripts/step-8-ship.sh", 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr', "step-8 python ship invocation")
+        require("python/larch/implement/dispatch_ship.py", '"ship", "pr"', "step-8 python ship invocation")
+        require("python/larch/implement/dispatch_ship.py", "replace_completed_result=True", "step-8 bgjob replace-completed-result")
+        require("skills/implement/scripts/step-8-seed-initial.sh", 'implement step-8-seed-initial "$@"', "step-8 seed wrapper delegates to Python")
+        require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate wrapper delegates to Python")
         require("python/larch/cli.py", '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True)', "ship pre-driver CLI registry")
         require("python/larch/cli.py", '"ship_pre_driver_main", True),', "ship pre-driver machine stdout contract")
         require("python/larch/cli.py", "NEXT_ACTION=stall", "ship pre-driver pre-version stall fast path")
@@ -270,9 +267,9 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, launcher + "skills/implement/scripts/step-8-python-guard.sh", "SKILL standalone step-8 guard fence removed")
         forbid(skill, launcher + "skills/implement/scripts/step-8-seed-initial.sh", "SKILL standalone step-8 seeder fence removed")
         forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL standalone pre-driver oos fence removed")
-        require("skills/implement/scripts/step-0-bootstrap.sh", 'LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"', "step-0 wrapper claude pid export")
+        require("python/larch/implement/dispatch_bootstrap.py", "LARCH_CLAUDE_PID", "step-0 wrapper claude pid export in Python")
         require(skill, "python/cli.py ship seed-initial-state", "ship state initial seeder authority")
-        require("skills/implement/scripts/step-8-seed-initial.sh", "--no-admin-fallback", "ship state no-admin fallback seeder argv")
+        require("python/larch/implement/dispatch_ship.py", "--no-admin-fallback", "ship state no-admin fallback seeder argv")
         require("python/larch/implement/ship_state.py", "NO_ADMIN_FALLBACK", "ship state no-admin fallback allowed key")
         require(skill, "## NEVER List", "NEVER list heading")
         require(skill, "NEVER call `ScheduleWakeup`", "NEVER #8 ScheduleWakeup pin")
@@ -313,7 +310,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/state/bootstrap.py", "ship-seed-input.env", "bootstrap ship seed input writer")
         require(skill, launcher + "skills/implement/scripts/step-2-post-dispatch.sh", "phantom 2-post-dispatch probe")
         require(skill, "regardless of wrapper exit code", "post-dispatch phantom parse before wrapper routing")
-        require("skills/implement/scripts/step-8-ship.sh", 'python/cli.py" git phantom-probe --step 8-pre-ship', "phantom 8-pre-ship probe moved into ship wrapper")
+        require("python/larch/implement/dispatch_ship.py", "8-pre-ship", "phantom 8-pre-ship probe moved into ship Python")
         forbid(skill, launcher + "scripts/" + "phantom-probe-with-warn.sh --step 8-pre-ship", "standalone orchestrator 8-pre-ship fence removed")
         rebase_ref = Path("skills/implement/references/rebase-checkpoint-routing.md").read_text()
         for needle in [
@@ -364,7 +361,7 @@ def run(repo_root: Path) -> list[str]:
             checks.append(f"SKILL.md must contain exactly one {step5_macro_token!r} macro token occurrence")
         mav_idx = skill_text.find("- **`main-agent-vote-required`**:")
         coder_idx = skill_text.find("- **`coder-main-agent-required`**:")
-        shared_step5 = "> **Continue after bgjob `DONE`.** The resume launcher stdout is only `BGJOB_STATUS=STARTED STEP=implement-step5-resume PGID=<n>`."
+        shared_step5 = "> **Continue after bgjob `DONE`.** Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md`. On `DONE` with `BGJOB_RC=0` and required resume KVs in `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.result.env`:"
         shared_idx = skill_text.find(shared_step5)
         resume_idx = skill_text.find('"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"')
         if not (mav_idx >= 0 and coder_idx > mav_idx and shared_idx > coder_idx and resume_idx > shared_idx):
@@ -504,7 +501,7 @@ def run(repo_root: Path) -> list[str]:
         require(skill, "attribution `MODE=subagent` / `TIER=subagent`", "SKILL conflict-fix subagent attribution")
         require(skill, 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial', "Step 0 initial bootstrap wrapper")
         require("skills/implement/references/bootstrap-recovery.md", 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume', "Step 0 resume bootstrap wrapper relocated")
-        require("skills/implement/scripts/step-0-bootstrap.sh", "set +e", "step-0 bootstrap set +e guard")
+        forbid("skills/implement/scripts/step-0-bootstrap.sh", "set +e", "step-0 bootstrap thin wrapper has no set +e body")
         require("python/larch/state/bootstrap.py", 'preserve_coder=args.resume == "true"', "bootstrap parse-routing resume preserves coder")
         forbid(skill, launcher + "skills/implement/scripts/step-0-degraded-gate.sh", "SKILL active flow must not call step-0-degraded-gate.sh")
         require("python/larch/state/bootstrap.py", "degraded-tools-gate", "bootstrap absorbed degraded gate")
@@ -541,11 +538,16 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "python/cli.py implement checks-commit-route --checks-site step6", "SKILL old Step 6 checks-commit-route launcher removed")
         forbid(skill, "branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope", "SKILL absorbed 1.r direct ROUTE branch removed")
         for needle in [
-            "agent degraded-tools-gate", "--codex-present", "--cursor-present",
-            "agent check-reviewers",
-            "read_session_key CODEX_BINARY_FOUND", "read_session_key CURSOR_BINARY_FOUND",
+            '"agent", "degraded-tools-gate"',
+            "--codex-present",
+            "--cursor-present",
+            '"agent", "check-reviewers"',
+            "CODEX_BINARY_FOUND",
+            "CURSOR_BINARY_FOUND",
         ]:
-            require("skills/implement/scripts/step-0-degraded-gate.sh", needle, f"step-0-degraded-gate legacy {needle}")
+            require("python/larch/implement/dispatch_bootstrap.py", needle, f"step-0-degraded-gate legacy {needle}")
+        require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate thin wrapper delegates")
+        forbid("skills/implement/scripts/step-0-degraded-gate.sh", "degraded-tools-gate", "step-0 degraded-gate wrapper must not retain gate body")
         require("python/larch/implement/dispatch_commit_route.py", "_step5_resume_commit_phase", "step-5-resume commit routing stays Python-owned")
         require("python/larch/implement/dispatch_commit_route.py", "_parse_line_anchored_commit_kv", "step-5-resume parses commit KVs line-anchored")
         require("python/larch/implement/dispatch_commit_route.py", "_relay_commit_kvs", "step-5-resume relays the commit envelope")
@@ -556,7 +558,7 @@ def run(repo_root: Path) -> list[str]:
         require(checks_ref, "re-run the section 2-pinned composite launcher with identical argv before any success-path routing", "checks repair-loop folded-site re-capture authority")
         require(skill, "When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.", "SKILL review-loop envelope branch")
         require(skill, "valid `STEP5_REVIEW_STATUS=stall` envelope", "SKILL Step 5 stall envelope carve-out")
-        require(skill, "continue only when `BGJOB_RC=0` and required Step 5 review KVs are present", "SKILL Step 5 review BGJOB_RC gate")
+        require(skill, "On `DONE` with `BGJOB_RC=0` and required Step 5 review KVs", "SKILL Step 5 review BGJOB_RC gate")
         require(skill, "After the Step 5 resume bgjob returns `DONE` with `BGJOB_RC=0`", "SKILL Step 5 resume BGJOB_RC gate")
         require(skill, "First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18.", "SKILL lacks-envelope NEXT_ACTION stall branch")
         require(skill, "`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.", "SKILL NEXT_ACTION continue without envelope is not Step 6")
@@ -577,7 +579,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/implement/dispatch_leg.py", "terminate_validated_process_group", "active leg identity-validated kill")
         require("python/larch/implement/dispatch_leg.py", "ACTIVE_LEG_KILL_LOG_FILE", "active leg kill logging")
         require("python/larch/implement/dispatch_commit_route.py", 'NEXT_ACTION", value="checks-failed"', "composite checks-failed routing")
-        require("skills/implement/scripts/step-8-ship.sh", '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', "step-8 state file forwarding")
+        require("python/larch/implement/dispatch_ship.py", "--state-file", "step-8 state file forwarding in Python")
         exit_matrix = Path("skills/implement/references/ship-pr-exit-matrix.md")
         if exit_matrix.is_file():
             exit_text = exit_matrix.read_text()
@@ -926,12 +928,19 @@ def run(repo_root: Path) -> list[str]:
             "SKILL first-submit command must stay unchanged and free of --allow-exception (#7216)",
         )
         for needle in [
-            "_restore_finalize=false",
+            "_should_restore_finalize",
             "restore-finalize-state",
-            "implement-finalize teardown",
-            "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement",
+            "implement-finalize",
+            "DESIGN_TMPDIR",
+            "LARCH_TIMING_SKILL",
         ]:
-            require("skills/implement/scripts/step-18.sh", needle, f"step-18 {needle}")
+            require("python/larch/implement/dispatch_step18.py", needle, f"step-18 {needle}")
+        # Thin wrapper must not retain the old Bash finalize body.
+        for needle in [
+            "_restore_finalize=false",
+            "print_summary_markers",
+        ]:
+            forbid("skills/implement/scripts/step-18.sh", needle, f"step-18 wrapper must not retain {needle}")
         for needle in [
             "Python ship driver wrapper",
             "## Load-Bearing Invariants",
@@ -958,7 +967,7 @@ def run(repo_root: Path) -> list[str]:
         ]:
             if retired in skill_text:
                 checks.append(f"SKILL.md must not retain retired surface {retired!r}")
-        require("skills/implement/scripts/step-8-ship.sh", "bgjob adapt", "step-8-ship delegates outer launch to bgjob adapter")
+        require("python/larch/implement/dispatch_ship.py", "_run_adapter", "step-8-ship delegates outer launch to bgjob adapter")
         forbid("skills/implement/scripts/step-8-ship.sh", "HANDOFF_", "step-8-ship must not retain retired handoff sidecars")
         forbid("skills/implement/scripts/step-8-ship.sh", "persist_handoff", "step-8-ship must not retain retired handoff writer")
         forbid("skills/implement/scripts/step-8-ship.sh", "tee -a", "step-8-ship must not retain retired handoff stdout capture")
@@ -1087,4 +1096,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 386
+LEGACY_ASSERTION_LABEL_COUNT = 385

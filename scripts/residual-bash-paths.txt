@@ -101,10 +101,15 @@ skills/implement/scripts/flush-execution-issues.sh
 skills/implement/scripts/hook-stop-fail-close.sh
 skills/implement/scripts/oos-disposition-checkpoint.sh
 skills/implement/scripts/oos-disposition-gate.sh
+skills/implement/scripts/step-0-bootstrap.sh
+skills/implement/scripts/step-0-degraded-gate.sh
 skills/implement/scripts/step-2-dispatch.sh
 skills/implement/scripts/step-2-post-dispatch.sh
 skills/implement/scripts/step-5-review.sh
 skills/implement/scripts/step-7a.sh
+skills/implement/scripts/step-8-seed-initial.sh
+skills/implement/scripts/step-8-ship.sh
+skills/implement/scripts/step-18.sh
 skills/implement/scripts/step-architectural-guidelines-write-compose.sh
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh
 skills/implement/scripts/step-architectural-invariants-write-compose.sh

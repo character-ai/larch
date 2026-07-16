@@ -41,7 +41,6 @@ def test_manifest_excludes_non_residual_orchestration() -> None:
         "skills/implement/scripts/" + "lib-implement-clone-tag.sh",
         "skills/implement/scripts/" + "step-2-entry.sh",
         "skills/implement/scripts/" + "step-2-entry.md",
-        "skills/implement/scripts/step-8-ship.sh",
     }
     assert paths.isdisjoint(orchestration)
 

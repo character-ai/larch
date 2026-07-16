@@ -90,6 +90,8 @@ mkdir -p "$FAKE_PLUGIN/python"
 cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
 #!/usr/bin/env python3
 import sys
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "require-plugin-root":
+    raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
     raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
@@ -115,6 +117,8 @@ EOF2
 cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
 #!/usr/bin/env python3
 import sys
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "require-plugin-root":
+    raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
     raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
