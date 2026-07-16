@@ -625,6 +625,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "run-log-run-id"): ("larch.lint.lint_run_log_run_id", "main", False),
     ("lint", "run-log-walkers"): ("larch.lint.lint_run_log_walkers", "main", False),
     ("lint", "module-manifest"): ("larch.lint.lint_module_manifest", "main", False),
+    ("lint", "engine-adoption"): ("larch.lint.lint_engine_adoption", "main", False),
     ("voting", "findings-classification-header"): ("larch.review.voting", "findings_classification_header_main", False),
     ("voting", "code-review-classification-header"): (
         "larch.review.voting",
