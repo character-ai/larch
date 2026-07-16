@@ -16,7 +16,6 @@ from larch.lint.engine import (
     EXIT_ERROR,
     EXIT_FINDINGS,
     Finding,
-    SourceFile,
     run_rule,
 )
 from tests.lint.test_lint_engine import (
@@ -40,10 +39,6 @@ COMPLIANT = (
     "        return status\n"
     '    return "missing"\n'
 )
-
-
-def _source(path: str, text: str) -> SourceFile:
-    return SourceFile(path=path, text=text, lines=tuple(text.splitlines()))
 
 
 def _hits(text: str) -> list[Finding]:
@@ -263,7 +258,7 @@ def test_regression_6153_first_truthiness_still_fails() -> None:
     )
     assert len(hits) == 1
     assert hits[0].qualified_symbol == "final_verdict"
-    assert "mechanical_verdict" in hits[0].pattern_name
+    assert "mechanical_verdict" in (hits[0].pattern_name or "")
 
 
 def test_scope_isolation_and_async() -> None:
