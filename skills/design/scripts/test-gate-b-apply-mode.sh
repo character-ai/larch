@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 # Offline coverage for Gate B mode selection and safety-brake handoff.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 

@@ -3,6 +3,7 @@
 # Pins: always-exit-0 invariant, python3/cli.py skip-when-missing contract,
 # no-stdout contract, and background spawn contract (& + disown).
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

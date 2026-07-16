@@ -2,6 +2,7 @@
 # test-architectural-guidelines-step.sh — harness for the Step 8 assessment adapter route.
 # shellcheck disable=SC2016  # literal Markdown snippets intentionally include $, backticks, and quotes.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"

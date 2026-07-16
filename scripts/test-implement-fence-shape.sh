@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Validate /implement SKILL.md Bash fences are thin script-call wrappers.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 

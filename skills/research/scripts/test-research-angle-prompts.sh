@@ -13,6 +13,7 @@
 #
 # Exit 0 on all assertions passing; exit 1 on any failure (with diagnostic on stderr).
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"

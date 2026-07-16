@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regression harness for /design Step 3 review-round cap handling.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"

@@ -18,6 +18,7 @@
 #   0 — all assertions passed
 #   1 — one or more assertions failed
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 

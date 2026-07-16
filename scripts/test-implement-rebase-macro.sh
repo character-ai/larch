@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Rebase checkpoint macro harness for wrapperized /implement.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 python3 <<'PY'

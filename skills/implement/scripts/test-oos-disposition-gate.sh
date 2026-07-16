@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Delegation smoke for oos-disposition-gate.sh and oos-disposition-checkpoint.sh.
 # Behavioral coverage lives in python/tests/issue/test_file_oos.py (-k disposition_gate).
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"

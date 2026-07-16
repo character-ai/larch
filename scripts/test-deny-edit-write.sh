@@ -8,6 +8,7 @@
 # Usage:
 #   bash scripts/test-deny-edit-write.sh
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 

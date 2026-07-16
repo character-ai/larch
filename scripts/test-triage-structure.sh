@@ -2,6 +2,7 @@
 # Structural regression harness for the public /triage prompt contract.
 # shellcheck disable=SC2016  # grep pins intentionally use unexpanded prompt literals
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

@@ -16,6 +16,7 @@
 #   - Lines using a here-string (<<<) as the pipeline source (bounded data)
 #   - Pattern 1: | head appears inside a single-quoted string
 #   - Pattern 2: | grep-q inside a single-quoted bash -c string (not outer pipe)
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)

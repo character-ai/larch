@@ -590,6 +590,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "literal-counts"): ("larch.lint.lint_literal_counts", "main", False),
     ("lint", "tier1a-size"): ("larch.lint.lint_tier1a", "main", False),
     ("lint", "flat-tests"): ("larch.lint.lint_flat_tests", "main", False),
+    ("lint", "harness-session-env"): ("larch.lint.lint_harness_session_env", "main", False),
     ("lint", "no-raw-stderr-after-quiet-init"): ("larch.lint.lint_no_raw_stderr_after_quiet_init", "main", False),
     ("lint", "topology-rule-paths"): ("larch.lint.check_topology_rule_paths", "main", False),
     ("lint", "skill-md-flag-signature"): ("larch.lint.lint_skill_md_flag_signature", "main", False),

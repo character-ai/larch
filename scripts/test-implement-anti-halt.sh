@@ -6,6 +6,7 @@
 # Wired into:   make lint (via the test-implement-anti-halt Makefile target).
 
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

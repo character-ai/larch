@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-check-stale-plugin.sh — regression harness for check-stale-plugin.sh
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

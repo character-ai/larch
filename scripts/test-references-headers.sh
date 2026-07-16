@@ -33,6 +33,7 @@
 #     top of the global presence check enforced here.
 #
 # Exits 0 on pass, 1 on any assertion failure. Fails closed on empty glob.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)

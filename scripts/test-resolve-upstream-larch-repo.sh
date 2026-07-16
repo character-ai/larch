@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-resolve-upstream-larch-repo.sh — offline harness for resolve-upstream-larch-repo.sh
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"

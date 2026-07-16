@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-cache-root-validation.sh — regression harness for larch cache session root validators.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

@@ -9,6 +9,7 @@
 # Wired into: make test-implement-cleanup-roundtrip
 # Sibling contract: scripts/test-implement-cleanup-roundtrip.md
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 PASS=0

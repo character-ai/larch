@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Structural guard for non-stable content in prompt-construction surfaces.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 export LC_ALL=C
 

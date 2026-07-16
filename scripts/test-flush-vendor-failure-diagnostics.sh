@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Offline harness for scripts/flush-vendor-failure-diagnostics.sh (#3713).
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

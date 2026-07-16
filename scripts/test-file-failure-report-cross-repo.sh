@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-file-failure-report-cross-repo.sh — offline harness for cross-repo failure filing.
 
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
