@@ -1,0 +1,250 @@
+# Add a lint for truthiness-based status routing
+
+## Summary
+
+Add an engine-backed Python lint that rejects bare truthiness tests of status-like routing values when the same function proves that the value has explicit semantic members.
+
+The rule should mechanize `G-Py-15`: partition status values into terminal and non-terminal sets, and never decide terminality from truthiness. It is backed by #6153 and #7216. #6955 is related evidence that text-presence heuristics are unsafe, but it is not an exact match for the proposed detector.
+
+## Problem
+
+Status, verdict, result, and outcome values often contain both terminal and routing members. An empty string may mean “missing,” while values such as `NEEDS_DEEP`, `unavailable`, or `TRANSIENT` are non-empty but non-terminal. Code such as this loses that distinction:
+
+```python
+if bundle.mechanical_verdict:
+    return bundle.mechanical_verdict
+```
+
+In #6153, that test treated `NEEDS_DEEP` as terminal and masked a deep verdict. `lint_unreachable_branch` now catches the later duplicate-branch shape from that defect, but it cannot reject the first reachable truthiness decision.
+
+#7216 exposed the same prevention class at a gate boundary: a persisted status needed explicit state and freshness handling. A non-empty status was not sufficient evidence that the note could safely pass the gate.
+
+`G-Py-15` states the correct rule, but current enforcement remains incomplete. A focused lint can catch the high-confidence subset without banning normal optional-string or collection checks.
+
+## Required behavior
+
+Add the CLI command:
+
+```text
+python3 python/cli.py lint status-routing-truthiness
+```
+
+The lint scans production files under `python/larch/**/*.py`. Exclude tests, `conftest.py`, `test_support.py`, `review_test_support.py`, generated or vendored directories already excluded by neighboring Python lints, symlinks, and the lint implementation itself.
+
+Use the shared engine in `python/larch/lint/engine.py`. Syntax errors and unreadable required inputs must fail closed with exit code 2. Findings return exit code 1. A clean scan returns 0.
+
+### Status-like expression grammar
+
+Limit version 1 to stable, repeatable expressions that can be keyed safely:
+
+- A bare `Name`, such as `status` or `merge_result`.
+- A non-call `Attribute` chain rooted at a `Name`, such as `bundle.mechanical_verdict` or `state.merge_state_status`.
+- The final identifier, case-insensitively, ends with one of: `status`, `verdict`, `result`, or `outcome`.
+
+Do not treat calls, subscripts, comprehensions, arbitrary binary expressions, or properties rooted at calls as candidate expressions. This keeps expression identity stable and false-positive risk bounded.
+
+Normalize a candidate expression with a stable AST representation. The same normalized expression must be used for semantic-evidence matching, finding identity, rendering, and baseline identity.
+
+### Same-scope semantic evidence
+
+Flag a candidate only when the same function or method contains independent evidence that the expression represents a multi-member status domain.
+
+Qualifying evidence is an explicit comparison of the same normalized expression against at least one semantic member:
+
+- `value == "DONE"` or `value != "NEEDS_DEEP"`
+- `value in {"DONE", "FAILED"}` or `value not in TERMINAL_RESULTS`
+- `value == Outcome.OK` or `value is Outcome.OK`
+- The symmetric forms, such as `"DONE" == value`
+
+For version 1, a semantic member is one of:
+
+- a non-empty string literal;
+- an enum-style attribute such as `Outcome.OK`; or
+- an uppercase constant name such as `TERMINAL_RESULTS` when used as the container of an `in` or `not in` comparison.
+
+Do not count `None`, `True`, `False`, numeric literals, empty strings, or empty containers as semantic-member evidence. Do not let evidence cross a nested function, lambda, class, or module scope boundary. Each function, async function, and method is analyzed independently.
+
+This same-scope evidence requirement is load-bearing. A name suffix alone would incorrectly flag ordinary optional strings such as `render_result` or `review_status` when emptiness is their documented presence test.
+
+### Bare truthiness contexts
+
+After collecting semantic evidence for a scope, flag each bare boolean use of the matching expression in these contexts:
+
+- the direct test of `if`, `elif`, `while`, or a conditional expression;
+- an operand of `and` or `or` that is the candidate expression;
+- `not value` when `value` is the candidate expression;
+- `bool(value)` with exactly one positional argument and no keywords.
+
+Emit one finding per bare occurrence. Avoid duplicate findings for the same AST node when contexts nest, for example `if not value`.
+
+Do not flag explicit decisions that preserve member semantics:
+
+- equality, identity, membership, or ordering comparisons;
+- `value is None` or `value is not None`;
+- `len(value)`, `any(value)`, or `all(value)`;
+- a truthiness check for a similarly named expression that has no qualifying semantic-member comparison in the same scope;
+- a comparison operand merely because Python evaluates the containing comparison as boolean.
+
+### Example findings
+
+This must fail because the same scope proves that `mechanical_verdict` has a special non-terminal member:
+
+```python
+def final_verdict(bundle: Bundle) -> str:
+    if bundle.mechanical_verdict:
+        return bundle.mechanical_verdict
+    if bundle.mechanical_verdict == "NEEDS_DEEP":
+        return read_deep_verdict(bundle)
+    return "UNKNOWN"
+```
+
+This must also fail:
+
+```python
+def route(outcome: Outcome | None) -> str:
+    if outcome and outcome is not Outcome.TRANSIENT:
+        return "terminal"
+    return "retry"
+```
+
+These must pass:
+
+```python
+if verdict in TERMINAL_VERDICTS:
+    return verdict
+
+if result is None:
+    return fallback()
+
+if rendered_result:
+    print(rendered_result)
+```
+
+The last example passes unless the same scope also compares `rendered_result` with a qualifying status member.
+
+## Finding and baseline contract
+
+Use rule ID and suppression token `status-routing-truthiness`.
+
+Render a concise finding that names the qualified symbol and normalized expression, and directs the caller to use explicit terminal or routing membership. Do not include line numbers in baseline identity.
+
+Use an occurrence baseline at:
+
+```text
+python/status-routing-truthiness-baseline.json
+```
+
+Each row must use the shared engine’s occurrence grammar and be keyed by:
+
+- `file` relative to `python/`;
+- `qualified_symbol`;
+- `normalized_condition` or `pattern_name`, chosen once and used consistently;
+- lexical `occurrence`; and
+- non-empty `reason`.
+
+Assign occurrences in lexical source order within the nearest function or method scope. Existing violations must be grandfathered through a sorted, shrinking, reason-bearing baseline. New violations fail. Stale baseline rows fail during normal lint execution.
+
+Support:
+
+```text
+python3 python/cli.py lint status-routing-truthiness --write
+python3 python/cli.py lint status-routing-truthiness --write --initial-reason '<reason>'
+```
+
+Routine regeneration must preserve reasons for matching identities and fail if a new live identity lacks a preserved reason. An initial baseline may use a clear reason such as `pre-existing status truthiness before the status-routing-truthiness ratchet`; do not use an empty or placeholder reason.
+
+Allow only a same-line, reason-bearing suppression:
+
+```python
+if wire_status:  # lint-status-routing-truthiness: ok presence, not terminality
+    ...
+```
+
+The empty form must not suppress a finding:
+
+```python
+# lint-status-routing-truthiness: ok
+```
+
+Use the shared suppression machinery when it satisfies this contract. Do not create a second general-purpose baseline or suppression parser.
+
+## Implementation surface
+
+Modify or create these files:
+
+- `python/larch/lint/lint_status_routing_truthiness.py`: detector, engine adapter, CLI parser, baseline-write path, and `main`.
+- `python/tests/lint/test_lint_status_routing_truthiness.py`: focused detector, CLI, baseline, suppression, and repository-scan tests.
+- `python/larch/cli.py`: register `("lint", "status-routing-truthiness")`.
+- `python/lint-module-manifest.json`: add a sorted `new-module-justified` row for `lint_status_routing_truthiness.py`. Set `source_issue` to this issue number. State that `lint_unreachable_branch.py` cannot host the rule because it proves path contradiction after a return, while this rule classifies the first reachable boolean decision from same-scope status semantics.
+- `Makefile`: add the rule to `py-lint-checks-fast`; add `lint-status-routing-truthiness`, `test-lint-status-routing-truthiness`, and `regen-status-routing-truthiness-baseline` targets; update the relevant `.PHONY` declarations.
+- `docs/linting.md`: document the exact scan scope, evidence gate, false-positive boundary, suppression syntax, baseline identity, stale-row behavior, and regeneration target.
+- `python/status-routing-truthiness-baseline.json`: add the generated baseline. Commit `[]` only if the live repository scan has no findings.
+
+Do not add the new module to `LEGACY_SEED_MODULES` in `lint_module_manifest.py`. New modules must use the manifest’s `new-module-justified` path.
+
+Do not add an engine-equivalence fixture unless the implementation introduces a separate legacy detector and adapter. A single engine-native detector should be tested directly.
+
+## Host and size budget
+
+**Host:** New module `python/larch/lint/lint_status_routing_truthiness.py`.
+
+The closest existing host is `python/larch/lint/unreachable_branch_detector.py`. It cannot absorb this rule. That detector proves a repeated path is unreachable after an earlier same-condition return. This proposal must reject the first reachable truthiness decision and requires different semantic evidence, finding identities, and false-positive controls.
+
+**Size budget:** Estimate 145 non-test lines for the core detector module. Estimate 190 to 240 total non-test lines after CLI, Makefile, manifest, baseline, and documentation integration. The total exceeds 150 because the rule needs a two-pass, scope-local AST analysis plus reason-preserving baseline wiring. Keep the detector engine-native and reuse existing helpers to stay within this range.
+
+**Cheaper alternative:** Extend `lint_unreachable_branch` with a name-suffix check. This is insufficient because #6153’s first truthiness branch is reachable and harmful even when no duplicate branch follows. Name-only matching would also flag ordinary optional strings. The separate rule provides the needed same-scope semantic-evidence gate without weakening the existing detector.
+
+## Test requirements
+
+Add focused tests for all of these cases:
+
+1. Flag a bare `Name` with same-function string-member evidence.
+2. Flag a dotted `Attribute` chain with same-function member evidence.
+3. Flag direct `if`, `while`, conditional-expression, `and`, `or`, `not`, and `bool(value)` contexts.
+4. Emit one finding, not two, for nested forms such as `if not value`.
+5. Accept explicit equality, identity, membership, `is None`, `len`, `any`, and `all` checks.
+6. Accept a status-suffixed optional value when the same scope has no semantic-member comparison.
+7. Accept evidence in a sibling or nested function without applying it to the current scope.
+8. Do not treat comparisons to `None`, booleans, numbers, empty strings, or empty containers as semantic evidence.
+9. Recognize string literals, enum-style attributes, symmetric comparisons, and uppercase terminal-set membership.
+10. Ignore calls, subscripts, and unstable compound expressions as candidate identities.
+11. Keep lexical occurrence numbering stable across unrelated line movement.
+12. Honor a same-line suppression with a non-empty reason.
+13. Reject or ignore an empty-reason suppression according to the shared engine contract.
+14. Match live findings against the baseline and warn without failing for valid baselined rows.
+15. Fail on a new unbaselined finding.
+16. Fail on stale, duplicate, malformed, extra-key, unsafe-path, or empty-reason baseline rows.
+17. Preserve matching reasons during `--write` regeneration and fail when a new identity has no reason outside initial creation.
+18. Register the CLI command and verify its exit codes.
+19. Verify `python/lint-module-manifest.json` accepts the new justified module row.
+20. Run the rule against the repository root and require a clean result after baseline filtering.
+
+Include a regression-shaped fixture for #6153. The fixture must prove that the first truthiness branch is reported even when the later duplicate branch is removed, so the new test does not merely duplicate `lint_unreachable_branch` coverage.
+
+## Acceptance criteria
+
+- `python3 python/cli.py lint status-routing-truthiness` returns 1 for an unbaselined qualifying truthiness branch and prints the file, qualified symbol, and normalized expression.
+- The rule does not flag the documented negative cases.
+- Same-scope semantic evidence cannot leak across nested scopes.
+- Every committed baseline row has a non-empty reason and stable occurrence identity.
+- Normal execution fails on stale baseline rows.
+- `python3 python/cli.py lint module-manifest` passes with a `new-module-justified` row that cites this issue.
+- `make test-lint-status-routing-truthiness` passes.
+- `make lint-status-routing-truthiness` passes.
+- The changed lint files pass the repository’s relevant Python lint and test checks.
+- `docs/linting.md` describes the live behavior and regeneration command without hardcoded counts.
+
+## Verification commands
+
+Run at minimum:
+
+```bash
+python3 -m pytest -q python/tests/lint/test_lint_status_routing_truthiness.py
+python3 python/cli.py lint status-routing-truthiness
+python3 python/cli.py lint module-manifest
+make test-lint-status-routing-truthiness
+make lint-status-routing-truthiness
+python3 python/cli.py checks run-relevant
+```
+
+If baseline generation is needed, run the new `make regen-status-routing-truthiness-baseline` target, inspect every reason-bearing row, then rerun the commands above.
