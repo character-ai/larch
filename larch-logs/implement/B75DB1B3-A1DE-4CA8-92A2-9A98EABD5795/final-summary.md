@@ -4,15 +4,16 @@ No review rounds completed.
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (1):
+Warnings (2):
   1. Step 7a.r-post-rebase — phantom untracked files: 4 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7a.r-post-rebase.z locally)
+  2. Step 8-pre-ship — phantom untracked files: 3 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally)
 
 ## /implement run B75DB1B3-A1DE-4CA8-92A2-9A98EABD5795: shipping
 
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 01:32:16
-- **Cost**: 💰 TOTAL ~$1.12: Claude/GLM-5.2 token $12.40 (estimated $0.83), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.29  |  Tokens: 42457k
+- **Cost**: 💰 TOTAL ~$1.15: Claude/GLM-5.2 token $12.54 (estimated $0.84), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.31  |  Tokens: 42971k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7534: https://github.com/character-ai/larch/issues/7534
 - **Plan review**: N/A
@@ -23,7 +24,7 @@ Warnings (1):
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/B75DB1B3-A1DE-4CA8-92A2-9A98EABD5795/`
 - **Main agent model**: glm-5.2
 - **Effort**: max
