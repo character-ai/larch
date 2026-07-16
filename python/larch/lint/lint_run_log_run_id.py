@@ -9,28 +9,18 @@ when any tracked ``larch-logs/<skill>/run-<N>/`` path exists.
 
 from __future__ import annotations
 
-import argparse
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from larch.lint.engine import RuleCli, run_root_cli
+
 GIT = shutil.which("git") or "git"
 
 # larch-logs/<skill>/run-<N>/...  for the per-run log roots.
 _PLACEHOLDER_PATH_RE = re.compile(r"^larch-logs/(implement|design|review)/run-[0-9]+(?:/|$)")
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint run-log-run-id", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
 
 
 def _tracked_log_paths(root: Path) -> list[str]:
@@ -47,11 +37,10 @@ def find_violations(root: Path) -> list[str]:
     return sorted({path for path in _tracked_log_paths(root) if _PLACEHOLDER_PATH_RE.match(path)})
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv=argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return 2
-    root = Path(parsed.root)
+CLI = RuleCli(prog="cli.py lint run-log-run-id", description=__doc__, resolve_root=False)
+
+
+def _run(root: Path) -> int:
     if not root.is_dir():
         print(f"lint-run-log-run-id: --root is not a directory: {root}", file=sys.stderr)
         return 2
@@ -71,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

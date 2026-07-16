@@ -9,11 +9,12 @@ instruction for unreadable evidence.
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 GLOB_PATTERNS = ("agents/*.md", ".claude/agents/*.md")
@@ -272,22 +273,10 @@ def scan_file(path: Path, *, root: Path) -> list[Finding]:
     return findings
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint agent-tool-contract", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(prog="cli.py lint agent-tool-contract", description=__doc__)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
+def _run(root: Path) -> int:
     if not root.is_dir():
         print(f"lint-agent-tool-contract: root directory not found: {root}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
@@ -301,6 +290,10 @@ def main(argv: list[str] | None = None) -> int:
     for finding in sorted(findings, key=lambda item: (item.file, item.lineno)):
         print(f"{finding.file}:{finding.lineno}: {finding.message}")
     return 1 if findings else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

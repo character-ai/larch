@@ -10,7 +10,6 @@ the single source of truth:
 
 from __future__ import annotations
 
-import argparse
 import ast
 import io
 import re
@@ -21,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.issue.title_match import BUG_PREFIX
+from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
@@ -289,24 +289,10 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     return [finding for finding in findings if not _is_suppressed(finding, comments_by_line=comments_by_line)]
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint shared-convention-regex", description=__doc__
-    )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(prog="cli.py lint shared-convention-regex", description=__doc__)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
+def _run(root: Path) -> int:
     larch_dir: Path = root / "python" / "larch"
     if not larch_dir.is_dir():
         print(f"lint-shared-convention-regex: larch directory not found: {larch_dir}", file=sys.stderr)
@@ -324,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     return 1 if findings else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

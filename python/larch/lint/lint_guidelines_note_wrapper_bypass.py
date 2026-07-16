@@ -7,7 +7,6 @@ bypassing the re-pin attempt with ``_invalidate_guidelines_note``.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import io
 import re
@@ -16,6 +15,8 @@ import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 TARGET_CALLEE = "_invalidate_guidelines_note"
@@ -103,24 +104,10 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     return findings
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint guidelines-note-wrapper-bypass", description=__doc__
-    )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(prog="cli.py lint guidelines-note-wrapper-bypass", description=__doc__)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
+def _run(root: Path) -> int:
     larch_dir: Path = root / "python" / "larch"
     if not larch_dir.is_dir():
         print(
@@ -142,6 +129,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     return 1 if findings else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

@@ -2,28 +2,18 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 TIER1A_LINE_CAPS: Final[dict[str, int]] = {
     "AGENTS.md": 89,
     "KARPATHY_CLAUDE.md": 54,
     "BASH_AUTHORING.md": 115,
 }
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint tier1a-size", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
 
 
 def _validate_caps(caps: Mapping[str, object]) -> list[str]:
@@ -71,14 +61,18 @@ def check_root(root: Path, caps: Mapping[str, int] | None = None) -> tuple[int, 
     return (1 if over_cap_rows else 0), over_cap_rows
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv if argv is not None else sys.argv[1:])
-    if args is None:
-        return 2
-    code, rows = check_root(Path(args.root).resolve())
+CLI = RuleCli(prog="cli.py lint tier1a-size", description=__doc__)
+
+
+def _run(root: Path) -> int:
+    code, rows = check_root(root)
     for row in rows:
         print(row, file=sys.stderr)
     return code
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from larch.lint.lint_common import GIT, git_rooted, parse_root_args
+from larch.lint.engine import RuleCli, run_root_cli
+from larch.lint.lint_common import GIT, git_rooted
 
 GH_RE = re.compile(r"(^|[\s/'\"`(=])gh([\s'\"])")
 PRAGMA_RE = re.compile(r"(^|\s)#\s*lint-gh-body-inline: ok(\s.*)?$")
@@ -88,15 +89,10 @@ def scan_file( *,root: Path, rel: str) -> bool:
     return violation
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed = parse_root_args(
-        argv if argv is not None else sys.argv[1:],
-        prog="cli.py lint gh-body-inline",
-        description=__doc__,
-    )
-    if parsed is None:
-        return 2
-    root = Path(parsed.root)
+CLI = RuleCli(prog="cli.py lint gh-body-inline", description=__doc__, resolve_root=False)
+
+
+def _run(root: Path) -> int:
     if not root.is_dir():
         print(f"lint-gh-body-inline: --root is not a directory: {root}", file=sys.stderr)
         return 2
@@ -106,6 +102,10 @@ def main(argv: list[str] | None = None) -> int:
         if scan_file(root=root, rel=rel):
             violations += 1
     return 1 if violations else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

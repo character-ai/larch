@@ -7,7 +7,6 @@ reason-bearing pragma.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import io
 import re
@@ -16,6 +15,8 @@ import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 PUSH_COMMAND_ELEMENTS = 2
@@ -110,22 +111,10 @@ def scan_file(path: Path, *, root: Path) -> list[Finding]:
     return findings
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint git-push-refspec", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(prog="cli.py lint git-push-refspec", description=__doc__)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root = Path(str(parsed.root)).resolve()
+def _run(root: Path) -> int:
     python_dir = root / "python"
     if not python_dir.is_dir():
         print(f"lint-git-push-refspec: python directory not found: {python_dir}", file=sys.stderr)
@@ -145,6 +134,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     return 1 if findings else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

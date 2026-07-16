@@ -393,6 +393,10 @@ class RuleCli:
     default_root: Path = Path(__file__).resolve().parents[3]
     scoped_paths: tuple[str, ...] | None = None
     strict_stale: bool = True
+    resolve_root: bool = True
+
+
+RootCliAction: TypeAlias = Callable[[Path], int]
 
 
 def parse_lint_argv(
@@ -479,6 +483,28 @@ def run_rule_cli(
         initial_reason=initial_reason,
         strict_stale=cli.strict_stale and not write_baseline,
     )
+
+
+def run_root_cli(
+    argv: Sequence[str],
+    *,
+    cli: RuleCli,
+    action: RootCliAction,
+) -> int:
+    """Parse a root-only lint command and invoke its typed action.
+
+    This is the narrow engine CLI seam for legacy scan commands whose result
+    model does not yet fit :func:`run_rule_cli`. It intentionally exposes only
+    ``--root``: baseline flags remain exclusive to engine ``LintRule`` scans.
+    """
+    if cli.baseline_filename is not None:
+        msg = "run_root_cli requires a RuleCli without a baseline filename"
+        raise ValueError(msg)
+    parsed = parse_lint_argv(argv, cli=cli)
+    if parsed is None:
+        return EXIT_ERROR
+    root = Path(str(parsed.root))
+    return action(root.resolve() if cli.resolve_root else root)
 
 
 def _is_single_line(value: object) -> bool:
