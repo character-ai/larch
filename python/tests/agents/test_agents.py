@@ -378,6 +378,39 @@ def test_classify_timeout_expected_output() -> None:
 
 
 @pytest.mark.parametrize(
+    ("launcher_exit", "tool", "diagnostic", "reason"),
+    [
+        (
+            7,
+            "codex",
+            "stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)",
+            config.LAUNCH_FAILURE_REASON_OPENAI_STREAM_DISCONNECTED,
+        ),
+        (
+            8,
+            "cursor",
+            "Failed to reach the Cursor API. If you are behind a corporate proxy, set HTTPS_PROXY.",
+            config.LAUNCH_FAILURE_REASON_CURSOR_API_UNREACHABLE,
+        ),
+    ],
+)
+def test_classify_known_vendor_connectivity_failures(
+    tmp_path: Path, launcher_exit: int, tool: str, diagnostic: str, reason: str
+) -> None:
+    sidecar = tmp_path / "failure-diag.log"
+    _ = sidecar.write_text(diagnostic, encoding="utf-8")
+
+    failure = agents.classify_launch_failure(
+        launcher_exit=launcher_exit,
+        sidecar=sidecar,
+        tool=tool,
+        output_file=tmp_path / "output.txt",
+    )
+
+    assert failure == LaunchFailure("health", reason)
+
+
+@pytest.mark.parametrize(
     ("launcher_exit", "sidecar_text", "output_text", "auth_verdict", "binary_present", "tool"),
     [
         (127, "", "", "unclassified", "0", "cursor"),

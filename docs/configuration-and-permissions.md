@@ -304,8 +304,9 @@ The adaptive cutoff applies only to reviewer panels: `/design` plan-review and `
 
 - **`LARCH_REVIEWER_STRAGGLER_MULTIPLE`**: multiplier for the half-mark of collector-validated successes (default `2.5`). Set `0` to disable the cutoff and restore wait-for-all behavior.
 - **`LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS`**: minimum cutoff deadline in seconds (default `300`).
+- **`LARCH_REVIEWER_STRAGGLER_MAX_SECONDS`**: absolute cutoff cap in seconds (default `900`). Invalid or non-positive values use the default.
 
-The half-mark counts only collector-validated `OK` or `cap_hit` successes after the same result and first-line gates used by the reviewer collector. The existing per-reviewer `--timeout` remains the absolute ceiling. Timed-out stragglers are dropped without fallback, and straggler drops do not count toward the reviewer failure-threshold gate or the static archetype coverage gate.
+The half-mark counts only collector-validated `OK` or `cap_hit` successes after the same result and first-line gates used by the reviewer collector. The effective deadline is capped by the per-reviewer `--timeout` and `LARCH_REVIEWER_STRAGGLER_MAX_SECONDS`. Timed-out stragglers are dropped without fallback, and straggler drops do not count toward the reviewer failure-threshold gate or the static archetype coverage gate.
 
 ### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
 

@@ -42,6 +42,11 @@ _CODEX_VERSION_GATE_RE = re.compile(
     re.IGNORECASE,
 )
 _SAFE_CODEX_MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
+_OPENAI_STREAM_DISCONNECTED_RE = re.compile(
+    r"stream disconnected before completion.*(?:api\.openai\.com|/v1/responses)",
+    re.IGNORECASE | re.DOTALL,
+)
+_CURSOR_API_UNREACHABLE_RE = re.compile(r"failed to reach the cursor api", re.IGNORECASE)
 
 
 def _safe_codex_gate_model(value: str) -> str | None:
@@ -197,6 +202,21 @@ def effective_failure_class(attempt: TierAttempt) -> str:
     return attempt.failure.failure_class
 
 
+def _vendor_connectivity_failure(*, tool: str, text: str) -> LaunchFailure | None:
+    """Identify known vendor outages from captured launcher diagnostics."""
+    if tool == "codex" and _OPENAI_STREAM_DISCONNECTED_RE.search(text):
+        return LaunchFailure(
+            failure_class="health",
+            reason=config.LAUNCH_FAILURE_REASON_OPENAI_STREAM_DISCONNECTED,
+        )
+    if tool == "cursor" and _CURSOR_API_UNREACHABLE_RE.search(text):
+        return LaunchFailure(
+            failure_class="health",
+            reason=config.LAUNCH_FAILURE_REASON_CURSOR_API_UNREACHABLE,
+        )
+    return None
+
+
 def classify_launch_failure(
     *,
     launcher_exit: int,
@@ -217,6 +237,12 @@ def classify_launch_failure(
         output_file and is_quota_failure(tool=tool, sidecar=output_file)
     ):
         return LaunchFailure(failure_class="health", reason="quota")
+    diagnostics = "\n".join(
+        _read_text(path) for path in (sidecar, output_file) if path
+    )
+    connectivity_failure = _vendor_connectivity_failure(tool=tool, text=diagnostics)
+    if connectivity_failure is not None:
+        return connectivity_failure
     if output_file and is_transient_infra_failure(tool=tool, exit_code=launcher_exit, output_file=output_file):
         return LaunchFailure(failure_class="health", reason="health-probe")
     if launcher_exit == config.EXIT_TIMEOUT:

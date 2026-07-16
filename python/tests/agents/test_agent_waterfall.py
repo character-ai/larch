@@ -608,6 +608,15 @@ def test_straggler_floor_clamps_negative_env(monkeypatch: pytest.MonkeyPatch) ->
     assert agent_waterfall._straggler_floor() == 0  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("value", ["0", "-1", "invalid"])
+def test_straggler_max_uses_default_for_invalid_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("LARCH_REVIEWER_STRAGGLER_MAX_SECONDS", value)
+
+    assert agent_waterfall._straggler_max() == 900  # pyright: ignore[reportPrivateUsage]
+
+
 def test_straggler_deadline_clamps_to_timeout_ceiling(tmp_path: Path, stub_env: dict[str, str]) -> None:
     manifest = _slots_manifest(tmp_path, [("fast", "codex", "fast.txt"), ("slow", "cursor", "slow.txt")])
     proc = _run(
@@ -620,6 +629,25 @@ def test_straggler_deadline_clamps_to_timeout_ceiling(tmp_path: Path, stub_env: 
         },
         "--timeout",
         "1",
+        "--straggler-cutoff",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["STRAGGLER_DROPPED_COUNT"] == "1"
+
+
+def test_straggler_deadline_clamps_to_absolute_max(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = _slots_manifest(tmp_path, [("fast", "codex", "fast.txt"), ("slow", "cursor", "slow.txt")])
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CURSOR_STUB_DELAY": "5",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "100",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "999",
+            "LARCH_REVIEWER_STRAGGLER_MAX_SECONDS": "1",
+        },
+        "--timeout",
+        "30",
         "--straggler-cutoff",
     )
     assert proc.returncode == 0, proc.stderr

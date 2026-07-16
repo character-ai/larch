@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from typing import cast
 
 from larch.agents import agents
+from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.report.tokens import build_panel_dispatch_env
@@ -685,19 +686,37 @@ def _sigterm_handler(_signum: int, _frame: object) -> None:  # lint-keyword-only
 
 
 def _straggler_multiple() -> float:
-    raw = os.environ.get("LARCH_REVIEWER_STRAGGLER_MULTIPLE", "2.5")
+    raw = os.environ.get(
+        config.ENV_LARCH_REVIEWER_STRAGGLER_MULTIPLE,
+        str(config.REVIEWER_STRAGGLER_MULTIPLE_DEFAULT),
+    )
     try:
         return float(raw)
     except ValueError:
-        return 2.5
+        return config.REVIEWER_STRAGGLER_MULTIPLE_DEFAULT
 
 
 def _straggler_floor() -> int:
-    raw = os.environ.get("LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS", "300")
+    raw = os.environ.get(
+        config.ENV_LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS,
+        str(config.REVIEWER_STRAGGLER_FLOOR_SECONDS_DEFAULT),
+    )
     try:
         return max(int(raw), 0)
     except ValueError:
-        return 300
+        return config.REVIEWER_STRAGGLER_FLOOR_SECONDS_DEFAULT
+
+
+def _straggler_max() -> int:
+    raw = os.environ.get(
+        config.ENV_LARCH_REVIEWER_STRAGGLER_MAX_SECONDS,
+        str(config.REVIEWER_STRAGGLER_MAX_SECONDS_DEFAULT),
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        return config.REVIEWER_STRAGGLER_MAX_SECONDS_DEFAULT
+    return value if value > 0 else config.REVIEWER_STRAGGLER_MAX_SECONDS_DEFAULT
 
 
 def _finish_launch(*, launch: PhaseLaunch, rc: int | None) -> None:
@@ -722,7 +741,7 @@ def _reap_phase(
     multiple = _straggler_multiple()
     cutoff_enabled = opts.straggler_cutoff and multiple > 0 and len(launches) >= MIN_STRAGGLER_PHASE_SLOTS
     floor = float(_straggler_floor())
-    ceiling = float(int(opts.timeout))
+    ceiling = float(min(int(opts.timeout), _straggler_max()))
     needed = (len(launches) + 1) // 2
     accepted = 0
     deadline: float | None = None
