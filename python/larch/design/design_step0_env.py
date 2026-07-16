@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 
+from larch import io as larch_io
 from larch.state import session_env
 
 _SUBPROCESS_RUN = subprocess.run
@@ -304,15 +305,13 @@ def _decode_shell_assignment_value(value: str) -> str:
 def load_bash_quoted_env(*, path: Path, allow_keys: Iterable[str]) -> dict[str, str]:
     if not path.is_file() or path.is_symlink():
         return {}
-    allow = set(allow_keys)
-    data: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in allow:
-            data[key] = _decode_shell_assignment_value(value)
-    return data
+    data = larch_io.parse_kv(
+        "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()),
+        allowed_keys=set(allow_keys),
+        skip_comments=True,
+        duplicate_policy="last",
+    )
+    return {key: _decode_shell_assignment_value(value) for key, value in data.items()}
 
 
 def _load_source_env(*, path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV_ALLOW, claude_pid: str = "") -> dict[str, str]:
@@ -331,21 +330,13 @@ def _load_source_env(*, path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV
         read_path = source
     else:
         return {}
-    allow = set(allow_keys)
-    data: dict[str, str] = {}
-    for raw in read_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line.removeprefix("export ")
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key not in allow:
-            continue
-        data[key] = _decode_shell_assignment_value(value)
-    return data
+    normalized = "\n".join(
+        line.removeprefix("export ")
+        for raw in read_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        if (line := raw.strip()) and not line.startswith("#")
+    )
+    data = larch_io.parse_kv(normalized, allowed_keys=set(allow_keys), duplicate_policy="last")
+    return {key: _decode_shell_assignment_value(value) for key, value in data.items()}
 
 
 def _base_env() -> dict[str, str]:

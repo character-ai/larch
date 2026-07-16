@@ -646,11 +646,7 @@ def check_plan_size_main(argv: list[str]) -> int:
             raw = baseline_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             raw = ""
-        data: dict[str, str] = {}
-        for line in raw.splitlines():
-            if "=" in line:
-                k, v = line.split("=", 1)
-                data[k] = v
+        data = larch_io.parse_kv("\n".join(raw.splitlines()), duplicate_policy="last")
         if data.get("BASELINE_PLAN_LINES", "").isdigit() and data.get("BASELINE_DIFF_LINES", "").isdigit():
             baseline_plan = int(data["BASELINE_PLAN_LINES"])
             baseline_diff = int(data["BASELINE_DIFF_LINES"])
@@ -951,9 +947,9 @@ def _dispatch_vendor_fix(
         launcher_stdout.write_text(proc.stdout, encoding="utf-8")
         if proc.stderr:
             (run_dir / "codex.launcher-stderr").write_text(proc.stderr, encoding="utf-8")
-        for line in proc.stdout.splitlines():
-            if line.startswith("LAUNCHER_EXIT="):
-                return int(line.split("=", 1)[1])
+        launcher_exit = larch_io.kv_value(text="\n".join(proc.stdout.splitlines()), key="LAUNCHER_EXIT", duplicate_policy="first")
+        if launcher_exit:
+            return int(launcher_exit)
         return 1
     if vendor == "cursor":
         timing_start = int(subprocess.check_output(["date", "+%s"], text=True).strip())
@@ -1331,8 +1327,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RU
         )
     )
     _atomic_write(path=revise_dir / "revise.env", text=env_text)
-    for line in env_text.splitlines():
-        key, value = line.split("=", 1)
+    for key, value in larch_io.parse_kv(env_text, duplicate_policy="last").items():
         emit_kv(key=key, value=value)
     return 0
 
@@ -1488,10 +1483,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
                 continue
         val = subprocess.run(validator_cli, text=True, capture_output=True, check=False)
         _atomic_write(path=run_dir / "revalidate.log", text=val.stdout + val.stderr)
-        status = "error"
-        for line in val.stdout.splitlines():
-            if line.startswith("VALIDATE_STATUS="):
-                status = line.split("=", 1)[1]
+        status = larch_io.kv_value(text="\n".join(val.stdout.splitlines()), key="VALIDATE_STATUS", default="error", duplicate_policy="last")
         final_status = status
         if val.returncode != 0 and status != "defects-found":
             shutil.copy2(backup, plan)

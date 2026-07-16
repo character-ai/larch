@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 
+from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.design import design_pause
 from larch.git import gh
@@ -128,17 +129,17 @@ def relay_degraded_tools_gate_stdout(*, stdout: str, design_tmpdir: Path) -> dic
             in_explanation = False
             print(line)
         elif line.startswith("DEGRADED="):
-            state["DEGRADED"] = line.split("=", 1)[1]
+            state["DEGRADED"] = larch_io.kv_value(text=line, key="DEGRADED")
             print(line)
         elif line.startswith("BOTH_DOWN="):
-            state["BOTH_DOWN"] = line.split("=", 1)[1]
+            state["BOTH_DOWN"] = larch_io.kv_value(text=line, key="BOTH_DOWN")
             state["BOTH_DOWN_SEEN"] = "true"
             print(line)
         elif line.startswith("DEGRADED_HARD_FAIL="):
-            state["DEGRADED_HARD_FAIL"] = line.split("=", 1)[1]
+            state["DEGRADED_HARD_FAIL"] = larch_io.kv_value(text=line, key="DEGRADED_HARD_FAIL")
             print(line)
         elif line.startswith("PRESENCE_INPUT_EMPTY="):
-            state["PRESENCE_INPUT_EMPTY"] = line.split("=", 1)[1]
+            state["PRESENCE_INPUT_EMPTY"] = larch_io.kv_value(text=line, key="PRESENCE_INPUT_EMPTY")
             print(line)
         elif line.startswith(("CODEX_STATE=", "CURSOR_STATE=")) or in_explanation:
             print(line)

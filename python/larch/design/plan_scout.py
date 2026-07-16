@@ -13,6 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.core import logging_util
@@ -362,9 +363,9 @@ def _emit_staged_size_warning(*, label: str, staged: Path) -> None:
 def _launch_latency_ms(path: Path) -> int:
     if not path.is_file():
         return 0
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("ELAPSED=") and line.split("=", 1)[1].isdigit():
-            return int(line.split("=", 1)[1]) * 1000
+    elapsed = larch_io.kv_value(text="\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()), key="ELAPSED", duplicate_policy="first")
+    if elapsed.isdigit():
+        return int(elapsed) * 1000
     return 0
 
 
@@ -379,10 +380,7 @@ def _raw_is_scout_json(path: Path) -> bool:
 def _parse_launch_status(env_path: Path) -> str:
     if not env_path.is_file():
         return ""
-    for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("STATUS="):
-            return line.split("=", 1)[1]
-    return ""
+    return larch_io.kv_value(text="\n".join(env_path.read_text(encoding="utf-8", errors="replace").splitlines()), key="STATUS", duplicate_policy="first")
 
 
 def _emit_scout_result(*, status: str, output: Path, count: int, latency_ms: int, fail_reason: str = "", manifest_key: bool = False) -> None:
@@ -604,13 +602,13 @@ def scout_plan_archetypes(  # noqa: PLR0913,RUF100
     with tmp.open("w", encoding="utf-8") as handle:
         rc = subprocess.run([*scout_cmd, *args, *prompt_flag], check=False, stdout=handle).returncode
     text = tmp.read_text(encoding="utf-8", errors="replace") if tmp.is_file() else ""
-    status = next((line.split("=", 1)[1] for line in text.splitlines() if line.startswith("SCOUT_STATUS=")), "validation-failed")
+    status = larch_io.kv_value(text="\n".join(text.splitlines()), key="SCOUT_STATUS", default="validation-failed", duplicate_policy="first")
     if rc != 0 and "FAILURE_REASON=prompt-override-invalid" in text:
         _err("WARN scout-plan-archetypes-wrapper: prompt override rejected; retrying without override")
         with tmp.open("w", encoding="utf-8") as handle:
             rc = subprocess.run([*scout_cmd, *args], check=False, stdout=handle).returncode
         text = tmp.read_text(encoding="utf-8", errors="replace")
-        status = next((line.split("=", 1)[1] for line in text.splitlines() if line.startswith("SCOUT_STATUS=")), "validation-failed")
+        status = larch_io.kv_value(text="\n".join(text.splitlines()), key="SCOUT_STATUS", default="validation-failed", duplicate_policy="first")
     if rc != 0 or status not in {"ok", "empty"}:
         _write_empty_manifest(output)
         _emit_scout_result(status=status or "validation-failed", output=output, count=0, latency_ms=0, manifest_key=True)
