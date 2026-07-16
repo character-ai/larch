@@ -1086,19 +1086,11 @@ BaselineRow: TypeAlias = (
 # schemas so trusted I/O and structural read-back stay centralized.
 ComplexityCode = Literal["C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915"]
 COMPLEXITY_CODES = frozenset({"C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915"})
-_COMPLEXITY_FIELDS = (
-    "file",
-    "code",
-    "qualified_symbol",
-    "metric",
-    "added_at",
-    "history",
-    "source_issue",
-    "reason",
-    "operator_override",
+_COMPLEXITY_LEGACY_FIELDS = frozenset(
+    {"file", "code", "qualified_symbol", "metric"}
 )
-_COMPLEXITY_REQUIRED_FIELDS = frozenset(_COMPLEXITY_FIELDS[:6])
-_COMPLEXITY_OPTIONAL_FIELDS = frozenset(_COMPLEXITY_FIELDS[6:])
+_COMPLEXITY_REQUIRED_FIELDS = _COMPLEXITY_LEGACY_FIELDS | {"added_at", "history"}
+_COMPLEXITY_OPTIONAL_FIELDS = frozenset({"source_issue", "reason", "operator_override"})
 _COMPLEXITY_HISTORY_FIELDS = frozenset({"date", "metric"})
 _COMPLEXITY_OVERRIDE_FIELDS = frozenset({"reason", "issue"})
 
@@ -1300,7 +1292,7 @@ def _parse_complexity_row(  # noqa: C901 - exact legacy schema validation is int
     unknown = keys - _COMPLEXITY_REQUIRED_FIELDS - _COMPLEXITY_OPTIONAL_FIELDS
     if unknown:
         raise ScanError(f"{source}: record {index} has unknown fields {sorted(unknown)}")
-    required = _COMPLEXITY_REQUIRED_FIELDS if strict else frozenset(_COMPLEXITY_FIELDS[:4])
+    required = _COMPLEXITY_REQUIRED_FIELDS if strict else _COMPLEXITY_LEGACY_FIELDS
     missing = required - keys
     if missing:
         raise ScanError(f"{source}: record {index} missing required fields {sorted(missing)}")
