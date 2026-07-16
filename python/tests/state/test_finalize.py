@@ -117,6 +117,7 @@ def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
             CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "0\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
+            CommandResult(("git", "show-ref", "--verify", "--quiet", "refs/heads/feat"), 0, "", "", 0.01),
             CommandResult(("git", "branch", "-D", "--", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
@@ -127,7 +128,7 @@ def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
     assert result.branch_deleted is True
 
 
-def test_postmerge_exposes_branch_delete_failure(tmp_path: Path) -> None:
+def test_postmerge_stalls_when_local_branch_delete_fails(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
@@ -136,12 +137,14 @@ def test_postmerge_exposes_branch_delete_failure(tmp_path: Path) -> None:
             CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "0\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
+            CommandResult(("git", "show-ref", "--verify", "--quiet", "refs/heads/feat"), 0, "", "", 0.01),
             CommandResult(("git", "branch", "-D", "--", "feat"), 1, "", "busy", 0.01),
-            CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
     )
     result = finalize.postmerge(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
-    assert result.local_cleanup_status == "success"
+    assert result.outcome is finalize.Outcome.STALLED
+    assert result.status == "local-cleanup-failed"
+    assert result.local_cleanup_status == "partial"
     assert result.branch_deleted is False
 
 
@@ -502,6 +505,7 @@ def test_local_cleanup_does_not_reset_on_empty_orphan_evidence(tmp_path: Path) -
             CommandResult(("git", "diff", "--name-only", "base", "HEAD"), 0, "", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
+            CommandResult(("git", "show-ref", "--verify", "--quiet", "refs/heads/feat"), 0, "", "", 0.01),
             CommandResult(("git", "branch", "-D", "--", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],

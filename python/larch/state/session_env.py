@@ -2259,6 +2259,27 @@ def _transient_run(argv: list[str]) -> proc.CommandResult:
     return last
 
 
+@dataclass(frozen=True)
+class BranchDeleteResult:
+    cleanup_success: bool
+    branch_deleted: bool
+
+
+def _delete_local_branch(branch: str) -> BranchDeleteResult:
+    branch_ref = proc.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"])
+    if branch_ref.returncode == 1:
+        print(f"Local branch {branch} was already deleted", file=sys.stderr)
+        return BranchDeleteResult(cleanup_success=True, branch_deleted=False)
+    if branch_ref.returncode != 0:
+        print(f"❌ Failed to check local branch {branch}", file=sys.stderr)
+        return BranchDeleteResult(cleanup_success=False, branch_deleted=False)
+    print(f"🔄 Deleting local branch {branch}...", file=sys.stderr)
+    if proc.run(["git", "branch", "-D", "--", branch]).returncode == 0:
+        return BranchDeleteResult(cleanup_success=True, branch_deleted=True)
+    print(f"❌ Failed to delete local branch {branch}", file=sys.stderr)
+    return BranchDeleteResult(cleanup_success=False, branch_deleted=False)
+
+
 def local_cleanup_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session local-cleanup", add_help=False)
     parser.add_argument("--branch", default="")
@@ -2311,13 +2332,11 @@ def local_cleanup_main(argv: list[str]) -> int:
             else:
                 print("❌ Failed to pull origin main", file=sys.stderr)
             return 0
-        print(f"🔄 Deleting local branch {args.branch}...", file=sys.stderr)
-        if proc.run(["git", "branch", "-D", "--", args.branch]).returncode == 0:
-            branch_deleted = "true"
-        else:
-            print(f"⚠ Failed to delete branch {args.branch} (may already be deleted)", file=sys.stderr)
-        cleanup_success = "true"
-        print("✅ Local cleanup complete", file=sys.stderr)
+        branch_result = _delete_local_branch(args.branch)
+        if branch_result.cleanup_success:
+            branch_deleted = "true" if branch_result.branch_deleted else "false"
+            cleanup_success = "true"
+            print("✅ Local cleanup complete", file=sys.stderr)
         return 0
     finally:
         print(f"CLEANUP_SUCCESS={cleanup_success}")
