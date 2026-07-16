@@ -17,10 +17,10 @@ from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.core import logging_util
+from larch.review.review_types import FOCUS_AREA_SET, FOCUS_AREA_VALUES, render_wire_values
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_ROOT = REPO_ROOT
-FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 REQUIRED_CLOSING_SENTENCE = "Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
 REVIEW_RESERVED = {
     "generic",
@@ -166,7 +166,7 @@ def validate_dynamic_manifest(data: object, *, max_archetypes: int, mode: str = 
             warnings.append(f"duplicate archetype name: {name}")
             continue
         focus = item.get("focus_area")
-        if focus not in FOCUS_AREAS:
+        if focus not in FOCUS_AREA_SET:
             warnings.append(f"invalid focus_area for {name}")
             continue
         weight = item.get("weight")
@@ -449,7 +449,7 @@ def scout_dynamic_archetypes(  # noqa: PLR0913,PLR0915,RUF100
         else:
             _ = handle.write(
                 "You are selecting optional specialist code-review archetypes for /review.\n"
-                'Return ONLY compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}],"difficulty":{"predicted_tier":"TRIVIAL|MODERATE|HARD","confidence":"low|medium|high","rationale":"..."}}.\n'
+                f'Return ONLY compact JSON with this shape: {{"archetypes":[{{"name":"slug","focus_area":"{render_wire_values(FOCUS_AREA_VALUES, delimiter="|")}","weight":1,"rationale":"...","prompt_body":"..."}}],"difficulty":{{"predicted_tier":"TRIVIAL|MODERATE|HARD","confidence":"low|medium|high","rationale":"..."}}}}.\n'
                 f'Return at most {max_archetypes} archetypes. Return {{"archetypes":[]}} when the static panel is sufficient.\n'
                 "Output ONLY the raw JSON object — no markdown code fences, no backticks, no prose.\n"
                 'The "rationale" field must be a single line with no embedded newlines.\n'

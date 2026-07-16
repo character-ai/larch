@@ -33,6 +33,7 @@ from larch.state import session_env
 from larch.issue import tracking_issue
 from larch.errors import ShipError
 from larch.review import voting
+from larch.review.review_types import FINDING_SCOPE_VALUES, FOCUS_AREA_VALUES, render_wire_values
 from larch.rendering._rendering_helpers import (
     RenderError,
     extract_generated_body as _extract_generated_body,
@@ -812,18 +813,19 @@ def _oos_proposal_instruction() -> str:
 
 
 def _specialist_tagging(*, diff_mode: str, mode: str) -> str:
+    focus_values = render_wire_values(FOCUS_AREA_VALUES)
     if mode == "description":
-        body = """Tag findings with focus area (code-quality / risk-integration / correctness / architecture / security). Canonical-list misses are OOS. Return two sections: '### In-Scope Findings' for canonical files and '### Out-of-Scope Observations' for non-canonical files. Each finding MUST be a single bullet matching this pattern exactly:
+        body = f"""Tag findings with focus area ({focus_values}). Canonical-list misses are OOS. Return two sections: '### In-Scope Findings' for canonical files and '### Out-of-Scope Observations' for non-canonical files. Each finding MUST be a single bullet matching this pattern exactly:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
-`<focus-area>` is one of code-quality / risk-integration / correctness / architecture / security. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. For OOS text that references repo files, include repo-relative path:line tokens so /implement Step 9a.1 can emit serialization edges. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files."""
+`<focus-area>` is one of {focus_values}. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. For OOS text that references repo files, include repo-relative path:line tokens so /implement Step 9a.1 can emit serialization edges. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files."""
         return f"{body}\n{_oos_proposal_instruction()}"
     table = {
         "docs-only": """Review this docs-only diff for accuracy, clarity, stale statements, and broken or missing cross-references. Use '### In-Scope Findings' for documentation issues introduced or amplified by the diff and '### Out-of-Scope Observations' for pre-existing documentation issues. Each finding: docs tag, file:line, issue, suggested fix. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
         "test-only": """Review this test-only diff for coverage gaps, assertion correctness, fixture realism, edge cases, and harness reliability. Use '### In-Scope Findings' for test issues introduced or amplified by the diff and '### Out-of-Scope Observations' for pre-existing test issues. Each finding: tests tag, file:line, issue, suggested fix. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
         "generated-only": """Review this generated-only diff for template/generator drift, checked-in artifact consistency, and accidental manual edits. Use '### In-Scope Findings' for generated-artifact issues introduced or amplified by the diff and '### Out-of-Scope Observations' for pre-existing generated-artifact issues. Each finding: generated tag, file:line, issue, suggested fix. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
-        "generic": """Tag findings with focus area (code-quality / risk-integration / correctness / architecture / security). Return two sections: '### In-Scope Findings' for issues introduced or amplified by the branch diff and '### Out-of-Scope Observations' for pre-existing issues. Each finding MUST be a single bullet matching this pattern exactly:
+        "generic": f"""Tag findings with focus area ({focus_values}). Return two sections: '### In-Scope Findings' for issues introduced or amplified by the branch diff and '### Out-of-Scope Observations' for pre-existing issues. Each finding MUST be a single bullet matching this pattern exactly:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
-`<focus-area>` is one of code-quality / risk-integration / correctness / architecture / security. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. If issue text references repo files, include repo-relative path:line tokens so /implement Step 9a.1 can emit serialization edges. For `[BUG]` fixes: classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
+`<focus-area>` is one of {focus_values}. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. If issue text references repo files, include repo-relative path:line tokens so /implement Step 9a.1 can emit serialization edges. For `[BUG]` fixes: classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
     }
     return f"{table[diff_mode]}\n{_oos_proposal_instruction()}"
 
@@ -996,6 +998,7 @@ def render_reviewer_main(argv: list[str]) -> int:
         else:
             oos_text = "Out-of-Scope Observations are not applicable for /research validation. Do not emit any items in this section; emit only In-Scope Findings.\n"
         body = _extract_generated_body(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md")
+        body = body.replace("{FOCUS_AREA_VALUES}", render_wire_values(FOCUS_AREA_VALUES, quoted=True)).replace("{FINDING_SCOPE_VALUES}", render_wire_values(FINDING_SCOPE_VALUES, quoted=True))
         body = _strip_calibration_examples(body)
         context_block = "\n".join(
             [
@@ -1759,7 +1762,12 @@ from larch.rendering._rendering_generators import (  # noqa: E402
     generate_cursor_implementer_main,
     generate_pre_rendered_reviewer_prompts_main,
     generate_reviewer_code_robustness_agent_main,
+    generate_reviewer_correctness_agent_main,
+    generate_reviewer_edge_cases_agent_main,
     generate_reviewer_plan_fidelity_agent_main,
+    generate_reviewer_security_agent_main,
     generate_reviewer_security_structure_tests_agent_main,
+    generate_reviewer_structure_agent_main,
+    generate_reviewer_testing_agent_main,
     generate_topology_docs_main,
 )

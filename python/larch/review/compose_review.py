@@ -14,7 +14,7 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.core import redact
 from larch.review.plan_review_accepted_audit import filter_gate_b_skipped_files
-from larch.review.review_types import parse_canonical_heading
+from larch.review.review_types import FOCUS_AREA_SET, parse_canonical_heading
 from larch.review import voting
 
 
@@ -23,7 +23,6 @@ class ScratchDirError(ValueError):
 
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-_CANONICAL_CATEGORIES = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _CATEGORY_LOCATION_PARTS = 3
 _TSV_MIN_FIELDS = 2
 
@@ -83,7 +82,7 @@ def _extract_reviewer(body: str) -> str:
 
 def _extract_category(body: str, *, strict: bool = False) -> str:
     def canonical(value: str) -> bool:
-        return value in _CANONICAL_CATEGORIES
+        return value in FOCUS_AREA_SET
 
     for line in body.splitlines():
         if line.startswith("### FINDING_"):

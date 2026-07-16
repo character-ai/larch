@@ -16,7 +16,6 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.research import research_eval
 from larch.review.review_pipeline_shared import (
-    FOCUS_AREAS,
     PER_REVIEWER_OOS_PROPOSAL_CAP,
     _append_text,
     _collector_records,
@@ -28,6 +27,7 @@ from larch.review.review_pipeline_shared import (
     _run_python_cli,
     _write_text,
 )
+from larch.review.review_types import FOCUS_AREA_SET
 
 # Pin collect contracts for structure tests: agent collect-results --timeout 1860 --substantive-validation --validation-mode.
 # In description mode, dual-list output is split between ### In-Scope Findings and ### Out-of-Scope Observations.
@@ -161,7 +161,7 @@ def _clean_oos_focus_title(title: str) -> str:
     if not title.startswith("[OUT_OF_SCOPE] **"):
         return title
     category = title.removeprefix("[OUT_OF_SCOPE] **").split("**", 1)[0]
-    if category not in FOCUS_AREAS:
+    if category not in FOCUS_AREA_SET:
         return title
     match = re.search(r"\[`([^`]+)`\]", title)
     return f"[OUT_OF_SCOPE] {category}: {match.group(1)}" if match else f"[OUT_OF_SCOPE] {category}"

@@ -18,11 +18,13 @@ from larch.core import proc
 from larch.rendering._rendering_helpers import (
     RenderError,
     extract_generated_body as _extract_generated_body,
+    extract_template_fragment as _extract_template_fragment,
     frontmatter_body as _frontmatter_body,
     replace_output_instruction as _replace_output_instruction,
     sha256_path as _sha256_path,
     write_text_atomic as _write_text_atomic,
 )
+from larch.review.review_types import FINDING_SCOPE_VALUES, FOCUS_AREA_VALUES, render_wire_values
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIN_TOPOLOGY_VALUE_LEN = 3
@@ -63,6 +65,11 @@ AUTO_HEADER_BY_VERB = {
     "reviewer-plan-fidelity-agent": "python3 python/cli.py generate reviewer-plan-fidelity-agent",
     "reviewer-code-robustness-agent": "python3 python/cli.py generate reviewer-code-robustness-agent",
     "reviewer-security-structure-tests-agent": "python3 python/cli.py generate reviewer-security-structure-tests-agent",
+    "reviewer-structure-agent": "python3 python/cli.py generate reviewer-structure-agent",
+    "reviewer-correctness-agent": "python3 python/cli.py generate reviewer-correctness-agent",
+    "reviewer-testing-agent": "python3 python/cli.py generate reviewer-testing-agent",
+    "reviewer-security-agent": "python3 python/cli.py generate reviewer-security-agent",
+    "reviewer-edge-cases-agent": "python3 python/cli.py generate reviewer-edge-cases-agent",
     "pre-rendered-reviewer-prompts": "python3 python/cli.py generate pre-rendered-reviewer-prompts",
     "codex-implementer": "python3 python/cli.py generate codex-implementer",
     "cursor-implementer": "python3 python/cli.py generate cursor-implementer",
@@ -107,6 +114,51 @@ tools:
   - Grep
   - Glob
 ---""",
+    "reviewer-structure-agent": """---
+name: reviewer-structure
+description: "Specialist code reviewer concentrating on structure, KISS, and maintainability."
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+---""",
+    "reviewer-correctness-agent": """---
+name: reviewer-correctness
+description: "Specialist code reviewer concentrating on correctness and logic."
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+---""",
+    "reviewer-testing-agent": """---
+name: reviewer-testing
+description: "Specialist code reviewer concentrating on tests, CI, and regression risk."
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+---""",
+    "reviewer-security-agent": """---
+name: reviewer-security
+description: "Specialist code reviewer concentrating on security and trust boundaries."
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+---""",
+    "reviewer-edge-cases-agent": """---
+name: reviewer-edge-cases
+description: "Specialist code reviewer concentrating on edge cases, failure recovery, and security."
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+---""",
 }
 
 
@@ -115,6 +167,11 @@ REVIEWER_SECTION = {
     "reviewer-plan-fidelity-agent": "## Reviewer: Plan Fidelity",
     "reviewer-code-robustness-agent": "## Reviewer: Code Robustness",
     "reviewer-security-structure-tests-agent": "## Reviewer: Security + Structure + Tests",
+    "reviewer-structure-agent": "## Reviewer: Structure",
+    "reviewer-correctness-agent": "## Reviewer: Correctness",
+    "reviewer-testing-agent": "## Reviewer: Testing",
+    "reviewer-security-agent": "## Reviewer: Security",
+    "reviewer-edge-cases-agent": "## Reviewer: Edge Cases",
 }
 
 
@@ -123,10 +180,39 @@ REVIEWER_OUTPUT = {
     "reviewer-plan-fidelity-agent": REPO_ROOT / "agents" / "reviewer-plan-fidelity.md",
     "reviewer-code-robustness-agent": REPO_ROOT / "agents" / "reviewer-code-robustness.md",
     "reviewer-security-structure-tests-agent": REPO_ROOT / "agents" / "reviewer-security-structure-tests.md",
+    "reviewer-structure-agent": REPO_ROOT / "agents" / "reviewer-structure.md",
+    "reviewer-correctness-agent": REPO_ROOT / "agents" / "reviewer-correctness.md",
+    "reviewer-testing-agent": REPO_ROOT / "agents" / "reviewer-testing.md",
+    "reviewer-security-agent": REPO_ROOT / "agents" / "reviewer-security.md",
+    "reviewer-edge-cases-agent": REPO_ROOT / "agents" / "reviewer-edge-cases.md",
 }
 
 
+SPECIALIST_VERBS = frozenset(verb for verb in REVIEWER_OUTPUT if verb != "code-reviewer-agent")
+
+
+def _render_wire_value_placeholders(text: str) -> str:
+    return (
+        text.replace("{FOCUS_AREA_VALUES}", render_wire_values(FOCUS_AREA_VALUES, quoted=True))
+        .replace("{FOCUS_AREA_VALUES_BARE}", render_wire_values(FOCUS_AREA_VALUES))
+        .replace("{FINDING_SCOPE_VALUES}", render_wire_values(FINDING_SCOPE_VALUES, quoted=True))
+    )
+
+
+def _specialist_unique_body(verb: str) -> str:
+    body = _extract_generated_body(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", heading=REVIEWER_SECTION[verb])
+    marker = "\n## Necessity gate (in-scope findings)"
+    if marker not in body:
+        raise RenderError(f"ERROR: specialist template lacks canonical split marker: {REVIEWER_SECTION[verb]}")
+    return body.split(marker, 1)[0].rstrip()
+
+
 def _reviewer_agent_text(verb: str) -> str:
+    if verb in SPECIALIST_VERBS:
+        unique = _specialist_unique_body(verb)
+        shared = _extract_template_fragment(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", name="SPECIALIST_SHARED_SECTIONS")
+        return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(unique)}\n\n{_render_wire_value_placeholders(shared)}\n"
+
     body = _extract_generated_body(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", heading=REVIEWER_SECTION[verb])
     if verb == "code-reviewer-agent":
         body = body.replace("{REVIEW_TARGET}", "code, plans, or conflict resolutions")
@@ -146,7 +232,7 @@ def _reviewer_agent_text(verb: str) -> str:
             inscope=["File path and line number(s) (if reviewing code) or the specific concern (if reviewing a plan)", "What the issue is", "Suggested fix (be specific)"],
             oos=["File path and line number(s) or the specific concern (use `<expected-path>:1` for absent-artifact observations)", "What the issue is", "Suggested fix"],
         )
-    return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{body}\n"
+    return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(body)}\n"
 
 
 def _diff_or_write(*, target: Path, text: str, check: bool, label: str) -> int:
@@ -197,6 +283,26 @@ def generate_reviewer_code_robustness_agent_main(argv: list[str]) -> int:
 
 def generate_reviewer_security_structure_tests_agent_main(argv: list[str]) -> int:
     return _reviewer_agent_main(verb="reviewer-security-structure-tests-agent", argv=argv)
+
+
+def generate_reviewer_structure_agent_main(argv: list[str]) -> int:
+    return _reviewer_agent_main(verb="reviewer-structure-agent", argv=argv)
+
+
+def generate_reviewer_correctness_agent_main(argv: list[str]) -> int:
+    return _reviewer_agent_main(verb="reviewer-correctness-agent", argv=argv)
+
+
+def generate_reviewer_testing_agent_main(argv: list[str]) -> int:
+    return _reviewer_agent_main(verb="reviewer-testing-agent", argv=argv)
+
+
+def generate_reviewer_security_agent_main(argv: list[str]) -> int:
+    return _reviewer_agent_main(verb="reviewer-security-agent", argv=argv)
+
+
+def generate_reviewer_edge_cases_agent_main(argv: list[str]) -> int:
+    return _reviewer_agent_main(verb="reviewer-edge-cases-agent", argv=argv)
 
 def _implementer_text(kind: str) -> str:
     base = _read_text(REPO_ROOT / "agents" / "_implementer-base.md")
@@ -386,6 +492,11 @@ _GENERATOR_VERB_TO_FUNC = {
     "reviewer-plan-fidelity-agent": generate_reviewer_plan_fidelity_agent_main,
     "reviewer-code-robustness-agent": generate_reviewer_code_robustness_agent_main,
     "reviewer-security-structure-tests-agent": generate_reviewer_security_structure_tests_agent_main,
+    "reviewer-structure-agent": generate_reviewer_structure_agent_main,
+    "reviewer-correctness-agent": generate_reviewer_correctness_agent_main,
+    "reviewer-testing-agent": generate_reviewer_testing_agent_main,
+    "reviewer-security-agent": generate_reviewer_security_agent_main,
+    "reviewer-edge-cases-agent": generate_reviewer_edge_cases_agent_main,
     "pre-rendered-reviewer-prompts": generate_pre_rendered_reviewer_prompts_main,
     "codex-implementer": generate_codex_implementer_main,
     "cursor-implementer": generate_cursor_implementer_main,

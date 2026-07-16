@@ -1318,6 +1318,11 @@ def test_generate_code_reviewer_agent_check_matches_committed(monkeypatch: pytes
     assert rendering.generate_code_reviewer_agent_main(["--check"]) == 0
 
 
+def test_generate_check_keeps_all_reviewer_artifacts_in_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    assert rendering.generate_check_main([]) == 0
+
+
 def _specialist_agent(tmp_path: Path) -> Path:
     agent = tmp_path / "reviewer-temp.md"
     agent.write_text("---\nname: temp\ndescription: temp\n---\n# Body\n", encoding="utf-8")

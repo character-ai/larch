@@ -27,7 +27,6 @@ from larch.review.dispatch_shared import (
     topology_slots,
 )
 from larch.review.review_pipeline_shared import (
-    FOCUS_AREAS,
     _collector_records,
     _diag,
     _emit_kv,
@@ -40,6 +39,7 @@ from larch.review.review_pipeline_shared import (
     _run_command_string,
     _write_text,
 )
+from larch.review.review_types import FOCUS_AREA_SET
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.core import config
 from larch.review.review_prune import (
@@ -63,7 +63,7 @@ def _valid_dynamic_archetype(value: object) -> bool:
         return False
     if name in RESERVED_DYNAMIC_NAMES:
         return False
-    if focus_area not in FOCUS_AREAS:
+    if focus_area not in FOCUS_AREA_SET:
         return False
     if not isinstance(weight, int) or not 1 <= weight <= 8:
         return False

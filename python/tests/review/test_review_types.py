@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from larch.review.review_types import (
+    FINDING_SCOPE_SET,
+    FINDING_SCOPE_VALUES,
+    FOCUS_AREA_SET,
+    FOCUS_AREA_VALUES,
+    FindingScope,
+    FocusArea,
     count_non_security_blocks,
     finding_dedup_key,
     is_canonical_heading,
@@ -9,7 +15,24 @@ from larch.review.review_types import (
     parse_blocks,
     parse_canonical_heading,
     parse_findings_text,
+    render_wire_values,
 )
+
+
+def test_review_taxonomy_has_ordered_immutable_wire_projections() -> None:
+    assert tuple(FocusArea) == (
+        FocusArea.code_quality,
+        FocusArea.risk_integration,
+        FocusArea.correctness,
+        FocusArea.architecture,
+        FocusArea.security,
+    )
+    assert tuple(area.value for area in FocusArea) == FOCUS_AREA_VALUES
+    assert frozenset(FOCUS_AREA_VALUES) == FOCUS_AREA_SET
+    assert tuple(scope.value for scope in FindingScope) == FINDING_SCOPE_VALUES
+    assert frozenset(FINDING_SCOPE_VALUES) == FINDING_SCOPE_SET
+    assert render_wire_values(FOCUS_AREA_VALUES, quoted=True) == "`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`"
+    assert render_wire_values(FINDING_SCOPE_VALUES) == "in_scope / out_of_scope"
 
 
 def test_parse_canonical_heading_is_exact() -> None:

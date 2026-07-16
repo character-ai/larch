@@ -8,6 +8,42 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal, TypeAlias
 
+
+class FocusArea(StrEnum):
+    """Canonical focus-area values for reviewer prompts and wire records."""
+
+    code_quality = "code-quality"
+    risk_integration = "risk-integration"
+    correctness = "correctness"
+    architecture = "architecture"
+    security = "security"
+
+
+class FindingScope(StrEnum):
+    """Scopes already accepted by the review finding wire formats."""
+
+    in_scope = "in_scope"
+    out_of_scope = "out_of_scope"
+
+
+FOCUS_AREA_VALUES = tuple(member.value for member in FocusArea)
+"""Immutable prompt-rendering order for :class:`FocusArea`."""
+
+FOCUS_AREA_SET = frozenset(FOCUS_AREA_VALUES)
+"""Immutable membership projection for parsing reviewer input."""
+
+FINDING_SCOPE_VALUES = tuple(member.value for member in FindingScope)
+"""Immutable prompt-rendering order for :class:`FindingScope`."""
+
+FINDING_SCOPE_SET = frozenset(FINDING_SCOPE_VALUES)
+"""Immutable membership projection for parsing reviewer input."""
+
+
+def render_wire_values(values: tuple[str, ...], *, delimiter: str = "/", quoted: bool = False) -> str:
+    """Render a canonical wire-value projection without creating another list."""
+    rendered = (f"`{value}`" for value in values) if quoted else iter(values)
+    return f" {delimiter} ".join(rendered)
+
 ItemKind: TypeAlias = Literal["FINDING", "OOS"]
 BoundaryMode: TypeAlias = Literal[
     "finding-heading",
