@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+import test_support
 
 from larch.core.proc import CommandResult
 
-from test_support import (
+from tests.support.foundation import (
     CLI,
     DESIGN_BASELINE_KEYS,
     IMPLEMENT_BASELINE_KEYS,
@@ -19,9 +21,11 @@ from test_support import (
     RecordingRunner,
     RunCall,
     completed,
+    make_committed_repo,
     make_design_tmpdir,
     make_implement_tmpdir,
     ok,
+    operator_repo_with_remote,
     repo_root,
     seed_feature_description,
     seed_plan,
@@ -329,6 +333,33 @@ def test_import_graph_is_one_way() -> None:
     assert not hasattr(repo_contract, "write_session_env")
     assert session.ROOT is ROOT
     assert "test_support" not in session.__name__
+
+
+def test_legacy_test_support_is_a_thin_compatibility_facade() -> None:
+    assert test_support.make_committed_repo is make_committed_repo
+    assert test_support.operator_repo_with_remote is operator_repo_with_remote
+
+
+def test_git_repository_builders_accept_fixture_files_and_branches(tmp_path: Path) -> None:
+    repo = make_committed_repo(
+        tmp_path,
+        files={"nested/fixture.txt": "fixture\n"},
+        commit_message="fixture",
+        branch="main",
+    )
+
+    assert (repo / "nested/fixture.txt").read_text(encoding="utf-8") == "fixture\n"
+    assert subprocess.run(
+        ["git", "branch", "--show-current"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip() == "main"
+
+    remote_repo = operator_repo_with_remote(
+        tmp_path / "remote-fixture", files={"README.md": "custom\n"}, commit_message="custom"
+    )
+    assert (remote_repo / "README.md").read_text(encoding="utf-8") == "custom\n"
+    assert subprocess.run(
+        ["git", "remote", "get-url", "origin"], cwd=remote_repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def test_make_implement_tmpdir_layout(tmp_path: Path) -> None:

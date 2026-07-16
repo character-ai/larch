@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from larch.lint import lint_gh_argv_literal as lgal
+from tests.lint.conftest import write_project as _write_project
 
 
 class CaptureResult(Protocol):
@@ -13,13 +14,6 @@ class CaptureResult(Protocol):
 
 class CaptureFixture(Protocol):
     def readouterr(self) -> CaptureResult: ...
-
-
-def _write_project(root: Path, *, files: dict[str, str]) -> None:
-    for relpath, source in files.items():
-        path = root / "python" / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
 
 
 def test_lists_in_every_expression_context_are_reported(tmp_path: Path, capsys: CaptureFixture) -> None:

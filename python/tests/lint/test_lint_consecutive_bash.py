@@ -8,6 +8,7 @@ import pytest
 
 from larch.lint import lint_consecutive_bash
 from larch.lint.lint_consecutive_bash import main
+from tests.lint.conftest import lint_runner
 
 
 def write(path: Path, text: str) -> None:
@@ -19,9 +20,7 @@ def skill_doc(body: str) -> str:
     return body.strip() + "\n"
 
 
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def test_clean_single_bash_fence(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Protocol
 
 from larch.lint import lint_git_push_refspec as lgpr
+from tests.lint.conftest import write_project as _write_project
 
 
 class CaptureResult(Protocol):
@@ -12,13 +13,6 @@ class CaptureResult(Protocol):
 
 class CaptureFixture(Protocol):
     def readouterr(self) -> CaptureResult: ...
-
-
-def _write_project(root: Path, *, files: dict[str, str]) -> None:
-    for relpath, source in files.items():
-        path = root / "python" / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
 
 
 def test_flags_bare_push_and_accepts_explicit_refspec(tmp_path: Path, capsys: CaptureFixture) -> None:

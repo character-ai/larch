@@ -22,7 +22,7 @@ import review_test_support as rts
 from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
-from test_support import RecordingRunner
+from test_support import RecordingRunner, make_committed_repo
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -848,21 +848,6 @@ def _git_commit(repo: Path, message: str) -> None:
     _ = subprocess.run([rts.GIT, *_GIT_IDENTITY, "commit", "-qm", message], cwd=repo, check=True)
 
 
-def _init_git_repo(repo: Path, files: dict[str, str], commit_msg: str = "init") -> None:
-    """Create repo, write files, and make one `-c`-flagged commit, with no
-    standalone `git config` spawns. Cuts the subprocess count of inline
-    git-repo setup (#4439 Trick C).
-    """
-    repo.mkdir(parents=True, exist_ok=True)
-    for rel, content in files.items():
-        target = repo / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _ = target.write_text(content, encoding="utf-8")
-    _ = subprocess.run([rts.GIT, "init", "-q"], cwd=repo, check=True)
-    _ = subprocess.run([rts.GIT, "add", "."], cwd=repo, check=True)
-    _git_commit(repo, commit_msg)
-
-
 def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) -> None:
     fixture = tmp_path / "fixture"
     fixture.mkdir()
@@ -873,14 +858,15 @@ def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) ->
     review_scripts = fixture / "skills" / "review" / "scripts"
     review_scripts.mkdir(parents=True)
     _ = (review_scripts / "gather-context.sh").write_text("", encoding="utf-8")
-    _init_git_repo(
-        fixture,
-        {
+    _ = make_committed_repo(
+        tmp_path,
+        path=fixture,
+        files={
             "skills/review/SKILL.md": "",
             "docs/review-agents.md": "",
             "README.md": "",
         },
-        commit_msg="fixture",
+        commit_message="fixture",
     )
     outdir = tmp_path / "gather-out"
     outdir.mkdir()
@@ -908,7 +894,7 @@ def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) ->
 
 def test_gather_context_diff_mode_relays_branch_kvs_and_trailing_contract(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
-    _init_git_repo(repo, {"src/main.py": "baseline\n"})
+    _ = make_committed_repo(tmp_path, path=repo, files={"src/main.py": "baseline\n"})
     _ = subprocess.run([rts.GIT, "branch", "-M", "main"], cwd=repo, check=True)
     _ = subprocess.run([rts.GIT, "checkout", "-qb", "feature"], cwd=repo, check=True)
     outdir = tmp_path / "gather-out"
@@ -1161,15 +1147,16 @@ def test_check_reviewer_failure_threshold_collector_precedes_drop_and_output_pro
     dropped.write_text("dyn-dyn-lint-escalation\tcursor\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
     manifest = tmp_path / "panel-manifest.ndjson"
     manifest.write_text(
-        json.dumps(
-            {
-                "slot": "dyn-dyn-lint-escalation",
-                "tool": "cursor",
-                "output": str(reviewer),
-                "agent": "agents/reviewer.md",
-            }
-        )
-        + "\n",
+        panel_manifest_ndjson(
+            [
+                panel_manifest_row(
+                    "dyn-dyn-lint-escalation",
+                    "cursor",
+                    reviewer,
+                    agent="agents/reviewer.md",
+                )
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -1306,20 +1293,17 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
     _ = collector.write_text(f"REVIEWER_FILE={arch}\nSTATUS=OK\n\n", encoding="utf-8")
     manifest = tmp_path / "manifest.ndjson"
     _ = manifest.write_text(
-        "\n".join(
+        panel_manifest_ndjson(
             [
-                json.dumps({"slot": "arch", "tool": "codex", "output": str(arch), "agent": "agents/reviewer-arch.md"}),
-                json.dumps(
-                    {
-                        "slot": "testing",
-                        "tool": "cursor",
-                        "output": str(tmp_path / "cursor-specialist-testing-output.txt"),
-                        "agent": "agents/reviewer-testing.md",
-                    }
+                panel_manifest_row("arch", "codex", arch, agent="agents/reviewer-arch.md"),
+                panel_manifest_row(
+                    "testing",
+                    "cursor",
+                    tmp_path / "cursor-specialist-testing-output.txt",
+                    agent="agents/reviewer-testing.md",
                 ),
             ]
-        )
-        + "\n",
+        ),
         encoding="utf-8",
     )
     dropped = tmp_path / "dropped.tsv"
@@ -1349,28 +1333,20 @@ def test_static_coverage_reason_excuses_tool_absent_static_slot(tmp_path: Path) 
     )
     manifest = tmp_path / "manifest.ndjson"
     _ = manifest.write_text(
-        "\n".join(
+        panel_manifest_ndjson(
             [
-                json.dumps({"slot": "arch", "tool": "codex", "output": str(arch), "agent": "agents/reviewer-arch.md"}),
-                json.dumps(
-                    {
-                        "slot": "testing",
-                        "tool": "cursor",
-                        "output": str(testing),
-                        "agent": "agents/reviewer-testing.md",
-                    }
+                panel_manifest_row("arch", "codex", arch, agent="agents/reviewer-arch.md"),
+                panel_manifest_row(
+                    "testing", "cursor", testing, agent="agents/reviewer-testing.md"
                 ),
-                json.dumps(
-                    {
-                        "slot": "testing",
-                        "tool": "codex",
-                        "output": str(tmp_path / "codex-specialist-testing-output.txt"),
-                        "agent": "agents/reviewer-testing.md",
-                    }
+                panel_manifest_row(
+                    "testing",
+                    "codex",
+                    tmp_path / "codex-specialist-testing-output.txt",
+                    agent="agents/reviewer-testing.md",
                 ),
             ]
-        )
-        + "\n",
+        ),
         encoding="utf-8",
     )
     dropped = tmp_path / "dropped.tsv"

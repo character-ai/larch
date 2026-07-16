@@ -6,15 +6,7 @@ from pathlib import Path
 import pytest
 
 from larch.lint.lint_run_log_run_id import find_violations, main
-
-
-def _init_repo(root: Path) -> None:
-    for argv in (
-        ["git", "init", "-q"],
-        ["git", "config", "user.email", "t@example.com"],
-        ["git", "config", "user.name", "t"],
-    ):
-        _ = subprocess.run(argv, cwd=root, check=True, capture_output=True)
+from tests.support.foundation import make_committed_repo
 
 
 def _add(root: Path, rel: str) -> None:
@@ -25,7 +17,7 @@ def _add(root: Path, rel: str) -> None:
 
 
 def test_clean_tree_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _init_repo(tmp_path)
+    _ = make_committed_repo(tmp_path, path=tmp_path)
     _add(tmp_path, "larch-logs/implement/0199F1E2-2238-403D-89F3-F37CA6989999/manifest.json")
     _add(tmp_path, "larch-logs/design/ABCDEF01-2345-6789-ABCD-EF0123456789/manifest.json")
     _add(tmp_path, "larch-logs/shared/state.json")
@@ -38,7 +30,7 @@ def test_placeholder_run_dir_fails(
     capsys: pytest.CaptureFixture[str],
     skill: str,
 ) -> None:
-    _init_repo(tmp_path)
+    _ = make_committed_repo(tmp_path, path=tmp_path)
     _add(tmp_path, f"larch-logs/{skill}/run-1/manifest.json")
     assert main(["--root", str(tmp_path)]) == 1
     err = capsys.readouterr().err
@@ -47,7 +39,7 @@ def test_placeholder_run_dir_fails(
 
 
 def test_find_violations_only_flags_run_n(tmp_path: Path) -> None:
-    _init_repo(tmp_path)
+    _ = make_committed_repo(tmp_path, path=tmp_path)
     _add(tmp_path, "larch-logs/implement/run-12/manifest.json")
     _add(tmp_path, "larch-logs/implement/run-abc/manifest.json")
     _add(tmp_path, "larch-logs/implement/9F1C2D3E-1111-2222-3333-444455556666/manifest.json")

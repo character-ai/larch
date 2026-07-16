@@ -15,7 +15,12 @@ from larch.review import review_core_body
 import review_test_support as rts
 from test_support import run_cli
 from larch.review import voting
-from tests.support.review_wire import ballot_snippet, make_finding_block
+from tests.support.review_wire import (
+    ballot_snippet,
+    make_finding_block,
+    panel_manifest_ndjson,
+    panel_manifest_row,
+)
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -397,10 +402,13 @@ def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
     case = tmp_path / "under-quorum"
     case.mkdir()
     ballot = "".join(
-        f"### FINDING_{n}: In-scope finding {n}\n"
-        "- **Reviewer**: Cursor-Correctness\n"
-        f"- **Concern**: bug {n}.\n"
-        f"- **Suggested revision**: fix {n}.\n\n"
+        make_finding_block(
+            f"FINDING_{n}",
+            f"In-scope finding {n}",
+            reviewer="Cursor-Correctness",
+            concern=f"bug {n}.",
+            suggested_revision=f"fix {n}.",
+        )
         for n in range(1, 6)
     )
     _ = (case / "ballot.md").write_text(ballot, encoding="utf-8")
@@ -2309,12 +2317,24 @@ def test_tally_manifest_yield_and_dead_scoreboard_rows(tmp_path: Path) -> None:
     _ = dead.write_text("narrative only\n", encoding="utf-8")
     manifest = case / "panel.ndjson"
     _ = manifest.write_text(
-        '{"slot":"correctness","tool":"cursor","output":"'
-        + str(case / "cursor-specialist-correctness-output.txt")
-        + '","focus_area":"correctness","weight":1}\n'
-        '{"slot":"testing","tool":"cursor","output":"'
-        + str(dead)
-        + '","focus_area":"risk-integration","weight":1}\n',
+        panel_manifest_ndjson(
+            [
+                panel_manifest_row(
+                    "correctness",
+                    "cursor",
+                    case / "cursor-specialist-correctness-output.txt",
+                    focus_area="correctness",
+                    weight=1,
+                ),
+                panel_manifest_row(
+                    "testing",
+                    "cursor",
+                    dead,
+                    focus_area="risk-integration",
+                    weight=1,
+                ),
+            ]
+        ),
         encoding="utf-8",
     )
     _ = (case / "collector-results.env").write_text(

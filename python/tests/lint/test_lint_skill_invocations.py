@@ -5,17 +5,10 @@ from pathlib import Path
 import pytest
 
 from larch.lint.lint_skill_invocations import main
+from tests.lint.conftest import lint_runner, write_skill
 
 
-def write_skill(root: Path, rel: str, body: str) -> None:
-    path = root / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_text(body, encoding="utf-8")
-
-
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def skill_doc(allowed_tools: str, body: str) -> str:

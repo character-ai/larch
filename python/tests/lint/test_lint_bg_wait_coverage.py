@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.lint.lint_bg_wait_coverage import main
+from tests.lint.conftest import lint_runner
 
 if TYPE_CHECKING:
     import pytest
@@ -15,9 +16,7 @@ def write(path: Path, text: str) -> None:
     path.write_text(text.strip() + "\n", encoding="utf-8")
 
 
-def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    rc = main(["--root", str(root)])
-    return rc, capsys.readouterr().err
+run = lint_runner(main)
 
 
 def write_allowlist(root: Path, rows: str = "") -> None:
