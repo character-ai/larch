@@ -288,6 +288,27 @@ def test_submit_main_returns_head_drift_exit_code(monkeypatch: pytest.MonkeyPatc
     assert "ASSESSMENT_STATUS=head-drift" in capsys.readouterr().out
 
 
+def test_submit_main_identifies_identifier_citation_in_clean_note(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    note = tmp_path / "note.md"
+    _ = note.write_text("G-Py-4 rationale", encoding="utf-8")
+
+    def _reject_clean_note(**_kwargs: object) -> assessment.AssessmentResult:
+        raise assessment._ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setattr(assessment, "submit", _reject_clean_note)
+    rc = assessment.submit_main([
+        "--kind", "guidelines", "--state", "clean", "--note-file", str(note),
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert "ASSESSMENT_STATUS=invalid-note" in out
+    assert "ASSESSMENT_DETAIL=clean-outcome-prose-mismatch: identifier citation found in clean note" in out
+
+
 def test_submit_main_complete_stdout_contract(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     evidence = _run_evidence(tmp_path)
     note = tmp_path / "note.md"

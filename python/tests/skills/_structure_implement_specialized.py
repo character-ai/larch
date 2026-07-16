@@ -745,6 +745,9 @@ def run(repo_root: Path) -> list[str]:
             for needle in [
                 "name: arch-assessor",
                 "You have only `Read`, `Grep`, and `Glob`.",
+                "## Clean-note format (hard requirement)",
+                "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.",
+                "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.",
                 "ASSESSMENT_KIND=<kind>",
                 "ASSESSMENT_STATE=<state>",
             ]:
