@@ -24,6 +24,7 @@ from larch.review import (
     plan_review_loop,
     plan_review_normalize,
     review_pipeline_shared,
+    voting,
 )
 
 
@@ -257,3 +258,47 @@ def test_pipeline_collector_records_blank_line_separated(tmp_path: Path) -> None
         {"A": "2"},
         {"B": "3"},
     ]
+
+
+def test_voting_write_tally_relays_kv_and_prose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    def fake_run(argv: list[str]) -> voting.proc.CommandResult:
+        _ = argv
+        return voting.proc.CommandResult(
+            tuple(argv),
+            0,
+            "LOG_WRITTEN=true\nSTATUS=ok\nSTATUS=dup\nplain prose\n",
+            "",
+            0.0,
+        )
+
+    monkeypatch.setattr(voting.proc, "run", fake_run)
+    rc = voting.write_tally_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-codec",
+            "--phase",
+            "code-review",
+            "--mode",
+            "simple",
+            "--accepted",
+            "1",
+            "--rejected",
+            "0",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "LOG_WRITTEN=true\n" in out
+    assert "STATUS=ok\n" in out
+    assert "STATUS=dup\n" in out
+    assert "plain prose\n" in out
