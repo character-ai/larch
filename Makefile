@@ -264,18 +264,11 @@ regen-markdown-heading-fence-state-baseline:
 skill-closure-size:
 	$(PYTHON) python/cli.py skill-closure report
 
-LINT_RULES := skill-closure-growth guideline-no-exception lifecycle-prefix-literal prefix-case-variant markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch status-routing-truthiness pylint-skip-file module-manifest engine-adoption
-LINT_TEST_RULES := guideline-no-exception markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch status-routing-truthiness pylint-skip-file module-manifest engine-adoption
-
 .PHONY: FORCE
 FORCE:
 
 lint-%: FORCE
 	$(PYTHON) python/cli.py lint $*
-
-test-lint-%: FORCE
-	@rule="$$(printf '%s' '$*' | tr '-' '_')"; \
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest "python/tests/lint/test_lint_$$rule.py" -q
 
 lint-guideline-no-exception:
 	$(PYTHON) python/cli.py lint guideline-no-exception
