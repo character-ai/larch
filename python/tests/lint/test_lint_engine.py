@@ -2128,7 +2128,7 @@ def test_occurrence_normalized_condition_round_trip_and_field_order(
 ) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "occ.json"
-    row = {
+    row: dict[str, object] = {
         "file": "larch/mod.py",
         "qualified_symbol": "parse",
         "occurrence": 1,
@@ -2181,7 +2181,7 @@ def test_occurrence_normalized_condition_round_trip_and_field_order(
 def test_occurrence_baseline_accepts_rule_specific_field_name(tmp_path: Path) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "occ.json"
-    row = {
+    row: dict[str, object] = {
         "file": "larch/mod.py",
         "qualified_symbol": "run",
         "callee": "mkstemp",
@@ -2224,7 +2224,7 @@ def test_occurrence_baseline_accepts_ordered_multi_field_identity(
 ) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "occ.json"
-    row = {
+    row: dict[str, object] = {
         "file": "larch/mod.py",
         "qualified_symbol": "run",
         "token": "[DONE]",
