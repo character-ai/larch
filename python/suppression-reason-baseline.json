@@ -1050,13 +1050,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 7,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/design/design_postplan.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportUnusedCallResult]",
@@ -1571,13 +1564,6 @@
     "file": "larch/design/design_terminal.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "suppression_kind": "ruff-noqa",
-    "text": "ruff: noqa: S607",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -2717,13 +2703,6 @@
   },
   {
     "file": "larch/issue/file_oos.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 6,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/issue/file_oos.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false",
     "occurrence": 1,
@@ -3501,13 +3480,6 @@
   },
   {
     "file": "larch/report/run_log_manifest.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/report/run_log_manifest.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportPrivateUsage=false",
     "occurrence": 1,
@@ -3587,13 +3559,6 @@
     "file": "larch/research/research.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportAttributeAccessIssue=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/research/research.py",
-    "suppression_kind": "ruff-noqa",
-    "text": "ruff: noqa: PLR2004,S607",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
