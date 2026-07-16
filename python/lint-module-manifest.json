@@ -13,6 +13,7 @@
     {"module": "lint_consecutive_bash.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_doc_pointer_paths.py", "host_decision": "new-module-justified", "justification": "Dedicated Tier-1 Markdown path scanner for AGENTS.md and SECURITY.md; no existing lint host owns fence-aware inline-backtick filesystem probes (#7296).", "source_issue": 7296},
     {"module": "lint_em_dash_output.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_engine_adoption.py", "host_decision": "new-module-justified", "justification": "No existing engine-hosted lint rule owns ArgumentParser-binding resolution and same-module sibling *-baseline.json I/O detection over python/larch/lint/lint_*.py; the closest host, presence-only lint_module_manifest.py, would mix unrelated concerns, so this dedicated shared-engine adoption ratchet is required (#6967).", "source_issue": 6967},
     {"module": "lint_env_via_config_constant.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_flat_tests.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_gh_argv_literal.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

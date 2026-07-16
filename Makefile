@@ -57,7 +57,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir tmpdir-arg-env-fallback markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir tmpdir-arg-env-fallback markdown-heading-fence-state doc-pointer-paths self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -296,6 +296,13 @@ lint-module-manifest:
 
 test-lint-module-manifest:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_module_manifest.py -q
+
+.PHONY: lint-engine-adoption test-lint-engine-adoption
+lint-engine-adoption:
+	$(PYTHON) python/cli.py lint engine-adoption
+
+test-lint-engine-adoption:
+	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_engine_adoption.py -q
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
