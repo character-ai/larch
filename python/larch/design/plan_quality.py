@@ -32,7 +32,7 @@ from larch.design import design_pause, plan_grammar
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir

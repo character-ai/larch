@@ -13,7 +13,7 @@ from typing import Any, Final, cast
 
 from larch.bgjob import registry
 from larch import io as larch_io
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 from larch.report import progress_file
 
 YELLOW = "\033[33m"

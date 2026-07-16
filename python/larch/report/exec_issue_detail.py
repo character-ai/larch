@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
+from larch.core.repo_roots import plugin_root
 from larch.core import proc
 from larch.core import redact
 from larch.report.run_log_batch import execution_issue_identity
@@ -436,13 +437,6 @@ def _parse_assessments_payload(inner_text: str) -> dict[str, str]:
     return parsed
 
 
-def _plugin_root() -> Path:
-    env = os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, "")
-    if env:
-        return Path(env)
-    return Path(__file__).resolve().parents[1]
-
-
 def _assessment_model() -> str:
     return os.environ.get(config.ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL, DEFAULT_ASSESSMENT_MODEL).strip() or DEFAULT_ASSESSMENT_MODEL
 
@@ -470,7 +464,7 @@ def assess_issue_details(category: str, details: tuple[IssueDetail, ...]) -> dic
             prompt_file = work / "prompt.txt"
             output_file = work / "output.txt"
             _ = prompt_file.write_text(prompt, encoding="utf-8")
-            cli = _plugin_root() / "python" / "cli.py"
+            cli = plugin_root(Path(__file__).resolve().parents[1]) / "python" / "cli.py"
             completed = proc.run(
                 [
                     sys.executable, str(cli),

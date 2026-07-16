@@ -26,6 +26,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS, _MARKDOWN_HEADING_RE  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]  # re-export: lint consumers import _MARKDOWN_HEADING_RE from this module
 from larch.errors import ShipError
+from larch.core.repo_roots import consumer_repo_root
 
 _LOG = logging.getLogger(__name__)
 
@@ -190,24 +191,7 @@ validate_invariant_ship_outcome_record = partial(_validate_ship_outcome_record, 
 
 
 def _run_git_toplevel(candidate: Path) -> Path | None:
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(candidate), "rev-parse", "--show-toplevel"],  # noqa: S607
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return None
-    if completed.returncode != 0:
-        return None
-    text = completed.stdout.strip()
-    if not text:
-        return None
-    try:
-        return Path(text).resolve()
-    except OSError:
-        return None
+    return consumer_repo_root(candidate)
 
 
 def _resolve_repo_root(explicit_repo_root: str | Path | None = None) -> Path | None:

@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Final, Literal, get_args
 
 from larch.core import logging_util
+from larch.core.repo_roots import plugin_root as _plugin_root
+
+_PLUGIN_ROOT_RESOLVER = _plugin_root
 
 _PARSE_RE = re.compile(
     r"invalid json|unexpected token|parse error|jq: error|syntaxerror|"
@@ -361,10 +364,6 @@ def _sanitize_tool_label(value: str) -> str:
 
 def _json_array(values: Sequence[str]) -> str:
     return json.dumps(list(values), ensure_ascii=False, separators=(",", ":"))
-
-
-def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))).resolve()
 
 
 def _env_int(*, name: str, default: int, zero_allowed: bool = True) -> int:

@@ -18,6 +18,7 @@ from larch.agents import collect_results
 from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.report import progress_file
+from larch.core.repo_roots import plugin_root
 from larch.review import review_aggregate
 from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_types import is_canonical_heading, parse_blocks
@@ -29,10 +30,6 @@ _COLLECT_TIMEOUT = "1860"
 _PANEL_TIMEOUT = "1860"
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 PER_REVIEWER_OOS_PROPOSAL_CAP = 3
-
-
-def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
 
 def _emit(*, key: str, value: object = "") -> None:
@@ -53,9 +50,9 @@ def _run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subproces
     merged = os.environ.copy()
     if env:
         merged.update(env)
-    _ = merged.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
+    _ = merged.setdefault("CLAUDE_PLUGIN_ROOT", str(plugin_root(_REPO_ROOT)))
     return subprocess.run(
-        [sys.executable, str(_plugin_root() / "python" / "cli.py"), *argv],
+        [sys.executable, str(plugin_root(_REPO_ROOT) / "python" / "cli.py"), *argv],
         cwd=str(_REPO_ROOT),
         text=True,
         capture_output=True,

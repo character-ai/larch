@@ -18,11 +18,12 @@ from larch import io as larch_io
 from collections.abc import Iterable
 
 from larch.core import config
+from larch.core.repo_roots import plugin_root as _plugin_root
 from larch.design import plan_grammar
 from larch.calibration import difficulty
 from larch.core.ctx import Ctx
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 from larch.state.session_env import validate_design_tmpdir
 
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
@@ -92,10 +93,6 @@ def _repo_root_for_plan(*, plan: Path, explicit_repo_root: str | None = None) ->
     if explicit_repo_root:
         return Path(explicit_repo_root).resolve()
     return _git_repo_root(plan.parent) or _repo_root_from(Path(__file__).resolve().parent)
-
-
-def _plugin_root(repo_root: Path) -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(repo_root))).resolve()
 
 
 def _atomic_write(*, path: Path, text: str) -> None:

@@ -631,13 +631,6 @@
   },
   {
     "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 4,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=unused-import",
     "occurrence": 1,
@@ -1806,13 +1799,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/git/repo_roots.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/implement/checks_lint_fix.py",
     "suppression_kind": "noqa",
     "text": "noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100",
@@ -2789,13 +2775,6 @@
     "file": "larch/issue/oos_disposition.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/issue/oos_filer.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },

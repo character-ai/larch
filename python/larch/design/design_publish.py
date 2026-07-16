@@ -25,7 +25,7 @@ from larch.design.design_terminal import (
     phase_driver_write_result_env,
     stage_terminal_state_core,
 )
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 
 PUBLISH_RESULT_ENV_ALLOW = frozenset({
     "ARCHITECTURE_SOURCE",

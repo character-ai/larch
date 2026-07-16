@@ -47,7 +47,7 @@ from larch.design.design_terminal import (
     phase_driver_read_result_env,
     stage_terminal_state_core,
 )
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 from larch.state import session_env
 
 def _derive_binary_found(env: dict[str, str]) -> None:

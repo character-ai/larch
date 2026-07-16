@@ -20,6 +20,7 @@ from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
 from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
+from larch.core.repo_roots import plugin_root
 from larch.report.report_tokens_cost import CODEX_MINI_MODELS, CURSOR_GROK_MODELS
 
 
@@ -43,15 +44,8 @@ _APPROVED_OUTCOMES = frozenset({"approved", "approved-partition"})
 _GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX = "**Gate C guideline exception recorded:**"
 
 
-def _plugin_root() -> Path:
-    env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if env:
-        return Path(env)
-    return Path(__file__).resolve().parents[3]
-
-
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    root = _plugin_root()
+    root = plugin_root(Path(__file__).resolve().parents[3])
     return subprocess.run(
         [sys.executable, str(root / "python" / "cli.py"), *args],
         capture_output=True, text=True, check=False,

@@ -22,7 +22,7 @@ from larch.core.ctx import Ctx
 from larch.design import plan_grammar, design_postplan
 from larch.issue import issue_wire
 from larch.core import architectural_guidelines
-from larch.git.repo_roots import consumer_repo_root
+from larch.core.repo_roots import consumer_repo_root
 from larch.state.session_env import validate_design_tmpdir
 from larch.review.review_types import FOCUS_AREA_VALUES, render_wire_values
 

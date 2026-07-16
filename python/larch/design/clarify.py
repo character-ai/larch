@@ -21,6 +21,7 @@ from larch.design import design_terminal
 from larch.design import design_pause
 from larch.design import design_summary
 from larch.git import gh
+from larch.core.repo_roots import plugin_root
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
@@ -719,10 +720,6 @@ def _parse_design_clarify_args(argv: list[str]) -> DesignClarifyArgs:
     )
 
 
-def _plugin_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
     return [sys.executable, str(plugin_root / "python" / "cli.py"), *args]
 
@@ -737,7 +734,7 @@ def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Pa
         )
     )
     if not env.get("CLAUDE_PLUGIN_ROOT"):
-        env["CLAUDE_PLUGIN_ROOT"] = str(_plugin_root())
+        env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root(Path(__file__).resolve().parents[3]))
     design_tmpdir = design_step0._require_design_tmpdir(env=env)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     env["DESIGN_TMPDIR"] = str(design_tmpdir)
     env["ISSUE_NUMBER"] = args.issue

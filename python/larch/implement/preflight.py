@@ -19,6 +19,7 @@ from larch.calibration import difficulty
 from larch.design import plan_grammar
 from larch.core import config, proc
 from larch.git import gh
+from larch.core.repo_roots import plugin_root as resolve_plugin_root
 from larch.implement import main_health
 from larch.issue.title_match import strip_lifecycle_prefix
 SUCCESS_ENVELOPE_KEYS = (
@@ -232,11 +233,8 @@ def _emit_success_envelope(rows: list[tuple[str, str]], *, preflight_tmpdir: Pat
     return 0
 
 
-def _plugin_root() -> Path:
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if env_root:
-        return Path(env_root)
-    implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+def _plugin_root_fallback() -> Path:
+    implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if implement_tmpdir:
         env_file = Path(implement_tmpdir) / "plugin-root.env"
         root = larch_io.read_kv(
@@ -530,7 +528,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         print("**❌ /implement preflight: preflight tmpdir is not writable.**")
         return 2
 
-    plugin_root = _plugin_root()
+    plugin_root = resolve_plugin_root(_plugin_root_fallback())
     cli_path = plugin_root / "python" / "cli.py"
     if not cli_path.is_file():
         print("**❌ /implement preflight: cannot resolve CLAUDE_PLUGIN_ROOT/python/cli.py.**")

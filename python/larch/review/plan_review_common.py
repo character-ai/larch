@@ -17,6 +17,9 @@ from larch.calibration import difficulty
 from larch.design import plan_grammar
 from larch.design.design_postplan import POSTPLAN_EMIT_KEYS as _POSTPLAN_EMIT_KEYS
 from larch.state.session_env import validate_design_tmpdir
+from larch.core.repo_roots import plugin_root as _plugin_root
+
+_PLUGIN_ROOT_RESOLVER = _plugin_root
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 ROUND_CAP = 2
@@ -164,10 +167,6 @@ class GateBDisplayRow:
     display_severity_label: str
     reviewer_text: str
     excerpt: str
-
-
-def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
 
 def _emit_kv(*, key: str, value: object = "") -> None:
