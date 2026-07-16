@@ -79,7 +79,7 @@ class ReleaseFinishRunner:
             return cr(argv, self.remote_tag)
         if argv[:2] == ["git", "tag"]:
             return cr(argv)
-        if argv[:2] == ["git", "push"]:
+        if argv[:2] == ["git", "push"]:  # lint-git-push-refspec: ok fixture prefix assertion
             return cr(argv)
         if argv[:3] == ["gh", "release", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(argv, rc=0 if self.release_exists else 1)
@@ -113,7 +113,7 @@ def test_release_finish_remote_lightweight_tag_skips_push_and_edits_release(monk
     assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
     out = capsys.readouterr().out
     assert "RELEASE_ACTION=edit" in out
-    assert not any(call[:2] == ["git", "push"] for call in runner.calls)
+    assert not any(call[:2] == ["git", "push"] for call in runner.calls)  # lint-git-push-refspec: ok fixture assertion
 
 
 def test_release_finish_existing_local_tag_creates_missing_release_and_promotes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

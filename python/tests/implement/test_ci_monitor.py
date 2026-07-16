@@ -1763,6 +1763,7 @@ def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> No
             "push",
             "--force-with-lease=refs/heads/feature:remote",
             "origin",
+            "HEAD:refs/heads/feature",
         ): ok(("git", "push")),
     }
     classified = ci_monitor.classify_failed_jobs(
@@ -2063,7 +2064,7 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "remoteoid\trefs/heads/feature\n"),
         ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
         ("git", "status", "--porcelain", "--untracked-files=all"): ok(("git", "status")),
-        ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin"): ok(("git", "push")),
+        ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin", "HEAD:refs/heads/feature"): ok(("git", "push")),
     }
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -2080,7 +2081,7 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
     )
     assert pushed is True
     assert pending is False
-    assert ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin") in runner.calls
+    assert ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin", "HEAD:refs/heads/feature") in runner.calls
 
 
 def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(

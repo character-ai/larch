@@ -4,6 +4,7 @@ from __future__ import annotations
 
 # pyright: reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false
 
+import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,7 +16,7 @@ from larch.core import external_defaults
 from larch.git import rebase
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
-from larch.core.proc import CommandResult
+from larch.core.proc import CommandResult, ProcRunner
 
 
 def _empty_argv_log() -> list[tuple[str, ...]]:
@@ -328,8 +329,8 @@ def test_force_push_oid_and_retry(tmp_path: Path) -> None:
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
             (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
             (
-                ("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin"),
-                _fail(("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin")),
+                ("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "refs/heads/feat:refs/heads/feat"),
+                _fail(("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "refs/heads/feat:refs/heads/feat")),
             ),
             (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
             (("git", "rev-parse", "HEAD"), _ok(("git", "rev-parse", "HEAD"), "deadbeef\n")),
@@ -345,6 +346,65 @@ def test_force_push_oid_and_retry(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert not sleeps
+
+
+def _run_git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _make_adverse_push_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
+    origin = tmp_path / "origin.git"
+    source = tmp_path / "source"
+    repo = tmp_path / "repo"
+    _ = subprocess.run(["git", "init", "--bare", "-q", str(origin)], check=True)
+    _ = subprocess.run(["git", "init", "-q", "-b", "main", str(source)], check=True)
+    _ = _run_git(source, "config", "user.email", "test@example.com")
+    _ = _run_git(source, "config", "user.name", "Test")
+    _ = (source / "README.md").write_text("base\n", encoding="utf-8")
+    _ = _run_git(source, "add", "README.md")
+    _ = _run_git(source, "commit", "-q", "-m", "base")
+    _ = _run_git(source, "remote", "add", "origin", str(origin))
+    _ = _run_git(source, "push", "-q", "-u", "origin", "main")
+    _ = _run_git(origin, "symbolic-ref", "HEAD", "refs/heads/main")
+    _ = subprocess.run(["git", "clone", "-q", str(origin), str(repo)], check=True)
+    _ = _run_git(repo, "config", "user.email", "test@example.com")
+    _ = _run_git(repo, "config", "user.name", "Test")
+    _ = _run_git(repo, "checkout", "-q", "-b", "feature-x", "origin/main")
+    _ = _run_git(repo, "push", "-q", "-u", "origin", "feature-x")
+    _ = _run_git(repo, "branch", "--set-upstream-to=origin/main", "feature-x")
+    _ = _run_git(repo, "config", "push.default", "upstream")
+    _ = (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _ = _run_git(repo, "add", "feature.txt")
+    _ = _run_git(repo, "commit", "-q", "-m", "feature")
+    return (
+        repo,
+        origin,
+        _run_git(repo, "rev-parse", "origin/feature-x"),
+        _run_git(origin, "rev-parse", "refs/heads/main"),
+    )
+
+
+def test_rebase_force_push_ignores_adverse_tracking(tmp_path: Path) -> None:
+    repo, origin, expected_oid, main_before = _make_adverse_push_repo(tmp_path)
+
+    pushed, error = rebase._rebase_push_force_with_lease(  # pyright: ignore[reportPrivateUsage]
+        ProcRunner(),
+        push_remote="origin",
+        branch="feature-x",
+        expected_remote_oid=expected_oid,
+        cwd=str(repo),
+        sleep_fn=lambda _seconds: None,
+    )
+
+    assert pushed
+    assert not error
+    assert _run_git(origin, "rev-parse", "refs/heads/feature-x") == _run_git(repo, "rev-parse", "HEAD")
+    assert _run_git(origin, "rev-parse", "refs/heads/main") == main_before
 
 
 def test_launch_fn_receives_conflict_csv_and_handoff_flag(tmp_path: Path) -> None:
@@ -764,8 +824,8 @@ def test_rebase_push_force_push_same_ref_recovery(tmp_path: Path) -> None:
                 ("git", "ls-remote", "--heads", "origin", "refs/heads/feat"),
                 "",
             )),
-            (("git", "push", "--force-with-lease=refs/heads/feat:abc"), _fail(
-                ("git", "push", "--force-with-lease=refs/heads/feat:abc"),
+            (("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "HEAD:refs/heads/feat"), _fail(
+                ("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "HEAD:refs/heads/feat"),
             )),
             (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
             (("git", "rev-parse", "HEAD"), _ok(("git", "rev-parse", "HEAD"), "abc\n")),
@@ -856,7 +916,7 @@ def test_rebase_push_retries_transient_force_push(
             (("git", "config", "--get", "branch.feat.remote"), _ok(("git", "config"), "")),
             (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
             (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
-            (("git", "push", "--force-with-lease=refs/heads/feat:abc"), push_once_then_ok),
+            (("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "HEAD:refs/heads/feat"), push_once_then_ok),
         ],
         permissive=False,
     )

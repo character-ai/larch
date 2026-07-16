@@ -332,6 +332,14 @@ repos:
         always_run: true
         files: ^python/.*\.py$
 
+      - id: lint-git-push-refspec
+        name: Require explicit Git push refspecs in python/
+        entry: python3 python/cli.py lint git-push-refspec
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/.*\.py$
+
       - id: lint-markdown-heading-fence-state
         name: Lint Markdown heading regexes without fence state
         entry: python3 python/cli.py lint markdown-heading-fence-state

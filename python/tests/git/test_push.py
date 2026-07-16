@@ -755,7 +755,7 @@ def test_push_current_branch_uses_explicit_origin_head_refspec() -> None:
     result = push.push_current_branch(runner, sleeper=lambda _s: None)
     assert result.status == "pushed"
     assert result.branch == "feature"
-    assert ["git", "push"] not in runner.calls
+    assert ["git", "push"] not in runner.calls  # lint-git-push-refspec: ok fixture assertion
     assert ["git", "push", "-u", "origin", "HEAD"] in runner.calls
 
 
