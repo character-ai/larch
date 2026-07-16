@@ -24,6 +24,7 @@ from larch.issue import issue_wire
 from larch.core import architectural_guidelines
 from larch.git.repo_roots import consumer_repo_root
 from larch.state.session_env import validate_design_tmpdir
+from larch.review.review_types import FOCUS_AREA_VALUES, render_wire_values
 
 from larch.design.design_session import (
     PostplanDecision,
@@ -443,7 +444,7 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
             "[/optional]",
             "[optional]",
             "LARCH_SCOUT_BEGIN",
-            '{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}',
+            f'{{"archetypes":[{{"name":"slug","focus_area":"{render_wire_values(FOCUS_AREA_VALUES, delimiter="|")}","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}}]}}',
             "LARCH_SCOUT_END",
             "[/optional]",
             "",

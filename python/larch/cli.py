@@ -503,6 +503,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "generate_reviewer_security_structure_tests_agent_main",
         False,
     ),
+    ("generate", "reviewer-structure-agent"): ("larch.rendering.rendering", "generate_reviewer_structure_agent_main", False),
+    ("generate", "reviewer-correctness-agent"): ("larch.rendering.rendering", "generate_reviewer_correctness_agent_main", False),
+    ("generate", "reviewer-testing-agent"): ("larch.rendering.rendering", "generate_reviewer_testing_agent_main", False),
+    ("generate", "reviewer-security-agent"): ("larch.rendering.rendering", "generate_reviewer_security_agent_main", False),
+    ("generate", "reviewer-edge-cases-agent"): ("larch.rendering.rendering", "generate_reviewer_edge_cases_agent_main", False),
     ("generate", "pre-rendered-reviewer-prompts"): (
         "larch.rendering.rendering",
         "generate_pre_rendered_reviewer_prompts_main",

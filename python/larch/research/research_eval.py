@@ -18,6 +18,7 @@ from pathlib import Path
 
 from larch.core import logging_util
 from larch.review import voting
+from larch.review.review_types import FINDING_SCOPE_SET, FOCUS_AREA_SET
 
 ANTHROPIC_EVAL_SOURCE = "anthropic.com/engineering/built-multi-agent-research-system"
 DEFAULT_ROOT = Path(__file__).resolve().parents[3]
@@ -25,7 +26,6 @@ EVAL_SET_REL = Path("skills/research/references/eval-set.md")
 EVAL_BASELINE_REL = Path("skills/research/references/eval-baseline.json")
 
 _ALLOWED_SEVERITIES = {"major", "minor", "nit"}
-_ALLOWED_FOCUS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _STRUCTURED_HEADER = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix"
 
 
@@ -142,11 +142,11 @@ def _normalize_json_record(obj: object) -> dict[str, object] | None:
     record = {**obj, "severity": severity, "focus_area": focus}
     if record.get("schema_version") != 1:
         return None
-    if record.get("scope") not in {"in_scope", "out_of_scope"}:
+    if record.get("scope") not in FINDING_SCOPE_SET:
         return None
     if severity not in _ALLOWED_SEVERITIES:
         return None
-    if record.get("focus_area") not in _ALLOWED_FOCUS:
+    if record.get("focus_area") not in FOCUS_AREA_SET:
         return None
     for key in ("location", "what", "scenario_or_breakage", "suggested_fix"):
         if not isinstance(record.get(key), str):
@@ -219,9 +219,9 @@ def _leading_typed_fields_valid(fields: list[str]) -> bool:
     schema, scope, severity, focus, location = (_clean_tsv(field) for field in fields[:5])
     return (
         _canonical_schema_version(schema) is not None
-        and scope in {"in_scope", "out_of_scope"}
+        and scope in FINDING_SCOPE_SET
         and severity.lower() in _ALLOWED_SEVERITIES
-        and _canonical_focus(focus) in _ALLOWED_FOCUS
+        and _canonical_focus(focus) in FOCUS_AREA_SET
         and _location_field_valid(location)
     )
 
@@ -315,7 +315,7 @@ def _validate_structured_tsv(text: str) -> str:
         severity = severity.lower()
         canonical_schema = _canonical_schema_version(schema)
         focus = _canonical_focus(focus)
-        if canonical_schema is None or scope not in {"in_scope", "out_of_scope"} or severity not in _ALLOWED_SEVERITIES or focus not in _ALLOWED_FOCUS:
+        if canonical_schema is None or scope not in FINDING_SCOPE_SET or severity not in _ALLOWED_SEVERITIES or focus not in FOCUS_AREA_SET:
             _diag(f"REJECT structured TSV row: schema={schema!r} scope={scope!r} severity={severity!r} focus={focus!r}")
             continue
         if not _location_field_valid(location):

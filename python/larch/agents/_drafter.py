@@ -22,6 +22,7 @@ from larch.core import config
 from larch.design import design_dialectic, plan_grammar
 from larch.core import logging_util
 from larch.design import plan_scout
+from larch.review.review_types import FOCUS_AREA_VALUES, render_wire_values
 from larch.core import proc
 
 from larch.agents._types import (
@@ -552,11 +553,11 @@ OUTPUT CONTRACT — these requirements override any conflicting Codex user confi
 - Malformed dialectic output after the plan is ignored by the launcher and must not affect a valid plan; dialectic sentinels inside the summary or plan are fatal.
 - Emit zero or one balanced LARCH_SCOUT_BEGIN/LARCH_SCOUT_END pair after LARCH_PLAN_END on a best-effort basis.
 - Use {"archetypes":[]} when no dynamic plan-review specialists are useful.
-- The scout block must contain only compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.
+- The scout block must contain only compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"{FOCUS_AREA_VALUES_PIPE}","weight":1,"rationale":"...","prompt_body":"..."}]}.
 - Malformed scout output after the plan is ignored by the launcher and must not affect a valid plan.
 - Scout sentinels before or inside the summary or plan are fatal format errors.
 - Return only the sentinel-delimited response format; do not omit required sentinels.
-"""
+""".replace("{FOCUS_AREA_VALUES_PIPE}", render_wire_values(FOCUS_AREA_VALUES, delimiter="|"))
 
 
 def _positions(*, lines: Sequence[str], marker: str) -> list[int]:

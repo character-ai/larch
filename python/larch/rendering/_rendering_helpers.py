@@ -101,3 +101,16 @@ def replace_output_instruction(body: str, *, inscope: Iterable[str], oos: Iterab
             continue
         out.append(line)
     return "\n".join(out)
+
+
+def extract_template_fragment(template: Path, *, name: str) -> str:
+    """Read a named canonical fragment delimited by stable HTML comments."""
+    text = larch_io.read_text(template)
+    match = re.search(
+        rf"<!-- BEGIN {re.escape(name)} -->\n(.*?)\n<!-- END {re.escape(name)} -->",
+        text,
+        flags=re.DOTALL,
+    )
+    if match is None or not match.group(1).strip():
+        raise RenderError(f"ERROR: no content found for canonical fragment {name}")
+    return match.group(1).strip()

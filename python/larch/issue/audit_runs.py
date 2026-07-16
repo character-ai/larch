@@ -29,12 +29,13 @@ from larch.issue.title_match import BUG_PREFIX, bug_title_match
 from larch.report import run_log_corpus
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
+from larch.review.review_types import FOCUS_AREA_SET, FOCUS_AREA_VALUES
 
-_CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}(?: \(issue #[0-9]+\))?$")
 _DESIGN_RUN_ID_RE = re.compile(r"^chore\(larch-logs\): design run ([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})(?: \(issue #[0-9]+\))?$")
 _TERMINAL_RE = re.compile(r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?|shipping)$")
 GENERIC_CODEX_SLOTS = frozenset({"generalist", "codex-plan-generic"})
+_FOCUS_AREA_PATTERN = "|".join(re.escape(value) for value in FOCUS_AREA_VALUES)
 
 
 def _validate_skill( *,skill: str, prog: str) -> bool:
@@ -991,7 +992,7 @@ def _mangled_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     out: list[dict[str, object]] = []
     for r in rows:
         cat = _category_string(r)
-        if r.get("outcome") == "accepted" and str(r.get("phase") or "") == "plan-review" and cat and cat not in _CANONICAL:
+        if r.get("outcome") == "accepted" and str(r.get("phase") or "") == "plan-review" and cat and cat not in FOCUS_AREA_SET:
             out.append(r)
     return out
 
@@ -1104,7 +1105,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         elif name == "rej-category-blank":
             if not (run_dir / "review-findings-full.jsonl").is_file() and not has_review_rows: obj={"scan":name,"pr":pr,"result":"skip","detail":"review-findings-full.jsonl not found"}
             else:
-                c=sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not r.get("category") and re.search(r"###[ \t]+FINDING_[0-9A-Za-z_]+:[ \t]*(code-quality|risk-integration|correctness|architecture|security)(:|\n|$)", str(r.get("prose_body") or "")))
+                c=sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not r.get("category") and re.search(rf"###[ \t]+FINDING_[0-9A-Za-z_]+:[ \t]*({_FOCUS_AREA_PATTERN})(:|\n|$)", str(r.get("prose_body") or "")))
                 obj={"scan":name,"pr":pr,"result":"pass" if c==0 else "fail","count":c};
                 if c: obj["rej_blank_with_cat_in_prose"] = c
         elif name == "ns-retry-sidecars":
@@ -1204,7 +1205,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
             _json_line({"scan":"category-stats","pr":pr,"partial_data":True,"partial_reason":"malformed_review_findings_jsonl","detail":"jq failed (category-stats): parse error","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
         else:
             mangled=mangled_cache if mangled_cache is not None else _mangled_rows(rows)
-            _json_line({"scan":"category-stats","pr":pr,"partial_data":False,"canonical":sum(1 for r in rows if _category_string(r) in _CANONICAL),"blank":sum(1 for r in rows if not _category_string(r)),"mangled":len(mangled),"oos_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("OOS_") and not _category_string(r)),"rej_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not _category_string(r))})
+            _json_line({"scan":"category-stats","pr":pr,"partial_data":False,"canonical":sum(1 for r in rows if _category_string(r) in FOCUS_AREA_SET),"blank":sum(1 for r in rows if not _category_string(r)),"mangled":len(mangled),"oos_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("OOS_") and not _category_string(r)),"rej_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not _category_string(r))})
     else:
         if args.skill=="design": _json_line({"scan":"category-stats","pr":pr,"partial_data":False,"skip_reason":"design_run_has_no_review_findings_jsonl","detail":"design runs intentionally omit review-findings-full.jsonl","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
         else: _json_line({"scan":"category-stats","pr":pr,"partial_data":True,"partial_reason":"missing_review_findings_jsonl","detail":"review-findings-full.jsonl not found","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})

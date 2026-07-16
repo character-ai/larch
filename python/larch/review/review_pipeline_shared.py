@@ -23,7 +23,6 @@ from larch.review.review_types import ReviewCoreStatus
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 CLI = _PLUGIN_ROOT / "python" / "cli.py"
 STATIC_REVIEWERS = ("correctness", "edge-cases", "testing")
-FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR = 1
 REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR = 2
 REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR = 2
