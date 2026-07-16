@@ -1244,14 +1244,27 @@ def _resume_done_result(
     repo_root: str,
 ) -> ShipResult:
     done_ctx = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
-    _write_terminal_finalize_if_terminal(ctx=done_ctx, result=Outcome.OK, step="done")
-    return reconcile_committed_stalled_summary_if_recovered(
+    reconciled: ShipResult | None = reconcile_committed_stalled_summary_if_recovered(
         runner=runner,
         ctx=done_ctx,
         cwd=repo_root,
         counters=_resume_reconciliation_counters(resume),
         allow_post_merge_skip=True,
-    ) or ShipResult(
+    )
+    if reconciled is not None:
+        return reconciled
+    if done_ctx.merge and not done_ctx.draft:
+        postmerge: ShipResult = run_postmerge_phase(runner=runner, ctx=done_ctx, cwd=repo_root)
+        if postmerge.outcome is not Outcome.OK:
+            return ShipResult(
+                postmerge.outcome,
+                pr_number=resume.pr_number,
+                pr_url=resume.pr_url,
+                merge_result=resume.merge_result,
+                detail=postmerge.detail,
+            )
+    _write_terminal_finalize_if_terminal(ctx=done_ctx, result=Outcome.OK, step="done")
+    return ShipResult(
         Outcome.OK,
         pr_number=resume.pr_number,
         pr_url=resume.pr_url,
