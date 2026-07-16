@@ -222,7 +222,7 @@ def _step18_gate(*, implement_tmpdir: Path, stall_tracking_memory: str) -> int:
         _emit_kv(key="STALL_RECOVERY_REQUIRED", value="true")
         return 0
     _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
-    print("⏩ 18a: stall recovery: no stall detected")
+    print("⏩ 18a: stall recovery; no stall detected")
     return 0
 
 
@@ -365,7 +365,7 @@ def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="NEXT_ACTION", value="stall-recovery")
         return 0
 
-    print("⏩ 18a: stall recovery: no stall detected")
+    print("⏩ 18a: stall recovery; no stall detected")
     normalized = _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
     if _is_terminal_shipping_without_pr(normalized):
         persisted = _record_terminal_shipping_refusal(implement_tmpdir=implement_tmpdir)
