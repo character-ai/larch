@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import cast
 
 from larch.lint import lint_root_resolution as lint
-from larch.lint.engine import Finding, SourceFile
+from larch.lint.engine import SourceFile
 
 
 def _source(path: str, text: str) -> SourceFile:
@@ -29,9 +28,9 @@ def _repo(tmp_path: Path, *, source: str, baseline: list[dict[str, object]]) -> 
 
 
 def test_detect_rejects_private_plugin_root() -> None:
-    findings = cast("list[Finding]", lint.detect(_source(
+    findings = lint.detect(_source(
         "python/larch/demo.py", "def _plugin_root():\n    return None\n"
-    )))
+    ))
 
     assert len(findings) == 1
     assert findings[0].message.startswith("private-plugin-root")
@@ -44,16 +43,16 @@ def test_detect_numbers_inline_probes_in_source_order() -> None:
         "one = ['git', 'rev-parse', '--show-toplevel']\ntwo = ['git', 'rev-parse', '--show-toplevel']\n",
     )
 
-    findings = cast("list[Finding]", lint.detect(source))
+    findings = lint.detect(source)
 
     assert [finding.occurrence for finding in findings] == [1, 2]
 
 
 def test_detect_exempts_the_canonical_owner() -> None:
-    assert lint.detect(_source(
+    assert not lint.detect(_source(
         "python/larch/core/repo_roots.py",
         "cmd = ['git', 'rev-parse', '--show-toplevel']\n",
-    )) == []
+    ))
 
 
 def test_removed_baselined_probe_fails_strict_stale_check(tmp_path: Path) -> None:

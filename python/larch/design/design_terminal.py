@@ -466,7 +466,9 @@ def _resolve_working_tree_root(design_tmpdir: Path) -> str:
     root = _read_env_value(path=source_env, key="REPO_ROOT", default="")
     if root:
         return root
-    proc_out = repo_root_probe()
+    proc_out = repo_root_probe(run=lambda argv: subprocess.run(
+        argv, capture_output=True, text=True, check=False
+    ))
     return proc_out.stdout.strip() if proc_out.returncode == 0 else ""
 
 

@@ -406,7 +406,13 @@ def check_fileline(cite: str, *, git_root: Path | None = None) -> FetchResult:
         start = end = 0
     if git_root is None:
         try:
-            got = repo_root_probe()
+            got = repo_root_probe(run=lambda argv: subprocess.run(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=False,
+            ))
             if got.returncode != 0 or not got.stdout.strip():
                 return FetchResult("UNKNOWN", "git-root-unavailable")
             git_root = Path(got.stdout.strip())

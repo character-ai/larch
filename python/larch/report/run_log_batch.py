@@ -15,6 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
+from larch.core import proc  # noqa: F401 - tests patch the historical module-level process seam.
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from collections.abc import Callable
 
