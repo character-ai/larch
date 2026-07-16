@@ -2,12 +2,20 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+The change adds a self-contained, read-only static-analysis lint (result-env key-set parity) together with its CLI registration, Makefile wiring, empty baseline, unit tests, and reference-doc entries; it exercises none of the workflow-gate, run-log-flush, pause-snapshot, persisted-result, panel-slot, agent-dispatch, or ship-recovery surfaces that the absolute invariants govern, so the diff holds every invariant.
+
+## Architectural guidelines
+
+The new lint follows the codebase's established ratchet pattern — a reason-bearing, shrink-only JSON baseline, a module-manifest entry that names its nearest host and justifies the new module, a typed main returning distinct exit codes, frozen dataclasses, fail-closed baseline validation, symlink-skipping file discovery, and offline-testable pure helpers separated from I/O — so the diff conforms to the applicable authoring and prevention guidelines with no meaningful deviation.
+
 ## /implement run 86DE0401-0E4B-40DF-BA64-87DF3AD206CA: shipping
 
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 01:02:09
-- **Cost**: 💰 TOTAL ~$16.02: Claude $15.27, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.75  |  Tokens: 14723k
+- **Cost**: 💰 TOTAL ~$18.91: Claude $18.16, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.75  |  Tokens: 17670k
 - **Issue**: #7452: https://github.com/character-ai/larch/issues/7452
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
