@@ -1,0 +1,124 @@
+## Approach
+
+Extend the existing parallel Pylint runner. Keep its detection semantics and pair enumeration unchanged.
+
+Represent each baseline row with:
+
+- The sorted module pair.
+- A 16-character SHA-256 prefix of the normalized common block.
+- The allowed line count.
+- A non-empty reason.
+
+Derive the hash from Pylint's stripped common-block text, not source positions. For growth detection, match the stored block hash against equal-length windows within a longer live block. This catches growth at either edge. Treat changed blocks as a new live identity plus a stale baseline identity.
+
+Use exit code `0` when every live cluster is grandfathered at or below its allowance. Return `1` for new, grown, or stale clusters. Return `2` for malformed, missing, unreadable, ambiguous, or unsafe baseline state.
+
+`--write` regenerates canonical sorted JSON. It preserves reasons for exact identities, removes stale rows, and requires `--initial-reason` for identities without a preserved reason.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/duplicate_code.py
+
+- Add the baseline record, identity, and comparison types.
+- Retain normalized block text long enough to derive identities after Pylint merges similarities.
+- Expand multi-span similarity groups into deterministic module-pair observations.
+- Reject ambiguous duplicate identities rather than silently collapsing them.
+- Add strict baseline parsing:
+  - Require a top-level array and exact row keys.
+  - Validate sorted, non-empty module names.
+  - Validate the 16-character lowercase hexadecimal content hash.
+  - Require a positive integer line allowance and a non-empty reason.
+  - Reject duplicate identities, symlinks, non-regular files, malformed JSON, and unexpected fields.
+- Add canonical serialization sorted by the complete identity.
+- Add baseline evaluation for:
+  - Exact baselined clusters.
+  - Grown clusters whose prior normalized block is contained in the longer live block.
+  - New clusters.
+  - Stale rows.
+- Print actionable diagnostics with module names, line counts, and identity hashes. Do not use source line numbers as identity.
+- Add `--baseline`, `--write`, and `--initial-reason`.
+- Default the CLI baseline to `python/duplicate-code-baseline.json`, while keeping the library runner usable without baseline evaluation for focused detector tests.
+- Make `--initial-reason` require `--write` and reject blank values.
+- Preserve `--emit-cluster-digest` as a detector diagnostic independent of baseline output.
+
+### UPDATED: python/tests/lint/test_duplicate_code.py
+
+- Keep the existing detector, suppression, parallelism, and digest tests.
+- Add focused baseline fixtures and tests for:
+  - Stable identity across unrelated source-line shifts.
+  - Sorted module-pair identity.
+  - Deterministic serial and parallel hashes.
+  - A fully baselined run returning `0`.
+  - A new cluster returning `1`.
+  - Growth at the start, end, or both ends returning `1`.
+  - Changed normalized content producing new and stale diagnostics.
+  - A removed cluster producing a stale-row failure.
+  - Exact identities preserving reasons during routine regeneration.
+  - New write identities requiring `--initial-reason`.
+  - Canonical JSON ordering and bootstrap reasons.
+  - Multi-span clusters and duplicate-identity rejection.
+  - Missing, unreadable, symlinked, malformed, duplicate, extra-key, blank-reason, invalid-hash, and invalid-line baseline rows returning `2`.
+  - CLI flag compatibility and invalid flag combinations.
+
+### NEW: python/duplicate-code-baseline.json
+
+- Generate the baseline from the current configured R0801 scan.
+- Commit one canonical reason-bearing row per live durable identity.
+- Use a single explicit bootstrap reason that states these findings predate the shrink-only ratchet.
+- Confirm the generated baseline accounts for the measured 115 live clusters. Investigate any drift rather than editing counts or detection thresholds to force the expected result.
+
+### UPDATED: Makefile
+
+- Add `regen-duplicate-code-baseline` to `.PHONY`.
+- Follow the existing guarded regeneration pattern:
+  - Run `duplicate-code --write` without a default reason when the baseline exists.
+  - Supply the bootstrap `--initial-reason` only when the baseline is absent.
+- Update `py-lint-duplicate-code` to pass the committed baseline explicitly.
+- Update nearby comments to describe the parallel detector plus shrink-only baseline behavior.
+
+### UPDATED: .github/workflows/duplicate-code.yaml
+
+- Restore the `push` trigger for `main` and retain `workflow_dispatch`.
+- Raise the job timeout from 10 to 25 minutes.
+- Add `issues: write` while retaining `contents: read`.
+- Run the baseline-aware Make target.
+- Add a failure-only issue step using the runner's authenticated `gh` client.
+- Use a fixed exact title and marker for the duplicate-code tracking issue.
+- Search open issues, then locally require an exact title match before reuse.
+- Create the issue when no exact open match exists. Otherwise replace its marker-keyed status body with the latest run URL, commit SHA, failure context, and local reproduction command.
+- Serialize this workflow with a stable concurrency group so overlapping manual and `main` runs cannot create duplicate issues.
+- Re-read the created or updated issue and verify the exact title, marker, and current run URL. Fail the issue step if verification fails.
+- Keep the original lint failure visible. The tracking update must not convert the failed job to success.
+
+## Edge cases
+
+- Unrelated line movement must not change an identity.
+- Identifier or code changes inside a common block may change its hash and must fail as new plus stale.
+- A longer block may extend before or after the old block. Search normalized equal-length windows rather than checking only a prefix.
+- Multiple clusters between the same modules remain distinct through their content hashes.
+- Hash-prefix or live-identity ambiguity must fail closed.
+- Routine regeneration must not invent reasons for changed identities.
+- Manual and push-triggered workflow runs may overlap. Concurrency and exact-title verification prevent duplicate tracking issues.
+- A closed prior issue must not be reopened implicitly. Create a new open tracking issue.
+
+## Failure modes
+
+- Pylint API drift or unavailable normalized text returns the existing tool-error class.
+- Invalid baseline data returns `2` before evaluating findings.
+- New, grown, or stale rows return `1` with regeneration guidance.
+- Baseline regeneration refuses unreasoned new identities.
+- GitHub query, mutation, or read-back failure leaves the workflow red and visible in Actions.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/lint/test_duplicate_code.py -q`.
+- Bootstrap a temporary baseline through the CLI, rerun the check, then exercise new, grown, and stale fixtures.
+- Run `make regen-duplicate-code-baseline` and inspect the canonical diff and row count.
+- Run `make py-lint-duplicate-code` against the committed baseline.
+- Run `actionlint .github/workflows/duplicate-code.yaml`.
+- Run the repository JSON lint against `python/duplicate-code-baseline.json`.
+- Use `workflow_dispatch` after merge to confirm the 25-minute budget and failure-issue path without adding PR-time coverage.
+
+difficulty: HARD
+oversize_override: operator
+diff_lines: 1700
