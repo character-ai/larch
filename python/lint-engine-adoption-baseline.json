@@ -16,30 +16,6 @@
     "rule_id": "engine-adoption"
   },
   {
-    "anchor": "baseline-io",
-    "line": 806,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_complexity_baseline.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 590,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_complexity_baseline.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 27,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_complexity_debt.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
     "anchor": "argparse-construction",
     "line": 48,
     "message": "legacy ArgumentParser construction outside shared lint engine",

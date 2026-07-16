@@ -20,6 +20,7 @@ import tokenize
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal, TypeAlias, TypeVar, cast
 
@@ -1078,6 +1079,449 @@ class OccurrenceBaselineRow:
 BaselineRow: TypeAlias = (
     GenericBaselineRow | SymbolMetricBaselineRow | OccurrenceBaselineRow
 )
+
+
+# Complexity rows retain a richer historical contract than the generic metric
+# baseline.  They deliberately live beside the other engine-owned baseline
+# schemas so trusted I/O and structural read-back stay centralized.
+ComplexityCode = Literal["C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915"]
+COMPLEXITY_CODES = frozenset({"C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915"})
+_COMPLEXITY_FIELDS = (
+    "file",
+    "code",
+    "qualified_symbol",
+    "metric",
+    "added_at",
+    "history",
+    "source_issue",
+    "reason",
+    "operator_override",
+)
+_COMPLEXITY_REQUIRED_FIELDS = frozenset(_COMPLEXITY_FIELDS[:6])
+_COMPLEXITY_OPTIONAL_FIELDS = frozenset(_COMPLEXITY_FIELDS[6:])
+_COMPLEXITY_HISTORY_FIELDS = frozenset({"date", "metric"})
+_COMPLEXITY_OVERRIDE_FIELDS = frozenset({"reason", "issue"})
+
+
+@dataclass(frozen=True)
+class ComplexityHistoryEntry:
+    """One dated complexity metric event."""
+
+    date: str
+    metric: int
+
+
+@dataclass(frozen=True)
+class ComplexityOperatorOverride:
+    """One active operator-approved repeat-bump exception."""
+
+    reason: str
+    issue: int
+
+
+@dataclass(frozen=True)
+class ComplexityLiveRow:
+    """A current Ruff observation before baseline metadata is merged."""
+
+    file: str
+    code: ComplexityCode
+    qualified_symbol: str
+    metric: int
+
+    @property
+    def identity(self) -> tuple[str, str, str]:
+        """Return the metric-independent complexity identity."""
+        return (self.file, self.code, self.qualified_symbol)
+
+
+@dataclass(frozen=True)
+class ComplexityBaselineRow:
+    """Immutable typed representation of one complexity baseline record."""
+
+    file: str
+    code: ComplexityCode
+    qualified_symbol: str
+    metric: int
+    added_at: str
+    history: tuple[ComplexityHistoryEntry, ...]
+    source_issue: int | None = None
+    reason: str | None = None
+    operator_override: ComplexityOperatorOverride | None = None
+
+    @property
+    def identity(self) -> tuple[str, str, str]:
+        """Return the metric-independent complexity identity."""
+        return (self.file, self.code, self.qualified_symbol)
+
+
+@dataclass(frozen=True)
+class ComplexityHistoryEvent:
+    """One metric increase event attributed to its baseline row."""
+
+    event_date: date
+    record: ComplexityBaselineRow
+    history_index: int
+    metric: int
+
+
+@dataclass(frozen=True)
+class ComplexityBaselineArgs:
+    """Validated compatible arguments for the complexity-baseline CLI."""
+
+    root: Path
+    write: bool
+    reason: str | None
+    migrate: bool
+
+
+@dataclass(frozen=True)
+class ComplexityDebtArgs:
+    """Validated arguments for the complexity-debt report command."""
+
+    root: Path
+    report: bool
+
+
+def parse_complexity_baseline_argv(
+    argv: Sequence[str], *, default_root: Path
+) -> ComplexityBaselineArgs | None:
+    """Parse the established complexity-baseline command surface."""
+    parser = argparse.ArgumentParser(
+        prog="cli.py lint complexity-baseline",
+        description="Ratchet ruff complexity findings against a committed production baseline.",
+    )
+    _ = parser.add_argument("--root", default=str(default_root))
+    _ = parser.add_argument("--write", action="store_true")
+    _ = parser.add_argument("--reason")
+    _ = parser.add_argument("--migrate", action="store_true")
+    try:
+        parsed = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return None
+    reason = cast("str | None", parsed.reason)
+    if parsed.migrate and parsed.write:
+        print("--migrate and --write are incompatible", file=sys.stderr)
+        return None
+    if reason is not None and (not parsed.write or parsed.migrate or not _nonempty_single_line(reason)):
+        print("--reason is only valid with --write and must be non-empty", file=sys.stderr)
+        return None
+    return ComplexityBaselineArgs(
+        root=Path(cast("str", parsed.root)).resolve(),
+        write=bool(parsed.write),
+        reason=reason.strip() if reason is not None else None,
+        migrate=bool(parsed.migrate),
+    )
+
+
+def parse_complexity_debt_argv(
+    argv: Sequence[str], *, default_root: Path
+) -> ComplexityDebtArgs | None:
+    """Parse the established complexity-debt reporting command surface."""
+    parser = argparse.ArgumentParser(
+        prog="cli.py lint complexity-debt",
+        description="Render the operator-facing complexity-baseline debt report.",
+    )
+    _ = parser.add_argument("--report", action="store_true")
+    _ = parser.add_argument("--root", default=str(default_root))
+    try:
+        parsed = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        return None
+    if not parsed.report:
+        return None
+    return ComplexityDebtArgs(
+        root=Path(cast("str", parsed.root)).resolve(), report=True
+    )
+
+
+def _complexity_date(value: object, *, source: str, index: int, field: str, today: date) -> str:
+    if not isinstance(value, str):
+        raise ScanError(f"{source}: record {index} has invalid {field}")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ScanError(f"{source}: record {index} has invalid {field}") from exc
+    if parsed.isoformat() != value or parsed > today:
+        raise ScanError(f"{source}: record {index} has invalid {field}")
+    return value
+
+
+def _complexity_metric(value: object, *, source: str, index: int, field: str = "metric") -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ScanError(f"{source}: record {index} has invalid {field}")
+    return value
+
+
+def _complexity_history(value: object, *, source: str, index: int, today: date) -> tuple[ComplexityHistoryEntry, ...]:
+    if not isinstance(value, list):
+        raise ScanError(f"{source}: record {index} has invalid history")
+    entries: list[ComplexityHistoryEntry] = []
+    previous: date | None = None
+    for raw_item in cast("list[object]", value):
+        if not isinstance(raw_item, dict):
+            raise ScanError(f"{source}: record {index} has malformed history entry")
+        entry = cast("dict[str, object]", raw_item)
+        if frozenset(entry) != _COMPLEXITY_HISTORY_FIELDS:
+            raise ScanError(f"{source}: record {index} has malformed history entry")
+        event_date = _complexity_date(entry["date"], source=source, index=index, field="history date", today=today)
+        parsed_date = date.fromisoformat(event_date)
+        if previous is not None and parsed_date < previous:
+            raise ScanError(f"{source}: record {index} has date-decreasing history")
+        entries.append(ComplexityHistoryEntry(event_date, _complexity_metric(entry["metric"], source=source, index=index, field="history metric")))
+        previous = parsed_date
+    return tuple(entries)
+
+
+def _complexity_override(value: object, *, source: str, index: int) -> ComplexityOperatorOverride:
+    if not isinstance(value, dict):
+        raise ScanError(f"{source}: record {index} has invalid operator_override")
+    override = cast("dict[str, object]", value)
+    if frozenset(override) != _COMPLEXITY_OVERRIDE_FIELDS:
+        raise ScanError(f"{source}: record {index} has invalid operator_override")
+    if not _nonempty_single_line(override["reason"]):
+        raise ScanError(f"{source}: record {index} has invalid operator_override reason")
+    issue = override["issue"]
+    if not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0:
+        raise ScanError(f"{source}: record {index} has invalid operator_override issue")
+    return ComplexityOperatorOverride(cast("str", override["reason"]), issue)
+
+
+def _parse_complexity_row(  # noqa: C901 - exact legacy schema validation is intentionally centralized.
+    raw: object, *, source: str, index: int, strict: bool, today: date
+) -> ComplexityBaselineRow:
+    if not isinstance(raw, dict):
+        raise ScanError(f"{source}: record {index} must be an object")
+    record = cast("Mapping[str, object]", raw)
+    keys = frozenset(record)
+    unknown = keys - _COMPLEXITY_REQUIRED_FIELDS - _COMPLEXITY_OPTIONAL_FIELDS
+    if unknown:
+        raise ScanError(f"{source}: record {index} has unknown fields {sorted(unknown)}")
+    required = _COMPLEXITY_REQUIRED_FIELDS if strict else frozenset(_COMPLEXITY_FIELDS[:4])
+    missing = required - keys
+    if missing:
+        raise ScanError(f"{source}: record {index} missing required fields {sorted(missing)}")
+    file_name, code, symbol = record["file"], record["code"], record["qualified_symbol"]
+    if not _nonempty_single_line(file_name) or normalize_python_file_path(cast("str", file_name)) != file_name:
+        raise ScanError(f"{source}: record {index} has invalid file")
+    if not isinstance(code, str) or code not in COMPLEXITY_CODES:
+        raise ScanError(f"{source}: record {index} has invalid code")
+    if not _nonempty_single_line(symbol):
+        raise ScanError(f"{source}: record {index} has invalid qualified_symbol")
+    added_at = record.get("added_at", "legacy")
+    if added_at != "legacy":
+        added_at = _complexity_date(added_at, source=source, index=index, field="added_at", today=today)
+    if not isinstance(added_at, str):
+        raise ScanError(f"{source}: record {index} has invalid added_at")
+    history = _complexity_history(record.get("history", []), source=source, index=index, today=today)
+    source_issue = record.get("source_issue")
+    if source_issue is not None and (not isinstance(source_issue, int) or isinstance(source_issue, bool) or source_issue <= 0):
+        raise ScanError(f"{source}: record {index} has invalid source_issue")
+    reason = record.get("reason")
+    if reason is not None and not _nonempty_single_line(reason):
+        raise ScanError(f"{source}: record {index} has invalid reason")
+    override = _complexity_override(record["operator_override"], source=source, index=index) if "operator_override" in record else None
+    return ComplexityBaselineRow(
+        cast("str", file_name), cast("ComplexityCode", code), cast("str", symbol),
+        _complexity_metric(record["metric"], source=source, index=index),
+        added_at, history, source_issue, cast("str | None", reason), override,
+    )
+
+
+def parse_complexity_baseline(
+    text: str, *, source: str, strict: bool = True, today: date | None = None
+) -> list[ComplexityBaselineRow]:
+    """Parse exact complexity records and reject malformed or duplicate identities."""
+    try:
+        decoded = cast("object", json.loads(text))
+    except json.JSONDecodeError as exc:
+        raise ScanError(f"{source}: cannot load baseline: {exc}") from exc
+    if not isinstance(decoded, list):
+        raise ScanError(f"{source}: baseline must be a top-level JSON array")
+    checked_today = today or datetime.now(UTC).date()
+    rows = [
+        _parse_complexity_row(
+            row, source=source, index=index, strict=strict, today=checked_today
+        )
+        for index, row in enumerate(cast("list[object]", decoded))
+    ]
+    duplicates = complexity_duplicate_identities(rows)
+    if duplicates:
+        raise ScanError("duplicate baseline complexity identities:\n" + "\n".join(duplicates))
+    return rows
+
+
+def complexity_duplicate_identities(rows: Sequence[ComplexityBaselineRow | ComplexityLiveRow]) -> list[str]:
+    """Return repeated complexity identities as stable diagnostic lines."""
+    seen: set[tuple[str, str, str]] = set()
+    duplicates: list[str] = []
+    for row in rows:
+        if row.identity in seen:
+            file_name, code, symbol = row.identity
+            duplicates.append(f"{file_name}:{symbol} {code}")
+        else:
+            seen.add(row.identity)
+    return duplicates
+
+
+def load_complexity_baseline(
+    path: str | Path,
+    *,
+    root: Path,
+    strict: bool = True,
+    today: date | None = None,
+    allow_missing: bool = False,
+) -> list[ComplexityBaselineRow]:
+    """Trusted-read and parse the complexity baseline through the engine."""
+    destination = _validate_baseline_path(path, root=root, write_mode=False)
+    if not _baseline_exists(destination, root=root):
+        if allow_missing:
+            return []
+        raise ScanError(f"{destination}: cannot load baseline: file does not exist")
+    try:
+        text = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"{destination}: cannot load baseline: {exc}") from exc
+    return parse_complexity_baseline(text, source=str(destination), strict=strict, today=today)
+
+
+def complexity_row_record(row: ComplexityBaselineRow) -> dict[str, object]:
+    """Render one typed row in the legacy field order without null optionals."""
+    result: dict[str, object] = {
+        "file": row.file, "code": row.code, "qualified_symbol": row.qualified_symbol,
+        "metric": row.metric, "added_at": row.added_at,
+        "history": [{"date": item.date, "metric": item.metric} for item in row.history],
+    }
+    if row.source_issue is not None:
+        result["source_issue"] = row.source_issue
+    if row.reason is not None:
+        result["reason"] = row.reason
+    if row.operator_override is not None:
+        result["operator_override"] = {"reason": row.operator_override.reason, "issue": row.operator_override.issue}
+    return result
+
+
+def serialize_complexity_baseline(rows: Sequence[ComplexityBaselineRow]) -> str:
+    """Serialize canonical complexity records preserving legacy field order."""
+    records = [complexity_row_record(row) for row in sorted(rows, key=lambda row: row.identity)]
+    return json.dumps(records, indent=2) + "\n"
+
+
+def write_complexity_baseline(
+    path: str | Path, *, root: Path, rows: Sequence[ComplexityBaselineRow], today: date | None = None
+) -> list[ComplexityBaselineRow]:
+    """Atomically publish and byte/structure-read-back typed complexity rows."""
+    destination = _validate_baseline_path(path, root=root, write_mode=True)
+    intended = serialize_complexity_baseline(rows)
+    checked_today = today or datetime.now(UTC).date()
+    expected = parse_complexity_baseline(intended, source=f"baseline {destination}", today=checked_today)
+    try:
+        larch_io.trusted_atomic_write(destination, intended, root=root)
+        read_back = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ScanError(f"failed to write baseline {destination}: {exc}") from exc
+    if read_back != intended:
+        raise ScanError(f"baseline read-back bytes differ after write: {destination}")
+    parsed = parse_complexity_baseline(read_back, source=f"baseline {destination}", today=checked_today)
+    if parsed != expected:
+        raise ScanError(f"baseline read-back records differ after write: {destination}")
+    return parsed
+
+
+def migrate_complexity_baseline(
+    path: str | Path, *, root: Path, today: date | None = None
+) -> int:
+    """Add only missing migration metadata while proving metric projection parity."""
+    destination = _validate_baseline_path(path, root=root, write_mode=False)
+    try:
+        text = larch_io.read_trusted_text(destination, root=root, reject_cr=True)
+        decoded = cast("object", json.loads(text))
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise ScanError(f"{destination}: cannot load baseline: {exc}") from exc
+    if not isinstance(decoded, list):
+        raise ScanError(f"{destination}: baseline must be a top-level JSON array")
+    rows = parse_complexity_baseline(text, source=str(destination), strict=False, today=today)
+    migrated_count = sum(
+        isinstance(raw, dict) and ("added_at" not in raw or "history" not in raw)
+        for raw in cast("list[object]", decoded)
+    )
+    before = {row.identity: row.metric for row in rows}
+    migrated = [
+        ComplexityBaselineRow(
+            row.file, row.code, row.qualified_symbol, row.metric, row.added_at,
+            row.history, row.source_issue, row.reason, row.operator_override,
+        )
+        for row in rows
+    ]
+    after = {row.identity: row.metric for row in migrated}
+    if before != after:
+        raise ScanError(f"{path}: migration would change the identity-to-metric projection")
+    _ = write_complexity_baseline(destination, root=root, rows=migrated, today=today)
+    return migrated_count
+
+
+def merge_complexity_baseline(
+    *, live_rows: Sequence[ComplexityLiveRow], stored_rows: Sequence[ComplexityBaselineRow], reason: str | None, today: date
+) -> list[ComplexityBaselineRow]:
+    """Merge live metrics with historical metadata, requiring reasons for growth."""
+    live_duplicates = complexity_duplicate_identities(live_rows)
+    if live_duplicates:
+        raise ScanError("duplicate live complexity identities:\n" + "\n".join(live_duplicates))
+    stored_duplicates = complexity_duplicate_identities(stored_rows)
+    if stored_duplicates:
+        raise ScanError("duplicate baseline complexity identities:\n" + "\n".join(stored_duplicates))
+    stored_by_identity = {row.identity: row for row in stored_rows}
+    merged: list[ComplexityBaselineRow] = []
+    for live in live_rows:
+        stored = stored_by_identity.get(live.identity)
+        if stored is None:
+            if reason is None:
+                raise ScanError("--reason is required for a new baseline row")
+            merged.append(ComplexityBaselineRow(live.file, live.code, live.qualified_symbol, live.metric, today.isoformat(), (ComplexityHistoryEntry(today.isoformat(), live.metric),), reason=reason))
+            continue
+        history = stored.history
+        next_reason = stored.reason
+        if live.metric > stored.metric:
+            if reason is None:
+                raise ScanError("--reason is required for a metric increase")
+            history = (*history, ComplexityHistoryEntry(today.isoformat(), live.metric))
+            next_reason = reason
+        merged.append(ComplexityBaselineRow(live.file, live.code, live.qualified_symbol, live.metric, stored.added_at, history, stored.source_issue, next_reason, stored.operator_override))
+    return sorted(merged, key=lambda row: row.identity)
+
+
+def complexity_regressions(
+    *, live_rows: Sequence[ComplexityLiveRow], baseline_rows: Sequence[ComplexityBaselineRow]
+) -> list[str]:
+    """Return new identities and metric growth against typed baseline rows."""
+    baseline = {row.identity: row.metric for row in baseline_rows}
+    failures: list[str] = []
+    for row in live_rows:
+        previous = baseline.get(row.identity)
+        label = f"{row.file}:{row.qualified_symbol} {row.code}"
+        if previous is None:
+            failures.append(f"{label} (new)")
+        elif row.metric > previous:
+            failures.append(f"{label} metric {row.metric} > baseline {previous}")
+    return failures
+
+
+def complexity_history_events(
+    rows: Sequence[ComplexityBaselineRow], *, legacy_start: int = 0
+) -> dict[tuple[str, str], list[ComplexityHistoryEvent]]:
+    """Group deterministic metric-growth events for repeat-bump consumers."""
+    grouped: dict[tuple[str, str], list[ComplexityHistoryEvent]] = {}
+    for row in rows:
+        start = legacy_start if row.added_at == "legacy" else 1
+        for history_index, item in enumerate(row.history[start:], start=start):
+            event = ComplexityHistoryEvent(date.fromisoformat(item.date), row, history_index, item.metric)
+            grouped.setdefault((row.file, row.qualified_symbol), []).append(event)
+    for events in grouped.values():
+        events.sort(key=lambda event: (event.event_date, *event.record.identity, event.history_index))
+    return grouped
 
 
 # These intentionally-small schemas cover lints whose identities do not fit the
