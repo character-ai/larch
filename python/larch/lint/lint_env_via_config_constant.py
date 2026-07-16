@@ -10,11 +10,10 @@ exemption or an inline pragma.
 
 from __future__ import annotations
 
-import argparse
 import ast
-import json
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
@@ -24,13 +23,18 @@ from larch.lint.engine import (
     EXIT_ERROR,
     Finding as EngineFinding,
     LintRule,
+    RuleCli,
     SourceFile,
+    has_inline_pragma,
     is_exempt_python_source,
+    load_json_array,
     normalize_python_file_path,
-    ordered_ast_child_nodes,
-    qualified_symbol,
+    parse_lint_argv,
     run_rule,
+    scan_python_file,
+    walk_scopes,
 )
+from larch.lint.engine import BaselineError
 
 RULE_ID = "env-via-config-constant"
 SUPPRESSION_TOKEN = "lint-env-via-config-constant"
@@ -52,10 +56,6 @@ class Exemption(TypedDict):
     reason: str
     env_name: NotRequired[str]
     constant: NotRequired[str]
-
-
-class BaselineError(ValueError):
-    """Raised when a baseline, exemption, or config file cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -211,73 +211,50 @@ def _collect_scope(
     env_constants: dict[str, str],
     findings: list[Finding],
 ) -> None:
-    occurrence = 0
-    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
+    def enter_scope(symbol: str) -> Callable[[ast.AST], None]:
+        occurrence = 0
 
-    def walk(node: ast.AST) -> None:
-        nonlocal occurrence
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _collect_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                env_constants=env_constants,
-                findings=findings,
-            )
-            return
-        if isinstance(node, ast.ClassDef):
-            _collect_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                env_constants=env_constants,
-                findings=findings,
-            )
-            return
-        access = _env_access(node)
-        if access is not None:
+        def handle(node: ast.AST) -> None:
+            nonlocal occurrence
+            access = _env_access(node)
+            if access is None:
+                return
             env_name, access_kind = access
             constant = env_constants.get(env_name)
-            if constant is not None and not env_name.endswith("_SH"):
-                occurrence += 1
-                lineno = getattr(node, "lineno", 0)
-                findings.append(
-                    Finding(
-                        file=normalized_file,
-                        qualified_symbol=symbol,
-                        env_name=env_name,
-                        constant=constant,
-                        access=access_kind,
-                        occurrence=occurrence,
-                        lineno=lineno if isinstance(lineno, int) else 0,
-                    )
+            if constant is None or env_name.endswith("_SH"):
+                return
+            occurrence += 1
+            lineno = getattr(node, "lineno", 0)
+            findings.append(
+                Finding(
+                    file=normalized_file,
+                    qualified_symbol=symbol,
+                    env_name=env_name,
+                    constant=constant,
+                    access=access_kind,
+                    occurrence=occurrence,
+                    lineno=lineno if isinstance(lineno, int) else 0,
                 )
-        for child in ordered_ast_child_nodes(node):
-            walk(child)
+            )
 
-    for statement in body:
-        walk(statement)
+        return handle
+
+    walk_scopes(body, prefix=prefix, module_symbol=MODULE_SYMBOL, enter_scope=enter_scope)
 
 
 def scan_file(path: Path, *, python_dir: Path, env_constants: dict[str, str]) -> list[Finding]:
     """Return all bare env literal findings for one source file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    findings: list[Finding] = []
-    _collect_scope(
-        tree.body,
-        prefix=(),
-        normalized_file=path.relative_to(python_dir).as_posix(),
-        env_constants=env_constants,
-        findings=findings,
+    return scan_python_file(
+        path,
+        python_dir=python_dir,
+        collect=lambda tree, normalized_file, findings: _collect_scope(
+            tree.body,
+            prefix=(),
+            normalized_file=normalized_file,
+            env_constants=env_constants,
+            findings=findings,
+        ),
     )
-    return findings
 
 
 def findings_from_source(
@@ -335,17 +312,7 @@ def _validate_exemption(item: object, *, index: int, source: Path) -> Exemption:
 
 def load_exemptions(path: Path) -> list[Exemption]:
     """Load optional env exemptions. Missing file means no exemptions."""
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read exemptions: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: exemptions must be a top-level JSON array")
-    items = cast("list[object]", data)
+    items = load_json_array(path, label="exemptions")
     return [
         _validate_exemption(item, index=index, source=path)
         for index, item in enumerate(items)
@@ -367,11 +334,12 @@ def _exemption_matches(*, finding: Finding, exemption: Exemption) -> bool:
 
 
 def _has_inline_pragma(finding: Finding, *, lines: tuple[str, ...]) -> bool:
-    index = finding.lineno - 1
-    if 0 <= index < len(lines) and PRAGMA_RE.search(lines[index]):
-        return True
-    previous = index - 1
-    return 0 <= previous < len(lines) and STANDALONE_PRAGMA_RE.match(lines[previous]) is not None
+    return has_inline_pragma(
+        finding.lineno,
+        lines,
+        pragma_re=PRAGMA_RE,
+        standalone_pragma_re=STANDALONE_PRAGMA_RE,
+    )
 
 
 def to_engine_finding(finding: Finding) -> EngineFinding:
@@ -446,46 +414,26 @@ def build_rule(root: Path) -> LintRule:
     )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint env-via-config-constant", description=__doc__
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from live scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason for live findings that have no preserved baseline reason.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(
+    prog="cli.py lint env-via-config-constant",
+    description=__doc__,
+    baseline_filename=BASELINE_FILENAME,
+    error_label="lint-env-via-config-constant",
+    scoped_paths=None,
+    strict_stale=False,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint env-via-config-constant``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = parse_lint_argv(argv if argv is not None else sys.argv[1:], cli=CLI)
     if parsed is None:
         return EXIT_ERROR
     root = Path(str(parsed.root)).resolve()
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-env-via-config-constant: --initial-reason must be non-empty", file=sys.stderr)
-        return EXIT_ERROR
     try:
         rule = build_rule(root)
     except BaselineError as exc:
-        print(f"lint-env-via-config-constant: {exc}", file=sys.stderr)
+        print(f"{CLI.error_label}: {exc}", file=sys.stderr)
         return EXIT_ERROR
     return run_rule(
         rule,
@@ -493,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         proc.ProcRunner(),
         baseline_path=root / "python" / BASELINE_FILENAME,
         write_baseline=bool(parsed.write),
-        initial_reason=None if initial_reason is None else initial_reason.strip(),
+        initial_reason=cast("str | None", parsed.initial_reason),
         strict_stale=False,
     )
 

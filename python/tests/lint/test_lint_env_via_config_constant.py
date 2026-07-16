@@ -1,22 +1,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from larch.lint import lint_env_via_config_constant as levcc
-
-
-def _git_init(root: Path) -> None:
-    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
-    _ = subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
-    _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-    _ = subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture", "--allow-empty"], cwd=root, check=True
-    )
+from tests.support.lint_repo import init_repo
 
 
 def _record(
@@ -75,7 +65,7 @@ def _write_project(
         _ = (python_dir / levcc.EXEMPTIONS_FILENAME).write_text(
             json.dumps(exemptions), encoding="utf-8"
         )
-    _git_init(root)
+    init_repo(root)
 
 
 def _source(body: str) -> str:
@@ -294,7 +284,7 @@ def test_initial_reason_bootstrap_succeeds_when_baseline_absent(tmp_path: Path) 
     _ = (python_dir / "mod.py").write_text(
         _source("    os.environ.get('LARCH_TOKEN_SESSION_ID')\n"), encoding="utf-8"
     )
-    _git_init(tmp_path)
+    init_repo(tmp_path)
 
     assert levcc.main([
         "--root",

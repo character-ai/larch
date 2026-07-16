@@ -10,7 +10,6 @@ Existing deliberate uses are grandfathered in
 
 from __future__ import annotations
 
-import argparse
 import ast
 import io
 import json
@@ -21,20 +20,19 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from larch.core import config
 from larch.core import proc
 from larch.issue import title_match
 from larch.lint.engine import (
-    EXIT_ERROR,
     Finding as EngineFinding,
     LintRule,
+    RuleCli,
     SourceFile,
     is_exempt_python_source,
     ordered_ast_child_nodes,
     qualified_symbol,
-    run_rule,
+    run_rule_cli,
 )
 
 RULE_ID = "lifecycle-prefix-literal"
@@ -533,50 +531,23 @@ RULE = LintRule(
 )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint lifecycle-prefix-literal", description=__doc__
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from live AST scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason used for live findings without preserved baseline reasons.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(
+    prog="cli.py lint lifecycle-prefix-literal",
+    description=__doc__,
+    baseline_filename=BASELINE_FILENAME,
+    error_label="lint-lifecycle-prefix-literal",
+    scoped_paths=None,
+    strict_stale=False,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint lifecycle-prefix-literal``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return EXIT_ERROR
-    root = Path(str(parsed.root)).resolve()
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-lifecycle-prefix-literal: --initial-reason must be non-empty", file=sys.stderr)
-        return EXIT_ERROR
-    return run_rule(
-        RULE,
-        root,
-        proc.ProcRunner(),
-        baseline_path=root / "python" / BASELINE_FILENAME,
-        write_baseline=bool(parsed.write),
-        initial_reason=None if initial_reason is None else initial_reason.strip(),
-        strict_stale=False,
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        cli=CLI,
+        runner=proc.ProcRunner(),
+        rule=RULE,
     )
 
 

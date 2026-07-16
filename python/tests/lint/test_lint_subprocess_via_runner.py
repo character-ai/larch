@@ -1,22 +1,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from larch.lint import lint_subprocess_via_runner as lsvr
-
-
-def _git_init(root: Path) -> None:
-    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
-    _ = subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
-    _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-    _ = subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture", "--allow-empty"], cwd=root, check=True
-    )
+from tests.support.lint_repo import init_repo
 
 
 def _record(
@@ -56,7 +46,7 @@ def _write_project(
         _ = (python_dir / lsvr.EXEMPTIONS_FILENAME).write_text(
             json.dumps(exemptions), encoding="utf-8"
         )
-    _git_init(root)
+    init_repo(root)
 
 
 def _source(body: str) -> str:
@@ -243,7 +233,7 @@ def test_absent_baseline_bootstrap_succeeds(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     python_dir.mkdir()
     _ = (python_dir / "mod.py").write_text(_source("    subprocess.run(['true'])\n"), encoding="utf-8")
-    _git_init(tmp_path)
+    init_repo(tmp_path)
 
     assert lsvr.main([
         "--root",
@@ -296,7 +286,7 @@ def test_malformed_json_and_syntax_error_conventions(tmp_path: Path) -> None:
     python_dir.mkdir()
     _ = (python_dir / "bad_syntax.py").write_text("def nope(:\n", encoding="utf-8")
     _ = (python_dir / lsvr.BASELINE_FILENAME).write_text("[]", encoding="utf-8")
-    _git_init(tmp_path)
+    init_repo(tmp_path)
     assert lsvr.main(["--root", str(tmp_path)]) == 0
     _ = (python_dir / lsvr.BASELINE_FILENAME).write_text("{", encoding="utf-8")
     assert lsvr.main(["--root", str(tmp_path)]) == 2

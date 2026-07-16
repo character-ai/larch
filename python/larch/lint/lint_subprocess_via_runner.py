@@ -11,11 +11,10 @@ inline pragma.
 
 from __future__ import annotations
 
-import argparse
 import ast
-import json
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
@@ -25,12 +24,17 @@ from larch.lint.engine import (
     EXIT_ERROR,
     Finding as EngineFinding,
     LintRule,
+    RuleCli,
     SourceFile,
+    has_inline_pragma,
     is_exempt_python_source,
-    ordered_ast_child_nodes,
-    qualified_symbol,
+    load_json_array,
+    parse_lint_argv,
     run_rule,
+    scan_python_file,
+    walk_scopes,
 )
+from larch.lint.engine import BaselineError
 
 RULE_ID = "subprocess-via-runner"
 GH_RULE_ID = "subprocess-via-runner-gh"
@@ -53,10 +57,6 @@ PYTHON_PREFIX = "python/"
 class Exemption(TypedDict):
     file: str
     reason: str
-
-
-class BaselineError(ValueError):
-    """Raised when a baseline or exemption file cannot be trusted."""
 
 
 @dataclass(frozen=True)
@@ -141,29 +141,14 @@ def _collect_scope(
     normalized_file: str,
     findings: list[Finding],
 ) -> None:
-    occurrence = 0
-    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
+    def enter_scope(symbol: str) -> Callable[[ast.AST], None]:
+        occurrence = 0
 
-    def walk(node: ast.AST) -> None:
-        nonlocal occurrence
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _collect_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                findings=findings,
-            )
-            return
-        if isinstance(node, ast.ClassDef):
-            _collect_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                findings=findings,
-            )
-            return
-        callee = _subprocess_callee(node)
-        if callee is not None:
+        def handle(node: ast.AST) -> None:
+            nonlocal occurrence
+            callee = _subprocess_callee(node)
+            if callee is None:
+                return
             occurrence += 1
             lineno = getattr(node, "lineno", 0)
             findings.append(
@@ -175,11 +160,10 @@ def _collect_scope(
                     lineno=lineno if isinstance(lineno, int) else 0,
                 )
             )
-        for child in ordered_ast_child_nodes(node):
-            walk(child)
 
-    for statement in body:
-        walk(statement)
+        return handle
+
+    walk_scopes(body, prefix=prefix, module_symbol=MODULE_SYMBOL, enter_scope=enter_scope)
 
 
 def _collect_gh_scope(
@@ -189,28 +173,13 @@ def _collect_gh_scope(
     normalized_file: str,
     findings: list[GhFinding],
 ) -> None:
-    occurrence = 0
-    symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)
+    def enter_scope(symbol: str) -> Callable[[ast.AST], None]:
+        occurrence = 0
 
-    def walk(node: ast.AST) -> None:
-        nonlocal occurrence
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _collect_gh_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                findings=findings,
-            )
-            return
-        if isinstance(node, ast.ClassDef):
-            _collect_gh_scope(
-                node.body,
-                prefix=(*prefix, node.name),
-                normalized_file=normalized_file,
-                findings=findings,
-            )
-            return
-        if _runner_run_gh_call(node):
+        def handle(node: ast.AST) -> None:
+            nonlocal occurrence
+            if not _runner_run_gh_call(node):
+                return
             occurrence += 1
             lineno = getattr(node, "lineno", 0)
             findings.append(
@@ -221,51 +190,38 @@ def _collect_gh_scope(
                     lineno=lineno if isinstance(lineno, int) else 0,
                 )
             )
-        for child in ordered_ast_child_nodes(node):
-            walk(child)
 
-    for statement in body:
-        walk(statement)
+        return handle
+
+    walk_scopes(body, prefix=prefix, module_symbol=MODULE_SYMBOL, enter_scope=enter_scope)
 
 
 def scan_gh_file(path: Path, *, python_dir: Path) -> list[GhFinding]:
     """Return direct runner.run(["gh", ...]) findings for one source file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    findings: list[GhFinding] = []
-    _collect_gh_scope(
-        tree.body,
-        prefix=(),
-        normalized_file=path.relative_to(python_dir).as_posix(),
-        findings=findings,
+    return scan_python_file(
+        path,
+        python_dir=python_dir,
+        collect=lambda tree, normalized_file, findings: _collect_gh_scope(
+            tree.body,
+            prefix=(),
+            normalized_file=normalized_file,
+            findings=findings,
+        ),
     )
-    return findings
 
 
 def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
     """Return all direct subprocess findings for one source file."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    findings: list[Finding] = []
-    _collect_scope(
-        tree.body,
-        prefix=(),
-        normalized_file=path.relative_to(python_dir).as_posix(),
-        findings=findings,
+    return scan_python_file(
+        path,
+        python_dir=python_dir,
+        collect=lambda tree, normalized_file, findings: _collect_scope(
+            tree.body,
+            prefix=(),
+            normalized_file=normalized_file,
+            findings=findings,
+        ),
     )
-    return findings
 
 
 def findings_from_source(source: str, *, normalized_file: str) -> list[Finding]:
@@ -315,17 +271,7 @@ def _validate_exemption(item: object, *, index: int, source: Path) -> Exemption:
 
 def load_exemptions(path: Path) -> list[Exemption]:
     """Load optional file-level exemptions. Missing file means no exemptions."""
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read exemptions: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: exemptions must be a top-level JSON array")
-    items = cast("list[object]", data)
+    items = load_json_array(path, label="exemptions")
     return [
         _validate_exemption(item, index=index, source=path)
         for index, item in enumerate(items)
@@ -333,11 +279,12 @@ def load_exemptions(path: Path) -> list[Exemption]:
 
 
 def _has_inline_pragma(lineno: int, *, lines: tuple[str, ...]) -> bool:
-    index = lineno - 1
-    if 0 <= index < len(lines) and PRAGMA_RE.search(lines[index]):
-        return True
-    previous = index - 1
-    return 0 <= previous < len(lines) and STANDALONE_PRAGMA_RE.match(lines[previous]) is not None
+    return has_inline_pragma(
+        lineno,
+        lines,
+        pragma_re=PRAGMA_RE,
+        standalone_pragma_re=STANDALONE_PRAGMA_RE,
+    )
 
 
 def _to_engine_finding(finding: Finding) -> EngineFinding:
@@ -432,51 +379,31 @@ def build_rules(root: Path) -> tuple[LintRule, LintRule]:
     return rule, gh_rule
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint subprocess-via-runner", description=__doc__
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from live scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason used for live findings without preserved baseline reasons.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(
+    prog="cli.py lint subprocess-via-runner",
+    description=__doc__,
+    baseline_filename=BASELINE_FILENAME,
+    error_label="lint-subprocess-via-runner",
+    scoped_paths=None,
+    strict_stale=False,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry registered as ``python3 python/cli.py lint subprocess-via-runner``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = parse_lint_argv(argv if argv is not None else sys.argv[1:], cli=CLI)
     if parsed is None:
         return EXIT_ERROR
     root = Path(str(parsed.root)).resolve()
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-subprocess-via-runner: --initial-reason must be non-empty", file=sys.stderr)
-        return EXIT_ERROR
     try:
         rule, gh_rule = build_rules(root)
     except BaselineError as exc:
-        print(f"lint-subprocess-via-runner: {exc}", file=sys.stderr)
+        print(f"{CLI.error_label}: {exc}", file=sys.stderr)
         return EXIT_ERROR
     baseline_path = root / "python" / BASELINE_FILENAME
     gh_baseline_path = root / "python" / GH_BASELINE_FILENAME
     write_baseline = bool(parsed.write)
-    seed = None if initial_reason is None else initial_reason.strip()
+    seed = cast("str | None", parsed.initial_reason)
     rc = run_rule(
         rule,
         root,

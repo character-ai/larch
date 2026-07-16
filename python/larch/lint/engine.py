@@ -43,6 +43,7 @@ OccurrencePatternField = str
 OccurrenceFields = tuple[str, ...]
 SourceFilter = Callable[[str], bool]
 DuplicateKey = TypeVar("DuplicateKey", bound=Hashable)
+T = TypeVar("T")
 _MARKDOWN_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^`~]*)$")
 
 
@@ -91,6 +92,10 @@ class StrictStaleError(ScanError):
     def __init__(self, warnings: Sequence[str]) -> None:
         super().__init__("strict_stale rejected stale baseline rows")
         self.warnings = warnings
+
+
+class BaselineError(ValueError):
+    """A baseline, exemption, or configuration file cannot be trusted."""
 
 
 @dataclass
@@ -252,6 +257,120 @@ def ordered_ast_child_nodes(node: ast.AST) -> list[ast.AST]:
     return [child for _, child in indexed]
 
 
+def read_python_source(path: Path) -> tuple[str, ast.Module] | None:
+    """Read and parse a Python file, returning ``(source, tree)`` or ``None``.
+
+    Returns ``None`` when the file cannot be read or parsed, so callers can treat
+    both as "no findings" without duplicating the read/parse boilerplate.
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    return source, tree
+
+
+def scan_python_file(
+    path: Path,
+    *,
+    python_dir: Path,
+    collect: Callable[[ast.Module, str, list[T]], None],
+) -> list[T]:
+    """Read and parse one Python file, then append findings via ``collect``.
+
+    The callback receives the parsed module, the path relative to ``python_dir``
+    (POSIX), and a fresh findings list to mutate; this collapses the shared
+    read/parse/collect scaffolding used by per-module ``scan_file`` entrypoints.
+    """
+    parsed = read_python_source(path)
+    if parsed is None:
+        return []
+    _source, tree = parsed
+    findings: list[T] = []
+    collect(tree, path.relative_to(python_dir).as_posix(), findings)
+    return findings
+
+
+def has_inline_pragma(
+    lineno: int,
+    lines: Sequence[str],
+    *,
+    pragma_re: re.Pattern[str],
+    standalone_pragma_re: re.Pattern[str],
+) -> bool:
+    """Return whether a same-line or preceding standalone pragma suppresses ``lineno``."""
+    index = lineno - 1
+    if 0 <= index < len(lines) and pragma_re.search(lines[index]):
+        return True
+    previous = index - 1
+    return 0 <= previous < len(lines) and standalone_pragma_re.match(lines[previous]) is not None
+
+
+def walk_scopes(
+    body: Sequence[ast.stmt],
+    *,
+    prefix: tuple[str, ...],
+    module_symbol: str,
+    enter_scope: Callable[[str], Callable[[ast.AST], None]],
+) -> None:
+    """Walk AST scopes, invoking a per-scope handler for each non-scope node.
+
+    ``enter_scope(symbol)`` returns a fresh node handler that owns one scope's
+    occurrence counter; ``FunctionDef`` / ``AsyncFunctionDef`` / ``ClassDef``
+    bodies recurse into a nested scope with an extended prefix (and thus a fresh
+    handler), so occurrence numbering resets per scope just like a per-scope
+    ``_collect_scope`` recursion. This is the shared scope-walk skeleton used by
+    per-module occurrence collectors.
+    """
+    handle = enter_scope(qualified_symbol(prefix, module_symbol=module_symbol))
+
+    def walk(node: ast.AST) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            walk_scopes(
+                node.body,
+                prefix=(*prefix, node.name),
+                module_symbol=module_symbol,
+                enter_scope=enter_scope,
+            )
+            return
+        if isinstance(node, ast.ClassDef):
+            walk_scopes(
+                node.body,
+                prefix=(*prefix, node.name),
+                module_symbol=module_symbol,
+                enter_scope=enter_scope,
+            )
+            return
+        handle(node)
+        for child in ordered_ast_child_nodes(node):
+            walk(child)
+
+    for statement in body:
+        walk(statement)
+
+
+def load_json_array(path: Path, *, label: str) -> list[object]:
+    """Load a top-level JSON array from ``path``, or ``[]`` when the file is absent.
+
+    Raises :class:`BaselineError` when the file cannot be read, is not valid
+    JSON, or is not a top-level array.
+    """
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+        data = json.loads(text)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BaselineError(f"{path}: cannot load {label}: {exc}") from exc
+    if not isinstance(data, list):
+        raise BaselineError(f"{path}: {label} must be a top-level JSON array")
+    return cast("list[object]", data)
+
+
 def first_duplicate(keys: Iterable[DuplicateKey]) -> DuplicateKey | None:
     """Return the first repeated stable identity, or ``None`` when unique."""
     seen: set[DuplicateKey] = set()
@@ -275,18 +394,18 @@ class RuleCli:
     strict_stale: bool = True
 
 
-def run_rule_cli(
+def parse_lint_argv(
     argv: Sequence[str],
     *,
-    rule: LintRule,
     cli: RuleCli,
-    runner: Runner,
-) -> int:
-    """Parse the standard lint argv and run an engine rule.
+) -> argparse.Namespace | None:
+    """Parse the standard lint argv and validate --initial-reason.
 
-    The shared contract keeps every rule's root, baseline, strict-stale, and
-    reason validation identical. Rules with bespoke positional arguments keep
-    their own entrypoint and still call :func:`run_rule` directly.
+    Shared by :func:`run_rule_cli` and by rules whose ``main`` needs bespoke
+    multi-rule or factory-driven composition. Returns the parsed namespace with
+    ``initial_reason`` normalized to a non-empty stripped string (or ``None``),
+    or ``None`` after printing a diagnostic when argv is invalid or
+    ``--initial-reason`` is empty.
     """
     parser = argparse.ArgumentParser(prog=cli.prog, description=cli.description)
     _ = parser.add_argument(
@@ -309,20 +428,46 @@ def run_rule_cli(
     except SystemExit as exc:
         if exc.code == 0:
             raise
-        return EXIT_ERROR
+        return None
 
-    root = Path(str(parsed.root)).resolve()
-    if cli.baseline_filename is None:
-        return run_rule(rule, root, runner, paths=cli.scoped_paths)
-
-    initial_reason = parsed.initial_reason
-    if initial_reason is not None and not str(initial_reason).strip():
+    initial_reason = getattr(parsed, "initial_reason", None)
+    if initial_reason is None or cli.baseline_filename is None:
+        return parsed
+    text = str(initial_reason).strip()
+    if not text:
         print(
             f"{cli.error_label or cli.prog}: --initial-reason must be non-empty",
             file=sys.stderr,
         )
+        return None
+    parsed.initial_reason = text
+    return parsed
+
+
+def run_rule_cli(
+    argv: Sequence[str],
+    *,
+    rule: LintRule,
+    cli: RuleCli,
+    runner: Runner,
+) -> int:
+    """Parse the standard lint argv and run an engine rule.
+
+    The shared contract keeps every rule's root, baseline, strict-stale, and
+    reason validation identical. Rules whose ``main`` closes over repo state
+    (config constants, module resolvers), runs multiple rules, or needs bespoke
+    positional arguments call :func:`parse_lint_argv` and drive :func:`run_rule`
+    directly.
+    """
+    parsed = parse_lint_argv(argv, cli=cli)
+    if parsed is None:
         return EXIT_ERROR
+    root = Path(str(parsed.root)).resolve()
+    if cli.baseline_filename is None:
+        return run_rule(rule, root, runner, paths=cli.scoped_paths)
+
     write_baseline = bool(parsed.write)
+    initial_reason = cast("str | None", parsed.initial_reason)
     return run_rule(
         rule,
         root,
@@ -330,7 +475,7 @@ def run_rule_cli(
         paths=None if write_baseline else cli.scoped_paths,
         baseline_path=root / "python" / cli.baseline_filename,
         write_baseline=write_baseline,
-        initial_reason=None if initial_reason is None else str(initial_reason),
+        initial_reason=initial_reason,
         strict_stale=cli.strict_stale and not write_baseline,
     )
 
