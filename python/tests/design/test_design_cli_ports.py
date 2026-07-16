@@ -10,6 +10,7 @@ EXPECTED = {
     for verb, module, func in (
         ("step2b-drafter", "larch.design.design_step2b", "step2b_drafter_main"),
         ("step2b-postplan", "larch.design.design_step2b", "step2b_postplan_main"),
+        ("step35-settle", "larch.design.design_settle", "step35_settle_main"),
         ("step2b5", "larch.design.design_step5c", "step2b5_main"),
         ("step5b-prepare", "larch.design.design_step5b", "step5b_prepare_main"),
         ("step5b-annotate", "larch.design.design_step5b", "step5b_annotate_main"),

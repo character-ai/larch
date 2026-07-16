@@ -1281,13 +1281,6 @@
     "reason": "grandfathered existing debt in moved larch.review modules"
   },
   {
-    "file": "larch/review/plan_review.py",
-    "qualified_symbol": "step35_settle",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
     "file": "larch/review/plan_review_common.py",
     "qualified_symbol": "_run_command",
     "callee": "run",

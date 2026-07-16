@@ -814,6 +814,16 @@ def test_design_run_launcher_maps_retired_step2_wrappers_to_cli_with_tail(tmp_pa
     assert postplan.returncode == 0, postplan.stderr
     assert "ARGV=design step2b-postplan --session-env-path" in postplan.stdout
     assert "--site gate-b --snapshot-original" in postplan.stdout
+    settle = subprocess.run(
+        [str(launcher), "design-step35-settle.sh", "--site", "gate-c"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert settle.returncode == 0, settle.stderr
+    assert "ARGV=design step35-settle --session-env-path" in settle.stdout
+    assert "--site gate-c" in settle.stdout
     validator = subprocess.run(
         [str(launcher), "design-step-validator-autofix.sh", "--validator-target-file", "target.md", "--validate-defect-count", "3"],
         text=True,
