@@ -604,6 +604,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "bash32"): ("larch.lint.lint_bash32", "main_entry", False),
     ("lint", "self-disarmable-gate"): ("larch.lint.lint_self_disarmable_gate", "main", False),
     ("lint", "unreachable-branch"): ("larch.lint.lint_unreachable_branch", "main", False),
+    ("lint", "status-routing-truthiness"): ("larch.lint.lint_status_routing_truthiness", "main", False),
     ("lint", "monkeypatch-facade-binding"): ("larch.lint.lint_monkeypatch_facade_binding", "main", False),
     ("lint", "env-via-config-constant"): ("larch.lint.lint_env_via_config_constant", "main", False),
     ("lint", "lifecycle-prefix-literal"): ("larch.lint.lint_lifecycle_prefix_literal", "main", False),

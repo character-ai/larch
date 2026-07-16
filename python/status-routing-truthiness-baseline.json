@@ -1,0 +1,310 @@
+[
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "qualified_symbol": "_append_implement_launch_failure",
+    "occurrence": 1,
+    "normalized_condition": "Name('verdict', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/calibration/difficulty_calibration.py",
+    "qualified_symbol": "_parse_jsonl_source",
+    "occurrence": 1,
+    "normalized_condition": "Name('outcome', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "qualified_symbol": "publish_core",
+    "occurrence": 1,
+    "normalized_condition": "Name('review_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "qualified_symbol": "publish_core",
+    "occurrence": 1,
+    "normalized_condition": "Name('upsert_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_step1.py",
+    "qualified_symbol": "_brainstorm_dirty_checkpoint",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_summary.py",
+    "qualified_symbol": "render_final_summary_main",
+    "occurrence": 1,
+    "normalized_condition": "Name('outcome', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "qualified_symbol": "failure_report_core.handle_compose_outcome",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "qualified_symbol": "failure_report_core.handle_compose_outcome",
+    "occurrence": 2,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "qualified_symbol": "failure_report_core.handle_compose_outcome",
+    "occurrence": 3,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/git/merge.py",
+    "qualified_symbol": "_ensure_head_matches_pr",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('state', Load()), 'merge_state_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/git/merge.py",
+    "qualified_symbol": "_ensure_head_matches_pr",
+    "occurrence": 2,
+    "normalized_condition": "Attribute(Name('state', Load()), 'merge_state_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/git/merge.py",
+    "qualified_symbol": "_retry_unknown",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('state', Load()), 'merge_state_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/git/merge.py",
+    "qualified_symbol": "merge_pr",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('state', Load()), 'merge_state_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/git/merge.py",
+    "qualified_symbol": "merge_pr",
+    "occurrence": 2,
+    "normalized_condition": "Attribute(Name('state', Load()), 'merge_state_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "qualified_symbol": "_coerce_status_failure",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('status', Load()), 'status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/_ground_truth.py",
+    "qualified_symbol": "_bind_ground_truth_prose",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('row', Load()), 'oos_panel_verdict', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/_ground_truth.py",
+    "qualified_symbol": "_design_markdown_verdict.bind_markdown_verdict",
+    "occurrence": 1,
+    "normalized_condition": "Name('jsonl_outcome', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/_ground_truth.py",
+    "qualified_symbol": "_ground_truth_oos_panel_verdict",
+    "occurrence": 1,
+    "normalized_condition": "Name('tally_result', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/_ground_truth.py",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('row', Load()), 'panel_verdict', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/analyze_bugs.py",
+    "qualified_symbol": "_final_verdict_with_tier",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('bundle', Load()), 'mechanical_verdict', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/analyze_bugs.py",
+    "qualified_symbol": "_final_verdict_with_tier",
+    "occurrence": 2,
+    "normalized_condition": "Attribute(Name('bundle', Load()), 'mechanical_verdict', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/issue/analyze_bugs.py",
+    "qualified_symbol": "_final_verdict_with_tier",
+    "occurrence": 1,
+    "normalized_condition": "Attribute(Name('record', Load()), 'triage_verdict', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/rendering/rendering.py",
+    "qualified_symbol": "render_lane",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/final_report.py",
+    "qualified_symbol": "_dynamic_archetypes_line",
+    "occurrence": 1,
+    "normalized_condition": "Name('coder_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/final_report.py",
+    "qualified_symbol": "_dynamic_archetypes_line",
+    "occurrence": 1,
+    "normalized_condition": "Name('round_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "qualified_symbol": "_classification_oos_split",
+    "occurrence": 1,
+    "normalized_condition": "Name('result', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "qualified_symbol": "_collector_substantive_failure_records",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "qualified_symbol": "_design_collector_field",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "qualified_symbol": "_parse_classification_tsv",
+    "occurrence": 1,
+    "normalized_condition": "Name('result', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "qualified_symbol": "_parse_tally_md",
+    "occurrence": 1,
+    "normalized_condition": "Name('result', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "step35",
+    "occurrence": 1,
+    "normalized_condition": "Name('step3_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "qualified_symbol": "_step3_next_action",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "qualified_symbol": "normalize_step3_status_main",
+    "occurrence": 1,
+    "normalized_condition": "Name('loop_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "qualified_symbol": "normalize_step3_status_main",
+    "occurrence": 1,
+    "normalized_condition": "Name('step3_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "qualified_symbol": "normalize_step3_status_main",
+    "occurrence": 2,
+    "normalized_condition": "Name('step3_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "qualified_symbol": "normalize_step3_status_main",
+    "occurrence": 3,
+    "normalized_condition": "Name('step3_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "qualified_symbol": "normalize_step3_status_main",
+    "occurrence": 4,
+    "normalized_condition": "Name('step3_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "step5",
+    "occurrence": 1,
+    "normalized_condition": "Name('gate_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "qualified_symbol": "_dispatch_voters_for_ballot",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "qualified_symbol": "_review_core_body",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "qualified_symbol": "dispatch_panel",
+    "occurrence": 1,
+    "normalized_condition": "Name('producer_status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "_parse_rate_ok",
+    "occurrence": 1,
+    "normalized_condition": "Name('status', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/state/_normalize.py",
+    "qualified_symbol": "normalized_outcome_values",
+    "occurrence": 1,
+    "normalized_condition": "Name('merge_result', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  },
+  {
+    "file": "larch/state/_normalize.py",
+    "qualified_symbol": "normalized_outcome_values",
+    "occurrence": 2,
+    "normalized_condition": "Name('merge_result', Load())",
+    "reason": "pre-existing status truthiness before the status-routing-truthiness ratchet"
+  }
+]
