@@ -26,6 +26,7 @@ from typing import Literal, TypeAlias, TypeVar, cast
 
 from larch import io as larch_io
 from larch.core.proc import CommandResult, Runner
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
@@ -694,10 +695,7 @@ def _validate_repo_root(root: Path, runner: Runner) -> Path:
     if not root.is_dir():
         raise ScanError(f"repository root is not a directory: {root}")
     resolved = root.resolve()
-    result = runner.run(
-        ("git", "rev-parse", "--show-toplevel"),
-        cwd=str(resolved),
-    )
+    result = repo_root_probe(runner=runner, options=RepoRootProbeOptions(runner_cwd=resolved))
     if result.returncode != 0:
         raise ScanError(
             f"git rev-parse --show-toplevel failed: {_bounded_git_detail(result)}"

@@ -32,6 +32,8 @@ from pathlib import Path
 from types import MethodType
 from typing import Any, Final, TextIO, cast
 
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+
 MESSAGE_ID = "R0801"
 # pylint ``Run`` returns ``linter.msg_status`` when score is below fail-under;
 # R0801 sets the refactor bit (8).
@@ -478,7 +480,11 @@ def run_differential_duplicate_code(
 
 
 def _repository_root(path: Path) -> Path:
-    return Path(_git_text(path, "rev-parse", "--show-toplevel")).resolve()
+    result = repo_root_probe(options=RepoRootProbeOptions(git_cwd=path))
+    if result.returncode != 0 or not result.stdout.strip():
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise DuplicateCodeError(f"git rev-parse --show-toplevel failed: {detail}")
+    return Path(result.stdout.strip()).resolve()
 
 
 def _validated_revision(revision: str) -> str:

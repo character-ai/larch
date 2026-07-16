@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch.core import architectural_guidelines, config
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.core.run_context import RunContext
 from larch.report import exec_issue_detail
 from larch.report import tokens
@@ -793,12 +793,7 @@ def _now_utc() -> str:
 
 
 def _resolve_consumer_repo_root(cwd: str | None) -> Path:
-    result = subprocess.run(
-        ["git", "-C", cwd or str(Path.cwd()), "rev-parse", "--show-toplevel"],  # noqa: S607
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    result = repo_root_probe(options=RepoRootProbeOptions(git_cwd=cwd or Path.cwd()))
     if result.returncode != 0 or not result.stdout.strip():
         raise ShipError("cwd is outside a git worktree")
     return Path(result.stdout.strip())

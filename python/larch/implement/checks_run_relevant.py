@@ -25,6 +25,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import run_log_corpus
 from larch.report.tokens import (
     CHECKS_DIGEST_SIZE_BASENAME,
@@ -463,7 +464,7 @@ def _resolve_repo_root(*, runner: Runner, repo_root: str) -> Path | None:
     candidate = Path(repo_root) if repo_root else Path.cwd()
     if not candidate.is_dir() or candidate.is_symlink():
         return None
-    result = runner.run(["git", "rev-parse", "--show-toplevel"], cwd=str(candidate))
+    result = repo_root_probe(runner=runner, options=RepoRootProbeOptions(runner_cwd=candidate))
     if result.returncode != 0:
         return None
     raw = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
@@ -1479,7 +1480,7 @@ def default_repo_root() -> str:
     raw = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
     if raw:
         return raw
-    result = proc.run(["git", "rev-parse", "--show-toplevel"], cwd=str(Path.cwd()))
+    result = repo_root_probe(options=RepoRootProbeOptions(runner_cwd=Path.cwd()))
     return result.stdout.strip() if result.returncode == 0 else ""
 
 

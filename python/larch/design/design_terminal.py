@@ -1,7 +1,6 @@
 """Phase driver result-env helpers, terminal state, failure report, and final summary."""
 # pylint: disable=cyclic-import
 # pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false
-# ruff: noqa: S607
 
 from __future__ import annotations
 
@@ -21,6 +20,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
+from larch.core.repo_roots import repo_root_probe
 from larch.git import gh
 from larch.core.ctx import Ctx
 from larch.issue import title_match
@@ -466,7 +466,7 @@ def _resolve_working_tree_root(design_tmpdir: Path) -> str:
     root = _read_env_value(path=source_env, key="REPO_ROOT", default="")
     if root:
         return root
-    proc_out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    proc_out = repo_root_probe()
     return proc_out.stdout.strip() if proc_out.returncode == 0 else ""
 
 

@@ -18,6 +18,7 @@ from larch import io as larch_io
 from larch.git import gh
 from larch.core import proc
 from larch.core import redact
+from larch.core.repo_roots import repo_root_probe
 from larch.report import progress_file
 from larch.state.session_env import validate_design_tmpdir
 
@@ -312,7 +313,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
     if not _RUN_RE.fullmatch(run_id):
         return _load_fail_clear(issue=issue, repo=repo, error="invalid-run-id")
 
-    repo_top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
+    repo_top = repo_root_probe().stdout.strip()
     if not repo_top:
         _emit([("LOAD_OK", "false"), ("ERROR", "not-git-worktree")])
         return 0

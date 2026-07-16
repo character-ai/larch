@@ -15,7 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
-from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from collections.abc import Callable
 
 from larch.core.architectural_guidelines import (
@@ -334,7 +334,7 @@ def _read_state_kv(*, state_file: str | None, key: str) -> str:
 def _path_is_repo_related(path: Path) -> bool:
     candidate = path.resolve(strict=False)
     roots: list[Path] = []
-    active = proc.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"])
+    active = repo_root_probe(options=RepoRootProbeOptions(git_cwd=Path.cwd()))
     if active.returncode == 0 and active.stdout.strip():
         roots.append(Path(active.stdout.strip()).resolve(strict=False))
     roots.append(_REPO_ROOT.resolve(strict=False))

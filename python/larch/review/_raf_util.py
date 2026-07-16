@@ -17,7 +17,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
-from larch.core.repo_roots import plugin_root as _plugin_root
+from larch.core.repo_roots import RepoRootProbeOptions, plugin_root as _plugin_root, repo_root_probe
 from larch.review.review_types import parse_findings, read_finding_text
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -214,11 +214,11 @@ def _resolve_run_id(*, session_env_path: Path, implement_tmpdir: Path, session_i
 def _step5_repo_root() -> str:
     raw = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
     if raw:
-        result = _run(["git", "-C", raw, "rev-parse", "--show-toplevel"])
+        result = repo_root_probe(run=_run, options=RepoRootProbeOptions(git_cwd=raw))
         top = result.stdout.strip()
         if result.returncode == 0 and top:
             return top
-    result = _run(["git", "rev-parse", "--show-toplevel"])
+    result = repo_root_probe(run=_run)
     return result.stdout.strip() if result.returncode == 0 else ""
 
 

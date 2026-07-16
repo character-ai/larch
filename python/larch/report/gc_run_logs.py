@@ -15,6 +15,7 @@ from pathlib import Path
 
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import repo_root_probe
 from larch.git import gh as gh_cli
 from larch.report import run_log_corpus
 
@@ -67,7 +68,7 @@ def _git(repo: Path | None, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _repo_root() -> Path | None:
-    result = _git(None, "rev-parse", "--show-toplevel")
+    result = repo_root_probe(run=_run)
     if result.returncode != 0:
         return None
     return Path(result.stdout.strip())

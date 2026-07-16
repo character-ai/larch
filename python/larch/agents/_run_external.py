@@ -24,6 +24,7 @@ from larch.core.ctx import Ctx
 from larch.core import logging_util
 from larch.core.env_file import read_env_file
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.core import redact
 from larch.core.proc import CommandResult
 
@@ -1024,11 +1025,7 @@ def _trust_config_arg(workdir: str) -> str:
 
 def _git_toplevel(path: str) -> str | None:
     try:
-        result = proc.run(
-            ["git", "-C", path, "rev-parse", "--show-toplevel"],
-            timeout=2,
-            check=False,
-        )
+        result = repo_root_probe(options=RepoRootProbeOptions(git_cwd=path, timeout=2))
     except (OSError, ValueError):
         return None
     if result.returncode != 0:

@@ -27,6 +27,7 @@ from larch.issue import issue_query
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import run_log_commit, run_log_manifest
 from larch.state import session_env
 from larch.issue import tracking_issue
@@ -148,7 +149,7 @@ def postbump_preflight(
     ctx: RunContext,
     cwd: str | None = None,
 ) -> PostbumpPreflight:
-    repo_root = runner.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+    repo_root = repo_root_probe(runner=runner, options=RepoRootProbeOptions(runner_cwd=cwd))
     if repo_root.returncode != 0:
         return PostbumpPreflight(ok=False, status="postbump-cwd-not-repo", detail="cwd is not in a repo")
     branch_result = runner.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=cwd)

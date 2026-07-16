@@ -14,6 +14,7 @@ from pathlib import Path
 
 from larch.core import proc
 from larch.core.redact import redact_outbound
+from larch.core.repo_roots import repo_root_probe
 from larch.core.retry import with_transient_retry
 
 OWNER_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
@@ -230,6 +231,13 @@ def remote_main_sha(url: str) -> str:
     return ""
 
 
+def _required_repo_root() -> str:
+    result = repo_root_probe()
+    if result.returncode != 0:
+        die(result.stderr.strip() or "git command failed")
+    return result.stdout.strip()
+
+
 def _live_worktree_paths() -> list[str]:
     worktrees = proc.run(["git", "worktree", "list", "--porcelain"])
     paths: list[str] = []
@@ -249,7 +257,7 @@ def _live_worktree_paths() -> list[str]:
     if current_path and not prunable:
         paths.append(current_path)
     if not paths:
-        paths = [git_stdout(["rev-parse", "--show-toplevel"])]
+        paths = [_required_repo_root()]
     return paths
 
 
@@ -309,7 +317,7 @@ def _gh_command(argv: list[str]) -> proc.CommandResult:
 
 
 def phase_preflight(ctx: SetupContext) -> None:
-    root = git_stdout(["rev-parse", "--show-toplevel"])
+    root = _required_repo_root()
     os.chdir(root)
     acquire_lock(ctx)
     if proc.run(["git", "show-ref", "--verify", "--quiet", "refs/heads/main"]).returncode != 0:

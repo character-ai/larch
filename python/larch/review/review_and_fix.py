@@ -25,6 +25,7 @@ from larch.calibration import difficulty
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import progress_report
 from larch.report import progress_file
 from larch.core import redact
@@ -219,10 +220,10 @@ def _commit_fixes_stage_all(message: str) -> int:
         return 0
     raw_project = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
     if raw_project:
-        _rr = _run(["git", "-C", raw_project, "rev-parse", "--show-toplevel"])
+        _rr = repo_root_probe(run=_run, options=RepoRootProbeOptions(git_cwd=raw_project))
         repo_root = _rr.stdout.strip() if _rr.returncode == 0 and _rr.stdout.strip() else ""
     else:
-        _rr = _run(["git", "rev-parse", "--show-toplevel"])
+        _rr = repo_root_probe(run=_run)
         repo_root = _rr.stdout.strip() if _rr.returncode == 0 else ""
     result = _run([
         sys.executable,

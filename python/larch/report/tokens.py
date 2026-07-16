@@ -22,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.git import gh
 from larch.errors import ShipError
 from larch.report import markdown_block
@@ -1473,7 +1474,7 @@ def _find_latest_claude_transcript(*, project_dir: Path, env_map: Mapping[str, s
 
 def _resolve_claude_source_from_project(env_map: Mapping[str, str]) -> dict[str, str]:
     try:
-        repo_root = proc.run(["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL, check=True).stdout.strip()
+        repo_root = repo_root_probe(options=RepoRootProbeOptions(check=True)).stdout.strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
     except (OSError, subprocess.SubprocessError):
         return {"STATUS": "unavailable", "REASON": "not inside a git repository"}
@@ -1570,11 +1571,7 @@ def _claude_project_dir(*, env: Mapping[str, str]) -> Path | None:
     if not home:
         return None
     try:
-        repo_root = proc.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            stderr=subprocess.DEVNULL,
-            check=True,
-        ).stdout.strip()
+        repo_root = repo_root_probe(options=RepoRootProbeOptions(check=True)).stdout.strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
     except (OSError, subprocess.SubprocessError):
         return None

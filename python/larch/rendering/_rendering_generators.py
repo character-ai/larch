@@ -15,6 +15,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.rendering._rendering_helpers import (
     RenderError,
     extract_generated_body as _extract_generated_body,
@@ -533,7 +534,7 @@ def generate_check_main(argv: list[str]) -> int:
         registry = REPO_ROOT / "scripts" / "generators.tsv"
         if not registry.is_file():
             raise RenderError(f"check-generators: registry not found: {registry}")
-        if proc.run(["git", "rev-parse", "--show-toplevel"], cwd=str(REPO_ROOT), check=False).returncode != 0:
+        if repo_root_probe(options=RepoRootProbeOptions(runner_cwd=REPO_ROOT)).returncode != 0:
             raise RenderError("check-generators: not inside a git work tree")
         commands: list[str] = []
         outputs: list[str] = []

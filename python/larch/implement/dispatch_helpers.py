@@ -21,6 +21,7 @@ from larch.core import config
 from larch.core import logging_util
 from larch.implement import phantom
 from larch.core import proc
+from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _SAFE_CODERS = {"claude", "codex", "cursor"}
@@ -103,7 +104,7 @@ def _invoke_cli(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.C
 
 
 def _resolve_repo_root() -> Path | None:
-    result = _run([GIT_BIN, "rev-parse", "--show-toplevel"])
+    result = repo_root_probe(run=_run, options=RepoRootProbeOptions(git_bin=GIT_BIN))
     if result.returncode != 0 or not result.stdout.strip():
         return None
     return Path(result.stdout.strip()).resolve()

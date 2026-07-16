@@ -13,6 +13,7 @@ from collections.abc import Mapping
 
 from larch.core import config
 from larch.core import redact
+from larch.core.repo_roots import repo_root_probe
 from larch.report import tokens
 from larch.report import run_log_corpus
 from larch.errors import ShipError
@@ -55,7 +56,7 @@ def _as_mapping(value: object) -> Mapping[str, object]:
 
 def _repo_root(runner: Runner) -> Path:
     try:
-        result = runner.run(["git", "rev-parse", "--show-toplevel"])
+        result = repo_root_probe(runner=runner)
     except OSError as exc:
         raise ShipError(f"ERROR: could not resolve git repository root: {exc}") from exc
     if result.returncode == 0 and result.stdout.strip():

@@ -22,6 +22,7 @@ from larch.bgjob import model as bgjob_model
 from larch.core import config
 from larch.core import architectural_guidelines
 from larch.core import logging_util
+from larch.core.repo_roots import repo_root_probe
 from larch.calibration import difficulty
 from larch.core import redact
 from larch.issue import issue_wire
@@ -711,7 +712,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if not Path(args.feature_file).is_file():
         _err(f"implement step2-dispatch: --feature-file not found: {args.feature_file}")
         return 2
-    repo_result = _run(["git", "rev-parse", "--show-toplevel"])
+    repo_result = repo_root_probe(run=_run)
     repo_root: Path | None = None
     if repo_result.returncode == 0 and repo_result.stdout.strip():
         repo_root = Path(repo_result.stdout.strip()).resolve()
