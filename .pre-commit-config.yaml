@@ -39,7 +39,6 @@ repos:
             scripts/hook\-bg\-poll\-guard\.sh|
             scripts/hook\-progress\-report\.sh|
             scripts/lint\-awk\-multibyte\-regex\.sh|
-            scripts/lint\-bare\-grep\-probe\.sh|
             scripts/lint\-bash32\.sh|
             scripts/lint\-renderer\-substitution\-safety\.sh|
             scripts/pre\-commit\-bash\-syntax\.sh|
@@ -83,7 +82,6 @@ repos:
             scripts/test\-implement\-timing\-rehydration\.sh|
             scripts/test\-legacy\-title\-prefix\-literals\-scope\.sh|
             scripts/test\-lint\-awk\-multibyte\-regex\.sh|
-            scripts/test\-lint\-bare\-grep\-probe\.sh|
             scripts/test\-lint\-bash32\.sh|
             scripts/test\-lint\-literal\-counts\.sh|
             scripts/test\-lint\-no\-raw\-stderr\-after\-quiet\-init\.sh|
@@ -219,7 +217,7 @@ repos:
         always_run: true
 
   - repo: https://github.com/zhupanov/agent-lint
-    rev: v2.3.2
+    rev: v2.4.0
     hooks:
       - id: agent-lint
         args: [--pedantic]
@@ -248,24 +246,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-skill-invocations
-        name: Lint skill-invocation docs
-        entry: python3 python/cli.py lint skill-invocations
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^(skills|\.claude/skills)/[^/]+/SKILL\.md$
-
-      - id: lint-skill-description-length
-        name: Lint skill description length
-        entry: python3 python/cli.py lint skill-description-length
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^(skills|\.claude/skills)/[^/]+/SKILL\.md$
-
-  - repo: local
-    hooks:
       - id: lint-literal-counts
         name: Lint drift-prone literal item counts in markdown
         entry: python3 python/cli.py lint literal-counts
@@ -286,14 +266,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-gh-body-inline
-        name: Lint inline gh --body / --notes (.sh/.py)
-        entry: python3 python/cli.py lint gh-body-inline
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^.*\.(sh|py)$
-
       - id: lint-run-log-run-id
         name: Reject non-unique placeholder run-log run-ids (run-N)
         entry: python3 python/cli.py lint run-log-run-id
@@ -347,14 +319,6 @@ repos:
         pass_filenames: false
         always_run: true
         files: ^python/.*\.py$|^python/markdown-heading-fence-state-baseline\.json$
-
-      - id: lint-doc-pointer-paths
-        name: Lint dead path pointers in AGENTS.md and SECURITY.md
-        entry: python3 python/cli.py lint doc-pointer-paths
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^(AGENTS\.md|SECURITY\.md|python/larch/lint/lint_doc_pointer_paths\.py|python/tests/lint/test_lint_doc_pointer_paths\.py|python/lint-module-manifest\.json)$
 
       - id: lint-self-disarmable-gate
         name: Lint self-disarmable hard gates (I-Gate-1)
@@ -422,7 +386,6 @@ repos:
             scripts/hook\-bg\-poll\-guard\.sh|
             scripts/hook\-progress\-report\.sh|
             scripts/lint\-awk\-multibyte\-regex\.sh|
-            scripts/lint\-bare\-grep\-probe\.sh|
             scripts/lint\-bash32\.sh|
             scripts/lint\-renderer\-substitution\-safety\.sh|
             scripts/pre\-commit\-bash\-syntax\.sh|
@@ -466,7 +429,6 @@ repos:
             scripts/test\-implement\-timing\-rehydration\.sh|
             scripts/test\-legacy\-title\-prefix\-literals\-scope\.sh|
             scripts/test\-lint\-awk\-multibyte\-regex\.sh|
-            scripts/test\-lint\-bare\-grep\-probe\.sh|
             scripts/test\-lint\-bash32\.sh|
             scripts/test\-lint\-literal\-counts\.sh|
             scripts/test\-lint\-no\-raw\-stderr\-after\-quiet\-init\.sh|
@@ -562,7 +524,6 @@ repos:
             scripts/hook\-bg\-poll\-guard\.sh|
             scripts/hook\-progress\-report\.sh|
             scripts/lint\-awk\-multibyte\-regex\.sh|
-            scripts/lint\-bare\-grep\-probe\.sh|
             scripts/lint\-bash32\.sh|
             scripts/lint\-renderer\-substitution\-safety\.sh|
             scripts/pre\-commit\-bash\-syntax\.sh|
@@ -606,7 +567,6 @@ repos:
             scripts/test\-implement\-timing\-rehydration\.sh|
             scripts/test\-legacy\-title\-prefix\-literals\-scope\.sh|
             scripts/test\-lint\-awk\-multibyte\-regex\.sh|
-            scripts/test\-lint\-bare\-grep\-probe\.sh|
             scripts/test\-lint\-bash32\.sh|
             scripts/test\-lint\-literal\-counts\.sh|
             scripts/test\-lint\-no\-raw\-stderr\-after\-quiet\-init\.sh|
@@ -717,41 +677,12 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: lint-skill-md-flag-signature
-        name: lint SKILL.md script flag signatures
-        entry: python3 python/cli.py lint skill-md-flag-signature
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      - id: lint-skill-awk-field-refs
-        name: lint SKILL.md awk field references
-        entry: python3 python/cli.py lint skill-awk-field-refs
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      - id: lint-bare-grep-probe
-        name: lint bare top-level grep in orchestrator markdown fences
-        entry: bash scripts/lint-bare-grep-probe.sh
-        language: system
-        pass_filenames: false
-        always_run: true
-
       - id: lint-codex-exec-auth
         name: lint unwired codex exec call sites
         entry: python3 python/cli.py lint codex-exec-auth
         language: system
         pass_filenames: false
         always_run: true
-
-      - id: lint-consecutive-bash
-        name: lint consecutive bash tool-call fences
-        entry: python3 python/cli.py lint consecutive-bash
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^(skills/[^/]+/SKILL\.md|skills/[^/]+/references/[^/]+\.md|\.claude/skills/[^/]+/SKILL\.md)$
 
       - id: lint-bg-wait-coverage
         name: lint background wait marker coverage

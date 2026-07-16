@@ -32,7 +32,7 @@ Export `SESSION_ENV_PATH="$PARENT_TMPDIR/session-env.sh"` in the environment bef
 
 The step heading + explicit Skill-tool line + scannable args shape makes the invocation impossible to miss. Do **not** collapse Pattern B into a single paragraph — see `## Avoid conditional phrasing for sub-skill invocations` below.
 
-`python3 python/cli.py lint skill-invocations` mechanically enforces line-local co-location: every direct-invocation line that says ``Invoke `/<name>`'' (with optional `the` and a bounded `**bold-span**`) must also contain `via the Skill tool` on the same line.
+The pinned `agent-lint` rule S058 mechanically enforces line-local co-location: every direct-invocation line that says ``Invoke `/<name>`'' (with optional `the` and a bounded `**bold-span**`) must also contain `via the Skill tool` on the same line.
 
 ## allowed-tools narrowing heuristic
 

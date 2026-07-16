@@ -21,7 +21,7 @@ Every grep-family producer probe needs an explicit path operand such as `.`, `py
 
 Piped grep (`printf X | grep Y`, `cat file | grep Y`) is safe because the pipeline already subshells grep. Plain `grep` inside `bash script.sh` is safe because the wrapper function is not exported. The hazard is top-level `grep` in Markdown bash/sh/shell fences and direct Bash tool blocks.
 
-A static lint, `scripts/lint-bare-grep-probe.sh`, scans orchestrator-facing Markdown for bare top-level grep probes. Suppress fixtures only with trailing `# lint-bare-grep-probe: ok <reason>`.
+The pinned `agent-lint` rule S061 (bare-grep-probe) scans orchestrator-facing Markdown for bare top-level grep probes. Suppress reviewed fixtures through the `agent-lint.toml` exception mechanism.
 
 ### Background stdin hangs
 
@@ -29,7 +29,7 @@ Probe `rg`, `ripgrep`, and `grep` calls must pass an explicit path when they may
 
 Use `< /dev/null` only for intentional empty stdin. A no-path grep-family probe can block forever in background Bash mode because stdin may be an open pipe with no EOF.
 
-The same `# lint-bare-grep-probe: ok <reason>` pragma covers rare intentional stdin-search fixtures.
+The same agent-lint S061 exception mechanism covers rare intentional stdin-search fixtures.
 
 ### Bounded search roots
 
@@ -37,7 +37,7 @@ Background grep-family probes must use absolute paths or known bounded roots. Do
 
 Prefer direct bounded commands over discovery greps when a CLI can answer the question, such as `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ... --help`.
 
-The same `# lint-bare-grep-probe: ok <reason>` pragma is only for rare fixtures or reviewed exceptions.
+The same agent-lint S061 exception mechanism is only for rare fixtures or reviewed exceptions.
 
 ### Probe stdout guards (still required after the safe form is chosen)
 

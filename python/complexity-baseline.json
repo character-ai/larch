@@ -5118,22 +5118,6 @@
     "history": []
   },
   {
-    "file": "larch/lint/lint_skill_invocations.py",
-    "code": "C901",
-    "qualified_symbol": "allowed_tools_contains_skill",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/lint_skill_invocations.py",
-    "code": "PLR0911",
-    "qualified_symbol": "allowed_tools_contains_skill",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/lint/migration_lint.py",
     "code": "C901",
     "qualified_symbol": "main",

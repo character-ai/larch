@@ -2982,20 +2982,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/lint/lint_skill_awk_field_refs.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: C901",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/lint/lint_skill_awk_field_refs.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: C901",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/lint/migration_lint.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLR2004",
