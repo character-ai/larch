@@ -1575,57 +1575,43 @@ def _validate_identity_row_kinds(
         raise ScanError(f"{source}: identity baseline rows use the wrong schema")
 
 
-def _identity_baseline_row(  # noqa: C901  # pylint: disable=too-many-boolean-expressions
-    record: Mapping[str, object], *, kind: IdentityBaselineKind, index: int, source: str
-) -> IdentityBaselineRow:
+def _require_identity_keys(
+    record: Mapping[str, object], *, expected: frozenset[str], index: int, source: str
+) -> None:
     keys = frozenset(record)
-    if kind == "keyword_only":
-        expected = frozenset({"file", "qualified_symbol"})
-        if keys != expected:
-            raise ScanError(f"{source}: baseline row {index} has unsupported keys")
-        file_name = record["file"]
-        symbol = record["qualified_symbol"]
-        if not _is_single_line(file_name) or not _is_single_line(symbol):
-            raise ScanError(f"{source}: baseline row {index} has invalid keyword-only identity")
-        return KeywordOnlyBaselineRow(cast("str", file_name), cast("str", symbol))
-    if kind == "wire_artifact_pairing":
-        expected = frozenset({"artifact", "side", "reason"})
-        if keys != expected:
-            raise ScanError(f"{source}: baseline row {index} has unsupported keys")
-        artifact, side, reason = record["artifact"], record["side"], record["reason"]
-        allowed_sides = {"external-writer", "external-reader", "intentionally-one-sided"}
-        if not _nonempty_single_line(artifact) or side not in allowed_sides or not _nonempty_single_line(reason):
-            raise ScanError(f"{source}: baseline row {index} has invalid wire-artifact row")
-        return WireArtifactPairingBaselineRow(
-            cast("str", artifact),
-            cast("Literal['external-writer', 'external-reader', 'intentionally-one-sided']", side),
-            cast("str", reason),
-        )
-    if kind == "renderer_golden_tests":
-        expected = frozenset({"file", "function_name", "reason"})
-        if keys != expected:
-            raise ScanError(f"{source}: baseline row {index} has unsupported keys")
-        file_name, function_name, reason = record["file"], record["function_name"], record["reason"]
-        normalized = normalize_python_file_path(file_name) if isinstance(file_name, str) else ""
-        parts = normalized.split("/")
-        if (
-            not _is_single_line(file_name)
-            or normalized != file_name
-            or not normalized.startswith("larch/report/")
-            or not normalized.endswith(".py")
-            or "" in parts
-            or "." in parts
-            or ".." in parts
-            or not _nonempty_single_line(function_name)
-            or not _nonempty_single_line(reason)
-        ):
-            raise ScanError(f"{source}: baseline row {index} has invalid renderer row")
-        return RendererGoldenTestsBaselineRow(
-            cast("str", file_name), cast("str", function_name), cast("str", reason)
-        )
-    expected = frozenset({"guideline_id", "reason"})
     if keys != expected:
         raise ScanError(f"{source}: baseline row {index} has unsupported keys")
+
+
+def _keyword_only_identity_row(record: Mapping[str, object], *, index: int, source: str) -> KeywordOnlyBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"file", "qualified_symbol"}), index=index, source=source)
+    file_name, symbol = record["file"], record["qualified_symbol"]
+    if not _is_single_line(file_name) or not _is_single_line(symbol):
+        raise ScanError(f"{source}: baseline row {index} has invalid keyword-only identity")
+    return KeywordOnlyBaselineRow(cast("str", file_name), cast("str", symbol))
+
+
+def _wire_artifact_identity_row(record: Mapping[str, object], *, index: int, source: str) -> WireArtifactPairingBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"artifact", "side", "reason"}), index=index, source=source)
+    artifact, side, reason = record["artifact"], record["side"], record["reason"]
+    allowed_sides = {"external-writer", "external-reader", "intentionally-one-sided"}
+    if not _nonempty_single_line(artifact) or side not in allowed_sides or not _nonempty_single_line(reason):
+        raise ScanError(f"{source}: baseline row {index} has invalid wire-artifact row")
+    return WireArtifactPairingBaselineRow(cast("str", artifact), cast("Literal['external-writer', 'external-reader', 'intentionally-one-sided']", side), cast("str", reason))
+
+
+def _renderer_identity_row(record: Mapping[str, object], *, index: int, source: str) -> RendererGoldenTestsBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"file", "function_name", "reason"}), index=index, source=source)
+    file_name, function_name, reason = record["file"], record["function_name"], record["reason"]
+    normalized = normalize_python_file_path(file_name) if isinstance(file_name, str) else ""
+    invalid_path = not _is_single_line(file_name) or normalized != file_name or not normalized.startswith("larch/report/") or not normalized.endswith(".py") or bool({"", ".", ".."}.intersection(normalized.split("/")))
+    if invalid_path or not _nonempty_single_line(function_name) or not _nonempty_single_line(reason):
+        raise ScanError(f"{source}: baseline row {index} has invalid renderer row")
+    return RendererGoldenTestsBaselineRow(cast("str", file_name), cast("str", function_name), cast("str", reason))
+
+
+def _guideline_identity_row(record: Mapping[str, object], *, index: int, source: str) -> GuidelineNoExceptionBaselineRow:
+    _require_identity_keys(record, expected=frozenset({"guideline_id", "reason"}), index=index, source=source)
     guideline_id, reason = record["guideline_id"], record["reason"]
     if (
         not _nonempty_single_line(guideline_id)
@@ -1634,6 +1620,16 @@ def _identity_baseline_row(  # noqa: C901  # pylint: disable=too-many-boolean-ex
     ):
         raise ScanError(f"{source}: baseline row {index} has invalid guideline row")
     return GuidelineNoExceptionBaselineRow(cast("str", guideline_id), cast("str", reason))
+
+
+def _identity_baseline_row(record: Mapping[str, object], *, kind: IdentityBaselineKind, index: int, source: str) -> IdentityBaselineRow:
+    if kind == "keyword_only":
+        return _keyword_only_identity_row(record, index=index, source=source)
+    if kind == "wire_artifact_pairing":
+        return _wire_artifact_identity_row(record, index=index, source=source)
+    if kind == "renderer_golden_tests":
+        return _renderer_identity_row(record, index=index, source=source)
+    return _guideline_identity_row(record, index=index, source=source)
 
 
 def parse_identity_baseline(
