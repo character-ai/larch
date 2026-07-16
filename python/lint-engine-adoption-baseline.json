@@ -48,22 +48,6 @@
     "rule_id": "engine-adoption"
   },
   {
-    "anchor": "baseline-io",
-    "line": 603,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_env_via_config_constant.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 658,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_env_via_config_constant.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
     "anchor": "argparse-construction",
     "line": 93,
     "message": "legacy ArgumentParser construction outside shared lint engine",
@@ -108,22 +92,6 @@
     "line": 505,
     "message": "legacy ArgumentParser construction outside shared lint engine",
     "path": "python/larch/lint/lint_keyword_only.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "baseline-io",
-    "line": 690,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_lifecycle_prefix_literal.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 750,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_lifecycle_prefix_literal.py",
     "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
     "rule_id": "engine-adoption"
   },
@@ -204,38 +172,6 @@
     "line": 20,
     "message": "legacy ArgumentParser construction outside shared lint engine",
     "path": "python/larch/lint/lint_skill_md_flag_signature.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "baseline-io",
-    "line": 624,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_subprocess_via_runner.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 790,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_subprocess_via_runner.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "baseline-io",
-    "line": 573,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_suppression_reason.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 622,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_suppression_reason.py",
     "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
     "rule_id": "engine-adoption"
   },

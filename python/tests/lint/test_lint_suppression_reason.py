@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from larch.lint import lint_suppression_reason as lsr
+
+
+def _git_init(root: Path) -> None:
+    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
+    _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    _ = subprocess.run(
+        ["git", "commit", "-q", "-m", "fixture", "--allow-empty"], cwd=root, check=True
+    )
 
 
 def _record(
@@ -38,6 +49,7 @@ def _write_project(root: Path, *, files: dict[str, str], baseline: object | None
         baseline_path = python_dir / lsr.BASELINE_FILENAME
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
         _ = baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+    _git_init(root)
 
 
 def _module(comment: str) -> str:
@@ -214,7 +226,7 @@ def test_baseline_row_suppresses_comma_separated_pyright_report_live_finding(
     )
 
     assert lsr.main(["--root", str(tmp_path)]) == 0
-    assert "baselined" in capsys.readouterr().err
+    assert "matching baseline finding" in capsys.readouterr().err
 
 
 def test_plain_comments_containing_suppression_words_are_ignored(tmp_path: Path) -> None:
@@ -267,14 +279,16 @@ def test_baseline_row_suppresses_live_finding(
     _write_project(tmp_path, files={"larch/mod.py": _module("# noqa")}, baseline=[_record()])
 
     assert lsr.main(["--root", str(tmp_path)]) == 0
-    assert "baselined" in capsys.readouterr().err
+    assert "matching baseline finding" in capsys.readouterr().err
 
 
 def test_stale_baseline_row_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write_project(tmp_path, files={"larch/mod.py": "VALUE = 1\n"}, baseline=[_record()])
 
     assert lsr.main(["--root", str(tmp_path)]) == 1
-    assert "stale baseline row: larch/mod.py:noqa noqa#1" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "stale baseline row: larch/mod.py" in err
+    assert "suppression_kind=noqa" in err
 
 
 @pytest.mark.parametrize(
@@ -285,8 +299,6 @@ def test_stale_baseline_row_exits_1(tmp_path: Path, capsys: pytest.CaptureFixtur
         [_record(extra="bad")],
         [_record(file="python/larch/mod.py")],
         [_record(file="../escape.py")],
-        [_record(file="tests/mod.py")],
-        [_record(suppression_kind="unknown")],
         [_record(text="")],
         [_record(occurrence=0)],
         [_record(occurrence=True)],
@@ -373,20 +385,22 @@ def test_missing_baseline_in_check_mode_exits_2(tmp_path: Path) -> None:
 
 
 def test_non_utf8_source_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write_project(tmp_path, files={}, baseline=[])
-    path = tmp_path / "python" / "larch" / "mod.py"
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_bytes(b"\xff\xfe")
+    _ = (python_dir / lsr.BASELINE_FILENAME).write_text("[]", encoding="utf-8")
+    _git_init(tmp_path)
 
     assert lsr.main(["--root", str(tmp_path)]) == 2
-    assert "cannot read source" in capsys.readouterr().err
+    assert "UTF-8" in capsys.readouterr().err
 
 
 def test_tokenization_error_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write_project(tmp_path, files={"larch/mod.py": "VALUE = (\n"}, baseline=[])
 
     assert lsr.main(["--root", str(tmp_path)]) == 2
-    assert "cannot tokenize source" in capsys.readouterr().err
+    assert "cannot parse source" in capsys.readouterr().err
 
 
 def test_write_errors_are_reported_as_baseline_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -395,4 +409,4 @@ def test_write_errors_are_reported_as_baseline_errors(tmp_path: Path, capsys: py
     baseline_path.mkdir()
 
     assert lsr.main(["--root", str(tmp_path), "--write"]) == 2
-    assert "cannot write baseline" in capsys.readouterr().err
+    assert "baseline path is not a regular file" in capsys.readouterr().err

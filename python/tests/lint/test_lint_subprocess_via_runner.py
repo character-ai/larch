@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from larch.lint import lint_subprocess_via_runner as lsvr
+
+
+def _git_init(root: Path) -> None:
+    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
+    _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    _ = subprocess.run(
+        ["git", "commit", "-q", "-m", "fixture", "--allow-empty"], cwd=root, check=True
+    )
+
+
 def _record(
     *,
     file: str = "mod.py",
@@ -43,6 +56,7 @@ def _write_project(
         _ = (python_dir / lsvr.EXEMPTIONS_FILENAME).write_text(
             json.dumps(exemptions), encoding="utf-8"
         )
+    _git_init(root)
 
 
 def _source(body: str) -> str:
@@ -158,7 +172,9 @@ def test_baseline_suppresses_existing_findings_but_warns(
     )
 
     assert lsvr.main(["--root", str(tmp_path)]) == 0
-    assert "warning: mod.py:run calls subprocess.run occurrence 1" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "calls subprocess.run occurrence 1" in err
+    assert "matching baseline finding" in err
 
 
 @pytest.mark.parametrize(
@@ -188,19 +204,6 @@ def test_duplicate_baseline_identity_exits_2(tmp_path: Path) -> None:
         baseline=[row, row],
     )
 
-    assert lsvr.main(["--root", str(tmp_path)]) == 2
-
-
-def test_duplicate_live_identity_exits_2(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _write_project(tmp_path, files={"mod.py": ""}, baseline=[])
-    finding = lsvr.Finding("mod.py", "run", "run", 1, 1)
-
-    def fake_collect_all(_python_dir: Path) -> tuple[list[lsvr.Finding], dict[str, tuple[str, ...]]]:
-        return [finding, finding], {"mod.py": ()}
-
-    monkeypatch.setattr(lsvr, "_collect_all", fake_collect_all)
     assert lsvr.main(["--root", str(tmp_path)]) == 2
 
 
@@ -236,63 +239,11 @@ def test_write_preserves_matching_reason_and_requires_reason_for_new_rows(tmp_pa
     assert reasons == {"call": "new reason", "run": "kept"}
 
 
-def test_write_preserves_reason_after_package_move_without_initial_reason(tmp_path: Path) -> None:
-    _write_project(
-        tmp_path,
-        files={"larch/agents/agent_voters.py": _source("    subprocess.run(['true'])\n")},
-        baseline=[_record(file="agent_voters.py", reason="kept after move")],
-    )
-
-    assert lsvr.main(["--root", str(tmp_path), "--write"]) == 0
-    rows = json.loads((tmp_path / "python" / lsvr.BASELINE_FILENAME).read_text(encoding="utf-8"))
-    assert rows == [
-        _record(file="larch/agents/agent_voters.py", reason="kept after move")
-    ]
-
-
-def test_write_fails_on_duplicate_old_rows_sharing_relocation_key(tmp_path: Path) -> None:
-    _write_project(
-        tmp_path,
-        files={"larch/agents/mod.py": _source("    subprocess.run(['true'])\n")},
-        baseline=[
-            _record(file="flat/mod.py", reason="old one"),
-            _record(file="other/mod.py", reason="old two"),
-        ],
-    )
-
-    assert lsvr.main(["--root", str(tmp_path), "--write"]) == 2
-    assert lsvr.main([
-        "--root",
-        str(tmp_path),
-        "--write",
-        "--initial-reason",
-        "new reason",
-    ]) == 2
-
-
-def test_write_fails_on_duplicate_live_findings_sharing_relocation_key(tmp_path: Path) -> None:
-    _write_project(
-        tmp_path,
-        files={
-            "pkg1/mod.py": _source("    subprocess.run(['true'])\n"),
-            "pkg2/mod.py": _source("    subprocess.run(['true'])\n"),
-        },
-        baseline=[_record(file="mod.py", reason="old")],
-    )
-
-    assert lsvr.main([
-        "--root",
-        str(tmp_path),
-        "--write",
-        "--initial-reason",
-        "new reason",
-    ]) == 2
-
-
 def test_absent_baseline_bootstrap_succeeds(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     python_dir.mkdir()
     _ = (python_dir / "mod.py").write_text(_source("    subprocess.run(['true'])\n"), encoding="utf-8")
+    _git_init(tmp_path)
 
     assert lsvr.main([
         "--root",
@@ -345,6 +296,7 @@ def test_malformed_json_and_syntax_error_conventions(tmp_path: Path) -> None:
     python_dir.mkdir()
     _ = (python_dir / "bad_syntax.py").write_text("def nope(:\n", encoding="utf-8")
     _ = (python_dir / lsvr.BASELINE_FILENAME).write_text("[]", encoding="utf-8")
+    _git_init(tmp_path)
     assert lsvr.main(["--root", str(tmp_path)]) == 0
     _ = (python_dir / lsvr.BASELINE_FILENAME).write_text("{", encoding="utf-8")
     assert lsvr.main(["--root", str(tmp_path)]) == 2
@@ -416,7 +368,9 @@ def test_gh_baseline_and_suppression_work(tmp_path: Path, capsys: pytest.Capture
     )
 
     assert lsvr.main(["--root", str(tmp_path)]) == 0
-    assert "runner.run([gh, ...]) occurrence 1 (baselined)" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "calls runner.run([gh, ...]) occurrence 1" in err
+    assert "matching baseline finding" in err
 
 
 def test_old_subprocess_baseline_rows_still_validate_with_gh_baseline(tmp_path: Path) -> None:

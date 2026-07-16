@@ -1,10 +1,11 @@
 """Ratchet lifecycle and bug title-prefix literals toward shared constants.
 
-Scans production modules under python/larch/**/*.py for lifecycle or bug title
-prefix string literals in comparison, match, and composition positions.
-Composition covers f-string Constant parts, ``+`` concatenation operands, and
-``.format(...)`` receivers. Existing deliberate uses are grandfathered in
-python/lifecycle-prefix-literal-baseline.json with a required reason per row.
+Thin engine-backed rule: detection scans production modules under
+``python/larch/**/*.py`` for lifecycle or bug title prefix string literals in
+comparison, match, and composition positions. Composition covers f-string
+Constant parts, ``+`` concatenation operands, and ``.format(...)`` receivers.
+Existing deliberate uses are grandfathered in
+``python/lifecycle-prefix-literal-baseline.json`` with a required reason per row.
 """
 
 from __future__ import annotations
@@ -15,28 +16,30 @@ import io
 import json
 import re
 import sys
+import tokenize
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-import tokenize
-from typing import TypedDict, cast
+from typing import cast
 
 from larch.core import config
+from larch.core import proc
 from larch.issue import title_match
 from larch.lint.engine import (
-    first_duplicate as _first_duplicate,
+    EXIT_ERROR,
+    Finding as EngineFinding,
+    LintRule,
+    SourceFile,
     is_exempt_python_source,
-    normalize_python_file_path,
     ordered_ast_child_nodes,
     qualified_symbol,
+    run_rule,
 )
 
-TOOL_FAILURE_EXIT = 2
+RULE_ID = "lifecycle-prefix-literal"
+SUPPRESSION_TOKEN = "lint-lifecycle-prefix"
 BASELINE_FILENAME = "lifecycle-prefix-literal-baseline.json"
-BASELINE_KEYS = frozenset(
-    {"file", "qualified_symbol", "token", "constant", "context", "occurrence", "reason"}
-)
 CONTEXT_KINDS = frozenset(
     {
         "startswith",
@@ -55,22 +58,12 @@ CONTEXT_KINDS = frozenset(
 )
 PREFIX_METHODS = frozenset({"startswith", "endswith", "removeprefix", "lstrip"})
 REGEX_FUNCTIONS = frozenset({"compile", "search", "match", "fullmatch"})
-EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__", "tests"})
 ALLOWLIST_RELPATHS = frozenset({"larch/core/config.py", "larch/issue/title_match.py"})
 MODULE_SYMBOL = "<module>"
 PRAGMA_RE = re.compile(r"#\s*lint-lifecycle-prefix:\s*ok\s+(\S.*)$")
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-lifecycle-prefix:\s*ok\s+(\S.*)$")
-
-
-class Record(TypedDict):
-    file: str
-    qualified_symbol: str
-    token: str
-    constant: str
-    context: str
-    occurrence: int
-    reason: str
+PYTHON_PREFIX = "python/"
 
 
 class BaselineError(ValueError):
@@ -113,26 +106,6 @@ class Finding:
 OccurrenceKey = tuple[str, str, str, str, str]
 
 
-def _has_bad_path_parts(parts: list[str]) -> bool:
-    return "" in parts or "." in parts or ".." in parts
-
-
-def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
-    if not isinstance(value, str) or not value:
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized: str = normalize_python_file_path(value)
-    parts: list[str] = normalized.split("/")
-    if (
-        normalized != value
-        or normalized.startswith("/")
-        or not normalized.startswith("larch/")
-        or not normalized.endswith(".py")
-        or _has_bad_path_parts(parts)
-    ):
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    return normalized
-
-
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
     result: list[Path] = []
@@ -147,6 +120,16 @@ def iter_source_files(larch_dir: Path) -> list[Path]:
             continue
         result.append(path)
     return result
+
+
+def is_production_source_path(rel_path: str) -> bool:
+    """Pre-load filter for repo-relative lifecycle-prefix scan paths."""
+    if not rel_path.startswith("python/larch/") or not rel_path.endswith(".py"):
+        return False
+    under = Path(rel_path[len(PYTHON_PREFIX) :])
+    if EXCLUDED_DIRS.intersection(under.parts) or is_exempt_python_source(under):
+        return False
+    return under.as_posix() not in ALLOWLIST_RELPATHS
 
 
 def _rstrip_spaces(value: str) -> str:
@@ -177,6 +160,16 @@ def build_token_map() -> dict[str, TokenInfo]:
         add(prefix, constant=f"config.TRACKING_ISSUE_PREFIX_BY_STATE[{state_literal}]")
     add(title_match.BUG_PREFIX, constant="title_match.BUG_PREFIX")
     return tokens
+
+
+_TOKEN_INFOS_CACHE: dict[str, TokenInfo] = {}
+
+
+def _token_infos() -> dict[str, TokenInfo]:
+    """Return the cached lifecycle token map, building it once on first use."""
+    if not _TOKEN_INFOS_CACHE:
+        _TOKEN_INFOS_CACHE.update(build_token_map())
+    return _TOKEN_INFOS_CACHE
 
 
 def _literal_text(node: ast.AST) -> str | None:
@@ -458,79 +451,6 @@ def scan_file(
     return findings
 
 
-def _record_key(record: Record) -> tuple[str, str, str, str, str, int]:
-    return (
-        record["file"],
-        record["qualified_symbol"],
-        record["token"],
-        record["constant"],
-        record["context"],
-        record["occurrence"],
-    )
-
-
-def _finding_sort_key(finding: Finding) -> tuple[str, str, str, str, str, int]:
-    return finding.key()
-
-
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    file_name: str = _validate_normalized_file(record["file"], source=source, index=index)
-    qualified_symbol: object = record["qualified_symbol"]
-    token: object = record["token"]
-    constant: object = record["constant"]
-    context: object = record["context"]
-    occurrence: object = record["occurrence"]
-    reason: object = record["reason"]
-    if not isinstance(qualified_symbol, str) or not qualified_symbol:
-        raise BaselineError(f"{source}: record {index} has invalid qualified_symbol")
-    if not isinstance(token, str) or not token:
-        raise BaselineError(f"{source}: record {index} has invalid token")
-    if not isinstance(constant, str) or not constant:
-        raise BaselineError(f"{source}: record {index} has invalid constant")
-    if not isinstance(context, str) or context not in CONTEXT_KINDS:
-        raise BaselineError(f"{source}: record {index} has invalid context")
-    if not isinstance(occurrence, int) or isinstance(occurrence, bool) or occurrence < 1:
-        raise BaselineError(f"{source}: record {index} has invalid occurrence")
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: record {index} has invalid reason")
-    return {
-        "file": file_name,
-        "qualified_symbol": qualified_symbol,
-        "token": token,
-        "constant": constant,
-        "context": context,
-        "occurrence": occurrence,
-        "reason": reason,
-    }
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the committed baseline."""
-    try:
-        data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError) as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    records: list[Record] = [
-        _validate_record(item, index=index, source=path)
-        for index, item in enumerate(cast("list[object]", data))
-    ]
-    duplicate: tuple[str, str, str, str, str, int] | None = _first_duplicate(
-        _record_key(record) for record in records
-    )
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {format_key(duplicate)}")
-    return records
-
-
 def _comment_tokens_by_line(source: str) -> dict[int, tuple[tuple[int, str], ...]]:
     comments: dict[int, list[tuple[int, str]]] = {}
     try:
@@ -545,13 +465,9 @@ def _comment_tokens_by_line(source: str) -> dict[int, tuple[tuple[int, str], ...
 def _has_inline_pragma(
     finding: Finding,
     *,
-    source_lines_by_file: Mapping[str, tuple[str, ...]],
-    comment_tokens_by_file: Mapping[str, dict[int, tuple[tuple[int, str], ...]]],
+    lines: tuple[str, ...],
+    comments_by_line: Mapping[int, tuple[tuple[int, str], ...]],
 ) -> bool:
-    comments_by_line: dict[int, tuple[tuple[int, str], ...]] = comment_tokens_by_file.get(
-        finding.file, {}
-    )
-    lines: tuple[str, ...] = source_lines_by_file.get(finding.file, ())
     for _comment_column, comment in comments_by_line.get(finding.lineno, ()):
         if PRAGMA_RE.search(comment):
             return True
@@ -565,192 +481,83 @@ def _has_inline_pragma(
     return False
 
 
-def _collect_all(
-    larch_dir: Path, *, token_infos: Mapping[str, TokenInfo]
-) -> tuple[
-    list[Finding],
-    dict[str, tuple[str, ...]],
-    dict[str, dict[int, tuple[tuple[int, str], ...]]],
-]:
+def findings_from_source(source: str, *, normalized_file: str) -> list[Finding]:
+    """Return lifecycle findings for one source buffer, dropping pragma-suppressed rows."""
+    token_infos = _token_infos()
+    try:
+        tree: ast.Module = ast.parse(source)
+    except SyntaxError:
+        return []
     findings: list[Finding] = []
-    source_lines_by_file: dict[str, tuple[str, ...]] = {}
-    comment_tokens_by_file: dict[str, dict[int, tuple[tuple[int, str], ...]]] = {}
-    for path in iter_source_files(larch_dir):
-        normalized: str = path.relative_to(larch_dir.parent).as_posix()
-        try:
-            source: str = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise BaselineError(f"{normalized}: cannot read source: {exc}") from exc
-        source_lines_by_file[normalized] = tuple(source.splitlines())
-        comment_tokens_by_file[normalized] = _comment_tokens_by_line(source)
-        findings.extend(scan_file(path, larch_dir=larch_dir, token_infos=token_infos))
-    return findings, source_lines_by_file, comment_tokens_by_file
-
-
-def _check_duplicate_live(findings: list[Finding]) -> str | None:
-    duplicate: tuple[str, str, str, str, str, int] | None = _first_duplicate(
-        finding.key() for finding in findings
+    _collect_scope(
+        tree.body,
+        prefix=(),
+        normalized_file=normalized_file,
+        token_infos=token_infos,
+        findings=findings,
     )
-    if duplicate is None:
-        return None
-    return f"duplicate live identity {format_key(duplicate)}"
-
-
-def _filter_suppressed(
-    findings: list[Finding],
-    *,
-    source_lines_by_file: Mapping[str, tuple[str, ...]],
-    comment_tokens_by_file: Mapping[str, dict[int, tuple[tuple[int, str], ...]]],
-) -> list[Finding]:
+    lines: tuple[str, ...] = tuple(source.splitlines())
+    comments_by_line = _comment_tokens_by_line(source)
     return [
         finding
         for finding in findings
-        if not _has_inline_pragma(
-            finding,
-            source_lines_by_file=source_lines_by_file,
-            comment_tokens_by_file=comment_tokens_by_file,
-        )
+        if not _has_inline_pragma(finding, lines=lines, comments_by_line=comments_by_line)
     ]
 
 
-def format_key(key: tuple[str, str, str, str, str, int]) -> str:
-    file_name, qualified_symbol, token, constant, context, occurrence = key
-    return f"{file_name}:{qualified_symbol} {token}/{constant} {context}#{occurrence}"
-
-
-def serialize_baseline(records: list[Record]) -> str:
-    """Return canonical sorted JSON for the baseline."""
-    ordered: list[Record] = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(
-    findings: list[Finding],
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> list[Record]:
-    preserved: dict[tuple[str, str, str, str, str, int], str] = {}
-    if baseline_path.is_file():
-        preserved = {_record_key(record): record["reason"] for record in load_baseline(baseline_path)}
-    reason_default: str | None = initial_reason.strip() if initial_reason is not None else None
-    records: list[Record] = []
-    missing: list[str] = []
-    for finding in sorted(findings, key=_finding_sort_key):
-        reason: str | None = preserved.get(finding.key()) or reason_default
-        if reason is None:
-            missing.append(format_key(finding.key()))
-            continue
-        records.append(
-            {
-                "file": finding.file,
-                "qualified_symbol": finding.qualified_symbol,
-                "token": finding.token,
-                "constant": finding.constant,
-                "context": finding.context,
-                "occurrence": finding.occurrence,
-                "reason": reason,
-            }
-        )
-    if missing:
-        joined: str = "\n  ".join(missing)
-        raise BaselineError("missing baseline reasons for live lifecycle prefix findings:\n  " + joined)
-    return records
-
-
-def _run_write(
-    larch_dir: Path,
-    *,
-    baseline_path: Path,
-    token_infos: Mapping[str, TokenInfo],
-    initial_reason: str | None,
-) -> int:
-    try:
-        (
-            all_findings,
-            source_lines_by_file,
-            comment_tokens_by_file,
-        ) = _collect_all(larch_dir, token_infos=token_infos)
-        duplicate: str | None = _check_duplicate_live(all_findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-        findings: list[Finding] = _filter_suppressed(
-            all_findings,
-            source_lines_by_file=source_lines_by_file,
-            comment_tokens_by_file=comment_tokens_by_file,
-        )
-        records: list[Record] = _records_for_write(
-            findings,
-            baseline_path=baseline_path,
-            initial_reason=initial_reason,
-        )
-    except BaselineError as exc:
-        print(f"lint-lifecycle-prefix-literal: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    print(
-        f"lint-lifecycle-prefix-literal: wrote {len(records)} records to {baseline_path}",
-        file=sys.stderr,
+def to_engine_finding(finding: Finding) -> EngineFinding:
+    """Adapt one lifecycle finding to the shared engine finding shape."""
+    return EngineFinding(
+        path=f"{PYTHON_PREFIX}{finding.file}",
+        line=finding.lineno,
+        rule_id=RULE_ID,
+        message=f"matched {finding.token} in {finding.context}; use {finding.constant} instead",
+        qualified_symbol=finding.qualified_symbol,
+        occurrence=finding.occurrence,
+        occurrence_values=(
+            ("token", finding.token),
+            ("constant", finding.constant),
+            ("context", finding.context),
+        ),
     )
-    return 0
 
 
-def _run_check(
-    larch_dir: Path,
-    *,
-    baseline_path: Path,
-    token_infos: Mapping[str, TokenInfo],
-) -> int:
-    try:
-        baseline_records: list[Record] = load_baseline(baseline_path)
-        (
-            all_findings,
-            source_lines_by_file,
-            comment_tokens_by_file,
-        ) = _collect_all(larch_dir, token_infos=token_infos)
-        duplicate: str | None = _check_duplicate_live(all_findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-    except BaselineError as exc:
-        print(f"lint-lifecycle-prefix-literal: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_keys: frozenset[tuple[str, str, str, str, str, int]] = frozenset(
-        _record_key(record) for record in baseline_records
-    )
-    live_findings: list[Finding] = _filter_suppressed(
-        all_findings,
-        source_lines_by_file=source_lines_by_file,
-        comment_tokens_by_file=comment_tokens_by_file,
-    )
-    new_findings: list[Finding] = []
-    warned: list[Finding] = []
-    for finding in sorted(live_findings, key=_finding_sort_key):
-        if finding.key() in baseline_keys:
-            warned.append(finding)
-        else:
-            new_findings.append(finding)
-    for finding in warned:
-        print(
-            "warning: "
-            f"{finding.file}:{finding.qualified_symbol} line {finding.lineno} "
-            f"matched {finding.token} in {finding.context}; use {finding.constant} instead "
-            "(baselined)",
-            file=sys.stderr,
-        )
-    for finding in new_findings:
-        print(
-            f"{finding.file}:{finding.qualified_symbol} line {finding.lineno} "
-            f"matched {finding.token} in {finding.context}; use {finding.constant} instead",
-            file=sys.stderr,
-        )
-    return 1 if new_findings else 0
+def detect(source: SourceFile) -> list[EngineFinding]:
+    """Engine detector entry: scan one source for lifecycle-prefix literals."""
+    if not source.is_python or not is_production_source_path(source.path):
+        return []
+    normalized_file = source.path.removeprefix(PYTHON_PREFIX)
+    findings = findings_from_source(source.text, normalized_file=normalized_file)
+    return [to_engine_finding(finding) for finding in findings]
+
+
+RULE = LintRule(
+    rule_id=RULE_ID,
+    description=(
+        "Ratchet lifecycle and bug title-prefix literals toward shared constants"
+    ),
+    detect=detect,
+    syntax_policy="skip",
+    suppression_token=SUPPRESSION_TOKEN,
+    allow_inline_suppression=False,
+    pathspecs=("python/larch",),
+    source_filter=is_production_source_path,
+    occurrence_baseline=True,
+    occurrence_fields=("token", "constant", "context"),
+    require_baseline=True,
+    warn_matching_baseline=True,
+)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
     parser = argparse.ArgumentParser(
         prog="cli.py lint lifecycle-prefix-literal", description=__doc__
     )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
+    _ = parser.add_argument(
+        "--root",
+        default=str(Path(__file__).resolve().parents[3]),
+        help="Repository root (default: checkout containing this module).",
+    )
     _ = parser.add_argument(
         "--write",
         action="store_true",
@@ -769,32 +576,24 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
+    """CLI entry registered as ``python3 python/cli.py lint lifecycle-prefix-literal``."""
+    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
     if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
-    larch_dir: Path = root / "python" / "larch"
-    if not larch_dir.is_dir():
-        print(f"lint-lifecycle-prefix-literal: larch directory not found: {larch_dir}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_path: Path = root / "python" / BASELINE_FILENAME
-    initial_reason: str | None = cast("str | None", parsed.initial_reason)
+        return EXIT_ERROR
+    root = Path(str(parsed.root)).resolve()
+    initial_reason = cast("str | None", parsed.initial_reason)
     if initial_reason is not None and not initial_reason.strip():
         print("lint-lifecycle-prefix-literal: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    try:
-        token_infos: dict[str, TokenInfo] = build_token_map()
-    except BaselineError as exc:
-        print(f"lint-lifecycle-prefix-literal: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(
-            larch_dir,
-            baseline_path=baseline_path,
-            token_infos=token_infos,
-            initial_reason=initial_reason,
-        )
-    return _run_check(larch_dir, baseline_path=baseline_path, token_infos=token_infos)
+        return EXIT_ERROR
+    return run_rule(
+        RULE,
+        root,
+        proc.ProcRunner(),
+        baseline_path=root / "python" / BASELINE_FILENAME,
+        write_baseline=bool(parsed.write),
+        initial_reason=None if initial_reason is None else initial_reason.strip(),
+        strict_stale=False,
+    )
 
 
 if __name__ == "__main__":
