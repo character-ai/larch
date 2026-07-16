@@ -4,10 +4,17 @@ No review rounds completed.
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (4):
+Warnings (5):
   1. Step 7a.r-post-rebase — phantom untracked files: 4 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7a.r-post-rebase.z locally)
-  2. Step 8-pre-ship — phantom untracked files: 3 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally) ×2
+    Low materiality—phantom untracked files likely temporary build artifacts, do not block operation.
+  2. Step 8-pre-ship — phantom untracked files: 3 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally) ×3
+    Medium materiality—untracked files at pre-ship require inspection to ensure no unintended artifacts ship.
   3. Deviation from G-Cfg-1 (define every wire/path literal once): the change establishes the module-private constant `PYTHON_PREFIX = "python/"` in the three sibling ports `python/larch/lint/lint_env_v...
+    High materiality—architectural deviation duplicates constants across three modules, potentially impacting maintainability.
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
 ## Architectural guidelines
 
@@ -18,7 +25,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 01:32:16
-- **Cost**: 💰 TOTAL ~$1.22: Claude/GLM-5.2 token $13.70 (estimated $0.91), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.31  |  Tokens: 46026k
+- **Cost**: 💰 TOTAL ~$1.28: Claude/GLM-5.2 token $14.07 (estimated $0.94), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.34  |  Tokens: 47163k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7534: https://github.com/character-ai/larch/issues/7534
 - **Plan review**: N/A
@@ -29,7 +36,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 4
+- **Warnings**: 5
 - **Run logs**: `larch-logs/implement/B75DB1B3-A1DE-4CA8-92A2-9A98EABD5795/`
 - **Main agent model**: glm-5.2
 - **Effort**: max
