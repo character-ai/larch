@@ -25,6 +25,7 @@ from larch.design.design_step0_env import ROUTE_STATE_PATH
 from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
 from larch.issue import issue_wire
+from larch.issue.title_match import leading_square_bracket_prefix
 from larch.state import session_env
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -35,14 +36,6 @@ PROMPT_PREFIX_LINE_MAX = 8
 MIN_PARTITION_PIECES = 2
 PARTITION_MAP_FIELD_COUNT = 3
 PARTITION_DEP_FIELD_COUNT = 2
-# Matches one or more leading ``[TAG]`` square-bracket prefixes on an issue
-# title (e.g. ``[BUG]``, ``[FEATURE][A]``). Selected characters are restricted
-# so an untrusted GitHub title cannot smuggle arbitrary text into the prefix.
-SQUARE_BRACKET_PREFIX_RE = re.compile(r"^\s*((?:\[[A-Za-z0-9 _.-]+\]\s*)+)")
-
-
-
-
 @dataclass(frozen=True)
 class FiledPiece:
     piece: int
@@ -125,20 +118,6 @@ def _route_state_value(design_tmpdir: Path, key: str) -> str:
     return ""
 
 
-def _leading_square_bracket_prefix(title: str) -> str:
-    """Return the joined leading ``[TAG]`` token(s) from a title, or "".
-
-    ``"[BUG] foo"`` -> ``"[BUG]"``; ``"[FEATURE][A] x"`` -> ``"[FEATURE][A]"``;
-    ``"foo"`` -> ``""``. Whitespace between tokens is dropped so the caller can
-    re-join with single spaces.
-    """
-    match = SQUARE_BRACKET_PREFIX_RE.match(title or "")
-    if not match:
-        return ""
-    tokens = re.findall(r"\[[A-Za-z0-9 _.-]+\]", match.group(1))
-    return "".join(tokens)
-
-
 def _prefixed_piece_title(
     *,
     original_title: str,
@@ -154,7 +133,7 @@ def _prefixed_piece_title(
     starts with the same bracket(s), they are not duplicated. When no issue
     number is bound, only the preserved bracket (if any) prefixes the title.
     """
-    bracket = _leading_square_bracket_prefix(original_title)
+    bracket = leading_square_bracket_prefix(original_title)
     stripped_piece = piece_title
     if bracket:
         prefix_with_space = bracket + " "

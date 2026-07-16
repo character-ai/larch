@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from larch.core import proc, redact
 from larch.core.proc import CommandResult, Runner
 from larch.git import gh
-from larch.issue.title_match import BUG_PREFIX
+from larch.issue.title_match import insert_tag_after_bug_prefix
 from larch.state.session_env import check_live_mutation_auth
 
 EXIT_USAGE: Final = 2
@@ -43,8 +43,6 @@ _LIFECYCLE_PREFIX_RE: Final = re.compile(
     r"^\[(?:IMPLEMENTING|DONE|DESIGNING|DESIGNED|STALLED|IN PROGRESS|PLANNED)\]\s+",
     re.IGNORECASE,
 )
-_BUG_PREFIX_RE: Final = re.compile(r"^" + re.escape(BUG_PREFIX) + r"\s*", re.IGNORECASE)
-_TRIAGED_MARKER_RE: Final = re.compile(r"\[TRIAGED\]", re.IGNORECASE)
 _PROTECTED_MARKER_RE: Final = re.compile(r"<!--\s*larch:", re.IGNORECASE)
 _SECURITY_RE: Final = re.compile(
     r"\b(?:credential(?:s)?|secret(?:s)?|api[ -]?key|auth(?:entication|orization)? bypass|"
@@ -397,12 +395,7 @@ def _read_after_mutation(
 
 def _triaged_title(title: str) -> str:
     """Return title with [TRIAGED] inserted after [BUG] prefix, or prepended."""
-    if _TRIAGED_MARKER_RE.search(title):
-        return title
-    match = _BUG_PREFIX_RE.match(title)
-    if match:
-        return f"{BUG_PREFIX} [TRIAGED] {title[match.end():]}"
-    return f"[TRIAGED] {title}"
+    return insert_tag_after_bug_prefix(title, "[TRIAGED]")
 
 
 def _valid_apply(

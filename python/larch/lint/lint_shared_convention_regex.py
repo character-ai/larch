@@ -1,8 +1,9 @@
 """Reject duplicate convention regexes that should use shared owners.
 
 Scans production modules under ``python/larch/**/*.py`` for copied
-architectural-guideline heading regexes and module-level ``[BUG] in:title``
-selector constants. The owners remain the single source of truth:
+architectural-guideline heading regexes, module-level ``[BUG] in:title``
+selector constants, and lifecycle-prefix stripping loops. The owners remain
+the single source of truth:
 ``larch.core.architectural_guidelines`` for heading readers and
 ``larch.issue.title_match`` for bug-title predicates.
 """
@@ -202,6 +203,58 @@ def _module_assignment_findings(tree: ast.Module, *, normalized_file: str) -> li
     return findings
 
 
+def _slice_uses_loop_variable(node: ast.Subscript, *, loop_variable: str) -> bool:
+    slice_node: ast.AST = node.slice
+    for descendant in ast.walk(slice_node):
+        if not isinstance(descendant, ast.Call) or not isinstance(descendant.func, ast.Name):
+            continue
+        if descendant.func.id != "len" or len(descendant.args) != 1:
+            continue
+        argument: ast.expr = descendant.args[0]
+        if isinstance(argument, ast.Name) and argument.id == loop_variable:
+            return True
+    return False
+
+
+def _starts_with_loop_variable(node: ast.AST, *, loop_variable: str) -> bool:
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr != "startswith" or not node.args:
+        return False
+    argument: ast.expr = node.args[0]
+    return isinstance(argument, ast.Name) and argument.id == loop_variable
+
+
+def _lifecycle_prefix_strip_findings(tree: ast.Module, *, normalized_file: str) -> list[Finding]:
+    findings: list[Finding] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.For) or not isinstance(node.target, ast.Name):
+            continue
+        if not isinstance(node.iter, ast.Name) or "LIFECYCLE_PREFIXES" not in node.iter.id:
+            continue
+        loop_variable = node.target.id
+        has_strip_logic = False
+        for descendant in ast.walk(node):
+            if _starts_with_loop_variable(descendant, loop_variable=loop_variable):
+                has_strip_logic = True
+            if isinstance(descendant, ast.Subscript) and _slice_uses_loop_variable(
+                descendant, loop_variable=loop_variable
+            ):
+                has_strip_logic = True
+        if has_strip_logic:
+            lineno_value: object = getattr(node, "lineno", 0)
+            lineno: int = lineno_value if isinstance(lineno_value, int) else 0
+            findings.append(
+                Finding(
+                    file=normalized_file,
+                    lineno=lineno,
+                    context="lifecycle-prefix-strip-loop",
+                    guidance="use title_match.strip_lifecycle_prefix or title_match.detect_lifecycle_prefix",
+                )
+            )
+    return findings
+
+
 def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
     comments: dict[int, list[str]] = {}
     try:
@@ -232,6 +285,7 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     findings: list[Finding] = []
     findings.extend(_module_assignment_findings(tree, normalized_file=normalized_file))
     findings.extend(_compile_call_findings(tree, normalized_file=normalized_file))
+    findings.extend(_lifecycle_prefix_strip_findings(tree, normalized_file=normalized_file))
     return [finding for finding in findings if not _is_suppressed(finding, comments_by_line=comments_by_line)]
 
 
