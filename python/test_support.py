@@ -160,9 +160,11 @@ def write_gh_pr_stub(
     _ = path.write_text(
         "#!/usr/bin/env bash\n"
         f"CAPTURE_PATH={capture_path_arg}\n"
+        'STATE_FILE="${0}.branch"\n'
+        'REPO_FILE="${0}.repo"\n'
         'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then\n'
         '  if [ -n "$CAPTURE_PATH" ]; then\n'
-        '    {\n'
+        '    (\n'
         "      printf '%s\\n' '__ARGV__'\n"
         "      for arg in \"$@\"; do printf '%s\\n' \"$arg\"; done\n"
         "      printf '%s\\n' '__BODY__'\n"
@@ -176,10 +178,27 @@ def write_gh_pr_stub(
         '        shift\n'
         '      done\n'
         '      if [ -n "$body_file" ]; then cat "$body_file"; fi\n'
-        '    } > "$CAPTURE_PATH"\n'
+        '    ) > "$CAPTURE_PATH"\n'
         '  fi\n'
+        '  head_ref=""\n'
+        '  repo=""\n'
+        '  while [ "$#" -gt 0 ]; do\n'
+        '    if [ "$1" = "--head" ]; then shift; head_ref="${1-}"; fi\n'
+        '    if [ "$1" = "--repo" ]; then shift; repo="${1-}"; fi\n'
+        '    shift\n'
+        '  done\n'
+        '  printf "%s\\n" "$head_ref" > "$STATE_FILE"\n'
+        '  printf "%s\\n" "${repo:-o/r}" > "$REPO_FILE"\n'
         f"  if [ {pr_create_rc} -ne 0 ]; then echo 'gh: pr create failed' >&2; exit {pr_create_rc}; fi\n"
-        "  echo 'https://github.com/o/r/pull/77'\n"
+        '  repo="$(cat "$REPO_FILE")"\n'
+        '  printf "https://github.com/%s/pull/77\\n" "$repo"\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo "[]"; exit 0; fi\n'
+        'if [ "$1" = "pr" ] && [ "$2" = "view" ]; then\n'
+        '  head_ref="$(cat "$STATE_FILE")"\n'
+        '  repo="$(cat "$REPO_FILE")"\n'
+        '  printf \'{"number":77,"url":"https://github.com/%s/pull/77","state":"OPEN","headRefName":"%s"}\\n\' "$repo" "$head_ref"\n'
         "  exit 0\n"
         "fi\n"
         'if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then exit 0; fi\n'

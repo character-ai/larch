@@ -305,6 +305,29 @@ def test_pr_create_resolves_success_from_post_create_list() -> None:
     assert "--json" not in runner.calls[1]
 
 
+def test_pr_create_resolves_success_without_stdout_from_post_create_list() -> None:
+    """A successful create with no URL must still recover the branch's PR."""
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "create"), 0, "", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":124,"url":"https://github.com/o/r/pull/124","state":"OPEN","headRefName":"feat"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+
+    assert created is True
+    assert pr.number == 124
+    assert pr.url == "https://github.com/o/r/pull/124"
+
+
 def test_pr_create_resolves_success_from_stdout_url_when_list_lags() -> None:
     runner = RecordingRunner(
         responses=[
