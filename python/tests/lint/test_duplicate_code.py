@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import json
 from pathlib import Path
 from types import MethodType
 from typing import Self
@@ -67,6 +68,114 @@ def _write_modules(root: Path, names: Sequence[str], source: str) -> None:
 
 def _run(root: Path, *, jobs: int = 1) -> duplicate_code.DuplicateCodeResult:
     return duplicate_code.run_duplicate_code(root=root, rcfile=root / ".pylintrc", jobs=jobs)
+
+
+def _observation(*lines: str, modules: tuple[str, str] = ("a", "b")) -> duplicate_code.DuplicateObservation:
+    return duplicate_code.DuplicateObservation(
+        modules=modules,
+        normalized_lines=lines,
+        content_hash=duplicate_code._content_hash(lines),
+    )
+
+
+def _record(observation: duplicate_code.DuplicateObservation, reason: str = "grandfathered") -> duplicate_code.BaselineRecord:
+    return duplicate_code.BaselineRecord(
+        modules=observation.modules,
+        content_hash=observation.content_hash,
+        lines=observation.lines,
+        normalized_lines=observation.normalized_lines,
+        reason=reason,
+    )
+
+
+def test_content_identity_uses_normalized_text_and_sorted_module_pair() -> None:
+    observation = _observation("one", "two", modules=("a", "z"))
+
+    assert observation.content_hash == duplicate_code._content_hash(("one", "two"))
+    assert observation.modules == ("a", "z")
+
+
+def test_baseline_accepts_exact_and_unique_shrunk_observations() -> None:
+    baseline = _record(_observation("one", "two", "three"), "existing debt")
+    shrunk = _observation("two", "three")
+
+    evaluation = duplicate_code._evaluate_baseline(observations=[shrunk], records=[baseline])
+
+    assert evaluation.exit_code == 0
+    assert evaluation.accepted == ((shrunk, baseline),)
+
+
+@pytest.mark.parametrize(
+    "live_lines",
+    [("zero", "one", "two", "three"), ("one", "two", "three", "four")],
+)
+def test_baseline_rejects_growth_at_either_edge(live_lines: tuple[str, ...]) -> None:
+    baseline = _record(_observation("one", "two", "three"))
+    grown = _observation(*live_lines)
+
+    evaluation = duplicate_code._evaluate_baseline(observations=[grown], records=[baseline])
+
+    assert evaluation.exit_code == 1
+    assert evaluation.grown == (grown,)
+    assert evaluation.stale == (baseline,)
+
+
+def test_baseline_changed_content_is_new_and_stale() -> None:
+    baseline = _record(_observation("one", "two"))
+    changed = _observation("one", "changed")
+
+    evaluation = duplicate_code._evaluate_baseline(observations=[changed], records=[baseline])
+
+    assert evaluation.exit_code == 1
+    assert evaluation.new == (changed,)
+    assert evaluation.stale == (baseline,)
+
+
+def test_baseline_ambiguous_shrink_assignment_fails_closed() -> None:
+    first = _record(_observation("zero", "one", "two", "three"))
+    second = _record(_observation("one", "two", "three", "four"))
+    shrunk = _observation("one", "two", "three")
+
+    with pytest.raises(duplicate_code.DuplicateCodeError, match="ambiguous"):
+        duplicate_code._evaluate_baseline(observations=[shrunk], records=[first, second])
+
+
+def test_baseline_surplus_shrink_observations_fail_closed() -> None:
+    baseline = _record(_observation("one", "two", "three"))
+    first = _observation("one", "two")
+    second = _observation("two", "three")
+
+    with pytest.raises(duplicate_code.DuplicateCodeError, match="surplus"):
+        duplicate_code._evaluate_baseline(observations=[first, second], records=[baseline])
+
+
+def test_write_baseline_requires_reason_for_new_identity_and_preserves_reason(tmp_path: Path) -> None:
+    path = tmp_path / "baseline.json"
+    observation = _observation("one", "two")
+
+    with pytest.raises(duplicate_code.DuplicateCodeError, match="initial-reason"):
+        duplicate_code._write_baseline(path=path, observations=[observation], initial_reason=None)
+
+    duplicate_code._write_baseline(path=path, observations=[observation], initial_reason="bootstrap")
+    duplicate_code._write_baseline(path=path, observations=[observation], initial_reason=None)
+
+    assert duplicate_code._read_baseline(path=path, allow_missing=False) == (_record(observation, "bootstrap"),)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        [{"modules": ["a", "b"], "hash": "0" * 16, "lines": 1, "normalized_lines": ["one"], "reason": ""}],
+        [{"modules": ["b", "a"], "hash": duplicate_code._content_hash(("one",)), "lines": 1, "normalized_lines": ["one"], "reason": "why"}],
+    ],
+)
+def test_baseline_parser_rejects_malformed_rows(tmp_path: Path, payload: object) -> None:
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(duplicate_code.DuplicateCodeError):
+        duplicate_code._read_baseline(path=path, allow_missing=False)
 
 
 def test_config_parsing_reads_similarity_and_ignore_values(tmp_path: Path) -> None:

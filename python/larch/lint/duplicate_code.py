@@ -13,17 +13,19 @@ from __future__ import annotations
 import argparse
 import configparser
 import contextlib
+import hashlib
 import itertools
 import json
 import multiprocessing
 import os
+import stat
 import sys
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
-from typing import Any, TextIO
+from typing import Any, Final, TextIO, cast
 
 MESSAGE_ID = "R0801"
 # pylint ``Run`` returns ``linter.msg_status`` when score is below fail-under;
@@ -31,6 +33,11 @@ MESSAGE_ID = "R0801"
 REFACTOR_MSG_STATUS = 8
 DEFAULT_ROOT = "python"
 DEFAULT_RCFILE = "python/.pylintrc"
+DEFAULT_BASELINE = "python/duplicate-code-baseline.json"
+HASH_PREFIX_LEN: Final = 16
+CONTENT_HASH_SEPARATOR: Final = "\0"
+MODULE_PAIR_SIZE: Final = 2
+BASELINE_RECORD_KEYS: Final = frozenset({"modules", "hash", "lines", "normalized_lines", "reason"})
 SIMILARITY_FLAGS = (
     "ignore-comments",
     "ignore-docstrings",
@@ -114,6 +121,44 @@ class DuplicateCluster:
 
 
 @dataclass(frozen=True)
+class DuplicateObservation:
+    """One unmerged Pylint commonality with a durable content identity."""
+
+    modules: tuple[str, str]
+    normalized_lines: tuple[str, ...]
+    content_hash: str
+
+    @property
+    def lines(self) -> int:
+        return len(self.normalized_lines)
+
+
+@dataclass(frozen=True)
+class BaselineRecord:
+    """One reason-bearing allowance for a durable duplicate observation."""
+
+    modules: tuple[str, str]
+    content_hash: str
+    lines: int
+    normalized_lines: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class BaselineEvaluation:
+    """Injective baseline matching outcome, including diagnostics for CI."""
+
+    accepted: tuple[tuple[DuplicateObservation, BaselineRecord], ...]
+    new: tuple[DuplicateObservation, ...]
+    grown: tuple[DuplicateObservation, ...]
+    stale: tuple[BaselineRecord, ...]
+
+    @property
+    def exit_code(self) -> int:
+        return 0 if not (self.new or self.grown or self.stale) else 1
+
+
+@dataclass(frozen=True)
 class DuplicateCodeResult:
     exit_code: int
     clusters: tuple[DuplicateCluster, ...]
@@ -121,6 +166,7 @@ class DuplicateCodeResult:
     findings: str
     files: tuple[str, ...]
     pair_count: int
+    observations: tuple[DuplicateObservation, ...] = ()
 
 
 class DuplicateCodeError(Exception):
@@ -255,6 +301,7 @@ def run_duplicate_code(
     rcfile: Path,
     jobs: int | None = None,
     stdout: TextIO | None = None,
+    include_clusters: bool = True,
 ) -> DuplicateCodeResult:
     config = DuplicateCodeConfig.load(root=root.resolve(), rcfile=rcfile.resolve())
     backend = _import_pylint_backend()
@@ -266,8 +313,13 @@ def run_duplicate_code(
         linesets = tuple(checker.linesets)
         pairs: list[tuple[int, int]] = list(itertools.combinations(range(len(linesets)), 2))
         commonalities = _find_commonalities(symilar=checker, linesets=linesets, pairs=pairs, jobs=_resolve_jobs(requested=jobs, pair_count=len(pairs)))
-        clusters = _clusters_from_commonalities(symilar=checker, commonalities=commonalities)
-        exit_code = _exit_code_like_pylint(linter=linter, checker=checker)
+        observations = _observations_from_commonalities(commonalities)
+        if include_clusters:
+            clusters = _clusters_from_commonalities(symilar=checker, commonalities=commonalities)
+            exit_code = _exit_code_like_pylint(linter=linter, checker=checker)
+        else:
+            clusters = []
+            exit_code = 0
     digest = _render_digest(clusters)
     findings = _render_findings(clusters)
     if stdout is not None and findings:
@@ -279,7 +331,100 @@ def run_duplicate_code(
         findings=findings,
         files=files,
         pair_count=len(pairs),
+        observations=tuple(observations),
     )
+
+
+def _observations_from_commonalities(commonalities: Sequence[Any]) -> list[DuplicateObservation]:
+    """Extract stable identities before Pylint merges commonalities for display."""
+    observations: list[DuplicateObservation] = []
+    observed_by_identity: dict[tuple[tuple[str, str], str], DuplicateObservation] = {}
+    hash_text: dict[str, tuple[str, ...]] = {}
+    for commonality in commonalities:
+        first_lines = _commonality_normalized_lines(
+            lineset=commonality.fst_lset,
+            start_line=int(commonality.fst_file_start),
+            line_count=int(commonality.cmn_lines_nb),
+        )
+        second_lines = _commonality_normalized_lines(
+            lineset=commonality.snd_lset,
+            start_line=int(commonality.snd_file_start),
+            line_count=int(commonality.cmn_lines_nb),
+        )
+        if first_lines != second_lines:
+            raise DuplicateCodeError("duplicate-code normalized commonality text differs between modules")
+        first_name = str(commonality.fst_lset.name)
+        second_name = str(commonality.snd_lset.name)
+        if first_name == second_name:
+            raise DuplicateCodeError("duplicate-code commonality unexpectedly references one module twice")
+        sorted_modules = sorted((first_name, second_name))
+        modules: tuple[str, str] = (sorted_modules[0], sorted_modules[1])
+        content_hash = _content_hash(first_lines)
+        identity = (modules, content_hash)
+        existing = observed_by_identity.get(identity)
+        if existing is not None:
+            if existing.normalized_lines != first_lines:
+                raise DuplicateCodeError(
+                    "duplicate-code live identity collision: "
+                    f"{modules[0]} <-> {modules[1]} ({content_hash})"
+                )
+            # Pylint can emit more than one positional commonality for the
+            # same durable pair-and-content identity. Positions are expressly
+            # excluded from this baseline, so retain one canonical observation.
+            continue
+        prior_text = hash_text.setdefault(content_hash, first_lines)
+        if prior_text != first_lines:
+            raise DuplicateCodeError(
+                f"duplicate-code content hash-prefix collision: {content_hash}"
+            )
+        observation = DuplicateObservation(
+            modules=modules,
+            normalized_lines=first_lines,
+            content_hash=content_hash,
+        )
+        observed_by_identity[identity] = observation
+        observations.append(observation)
+    return sorted(observations, key=_observation_sort_key)
+
+
+def _commonality_normalized_lines(*, lineset: Any, start_line: int, line_count: int) -> tuple[str, ...]:
+    """Slice the canonical Pylint ``stripped_lines`` span for one commonality."""
+    if line_count < 1:
+        raise DuplicateCodeError("duplicate-code commonality has no normalized lines")
+    start_indices = [
+        index
+        for index, line in enumerate(lineset.stripped_lines)
+        if int(line.line_number) == start_line
+    ]
+    if len(start_indices) != 1:
+        raise DuplicateCodeError(
+            "duplicate-code canonical normalized span unavailable: "
+            f"{lineset.name!s}:{start_line}"
+        )
+    normalized = tuple(
+        str(line.text)
+        for line in lineset.stripped_lines[start_indices[0] : start_indices[0] + line_count]
+    )
+    if len(normalized) != line_count or not all(normalized):
+        raise DuplicateCodeError(
+            "duplicate-code canonical normalized span is incomplete: "
+            f"{lineset.name!s}:{start_line}"
+        )
+    if any(CONTENT_HASH_SEPARATOR in line for line in normalized):
+        raise DuplicateCodeError("duplicate-code normalized text contains the hash separator")
+    return normalized
+
+
+def _content_hash(normalized_lines: Sequence[str]) -> str:
+    """Return the fixed-width identity hash for Pylint-normalized common text."""
+    if not normalized_lines:
+        raise DuplicateCodeError("duplicate-code cannot hash an empty normalized block")
+    encoded = CONTENT_HASH_SEPARATOR.join(normalized_lines).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:HASH_PREFIX_LEN]
+
+
+def _observation_sort_key(observation: DuplicateObservation) -> tuple[tuple[str, str], str]:
+    return observation.modules, observation.content_hash
 
 
 def _resolve_jobs( *,requested: int | None, pair_count: int) -> int:
@@ -497,6 +642,259 @@ def _render_findings(clusters: Sequence[DuplicateCluster]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+def _read_baseline(*, path: Path, allow_missing: bool) -> tuple[BaselineRecord, ...]:
+    """Load a strict, non-symlinked reason-bearing baseline."""
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        if allow_missing:
+            return ()
+        raise DuplicateCodeError(f"missing duplicate-code baseline: {path}") from None
+    except OSError as exc:
+        raise DuplicateCodeError(f"unable to inspect duplicate-code baseline {path}: {exc}") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise DuplicateCodeError(f"duplicate-code baseline must be a regular non-symlink file: {path}")
+    try:
+        with path.open(encoding="utf-8") as handle:
+            payload: object = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DuplicateCodeError(f"invalid duplicate-code baseline {path}: {exc}") from exc
+    if not isinstance(payload, list):
+        raise DuplicateCodeError("duplicate-code baseline must contain a top-level array")
+
+    records: list[BaselineRecord] = []
+    seen: set[tuple[tuple[str, str], str]] = set()
+    hash_text: dict[str, tuple[str, ...]] = {}
+    for index, raw_record in enumerate(payload):
+        record = _parse_baseline_record(raw_record=raw_record, index=index)
+        identity = (record.modules, record.content_hash)
+        if identity in seen:
+            raise DuplicateCodeError(
+                "duplicate-code baseline contains a duplicate identity: "
+                f"{record.modules[0]} <-> {record.modules[1]} ({record.content_hash})"
+            )
+        previous = hash_text.setdefault(record.content_hash, record.normalized_lines)
+        if previous != record.normalized_lines:
+            raise DuplicateCodeError(
+                f"duplicate-code baseline content hash-prefix collision: {record.content_hash}"
+            )
+        seen.add(identity)
+        records.append(record)
+    return tuple(sorted(records, key=_record_sort_key))
+
+
+def _parse_baseline_record(*, raw_record: object, index: int) -> BaselineRecord:
+    if not isinstance(raw_record, dict):
+        raise DuplicateCodeError(
+            f"duplicate-code baseline row {index} must have exactly "
+            f"{', '.join(sorted(BASELINE_RECORD_KEYS))}"
+        )
+    record_payload = cast("dict[str, object]", raw_record)
+    if frozenset(record_payload) != BASELINE_RECORD_KEYS:
+        raise DuplicateCodeError(
+            f"duplicate-code baseline row {index} must have exactly "
+            f"{', '.join(sorted(BASELINE_RECORD_KEYS))}"
+        )
+    raw_modules = record_payload["modules"]
+    if (
+        not isinstance(raw_modules, list)
+        or len(raw_modules) != MODULE_PAIR_SIZE
+        or not all(isinstance(module, str) and module.strip() == module and module for module in raw_modules)
+        or raw_modules[0] >= raw_modules[1]
+    ):
+        raise DuplicateCodeError(f"duplicate-code baseline row {index} has invalid sorted modules")
+    raw_lines = record_payload["normalized_lines"]
+    if (
+        not isinstance(raw_lines, list)
+        or not raw_lines
+        or not all(isinstance(line, str) and line and CONTENT_HASH_SEPARATOR not in line for line in raw_lines)
+    ):
+        raise DuplicateCodeError(f"duplicate-code baseline row {index} has invalid normalized_lines")
+    raw_allowance = record_payload["lines"]
+    if not isinstance(raw_allowance, int) or isinstance(raw_allowance, bool) or raw_allowance != len(raw_lines):
+        raise DuplicateCodeError(
+            f"duplicate-code baseline row {index} has lines inconsistent with normalized_lines"
+        )
+    raw_hash = record_payload["hash"]
+    if (
+        not isinstance(raw_hash, str)
+        or len(raw_hash) != HASH_PREFIX_LEN
+        or any(character not in "0123456789abcdef" for character in raw_hash)
+    ):
+        raise DuplicateCodeError(f"duplicate-code baseline row {index} has invalid hash")
+    normalized_lines = tuple(raw_lines)
+    if raw_hash != _content_hash(normalized_lines):
+        raise DuplicateCodeError(f"duplicate-code baseline row {index} hash does not match normalized_lines")
+    raw_reason = record_payload["reason"]
+    if not isinstance(raw_reason, str) or not raw_reason.strip():
+        raise DuplicateCodeError(f"duplicate-code baseline row {index} has a blank reason")
+    return BaselineRecord(
+        modules=(raw_modules[0], raw_modules[1]),
+        content_hash=raw_hash,
+        lines=raw_allowance,
+        normalized_lines=normalized_lines,
+        reason=raw_reason,
+    )
+
+
+def _record_sort_key(record: BaselineRecord) -> tuple[tuple[str, str], str]:
+    return record.modules, record.content_hash
+
+
+def _evaluate_baseline(
+    *, observations: Sequence[DuplicateObservation], records: Sequence[BaselineRecord]
+) -> BaselineEvaluation:
+    """Classify live observations with exact-first, injective shrink matching."""
+    records_by_identity = {(record.modules, record.content_hash): record for record in records}
+    accepted: list[tuple[DuplicateObservation, BaselineRecord]] = []
+    residual_observations: list[DuplicateObservation] = []
+    consumed_records: set[BaselineRecord] = set()
+    for observation in observations:
+        exact = records_by_identity.get((observation.modules, observation.content_hash))
+        if exact is None:
+            residual_observations.append(observation)
+            continue
+        if observation.normalized_lines != exact.normalized_lines:
+            raise DuplicateCodeError(
+                "duplicate-code baseline identity hash maps to different normalized text: "
+                f"{observation.content_hash}"
+            )
+        accepted.append((observation, exact))
+        consumed_records.add(exact)
+
+    residual_records = [record for record in records if record not in consumed_records]
+    candidate_map: dict[DuplicateObservation, tuple[BaselineRecord, ...]] = {
+        observation: tuple(
+            record
+            for record in residual_records
+            if _is_shrink_candidate(observation=observation, record=record)
+        )
+        for observation in residual_observations
+    }
+    candidate_observations = [
+        observation for observation in residual_observations if candidate_map[observation]
+    ]
+    shrink_matches = _unique_injective_matches(candidate_map=candidate_map, observations=candidate_observations)
+    accepted.extend(shrink_matches)
+    consumed_records.update(record for _, record in shrink_matches)
+    matched_observations = {observation for observation, _ in shrink_matches}
+
+    new: list[DuplicateObservation] = []
+    grown: list[DuplicateObservation] = []
+    for observation in residual_observations:
+        if observation in matched_observations:
+            continue
+        if any(_is_growth(observation=observation, record=record) for record in residual_records):
+            grown.append(observation)
+        else:
+            new.append(observation)
+    stale = [record for record in records if record not in consumed_records]
+    return BaselineEvaluation(
+        accepted=tuple(sorted(accepted, key=lambda item: _observation_sort_key(item[0]))),
+        new=tuple(sorted(new, key=_observation_sort_key)),
+        grown=tuple(sorted(grown, key=_observation_sort_key)),
+        stale=tuple(sorted(stale, key=_record_sort_key)),
+    )
+
+
+def _is_shrink_candidate(*, observation: DuplicateObservation, record: BaselineRecord) -> bool:
+    return (
+        observation.modules == record.modules
+        and observation.lines <= record.lines
+        and _contains_window(haystack=record.normalized_lines, needle=observation.normalized_lines)
+    )
+
+
+def _is_growth(*, observation: DuplicateObservation, record: BaselineRecord) -> bool:
+    return (
+        observation.modules == record.modules
+        and observation.lines > record.lines
+        and _contains_window(haystack=observation.normalized_lines, needle=record.normalized_lines)
+    )
+
+
+def _contains_window(*, haystack: Sequence[str], needle: Sequence[str]) -> bool:
+    width = len(needle)
+    return width > 0 and any(tuple(haystack[index : index + width]) == tuple(needle) for index in range(len(haystack) - width + 1))
+
+
+def _unique_injective_matches(
+    *,
+    candidate_map: dict[DuplicateObservation, tuple[BaselineRecord, ...]],
+    observations: Sequence[DuplicateObservation],
+) -> tuple[tuple[DuplicateObservation, BaselineRecord], ...]:
+    """Return the sole full matching, rejecting ambiguity and surplus observations."""
+    if not observations:
+        return ()
+    ordered = tuple(sorted(observations, key=lambda item: (len(candidate_map[item]), _observation_sort_key(item))))
+    matchings: list[tuple[tuple[DuplicateObservation, BaselineRecord], ...]] = []
+
+    def search(index: int, used: frozenset[BaselineRecord], matched: tuple[tuple[DuplicateObservation, BaselineRecord], ...]) -> None:
+        if len(matchings) > 1:
+            return
+        if index == len(ordered):
+            matchings.append(matched)
+            return
+        observation = ordered[index]
+        for record in candidate_map[observation]:
+            if record not in used:
+                search(index + 1, used | {record}, (*matched, (observation, record)))
+
+    search(0, frozenset(), ())
+    if not matchings:
+        raise DuplicateCodeError("duplicate-code baseline shrink matching has surplus observations")
+    if len(matchings) > 1:
+        raise DuplicateCodeError("duplicate-code baseline shrink matching is ambiguous")
+    return matchings[0]
+
+
+def _render_baseline_diagnostics(evaluation: BaselineEvaluation) -> str:
+    diagnostics: list[str] = []
+    for label, items in (("new", evaluation.new), ("grown", evaluation.grown)):
+        diagnostics.extend(
+            f"duplicate-code baseline {label}: {observation.modules[0]} <-> "
+            f"{observation.modules[1]} ({observation.lines} normalized lines, {observation.content_hash})"
+            for observation in items
+        )
+    diagnostics.extend(
+        f"duplicate-code baseline stale: {record.modules[0]} <-> {record.modules[1]} "
+        f"({record.lines} normalized lines, {record.content_hash})"
+        for record in evaluation.stale
+    )
+    if diagnostics:
+        diagnostics.append("Regenerate with make regen-duplicate-code-baseline after resolving or documenting changes.")
+    return "\n".join(diagnostics) + ("\n" if diagnostics else "")
+
+
+def _write_baseline(
+    *, path: Path, observations: Sequence[DuplicateObservation], initial_reason: str | None
+) -> None:
+    records = _read_baseline(path=path, allow_missing=True)
+    evaluation = _evaluate_baseline(observations=observations, records=records)
+    reasons = {observation: record.reason for observation, record in evaluation.accepted}
+    new_observations = [observation for observation in observations if observation not in reasons]
+    if new_observations and initial_reason is None:
+        raise DuplicateCodeError("--write found new duplicate-code identities; provide --initial-reason")
+    if initial_reason is not None and not initial_reason.strip():
+        raise DuplicateCodeError("--initial-reason must be non-empty")
+    payload = [
+        {
+            "modules": list(observation.modules),
+            "hash": observation.content_hash,
+            "lines": observation.lines,
+            "normalized_lines": list(observation.normalized_lines),
+            "reason": reasons.get(observation, initial_reason),
+        }
+        for observation in sorted(observations, key=_observation_sort_key)
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    try:
+        path.write_text(serialized, encoding="utf-8")
+    except OSError as exc:
+        raise DuplicateCodeError(f"failed to write duplicate-code baseline {path}: {exc}") from exc
+
+
 class _StringSink:
     def __init__(self) -> None:
         self.parts: list[str] = []
@@ -525,6 +923,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the normalized reportable-cluster digest instead of findings.",
     )
+    parser.add_argument(
+        "--baseline",
+        default=DEFAULT_BASELINE,
+        help="Reason-bearing shrink-only baseline JSON path.",
+    )
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Regenerate the duplicate-code baseline from live observations.",
+    )
+    parser.add_argument(
+        "--initial-reason",
+        help="Reason required for new identities while regenerating a baseline.",
+    )
     return parser
 
 
@@ -533,15 +945,36 @@ def duplicate_code_main(argv: Sequence[str] | None = None) -> int:
     try:
         args = parser.parse_args(list(argv) if argv is not None else None)
         emit_digest = bool(args.emit_cluster_digest)
+        write_baseline = bool(args.write)
+        initial_reason = None if args.initial_reason is None else str(args.initial_reason)
+        if initial_reason is not None and not write_baseline:
+            raise DuplicateCodeError("--initial-reason requires --write")
+        if write_baseline and emit_digest:
+            raise DuplicateCodeError("--write cannot be combined with --emit-cluster-digest")
         result = run_duplicate_code(
             root=Path(str(args.root)),
             rcfile=Path(str(args.rcfile)),
             jobs=args.jobs if args.jobs is None else int(args.jobs),
-            stdout=None if emit_digest else sys.stdout,
+            stdout=None if emit_digest or write_baseline else sys.stdout,
+            include_clusters=emit_digest,
         )
         if emit_digest:
             print(result.digest)
-        return result.exit_code
+            return result.exit_code
+        baseline_path = Path(str(args.baseline))
+        if write_baseline:
+            _write_baseline(
+                path=baseline_path,
+                observations=result.observations,
+                initial_reason=initial_reason,
+            )
+            return 0
+        records = _read_baseline(path=baseline_path, allow_missing=False)
+        evaluation = _evaluate_baseline(observations=result.observations, records=records)
+        diagnostics = _render_baseline_diagnostics(evaluation)
+        if diagnostics:
+            print(diagnostics, file=sys.stderr, end="")
+        return evaluation.exit_code
     except DuplicateCodeError as exc:
         print(f"duplicate-code: {exc}", file=sys.stderr)
         return 2
