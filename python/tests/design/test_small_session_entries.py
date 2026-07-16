@@ -6,6 +6,7 @@ from pathlib import Path
 
 from larch.design import design_session
 from larch.review import plan_review
+from larch.review import plan_review_loop
 
 from test_support import make_design_tmpdir, write_design_source_env
 
@@ -109,7 +110,7 @@ def test_gate_b_bypass_preserves_step35_short_circuit(tmp_path: Path, monkeypatc
 def test_preview_child_failure_propagates(tmp_path: Path, monkeypatch) -> None:
     design = make_design_tmpdir(tmp_path)
     source = _source_env(design, plugin_root=Path.cwd())
-    monkeypatch.setattr(plan_review, "emit_design_plan_preview", lambda _argv: 9)
+    monkeypatch.setattr(plan_review_loop, "emit_design_plan_preview", lambda _argv: 9)
 
     assert plan_review.step3_entry_preview_main(_session_args(source)) == 9
 
@@ -122,7 +123,7 @@ def test_preview_malformed_child_output_does_not_write_sentinel(tmp_path: Path, 
         print("unexpected preview payload")
         return 0
 
-    monkeypatch.setattr(plan_review, "emit_design_plan_preview", emit_malformed)
+    monkeypatch.setattr(plan_review_loop, "emit_design_plan_preview", emit_malformed)
     assert plan_review.step3_entry_preview_main(_session_args(source)) == 0
     assert not (design / ".step3-entry-plan-printed").exists()
 

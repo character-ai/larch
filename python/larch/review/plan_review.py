@@ -34,6 +34,7 @@ from larch.design.design_terminal import (
 )
 from larch.git.repo_roots import consumer_repo_root
 from larch.review import plan_review_round
+from larch.review import plan_review_loop
 from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
 from larch.review.plan_review_common import (
     POSTPLAN_RC_OPERATOR,
@@ -906,7 +907,9 @@ def step3_entry_preview_main(argv: list[str] | None = None) -> int:
         return 0
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
-        rc = emit_design_plan_preview(["--design-tmpdir", request.design_tmpdir, "--variant", "step3"])
+        rc = plan_review_loop.emit_design_plan_preview([
+            "--design-tmpdir", request.design_tmpdir, "--variant", "step3",
+        ])
     if rc != 0:
         return rc
     text = output.getvalue()
