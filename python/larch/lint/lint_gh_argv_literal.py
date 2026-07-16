@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import RuleCli, comment_tokens_by_line, iter_all_python_source_files, run_root_cli
+from larch.lint.engine import RuleCli, ScanError, comment_tokens_by_line, iter_all_python_source_files, read_python_ast, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 EXEMPT_SUBTREE = Path("larch/git")
@@ -45,13 +45,9 @@ def scan_file(path: Path, *, root: Path) -> list[Finding]:
     """Return unsuppressed raw GitHub argv list literals in one source file."""
     relative = path.relative_to(root).as_posix()
     try:
-        source = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise RuntimeError(f"{relative}: cannot read source: {exc}") from exc
-    try:
-        tree = ast.parse(source, filename=relative)
-    except SyntaxError as exc:
-        raise RuntimeError(f"{relative}: cannot parse source: {exc}") from exc
+        source, tree = read_python_ast(path, root=root)
+    except ScanError as exc:
+        raise RuntimeError(str(exc)) from exc
     comments_by_line = comment_tokens_by_line(source)
     findings: list[Finding] = []
     for node in ast.walk(tree):

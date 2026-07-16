@@ -269,6 +269,19 @@ def iter_all_python_source_files(
     )
 
 
+def read_python_ast(path: Path, *, root: Path) -> tuple[str, ast.Module]:
+    """Read and parse one Python source file relative to a rule root."""
+    relative = path.relative_to(root).as_posix()
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ScanError(f"{relative}: cannot read source: {exc}") from exc
+    try:
+        return source, ast.parse(source, filename=relative)
+    except SyntaxError as exc:
+        raise ScanError(f"{relative}: cannot parse source: {exc}") from exc
+
+
 def qualified_symbol(prefix: tuple[str, ...], *, module_symbol: str = "<module>") -> str:
     """Render a nested AST scope as its stable baseline symbol."""
     return ".".join(prefix) if prefix else module_symbol
