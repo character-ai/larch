@@ -152,7 +152,7 @@ suppress = [
 # `<path>/SKILL.md § <heading>` citation in skills/shared/subskill-invocation.md
 # (closes #236). The harness enforces heading-anchor resolution against the
 # referenced SKILL.md files — a contract orthogonal to the invocation-wording
-# contract enforced by `python3 python/cli.py lint skill-invocations`. It is referenced
+# contract enforced by the pinned `agent-lint` rule S058. It is referenced
 # only from Makefile (test-subskill-anchors target) and
 # scripts/test-subskill-anchors.md (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
