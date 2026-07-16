@@ -13,6 +13,10 @@ Warnings (7):
   6. G-Py-11 prescribes the `# type: ignore[code] # reason` / `# pyright: ignore[code] # reason` form and notes the codebase annotates suppressions densely so a bare one reads as unexplained debt; the d...
   7. The rest of the change is clean: it sweeps both sibling callers of the shared machinery (consistent with the consumer-sweep expectations), routes the file write through `larch.io.atomic_write` rath...
 
+## Architectural invariants
+
+The change only consolidates a duplicated marker-delimited Markdown block replacement state machine into a shared `python/larch/report/markdown_block.py` helper and re-points the `tokens.py` and `timing.py` callers at it, with a new test file, a complexity-baseline entry, and a ruff per-file ignore update. It does not touch any gate trigger or disarm path, pause snapshot allowlist, persisted step-result consumer, run-log flush/commit, committed run-log field, outcome label, panel slot accounting, machine-ingested agent verdict, or ship-recovery mutation route, so no architectural invariant is in scope. The paired/lone-begin/lone-end/absent-marker recovery logic is moved verbatim, and the final write still commits the same artifact bytes (now through `larch.io.atomic_write` with file-mode preservation), so no integrity surface changes behavior. Verdict: clean.
+
 ## Architectural guidelines
 
 The change is clean against the architectural guidelines. Every type and lint suppression in the new test file (`python/tests/report/test_markdown_block.py`) carries an inline reason in the prescribed `# type: ignore[code]  # reason` / `# pyright: ignore[code]  # reason` form — the two `reportPrivateUsage` suppressions on the private-wrapper callers, both `# type: ignore[operator]` suppressions on the object-typed `run_fn`, and the `# type: ignore[index]` on the delegation spy each state why. The consolidated marker-delimited block state machine is extracted once into `larch/report/markdown_block.py` and both sibling consumers (`tokens.py::_replace_block` and `timing.py::_replace_block`) are swept to delegate to it in the same change, matching the consumer-sweep expectation. The shared helper routes its write through `larch.io.atomic_write` rather than re-implementing bare tmp+replace, models the marker pair as a `@dataclass(frozen=True)` that raises loudly via `ValueError` on empty or equal markers, and the per-file ruff ignore in `python/ruff.toml` plus every added `complexity-baseline.json` row each carry a documented reason.
@@ -22,7 +26,7 @@ The change is clean against the architectural guidelines. Every type and lint su
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 00:57:53
-- **Cost**: 💰 TOTAL ~$0.76: Claude/GLM-5.2 token $4.00 (estimated $0.27), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.49  |  Tokens: 12524k
+- **Cost**: 💰 TOTAL ~$0.78: Claude/GLM-5.2 token $4.31 (estimated $0.29), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.49  |  Tokens: 13623k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7479: https://github.com/character-ai/larch/issues/7479
 - **Plan review**: N/A
