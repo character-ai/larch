@@ -23,11 +23,13 @@ ALLOW=(
   python/larch/state/admission.py
   python/preflight.py
   python/issue_wire.py
+  python/larch/issue/title_match.py
   python/larch/issue/tracking_issue.py
   python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
   python/tests/issue/test_tracking_issue.py
+  python/tests/issue/test_title_match.py
   skills/deps/SKILL.md
 )
 

@@ -216,6 +216,15 @@ def _slice_uses_loop_variable(node: ast.Subscript, *, loop_variable: str) -> boo
     return False
 
 
+def _starts_with_loop_variable(node: ast.AST, *, loop_variable: str) -> bool:
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr != "startswith" or not node.args:
+        return False
+    argument: ast.expr = node.args[0]
+    return isinstance(argument, ast.Name) and argument.id == loop_variable
+
+
 def _lifecycle_prefix_strip_findings(tree: ast.Module, *, normalized_file: str) -> list[Finding]:
     findings: list[Finding] = []
     for node in ast.walk(tree):
@@ -226,14 +235,7 @@ def _lifecycle_prefix_strip_findings(tree: ast.Module, *, normalized_file: str) 
         loop_variable = node.target.id
         has_strip_logic = False
         for descendant in ast.walk(node):
-            if (
-                isinstance(descendant, ast.Call)
-                and isinstance(descendant.func, ast.Attribute)
-                and descendant.func.attr == "startswith"
-                and descendant.args
-                and isinstance(descendant.args[0], ast.Name)
-                and descendant.args[0].id == loop_variable
-            ):
+            if _starts_with_loop_variable(descendant, loop_variable=loop_variable):
                 has_strip_logic = True
             if isinstance(descendant, ast.Subscript) and _slice_uses_loop_variable(
                 descendant, loop_variable=loop_variable
