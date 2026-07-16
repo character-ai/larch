@@ -2366,6 +2366,62 @@ def test_occurrence_baseline_accepts_ordered_multi_field_identity(
     assert err == ""
 
 
+def test_occurrence_projection_derives_pattern_name_from_first_value() -> None:
+    """Multi-field rows retain a non-empty pattern name for read-back equality."""
+    finding = Finding(
+        path="python/larch/mod.py",
+        line=1,
+        rule_id="demo-rule",
+        message="uses a lifecycle title token",
+        qualified_symbol="run",
+        occurrence=1,
+        occurrence_values=(("token", "[DONE]"), ("context", "startswith")),
+    )
+
+    row = lint_engine._project_finding(  # type: ignore[reportPrivateUsage]  # projection invariant coverage
+        finding,
+        occurrence_fields=("token", "context"),
+    )
+
+    assert isinstance(row, lint_engine.OccurrenceBaselineRow)
+    assert row.pattern_name == "[DONE]"
+    assert row.occurrence_values == (("token", "[DONE]"), ("context", "startswith"))
+
+
+def test_multi_field_occurrence_baseline_writes_back_without_pattern_name() -> None:
+    """The occurrence codec must parse the row it serializes without a shadow field."""
+    finding = Finding(
+        path="python/larch/mod.py",
+        line=1,
+        rule_id="demo-rule",
+        message="uses a lifecycle title token",
+        qualified_symbol="run",
+        occurrence=1,
+        occurrence_values=(("token", "[DONE]"), ("context", "startswith")),
+    )
+    row = lint_engine._project_finding(  # type: ignore[reportPrivateUsage]  # direct write-contract coverage
+        finding,
+        occurrence_fields=("token", "context"),
+    )
+    written = lint_engine._rows_for_write(  # type: ignore[reportPrivateUsage]  # direct write-contract coverage
+        [row],
+        [],
+        initial_reason="fixture reason",
+    )
+    serialized = lint_engine._serialized_baseline(  # type: ignore[reportPrivateUsage]  # direct serialization-contract coverage
+        written,
+        occurrence_fields=("token", "context"),
+    )
+
+    parsed = lint_engine._parse_baseline_text(  # type: ignore[reportPrivateUsage]  # direct read-back-contract coverage
+        serialized,
+        source="fixture",
+        occurrence_fields=("token", "context"),
+    )
+
+    assert parsed == written
+
+
 def test_occurrence_absent_baseline_clean_and_live(tmp_path: Path) -> None:
     _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
     baseline = tmp_path / "python" / "missing.json"

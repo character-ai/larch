@@ -728,7 +728,7 @@ def _validate_finding(  # noqa: C901, PLR0912 - finding field validation is inte
         if not has_occurrence or qualified_symbol is None:
             raise ScanError(
                 "occurrence-baseline findings require qualified_symbol, "
-                "pattern_name, and occurrence"
+                "occurrence values, and occurrence"
             )
         if finding.metric is not None:
             raise ScanError(
@@ -1274,13 +1274,19 @@ def _project_finding(
             raise ScanError(
                 "occurrence baseline findings must not set metric"
             )
+        occurrence_values = _finding_occurrence_values(
+            finding, occurrence_fields=occurrence_fields
+        )
+        pattern_name = finding.pattern_name
+        if pattern_name is None and occurrence_values:
+            pattern_name = occurrence_values[0][1]
         return OccurrenceBaselineRow(
             finding.path,
             finding.qualified_symbol,
-            finding.pattern_name or "",
+            pattern_name or "",
             finding.occurrence,
             "",
-            _finding_occurrence_values(finding, occurrence_fields=occurrence_fields),
+            occurrence_values,
         )
     if finding.qualified_symbol is None and finding.metric is None:
         return GenericBaselineRow(
