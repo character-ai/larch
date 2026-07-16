@@ -41,14 +41,6 @@ codex/plan-fidelity-vote              │                                      �
 
 **Reviewer slot failures**: 0
 
-## Architectural invariants
-
-The diff introduces lint tooling only: a new `lint_engine_adoption.py` rule module, its baseline JSON, Makefile targets, documentation prose, a module-manifest entry, a CLI registration, and a test suite. None of these changes touch workflow gate disarm logic, pause/resume snapshot allowlists, step-result identity or consumption paths, run-log flush or commit paths, panel slot accounting, agent verdict machinery, or ship recovery routes. No invariant in ARCHITECTURAL_INVARIANTS.md is implicated.
-
-## Architectural guidelines
-
-The diff is consistent with all applicable guidelines.
-
 ## /implement run 88BB80B3-4D08-4B3B-AC1C-3E33CF1AD077: pr-created
 
 - **Outcome**: ✅ DONE
