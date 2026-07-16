@@ -440,17 +440,7 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
         refreshed = difficulty._merge_existing_record_fields(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
             refreshed,
             data,
-            argparse.Namespace(
-                override_source="",
-                audit_upgrade="",
-                escalation=None,
-                round_cap="",
-                codex_model_role="",
-                audit_evaluated="",
-                escalated_round="",
-                override_tier="",
-                panel_tier="",
-            ),
+            difficulty.blank_merge_args(),
         )
         difficulty.write_record(record_path, refreshed)
         _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="difficulty-rating", input_file=str(record_path))

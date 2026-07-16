@@ -522,20 +522,11 @@ def _retry_policy_lines() -> list[str]:
         "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "recoverable",
         "unrecoverable",
     )
-    caps = {
-        "transient-infra": (4, "sleep-seconds.sh 5"),
-        "test-failure": (8, "none"),
-        "lint-failure": (8, "none"),
-        "ci-fix-exhausted": (0, "none"),
-        "dispatch-failure": (3, "none"),
-        "protected-path": (1, "none"),
-        "submodule-restricted": (0, "none"),
-        "same-cause-repeat": (2, "none"),
-        "contract-failure": (0, "none"),
-        "recoverable": (0, "none"),
-        "unrecoverable": (0, "none"),
-    }
-    return [f"{klass}\t{max_attempts}\t{delay}" for klass in classes for max_attempts, delay in [caps[klass]]]
+    return [
+        f"{klass}\t{max_attempts}\t{delay}"
+        for klass in classes
+        for max_attempts, delay in [config.RETRY_POLICY_CAPS[klass]]
+    ]
 
 
 def _doc_allowlist_lines() -> list[str]:

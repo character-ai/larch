@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import os
 import shlex
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -152,6 +153,55 @@ def _parse_porcelain_z(path: Path) -> RecoveryParse:
         tuples.add((status, rel))
         paths.add(rel)
     return RecoveryParse(tuples, paths)
+
+
+def porcelain_status_paths_z(stdout: str) -> tuple[str, ...]:
+    """Return unique paths from a NUL-delimited porcelain status stream."""
+    items = stdout.split("\0")
+    paths: set[str] = set()
+    index = 0
+    while index < len(items):
+        record = items[index]
+        index += 1
+        if not record:
+            continue
+        status, path = record[:2], record[3:]
+        if path:
+            paths.add(path)
+        if ("R" in status or "C" in status) and index < len(items):
+            old_path = items[index]
+            index += 1
+            if old_path:
+                paths.add(old_path)
+    return tuple(sorted(paths))
+
+
+def resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
+    """Resolve an optional artifact path beneath the active implement tmpdir."""
+    if not raw:
+        return tmpdir / default_relpath
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        try:
+            candidate.relative_to(tmpdir)
+        except ValueError:
+            return tmpdir / Path(*candidate.parts[1:])
+    return tmpdir / candidate
+
+
+@contextlib.contextmanager
+def result_env_capture_rows(path: Path | None) -> Generator[list[tuple[str, str]] | None, None, None]:
+    """Create a protected result env and yield its mutable KEY=value rows."""
+    if path is None:
+        yield None
+        return
+    rows: list[tuple[str, str]] = []
+    path.parent.mkdir(parents=True, exist_ok=True)
+    larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
+    try:
+        yield rows
+    finally:
+        larch_io.atomic_write(path=path, text=larch_io.format_kvs(rows), nofollow=True, mode=0o600)
 
 
 def _write_prelaunch_digests(*, repo_root: Path, porcelain_file: Path, digests_file: Path) -> None:

@@ -37,6 +37,21 @@ _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PLAN_LEGACY_CONFIDENCE_RE = re.compile(r"^confidence: .+$")
 
 
+def blank_merge_args() -> argparse.Namespace:
+    """Return the no-override argument shape used when retaining a record."""
+    return argparse.Namespace(
+        override_source="",
+        audit_upgrade="",
+        escalation=None,
+        round_cap="",
+        codex_model_role="",
+        audit_evaluated="",
+        escalated_round="",
+        override_tier="",
+        panel_tier="",
+    )
+
+
 
 @dataclass(frozen=True)
 class DifficultyRating:

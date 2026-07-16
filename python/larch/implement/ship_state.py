@@ -6,7 +6,6 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from contextlib import suppress
 from pathlib import Path
 
 from larch import io as larch_io
@@ -379,27 +378,11 @@ def _write_ship_state(
         fields.update(extra_fields)
     for key, value in fields.items():
         _validate_ship_state_value(key=key, value=str(value))
-    with suppress(FileNotFoundError):
-        tmp.unlink()
     data = "".join(f"{key}={value}\n" for key, value in fields.items())
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd: int | None = None
     try:
-        fd = os.open(tmp, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = None
-            _ = handle.write(data)
-        _ = tmp.replace(path)
+        larch_io.secure_atomic_write(path, data)
     except FileExistsError as exc:
         raise ShipError(f"refusing to overwrite existing ship state temp file: {tmp}") from exc
-    finally:
-        if fd is not None:
-            os.close(fd)
-        with suppress(OSError):
-            if tmp.exists() and not tmp.is_symlink():
-                tmp.unlink()
 
 
 def _read_patchable_ship_state(path: Path) -> dict[str, str]:
@@ -409,27 +392,12 @@ def _read_patchable_ship_state(path: Path) -> dict[str, str]:
 
 
 def _write_patchable_ship_state(*, path: Path, tmp: Path, fields: Mapping[str, str]) -> None:
+    del tmp
     data = "".join(f"{key}={value}\n" for key, value in fields.items())
-    with suppress(FileNotFoundError):
-        tmp.unlink()
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd: int | None = None
     try:
-        fd = os.open(tmp, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = None
-            _ = handle.write(data)
-        _ = tmp.replace(path)
+        larch_io.secure_atomic_write(path, data)
     except OSError as exc:
         raise ShipError(f"cannot patch ship state: {path}") from exc
-    finally:
-        if fd is not None:
-            os.close(fd)
-        with suppress(OSError):
-            if tmp.exists() and not tmp.is_symlink():
-                tmp.unlink()
 
 
 def _patch_ship_state_keys(*, state_file: Path, patch: dict[str, str]) -> None:  # pyright: ignore[reportUnusedFunction]

@@ -10,6 +10,25 @@ from larch.outcomes import Outcome
 ToolName = Literal["cursor", "codex", "claude"]
 RoleKind = Literal["waterfall", "first_available", "slot_panel", "voter_policies", "single_slot"]
 
+RETRY_POLICY_CAPS: Final[dict[str, tuple[int, str]]] = {
+    "transient-infra": (4, "sleep-seconds.sh 5"),
+    "test-failure": (8, "none"),
+    "lint-failure": (8, "none"),
+    "ci-fix-exhausted": (0, "none"),
+    "dispatch-failure": (3, "none"),
+    "protected-path": (1, "none"),
+    "submodule-restricted": (0, "none"),
+    "same-cause-repeat": (2, "none"),
+    "contract-failure": (0, "none"),
+    "recoverable": (0, "none"),
+    "unrecoverable": (0, "none"),
+}
+STEP5_RESULT_ENVELOPE_KEYS: Final[tuple[str, ...]] = (
+    "STEP5_REVIEW_STATUS", "STALL_TRACKING", "STALL_REASON", "ROUNDS_COMPLETED",
+    "FINAL_ROUND_NUM", "FINAL_REVIEW_AND_FIX_STATUS", "CODER_STATUS",
+    "FILES_CHANGED_HINT", "EFFECTIVE_ROUND_CAP",
+)
+
 # Exit codes (align with ship-pr / implement conventions)
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2

@@ -15,6 +15,7 @@ from larch import io as larch_io
 from larch.review.review_types import parse_blocks
 from larch.calibration import difficulty
 from larch.design import plan_grammar
+from larch.design.design_postplan import POSTPLAN_EMIT_KEYS as _POSTPLAN_EMIT_KEYS
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -40,31 +41,7 @@ MERGE_KEYS = (
     "REASON",
 )
 _STEP3_ROUND_CARRY_KEYS = ("DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING")
-POSTPLAN_EMIT_KEYS = {
-    "POSTPLAN_EMIT_STATUS",
-    "EMIT_PLAN_STATUS",
-    "DIFF_LINES",
-    "VALIDATE_STATUS",
-    "VALIDATE_DEFECT_COUNT",
-    "PLAN_SIZE_STATUS",
-    "SIZE_TRIGGER_FIRED",
-    "TRIGGER_REASONS",
-    "PLAN_LINES",
-    "DIFF_ADDED",
-    "DIFF_DELETED",
-    "MECHANICAL_CHURN",
-    "FIRM_HEADINGS",
-    "SURFACES_TOUCHED",
-    "OVERSIZE_OVERRIDE",
-    "SOFT_ADVISORY",
-    "PARTITION_REQUESTED",
-    "DRIFT_TRIGGER_FIRED",
-    "DRIFT_MULTIPLE",
-    "DRIFT_PLAN_RATIO",
-    "DRIFT_DIFF_RATIO",
-    "BASELINE_PLAN_LINES",
-    "BASELINE_DIFF_LINES",
-}
+POSTPLAN_EMIT_KEYS = frozenset(_POSTPLAN_EMIT_KEYS)
 OPTIONAL_TRAILER_KEYS = frozenset(plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS)
 
 
@@ -117,18 +94,7 @@ def _seed_plan_review_difficulty_record(design_tmpdir: Path) -> None:
         design_rating=raw_rating,
     )
     if existing:
-        blank_args = argparse.Namespace(
-            override_source="",
-            audit_upgrade="",
-            escalation=None,
-            round_cap="",
-            codex_model_role="",
-            audit_evaluated="",
-            escalated_round="",
-            override_tier="",
-            panel_tier="",
-        )
-        record = difficulty._merge_existing_record_fields(record, existing, blank_args)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        record = difficulty._merge_existing_record_fields(record, existing, difficulty.blank_merge_args())  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     difficulty.write_record(record_path, record)
 
 

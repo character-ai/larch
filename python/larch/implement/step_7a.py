@@ -19,6 +19,7 @@ from larch.core import config
 from larch.core import run_context
 from larch.git import pr_body
 from larch.issue import execution_issues
+from larch.implement.dispatch_helpers import result_env_capture_rows
 from larch.core import proc
 from larch.report import run_log_batch, run_log_flush, run_log_manifest
 
@@ -61,17 +62,11 @@ def _record_result_line(line: str) -> None:
 def _result_env_capture(path: Path | None) -> Generator[None, None, None]:
     global _result_rows  # noqa: PLW0603 - scoped sink for legacy emit helper
     prior = _result_rows
-    if path is None:
-        yield
-        return
-    rows: list[tuple[str, str]] = []
-    _result_rows = rows
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
-        yield
+        with result_env_capture_rows(path) as rows:
+            _result_rows = rows
+            yield
     finally:
-        larch_io.atomic_write(path=path, text=larch_io.format_kvs(rows), nofollow=True, mode=0o600)
         _result_rows = prior
 
 

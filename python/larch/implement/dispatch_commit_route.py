@@ -45,6 +45,7 @@ from larch.implement.dispatch_helpers import (
     _write_bytes_atomic,
     _write_text_atomic,
     GIT_BIN,
+    porcelain_status_paths_z,
 )
 from larch.implement.dispatch_helpers import _resolve_repo_root as _resolve_repo_root  # noqa: PLC0414 - re-exported for test monkeypatching  # pylint: disable=useless-import-alias  # re-exported for test monkeypatching
 from larch.implement.dispatch_leg import (
@@ -458,19 +459,8 @@ def step5_canonical_result_env_state(*, tmpdir: Path) -> str:
     )
     if rows is None:
         return "absent"
-    required = {
-        "STEP5_REVIEW_STATUS",
-        "STALL_TRACKING",
-        "STALL_REASON",
-        "ROUNDS_COMPLETED",
-        "FINAL_ROUND_NUM",
-        "FINAL_REVIEW_AND_FIX_STATUS",
-        "CODER_STATUS",
-        "FILES_CHANGED_HINT",
-        "EFFECTIVE_ROUND_CAP",
-    }
     status = rows.get("STEP5_REVIEW_STATUS", "")
-    if rows.get("STEP") != _STEP5_REVIEW_STEP or not required.issubset(rows):
+    if rows.get("STEP") != _STEP5_REVIEW_STEP or not set(config.STEP5_RESULT_ENVELOPE_KEYS).issubset(rows):
         return "stale"
     if rows.get(config.BGJOB_RC_KEY) == "0" and status == "complete":
         if not _step5_result_identity_ok(tmpdir=tmpdir, rows=rows):
@@ -1123,24 +1113,7 @@ def _pathspec_clean_relative_to_head(pathspec_file: Path) -> bool:
 
 
 def _porcelain_status_paths_z(stdout: str) -> list[str]:
-    items = stdout.split("\0")
-    paths: list[str] = []
-    idx = 0
-    while idx < len(items):
-        rec = items[idx]
-        idx += 1
-        if not rec:
-            continue
-        status = rec[:2]
-        rel = rec[3:]
-        if rel:
-            paths.append(rel)
-        if ("R" in status or "C" in status) and idx < len(items):
-            old_rel = items[idx]
-            idx += 1
-            if old_rel:
-                paths.append(old_rel)
-    return sorted(dict.fromkeys(paths))
+    return list(porcelain_status_paths_z(stdout))
 
 
 def _dispatcher_committed_dirty_pathspec(implement_tmpdir: Path) -> tuple[Path | None, bool]:

@@ -1723,14 +1723,14 @@ def test_ledger_reason_ignores_unlabeled_ballot_bullets() -> None:
 - **Suggested fix:** Do the thing.
 ### In-Scope Findings
 """
-    assert review_tally._ledger_reason(block) == "Real issue."  # pyright: ignore[reportPrivateUsage]
-    assert "**Suggested fix:**" not in review_tally._ledger_reason(block)  # pyright: ignore[reportPrivateUsage]
-    assert "### In-Scope Findings" not in review_tally._ledger_reason(block)  # pyright: ignore[reportPrivateUsage]
+    assert voting.ledger_reason(block) == "Real issue."
+    assert "**Suggested fix:**" not in voting.ledger_reason(block)
+    assert "### In-Scope Findings" not in voting.ledger_reason(block)
     bare = """### FINDING_2: Bare
 - **Reviewer**: Codex-Structure
 - bullet without label
 """
-    assert review_tally._ledger_reason(bare) == ""  # pyright: ignore[reportPrivateUsage]
+    assert voting.ledger_reason(bare) == ""
 
 
 def test_aggregate_block_identity_ignores_filed_url_annotations() -> None:

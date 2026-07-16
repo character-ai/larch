@@ -17,7 +17,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config, logging_util, proc
@@ -212,6 +212,26 @@ def _resolve_read_result_env_source(input_path: Path, fallback_path: Path | None
 
 def _stall_args(design_tmpdir: Path) -> list[str]:
     return ["--profile", "generic", "--artifact-prefix", "design-failure", "--implement-tmpdir", str(design_tmpdir)]
+
+
+def extend_publish_failure_stage_args(stage_args: list[str], values: Mapping[str, str]) -> None:
+    """Append optional publish state to a terminal-stage command."""
+    for flag, key in (
+        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
+        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
+        ("--latest-phase", "LATEST_PHASE"),
+        ("--plan-write-ok", "PLAN_WRITE_OK"),
+        ("--publish-ok", "PUBLISH_OK"),
+        ("--renamed", "RENAMED"),
+        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
+        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
+        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
+        ("--pr-url", "PR_URL"),
+        ("--recovery-branch", "RECOVERY_BRANCH"),
+    ):
+        value = values.get(key, "")
+        if value:
+            stage_args.extend((flag, value))
 
 
 def _run_stall_main(*, callable_obj: Callable[..., int], argv: Sequence[str], stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:

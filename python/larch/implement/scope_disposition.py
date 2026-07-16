@@ -21,6 +21,8 @@ from larch import io as larch_io
 from larch.core import config, logging_util, proc
 from larch.core.proc import CommandResult, Runner
 from larch.errors import NeedsUserInput, ShipError
+from larch.implement.dispatch_helpers import porcelain_status_paths_z
+from larch.state.session_env import run_log_write_argv
 
 CoverageBand = Literal["advisory", "middle", "high"]
 Disposition = Literal["proceed-partial", "bail-rescope"]
@@ -653,24 +655,7 @@ def touched_paths_since_baseline(
 
 
 def _porcelain_paths_z(stdout: str) -> set[str]:
-    items = stdout.split("\0")
-    paths: set[str] = set()
-    idx = 0
-    while idx < len(items):
-        rec = items[idx]
-        idx += 1
-        if not rec:
-            continue
-        status = rec[:2]
-        rel = rec[3:]
-        if rel:
-            paths.add(rel)
-        if ("R" in status or "C" in status) and idx < len(items):
-            old_rel = items[idx]
-            idx += 1
-            if old_rel:
-                paths.add(old_rel)
-    return paths
+    return set(porcelain_status_paths_z(stdout))
 
 
 def _firm_plan_paths(plan_file: Path) -> tuple[str, ...]:
@@ -1347,22 +1332,10 @@ def _write_scope_run_log(
             }
         ),
     )
-    result = _run_cli(
-        [
-            "run-log",
-            "write",
-            "--log-root",
-            str(tmpdir / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            run_id,
-            "--batch",
-            "scope-disposition",
-            "--input-file",
-            str(payload),
-        ]
-    )
+    result = _run_cli(run_log_write_argv(
+        log_root=tmpdir / "larch-logs", run_id=run_id,
+        batch="scope-disposition", input_file=payload,
+    ))
     _ = _require_cli_success(result, label="run-log write scope-disposition")
 
 

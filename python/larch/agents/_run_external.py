@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Timer
 
@@ -935,6 +936,21 @@ def _append_vendor_failure_diagnostics(source: Path, *, site: str, exit_code: in
         return
 
 
+@dataclass(frozen=True)
+class ExecutionLogFailure:
+    """One external-launch failure row for the execution-issues log."""
+
+    log: Path
+    site: str
+    tool: str
+    exit_code: int
+    category: str
+    source: Path
+    verdict: str
+    auth_attempt: int | None = None
+    transient_attempt: int | None = None
+
+
 def _append_ci_failure(output: Path, *, tool: str, launcher_exit: int, site: str, binary_present: bool = True) -> None:
     if launcher_exit == 0:
         return
@@ -949,31 +965,27 @@ def _append_ci_failure(output: Path, *, tool: str, launcher_exit: int, site: str
             tool=tool,
             output_file=output,
         )
-        proc.run(
-            [
-                sys.executable,
-                str(_PY_CLI),
-                "run-log",
-                "append-failure",
-                "--log",
-                str(log),
-                "--site",
-                site,
-                "--tool",
-                f"{tool}-ci",
-                "--exit-code",
-                str(launcher_exit),
-                "--category",
-                "CI Issues",
-                "--output-file",
-                str(source),
-                "--verdict",
-                failure.reason or failure.failure_class,
-                "--redact",
-            ],
-            check=False,
-        )
+        append_execution_log_failure(ExecutionLogFailure(
+            log=log, site=site, tool=f"{tool}-ci", exit_code=launcher_exit,
+            category="CI Issues", source=source,
+            verdict=failure.reason or failure.failure_class,
+        ))
     _append_vendor_failure_diagnostics(source, site=f"{site} {tool}-ci", exit_code=launcher_exit)
+
+
+def append_execution_log_failure(failure: ExecutionLogFailure) -> None:
+    """Record one external launcher failure in the shared execution-issues log."""
+    argv = [
+        sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(failure.log),
+        "--site", failure.site, "--tool", failure.tool, "--exit-code", str(failure.exit_code),
+        "--category", failure.category, "--output-file", str(failure.source), "--verdict", failure.verdict,
+    ]
+    if failure.auth_attempt is not None:
+        argv.extend(("--retry-count", str(failure.auth_attempt)))
+    if failure.transient_attempt is not None:
+        argv.extend(("--transient-retry-count", str(failure.transient_attempt)))
+    argv.append("--redact")
+    proc.run(argv, check=False)
 
 
 def _write_preflight_bundle(

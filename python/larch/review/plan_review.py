@@ -33,6 +33,7 @@ from larch.design.design_terminal import (
 )
 from larch.git.repo_roots import consumer_repo_root
 from larch.review import plan_review_round
+from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
 from larch.review.plan_review_common import (
     POSTPLAN_RC_OPERATOR,
     POSTPLAN_RC_PAUSE,
@@ -394,24 +395,15 @@ def _step3_emit_cap_reached(*, review_count: int) -> None:
 
 
 def _apply_new_process_group(parser: argparse.ArgumentParser) -> None:
-    if not hasattr(os, "setsid"):
-        parser.exit(2, "cli.py plan-review run: --new-process-group failed: os.setsid is unavailable\n")
-    try:
-        os.setsid()
-    except OSError as exc:
-        parser.exit(2, f"cli.py plan-review run: --new-process-group failed: {exc}\n")
+    apply_new_process_group(parser, surface="cli.py plan-review run")
 
 
 def _parse_orphan_timeout(parser: argparse.ArgumentParser, value: str) -> float | None:
-    if not value:
-        return None
     try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        parser.exit(2, "cli.py plan-review run: --orphan-timeout-s must be positive\n")
-    if parsed <= 0:
-        parser.exit(2, "cli.py plan-review run: --orphan-timeout-s must be positive\n")
-    return parsed
+        return optional_positive_float(value, label="cli.py plan-review run: --orphan-timeout-s")
+    except ValueError as exc:
+        parser.exit(2, f"{exc}\n")
+    return None
 
 
 def _parse_optional_epoch(value: str) -> float | None:

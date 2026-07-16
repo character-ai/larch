@@ -37,6 +37,7 @@ from larch.review.dispatch_shared import (
     fresh_calibration_snapshot,
     record_voter_dispatch_prep,
     resolved_model_for_row,
+    state_from_voter_bindings,
     topology_slots,
     topology_voter_policies,
     validate_parse_rate_result,
@@ -868,10 +869,6 @@ def _write_plan_voter_waterfall_manifest(
     return manifest
 
 
-def _semantic_label(policy: VoterSlotPolicy, tool: str) -> str:
-    return dict(policy.semantic_labels).get(tool, policy.default_label)
-
-
 def _state_from_bindings(
     *,
     design: Path,
@@ -879,32 +876,12 @@ def _state_from_bindings(
     bindings: Mapping[str, agent_waterfall.SlotOutputBinding],
     launched_policies: Sequence[VoterSlotPolicy],
 ) -> DispatchState:
-    launched = {policy.slot_name for policy in launched_policies}
-    policy_by_slot = {policy.slot_name: policy for policy in policies}
-
-    def _resolve(slot_name: str) -> tuple[Path, str, str]:
-        policy = policy_by_slot[slot_name]
-        default_path = design / policy.output_name
-        if slot_name not in launched:
-            return default_path, policy.default_label, "skipped"
-        binding = bindings.get(slot_name, agent_waterfall.SlotOutputBinding())
-        if binding.dropped or not binding.path:
-            return default_path, policy.default_label, "failed"
-        return Path(binding.path), _semantic_label(policy, binding.tool or policy.primary_tool), "launched"
-
-    path1, tool1, status1 = _resolve("voter-1")
-    path2, tool2, status2 = _resolve("voter-2")
-    path3, tool3, status3 = _resolve("voter-3")
-    return DispatchState(
-        voter_1_path=path1,
-        voter_2_path=path2,
-        voter_3_path=path3,
-        voter_1_tool=tool1,
-        voter_2_tool=tool2,
-        voter_3_tool=tool3,
-        voter_1_status=status1,
-        voter_2_status=status2,
-        voter_3_status=status3,
+    return state_from_voter_bindings(
+        policies=policies,
+        bindings=bindings,
+        launched_policies=launched_policies,
+        fallback_path=lambda policy: design / policy.output_name,
+        binding_path=Path,
     )
 
 
