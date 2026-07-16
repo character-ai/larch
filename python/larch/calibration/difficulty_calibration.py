@@ -17,7 +17,15 @@ from typing import cast
 from larch.calibration import difficulty
 from larch.report import run_log_corpus
 from larch.report.report_tokens_cost import display_rates
-from larch.report.report_tokens_models import safe_int
+from larch.report.report_tokens_models import (
+    VendorName,
+    VendorTotals,
+    VENDORS,
+    claude_effective_cache_create,
+    effective_vendor_total,
+    safe_int,
+    vendor_totals_from_report,
+)
 from larch.review import voting
 
 SKILLS = ("design", "implement", "review")
@@ -459,51 +467,27 @@ def _realized_tier(rating: Mapping[str, object] | None, classification: Classifi
     return difficulty.MODERATE, UNKNOWN
 
 
-def _vendor_totals(data: Mapping[str, object], vendor: str) -> Mapping[str, object]:
-    bucket = data.get(f"BUCKETS_{vendor}")
-    if isinstance(bucket, dict):
-        return cast("dict[str, object]", bucket)
-    vendor_obj = data.get(vendor)
-    if isinstance(vendor_obj, dict):
-        totals = cast("dict[str, object]", vendor_obj).get("totals")
-        if isinstance(totals, dict):
-            return cast("dict[str, object]", totals)
-    return {}
-
-
-def _total_tokens_for_vendor(totals: Mapping[str, object], vendor: str) -> int:
-    total = safe_int(value=totals.get("total"))
-    if total > 0:
-        return total
-    if vendor == "codex":
-        return sum(safe_int(value=totals.get(key)) for key in ("input", "cached_input", "output"))
-    return sum(safe_int(value=totals.get(key)) for key in ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output"))
-
-
-def _cost_for_vendor(totals: Mapping[str, object], vendor: str) -> float:
+def _cost_for_vendor(totals: VendorTotals, *, vendor: VendorName) -> float:
     rates = display_rates()
     if vendor == "codex":
         return (
-            safe_int(value=totals.get("input")) * rates.codex_input
-            + safe_int(value=totals.get("cached_input")) * rates.codex_cached_input
-            + safe_int(value=totals.get("output")) * rates.codex_output
+            totals.input * rates.codex_input
+            + totals.cached_input * rates.codex_cached_input
+            + totals.output * rates.codex_output
         ) / 1_000_000
     if vendor == "cursor":
         return (
-            safe_int(value=totals.get("input")) * rates.cursor_input
-            + safe_int(value=totals.get("cache_read")) * rates.cursor_cache_read
-            + safe_int(value=totals.get("output")) * rates.cursor_output
+            totals.input * rates.cursor_input
+            + totals.cache_read * rates.cursor_cache_read
+            + totals.output * rates.cursor_output
         ) / 1_000_000
-    cache_create_5m = safe_int(value=totals.get("cache_create_5m"))
-    cache_create_1h = safe_int(value=totals.get("cache_create_1h"))
-    cache_create = 0 if cache_create_5m or cache_create_1h else safe_int(value=totals.get("cache_create"))
+    cache_create_5m, cache_create_1h = claude_effective_cache_create(totals)
     return (
-        safe_int(value=totals.get("input")) * rates.claude_input
-        + safe_int(value=totals.get("cache_read")) * rates.claude_cache_read
-        + safe_int(value=totals.get("cache_create_5m")) * rates.claude_cache_create_5m
-        + safe_int(value=totals.get("cache_create_1h")) * rates.claude_cache_create_1h
-        + cache_create * rates.claude_cache_create_5m
-        + safe_int(value=totals.get("output")) * rates.claude_output
+        totals.input * rates.claude_input
+        + totals.cache_read * rates.claude_cache_read
+        + cache_create_5m * rates.claude_cache_create_5m
+        + cache_create_1h * rates.claude_cache_create_1h
+        + totals.output * rates.claude_output
     ) / 1_000_000
 
 
@@ -517,11 +501,13 @@ def _token_timing(skill: str, run_dir: Path, state: AnalyzerState) -> TokenTimin
         data = cast("dict[str, object]", token_obj)
         total = 0
         cost = 0.0
-        for vendor in ("claude", "claude_sub", "codex", "cursor"):
-            totals = _vendor_totals(data, vendor)
-            total += _total_tokens_for_vendor(totals, vendor)
-            if totals:
-                cost += _cost_for_vendor(totals, "claude" if vendor == "claude_sub" else vendor)
+        for vendor in VENDORS:
+            totals = vendor_totals_from_report(data, vendor=vendor)
+            total += effective_vendor_total(totals=totals, vendor=vendor)
+            cost += _cost_for_vendor(
+                totals,
+                vendor="claude" if vendor == "claude_sub" else vendor,
+            )
         token_total = total
         cost_usd = cost
     timing_obj = _read_json(run_dir / timing_name, state, "missing_or_malformed_timing_reports")

@@ -18,7 +18,16 @@ from larch.report import run_log_corpus
 from larch.errors import ShipError
 from larch.git import gh
 from larch.core.proc import Runner
-from larch.report.report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
+from larch.report.report_tokens_models import (
+    PhaseRow,
+    RunRecord,
+    Skill,
+    VENDOR_COMPONENTS,
+    VENDORS,
+    effective_vendor_total,
+    safe_int,
+    vendor_totals_from_report,
+)
 
 _JSON_ERROR = object()
 
@@ -89,59 +98,13 @@ def _token_basename(skill: Skill) -> str:
 def _workflow(*, _run_dir: Path, _skill: Skill) -> str:
     return ""
 
-def _totals(*, report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
-    vendor_obj = _as_mapping(report.get(vendor))
-    totals = _as_mapping(vendor_obj.get("totals"))
-    # Fall back to BUCKETS_<vendor> for fields absent from totals. The old Bash
-    # report builder (vendor_json in token-report.sh) only emitted {input, output,
-    # total} for external vendor lanes; cache_read/cache_create/cached_input were
-    # missing. BUCKETS_<vendor> is always correct, so use it when totals omits a
-    # field (issue #5852).
-    buckets = _as_mapping(report.get(f"BUCKETS_{vendor}"))
-
-    def _f(key: str) -> int:
-        v = totals.get(key)
-        if v is not None:
-            return safe_int(value=v)
-        return safe_int(value=buckets.get(key, 0))
-
-    return VendorTotals(
-        input=_f("input"),
-        cache_read=_f("cache_read"),
-        cache_create=_f("cache_create"),
-        cache_create_5m=_f("cache_create_5m"),
-        cache_create_1h=_f("cache_create_1h"),
-        cached_input=_f("cached_input"),
-        output=_f("output"),
-        total=_f("total"),
-    )
-
 def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
-    bucket_keys = {
-        "claude": ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output"),
-        "codex": ("input", "cached_input", "output"),
-        "cursor": ("input", "cache_read", "output"),
-        # claude_sub shares the Claude bucket shape (priced at Claude rates).
-        "claude_sub": ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output"),
-    }
     for vendor in VENDORS:
         bucket = _as_mapping(report.get(f"BUCKETS_{vendor}"))
-        if any(safe_int(value=bucket.get(key)) > 0 for key in bucket_keys[vendor]):
+        if any(safe_int(value=bucket.get(key)) > 0 for key in VENDOR_COMPONENTS[vendor]):
             return True
-        totals = _totals(report=report, vendor=vendor)
-        if any(
-            value > 0
-            for value in (
-                totals.input,
-                totals.cache_read,
-                totals.cache_create,
-                totals.cache_create_5m,
-                totals.cache_create_1h,
-                totals.cached_input,
-                totals.output,
-                totals.total,
-            )
-        ):
+        totals = vendor_totals_from_report(report=report, vendor=vendor)
+        if effective_vendor_total(totals=totals, vendor=vendor) > 0:
             return True
     return False
 
@@ -263,10 +226,10 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         started_at=str(manifest.get("started_at") or ""),
         closed_at=str(manifest.get("updated_at") or manifest.get("started_at") or ""),
         workflow=_workflow(_run_dir=run_dir, _skill=skill),
-        claude=_totals(report=report, vendor="claude"),
-        codex=_totals(report=report, vendor="codex"),
-        cursor=_totals(report=report, vendor="cursor"),
-        claude_sub=_totals(report=report, vendor="claude_sub"),
+        claude=vendor_totals_from_report(report=report, vendor="claude"),
+        codex=vendor_totals_from_report(report=report, vendor="codex"),
+        cursor=vendor_totals_from_report(report=report, vendor="cursor"),
+        claude_sub=vendor_totals_from_report(report=report, vendor="claude_sub"),
         phase_rows=_phase_rows(report),
         raw_report=report,
         main_model=str(roster.get("main") or ""),

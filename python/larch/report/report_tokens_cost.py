@@ -12,7 +12,16 @@ from collections.abc import Mapping
 
 from larch.core import config
 from larch.core.proc import Runner
-from larch.report.report_tokens_models import DisplayRates, RunRecord, VendorName, VENDORS, VendorTotals, safe_int
+from larch.report.report_tokens_models import (
+    DisplayRates,
+    RunRecord,
+    VendorName,
+    VENDOR_COMPONENTS,
+    VENDORS,
+    VendorTotals,
+    effective_vendor_total,
+    safe_int,
+)
 
 DEFAULT_VENDOR_MODEL = {
     "codex": config.CODEX_DEFAULT_MODEL,
@@ -242,39 +251,14 @@ def _vendor_totals(*, record: RunRecord, vendor: VendorName) -> VendorTotals:
 
 
 def _bucket_total(*, bucket: Mapping[str, object], vendor: VendorName) -> int:
-    if vendor in ("claude", "claude_sub"):
-        keys = ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output")
-    elif vendor == "codex":
-        keys = ("input", "cached_input", "output")
-    else:
-        keys = ("input", "cache_read", "output")
-    return sum(safe_int(value=bucket.get(key)) for key in keys)
-
-
-def _aggregate_tokens(*, totals: VendorTotals, vendor: VendorName) -> int:
-    if vendor in ("claude", "claude_sub"):
-        split_cache_create = totals.cache_create_5m + totals.cache_create_1h
-        cache_create = split_cache_create if split_cache_create > 0 else totals.cache_create
-        component_total = totals.input + totals.cache_read + cache_create + totals.output
-        if component_total > 0:
-            return component_total
-    elif vendor == "codex":
-        component_total = totals.input + totals.cached_input + totals.output
-        if component_total > 0:
-            return component_total
-    else:
-        component_total = totals.input + totals.cache_read + totals.output
-        if component_total > 0:
-            return component_total
-    return totals.total
+    return sum(safe_int(value=bucket.get(key)) for key in VENDOR_COMPONENTS[vendor])
 
 
 def aggregate_vendor_tokens(*, record: RunRecord, vendor: VendorName) -> int:
-    bucket = _bucket(record=record, vendor=vendor)
-    bucket_total = _bucket_total(bucket=bucket, vendor=vendor)
-    if bucket_total > 0:
-        return bucket_total
-    return _aggregate_tokens(totals=_vendor_totals(record=record, vendor=vendor), vendor=vendor)
+    return effective_vendor_total(
+        totals=_vendor_totals(record=record, vendor=vendor),
+        vendor=vendor,
+    )
 
 
 def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
@@ -432,7 +416,7 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
             else:
                 argv.extend(cursor_argv_from_buckets(by_model=record.raw_report.get("BUCKETS_cursor_by_model"), bucket=bucket))
         else:
-            argv.extend([f"--{flag_prefix}-tokens", str(_aggregate_tokens(totals=totals, vendor=vendor))])
+            argv.extend([f"--{flag_prefix}-tokens", str(effective_vendor_total(totals=totals, vendor=vendor))])
     return argv
 
 
