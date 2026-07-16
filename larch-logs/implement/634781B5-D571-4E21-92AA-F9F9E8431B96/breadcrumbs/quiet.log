@@ -21,6 +21,9 @@ ci_monitor: CI fail after 32s -> evaluate_failure
 === larch-quiet-ship.py-29112.log ===
 ship.py: pre-pr-reentry: de-terminalized prior phase stalled -> assessments
 === larch-quiet-ship.py-34870.log ===
+=== larch-quiet-ship.py-45940.log ===
+ship.py: pre-pr-reentry: de-terminalized prior phase stalled -> assessments
+=== larch-quiet-ship.py-50271.log ===
 === larch-quiet-ship.py-8000.log ===
 === larch-quiet-ship.py-98480.log ===
 ship.py: pr-prep: postbump/Flush+Push
