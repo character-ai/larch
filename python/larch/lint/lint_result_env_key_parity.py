@@ -16,22 +16,20 @@ stay identical to sibling engine rules.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
 from larch.core import proc
 from larch.lint.engine import (
-    EXIT_ERROR,
     Finding,
     LintRule,
+    RuleCli,
     ScanError,
     SourceFile,
-    run_rule,
+    run_rule_cli,
 )
 
 RULE_ID = "result-env-key-parity"
@@ -248,55 +246,20 @@ def build_rule() -> LintRule:
     )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint result-env-key-parity",
-        description=__doc__,
-    )
-    _ = parser.add_argument(
-        "--root",
-        default=str(Path(__file__).resolve().parents[3]),
-        help="Repository root (default: checkout containing this module).",
-    )
-    _ = parser.add_argument(
-        "--write",
-        action="store_true",
-        help=f"Regenerate {BASELINE_FILENAME} from the live scan.",
-    )
-    _ = parser.add_argument(
-        "--initial-reason",
-        help="Reason for live findings that have no preserved baseline reason.",
-    )
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry registered as ``python3 python/cli.py lint result-env-key-parity``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return EXIT_ERROR
-    root = Path(str(parsed.root)).resolve()
-    baseline_path = root / "python" / BASELINE_FILENAME
-    initial_reason = parsed.initial_reason
-    if initial_reason is not None and not str(initial_reason).strip():
-        print(
-            "lint-result-env-key-parity: --initial-reason must be non-empty",
-            file=sys.stderr,
-        )
-        return EXIT_ERROR
-    write_baseline = bool(parsed.write)
-    return run_rule(
-        build_rule(),
-        root,
-        proc.ProcRunner(),
-        baseline_path=baseline_path,
-        write_baseline=write_baseline,
-        initial_reason=None if initial_reason is None else str(initial_reason),
+    """Run the result-env key-parity ratchet or regenerate its baseline."""
+    return run_rule_cli(
+        argv if argv is not None else sys.argv[1:],
+        rule=build_rule(),
+        cli=RuleCli(
+            prog="cli.py lint result-env-key-parity",
+            description=__doc__,
+            baseline_filename=BASELINE_FILENAME,
+            error_label="lint-result-env-key-parity",
+            scoped_paths=PATHSPECS,
+            strict_stale=False,
+        ),
+        runner=proc.ProcRunner(),
     )
 
 
