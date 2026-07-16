@@ -41,11 +41,19 @@ codex/plan-fidelity-vote              │                                      �
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+The diff introduces lint tooling only: a new `lint_engine_adoption.py` rule module, its baseline JSON, Makefile targets, documentation prose, a module-manifest entry, a CLI registration, and a test suite. None of these changes touch workflow gate disarm logic, pause/resume snapshot allowlists, step-result identity or consumption paths, run-log flush or commit paths, panel slot accounting, agent verdict machinery, or ship recovery routes. No invariant in ARCHITECTURAL_INVARIANTS.md is implicated.
+
+## Architectural guidelines
+
+The diff is consistent with all applicable guidelines.
+
 ## /implement run 88BB80B3-4D08-4B3B-AC1C-3E33CF1AD077: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:41:31
-- **Cost**: 💰 TOTAL ~$21.91: Claude $7.20, Codex-5.6 $3.80, Codex-mini $0.03, Cursor $8.65 (Composer $4.66, Grok $3.99), Claude (subprocess) $2.23  |  Tokens: 32061k
+- **Cost**: 💰 TOTAL ~$22.23: Claude $7.52, Codex-5.6 $3.80, Codex-mini $0.03, Cursor $8.65 (Composer $4.66, Grok $3.99), Claude (subprocess) $2.23  |  Tokens: 32947k
 - **Issue**: #6992: https://github.com/character-ai/larch/issues/6992
 - **PR**: #7506: https://github.com/character-ai/larch/pull/7506
 - **Plan review**: N/A
@@ -53,7 +61,7 @@ codex/plan-fidelity-vote              │                                      �
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/8 accepted
-- **Lines (PR diff)**: code +1553/-1, larch-logs +676/-0
+- **Lines (PR diff)**: code +1553/-1, larch-logs +668/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
