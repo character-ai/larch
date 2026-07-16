@@ -233,10 +233,15 @@ If `STEP1D5_ACTION=skip`:
 If `STEP1D5_ACTION=run`: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass: not on skip paths). Then run the existing completion fence before Step 1d.7:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker follows brainstorm body before outline gate
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete
 ```
 
 <!-- step:1d.7: Design Outline (Outline-Approval Gate) -->
+
+### Step 1d.7 entry
+
+Step 1d.7 is a separate outline-approval boundary. Run its entry only after
+the Step 1d.5 run path completes or its skip path is selected.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d7

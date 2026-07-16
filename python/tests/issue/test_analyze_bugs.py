@@ -2775,25 +2775,12 @@ def test_sweep_bug_finder_agent_contract_pinned() -> None:
     agent_path = root / ".claude" / "agents" / "sweep-bug-finder.md"
     text = agent_path.read_text(encoding="utf-8")
 
-    # Parse YAML frontmatter (between --- markers)
     lines = text.split("\n")
-    body_start_idx = 0
-    in_fence = False
-    fence_start = 0
-    for i, line in enumerate(lines):
-        if line.strip() == "---":
-            if not in_fence:
-                in_fence = True
-                fence_start = i
-            else:
-                body_start_idx = i + 1
-                break
+    assert lines[0] == "---"
+    frontmatter_end = lines.index("---", 1)
+    frontmatter_text = "\n".join(lines[1:frontmatter_end])
+    body = "\n".join(lines[frontmatter_end + 1 :])
 
-    frontmatter_lines = lines[fence_start + 1 : body_start_idx - 1]
-    frontmatter_text = "\n".join(frontmatter_lines)
-    body = "\n".join(lines[body_start_idx:])
-
-    # Check tools declaration
     assert "tools:" in frontmatter_text
     assert "- Read" in frontmatter_text
     assert "- Grep" in frontmatter_text

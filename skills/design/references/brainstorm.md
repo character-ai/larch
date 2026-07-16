@@ -81,7 +81,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
   --budget-s 1260 \
   --merge-result-env "$DESIGN_TMPDIR/.design-brainstorm-framing-result.env" \
   -- \
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>"
 ```
 
 **Scope** (when the registry-selected tool is external and available):
@@ -109,7 +109,6 @@ Fresh-launch stdout for each lane must be exactly `BGJOB_STATUS=STARTED STEP=<la
 **Example: one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
 
 ```bash
-# lint-consecutive-bash: ok one-external and two-external collect examples are intentionally distinct
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect -- \
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt"
 ```
