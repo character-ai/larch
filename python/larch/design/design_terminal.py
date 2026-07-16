@@ -72,13 +72,19 @@ def phase_driver_read_result_env(*, path: str | Path, allow_keys: Iterable[str])
     return [(key, value) for key, values in rows.items() for value in values]
 
 
-def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, str] | str]) -> None:
+def phase_driver_write_result_env(
+    *,
+    path: str | Path,
+    kvs: Iterable[tuple[str, str] | str],
+    allow_keys: Iterable[str] = PHASE_RESULT_ENV_ALLOW_KEYS,
+) -> None:
     """Atomically write allowlisted KEY=VALUE records to a result-env file.
 
     The trust boundary mirrors the shell phase driver: symlink targets are
     refused, keys must be allowlisted shell variable names, and values may not
     contain CR/LF bytes.
     """
+    allowed = set(allow_keys)
     dest = Path(path)
     if dest.is_symlink():
         raise OSError(f"refusing to write symlink result env: {dest}")
@@ -91,7 +97,7 @@ def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, 
             key, _, value = item.partition("=")
         else:
             key, value = item
-        if key not in PHASE_RESULT_ENV_ALLOW_KEYS or not _valid_var_name(key):
+        if key not in allowed or not _valid_var_name(key):
             raise ValueError(f"result env key is not allowlisted: {key}")
         if "\n" in value or "\r" in value:
             raise ValueError(f"result env value contains newline: {key}")
@@ -103,6 +109,25 @@ def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, 
         nofollow=True,
         mode=0o600,
     )
+
+
+def clarify_failure_stage_args(
+    *, design_tmpdir: Path, exit_code: str, detail_log: Path
+) -> list[str]:
+    """Return the shared terminal-state argv for a failed clarify loop."""
+    return [
+        "--design-tmpdir", str(design_tmpdir),
+        "--outcome", "failed-clarify",
+        "--step", "clarify",
+        "--phase", "clarify-loop",
+        "--site", "clarify-loop",
+        "--trigger", "failed",
+        "--bail-reason", "clarify-hard-halt",
+        "--exit-code", exit_code,
+        "--source-script", "clarify-loop",
+        "--summary-outcome", "failed-clarify",
+        "--failure-detail-log", str(detail_log),
+    ]
 
 
 def phase_driver_recreate_result_env(*, path: str | Path, design_tmpdir: str | Path) -> None:

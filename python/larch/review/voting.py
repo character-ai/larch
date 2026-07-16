@@ -29,6 +29,7 @@ from larch.review.review_types import (
     JudgeSeverity,
     ParsedBlock,
     ReviewVote,
+    code_review_classification_header as _code_review_classification_header,
     is_security_block_text,
     parse_blocks,
 )
@@ -120,8 +121,8 @@ FINDINGS_CLASSIFICATION_HEADER = (
     "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope"
 )
 
-CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
-    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope"
+CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = _code_review_classification_header(
+    include_tools=True, include_scope=True
 )
 
 # Re-exports from sibling module — preserves `voting.X` access for callers and tests.

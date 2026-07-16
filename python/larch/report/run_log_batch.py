@@ -41,6 +41,33 @@ _QUIET_LOG_RE = re.compile(r"^larch-quiet-[A-Za-z0-9._-]+-[0-9]+\.log$")
 _PLACEHOLDER_RUN_ID_RE = re.compile(r"^run-[0-9]+$")
 
 
+def parse_preterminal_outcome_label(text: str) -> str | None:
+    """Return the normalized outcome label from a final-summary heading."""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("## /"):
+            continue
+        colon_index = line.rfind(": ")
+        dash_index = line.rfind(" — ")
+        separator_index = max(colon_index, dash_index)
+        if separator_index < 0:
+            continue
+        separator_len = 3 if dash_index > colon_index else 2
+        label = line[separator_index + separator_len :].strip().lower()
+        return label or None
+    return None
+
+
+def parse_preterminal_outcome_label_from_run_dir(run_dir: Path) -> str | None:
+    """Read and parse a final-summary outcome label when the summary exists."""
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file():
+        return None
+    return parse_preterminal_outcome_label(
+        summary.read_text(encoding="utf-8", errors="replace")
+    )
+
+
 @dataclass(frozen=True)
 class BatchInfo:
     extension: str

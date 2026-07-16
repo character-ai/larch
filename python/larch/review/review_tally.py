@@ -23,15 +23,22 @@ from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.review import tally_engine
 from larch.review import voting
-from larch.review.review_types import JudgeSeverity, ReviewVote, is_canonical_heading, is_security_block_text, parse_blocks
+from larch.review.review_types import (
+    JudgeSeverity,
+    ReviewVote,
+    code_review_classification_header,
+    is_canonical_heading,
+    is_security_block_text,
+    parse_blocks,
+)
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _THREE_SLOT_COUNT = 3
 # Issue #4880: smallest effective panel for which a per-item valid-vote count below quorum is a
 # meaningful degradation signal (a 1-voter panel can never drop "below quorum").
 _MIN_DEGRADABLE_PANEL = 2
-_CLASSIFICATION_HEADER = (
-    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
+_CLASSIFICATION_HEADER = code_review_classification_header(
+    include_tools=False, include_scope=True
 )
 _OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
 

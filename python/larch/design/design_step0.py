@@ -41,7 +41,12 @@ from larch.design.design_step0_env import (
     ROUTE_STATE_KEYS,
     CONFIGURATION_ERROR_RC,
 )
-from larch.design.design_terminal import _replay_warn_error, phase_driver_read_result_env, stage_terminal_state_core
+from larch.design.design_terminal import (
+    _replay_warn_error,
+    clarify_failure_stage_args,
+    phase_driver_read_result_env,
+    stage_terminal_state_core,
+)
 from larch.git.repo_roots import consumer_repo_root
 from larch.state import session_env
 
@@ -701,7 +706,11 @@ def step0_clarify_hard_halt_main(argv: Sequence[str]) -> int:
         stage_terminal_state_core,
         stdout_log,
         stderr_log,
-        ["--design-tmpdir", str(design_tmpdir), "--outcome", "failed-clarify", "--step", "clarify", "--phase", "clarify-loop", "--site", "clarify-loop", "--trigger", "failed", "--bail-reason", "clarify-hard-halt", "--exit-code", ns.exit_code or "1", "--source-script", "clarify-loop", "--summary-outcome", "failed-clarify", "--failure-detail-log", str(detail)],
+        clarify_failure_stage_args(
+            design_tmpdir=design_tmpdir,
+            exit_code=ns.exit_code or "1",
+            detail_log=detail,
+        ),
     )
     stdout_text = stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else ""
     if "STAGED=false" in stdout_text.splitlines():

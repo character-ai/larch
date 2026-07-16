@@ -20,8 +20,47 @@ from larch.core import architectural_guidelines, config, proc
 from larch.report.run_log_batch import append_execution_issue
 from larch.design import design_step0_env, plan_grammar
 from larch.design.design_core import capture_contract_stream_to_paths
-from larch.design.design_terminal import extend_publish_failure_stage_args, stage_terminal_state_core
+from larch.design.design_terminal import (
+    extend_publish_failure_stage_args,
+    phase_driver_write_result_env,
+    stage_terminal_state_core,
+)
 from larch.git.repo_roots import consumer_repo_root
+
+PUBLISH_RESULT_ENV_ALLOW = frozenset({
+    "ARCHITECTURE_SOURCE",
+    "ARCH_GUIDE_ASSESSMENT_ARTIFACT",
+    "ARCH_GUIDE_ASSESSMENT_PRESENT",
+    "ARCH_GUIDE_ASSESSMENT_REQUIRED",
+    "ARCH_GUIDE_ASSESSMENT_STATUS",
+    "ARCH_INVARIANT_ASSESSMENT_ARTIFACT",
+    "ARCH_INVARIANT_ASSESSMENT_PRESENT",
+    "ARCH_INVARIANT_ASSESSMENT_REQUIRED",
+    "ARCH_INVARIANT_ASSESSMENT_STATUS",
+    "DESIGNED_ADMISSION_READY",
+    "FINAL_SUMMARY_PATH",
+    "LATEST_PHASE",
+    "LOG_PUBLISH_ATTEMPTED",
+    "LOG_PUBLISH_COMPLETED",
+    "LOG_RECOVERY_BRANCH",
+    "NEW_TITLE",
+    "PLAN_WRITE_OK",
+    "PR_NUMBER",
+    "PR_URL",
+    "PUBLISH_ATTEMPT_ID",
+    "PUBLISH_OK",
+    "PUBLISH_RC_SOURCE",
+    "PUBLISH_REFUSE_REASON",
+    "RECOVERY_BRANCH",
+    "RENAMED",
+    "UPSERT_STATUS",
+    "VALIDATE_DEFECT_COUNT",
+    "VALIDATE_LOG_FILE",
+    "VALIDATE_MISSING_SCRIPT_COUNT",
+    "VALIDATE_SKIPPED_COUNT",
+    "VALIDATE_STATUS",
+    "VALIDATE_UNSAFE_TOKEN_COUNT",
+})
 
 
 @dataclass(frozen=True)
@@ -62,7 +101,9 @@ def _emit_rows(rows: list[tuple[str, str]]) -> None:
 
 def _write_result_env(*, path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
-        larch_io.write_kvs(path=path, values=rows, atomic=True, create_parent=False, mode=0o600)
+        phase_driver_write_result_env(
+            path=path, kvs=rows, allow_keys=PUBLISH_RESULT_ENV_ALLOW
+        )
     except (OSError, ValueError):
         return False
     return True

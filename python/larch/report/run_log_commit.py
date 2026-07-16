@@ -36,6 +36,7 @@ from larch.report.run_log_batch import (
     _validate_slug,
     _warn_placeholder_run_id,
     is_placeholder_run_id,
+    parse_preterminal_outcome_label_from_run_dir,
     validate_run_id_slug,
 )
 from larch.report.run_log_manifest import (
@@ -756,30 +757,10 @@ def _publish_breadcrumbs_with_warning(*, log_root: Path, dest: Path) -> None:
 
 
 def _check_preterminal_commit_blocked(log_root: Path, skill: str, run_id: str) -> str | None:
-    """Return a blocked message if the run should not be committed pre-terminally, else None.
-
-    Inline copy to avoid a cyclic import with run_log_flush.
-    Mirrors _preterminal_outcome_commit_blocked / _parse_preterminal_outcome_label.
-    """
+    """Return a blocked message if the run should not be committed pre-terminally."""
     run_dir = _run_dir(log_root=log_root, skill=skill, run_id=run_id)
-    summary_path = run_dir / "final-summary.md"
     try:
-        if not summary_path.is_file():
-            return None
-        summary_text = summary_path.read_text(encoding="utf-8", errors="replace")
-        outcome_label: str | None = None
-        for raw_line in summary_text.splitlines():
-            fsline = raw_line.strip()
-            if not fsline.startswith("## /"):
-                continue
-            colon_i = fsline.rfind(": ")
-            dash_i = fsline.rfind(" — ")
-            sep_i = max(colon_i, dash_i)
-            if sep_i < 0:
-                continue
-            sep_len = 3 if dash_i > colon_i else 2
-            outcome_label = (fsline[sep_i + sep_len:].strip().lower()) or None
-            break
+        outcome_label = parse_preterminal_outcome_label_from_run_dir(run_dir)
         if outcome_label is not None and outcome_label in config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS:
             raw_msg = (
                 f"refusing pre-terminal run-log commit with terminal outcome label {outcome_label!r};"

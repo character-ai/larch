@@ -22,7 +22,12 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.git import repo_roots
 from larch.report import run_log_corpus
-from larch.review.review_types import JudgeSeverity, ReviewVote
+from larch.review.review_types import (
+    JudgeSeverity,
+    ReviewVote,
+    code_review_classification_header,
+    code_review_classification_required_fields,
+)
 
 # ---------------------------------------------------------------------------
 # Calibration-only constants (private; not re-exported to voting.py callers).
@@ -30,39 +35,19 @@ from larch.review.review_types import JudgeSeverity, ReviewVote
 _SEVERITY_VALUES = {severity.value for severity in JudgeSeverity}
 _LEGACY_SEVERITY_MAP = {"blocker": JudgeSeverity.major.value, "uncertain": ""}
 
-_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER = (
-    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER = code_review_classification_header(
+    include_tools=False, include_scope=False
 )
 
 _DESIGN_CLASSIFICATION_REQUIRED = frozenset(
     {"finding_id", "finding_reviewers", "voting_result", "v1_vote", "v2_vote", "v3_vote"}
 )
-_CODE_REVIEW_COMPACT_REQUIRED = frozenset(_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER.split("\t"))
-# Keep in sync with CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER in voting.py.
-_CODE_REVIEW_TOOL_REQUIRED = frozenset({
-    "finding_id",
-    "reviewer_slots",
-    "voting_result",
-    "v1_vote",
-    "v1_correctness",
-    "v1_severity",
-    "v1_quality",
-    "v1_uncertain",
-    "v1_tool",
-    "v2_vote",
-    "v2_correctness",
-    "v2_severity",
-    "v2_quality",
-    "v2_uncertain",
-    "v2_tool",
-    "v3_vote",
-    "v3_correctness",
-    "v3_severity",
-    "v3_quality",
-    "v3_uncertain",
-    "v3_tool",
-    "scope",
-})
+_CODE_REVIEW_COMPACT_REQUIRED = code_review_classification_required_fields(
+    include_tools=False, include_scope=False
+)
+_CODE_REVIEW_TOOL_REQUIRED = code_review_classification_required_fields(
+    include_tools=True, include_scope=True
+)
 
 _DESIGN_VOTER_FALLBACKS = {
     1: "codex-validity",

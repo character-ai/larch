@@ -14,7 +14,12 @@ import pytest
 
 from larch.review import voting
 from larch.core import config
-from larch.review.review_types import JudgeSeverity, ReviewVote
+from larch.review.review_types import (
+    JudgeSeverity,
+    ReviewVote,
+    code_review_classification_header,
+    code_review_classification_required_fields,
+)
 from tests.support.review_wire import vote_lines
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -812,6 +817,19 @@ def test_classification_tsv_schema_supported() -> None:
         "finding_id\tfinding_reviewers\tvoting_result\n",
         panel_kind="design",
     )
+
+
+def test_code_review_classification_header_variants_share_one_schema() -> None:
+    full = code_review_classification_header(include_tools=True, include_scope=True)
+    compact = code_review_classification_header(include_tools=False, include_scope=False)
+    tally = code_review_classification_header(include_tools=False, include_scope=True)
+
+    assert full == voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+    assert compact + "\tscope" == tally
+    assert "v1_tool" not in tally
+    assert code_review_classification_required_fields(
+        include_tools=True, include_scope=True
+    ) == frozenset(full.split("\t"))
 
 
 def test_parse_rate_retry_classify_only_dispatch_shaped_argv(tmp_path: Path) -> None:

@@ -963,11 +963,13 @@ def test_design_clarify_write_result_env_trust_boundaries(tmp_path: Path) -> Non
     link = tmp_path / "link.env"
     link.symlink_to(target)
     with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
-        clarify._write_result_env(path=link, rows=[("A", "1")])  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(path=link, rows=[("REQUEST_ID", "1")])  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
-        clarify._write_result_env(path=target, rows=[("A", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
-    clarify._write_result_env(path=target, rows=[("A", "1"), ("B", "2")])  # pyright: ignore[reportPrivateUsage]
-    assert target.read_text(encoding="utf-8") == "A=1\nB=2\n"
+        clarify._write_result_env(path=target, rows=[("REQUEST_ID", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(path=target, rows=[("UNEXPECTED", "1")])  # pyright: ignore[reportPrivateUsage]
+    clarify._write_result_env(path=target, rows=[("REQUEST_ID", "1"), ("PLAN_FILE", "2")])  # pyright: ignore[reportPrivateUsage]
+    assert target.read_text(encoding="utf-8") == "REQUEST_ID=1\nPLAN_FILE=2\n"
     assert not list(tmp_path.glob(".result.env.*"))
 
 

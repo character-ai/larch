@@ -13,7 +13,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
 from larch import io as larch_io
-from larch.core import config, logging_util
+from larch.core import config, logging_util, proc
 from larch.core import redact
 from larch.state.session_env import validate_design_tmpdir
 
@@ -241,11 +241,12 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
     return [sys.executable, str(plugin_root / "python" / "cli.py"), *args]
 
 
-def _append_failure(*, plugin_root: Path, design_tmpdir: Path, site: str, tool: str, exit_code: int | str, category: str, output_file: Path) -> bool:
-    result = subprocess.run(
+def append_failure(*, plugin_root: Path, design_tmpdir: Path, site: str, tool: str, exit_code: int | str, category: str, output_file: Path, env: Mapping[str, str] | None = None, runner: Callable[..., proc.CommandResult] = proc.run) -> bool:
+    result = runner(
         _cli_cmd(plugin_root, "run-log", "append-failure", "--log", str(design_tmpdir / "execution-issues.md"), "--site", site, "--tool", tool, "--exit-code", str(exit_code), "--category", category, "--output-file", str(output_file), "--redact"),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
+        env={**os.environ, **env} if env is not None else None,
     )
     return result.returncode == 0
+
+
+_append_failure = append_failure
