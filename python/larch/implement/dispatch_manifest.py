@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from larch import io as larch_io
 from larch.core import config
 from larch.core import redact
 from larch.calibration import difficulty
@@ -279,10 +280,12 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
 def _read_prelaunch_index_nonempty(st: DispatchState) -> str:
     if not st.prelaunch_index_flag.is_file():
         return "false"
-    for line in st.prelaunch_index_flag.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("PRELAUNCH_INDEX_NONEMPTY="):
-            return line.split("=", 1)[1]
-    return "false"
+    return larch_io.read_kv(
+        path=st.prelaunch_index_flag,
+        key="PRELAUNCH_INDEX_NONEMPTY",
+        default="false",
+        duplicate_policy="first",
+    )
 
 
 def _recovery_paths_submodule_clean(st: DispatchState) -> bool:

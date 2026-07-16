@@ -271,7 +271,10 @@ def _collector_records(path: Path) -> list[dict[str, str]]:
                 current = {}
             continue
         if "=" in line:
-            key, value = line.split("=", 1)
+            parsed = larch_io.parse_kv(line, duplicate_policy="first")
+            if not parsed:
+                continue
+            key, value = next(iter(parsed.items()))
             current[key] = value
     if current:
         records.append(current)

@@ -1175,11 +1175,12 @@ def _run_claude(
 
 
 def _parse_launcher_exit(text: str) -> int | None:
-    for line in text.splitlines():
-        if line.startswith("LAUNCHER_EXIT="):
-            raw = line.split("=", 1)[1].strip()
-            return int(raw) if raw.isdigit() else None
-    return None
+    raw = larch_io.kv_value(
+        text="\n".join(text.splitlines()),
+        key="LAUNCHER_EXIT",
+        duplicate_policy="first",
+    ).strip()
+    return int(raw) if raw.isdigit() else None
 
 
 def _read_done_exit(output: Path) -> int:

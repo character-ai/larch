@@ -4158,15 +4158,30 @@ def test_commit_route_relay_helper_includes_next_action(capsys: pytest.CaptureFi
     assert capsys.readouterr().out == "NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\n"
 
 
-def test_checks_relay_uses_whitespace_parser_without_parse_kv(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_parse_kv(_text: str) -> dict[str, str]:
-        raise AssertionError("line-oriented parse_kv must not parse checks relay")
+def test_checks_relay_whitespace_parser_uses_shared_codec_not_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_helper(_text: str) -> dict[str, str]:
+        raise AssertionError("line-oriented implement_dispatch._parse_kv must not parse checks relay")
 
-    monkeypatch.setattr(implement_dispatch, "_parse_kv", fail_parse_kv)
+    real_parse_kv = dispatch_commit_route.larch_io.parse_kv
+    seen: list[str] = []
+
+    def track_parse_kv(text: str, **kwargs: Any) -> object:
+        seen.append(text)
+        return real_parse_kv(text, **kwargs)
+
+    monkeypatch.setattr(implement_dispatch, "_parse_kv", fail_helper)
+    monkeypatch.setattr(dispatch_commit_route.larch_io, "parse_kv", track_parse_kv)
     line = "STATUS=fail FAILURE_REASON=relevant-checks-failed EXIT_CODE=2 PHASE=checks DIGEST_FILE=/tmp/digest.txt REDACTED_LOG_FILE=/tmp/redacted.log trailing prose"
 
     values = implement_dispatch._parse_whitespace_kv_line(line)
 
+    assert seen == [
+        "STATUS=fail\nFAILURE_REASON=relevant-checks-failed\nEXIT_CODE=2\n"
+        "PHASE=checks\nDIGEST_FILE=/tmp/digest.txt\nREDACTED_LOG_FILE=/tmp/redacted.log\n"
+        "trailing\nprose"
+    ]
     assert values == {
         "STATUS": "fail",
         "FAILURE_REASON": "relevant-checks-failed",

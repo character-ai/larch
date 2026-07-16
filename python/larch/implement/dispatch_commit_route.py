@@ -288,11 +288,12 @@ def _identity_from_child_args(args: argparse.Namespace) -> checks_result_identit
 
 
 def _terminal_action_in_output(text: str) -> bool:
-    return any(
-        line.startswith("NEXT_ACTION=")
-        and line.split("=", 1)[1] in _CHECKS_TERMINAL_ACTIONS
-        for line in text.splitlines()
+    parsed = larch_io.parse_kv(
+        "\n".join(text.splitlines()),
+        duplicate_policy="all",
+        allowed_keys={"NEXT_ACTION"},
     )
+    return any(value in _CHECKS_TERMINAL_ACTIONS for value in parsed.get("NEXT_ACTION", []))
 
 
 def _publish_identity_child(request: IdentityChildRequest) -> int:
@@ -591,14 +592,11 @@ def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start
 
 
 def _parse_whitespace_kv_line(line: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for token in line.split():
-        if "=" not in token:
-            continue
-        key, value = token.split("=", 1)
-        if key and re.fullmatch(r"[A-Z0-9_]+", key):
-            values.setdefault(key, value)
-    return values
+    return larch_io.parse_kv(
+        "\n".join(line.split()),
+        duplicate_policy="first",
+        key_pattern=r"[A-Z0-9_]+",
+    )
 
 
 def _checks_relay_line(captured: dict[str, str]) -> str:
@@ -750,7 +748,8 @@ def _relay_commit_kvs(commit_output: str, *, include_next_action: bool = True) -
     if not include_next_action:
         allowed.discard("NEXT_ACTION")
     for line in commit_output.splitlines():
-        if line.split("=", 1)[0] in allowed:
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        if parsed and next(iter(parsed)) in allowed:
             print(line)
 
 

@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from collections.abc import Sequence
 
+from larch import io as larch_io
 from larch.core import logging_util
 from larch.core.config import BGJOB_RC_KEY, STEP3_ESCALATION_FAILURE_STATUSES
 from larch.design.design_core import capture_contract_stream_to_paths
@@ -246,7 +247,10 @@ def _step3_overlay_stdout_env(
     for line in lines:
         if "=" not in line:
             continue
-        key, value = line.split("=", 1)
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        if not parsed:
+            continue
+        key, value = next(iter(parsed.items()))
         if key in allow and value:
             values[key] = value
         elif key == "WARN" and overlay_warn:
@@ -310,12 +314,12 @@ def _step3_normalize_read_result_env(tmpdir: Path) -> int:
     values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")
     if status == "ok":
         try:
-            for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
-                if "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                if key in values:
-                    values[key] = value
+            values = larch_io.read_kvs(
+                result_env,
+                default=dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, ""),
+                allowed_keys=set(_STEP3_READ_RESULT_ENV_KEYS),
+                duplicate_policy="last",
+            )
         except OSError:
             status = "missing"
             values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")

@@ -11,6 +11,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.design.design_terminal import json_get_bool, phase_driver_write_result_env
 from larch.design.plan_quality import sync_oversize_override_authority
 from larch.report.timing import TIMING_VENDOR_MIN_COLS, TimingLedger
@@ -665,10 +666,13 @@ def _resolve_findings_file(*, tmpdir: Path, round_num: int) -> Path:
     approval_env = tmpdir / f".gate-b-per-round-approval-round-{round_num}.env"
     if not approval_env.is_file() or approval_env.is_symlink():
         return default
-    findings_file = default
-    for line in approval_env.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("FINDINGS_FILE="):
-            findings_file = Path(line.split("=", 1)[1])
+    raw = larch_io.read_kv(
+        path=approval_env,
+        key="FINDINGS_FILE",
+        default="",
+        duplicate_policy="last",
+    )
+    findings_file = Path(raw) if raw else default
     if findings_file != default:
         try:
             resolved = findings_file.resolve()

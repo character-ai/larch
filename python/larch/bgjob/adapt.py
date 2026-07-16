@@ -175,22 +175,22 @@ def _read_completed_result(*, spec: model.JobSpec) -> model.ResultEnvRows | None
 
 def _parse_completed_rows(*, text: str, step: str) -> model.ResultEnvRows | None:
     rows: list[tuple[str, str]] = []
-    valid = True
     for line in text.splitlines():
         if not line:
             continue
         if "=" not in line:
-            valid = False
-            break
-        key, value = line.split("=", 1)
+            return None
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        if len(parsed) != 1:
+            return None
+        key, value = next(iter(parsed.items()))
         if not key:
-            valid = False
-            break
+            return None
         rows.append((key, value))
-    parsed = dict(rows)
-    if not parsed.get(config.BGJOB_RC_KEY) or parsed.get("STEP") != step:
-        valid = False
-    return model.ResultEnvRows(rows=tuple(rows)) if valid else None
+    parsed_map = dict(rows)
+    if not parsed_map.get(config.BGJOB_RC_KEY) or parsed_map.get("STEP") != step:
+        return None
+    return model.ResultEnvRows(rows=tuple(rows))
 
 
 def _emit_done(result: model.ResultEnvRows) -> None:

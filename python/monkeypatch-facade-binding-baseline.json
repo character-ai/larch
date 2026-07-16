@@ -3322,7 +3322,7 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_checks_relay_uses_whitespace_parser_without_parse_kv",
+    "qualified_symbol": "test_checks_relay_whitespace_parser_uses_shared_codec_not_helper",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_parse_kv",
     "defining_module": "larch.implement.dispatch_helpers",

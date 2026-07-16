@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from larch import io as larch_io
 from larch.core import proc
 
 from larch.agents._run_external import (
@@ -471,11 +472,11 @@ def check_token_budget_cap(
     run = runner if runner is not None else _default_runner
     result = run(argv)
     stdout = str(getattr(result, "stdout", "") or "")
-    status = ""
-    for token in stdout.split():
-        if token.startswith("STATUS="):
-            status = token.split("=", 1)[1]
-            break
+    status = larch_io.kv_value(
+        text="\n".join(stdout.split()),
+        key="STATUS",
+        duplicate_policy="first",
+    )
     if status != "cap_hit":
         return VendorCapCheckResult(hit=False, argv=argv, stdout=stdout)
     return VendorCapCheckResult(hit=True, argv=argv, stdout=stdout, payload=CAP_HIT_PAYLOAD)
