@@ -23,6 +23,7 @@ from larch.core.architectural_guidelines import (
     validate_invariant_ship_outcome_record,
 )
 from larch.core import redact
+from larch.design import plan_grammar
 from larch import io as larch_io
 from larch.errors import ShipError
 
@@ -204,27 +205,11 @@ def _validate_slug(*, label: str, value: str) -> None:
 
 def _validate_plan_goals_payload(path: Path) -> None:
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    in_section = False
-    saw = False
-    body_lines: list[str] = []
-    last_test_plan = 0
-    for line in lines:
-        if line == "## Implementation Plan":
-            if not saw:
-                in_section = True
-            saw = True
-            continue
-        if in_section:
-            body_lines.append(line)
-            if line == "## Test plan":
-                last_test_plan = len(body_lines)
-    if not saw:
-        raise ValueError("plan-goals sanitizer rejected: missing Implementation Plan section")
-    limit = last_test_plan - 1 if last_test_plan > 0 else len(body_lines)
-    impl_body = [line for line in body_lines[:limit] if line.strip()]
-    if not impl_body:
-        raise ValueError("plan-goals sanitizer rejected: Implementation Plan body is empty")
-    first = impl_body[0].strip().lower()
+    try:
+        body = plan_grammar.implementation_plan_body(lines)
+    except ValueError as exc:
+        raise ValueError(f"plan-goals sanitizer rejected: {exc}") from exc
+    first = next(line.strip().lower() for line in body.splitlines() if line.strip())
     if re.fullmatch(r"(see plan\.txt|see attached|see linked|tbd|todo)\.?", first):
         raise ValueError(
             "plan-goals sanitizer rejected: Implementation Plan body is a pointer-only placeholder",

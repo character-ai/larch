@@ -20,14 +20,7 @@ _SUBPROCESS_RUN = subprocess.run
 
 COMMON_ENV_DEFAULTS: dict[str, str] = {
     **session_env.COMMON_DESIGN_ENV_DEFAULTS,
-    "POSITIONAL_KIND": "",
-    "POSITIONAL_VALUE": "",
-    "partition_requested": "false",
-    "brainstorm_requested": "false",
-    "approve_requested": "false",
-    "skip_approve_requested": "false",
-    "no_dedup_requested": "false",
-    "run_id": "",
+    **session_env.DESIGN_REQUEST_ENV_DEFAULTS,
     "difficulty": "",
     "SUMMARY_OUTCOME": "",
     "CLARIFY_FAILURE_LOG": "",

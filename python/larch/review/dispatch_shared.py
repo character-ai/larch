@@ -11,13 +11,21 @@ from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, Protocol, cast
 
-from larch.agents import _launch_failure
+from larch.agents import _launch_failure, agent_waterfall
 from larch.core import config, external_defaults, logging_util
 from larch.report.timing import TimingLedger
 from larch.review import _voting_calibration, voting
 
 VoterRowLayout = Literal["code_review_sequential", "plan_review_interleaved"]
 PathsFilePolicy = Literal["always", "nonempty"]
+VOTER_SLOT_COUNT = 3
+PANEL_COMMON_OPTIONS = frozenset({
+    "--mode", "--diff-file", "--commit-count", "--scope-files", "--codex-available",
+    "--cursor-available", "--plan-file", "--feature-file", "--description-text",
+    "--session-env-path", "--panel", "--tier", "--escalated-round",
+    "--dynamic-archetypes", "--pre-scouted-manifest", "--round-num", "--prune-ledger",
+    "--site",
+})
 
 
 class CommandResultLike(Protocol):
@@ -27,6 +35,12 @@ class CommandResultLike(Protocol):
     def returncode(self) -> int: ...
     @property
     def stdout(self) -> str: ...
+
+
+class ExitParser(Protocol):
+    """Parser surface used by the new-process-group error handler."""
+
+    def exit(self, status: int = 0, message: str | None = None) -> None: ...
 
 
 Runner = Callable[..., CommandResultLike]
@@ -65,6 +79,66 @@ class DispatchState:
 def path_for_wire(path: Path | None) -> str:
     """Serialize an optional path only when it crosses a wire boundary."""
     return "" if path is None else str(path)
+
+
+def apply_new_process_group(parser: ExitParser, *, surface: str) -> None:
+    """Start a review command in a fresh process group."""
+    if not hasattr(os, "setsid"):
+        parser.exit(2, f"{surface}: --new-process-group failed: os.setsid is unavailable\n")
+    try:
+        os.setsid()
+    except OSError as exc:
+        parser.exit(2, f"{surface}: --new-process-group failed: {exc}\n")
+
+
+def optional_positive_float(value: str, *, label: str) -> float | None:
+    """Parse an optional strictly positive float with a caller-owned label."""
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be positive") from exc
+    if parsed <= 0:
+        raise ValueError(f"{label} must be positive")
+    return parsed
+
+
+def state_from_voter_bindings(
+    *,
+    policies: Sequence[VoterSlotPolicy],
+    bindings: Mapping[str, agent_waterfall.SlotOutputBinding],
+    launched_policies: Sequence[VoterSlotPolicy],
+    fallback_path: Callable[[VoterSlotPolicy], Path | None],
+    binding_path: Callable[[str], Path],
+) -> DispatchState:
+    """Build the fixed three-voter wire state from waterfall slot bindings."""
+    launched = {policy.slot_name for policy in launched_policies}
+    paths: list[Path | None] = []
+    tools: list[str] = []
+    statuses: list[str] = []
+    for policy in policies[:VOTER_SLOT_COUNT]:
+        default_path = fallback_path(policy)
+        if policy.slot_name not in launched:
+            path, tool, status = default_path, policy.default_label, "skipped"
+        else:
+            binding = bindings.get(policy.slot_name, agent_waterfall.SlotOutputBinding())
+            if binding.dropped or not binding.path:
+                path, tool, status = default_path, policy.default_label, "failed"
+            else:
+                path = binding_path(binding.path)
+                tool = dict(policy.semantic_labels).get(binding.tool or policy.primary_tool, policy.default_label)
+                status = "launched"
+        paths.append(path)
+        tools.append(tool)
+        statuses.append(status)
+    if len(paths) != VOTER_SLOT_COUNT:
+        raise ValueError("voter dispatch requires exactly three slot policies")
+    return DispatchState(
+        voter_1_path=paths[0], voter_2_path=paths[1], voter_3_path=paths[2],
+        voter_1_tool=tools[0], voter_2_tool=tools[1], voter_3_tool=tools[2],
+        voter_1_status=statuses[0], voter_2_status=statuses[1], voter_3_status=statuses[2],
+    )
 
 
 def _record_pipeline_span(  # noqa: PLR0913 - the six span fields are all load-bearing and not worth bundling for two callers

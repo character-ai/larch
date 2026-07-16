@@ -10,13 +10,13 @@ import re
 import shutil
 import sys
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from larch.core import config, process_identity
+from larch import io as larch_io
 from larch.bgjob import registry as bgjob_registry
 from larch.issue import execution_issues
 from larch.report import progress_file
@@ -805,32 +805,10 @@ read_finalize_state = session_env.read_finalize_state
 write_finalize_state_merged = session_env.write_finalize_state_merged
 
 def _write_finalize_text_safely(*, target: Path, text: str) -> None:
-    if target.is_symlink():
-        raise ShipError(f"refusing to write symlinked finalize-state path: {target}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    if tmp.is_symlink():
-        raise ShipError(f"refusing to write symlinked finalize-state temp path: {tmp}")
-    with suppress(FileNotFoundError):
-        tmp.unlink()
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd: int | None = None
     try:
-        fd = os.open(tmp, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = None
-            _ = handle.write(text)
-        if target.is_symlink():
-            raise ShipError(f"refusing to replace symlinked finalize-state path: {target}")
-        _ = tmp.replace(target)
-    finally:
-        if fd is not None:
-            os.close(fd)
-        with suppress(OSError):
-            if tmp.exists() and not tmp.is_symlink():
-                tmp.unlink()
+        larch_io.secure_atomic_write(target, text)
+    except OSError as exc:
+        raise ShipError(f"cannot write finalize state: {target}") from exc
 
 
 def _collect_ancestor_pids(*, runner: Runner, pid: str, max_depth: int = 32) -> set[str]:

@@ -17,6 +17,7 @@ from typing import Any, cast
 
 from larch.core import proc
 from larch.core import external_defaults
+from larch.design import plan_grammar
 from larch.review import findings_ledger
 from larch.review import review_tally
 from larch.review import voting
@@ -261,29 +262,13 @@ def _ballot_from_jsonl_record(*, record: Mapping[str, object], finding_id: str) 
 
 
 def _extract_implementation_plan_body(lines: Sequence[str]) -> str:
-    """Mirror run_log_batch._validate_plan_goals_payload section and first-line rules."""
-    in_section = False
-    saw = False
-    body_lines: list[str] = []
-    last_test_plan = 0
-    for line in lines:
-        if line == "## Implementation Plan":
-            if not saw:
-                in_section = True
-            saw = True
-            continue
-        if in_section:
-            body_lines.append(line)
-            if line == "## Test plan":
-                last_test_plan = len(body_lines)
-    if not saw:
-        raise CalibrationReplayError("plan-goals-test artifact is missing ## Implementation Plan")
-    limit = last_test_plan - 1 if last_test_plan > 0 else len(body_lines)
-    impl_body = [line for line in body_lines[:limit] if line.strip()]
-    if not impl_body:
-        raise CalibrationReplayError("Implementation Plan body is empty")
-    _reject_pointer_only_plan_body("\n".join(impl_body), path=Path("plan-goals-test"))
-    return "\n".join(body_lines[:limit]).rstrip() + "\n"
+    """Extract and validate one fixture's Implementation Plan section."""
+    try:
+        body = plan_grammar.implementation_plan_body(lines)
+    except ValueError as exc:
+        raise CalibrationReplayError(str(exc)) from exc
+    _reject_pointer_only_plan_body(body, path=Path("plan-goals-test"))
+    return body
 
 
 def _validate_fixture_plan_shape(text: str, *, path: Path) -> None:

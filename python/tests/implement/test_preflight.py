@@ -194,20 +194,7 @@ def test_preflight_success_emits_kv_and_forwards_repo(
     assert rc == 0
     out = capsys.readouterr().out
     keys = [line.split("=", 1)[0] for line in out.splitlines() if "=" in line]
-    assert keys == [
-        "ADMISSION_RESULT",
-        "RESUME",
-        "TITLE",
-        "BLOCK_PRESENT",
-        "PLAN_PATH",
-        "ISSUE_JSON_PATH",
-        "BYPASS_COUNT",
-        "DESIGN_DIFFICULTY",
-        "MAIN_CI_STATUS",
-        "MAIN_FAILED_RUN_ID",
-        "MAIN_HEALTH_HEAD_SHA",
-        "MAIN_HEALTH_DETAIL",
-    ]
+    assert keys == list(preflight.SUCCESS_ENVELOPE_KEYS)
     assert "ADMISSION_RESULT=pass" in out
     assert "RESUME=true" in out
     assert "BYPASS_COUNT=0" in out

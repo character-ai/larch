@@ -51,6 +51,31 @@ FILE_LINE_REGEXES = {
     "short-exts": SHORT_EXTS,
 }
 
+
+def ledger_title(*, block_text: str, item_id: str) -> str:
+    """Extract a ledger title from one finding markdown block."""
+    first = block_text.splitlines()[0] if block_text.splitlines() else ""
+    title = re.sub(rf"^###\s+{re.escape(item_id)}:\s*", "", first).strip()
+    return title or item_id
+
+
+def ledger_file_line(block_text: str) -> str:
+    """Extract the first normalized file/line reference from a finding."""
+    for regex in FILE_LINE_REGEXES.values():
+        match = re.search(regex, block_text)
+        if match:
+            return match.group(0).strip(" \t\n\r`*()[],:;")
+    return ""
+
+
+def ledger_reason(block_text: str) -> str:
+    """Extract the first structured concern or suggested fix from a finding."""
+    for line in block_text.splitlines()[1:]:
+        normalized = line.replace("*", "").strip()
+        if re.match(r"^[- ]*(Concern|Scenario|Reason|Suggested (revision|fix)):", normalized, re.IGNORECASE):
+            return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
+    return ""
+
 BACKTICKED_FOCUS_FILES = (
     "skills/shared/reviewer-templates.md",
     "agents/code-reviewer.md",

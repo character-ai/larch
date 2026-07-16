@@ -20,7 +20,12 @@ from larch.calibration import difficulty
 from larch.design.plan_scout import filter_manifest as filter_scout_manifest
 from larch.review import findings_ledger
 from larch.review import review_pipeline_shared
-from larch.review.dispatch_shared import append_manifest_row, resolved_model_for_row, topology_slots
+from larch.review.dispatch_shared import (
+    PANEL_COMMON_OPTIONS,
+    append_manifest_row,
+    resolved_model_for_row,
+    topology_slots,
+)
 from larch.review.review_pipeline_shared import (
     FOCUS_AREAS,
     _collector_records,
@@ -488,32 +493,14 @@ def _degraded_retry_carry_forward(*, manifest: Path, review_tmpdir: Path) -> tup
 def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: PLR0915,RUF100
     logging_util.quiet_init(argv0="review-dispatch-panel")
     usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--tier TRIVIAL|MODERATE|HARD] [--panel simple|hard] [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
-    options = {
-        "--mode",
-        "--diff-file",
-        "--commit-count",
-        "--scope-files",
+    options = PANEL_COMMON_OPTIONS | {
         "--review-tmpdir",
-        "--codex-available",
-        "--cursor-available",
         "--competition-notice-file",
-        "--plan-file",
-        "--feature-file",
-        "--description-text",
         "--timing-task-prefix",
         "--launch-claude-subprocess",
         "--launch-review",
-        "--session-env-path",
-        "--panel",
-        "--tier",
-        "--escalated-round",
         "--skip-prune",
         "--audit-upgrade",
-        "--dynamic-archetypes",
-        "--pre-scouted-manifest",
-        "--round-num",
-        "--prune-ledger",
-        "--site",
     }
     parsed = _parse_args(argv=argv, usage=usage, options=options)
     if parsed is None:

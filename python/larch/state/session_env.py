@@ -146,6 +146,17 @@ COMMON_DESIGN_ENV_DEFAULTS: dict[str, str] = {
     "CURSOR_BINARY_FOUND": "",
     "IMPLEMENT_TMPDIR": "",
 }
+
+DESIGN_REQUEST_ENV_DEFAULTS: dict[str, str] = {
+    "POSITIONAL_KIND": "",
+    "POSITIONAL_VALUE": "",
+    "partition_requested": "false",
+    "brainstorm_requested": "false",
+    "approve_requested": "false",
+    "skip_approve_requested": "false",
+    "no_dedup_requested": "false",
+    "run_id": "",
+}
 # Validator status keys shared by the Step 2b postplan and validator wrappers.
 VALIDATOR_STATUS_ENV_DEFAULTS: dict[str, str] = {
     "STEP3_REVIEW_LOOP_STATUS": "",
@@ -543,6 +554,14 @@ def _safe_output_parent(path: Path) -> bool:
 
 def _atomic_write(*, path: Path, text: str, create_parent: bool = False, mode: int = 0o600) -> None:
     larch_io.atomic_write(path=path, text=text, create_parent=create_parent, mode=mode, temp_name=path.with_suffix(path.suffix + ".tmp"), nofollow=True, exclusive=True)
+
+
+def run_log_write_argv(*, log_root: Path, run_id: str, batch: str, input_file: Path) -> list[str]:
+    """Build the shared run-log write argv tail for implement artifacts."""
+    return [
+        "run-log", "write", "--log-root", str(log_root), "--skill", "implement",
+        "--run-id", run_id, "--batch", batch, "--input-file", str(input_file),
+    ]
 
 
 def _kv_text(data: dict[str, str] | Iterable[tuple[str, str]]) -> str:
@@ -1806,20 +1825,9 @@ def restore_finalize_state_main(argv: list[str]) -> int:
     run_id = state.get("RUN_ID", "")
     if bail_reason and run_id:
         _ = proc.run([
-            "python3",
-            str(_scripts_dir().parent / "python" / "cli.py"),
-            "run-log",
-            "write",
-            "--log-root",
-            str(tmpdir / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            run_id,
-            "--batch",
-            "final-bail-reason",
-            "--input-file",
-            str(bail_reason_file),
+            "python3", str(_scripts_dir().parent / "python" / "cli.py"),
+            *run_log_write_argv(log_root=tmpdir / "larch-logs", run_id=run_id,
+                                batch="final-bail-reason", input_file=bail_reason_file),
         ])
     return 0
 

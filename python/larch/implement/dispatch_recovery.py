@@ -22,6 +22,7 @@ from larch.implement.dispatch_helpers import (
     _invoke_cli,
     _parse_porcelain_z,
     _run,
+    resolve_tmpdir_path,
     _session_get,
     _write_bytes_atomic,
 )
@@ -35,16 +36,7 @@ class RecoveryPorcelainInputs:
 
 
 def _resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
-    if not raw:
-        return tmpdir / default_relpath
-    candidate = Path(raw)
-    if candidate.is_absolute():
-        try:
-            candidate.relative_to(tmpdir)
-            return candidate
-        except ValueError:
-            return tmpdir / Path(*candidate.parts[1:])
-    return tmpdir / candidate
+    return resolve_tmpdir_path(tmpdir=tmpdir, raw=raw, default_relpath=default_relpath)
 
 
 def _load_digest_map(path: Path) -> dict[str, str]:

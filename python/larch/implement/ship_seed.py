@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-from contextlib import suppress
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.errors import ShipError
 from larch.implement.ship_state import (
     INITIAL_SHIP_STATE_KEYS,
@@ -130,30 +129,11 @@ def _write_initial_ship_state(args: argparse.Namespace) -> None:
             raise ShipError(f"invalid ship state key: {key}")
         _validate_ship_state_value(key=key, value=value)
     state_file.parent.mkdir(parents=True, exist_ok=True)
-    tmp = state_file.with_suffix(state_file.suffix + ".tmp")
-    if tmp.is_symlink():
-        raise ShipError(f"refusing to write symlinked ship state temp path: {tmp}")
-    with suppress(FileNotFoundError):
-        tmp.unlink()
     data = "".join(f"{key}={fields[key]}\n" for key in INITIAL_SHIP_STATE_KEYS)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd: int | None = None
     try:
-        fd = os.open(tmp, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = None
-            _ = handle.write(data)
-        _ = tmp.replace(state_file)
+        larch_io.secure_atomic_write(state_file, data)
     except FileExistsError as exc:
-        raise ShipError(f"refusing to overwrite existing ship state temp file: {tmp}") from exc
-    finally:
-        if fd is not None:
-            os.close(fd)
-        with suppress(OSError):
-            if tmp.exists() and not tmp.is_symlink():
-                tmp.unlink()
+        raise ShipError(f"refusing to overwrite existing ship state temp file: {state_file}.tmp") from exc
 
 
 def build_seed_initial_state_parser() -> argparse.ArgumentParser:

@@ -738,36 +738,14 @@ def surface_warning(*, session_env_path: str, entry: str) -> None:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
-def _ledger_title(*, block_text: str, item_id: str) -> str:
-    first = block_text.splitlines()[0] if block_text.splitlines() else ""
-    title = re.sub(rf"^###\s+{re.escape(item_id)}:\s*", "", first).strip()
-    return title or item_id
-
-
-def _ledger_file_line(block_text: str) -> str:
-    for regex in voting.FILE_LINE_REGEXES.values():
-        match = re.search(regex, block_text)
-        if match:
-            return match.group(0).strip(" \t\n\r`*()[],:;")
-    return ""
-
-
-def _ledger_reason(block_text: str) -> str:
-    for line in block_text.splitlines()[1:]:
-        normalized = line.replace("*", "").strip()
-        if re.match(r"^[- ]*(Concern|Scenario|Reason|Suggested (revision|fix)):", normalized, re.IGNORECASE):
-            return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
-    return ""
-
-
 def _ledger_entry(*, item_id: str, block_text: str, outcome: str, vote_tally: str) -> dict[str, object]:
     return {
         "finding_id": item_id,
-        "title": _ledger_title(block_text=block_text, item_id=item_id),
-        "file_line": _ledger_file_line(block_text),
+        "title": voting.ledger_title(block_text=block_text, item_id=item_id),
+        "file_line": voting.ledger_file_line(block_text),
         "outcome": outcome,
         "vote_tally": vote_tally,
-        "reason": _ledger_reason(block_text),
+        "reason": voting.ledger_reason(block_text),
     }
 
 

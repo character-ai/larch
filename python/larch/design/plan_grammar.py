@@ -7,7 +7,7 @@ as deciding whether an operator-authored oversize override is trusted.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -42,6 +42,30 @@ OPTIONAL_SIZE_TRAILER_KEYS: Final[tuple[TrailerKey, ...]] = (
     "oversize_override",
 )
 CANONICAL_TRAILER_ORDER: Final[tuple[TrailerKey, ...]] = TRAILER_KEYS
+
+
+def implementation_plan_body(lines: Sequence[str]) -> str:
+    """Extract a nonempty Implementation Plan body from a full plan document."""
+    in_section = False
+    saw_section = False
+    body_lines: list[str] = []
+    test_plan_index = 0
+    for line in lines:
+        if line == "## Implementation Plan":
+            if not saw_section:
+                in_section = True
+            saw_section = True
+            continue
+        if in_section:
+            body_lines.append(line)
+            if line == "## Test plan":
+                test_plan_index = len(body_lines)
+    if not saw_section:
+        raise ValueError("missing ## Implementation Plan")
+    limit = test_plan_index - 1 if test_plan_index > 0 else len(body_lines)
+    if not any(line.strip() for line in body_lines[:limit]):
+        raise ValueError("Implementation Plan body is empty")
+    return "\n".join(body_lines[:limit]).rstrip() + "\n"
 
 HEADING_RE: Final[re.Pattern[str]] = re.compile(
     r"^(?P<level>##|###)[ \t]+(?P<kind>NEW|UPDATED|REWRITTEN|MAY_UPDATE)(?:[ \t]*:[ \t]*(?P<colon>.+?)|[ \t]+\[(?P<bracket>[^]\r\n]+)\][ \t]*:?)[ \t]*$"

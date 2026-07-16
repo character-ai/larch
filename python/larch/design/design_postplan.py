@@ -20,6 +20,14 @@ _KEY_BASELINE_PLAN_LINES = "BASELINE_PLAN_LINES"
 _KEY_BASELINE_DIFF_LINES = "BASELINE_DIFF_LINES"
 # Emitted when current plan exceeds the baseline by the drift multiple
 _KEY_DRIFT_TRIGGER_FIRED = "DRIFT_TRIGGER_FIRED"
+POSTPLAN_EMIT_KEYS = (
+    "POSTPLAN_EMIT_STATUS", "EMIT_PLAN_STATUS", "DIFF_LINES", "VALIDATE_STATUS",
+    "VALIDATE_DEFECT_COUNT", "PLAN_SIZE_STATUS", "SIZE_TRIGGER_FIRED", "TRIGGER_REASONS",
+    "PLAN_LINES", "DIFF_ADDED", "DIFF_DELETED", "MECHANICAL_CHURN", "FIRM_HEADINGS",
+    "SURFACES_TOUCHED", "OVERSIZE_OVERRIDE", "SOFT_ADVISORY", "DRIFT_TRIGGER_FIRED",
+    "DRIFT_MULTIPLE", "DRIFT_PLAN_RATIO", "DRIFT_DIFF_RATIO", "BASELINE_PLAN_LINES",
+    "BASELINE_DIFF_LINES", "PARTITION_REQUESTED",
+)
 
 
 def _plugin_root() -> Path:
@@ -184,36 +192,9 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     def flush() -> None:
         _write_result_env(path=result_env, kvs=kvs)  # pyright: ignore[reportUnusedCallResult]
         for key in (
-            "POSTPLAN_EMIT_STATUS",
-            "EMIT_PLAN_STATUS",
-            "DIFF_LINES",
-            "SNAPSHOT_STATUS",
-            "VALIDATE_STATUS",
-            "VALIDATE_DEFECT_COUNT",
-            "VALIDATE_SKIPPED_COUNT",
-            "VALIDATE_UNSAFE_TOKEN_COUNT",
-            "VALIDATE_LOG_FILE",
-            "PLAN_SIZE_STATUS",
-            "SIZE_TRIGGER_FIRED",
-            "TRIGGER_REASONS",
-            "PLAN_LINES",
-            "DIFF_ADDED",
-            "DIFF_DELETED",
-            "MECHANICAL_CHURN",
-            "FIRM_HEADINGS",
-            "SURFACES_TOUCHED",
-            "OVERSIZE_OVERRIDE",
-            "SOFT_ADVISORY",
-            "DRIFT_TRIGGER_FIRED",
-            "DRIFT_MULTIPLE",
-            "DRIFT_PLAN_RATIO",
-            "DRIFT_DIFF_RATIO",
-            "BASELINE_PLAN_LINES",
-            "BASELINE_DIFF_LINES",
-            "PARTITION_REQUESTED",
-            "STEP2B5_STATUS",
-            "STEP2B5_NEXT_ACTION",
-            "STEP2B5_EXIT_RC",
+            *POSTPLAN_EMIT_KEYS,
+            "SNAPSHOT_STATUS", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT",
+            "VALIDATE_LOG_FILE", "STEP2B5_STATUS", "STEP2B5_NEXT_ACTION", "STEP2B5_EXIT_RC",
         ):
             if key in kvs:
                 print(f"{key}={kvs[key]}")

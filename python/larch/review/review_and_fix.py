@@ -29,6 +29,7 @@ from larch.report import progress_report
 from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_tally
+from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
 from larch.review import self_review_tally
 from larch.report import run_log_batch
 from larch.review import voting
@@ -375,17 +376,7 @@ def _step5_result_env_rows_from_text(text: str) -> list[tuple[str, str | int | b
     parsed = _parse_env_lines(text)
     rows: list[tuple[str, str | int | bool]] = [
         (key, parsed[key])
-        for key in (
-            "STEP5_REVIEW_STATUS",
-            "STALL_TRACKING",
-            "STALL_REASON",
-            "ROUNDS_COMPLETED",
-            "FINAL_ROUND_NUM",
-            "FINAL_REVIEW_AND_FIX_STATUS",
-            "CODER_STATUS",
-            "FILES_CHANGED_HINT",
-            "EFFECTIVE_ROUND_CAP",
-        )
+        for key in config.STEP5_RESULT_ENVELOPE_KEYS
         if key in parsed
     ]
     rows.extend(_step5_difficulty_rows())
@@ -772,24 +763,11 @@ def _finish_step5_terminal_success(*,
 
 
 def _apply_step5_new_process_group(parser: argparse.ArgumentParser) -> None:
-    if not hasattr(os, "setsid"):
-        parser.exit(2, "cli.py review-and-fix step5: --new-process-group failed: os.setsid is unavailable\n")
-    try:
-        os.setsid()
-    except OSError as exc:
-        parser.exit(2, f"cli.py review-and-fix step5: --new-process-group failed: {exc}\n")
+    apply_new_process_group(parser, surface="cli.py review-and-fix step5")
 
 
 def _parse_optional_positive_float(value: str, *, label: str) -> float | None:
-    if not value:
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be positive") from exc
-    if parsed <= 0:
-        raise ValueError(f"{label} must be positive")
-    return parsed
+    return optional_positive_float(value, label=label)
 
 
 def _step5_parse_optional_epoch(value: str) -> float | None:

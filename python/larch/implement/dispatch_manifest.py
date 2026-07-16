@@ -25,6 +25,7 @@ from larch.implement.dispatch_helpers import (
     _invoke_cli,
     _parse_kv,
     _rehydrate_plugin_root,
+    resolve_tmpdir_path,
     _write_bytes_atomic,
     _write_prelaunch_digests,
     _write_text_atomic,
@@ -105,16 +106,7 @@ def _clear_external_scout_state(tmpdir: Path) -> None:
 
 
 def _resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
-    if not raw:
-        return tmpdir / default_relpath
-    candidate = Path(raw)
-    if candidate.is_absolute():
-        try:
-            candidate.relative_to(tmpdir)
-            return candidate
-        except ValueError:
-            return tmpdir / Path(*candidate.parts[1:])
-    return tmpdir / candidate
+    return resolve_tmpdir_path(tmpdir=tmpdir, raw=raw, default_relpath=default_relpath)
 
 
 def _submodule_roots(repo: Path) -> list[str]:

@@ -20,7 +20,7 @@ from larch.core import architectural_guidelines, config, proc
 from larch.report.run_log_batch import append_execution_issue
 from larch.design import design_step0_env, plan_grammar
 from larch.design.design_core import capture_contract_stream_to_paths
-from larch.design.design_terminal import stage_terminal_state_core
+from larch.design.design_terminal import extend_publish_failure_stage_args, stage_terminal_state_core
 from larch.git.repo_roots import consumer_repo_root
 
 
@@ -943,21 +943,7 @@ def _stage_failed_plan_write(
         "--failure-detail-log",
         str(detail_log),
     ]
-    for flag, key in (
-        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
-        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
-        ("--latest-phase", "LATEST_PHASE"),
-        ("--plan-write-ok", "PLAN_WRITE_OK"),
-        ("--publish-ok", "PUBLISH_OK"),
-        ("--renamed", "RENAMED"),
-        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
-        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
-        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
-        ("--pr-url", "PR_URL"),
-        ("--recovery-branch", "RECOVERY_BRANCH"),
-    ):
-        if values.get(key, ""):
-            stage_args.extend([flag, values[key]])
+    extend_publish_failure_stage_args(stage_args, values)
     stage_rc = capture_contract_stream_to_paths(
         stage_terminal_state_core,
         stdout_log,

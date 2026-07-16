@@ -19,7 +19,7 @@ from larch.core import config, logging_util, proc
 from larch.calibration import difficulty
 from larch.report import progress_file
 from larch.report.timing import resolve_timing_ledger_path
-from larch.review.dispatch_shared import record_reviewer_collect
+from larch.review.dispatch_shared import PANEL_COMMON_OPTIONS, record_reviewer_collect
 from larch.review.review_pipeline_shared import (
     PruneRecordOptions,
     ReviewCommands,
@@ -1238,27 +1238,9 @@ def _review_core_body(
 def review_core(argv: list[str], *, runner: object = None) -> int:
     logging_util.quiet_init(argv0="review-core")
     usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
-    options = {
-        "--mode",
+    options = PANEL_COMMON_OPTIONS | {
         "--output-dir",
-        "--session-env-path",
-        "--codex-available",
-        "--cursor-available",
-        "--diff-file",
-        "--commit-count",
-        "--scope-files",
-        "--plan-file",
-        "--feature-file",
-        "--description-text",
-        "--panel",
-        "--tier",
-        "--escalated-round",
-        "--dynamic-archetypes",
-        "--pre-scouted-manifest",
         "--run-id",
-        "--round-num",
-        "--prune-ledger",
-        "--site",
     }
     parsed = _parse_args(argv=argv, usage=usage, options=options)
     if parsed is None:

@@ -72,6 +72,8 @@ from larch.agents._run_external import (
     _record_launch_timing,
     _record_usage_from_events,
     _append_vendor_failure_diagnostics,
+    ExecutionLogFailure,
+    append_execution_log_failure,
     _resolve_execution_issues_log,
     run_external_agent,
     _record_cursor_usage_from_output,
@@ -646,34 +648,12 @@ def _review_append_launch_failure(
     )
     log = _resolve_execution_issues_log()
     if log is not None:
-        proc.run(
-            [
-                sys.executable,
-                str(_PY_CLI),
-                "run-log",
-                "append-failure",
-                "--log",
-                str(log),
-                "--site",
-                site,
-                "--tool",
-                f"{tool}-review",
-                "--exit-code",
-                str(exit_code),
-                "--category",
-                "External Reviewer Issues",
-                "--output-file",
-                str(source),
-                "--verdict",
-                failure.reason or failure.failure_class,
-                "--retry-count",
-                str(auth_attempt),
-                "--transient-retry-count",
-                str(transient_attempt),
-                "--redact",
-            ],
-            check=False,
-        )
+        append_execution_log_failure(ExecutionLogFailure(
+            log=log, site=site, tool=f"{tool}-review", exit_code=exit_code,
+            category="External Reviewer Issues", source=source,
+            verdict=failure.reason or failure.failure_class,
+            auth_attempt=auth_attempt, transient_attempt=transient_attempt,
+        ))
     _append_vendor_failure_diagnostics(
         source, site=f"{site} {tool}-review", exit_code=exit_code
     )

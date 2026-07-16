@@ -736,6 +736,18 @@ def atomic_write(  # lint-keyword-only: ok shared write helper supports legacy p
         raise
 
 
+def secure_atomic_write(path: Path, text: str) -> None:
+    """Write a no-follow, exclusive fixed-temp artifact with mode 0600."""
+    atomic_write(
+        path=path,
+        text=text,
+        mode=0o600,
+        temp_name=path.with_suffix(path.suffix + ".tmp"),
+        nofollow=True,
+        exclusive=True,
+    )
+
+
 def write_text(*, path: str | Path, text: str, create_parent: bool = True) -> None:
     """Write UTF-8 text, creating the parent by default."""
     p = Path(path)

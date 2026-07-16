@@ -37,6 +37,7 @@ from larch.design import (
 )
 from larch.design import design_pause
 from larch.design import design_publish
+from larch.review import plan_review_normalize
 from larch.design import plan_quality
 from larch.core import architectural_guidelines
 from larch.core import logging_util
@@ -3327,33 +3328,6 @@ def _judge_panel_stage_args(design: Path, *extra: str) -> list[str]:
     ]
 
 
-def _panel_init_stage_args(design: Path, detail_log: Path) -> list[str]:
-    return [
-        "--design-tmpdir",
-        str(design.resolve()),
-        "--outcome",
-        "failed-judge-panel",
-        "--step",
-        "judge-panel",
-        "--phase",
-        "judge-panel",
-        "--site",
-        "step3-review",
-        "--trigger",
-        "panel-init-failed",
-        "--bail-reason",
-        "panel-init-failed",
-        "--exit-code",
-        "1",
-        "--source-script",
-        "design-step3-review",
-        "--failure-detail-log",
-        str(detail_log),
-        "--summary-outcome",
-        "failed-judge-panel",
-    ]
-
-
 def test_stage_failed_plan_write_records_terminal_state_before_failure_report(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -3685,10 +3659,7 @@ def test_stage_terminal_state_stages_failed_judge_panel_decompose(tmp_path: Path
 
 
 def test_stage_terminal_state_stages_panel_init_failed_bail(tmp_path: Path) -> None:
-    detail = tmp_path / "step3-panel-init-failed.log"
-    detail.write_text("panel init failed\n", encoding="utf-8")
-    rc, _ = design_terminal.stage_terminal_state_core(_panel_init_stage_args(tmp_path, detail))
-    assert rc == 0
+    assert plan_review_normalize.stage_panel_init_failed(design_tmpdir=tmp_path) == 0
     state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
     assert "BAIL_REASON=panel-init-failed" in state
 

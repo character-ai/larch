@@ -240,14 +240,6 @@
     "rule_id": "kv-codec"
   },
   {
-    "anchor": "split=2ce4610c86cedf4a5a9b299086d5f06f92855bb33caee200eb9b4de1366dc7e9",
-    "line": 180,
-    "message": "ad-hoc KEY=value split loop; use larch.io codec",
-    "path": "python/larch/implement/checks_lint_fix.py",
-    "reason": "pre-existing KEY=value reader pending shared codec migration",
-    "rule_id": "kv-codec"
-  },
-  {
     "anchor": "split=23a21f5bc74c529e98087b24807f53cb78eef8fdc9e139b64373a7d4c838ffd4",
     "line": 607,
     "message": "ad-hoc KEY=value split loop; use larch.io codec",

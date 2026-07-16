@@ -542,19 +542,7 @@ def record_attempt(args: argparse.Namespace) -> int:
 
 def retry_policy(args: argparse.Namespace) -> int:
     klass = args.failure_class
-    caps: dict[str, tuple[int, str]] = {
-        "transient-infra": (4, "sleep-seconds.sh 5"),
-        "test-failure": (8, "none"),
-        "lint-failure": (8, "none"),
-        "ci-fix-exhausted": (0, "none"),
-        "dispatch-failure": (3, "none"),
-        "protected-path": (1, "none"),
-        "submodule-restricted": (0, "none"),
-        "same-cause-repeat": (2, "none"),
-        "contract-failure": (0, "none"),
-        "unrecoverable": (0, "none"),
-    }
-    max_attempts, delay = caps.get(klass, (0, "none"))
+    max_attempts, delay = config.RETRY_POLICY_CAPS.get(klass, (0, "none"))
     emit(key="FAILURE_CLASS", value=klass)
     emit(key="MAX_ATTEMPTS", value=max_attempts)
     emit(key="RETRY_DELAY", value=delay)

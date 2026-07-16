@@ -475,28 +475,6 @@ class _Tally:
                     return int(match.group(1))
         return 1
 
-    @staticmethod
-    def _ledger_title(*, block_text: str, item_id: str) -> str:
-        first = block_text.splitlines()[0] if block_text.splitlines() else ""
-        title = re.sub(rf"^###\s+{re.escape(item_id)}:\s*", "", first).strip()
-        return title or item_id
-
-    @staticmethod
-    def _ledger_file_line(block_text: str) -> str:
-        for regex in voting.FILE_LINE_REGEXES.values():
-            match = re.search(regex, block_text)
-            if match:
-                return match.group(0).strip(" \t\n\r`*()[],:;")
-        return ""
-
-    @staticmethod
-    def _ledger_reason(block_text: str) -> str:
-        for line in block_text.splitlines()[1:]:
-            normalized = line.replace("*", "").strip()
-            if re.match(r"^[- ]*(Concern|Scenario|Reason|Suggested (revision|fix)):", normalized, re.IGNORECASE):
-                return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
-        return ""
-
     def _write_findings_ledger(self, adjudications: list[tally_engine.ItemAdjudicationResult]) -> None:
         entries: list[dict[str, object]] = []
         for adjudication in adjudications:
@@ -504,11 +482,11 @@ class _Tally:
             entries.append(
                 {
                     "finding_id": context.item_id,
-                    "title": self._ledger_title(block_text=context.block_text, item_id=context.item_id),
-                    "file_line": self._ledger_file_line(context.block_text),
+                    "title": voting.ledger_title(block_text=context.block_text, item_id=context.item_id),
+                    "file_line": voting.ledger_file_line(context.block_text),
                     "outcome": adjudication.ledger_outcome,
                     "vote_tally": f"YES={context.yes}/{self.eligible}",
-                    "reason": self._ledger_reason(context.block_text),
+                    "reason": voting.ledger_reason(context.block_text),
                 }
             )
         findings_ledger.write_round(

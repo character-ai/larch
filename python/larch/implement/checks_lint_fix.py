@@ -12,7 +12,6 @@ import contextlib
 import hashlib
 import os
 import re
-import shutil
 import sys
 import tempfile
 import threading
@@ -57,6 +56,7 @@ from larch.implement.checks_run_relevant import (
     record_checks_vendor_task,
     default_repo_root,
 )
+from larch.implement.dispatch_helpers import result_env_capture_rows
 
 from larch.implement.self_edit_log import (
     file_sha256,
@@ -178,21 +178,9 @@ def _ledger_phase_for_site(site: str) -> str:
 
 
 def _binary_flag(*, name: str, implement_tmpdir: Path, binary: str) -> bool:
-    value = os.environ.get(name, "")
-    if value in {"true", "false"}:
-        return value == "true"
-    session_env = implement_tmpdir / "session-env.sh"
-    if session_env.is_file():
-        try:
-            text = session_env.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        for raw in text.splitlines():
-            if raw.startswith(f"{name}="):
-                val = raw.split("=", 1)[1]
-                if val in {"true", "false"}:
-                    return val == "true"
-    return shutil.which(binary) is not None
+    return external_defaults.binary_available(
+        name=name, implement_tmpdir=implement_tmpdir, binary=binary
+    )
 
 
 def _agent_cli() -> Path:
@@ -387,17 +375,11 @@ def _repair_loop_step_slug(site: str) -> str:
 def _result_env_capture(path: Path | None) -> Generator[None, None, None]:
     global _result_rows  # noqa: PLW0603 - scoped sink for bgjob merge-result-env capture
     prior = _result_rows
-    if path is None:
-        yield
-        return
-    rows: list[tuple[str, str]] = []
-    _result_rows = rows
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
-        yield
+        with result_env_capture_rows(path) as rows:
+            _result_rows = rows
+            yield
     finally:
-        larch_io.atomic_write(path=path, text=larch_io.format_kvs(rows), nofollow=True, mode=0o600)
         _result_rows = prior
 
 
