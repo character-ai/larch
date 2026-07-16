@@ -10,6 +10,7 @@ import argparse
 import re
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.state._tokens import (
     _COMMON_PHASES,
     _GENERIC_PHASES,
@@ -109,17 +110,22 @@ def _validated_terminal_state_values(*, tmpdir: Path, state_file: Path, generic:
         return None
     if not _validate_tmpdir_local_file(tmpdir=tmpdir, file_path=state_file):
         return None
-    found: dict[str, str] = {}
-    for raw in state_file.read_text(encoding="utf-8", errors="replace").splitlines():
+    normalized_lines: list[str] = []
+    for raw in larch_io.read_text(state_file, errors="replace").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
             return None
-        k, v = line.split("=", 1)
-        if k not in _TERMINAL_STATE_ALLOWED_KEYS:
-            return None
-        found[k] = v
+        normalized_lines.append(line)
+    parsed = larch_io.parse_kv(
+        "\n".join(normalized_lines),
+        duplicate_policy="all",
+        skip_comments=True,
+    )
+    if any(key not in _TERMINAL_STATE_ALLOWED_KEYS or len(values) != 1 for key, values in parsed.items()):
+        return None
+    found = {key: values[0] for key, values in parsed.items()}
     for required in _TERMINAL_STATE_REQUIRED_KEYS:
         if required not in found:
             return None

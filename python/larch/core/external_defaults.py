@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import config
 
 VALID_TOOLS = frozenset({"cursor", "codex", "claude"})
@@ -40,15 +41,15 @@ def binary_available(*, name: str, implement_tmpdir: Path, binary: str) -> bool:
         return value == "true"
     session_env = implement_tmpdir / "session-env.sh"
     if session_env.is_file():
-        try:
-            text = session_env.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        for raw in text.splitlines():
-            if raw.startswith(f"{name}="):
-                recorded = raw.split("=", 1)[1]
-                if recorded in {"true", "false"}:
-                    return recorded == "true"
+        values = larch_io.read_kvs(
+            session_env,
+            duplicate_policy="all",
+            cr_strip="suffix",
+            on_error_default=True,
+        )
+        for recorded in values.get(name, []):
+            if recorded in {"true", "false"}:
+                return recorded == "true"
     return shutil.which(binary) is not None
 
 

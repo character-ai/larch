@@ -111,6 +111,21 @@ def test_render_lane_status_sanitizes_reason(tmp_path: Path, capsys: pytest.Capt
     assert "VALIDATION_CODE_HEADER=Code: ✅" in out
 
 
+def test_render_lane_status_uses_last_value_and_ignores_advisory_noise(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    kv = _lane_status_fixture(
+        tmp_path,
+        "# comment\nRESEARCH_ARCH_STATUS=failed\nRESEARCH_ARCH_STATUS=ok\nnot-a-kv\n",
+    )
+
+    assert rendering.render_lane_status_main(["--input", str(kv)]) == 0
+    assert "RESEARCH_ARCH_HEADER=Architecture: ✅" in capsys.readouterr().out
+
+
 def test_reviewer_renderer_preserves_ampersand_target(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     q = tmp_path / "q.txt"
@@ -735,6 +750,30 @@ def test_mermaid_rejects_pipe_in_node_label(tmp_path: Path, capsys: pytest.Captu
     assert rc == 1
     assert "STATUS=rejected" in out
     assert "REASON_TOKEN=pipe-in-node-label fence=1 line=2" in out
+
+
+def test_mermaid_warning_log_uses_reason_token_codec(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    doc = tmp_path / "bad.mmd"
+    _ = doc.write_text("sequenceDiagram\nparticipant A as bad<br/>$\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> None:
+        calls.append(argv)
+
+    monkeypatch.setattr(rendering.subprocess, "run", fake_run)
+
+    rc = rendering.mermaid_sanitize_main(
+        ["--input", str(doc), "--warnings-log", str(tmp_path / "warnings.md"), "--warnings-step", "5"]
+    )
+
+    assert rc == 1
+    assert "STATUS=rejected" in capsys.readouterr().out
+    assert calls[0][-1].endswith("br-in-participant-alias dollar-in-participant-alias")
 
 
 def test_mermaid_accepts_quoted_pipe_label(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:

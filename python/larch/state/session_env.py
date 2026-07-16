@@ -574,15 +574,15 @@ def read_finalize_state(path: str | Path) -> dict[str, str]:
         return {}
     data: dict[str, str] = {}
     try:
-        lines = _read_kv_file_text(target).splitlines()
+        values = larch_io.parse_kv(
+            _read_kv_file_text(target),
+            duplicate_policy="last",
+            skip_comments=True,
+            key_pattern=_KEY_RE,
+        )
     except ValueError as exc:
         raise ShipError(str(exc)) from exc
-    for line in lines:
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if not _KEY_RE.match(key):
-            continue
+    for key, value in values.items():
         try:
             parsed = shlex.split(value, posix=True)
         except ValueError:
@@ -1567,11 +1567,12 @@ def read_keys_main(argv: list[str]) -> int:
         return 1
     specs: list[tuple[str, str | None]] = []
     for raw in args.key:
-        if "=" in raw:
-            name, default = raw.split("=", 1)
+        parsed = larch_io.parse_kv(raw, duplicate_policy="first")
+        if parsed:
+            name, default = next(iter(parsed.items()))
             specs.append((name, default))
-        else:
-            specs.append((raw, None))
+            continue
+        specs.append((raw, None))
     for name, _ in specs:
         if not name:
             _err("read-session-env-keys.sh: empty --key name")
@@ -1581,19 +1582,16 @@ def read_keys_main(argv: list[str]) -> int:
         path = Path(args.file)
         if path.is_file():
             try:
-                lines = _read_kv_file_text(path).splitlines()
+                found = larch_io.parse_kv(
+                    _read_kv_file_text(path),
+                    duplicate_policy="first",
+                    skip_empty_key=True,
+                )
             except ValueError as exc:
                 _err(str(exc))
                 return 1
             except OSError:
-                lines = []
-            for line in lines:
-                idx = line.find("=")
-                if idx <= 0:
-                    continue
-                name = line[:idx]
-                if name not in found:  # first occurrence wins, matching read_key
-                    found[name] = line[idx + 1:]
+                found = {}
     out_lines: list[str] = []
     for name, default in specs:
         value = found.get(name, "")

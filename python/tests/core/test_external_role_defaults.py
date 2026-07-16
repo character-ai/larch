@@ -208,6 +208,25 @@ def test_binary_available_prefers_process_then_session_before_path(
     assert external_defaults.binary_available(name=key, implement_tmpdir=tmp_path, binary="cursor") is True
 
 
+def test_binary_available_uses_first_valid_session_value(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    key = config.ENV_CURSOR_BINARY_FOUND
+    _ = (tmp_path / "session-env.sh").write_text(
+        f"{key}=invalid\n{key}=true\n{key}=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv(key, raising=False)
+
+    def no_binary(_binary: str) -> None:
+        return None
+
+    monkeypatch.setattr(external_defaults.shutil, "which", no_binary)
+
+    assert external_defaults.binary_available(name=key, implement_tmpdir=tmp_path, binary="cursor") is True
+
+
 def test_next_untried_tier_reports_exhaustion_regardless_of_availability() -> None:
     result = external_defaults.next_untried_tier(
         "implement.ci_recovery_fixer",

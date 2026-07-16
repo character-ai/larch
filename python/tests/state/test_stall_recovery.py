@@ -524,6 +524,30 @@ def test_validate_terminal_state_accepts_design_state(tmp_path: Path, capsys: py
     assert "VALID=true" in capsys.readouterr().out
 
 
+def test_validate_terminal_state_rejects_duplicate_authoritative_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state = tmp_path / "design-failure-terminal-state.env"
+    _ = state.write_text(
+        "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_VERSION=1\n"
+        "DESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=failed-judge-panel\n"
+        "STALL_STEP=judge-panel\nPHASE=judge-panel\nSITE=decompose-panel\n"
+        "TRIGGER=decompose-panel-retry-exhausted\nBAIL_REASON=decompose-panel-retry-exhausted\n"
+        "EXIT_CODE=1\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=split-path\n",
+        encoding="utf-8",
+    )
+    ns = argparse.Namespace(
+        implement_tmpdir=str(tmp_path),
+        primary_state_file=str(state),
+        profile="generic",
+        artifact_prefix="design-failure",
+    )
+
+    assert stall_recovery.validate_terminal_state(ns) == 1
+    assert "VALID=false" in capsys.readouterr().out
+
+
 def test_dedup_tier_a_report_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
 

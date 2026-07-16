@@ -1091,15 +1091,12 @@ def _emit_finalize_result(result: FinalizeResult, *, subcommand: str = "") -> No
 
 
 def _load_state_file_kv(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    if not path.is_file():
-        return out
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k] = v
-    return out
+    return larch_io.read_kvs(
+        path,
+        duplicate_policy="last",
+        skip_comments=True,
+        cr_strip="suffix",
+    )
 
 
 def _allowed_finalize_path(path: Path) -> bool:
@@ -1122,15 +1119,22 @@ def _load_state_file_checked(path: Path) -> dict[str, str]:
         raise ValueError("--state-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root")
     if not path.is_file() or not os.access(path, os.R_OK):
         raise ValueError("--state-file must exist and be readable")
-    data: dict[str, str] = {}
-    for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    rows: list[str] = []
+    for line_no, line in enumerate(larch_io.read_text(path, errors="replace").splitlines(), start=1):
         if not line or line.startswith("#"):
             continue
         if not re.match(r"^[A-Z_][A-Z0-9_]*=", line):
             raise ValueError(f"malformed state-file line {line_no}")
-        key, value = line.split("=", 1)
-        data[key] = value
-    return data
+        rows.append(line)
+    parsed = larch_io.parse_kv(
+        "\n".join(rows),
+        duplicate_policy="all",
+        key_pattern=r"[A-Z_][A-Z0-9_]*",
+    )
+    duplicates = [key for key, values in parsed.items() if len(values) != 1]
+    if duplicates:
+        raise ValueError(f"duplicate state-file key: {duplicates[0]}")
+    return {key: values[0] for key, values in parsed.items()}
 
 
 def _require_state_keys(*, data: Mapping[str, str], keys: tuple[str, ...]) -> None:
@@ -1236,10 +1240,12 @@ def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
     state = Path(tmpdir) / "finalize-state.sh"
     if state.is_file():
         env["SHIP_PR_STATE_FILE"] = str(state)
-        for line in state.read_text(encoding="utf-8", errors="replace").splitlines():
-            if "=" in line:
-                k, v = line.split("=", 1)
-                _ = env.setdefault(k, v)
+        for key, value in larch_io.read_kvs(
+            state,
+            duplicate_policy="last",
+            cr_strip="suffix",
+        ).items():
+            _ = env.setdefault(key, value)
     return RunContext.from_env(env=env)
 
 

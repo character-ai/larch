@@ -176,13 +176,7 @@ def _state_file_syntax_ok(path: Path) -> bool:
 
 
 def _read_state_file(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    if path.is_file():
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if "=" in line:
-                k, v = line.split("=", 1)
-                out[k] = v.strip("\r")
-    return out
+    return larch_io.read_kvs(path, duplicate_policy="last", cr_strip="strip")
 
 
 # Bgjob step slugs for checks-commit-route sites, mapped to the STALL_STEP

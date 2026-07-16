@@ -1084,12 +1084,12 @@ def render_lane_status_main(argv: list[str]) -> int:
     if not path.is_file():
         _err("**⚠ render-lane-status: input file missing**")
         return 2
-    values: dict[str, str] = {}
-    for line in _read_text(path).splitlines():
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        values[k] = v
+    values = larch_io.parse_kv(
+        _read_text(path),
+        duplicate_policy="last",
+        skip_comments=True,
+        cr_strip="suffix",
+    )
     rows = [
         ("RESEARCH_ARCH_HEADER", "Architecture", "RESEARCH_ARCH"),
         ("RESEARCH_EDGE_HEADER", "Edge cases", "RESEARCH_EDGE"),
@@ -1500,7 +1500,14 @@ def mermaid_sanitize_main(argv: list[str]) -> int:
             for i, fence in enumerate(fences, start=1):
                 logging_util.emit_kv(key=f"FENCE_{i}_HEADING", value=fence.heading)
         if args.warnings_log:
-            tokens = " ".join(sorted({r.split("=", 1)[1].split()[0] for r in reasons}))
+            tokens = " ".join(
+                sorted(
+                    {
+                        larch_io.kv_value(text=reason, key="REASON_TOKEN").split()[0]
+                        for reason in reasons
+                    }
+                )
+            )
             append = REPO_ROOT / "python" / "cli.py"
             if append.exists():
                 subprocess.run(["python3", str(append), "run-log", "append-entry", "--log", args.warnings_log, "--category", "Warnings", "--entry", f"- **Step {args.warnings_step} — mermaid sanitizer rejected:** {tokens}"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S607

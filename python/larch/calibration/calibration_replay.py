@@ -13,6 +13,8 @@ import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+
+from larch import io as larch_io
 from typing import Any, cast
 
 from larch.core import proc
@@ -735,7 +737,11 @@ def _dispatch_voters_for_row(
     env["LARCH_VOTER_CALIBRATION_FEEDBACK"] = "0"
     result = proc.run(argv, cwd=str(repo_root), env=env)
     output = "\n".join(part for part in (result.stdout, result.stderr) if part)
-    kv = {key: value for line in output.splitlines() if "=" in line for key, value in [line.split("=", 1)]}
+    kv = larch_io.parse_kv(
+        output,
+        duplicate_policy="last",
+        cr_strip="suffix",
+    )
     if result.returncode != 0:
         raise CalibrationReplayError(f"dispatch-voters failed for {(row.get('finding_id') or '').strip()}: {output.strip()}")
     finding_id = (row.get("finding_id") or "").strip()

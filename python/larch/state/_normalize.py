@@ -13,6 +13,7 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.state._tokens import (
     _DEFAULT_CLASSIFICATION_FILE,
     _issue_url_number,
@@ -301,7 +302,8 @@ def _filter_issue_stdout(text: str) -> dict[str, str]:
     for raw in text.splitlines():
         line = raw.replace("\r", " ")
         if _ISSUE_STDOUT_KEY_RE.match(line):
-            key, value = line.split("=", 1)
+            parsed = larch_io.parse_kv(line, duplicate_policy="first")
+            key, value = next(iter(parsed.items()))
             records.append((key, value))
         elif records and not _ISSUE_STDOUT_KEY_LIKE_RE.match(line):
             key, value = records[-1]
