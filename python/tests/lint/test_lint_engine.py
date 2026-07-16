@@ -165,17 +165,17 @@ def test_skill_closure_baseline_committed_payload_is_byte_stable(tmp_path: Path)
 @pytest.mark.parametrize(
     "mutation",
     [
-        lambda payload: payload.pop(),
-        lambda payload: payload.append(dict(payload[0])),
-        lambda payload: payload.append({**payload[0], "skill": "unknown"}),
-        lambda payload: payload[0].update({"closure_lines": True}),
-        lambda payload: payload[0].update({"files": ["../outside.md"]}),
-        lambda payload: payload[0].update({"files": ["skills\\design\\SKILL.md"]}),
-        lambda payload: payload[0].update({"unknown": 1}),
+        "missing",
+        "duplicate",
+        "extra",
+        "bool",
+        "parent",
+        "backslash",
+        "unknown",
     ],
 )
 def test_skill_closure_baseline_parser_rejects_untrusted_aggregate_rows(
-    mutation: Callable[[list[dict[str, object]]], None],
+    mutation: str,
 ) -> None:
     repo = Path(__file__).resolve().parents[3]
     payload = json.loads(
@@ -183,7 +183,20 @@ def test_skill_closure_baseline_parser_rejects_untrusted_aggregate_rows(
     )
     assert isinstance(payload, list)
     records = [dict(item) for item in cast("list[dict[str, object]]", payload)]
-    mutation(records)
+    if mutation == "missing":
+        _ = records.pop()
+    elif mutation == "duplicate":
+        records.append(dict(records[0]))
+    elif mutation == "extra":
+        records.append({**records[0], "skill": "unknown"})
+    elif mutation == "bool":
+        records[0]["closure_lines"] = True
+    elif mutation == "parent":
+        records[0]["files"] = ["../outside.md"]
+    elif mutation == "backslash":
+        records[0]["files"] = ["skills\\design\\SKILL.md"]
+    else:
+        records[0]["unknown"] = 1
 
     with pytest.raises(lint_engine.ScanError):
         _ = lint_engine.parse_skill_closure_baseline(

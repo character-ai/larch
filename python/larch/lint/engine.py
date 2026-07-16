@@ -1857,7 +1857,7 @@ def skill_closure_growth_violations(
     baseline_rows: Sequence[SkillClosureBaselineRow],
 ) -> list[str]:
     """Compare selected live aggregate rows against a complete typed baseline."""
-    _validate_skill_closure_rows(baseline_rows, source="skill-closure baseline")
+    _ = _validate_skill_closure_rows(baseline_rows, source="skill-closure baseline")
     selected = list(live_rows)
     if not selected or len({row.skill for row in selected}) != len(selected):
         raise ScanError("live skill-closure rows must select unique ratcheted targets")

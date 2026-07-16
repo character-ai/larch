@@ -81,40 +81,7 @@ class FileMetrics:
     content_estimated_tokens: int
 
 
-@dataclass(frozen=True)
-class SkillClosureResult:
-    skill: str
-    skill_md_lines: int
-    skill_md_estimated_tokens: int
-    skill_md_content_estimated_tokens: int
-    closure_lines: int
-    closure_estimated_tokens: int
-    closure_content_estimated_tokens: int
-    files: tuple[str, ...]
-    conditional_lines: int
-    conditional_estimated_tokens: int
-    conditional_content_estimated_tokens: int
-    conditional_files: tuple[str, ...]
-
-
-    def to_engine_row(self) -> engine.SkillClosureBaselineRow:
-        """Project scan results onto the engine-owned aggregate schema."""
-        return engine.SkillClosureBaselineRow(
-            self.skill,
-            self.skill_md_lines,
-            self.skill_md_estimated_tokens,
-            self.skill_md_content_estimated_tokens,
-            self.closure_lines,
-            self.closure_estimated_tokens,
-            self.closure_content_estimated_tokens,
-            self.files,
-            self.conditional_lines,
-            self.conditional_estimated_tokens,
-            self.conditional_content_estimated_tokens,
-            self.conditional_files,
-        )
-
-
+SkillClosureResult: TypeAlias = engine.SkillClosureBaselineRow
 BaselineRow: TypeAlias = engine.SkillClosureBaselineRow
 
 
@@ -556,7 +523,7 @@ def write_baseline(path: Path, results: Iterable[SkillClosureResult]) -> None:
     _ = engine.write_skill_closure_baseline(
         path,
         root=root,
-        rows=[result.to_engine_row() for result in results],
+        rows=list(results),
     )
 
 
@@ -636,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         return TOOL_FAILURE_EXIT
 
     violations = engine.skill_closure_growth_violations(
-        [result.to_engine_row() for result in results], baseline
+        results, baseline
     )
     if not violations:
         return 0
