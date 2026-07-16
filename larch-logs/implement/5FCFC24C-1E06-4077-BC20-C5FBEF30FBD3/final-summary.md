@@ -23,7 +23,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: 2/2 accepted
-- **Lines (PR diff)**: code +836/-1236, larch-logs +153/-0
+- **Lines (PR diff)**: code +860/-1255, larch-logs +155/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0

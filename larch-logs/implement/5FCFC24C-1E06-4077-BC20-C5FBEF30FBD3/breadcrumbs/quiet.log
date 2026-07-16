@@ -14,3 +14,50 @@ read-session-env-key.sh: --file is required
 === larch-quiet-sessionstart-health.sh-11923.log ===
 === larch-quiet-sessionstart-health.sh-45182.log ===
 === larch-quiet-sessionstart-health.sh-53463.log ===
+=== larch-quiet-write-implement-current-env.sh-84236.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-86030.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-88153.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-88395.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+imports ok, running harness second block via exec of file slice
+parts=3
+SystemExit: 1
+=== larch-quiet-write-implement-current-env.sh-88560.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-88687.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-88720.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+EXIT CODE 1
+=== larch-quiet-write-implement-current-env.sh-88881.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-89017.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+SystemExit 1
+=== larch-quiet-write-implement-current-env.sh-89236.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+SystemExit code= 1
+=== larch-quiet-write-implement-current-env.sh-89377.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+SYSEXIT 1
+AFTER
+=== larch-quiet-write-implement-current-env.sh-89560.log ===
+missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-90641.log ===
+FAIL_CALLED:missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+=== larch-quiet-write-implement-current-env.sh-91875.log ===
+write_implement_env 0
+stable exists True
+stable 0 'SH_ARGV=stable|runner arg\nCLAUDE_PID=12345\n' ''
+step0 has awk? False
+launcher has awk? True
+FAIL:missing LARCH_CLAUDE_PLUGIN_ROOT awk program
+extract failed as expected for thin wrapper
+=== larch-quiet-write-implement-current-env.sh-92667.log ===
+rc 0
+=== larch-quiet-write-implement-current-env.sh-92835.log ===
+after quiet
+write ok
