@@ -41,11 +41,19 @@ codex/plan-fidelity-vote              │                                      �
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+The changed code introduces a new lint module, its baseline, Makefile targets, docs, manifest entry, and cli.py registration. None of the changed lines touch workflow gates, pause/resume snapshots, step-result identity or consumption logic, run-log flush paths, panel slot accounting, agent verdict machinery, or ship recovery routes, so no invariant is implicated.
+
+## Architectural guidelines
+
+The changed code raises no guideline concerns.
+
 ## /implement run 88BB80B3-4D08-4B3B-AC1C-3E33CF1AD077: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:41:31
-- **Cost**: 💰 TOTAL ~$15.68: Claude $0.97, Codex-5.6 $3.80, Codex-mini $0.03, Cursor $8.65 (Composer $4.66, Grok $3.99), Claude (subprocess) $2.23  |  Tokens: 22621k
+- **Cost**: 💰 TOTAL ~$17.24: Claude $2.53, Codex-5.6 $3.80, Codex-mini $0.03, Cursor $8.65 (Composer $4.66, Grok $3.99), Claude (subprocess) $2.23  |  Tokens: 24535k
 - **Issue**: #6992: https://github.com/character-ai/larch/issues/6992
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
