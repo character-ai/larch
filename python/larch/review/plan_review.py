@@ -898,7 +898,7 @@ def step3_entry_preview_main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser(prog="cli.py plan-review step3-entry-preview")
-    parser.parse_args(remaining)
+    _ = parser.parse_args(remaining)
     design_tmpdir = Path(request.design_tmpdir) if request.design_tmpdir else None
     if design_tmpdir is not None and (design_tmpdir / ".pause-requested").is_file():
         return design_session.pause_save_for_request(design_tmpdir=design_tmpdir)
@@ -913,8 +913,8 @@ def step3_entry_preview_main(argv: list[str] | None = None) -> int:
     if rc != 0:
         return rc
     text = output.getvalue()
-    sys.stdout.write(text)
-    sys.stdout.write("\n")
+    _ = sys.stdout.write(text)
+    _ = sys.stdout.write("\n")
     if design_tmpdir is not None and design_tmpdir.is_dir() and "## Plan Candidate for Review" in text:
         with contextlib.suppress(OSError):
             (design_tmpdir / ".step3-entry-plan-printed").touch()
@@ -928,7 +928,7 @@ def step3_entry_state_main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser(prog="cli.py plan-review step3-entry-state")
-    parser.parse_args(remaining)
+    _ = parser.parse_args(remaining)
     design_tmpdir = Path(request.design_tmpdir) if request.design_tmpdir else None
     if design_tmpdir is not None and (design_tmpdir / ".pause-requested").is_file():
         return design_session.pause_save_for_request(design_tmpdir=design_tmpdir)
@@ -945,7 +945,7 @@ def step3_gate_b_bypass_main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser(prog="cli.py plan-review step3-gate-b-bypass")
-    parser.parse_args(remaining)
+    _ = parser.parse_args(remaining)
     if design_session.session_env.require_plugin_root() != 0:
         return 1
     if not request.design_tmpdir:

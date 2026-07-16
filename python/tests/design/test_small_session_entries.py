@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 from larch.design import design_session
 from larch.review import plan_review
@@ -22,7 +27,9 @@ def _source_env(tmpdir: Path, *, plugin_root: Path) -> Path:
     )
 
 
-def test_small_entries_rehydrate_normal_session_env_and_preview_once(tmp_path: Path, monkeypatch) -> None:
+def test_small_entries_rehydrate_normal_session_env_and_preview_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     design = make_design_tmpdir(tmp_path)
     source = _source_env(design, plugin_root=Path.cwd())
     _ = (design / "plan.txt").write_text("# Plan\n", encoding="utf-8")
@@ -34,7 +41,9 @@ def test_small_entries_rehydrate_normal_session_env_and_preview_once(tmp_path: P
     assert plan_review.step3_entry_preview_main(_session_args(source)) == 0
 
 
-def test_small_entries_refuse_invalid_session_pid_for_symlink(tmp_path: Path, monkeypatch) -> None:
+def test_small_entries_refuse_invalid_session_pid_for_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     home = tmp_path / "home"
     sessions = home / ".cache" / "larch" / "sessions"
     sessions.mkdir(parents=True)
@@ -48,7 +57,7 @@ def test_small_entries_refuse_invalid_session_pid_for_symlink(tmp_path: Path, mo
     assert plan_review.step3_entry_state_main(_session_args(swapped)) != 0
 
 
-def test_small_entries_pause_before_state_or_preview(tmp_path: Path, monkeypatch) -> None:
+def test_small_entries_pause_before_state_or_preview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = make_design_tmpdir(tmp_path)
     source = _source_env(design, plugin_root=Path.cwd())
     (design / ".pause-requested").touch()
@@ -66,7 +75,7 @@ def test_small_entries_pause_before_state_or_preview(tmp_path: Path, monkeypatch
     assert calls == [design, design, design, design]
 
 
-def test_continuation_and_bypass_reject_missing_tmpdir(monkeypatch) -> None:
+def test_continuation_and_bypass_reject_missing_tmpdir(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path.cwd()))
     monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
 
@@ -74,14 +83,16 @@ def test_continuation_and_bypass_reject_missing_tmpdir(monkeypatch) -> None:
     assert plan_review.step3_gate_b_bypass_main([]) == 1
 
 
-def test_missing_tmpdir_preview_never_reads_a_cwd_pause_marker(monkeypatch, tmp_path: Path) -> None:
+def test_missing_tmpdir_preview_never_reads_a_cwd_pause_marker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
     monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".pause-requested").touch()
     assert plan_review.step3_entry_preview_main([]) == 0
 
 
-def test_continuation_rejects_disallowed_tmpdir(monkeypatch) -> None:
+def test_continuation_rejects_disallowed_tmpdir(monkeypatch: pytest.MonkeyPatch) -> None:
     disallowed = Path.cwd() / ".test-7483-disallowed"
     disallowed.mkdir(exist_ok=True)
     source = disallowed / "source-env.sh"
@@ -97,7 +108,7 @@ def test_continuation_rejects_disallowed_tmpdir(monkeypatch) -> None:
         disallowed.rmdir()
 
 
-def test_gate_b_bypass_preserves_step35_short_circuit(tmp_path: Path, monkeypatch) -> None:
+def test_gate_b_bypass_preserves_step35_short_circuit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = make_design_tmpdir(tmp_path)
     source = _source_env(design, plugin_root=Path.cwd())
     (design / ".completed").mkdir()
@@ -107,15 +118,21 @@ def test_gate_b_bypass_preserves_step35_short_circuit(tmp_path: Path, monkeypatc
     assert plan_review.step3_gate_b_bypass_main(_session_args(source)) == 0
 
 
-def test_preview_child_failure_propagates(tmp_path: Path, monkeypatch) -> None:
+def test_preview_child_failure_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = make_design_tmpdir(tmp_path)
     source = _source_env(design, plugin_root=Path.cwd())
-    monkeypatch.setattr(plan_review_loop, "emit_design_plan_preview", lambda _argv: 9)
+
+    def fail_preview(_argv: Sequence[str]) -> int:
+        return 9
+
+    monkeypatch.setattr(plan_review_loop, "emit_design_plan_preview", fail_preview)
 
     assert plan_review.step3_entry_preview_main(_session_args(source)) == 9
 
 
-def test_preview_malformed_child_output_does_not_write_sentinel(tmp_path: Path, monkeypatch) -> None:
+def test_preview_malformed_child_output_does_not_write_sentinel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     design = make_design_tmpdir(tmp_path)
     source = _source_env(design, plugin_root=Path.cwd())
 
