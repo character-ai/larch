@@ -9,13 +9,14 @@ go through ``run_log_corpus`` helpers.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import subprocess
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 OWNER_RELPATH = "larch/report/run_log_corpus.py"
@@ -67,10 +68,6 @@ class Finding:
     lineno: int
     rule: str
     message: str
-
-
-def _repo_root_from_module() -> Path:
-    return Path(__file__).resolve().parents[3]
 
 
 def _tracked_python_relpaths(root: Path) -> list[str]:
@@ -377,14 +374,10 @@ def collect_findings(root: Path) -> list[Finding]:
     return findings
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py lint run-log-walkers", description=__doc__)
-    _ = parser.add_argument("--root", default=str(_repo_root_from_module()))
-    try:
-        args = parser.parse_args(argv if argv is not None else sys.argv[1:])
-    except SystemExit as exc:
-        return int(exc.code or 0)
-    root = Path(args.root)
+CLI = RuleCli(prog="cli.py lint run-log-walkers", description=__doc__, resolve_root=False)
+
+
+def _run(root: Path) -> int:
     if not root.is_dir():
         print(f"lint-run-log-walkers: --root is not a directory: {root}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
@@ -405,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

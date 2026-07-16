@@ -2,39 +2,19 @@
 
 from __future__ import annotations
 
-import argparse
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from larch.lint.engine import RuleCli, run_root_cli
+
 GIT = shutil.which("git") or "git"
 
 
 class LintError(Exception):
     """Raised for internal errors (file unreadable, non-UTF-8 bytes). Exit 2."""
-
-
-def parse_root_args(
-    argv: list[str],
-    *,
-    prog: str,
-    description: str | None,
-) -> argparse.Namespace | None:
-    """Parse the shared ``--root`` argument for a lint entrypoint.
-
-    Returns None when argparse exits non-zero so callers can surface a usage
-    exit code; re-raises on the ``--help`` exit-0 path.
-    """
-    parser = argparse.ArgumentParser(prog=prog, description=description)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
 
 
 def git_rooted(root: Path) -> bool:
@@ -83,32 +63,35 @@ def run_file_lint(
     errors (errors win over violations). ``iter_files`` and ``lint_file`` raise
     :class:`LintError` to report internal failures.
     """
-    args = parse_root_args(argv if argv is not None else sys.argv[1:], prog=prog, description=description)
-    if args is None:
-        return 2
-    root = Path(args.root).resolve()
-    if not root.is_dir():
-        print(f"{prog}: --root is not a directory: {root}", file=sys.stderr)
-        return 2
+    def action(root: Path) -> int:
+        if not root.is_dir():
+            print(f"{prog}: --root is not a directory: {root}", file=sys.stderr)
+            return 2
 
-    violations: list[str] = []
-    errors: list[str] = []
-    try:
-        files = iter_files(root)
-    except LintError as exc:
-        errors.append(str(exc))
-        files = []
-
-    for path in files:
+        violations: list[str] = []
+        errors: list[str] = []
         try:
-            violations.extend(lint_file(path=path, root=root))
+            files = iter_files(root)
         except LintError as exc:
             errors.append(str(exc))
+            files = []
 
-    for error in errors:
-        print(error, file=sys.stderr)
-    for violation in violations:
-        print(violation, file=sys.stderr)
-    if errors:
-        return 2
-    return 1 if violations else 0
+        for path in files:
+            try:
+                violations.extend(lint_file(path=path, root=root))
+            except LintError as exc:
+                errors.append(str(exc))
+
+        for error in errors:
+            print(error, file=sys.stderr)
+        for violation in violations:
+            print(violation, file=sys.stderr)
+        if errors:
+            return 2
+        return 1 if violations else 0
+
+    return run_root_cli(
+        argv if argv is not None else sys.argv[1:],
+        cli=RuleCli(prog=prog, description=description),
+        action=action,
+    )

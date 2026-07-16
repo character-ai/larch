@@ -9,11 +9,12 @@ suppressions require a non-empty reason.
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 DOCUMENTS = ("AGENTS.md", "SECURITY.md")
@@ -42,20 +43,6 @@ class Finding:
     lineno: int
     token: str
     message: str
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint doc-pointer-paths",
-        description=__doc__,
-    )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
 
 
 def _is_candidate_token(token: str) -> bool:
@@ -203,16 +190,19 @@ def check_root(root: Path) -> tuple[int, list[Finding]]:
     return (1 if findings else 0), findings
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry registered as ``python3 python/cli.py lint doc-pointer-paths``."""
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root = Path(str(parsed.root)).resolve()
+CLI = RuleCli(prog="cli.py lint doc-pointer-paths", description=__doc__)
+
+
+def _run(root: Path) -> int:
     code, findings = check_root(root)
     for finding in findings:
         print(finding.message, file=sys.stderr)
     return code
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry registered as ``python3 python/cli.py lint doc-pointer-paths``."""
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

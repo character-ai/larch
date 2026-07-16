@@ -9,7 +9,6 @@ non-empty trailing reason.
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from collections.abc import Mapping
@@ -17,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core.residual_bash import read_residual_paths
+from larch.lint.engine import RuleCli, run_root_cli
 from larch.lint.lint_lifecycle_prefix_literal import TokenInfo, build_token_map
 from larch.lint.lint_lifecycle_prefix_literal import BaselineError as TokenMapError
 
@@ -153,24 +153,10 @@ def scan_text_file(
     return findings
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint prefix-case-variant", description=__doc__
-    )
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
+CLI = RuleCli(prog="cli.py lint prefix-case-variant", description=__doc__)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return TOOL_FAILURE_EXIT
-    root: Path = Path(str(parsed.root)).resolve()
+def _run(root: Path) -> int:
     if not root.is_dir():
         print(f"lint-prefix-case-variant: root is not a directory: {root}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
@@ -202,6 +188,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     return 1 if findings else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":

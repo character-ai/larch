@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from larch.lint.engine import RuleCli, run_root_cli
 
 EXTERNAL_STYLE_LINE = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW_STYLE_LINE = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
@@ -26,17 +27,6 @@ class ManifestRow:
     expected_count: int
     prompt_kind: str
     step_markers: str
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint readability-preamble", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
 
 
 def _manifest_rows(manifest: Path) -> tuple[int, list[ManifestRow]]:
@@ -279,11 +269,12 @@ def _check_floor(rows: list[ManifestRow]) -> bool:
     return False
 
 
-def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv=argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return 2
-    root = Path(parsed.root)
+CLI = RuleCli(
+    prog="cli.py lint readability-preamble", description=__doc__, resolve_root=False
+)
+
+
+def _run(root: Path) -> int:
     manifest = root / "scripts" / "lint-readability-preamble.tsv"
     rc, rows = _manifest_rows(manifest)
     if rc != 0:
@@ -308,6 +299,10 @@ def main(argv: list[str] | None = None) -> int:
     if not _check_agent_path_form(root=root):
         missing = True
     return 1 if missing else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_root_cli(argv if argv is not None else sys.argv[1:], cli=CLI, action=_run)
 
 
 if __name__ == "__main__":
