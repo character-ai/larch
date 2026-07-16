@@ -14,6 +14,8 @@ _SESSION_VARIABLE_RE = re.compile(
 )
 _SUPPRESSION_RE = re.compile(r"#\s*lint-harness-session-env:\s*ok\s+\S(?:.*\S)?\s*$")
 _PATTERNS = ("scripts/test-*.sh", "skills/*/scripts/test-*.sh")
+_ROOT_HARNESS_PARTS = 2
+_SKILL_HARNESS_PARTS = 4
 
 
 def _rel(*, path: Path, root: Path) -> str:
@@ -33,9 +35,12 @@ def _is_harness(path: Path, *, root: Path) -> bool:
         return False
     parts = relative.parts
     return (
-        len(parts) == 2 and parts[0] == "scripts" and path.name.startswith("test-") and path.suffix == ".sh"
+        len(parts) == _ROOT_HARNESS_PARTS
+        and parts[0] == "scripts"
+        and path.name.startswith("test-")
+        and path.suffix == ".sh"
     ) or (
-        len(parts) == 4
+        len(parts) == _SKILL_HARNESS_PARTS
         and parts[0] == "skills"
         and parts[2] == "scripts"
         and path.name.startswith("test-")

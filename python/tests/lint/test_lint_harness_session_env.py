@@ -82,7 +82,7 @@ def test_reason_bearing_suppression_on_first_session_use_passes(
         tmp_path,
         "scripts/test-suppressed.sh",
         harness(
-            "set -euo pipefail\necho \"$IMPLEMENT_TMPDIR\" "
+            'set -euo pipefail\necho "$IMPLEMENT_TMPDIR" '
             "# lint-harness-session-env: ok verifies inherited state"
         ),
     )
@@ -95,9 +95,9 @@ def test_reason_bearing_suppression_on_first_session_use_passes(
 @pytest.mark.parametrize(
     "body",
     [
-        "set -euo pipefail\necho \"$IMPLEMENT_TMPDIR\" # lint-harness-session-env: ok",
+        'set -euo pipefail\necho "$IMPLEMENT_TMPDIR" # lint-harness-session-env: ok',
         "# lint-harness-session-env: ok standalone comments are not trailing suppressions\n"
-        "set -euo pipefail\necho \"$IMPLEMENT_TMPDIR\"",
+        'set -euo pipefail\necho "$IMPLEMENT_TMPDIR"',
     ],
 )
 def test_invalid_or_reasonless_suppression_fails(
@@ -112,9 +112,10 @@ def test_invalid_or_reasonless_suppression_fails(
 
 
 def test_scope_excludes_hooks_and_runtime_scripts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path, "hooks/test-hook.sh", harness("set -euo pipefail\necho \"$IMPLEMENT_TMPDIR\""))
-    write(tmp_path, "scripts/runtime.sh", harness("set -euo pipefail\necho \"$IMPLEMENT_TMPDIR\""))
-    write(tmp_path, "skills/example/scripts/runtime.sh", harness("set -euo pipefail\necho \"$IMPLEMENT_TMPDIR\""))
+    body = 'set -euo pipefail\necho "$IMPLEMENT_TMPDIR"'
+    write(tmp_path, "hooks/test-hook.sh", harness(body))
+    write(tmp_path, "scripts/runtime.sh", harness(body))
+    write(tmp_path, "skills/example/scripts/runtime.sh", harness(body))
 
     rc, err = run(tmp_path, capsys)
 
