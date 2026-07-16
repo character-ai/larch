@@ -183,7 +183,7 @@ Use this one fragment for all three marker-producing paths: default mode after S
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
-Run the whole fragment as one Bash call. `learn-from-bugs state-publish` owns the entire flow behind `python/cli.py`: it validates the checkout and origin, resolves and fetches the repository default branch, derives and reserves a collision-free state branch, then publishes the marker from a disposable clean detached worktree, so filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`. It invokes `learn-from-bugs write-state` exactly once against that worktree, commits only the marker with `--only`, opens the state PR with a file-backed body, and attempts an immediate `--admin --squash`:
+Run the whole fragment as one Bash call. `learn-from-bugs state-publish` owns the entire flow behind `python/cli.py`: it requires a clean current checkout on the synced default branch, validates the checkout and origin, resolves and fetches the repository default branch, derives and reserves a collision-free state branch, writes the marker in that branch, commits only the marker with `--only`, pushes it, opens the state PR with a file-backed body, attempts an immediate `--admin --squash`, then restores and syncs the default branch:
 
 ```bash
 set -euo pipefail
@@ -206,7 +206,7 @@ if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish
 fi
 ```
 
-The verb never publishes with `git add -A`, a bare commit without `--only`, or `--auto` merge, and it keeps every worktree, branch, commit, PR, and merge command anchored to `ANALYSIS_ROOT` or the disposable `STATE_WORKTREE`. It preserves the ISO `RUN_DATE` as marker metadata but removes unsafe characters only from the branch components. On a pre-commit failure it removes the disposable worktree and unpublished branch. On a committed but PR-less failure, it removes the worktree but preserves and reports the recovery branch as `STATE_PUBLISH_RECOVERY_BRANCH`. Once a valid PR exists, the PR is the recovery surface, so the verb removes the local worktree and branch without rolling back the marker commit.
+The verb never publishes with `git add -A`, a bare commit without `--only`, `--auto` merge, or a Git worktree. It preserves the ISO `RUN_DATE` as marker metadata but removes unsafe characters only from the branch components. On a committed but PR-less failure it preserves and reports the recovery branch as `STATE_PUBLISH_RECOVERY_BRANCH`. Once a valid PR exists, the PR is the recovery surface; the verb restores the default branch without rolling back the marker commit.
 
 Parse exactly one whole-line `STATE_PUBLISH_STATUS`, `PR_NUMBER`, and `PR_URL` from `$STATE_PUBLISH_RESULT`. Accept only `merged` or `handoff-pending`, a positive PR number, and a non-empty URL. `merged` is durable publication. For `handoff-pending`, show the PR number and URL, ask the operator to merge it manually, and describe the state as pending publication. Never claim durable completion for an unmerged PR.
 

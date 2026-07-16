@@ -308,6 +308,7 @@ These skills live under `.claude/skills/` and are **dev-only**: they are not exp
 
 - [`/agnix-fix`](#agnix-fix)
 - [`/analyze-bugs`](#analyze-bugs)
+- [`/validate-merged`](#validate-merged)
 - [`/analyze-issues`](#analyze-issues)
 - [`/audit-runs`](#audit-runs)
 - [`/combine-issues`](#combine-issues)
@@ -341,9 +342,17 @@ Verdict eligibility uses strict manifest `started_at`, not `updated_at`. Filed-O
 
 **Source**: [`.claude/skills/analyze-bugs/SKILL.md`](../.claude/skills/analyze-bugs/SKILL.md)
 
-Dev-only cached audit for recent `[BUG]` title-prefix issues. Stage 0 fetches the newest window, strips `larch:plan` blocks, maps `Fixes #N` commits against a pinned evidence ref, caps bundles, and stores run files plus a local ledger under `~/.cache/larch/analyze-bugs/`. Stage 1 passes batch paths only to a Read-capable Haiku triage agent. The orchestrator must not relay manifest data, bundle bodies, or evidence tokens. Triage ingest requires the agent to echo the token from the canonical `evidence_token:` line in each bundle markdown, then validates that token against the bundle file on disk. Stage 2 sends suspect, needs-deep, mechanical needs-deep, and sampled rows to the deep verifier, bounded by `--deep-max` and priced through the same `--deep-model` alias. Stage 3 renders a markdown report with counts, issue rows, sample calibration, and an estimated cost line.
+Dev-only verification for recent filed `[BUG]` title-prefix issues. It fetches the requested issue window, validates static, triage, deep, and bounded runtime evidence, then reports whether each filed bug was fixed. `-n` controls only this issue window. Its compact durable marker is `larch-logs/shared/analyze-bugs-state.json`; publication uses a clean current checkout, a marker-only branch and PR, and never a Git worktree. It can run targeted tests during runtime verification. For possible new bugs introduced by recent merges, use `/validate-merged` instead.
 
-The default window is `-n 200`, the default deep cap is `30`, and `--refresh` ignores cache skips. `--sample K` draws deterministic calibration samples only from verified triage `FIXED_CLEAR` and `FIXED_LIKELY` rows not already deep-queued. Unverified legacy triage rows are ignored for cache skips, deep routing, and report verdicts until re-triaged with a valid bundle token. The skill does not run tests. It is report-only by default and offers one combined follow-up issue for `NOT_FIXED`, `INCOMPLETE`, and `REGRESSED` findings only after approval.
+The default window is `-n 200`, the default deep cap is `30`, and `--refresh` ignores cache skips. `--sample K` draws deterministic calibration samples only from verified triage `FIXED_CLEAR` and `FIXED_LIKELY` rows not already deep-queued. Unverified legacy triage rows are ignored for cache skips, deep routing, and report verdicts until re-triaged with a valid bundle token. It is report-only by default and offers one combined follow-up issue for `NOT_FIXED`, `INCOMPLETE`, and `REGRESSED` findings only after approval.
+
+### `/validate-merged`
+
+**Arguments**: `[--max-merges N] [--repo owner/name]`
+
+**Source**: [`.claude/skills/validate-merged/SKILL.md`](../.claude/skills/validate-merged/SKILL.md)
+
+Dev-only, report-only validation of recent first-parent merges for possible unfiled bugs. A first run checks only the previous 48 hours and at most 20 eligible merges; later runs resume the committed pending frontier. `--max-merges N` is the explicit per-run cost cap, and `-n` is not accepted. Each selected merge receives a finder, and each candidate receives an independent refuter, so it is normally more expensive per item than `/analyze-bugs`. State is independently compacted in `larch-logs/shared/validate-merged-state.json` and published through a clean current-checkout marker-only branch and PR, never a Git worktree. It does not fetch filed bugs or run fix verification.
 
 ### `/audit-runs`
 

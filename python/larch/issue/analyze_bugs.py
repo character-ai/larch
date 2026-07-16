@@ -511,6 +511,11 @@ def _runner() -> Runner:
     return proc.ProcRunner()
 
 
+def workflow_runner() -> Runner:
+    """Return the runner shared by independent issue-analysis workflows."""
+    return _runner()
+
+
 def _fail(message: str) -> int:
     print(f"ERROR: {message}", file=sys.stderr)
     return 1
@@ -2816,6 +2821,11 @@ def _validated_sweep_artifact(*, run_dir: Path) -> tuple[SweepValidatedArtifact,
         ),
         selected_manifest,
     )
+
+
+def validated_merge_artifact(*, run_dir: Path) -> tuple[SweepValidatedArtifact, dict[str, Any]] | None:
+    """Validate the shared finder/refuter artifact for merge validation."""
+    return _validated_sweep_artifact(run_dir=run_dir)
 
 
 def _sweep_state_timestamp() -> str:

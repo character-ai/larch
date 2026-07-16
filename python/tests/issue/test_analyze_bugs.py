@@ -2050,9 +2050,9 @@ def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.Mo
     assert rc == 0
     assert (run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME).is_file()
     assert (run_dir / analyze_bugs.SWEEP_BUNDLE_MANIFEST_NAME).is_file()
-    help_result = run_cli("analyze-bugs", "sweep", "--help")
+    help_result = run_cli("validate-merged", "prepare", "--help")
     assert help_result.returncode == 0
-    assert "prepare" in help_result.stdout
+    assert "--max-merges" in help_result.stdout
 
     # Invalid state fails closed.
     analyze_bugs.write_sweep_state(

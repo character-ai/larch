@@ -1525,7 +1525,7 @@ def write_state_main(argv: list[str]) -> int:
     if args.proposals_file:
         proposals = load_proposals_jsonl(Path(args.proposals_file), root=root)
         if existing is not None:
-            # The state worktree is based on a freshly fetched default branch.
+            # The state branch starts from a freshly fetched default branch.
             # Three-way merge against the scan-start base so this run's refreshed
             # lifecycle statuses survive, while statuses that diverged from base
             # (genuinely concurrent publications) are retained.
@@ -1661,18 +1661,17 @@ def validate_report_main(argv: list[str]) -> int:
 # ``learn-from-bugs state-publish`` owns the whole marker-publication flow that
 # used to live as a ~232-line inline Bash fence in the skill (G-Skill-2: keep
 # logic in Python behind cli.py; SKILL.md and Bash stay thin). It publishes from
-# a disposable detached worktree so filing artifacts and unrelated operator
-# changes in the analysis root stay untouched, and it drives git, gh,
+# the clean current checkout so the marker has one normal branch-and-PR recovery
+# surface, and it drives git, gh,
 # ``learn-from-bugs write-state`` / ``verify-origin``, and the file-backed
 # ``pr create`` verb through the Runner seam so every branch is testable offline.
 
-STATE_PUBLISH_WORKTREE_NAME: Final = "state-publication-worktree"
 STATE_PUBLISH_BRANCH_PREFIX: Final = "chore/learn-from-bugs-state-"
 _STATE_MARKER_SUBJECT: Final = "chore(larch-logs): update learn-from-bugs state"
 _STATE_PR_BODY: Final = (
     "## Summary\n\nPublish the latest `/learn-from-bugs` scan and proposal state.\n"
 )
-# gh pr create runs from the disposable worktree; strip the /implement session
+# gh pr create runs from the state branch; strip the /implement session
 # handoff vars so its scope-disposition guard cannot bind to an unrelated run.
 _STATE_PR_ENV_STRIP: Final = ("IMPLEMENT_TMPDIR", "SHIP_PR_STATE_FILE")
 
@@ -1690,8 +1689,6 @@ STATE_PUBLISH_INVALID_BRANCH: Final = "invalid-branch"
 STATE_PUBLISH_EXISTING_LOCAL_BRANCH: Final = "existing-local-branch"
 STATE_PUBLISH_EXISTING_REMOTE_BRANCH: Final = "existing-remote-branch"
 STATE_PUBLISH_REMOTE_CHECK_FAILED: Final = "remote-check-failed"
-STATE_PUBLISH_WORKTREE_COLLISION: Final = "worktree-collision"
-STATE_PUBLISH_WORKTREE_ADD_FAILED: Final = "worktree-add-failed"
 STATE_PUBLISH_BRANCH_CREATE_FAILED: Final = "branch-create-failed"
 STATE_PUBLISH_WRITE_STATE_FAILED: Final = "write-state-failed"
 STATE_PUBLISH_COMMIT_FAILED: Final = "commit-failed"
@@ -1735,7 +1732,7 @@ class StatePublishResult:
 @dataclass(frozen=True)
 class _PublishContext:
     request: StatePublishRequest
-    worktree: Path
+    root: Path
     branch: str
     default_branch: str
 
@@ -1799,6 +1796,9 @@ def _preflight(runner: Runner, request: StatePublishRequest) -> None:
             STATE_PUBLISH_ORIGIN_MISMATCH,
             f"state publication requires the analysis-root origin to identify {request.repo}",
         )
+    status = _git(runner, root, ["status", "--porcelain"])
+    if status.returncode != 0 or status.stdout.strip():
+        raise StatePublishError(STATE_PUBLISH_NOT_A_CHECKOUT, "state publication requires a clean checkout")
 
 
 def _resolve_default_branch(runner: Runner, request: StatePublishRequest) -> tuple[str, str]:
@@ -1827,6 +1827,20 @@ def _resolve_default_branch(runner: Runner, request: StatePublishRequest) -> tup
     if _git(runner, root, ["rev-parse", "--verify", f"{default_ref}^{{commit}}"]).returncode != 0:
         raise StatePublishError(
             STATE_PUBLISH_DEFAULT_BRANCH_UNRESOLVED, "the fetched default-branch ref is missing"
+        )
+    branch = _git(runner, root, ["branch", "--show-current"])
+    head = _git(runner, root, ["rev-parse", "HEAD"])
+    remote = _git(runner, root, ["rev-parse", default_ref])
+    if (
+        branch.returncode != 0
+        or branch.stdout.strip() != default_branch
+        or head.returncode != 0
+        or remote.returncode != 0
+        or head.stdout.strip() != remote.stdout.strip()
+    ):
+        raise StatePublishError(
+            STATE_PUBLISH_FETCH_FAILED,
+            "state publication requires the current checkout on the synced default branch",
         )
     return default_branch, default_ref
 
@@ -1863,11 +1877,11 @@ def _reserve_branch(runner: Runner, root: Path, branch: str) -> None:
         )
 
 
-def _write_state_in_worktree(runner: Runner, ctx: _PublishContext) -> str:
+def _write_state_in_checkout(runner: Runner, ctx: _PublishContext) -> str:
     request = ctx.request
     argv = _cli_argv(
         "learn-from-bugs", "write-state",
-        "--root", str(ctx.worktree),
+        "--root", str(ctx.root),
         "--repo", request.repo,
         "--search", request.search,
         "--state", request.state,
@@ -1879,7 +1893,7 @@ def _write_state_in_worktree(runner: Runner, ctx: _PublishContext) -> str:
     )
     if request.base_proposals_file:
         argv.extend(["--base-proposals-file", request.base_proposals_file])
-    result = runner.run(argv, cwd=str(ctx.worktree))
+    result = runner.run(argv, cwd=str(ctx.root))
     if result.returncode != 0:
         raise StatePublishError(
             STATE_PUBLISH_WRITE_STATE_FAILED,
@@ -1901,16 +1915,16 @@ def _write_state_in_worktree(runner: Runner, ctx: _PublishContext) -> str:
 def _commit_marker(
     runner: Runner, ctx: _PublishContext, marker_rel: str, progress: _PublishProgress
 ) -> None:
-    worktree = str(ctx.worktree)
-    if git.add(runner, marker_rel, cwd=worktree).returncode != 0:
+    root = str(ctx.root)
+    if git.add(runner, marker_rel, cwd=root).returncode != 0:
         raise StatePublishError(STATE_PUBLISH_COMMIT_FAILED, "could not stage the state marker")
     commit = git.commit(
-        runner, _STATE_MARKER_SUBJECT, only=True, paths=(marker_rel,), cwd=worktree
+        runner, _STATE_MARKER_SUBJECT, only=True, paths=(marker_rel,), cwd=root
     )
     if commit.returncode != 0:
         raise StatePublishError(STATE_PUBLISH_COMMIT_FAILED, "could not commit the state marker")
     progress.committed = True
-    changed = git.diff_tree_name_only(runner, "HEAD", cwd=worktree)
+    changed = git.diff_tree_name_only(runner, "HEAD", cwd=root)
     committed_paths = [line for line in changed.stdout.splitlines() if line.strip()]
     if changed.returncode != 0 or committed_paths != [marker_rel]:
         raise StatePublishError(
@@ -1950,7 +1964,7 @@ def _create_state_pr(runner: Runner, ctx: _PublishContext) -> tuple[int, str]:
             "--title", _STATE_MARKER_SUBJECT,
             "--body-file", str(body_path),
         ),
-        cwd=str(ctx.worktree),
+        cwd=str(ctx.root),
         env=env,
     )
     if result.returncode != 0:
@@ -1962,7 +1976,7 @@ def _pr_state(runner: Runner, ctx: _PublishContext, number: int) -> CommandResul
     return gh.command(
         runner,
         ["pr", "view", str(number), "--repo", ctx.request.repo, "--json", "state", "--jq", ".state"],
-        cwd=str(ctx.worktree),
+        cwd=str(ctx.root),
     )
 
 
@@ -1981,7 +1995,7 @@ def _resolve_pr_outcome(
     merged_at = gh.command(
         runner,
         ["pr", "view", str(number), "--repo", ctx.request.repo, "--json", "mergedAt", "--jq", '.mergedAt // ""'],
-        cwd=str(ctx.worktree),
+        cwd=str(ctx.root),
     )
     durable = (
         merge.returncode == 0
@@ -1994,71 +2008,49 @@ def _resolve_pr_outcome(
     return StatePublishResult(status, number, url)
 
 
-def _publish_in_worktree(
+def _publish_in_checkout(
     runner: Runner, ctx: _PublishContext, progress: _PublishProgress
 ) -> StatePublishResult:
-    if _git(runner, ctx.worktree, ["switch", "-c", ctx.branch]).returncode != 0:
+    if _git(runner, ctx.root, ["switch", "-c", ctx.branch]).returncode != 0:
         raise StatePublishError(
-            STATE_PUBLISH_BRANCH_CREATE_FAILED, "could not create the state branch in the worktree"
+            STATE_PUBLISH_BRANCH_CREATE_FAILED, "could not create the state branch in the current checkout"
         )
-    marker_rel = _write_state_in_worktree(runner, ctx)
+    marker_rel = _write_state_in_checkout(runner, ctx)
     _commit_marker(runner, ctx, marker_rel, progress)
+    push = _git(runner, ctx.root, ["push", "-u", "origin", ctx.branch])
+    if push.returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_PR_CREATE_FAILED, "could not push the state branch")
     number, url = _create_state_pr(runner, ctx)
     progress.pr_created = True
     return _resolve_pr_outcome(runner, ctx, number, url)
 
 
-def _cleanup_worktree(runner: Runner, ctx: _PublishContext, progress: _PublishProgress) -> bool:
-    """Remove the disposable worktree; drop the branch unless it is a recovery surface.
-
-    Returns True when the state branch is preserved (committed but PR-less).
-    """
-    root = ctx.request.root
-    removed = _git(runner, root, ["worktree", "remove", "--force", str(ctx.worktree)])
-    preserve = progress.committed and not progress.pr_created
-    cleanup_failed = removed.returncode != 0
-    if (
-        removed.returncode == 0
-        and not preserve
-        and git.local_branch_exists(runner, ctx.branch, cwd=str(root))
-        and _git(runner, root, ["branch", "-D", ctx.branch]).returncode != 0
-    ):
-        cleanup_failed = True
-    if cleanup_failed:
-        print(
-            f"state publication cleanup failed; inspect the disposable worktree at {ctx.worktree}",
-            file=sys.stderr,
-        )
-    return preserve
+def _restore_default_branch(runner: Runner, ctx: _PublishContext) -> None:
+    if _git(runner, ctx.root, ["switch", ctx.default_branch]).returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_BRANCH_CREATE_FAILED, "could not restore the default branch")
+    if _git(runner, ctx.root, ["pull", "--ff-only", "origin", ctx.default_branch]).returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_FETCH_FAILED, "could not sync the restored default branch")
 
 
 def run_state_publish(runner: Runner, request: StatePublishRequest) -> StatePublishResult:
-    """Publish the learn-from-bugs marker from a disposable detached worktree."""
+    """Publish the learn-from-bugs marker from the clean current checkout."""
     _preflight(runner, request)
-    default_branch, default_ref = _resolve_default_branch(runner, request)
+    default_branch, _default_ref = _resolve_default_branch(runner, request)
     branch = _state_branch_name(request)
     _reserve_branch(runner, request.root, branch)
-    worktree = request.run_dir / STATE_PUBLISH_WORKTREE_NAME
-    if worktree.exists():
-        raise StatePublishError(
-            STATE_PUBLISH_WORKTREE_COLLISION, "the state publication worktree path already exists"
-        )
-    added = _git(runner, request.root, ["worktree", "add", "--detach", str(worktree), default_ref])
-    if added.returncode != 0:
-        raise StatePublishError(
-            STATE_PUBLISH_WORKTREE_ADD_FAILED, "could not create the state publication worktree"
-        )
     ctx = _PublishContext(
-        request=request, worktree=worktree, branch=branch, default_branch=default_branch
+        request=request, root=request.root, branch=branch, default_branch=default_branch
     )
     progress = _PublishProgress()
     try:
-        result = _publish_in_worktree(runner, ctx, progress)
+        result = _publish_in_checkout(runner, ctx, progress)
     except StatePublishError as exc:
-        if _cleanup_worktree(runner, ctx, progress):
+        if progress.committed and not progress.pr_created:
             exc.recovery_branch = branch
+        if progress.pr_created:
+            _restore_default_branch(runner, ctx)
         raise
-    _ = _cleanup_worktree(runner, ctx, progress)
+    _restore_default_branch(runner, ctx)
     return result
 
 
