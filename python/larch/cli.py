@@ -596,6 +596,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "git-push-refspec"): ("larch.lint.lint_git_push_refspec", "main", False),
     ("lint", "wire-artifact-pairing"): ("larch.lint.lint_wire_artifact_pairing", "main", False),
     ("lint", "tempfile-dir"): ("larch.lint.lint_tempfile_dir", "main", False),
+    ("lint", "result-env-key-parity"): ("larch.lint.lint_result_env_key_parity", "main", False),
     ("lint", "tmpdir-arg-env-fallback"): ("larch.lint.lint_tmpdir_arg_env_fallback", "main", False),
     ("lint", "markdown-heading-fence-state"): ("larch.lint.lint_markdown_heading_fence_state", "main", False),
     ("lint", "doc-pointer-paths"): ("larch.lint.lint_doc_pointer_paths", "main", False),
