@@ -36,6 +36,8 @@ from larch.report.run_log_batch import (
     _read_kv_file,
     _read_state_kv,
     _write_batch,
+    parse_preterminal_outcome_label,
+    parse_preterminal_outcome_label_from_run_dir,
 )
 from larch.report.run_log_manifest import (
     REFRESH_SKIP_RECOVERY_FAILED,
@@ -536,26 +538,11 @@ _PRETERMINAL_BLOCK_MESSAGE_MAX_CHARS = 300
 
 
 def _parse_preterminal_outcome_label(text: str) -> str | None:
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line.startswith("## /"):
-            continue
-        colon_index = line.rfind(": ")
-        dash_index = line.rfind(" — ")
-        separator_index = max(colon_index, dash_index)
-        if separator_index < 0:
-            continue
-        separator_len = 3 if dash_index > colon_index else 2
-        label = line[separator_index + separator_len:].strip().lower()
-        return label or None
-    return None
+    return parse_preterminal_outcome_label(text)
 
 
 def _parse_preterminal_outcome_label_from_run_dir(run_dir: Path) -> str | None:
-    summary = run_dir / "final-summary.md"
-    if not summary.is_file():
-        return None
-    return _parse_preterminal_outcome_label(summary.read_text(encoding="utf-8", errors="replace"))
+    return parse_preterminal_outcome_label_from_run_dir(run_dir)
 
 
 def _check_preterminal_outcome_label(outcome: str) -> None:

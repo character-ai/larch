@@ -36,6 +36,21 @@ ROUTE_STATE_ALLOW = frozenset({"REPO"})
 REQUEST_STATE_ALLOW = frozenset(
     {"REQUEST_ID", "REQUEST_BODY_FILE", "PLAN_FILE", "RESPONSE_FILE", "ISSUE_NUMBER", "REPO"}
 )
+CLARIFY_RESULT_ENV_ALLOW = frozenset({
+    "CLARIFY_FETCH_STATUS",
+    "CLARIFY_PUBLISH_STATUS",
+    "ISSUE_NUMBER",
+    "PLAN_FILE",
+    "PLAN_WRITE_OK",
+    "PUBLISH_OK",
+    "RENAMED",
+    "REPO",
+    "REQUEST_BODY_FILE",
+    "REQUEST_ID",
+    "RESPONSE_FILE",
+    "STATE",
+    "SUMMARY_OUTCOME",
+})
 
 _MARKER_RE = re.compile(
     r"^\s*<!--\s+larch:clarify-(request|response)\s+id=([1-9][0-9]*)\s*-->\s*$"
@@ -730,13 +745,12 @@ def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Pa
 
 
 def _write_result_env(*, path: str | Path, rows: list[tuple[str, str]]) -> None:
-    destination = Path(path)
-    if destination.is_symlink():
-        raise _ClarifyValidationError(f"refusing symlink result env: {destination}")
-    for _key, value in rows:
-        if "\n" in value or "\r" in value:
-            raise _ClarifyValidationError("refusing result env value with newline")
-    larch_io.atomic_write(path=destination, text=larch_io.format_kvs(rows), prefix=f".{destination.name}.")
+    try:
+        design_terminal.phase_driver_write_result_env(
+            path=path, kvs=rows, allow_keys=CLARIFY_RESULT_ENV_ALLOW
+        )
+    except (OSError, ValueError) as exc:
+        raise _ClarifyValidationError(str(exc)) from exc
 
 
 def _read_result_env(*, path: str | Path, allow_keys: frozenset[str]) -> dict[str, str]:
@@ -784,7 +798,8 @@ def _run_cli(
 
 
 def _append_clarify_failure(
-    *, plugin_root: Path,
+    *,
+    plugin_root: Path,
     design_tmpdir: Path,
     env: dict[str, str],
     site: str,
@@ -792,9 +807,20 @@ def _append_clarify_failure(
     exit_code: int,
     output_file: Path,
 ) -> None:
-    # Single-line argv mirrors design_core._append_failure to avoid R0801
-    # duplicate-code collision with decompose._append_failure's multi-line form.
-    _ = _run_cli(plugin_root, env, "run-log", "append-failure", "--log", str(design_tmpdir / "execution-issues.md"), "--site", site, "--tool", tool, "--exit-code", str(exit_code), "--category", "Warnings", "--output-file", str(output_file), "--redact")
+    """Record a clarify warning through the shared design failure logger."""
+    _ = design_core.append_failure(
+        request=design_core.FailureLogRequest(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            site=site,
+            tool=tool,
+            exit_code=exit_code,
+            category="Warnings",
+            output_file=output_file,
+        ),
+        env=env,
+        runner=proc.run,
+    )
 
 
 def _stage_failed_clarify(
@@ -808,14 +834,15 @@ def _stage_failed_clarify(
         detail_log.write_text("clarify failure\n", encoding="utf-8")
     stdout_log = design_tmpdir / "design-clarify-stage.stdout.log"
     stderr_log = design_tmpdir / "design-clarify-stage.stderr.log"
-    # Single-line argv avoids an R0801 duplicate-code collision with
-    # test_design_lifecycle._stage_args's multi-line form (mirrors the
-    # _append_clarify_failure single-line convention above).
     rc = design_core.capture_contract_stream_to_paths(
         design_terminal.stage_terminal_state_core,
         stdout_log,
         stderr_log,
-        ["--design-tmpdir", str(design_tmpdir), "--outcome", "failed-clarify", "--step", "clarify", "--phase", "clarify-loop", "--site", "clarify-loop", "--trigger", "failed", "--bail-reason", "clarify-hard-halt", "--exit-code", str(exit_code), "--source-script", "clarify-loop", "--summary-outcome", "failed-clarify", "--failure-detail-log", str(detail_log)],
+        design_terminal.clarify_failure_stage_args(
+            design_tmpdir=design_tmpdir,
+            exit_code=str(exit_code),
+            detail_log=detail_log,
+        ),
     )
     if rc != 0:
         _append_clarify_failure(

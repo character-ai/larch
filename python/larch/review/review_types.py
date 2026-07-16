@@ -38,6 +38,47 @@ FINDING_SCOPE_VALUES = tuple(member.value for member in FindingScope)
 FINDING_SCOPE_SET = frozenset(FINDING_SCOPE_VALUES)
 """Immutable membership projection for parsing reviewer input."""
 
+_CODE_REVIEW_CLASSIFICATION_PREFIX = (
+    "finding_id",
+    "reviewer_slots",
+    "voting_result",
+)
+_CODE_REVIEW_CLASSIFICATION_VOTER_FIELDS = (
+    "vote",
+    "correctness",
+    "severity",
+    "quality",
+    "uncertain",
+    "tool",
+)
+
+
+def code_review_classification_header(
+    *, include_tools: bool, include_scope: bool
+) -> str:
+    """Return the canonical code-review classification TSV header variant."""
+    columns: list[str] = list(_CODE_REVIEW_CLASSIFICATION_PREFIX)
+    for voter in range(1, 4):
+        columns.extend(
+            f"v{voter}_{field}"
+            for field in _CODE_REVIEW_CLASSIFICATION_VOTER_FIELDS
+            if include_tools or field != "tool"
+        )
+    if include_scope:
+        columns.append("scope")
+    return "\t".join(columns)
+
+
+def code_review_classification_required_fields(
+    *, include_tools: bool, include_scope: bool
+) -> frozenset[str]:
+    """Return the required-column projection for one canonical header variant."""
+    return frozenset(
+        code_review_classification_header(
+            include_tools=include_tools, include_scope=include_scope
+        ).split("\t")
+    )
+
 
 def render_wire_values(values: tuple[str, ...], *, delimiter: str = "/", quoted: bool = False) -> str:
     """Render a canonical wire-value projection without creating another list."""

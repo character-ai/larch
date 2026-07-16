@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 from larch.git.repo_roots import consumer_repo_root
 from larch.design.design_session import step2b5_next_action_for
+from larch.design.design_terminal import phase_driver_write_result_env
 
 
 # Drift-detection keys read from drift-baseline.env
@@ -28,6 +29,20 @@ POSTPLAN_EMIT_KEYS = (
     "DRIFT_MULTIPLE", "DRIFT_PLAN_RATIO", "DRIFT_DIFF_RATIO", "BASELINE_PLAN_LINES",
     "BASELINE_DIFF_LINES", "PARTITION_REQUESTED",
 )
+POSTPLAN_RESULT_ENV_ALLOW = frozenset({
+    *POSTPLAN_EMIT_KEYS,
+    "FIRM_HEADINGS",
+    "OVERSIZE_OVERRIDE",
+    "SNAPSHOT_STATUS",
+    "STEP2B5_EXIT_RC",
+    "STEP2B5_NEXT_ACTION",
+    "STEP2B5_STATUS",
+    "SURFACES_TOUCHED",
+    "VALIDATE_SKIPPED_COUNT",
+    "VALIDATE_UNSAFE_TOKEN_COUNT",
+    "VALIDATE_LOG_FILE",
+    "VALIDATE_MISSING_SCRIPT_COUNT",
+})
 
 
 def _plugin_root() -> Path:
@@ -43,8 +58,10 @@ def _parse_kv(text: str) -> dict[str, str]:
 
 def _write_result_env(*, path: Path, kvs: dict[str, str]) -> bool:
     try:
-        larch_io.write_kvs(path=path, values=kvs, atomic=False, create_parent=False)
-    except OSError:
+        phase_driver_write_result_env(
+            path=path, kvs=kvs.items(), allow_keys=POSTPLAN_RESULT_ENV_ALLOW
+        )
+    except (OSError, ValueError):
         return False
     return True
 
