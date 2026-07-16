@@ -48,6 +48,25 @@ def test_ignores_non_owner_option_splitting_and_codec_owner() -> None:
     assert not lint_kv_codec.detect(owner)
 
 
+def test_detects_private_kv_emitters_and_print_wrappers() -> None:
+    private_emitter = _source(
+        path="python/larch/issue/issue_create.py",
+        text="def emit_kv(key, value):\n    print(f'{key}={value}')\n",
+    )
+    wrapper = _source(
+        path="python/larch/issue/execution_issues.py",
+        text="def write_row(key, value):\n    print(f'{key}={value}')\n",
+    )
+    owner = _source(
+        path="python/larch/core/logging_util.py",
+        text="def emit_kv(*, key, value):\n    print(f'{key}={value}')\n",
+    )
+
+    assert [item.line for item in lint_kv_codec.detect(private_emitter)] == [1, 2]
+    assert [item.line for item in lint_kv_codec.detect(wrapper)] == [2]
+    assert not lint_kv_codec.detect(owner)
+
+
 def test_detects_shell_reader_but_not_unrelated_awk() -> None:
     shell = _source(
         path="scripts/example.sh",

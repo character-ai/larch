@@ -15,6 +15,7 @@ from pathlib import Path
 from collections.abc import Callable
 
 from larch.core import config
+from larch.core import logging_util
 from larch.core import proc
 from larch.design.plan_grammar import balanced_fence_line_indices
 from larch.errors import ShipError
@@ -43,10 +44,6 @@ URL_RE = re.compile(r"https?://[^\s]+/issues/[0-9]+")
 
 def _gh_read(argv: list[str], *, cwd: str | None = None) -> proc.CommandResult:
     return gh.command(proc, argv, timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC, cwd=cwd)
-
-
-def emit_kv(key: str, value: object, *, stream: object | None = None) -> None:
-    print(f"{key}={value}", file=sys.stdout if stream is None else stream)
 
 
 def warn(message: str) -> None:
@@ -314,19 +311,19 @@ def emit_parse_input_result(result: ParseInputResult) -> int:
         warn(f"ERROR: {result.error}")
         return result.exit_code
     for item_index, item in enumerate(result.items, start=1):
-        emit_kv(key=f"ITEM_{item_index}_TITLE", value=item.title)
+        logging_util.emit_kv(key=f"ITEM_{item_index}_TITLE", value=item.title)
         body_path = result.body_paths[item_index - 1]
         if body_path is not None:
-            emit_kv(key=f"ITEM_{item_index}_BODY_FILE", value=str(body_path))
+            logging_util.emit_kv(key=f"ITEM_{item_index}_BODY_FILE", value=str(body_path))
         if item.malformed:
-            emit_kv(key=f"ITEM_{item_index}_MALFORMED", value="true")
+            logging_util.emit_kv(key=f"ITEM_{item_index}_MALFORMED", value="true")
         if item.reviewer:
-            emit_kv(key=f"ITEM_{item_index}_REVIEWER", value=item.reviewer)
+            logging_util.emit_kv(key=f"ITEM_{item_index}_REVIEWER", value=item.reviewer)
         if item.vote:
-            emit_kv(key=f"ITEM_{item_index}_VOTE_TALLY", value=item.vote)
+            logging_util.emit_kv(key=f"ITEM_{item_index}_VOTE_TALLY", value=item.vote)
         if item.phase:
-            emit_kv(key=f"ITEM_{item_index}_PHASE", value=item.phase)
-    emit_kv(key="ITEMS_TOTAL", value=len(result.items))
+            logging_util.emit_kv(key=f"ITEM_{item_index}_PHASE", value=item.phase)
+    logging_util.emit_kv(key="ITEMS_TOTAL", value=len(result.items))
     titles = ", ".join(f"{i}={item.title[:60]}" for i, item in enumerate(result.items, start=1))
     warn(f"▶ parse-input: {len(result.items)} items parsed (mode={result.mode})" + (f": {titles}" if titles else ""))
     return 0
@@ -434,7 +431,11 @@ def _is_oos_issue_body(body_content: str) -> bool:
 
 
 def _issue_failed(message: str, *, code: int = 2, title: str = "") -> CreateIssueResult:
-    return CreateIssueResult(title=title, error=message, exit_code=code)
+    try:
+        error = _flat_error(text=message)
+    except Exception as exc:  # pragma: no cover - defensive seam for redaction failures
+        error = f"redaction:{exc}"
+    return CreateIssueResult(title=title, error=error, exit_code=code)
 
 
 def _create_one_body_content(parsed: dict[str, object]) -> tuple[str, CreateIssueResult | None]:
@@ -623,21 +624,21 @@ def emit_create_issue_result(result: CreateIssueResult) -> int:
     """Emit the stable CLI KV contract for :func:`create_one`."""
     if result.exit_code:
         if result.exit_code == config.EXIT_MUTATION_REFUSED:
-            emit_kv(key=config.LIVE_MUTATION_REFUSAL_STATUS, value="true")
-        emit_kv(key="ISSUE_FAILED", value="true")
-        emit_kv(key="ISSUE_ERROR", value=result.error)
+            logging_util.emit_kv(key=config.LIVE_MUTATION_REFUSAL_STATUS, value="true")
+        logging_util.emit_kv(key="ISSUE_FAILED", value="true")
+        logging_util.emit_kv(key="ISSUE_ERROR", value=logging_util.sanitize_diagnostic_line(result.error))
         return result.exit_code
     if result.dry_run:
-        emit_kv(key="DRY_RUN", value="true")
-        emit_kv(key="DRY_RUN_TITLE", value=result.title)
-        emit_kv(key="ISSUE_TITLE", value=result.title)
+        logging_util.emit_kv(key="DRY_RUN", value="true")
+        logging_util.emit_kv(key="DRY_RUN_TITLE", value=result.title)
+        logging_util.emit_kv(key="ISSUE_TITLE", value=result.title)
         if result.labels:
-            emit_kv(key="DRY_RUN_LABELS", value=",".join(result.labels))
+            logging_util.emit_kv(key="DRY_RUN_LABELS", value=",".join(result.labels))
         return 0
-    emit_kv(key="ISSUE_NUMBER", value=result.number)
-    emit_kv(key="ISSUE_URL", value=result.url)
-    emit_kv(key="ISSUE_ID", value=result.issue_id)
-    emit_kv(key="ISSUE_TITLE", value=result.title)
+    logging_util.emit_kv(key="ISSUE_NUMBER", value=result.number)
+    logging_util.emit_kv(key="ISSUE_URL", value=result.url)
+    logging_util.emit_kv(key="ISSUE_ID", value=result.issue_id)
+    logging_util.emit_kv(key="ISSUE_TITLE", value=result.title)
     return 0
 
 
@@ -733,7 +734,7 @@ def allocate_candidates_main(argv: list[str]) -> int:
     if value > CAP:
         warn(f"**⚠ /issue: dedup batch exceeds 30 non-malformed items (N={value}); per-item floor disabled, 30 slots filled by confidence ranking only.**")
     candidates = allocate_candidates(total_items=value, rows_text=sys.stdin.read())
-    emit_kv(key="CANDIDATES", value=",".join(str(candidate) for candidate in candidates))
+    logging_util.emit_kv(key="CANDIDATES", value=",".join(str(candidate) for candidate in candidates))
     return 0
 
 
@@ -801,13 +802,13 @@ def add_blocked_by(
 def emit_blocked_by_result(result: BlockedByResult) -> int:
     """Emit the stable CLI KV contract for :func:`add_blocked_by`."""
     if result.added:
-        emit_kv(key="BLOCKED_BY_ADDED", value="true")
+        logging_util.emit_kv(key="BLOCKED_BY_ADDED", value="true")
     else:
-        emit_kv(key="BLOCKED_BY_FAILED", value="true")
-    emit_kv(key="CLIENT", value=result.client)
-    emit_kv(key="BLOCKER", value=result.blocker)
+        logging_util.emit_kv(key="BLOCKED_BY_FAILED", value="true")
+    logging_util.emit_kv(key="CLIENT", value=result.client)
+    logging_util.emit_kv(key="BLOCKER", value=result.blocker)
     if result.error:
-        emit_kv(key="ERROR", value=result.error)
+        logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(result.error))
     return result.exit_code
 
 
@@ -855,17 +856,17 @@ def list_issues_main(argv: list[str]) -> int:
             repo = argv[index + 1]
             index += 2
         else:
-            emit_kv(key="LIST_STATUS", value="failed")
+            logging_util.emit_kv(key="LIST_STATUS", value="failed")
             warn(f"WARN: unknown option: {argv[index]}")
             return 0
     if not closed_window.isdigit():
-        emit_kv(key="LIST_STATUS", value="failed")
+        logging_util.emit_kv(key="LIST_STATUS", value="failed")
         warn(f"WARN: --closed-window-days must be a non-negative integer, got: {closed_window}")
         return 0
     if not repo:
         repo = _resolve_repo()
         if not repo:
-            emit_kv(key="LIST_STATUS", value="failed")
+            logging_util.emit_kv(key="LIST_STATUS", value="failed")
             warn("WARN: failed to resolve repository name via 'gh repo view'")
             return 0
     try:
@@ -877,7 +878,7 @@ def list_issues_main(argv: list[str]) -> int:
             limit=100000,
         )
     except ShipError as exc:
-        emit_kv(key="LIST_STATUS", value="failed")
+        logging_util.emit_kv(key="LIST_STATUS", value="failed")
         reason = str(exc)
         if "JSON parse failed" in reason:
             warn("WARN: jq failed to parse gh api output")
@@ -903,7 +904,7 @@ def list_issues_main(argv: list[str]) -> int:
             continue
         clean_title = title.replace("\t", " ").replace("\n", " ").replace("\r", " ")
         rows.append(f"{issue.get('number')}\t{clean_title}\t{state}\t{issue.get('url') or ''}")
-    emit_kv(key="LIST_STATUS", value="ok")
+    logging_util.emit_kv(key="LIST_STATUS", value="ok")
     for row in rows:
         print(row)
     return 0
@@ -959,7 +960,7 @@ def fetch_issue_details_main(argv: list[str]) -> int:
         if not number:
             continue
         if not number.isdigit():
-            emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
+            logging_util.emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: skipping non-numeric issue id: {raw}")
             continue
         result = gh.issue_view_field_read(
@@ -969,13 +970,13 @@ def fetch_issue_details_main(argv: list[str]) -> int:
             repo=repo or None,
         )
         if result.returncode != 0 or not result.stdout.strip():
-            emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
+            logging_util.emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: gh issue view failed for #{number}")
             continue
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
+            logging_util.emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: gh issue view failed for #{number}")
             continue
         body = str(data.get("body") or "")
@@ -1006,7 +1007,7 @@ def fetch_issue_details_main(argv: list[str]) -> int:
             else:
                 handle.write("Comments: none\n")
             handle.write(f"</external_issue_{number}>\n\n")
-        emit_kv(key=f"FETCH_STATUS_{number}", value="ok")
+        logging_util.emit_kv(key=f"FETCH_STATUS_{number}", value="ok")
     with out_path.open("a", encoding="utf-8") as handle:
         handle.write("</external_issues_corpus>\n")
     return 0
@@ -1020,7 +1021,7 @@ def write_sentinel_main(argv: list[str]) -> int:
         arg = argv[index]
         if arg in {"--path", "--issues-created", "--issues-deduplicated", "--issues-failed"}:
             if index + 1 >= len(argv) or not argv[index + 1]:
-                emit_kv(key="ERROR", value=f"Missing value for {arg}", stream=sys.stderr)
+                logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(f"Missing value for {arg}"), stream=sys.stderr)
                 return 1
             values[arg] = argv[index + 1]
             index += 2
@@ -1028,24 +1029,24 @@ def write_sentinel_main(argv: list[str]) -> int:
             dry_run = True
             index += 1
         else:
-            emit_kv(key="ERROR", value=f"Unknown argument: {arg}", stream=sys.stderr)
+            logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(f"Unknown argument: {arg}"), stream=sys.stderr)
             return 1
     path = values.get("--path", "")
     if not path:
-        emit_kv(key="ERROR", value="Missing required argument: --path", stream=sys.stderr)
+        logging_util.emit_kv(key="ERROR", value="Missing required argument: --path", stream=sys.stderr)
         return 1
     counts = [values.get("--issues-created", ""), values.get("--issues-deduplicated", ""), values.get("--issues-failed", "")]
     if any(not value for value in counts):
-        emit_kv(key="ERROR", value="Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed", stream=sys.stderr)
+        logging_util.emit_kv(key="ERROR", value="Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed", stream=sys.stderr)
         return 1
     if not Path(path).is_absolute():
-        emit_kv(key="ERROR", value=f"--path must be absolute: {path}", stream=sys.stderr)
+        logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(f"--path must be absolute: {path}"), stream=sys.stderr)
         return 1
     if ".." in Path(path).parts:
-        emit_kv(key="ERROR", value=f"--path must not contain '..': {path}", stream=sys.stderr)
+        logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(f"--path must not contain '..': {path}"), stream=sys.stderr)
         return 1
     if any(not value.isdigit() for value in counts):
-        emit_kv(key="ERROR", value="Counter values must be non-negative integers", stream=sys.stderr)
+        logging_util.emit_kv(key="ERROR", value="Counter values must be non-negative integers", stream=sys.stderr)
         return 1
     if dry_run:
         print("WROTE=false REASON=dry_run", file=sys.stderr)
@@ -1084,10 +1085,10 @@ def cleanup_failed(*, issue: str, repo: str = "") -> CleanupResult:
 
 def emit_cleanup_result(result: CleanupResult) -> int:
     """Emit the stable CLI KV contract for :func:`cleanup_failed`."""
-    emit_kv(key="CLOSED", value=str(result.closed).lower())
-    emit_kv(key="ISSUE", value=result.issue)
+    logging_util.emit_kv(key="CLOSED", value=result.closed)
+    logging_util.emit_kv(key="ISSUE", value=result.issue)
     if result.error:
-        emit_kv(key="ERROR", value=result.error)
+        logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(result.error))
     return 0
 
 

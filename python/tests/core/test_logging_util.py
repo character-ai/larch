@@ -90,6 +90,14 @@ def test_emit_kv_normalizes_boolean_and_integer_scalars(capsys: pytest.CaptureFi
     assert captured.out == "ENABLED=true\nATTEMPTS=2\n"
 
 
+def test_emit_kv_writes_to_explicit_stream() -> None:
+    stream = StringIO()
+
+    logging_util.emit_kv(key="ERROR", value="usage", stream=stream)
+
+    assert stream.getvalue() == "ERROR=usage\n"
+
+
 def test_emit_kv_uses_inherited_quiet_fd3(monkeypatch: pytest.MonkeyPatch) -> None:
     logging_util.reset_quiet_state()
     read_fd, write_fd = os.pipe()
@@ -123,6 +131,11 @@ def test_emit_kv_rejects_newline_in_value() -> None:
 def test_emit_kv_rejects_carriage_return_in_value() -> None:
     with pytest.raises(ValueError, match="newline"):
         logging_util.emit_kv(key="KEY", value="bad\rvalue")
+
+
+def test_emit_kv_rejects_newline_in_key() -> None:
+    with pytest.raises(ValueError, match="key"):
+        logging_util.emit_kv(key="BAD\nKEY", value="value")
 
 
 def test_quiet_init_prefers_design_tmpdir_over_implement_tmpdir(
