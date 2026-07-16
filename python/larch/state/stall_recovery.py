@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess  # noqa: F401  # pylint: disable=unused-import  # tests patch the historical module-level process seam.
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,6 +54,8 @@ from larch.state._report import (
     dedup_tier_a_report,
 )
 from larch.state._report import _redact_text  # noqa: F401  # pylint: disable=unused-import
+
+_TEST_COMPAT_SUBPROCESS = subprocess  # Tests patch the historical module-level process seam.
 
 # ---------------------------------------------------------------------------
 # Module-level constants (CLI-specific)

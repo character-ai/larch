@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Literal, TypeAlias, TypeVar, cast
 
 from larch import io as larch_io
-from larch.core.proc import CommandResult, Runner
-from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+from larch.core.proc import Runner
+from larch.core.repo_roots import RepoRootProbeOptions, RepoRootResult, repo_root_probe
 
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
@@ -679,7 +679,7 @@ def _validate_rule(rule: LintRule) -> None:  # noqa: C901, PLR0912 - rule field 
         raise ScanError("lint rule source_filter must be callable when set")
 
 
-def _bounded_git_detail(result: CommandResult) -> str:
+def _bounded_git_detail(result: RepoRootResult) -> str:
     detail = (result.stderr or result.stdout or "").strip()
     if not detail:
         return f"git exited {result.returncode}"

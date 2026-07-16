@@ -1,5 +1,5 @@
 """/research helper CLIs and importable contracts."""
-# ruff: noqa: PLR2004
+# ruff: noqa: PLR2004 - citation parsing intentionally uses fixed protocol limits.
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportAttributeAccessIssue=false
 
 from __future__ import annotations

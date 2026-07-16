@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol
@@ -14,12 +14,17 @@ from larch.core.proc import Runner
 class RepoRootResult(Protocol):
     """The command-result fields callers need to interpret a root probe."""
 
-    returncode: int
-    stdout: str
-    stderr: str
+    @property
+    def returncode(self) -> int: ...
+
+    @property
+    def stdout(self) -> str: ...
+
+    @property
+    def stderr(self) -> str: ...
 
 
-RepoRootRunner = Callable[[Sequence[str]], RepoRootResult]
+RepoRootRunner = Callable[[list[str]], RepoRootResult]
 
 
 @dataclass(frozen=True)

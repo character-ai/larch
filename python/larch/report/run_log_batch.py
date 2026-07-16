@@ -15,7 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
-from larch.core import proc  # noqa: F401  # pylint: disable=unused-import  # tests patch the historical module-level process seam.
+from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from collections.abc import Callable
 
@@ -29,6 +29,7 @@ from larch import io as larch_io
 from larch.errors import ShipError
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_TEST_COMPAT_PROC = proc  # Tests patch the historical module-level process seam.
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _VOTE_OUTPUT_TRUNCATE_BYTES = 2048
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
