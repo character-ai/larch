@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 from larch import cli
+from larch.lint import engine
 from larch.lint import lint_complexity_baseline as lcb
 from larch.lint import lint_complexity_debt as lcd
 from larch.lint.lint_complexity_baseline import BaselineError, Record, RuffResult
@@ -469,9 +470,72 @@ def test_migrate_cli_reports_migrated_count(
 
 def test_checked_in_baseline_strict_loads_and_serializes_byte_stable() -> None:
     baseline_path = Path(__file__).resolve().parents[2] / "complexity-baseline.json"
-    records = lcb.load_baseline(baseline_path)
-    assert not lcb.find_duplicate_keys(records)
-    assert lcb.serialize_baseline(records) == baseline_path.read_text(encoding="utf-8")
+    records = engine.load_complexity_baseline(
+        baseline_path, root=baseline_path.parents[1]
+    )
+    assert not engine.complexity_duplicate_identities(records)
+    assert engine.serialize_complexity_baseline(records) == baseline_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_engine_write_preserves_unchanged_complexity_baseline_bytes(
+    tmp_path: Path,
+) -> None:
+    source_path = Path(__file__).resolve().parents[2] / "complexity-baseline.json"
+    python_dir = tmp_path / "python"
+    python_dir.mkdir()
+    baseline_path = python_dir / "complexity-baseline.json"
+    original = source_path.read_text(encoding="utf-8")
+    _ = baseline_path.write_text(original, encoding="utf-8")
+    rows = engine.load_complexity_baseline(baseline_path, root=tmp_path)
+    _ = engine.write_complexity_baseline(baseline_path, root=tmp_path, rows=rows)
+    assert baseline_path.read_text(encoding="utf-8") == original
+
+
+def test_engine_rejects_symlinked_complexity_baseline(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    python_dir.mkdir()
+    target = tmp_path / "target.json"
+    _ = target.write_text("[]\n", encoding="utf-8")
+    baseline_path = python_dir / "complexity-baseline.json"
+    baseline_path.symlink_to(target)
+    with pytest.raises(engine.ScanError, match="symlinked"):
+        _ = engine.load_complexity_baseline(baseline_path, root=tmp_path)
+
+
+def test_engine_write_fails_closed_when_read_back_bytes_differ(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    python_dir = tmp_path / "python"
+    python_dir.mkdir()
+    baseline_path = python_dir / "complexity-baseline.json"
+    rows = engine.parse_complexity_baseline(
+        json.dumps([base_record()]), source="test", today=date(2026, 7, 14)
+    )
+    monkeypatch.setattr(
+        engine.larch_io,
+        "read_trusted_text",
+        lambda *_args, **_kwargs: "[]\n",
+    )
+    with pytest.raises(engine.ScanError, match="read-back bytes differ"):
+        _ = engine.write_complexity_baseline(
+            baseline_path, root=tmp_path, rows=rows, today=date(2026, 7, 14)
+        )
+
+
+def test_engine_merge_records_one_deterministic_growth_event() -> None:
+    stored = engine.parse_complexity_baseline(
+        json.dumps([base_record(metric=17, history=[{"date": "2026-07-01", "metric": 17}])]),
+        source="test",
+        today=date(2026, 7, 14),
+    )
+    live = [engine.ComplexityLiveRow("proc.py", "PLR0913", "ProcRunner.run", 18)]
+    merged = engine.merge_complexity_baseline(
+        live_rows=live, stored_rows=stored, reason="growth", today=date(2026, 7, 14)
+    )
+    assert merged[0].history[-1] == engine.ComplexityHistoryEntry("2026-07-14", 18)
+    assert merged[0].reason == "growth"
 
 
 def test_main_passes_when_live_records_match_baseline(
@@ -889,7 +953,7 @@ def test_write_growth_appends_history_and_preserves_manual_override(
     written_record = written[0]
     assert written_record.get("added_at") == "2026-07-12"
     history = written_record.get("history")
-    assert history is not None
+    assert isinstance(history, list)
     assert history[-1] == {"date": lcb.utc_today().isoformat(), "metric": 18}
     assert written_record.get("reason") == "urgent API"
     assert written_record.get("source_issue") == 7156
@@ -949,14 +1013,15 @@ def test_dated_seed_is_not_a_bump_and_equal_dates_are_deterministic() -> None:
 
 
 def test_debt_report_has_all_sections_and_cli_registration(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_project(
         tmp_path,
         baseline=[
-            base_record(
-                metric=22,
-                history=[
+                base_record(
+                    metric=22,
+                    added_at="legacy",
+                    history=[
                     {"date": "2026-07-01", "metric": 20},
                     {"date": "2026-07-10", "metric": 22},
                 ],
@@ -964,6 +1029,7 @@ def test_debt_report_has_all_sections_and_cli_registration(
             )
         ],
     )
+    monkeypatch.setattr(lcd, "_utc_today", lambda: date(2026, 7, 14))
     assert cli.main(["lint", "complexity-debt", "--root", str(tmp_path), "--report"]) == 0
     report = capsys.readouterr().out
     assert "Total entries: 1" in report
@@ -971,6 +1037,8 @@ def test_debt_report_has_all_sections_and_cli_registration(
     assert "Top 10 by metric:" in report
     assert "Symbols with at least two bumps in the last 30 days:" in report
     assert "Active operator overrides:" in report
+    assert "2026-07-01 [PLR0913] metric 20; 2026-07-10 [PLR0913] metric 22" in report
+    assert "issue #7156: tracked debt" in report
     assert cli.main(["lint", "complexity-debt", "--root", str(tmp_path)]) == 2
 
 

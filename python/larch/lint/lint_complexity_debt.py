@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import argparse
-import sys
-from datetime import date, timedelta
+from collections.abc import Mapping, Sequence
+from datetime import UTC, date, datetime, timedelta
+import json
 from pathlib import Path
+import sys
+from typing import cast
 
-from larch.lint.lint_complexity_baseline import (
-    BaselineError,
-    Record,
-    active_overrides,
-    find_duplicate_keys,
-    history_events,
-    load_baseline,
-    utc_today,
+from larch.lint.engine import (
+    ComplexityBaselineRow,
+    ScanError,
+    complexity_history_events,
+    load_complexity_baseline,
+    parse_complexity_baseline,
+    parse_complexity_debt_argv,
 )
 
 UNDER_14_DAYS = 14
@@ -23,34 +24,26 @@ RECENT_BUMP_DAYS = 30
 MINIMUM_REPEAT_EVENTS = 2
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
-        prog="cli.py lint complexity-debt", description=__doc__
+def _typed_records(
+    records: Sequence[ComplexityBaselineRow | Mapping[str, object]], *, today: date
+) -> list[ComplexityBaselineRow]:
+    """Accept legacy mapping fixtures while runtime callers use typed rows."""
+    if all(isinstance(record, ComplexityBaselineRow) for record in records):
+        return list(cast("Sequence[ComplexityBaselineRow]", records))
+    return parse_complexity_baseline(
+        json.dumps(list(records)), source="complexity debt records", today=today
     )
-    _ = parser.add_argument("--report", action="store_true", help="Render the debt report.")
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
-    try:
-        parsed = parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-    return parsed if parsed.report else None
 
 
-def _age_bucket_counts(records: list[Record], today: date) -> tuple[int, int, int, int]:
-    under_14 = 0
-    through_90 = 0
-    over_90 = 0
-    legacy = 0
+def _age_bucket_counts(
+    records: Sequence[ComplexityBaselineRow], today: date
+) -> tuple[int, int, int, int]:
+    under_14 = through_90 = over_90 = legacy = 0
     for record in records:
-        added_at = record.get("added_at")
-        if added_at is None:
-            raise BaselineError("baseline record is missing required metadata")
-        if added_at == "legacy":
+        if record.added_at == "legacy":
             legacy += 1
             continue
-        age = (today - date.fromisoformat(added_at)).days
+        age = (today - date.fromisoformat(record.added_at)).days
         if age < UNDER_14_DAYS:
             under_14 += 1
         elif age <= THROUGH_90_DAYS:
@@ -60,72 +53,81 @@ def _age_bucket_counts(records: list[Record], today: date) -> tuple[int, int, in
     return under_14, through_90, over_90, legacy
 
 
-def _recent_repeat_lines(records: list[Record], today: date) -> list[str]:
-    lines: list[str] = []
+def _recent_repeat_lines(
+    records: Sequence[ComplexityBaselineRow], today: date
+) -> list[str]:
+    """Render the established detail-rich repeat-bump diagnostics."""
     cutoff = today - timedelta(days=RECENT_BUMP_DAYS)
-    for (file_name, symbol), events in sorted(history_events(records).items()):
+    lines: list[str] = []
+    for (file_name, symbol), events in sorted(complexity_history_events(records).items()):
         recent = [event for event in events if event.event_date >= cutoff]
         if len(recent) < MINIMUM_REPEAT_EVENTS:
             continue
         details = "; ".join(
-            f"{event.event_date.isoformat()} [{event.record['code']}] metric {event.metric}"
+            f"{event.event_date.isoformat()} [{event.record.code}] metric {event.metric}"
             for event in recent
         )
         lines.append(f"  {file_name}:{symbol}: {details}")
     return lines
 
 
-def render_report(records: list[Record], *, today: date) -> str:
+def _active_overrides(records: Sequence[ComplexityBaselineRow]) -> list[str]:
+    return [
+        f"{record.file}:{record.qualified_symbol} [{record.code}] "
+        f"issue #{record.operator_override.issue}: {record.operator_override.reason}"
+        for record in sorted(records, key=lambda row: row.identity)
+        if record.operator_override is not None
+    ]
+
+
+def render_report(
+    records: Sequence[ComplexityBaselineRow | Mapping[str, object]], *, today: date
+) -> str:
     """Render every debt section deterministically, including empty sections."""
-    under_14, through_90, over_90, legacy = _age_bucket_counts(records, today)
-    lines = ["Complexity debt report", f"Total entries: {len(records)}", "", "Age buckets:"]
-    lines.extend(
-        [
-            f"  under 14 days: {under_14}",
-            f"  14 through 90 days: {through_90}",
-            f"  over 90 days: {over_90}",
-            f"  legacy: {legacy}",
-            "",
-            "Top 10 by metric:",
-        ]
-    )
-    top = sorted(
-        records,
-        key=lambda record: (-record["metric"], record["file"], record["code"], record["qualified_symbol"]),
-    )[:10]
+    typed_records = _typed_records(records, today=today)
+    under_14, through_90, over_90, legacy = _age_bucket_counts(typed_records, today)
+    lines = ["Complexity debt report", f"Total entries: {len(typed_records)}", "", "Age buckets:"]
+    lines.extend([
+        f"  under 14 days: {under_14}",
+        f"  14 through 90 days: {through_90}",
+        f"  over 90 days: {over_90}",
+        f"  legacy: {legacy}",
+        "",
+        "Top 10 by metric:",
+    ])
+    top = sorted(typed_records, key=lambda row: (-row.metric, *row.identity))[:10]
     if top:
-        lines.extend(
-            f"  {record['metric']} | {record['file']} | {record['code']} | {record['qualified_symbol']}"
-            for record in top
-        )
+        lines.extend(f"  {row.metric} | {row.file} | {row.code} | {row.qualified_symbol}" for row in top)
     else:
         lines.append("  (none)")
     lines.extend(["", "Symbols with at least two bumps in the last 30 days:"])
-    recent = _recent_repeat_lines(records, today)
-    lines.extend(recent or ["  (none)"])
+    lines.extend(_recent_repeat_lines(typed_records, today) or ["  (none)"])
     lines.extend(["", "Active operator overrides:"])
-    overrides = active_overrides(records)
-    lines.extend((f"  {line}" for line in overrides) if overrides else ["  (none)"])
+    overrides = _active_overrides(typed_records)
+    if overrides:
+        lines.extend(f"  {line}" for line in overrides)
+    else:
+        lines.append("  (none)")
     return "\n".join(lines) + "\n"
 
 
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
+
+
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    """Load the typed engine baseline and render its debt report."""
+    parsed = parse_complexity_debt_argv(
+        argv if argv is not None else sys.argv[1:], default_root=Path(__file__).resolve().parents[3]
+    )
     if parsed is None:
         print("lint-complexity-debt: --report is required", file=sys.stderr)
         return 2
-    baseline_path = Path(parsed.root).resolve() / "python" / "complexity-baseline.json"
+    baseline_path = parsed.root / "python" / "complexity-baseline.json"
     try:
-        records = load_baseline(baseline_path)
-        duplicates = find_duplicate_keys(records)
-        if duplicates:
-            raise BaselineError("duplicate baseline complexity identities:\n" + "\n".join(duplicates))
-    except BaselineError as exc:
+        records = load_complexity_baseline(baseline_path, root=parsed.root, today=_utc_today())
+    except ScanError as exc:
         print(f"lint-complexity-debt: {exc}", file=sys.stderr)
         return 2
-    print(render_report(records, today=utc_today()), end="")
+    print(render_report(records, today=_utc_today()), end="")
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
