@@ -32,6 +32,7 @@ from larch.core.architectural_guidelines import (
     INVARIANT_HEADING_RE,
 )
 from larch.core.proc import CommandResult, ProcRunner, Runner
+from larch.design import design_log_ship
 from larch.errors import ShipError
 from larch.git import gh, git
 from larch.issue import issue_wire
@@ -1990,7 +1991,13 @@ def _resolve_pr_outcome(
         raise StatePublishError(
             STATE_PUBLISH_PR_CREATE_FAILED, "the identified state PR is not open"
         )
-    merge = gh.pr_merge(runner, number, repo=ctx.request.repo, merge_method="squash", admin=True)
+    merge = design_log_ship.run_design_log_ci_merge(
+        runner,
+        pr=number,
+        repo=ctx.request.repo,
+        cwd=str(ctx.root),
+        merge_cwd=str(ctx.root),
+    )
     merged_state = _pr_state(runner, ctx, number)
     merged_at = gh.command(
         runner,
@@ -1998,7 +2005,7 @@ def _resolve_pr_outcome(
         cwd=str(ctx.root),
     )
     durable = (
-        merge.returncode == 0
+        merge.ok
         and merged_state.returncode == 0
         and merged_state.stdout.strip() == "MERGED"
         and merged_at.returncode == 0
