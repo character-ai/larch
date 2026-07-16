@@ -1,0 +1,29 @@
+=== larch-quiet-cli.py-44792.log ===
+=== larch-quiet-cli.py-58476.log ===
+=== larch-quiet-cli.py-68845.log ===
+=== larch-quiet-cli.py-75402.log ===
+=== larch-quiet-cli.py-80087.log ===
+=== larch-quiet-cli.py-80829.log ===
+=== larch-quiet-cli.py-90536.log ===
+=== larch-quiet-scout-plan-archetypes-wrapper.sh-44463.log ===
+=== larch-quiet-sessionstart-health.sh-61922.log ===
+=== larch-quiet-sessionstart-health.sh-94304.log ===
+=== larch-quiet-ship.py-14507.log ===
+=== larch-quiet-ship.py-2907.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 15s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 28s
+ci_monitor: CI fail after 32s -> evaluate_failure
+=== larch-quiet-ship.py-29112.log ===
+ship.py: pre-pr-reentry: de-terminalized prior phase stalled -> assessments
+=== larch-quiet-ship.py-34870.log ===
+=== larch-quiet-ship.py-45940.log ===
+ship.py: pre-pr-reentry: de-terminalized prior phase stalled -> assessments
+=== larch-quiet-ship.py-50271.log ===
+=== larch-quiet-ship.py-8000.log ===
+=== larch-quiet-ship.py-98480.log ===
+ship.py: pr-prep: postbump/Flush+Push

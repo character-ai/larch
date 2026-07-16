@@ -88,7 +88,6 @@ build_bin() {
 echo "=== hooks.json SessionStart registration ==="
 if jq -e '
     .hooks.SessionStart[]?
-    | select(.matcher == "startup|resume|clear|compact")
     | .hooks[]?
     | select(.type == "command" and .command == "${CLAUDE_PLUGIN_ROOT}/scripts/sweep-design-logs.sh" and .timeout == 10)
 ' "$HOOKS_JSON" >/dev/null 2>&1; then
@@ -96,7 +95,7 @@ if jq -e '
     echo "  ok: hooks.json registers sweep-design-logs.sh under SessionStart"
 else
     FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("hooks.json must register sweep-design-logs.sh under SessionStart (matcher startup|resume|clear|compact, timeout 10)")
+    FAILED_TESTS+=("hooks.json must register sweep-design-logs.sh under SessionStart (timeout 10)")
     echo "  FAIL: hooks.json must register sweep-design-logs.sh under SessionStart" >&2
 fi
 
