@@ -1483,6 +1483,45 @@ def test_compose_report_allows_checks_commit_route_retry_resume_hint() -> None:
     assert stall_recovery._sensitive_value_is_allowlisted("checks-commit-route-retry")  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("stall_step", sorted(config.SHIP_STALL_STEPS))
+def test_compose_report_allows_ship_stall_step_in_sensitive_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    stall_step: str,
+) -> None:
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
+    signature = "0123456789abcdef" * 4
+    _ = (tmp_path / "stall-recovery-classification.env").write_text(
+        f"FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE={signature}\n"
+        f"STALL_STEP={stall_step}\nPHASE=review\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "stall-recovery-root-cause.md").write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=safe summary\n\nProse.\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "stall-recovery-bounded-root-cause.md").write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=safe summary\n\nBounded.\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "stall-recovery-sensitive-corpus.env").write_text(
+        f"STALL_STEP={stall_step}\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.compose_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--surface", "chat-print",
+        "--report-kind", "terminal-failure",
+    ])
+
+    assert rc == 0
+    assert "STALL_RECOVERY_REPORT_TIER=B" in capsys.readouterr().out
+    report = (tmp_path / "stall-recovery-chat-print.md").read_text(encoding="utf-8")
+    assert f"| Step | `{stall_step}` |" in report
+
+
 def _write_state(tmp_path: Path, step: str, phase: str, bail: str = "", extra: str = "") -> None:
     lines = [
         f"PHASE={phase}",
