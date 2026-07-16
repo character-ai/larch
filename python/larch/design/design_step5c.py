@@ -481,10 +481,10 @@ def _optional_trailer_lines_from_values_file(values_path: Path) -> list[str]:
         return []
     lines: list[str] = []
     for raw_item in raw.splitlines():
-        item = raw_item.strip()
-        if not item or "=" not in item:
+        parsed = larch_io.parse_kv(raw_item.strip(), duplicate_policy="last", strip_key=True, strip_value=True)
+        if not parsed:
             continue
-        key, value = item.split("=", 1)
+        key, value = next(iter(parsed.items()))
         if key == "diff_added" and re.fullmatch(r"\d+", value):
             lines.append(f"diff_added: {value}\n")
         elif key == "diff_deleted" and re.fullmatch(r"\d+", value):

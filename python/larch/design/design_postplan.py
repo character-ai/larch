@@ -214,10 +214,11 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
             return 11
         issue_number = os.environ.get("ISSUE_NUMBER", "")
         if not issue_number and (design_tmpdir / "source-env.sh").is_file():
-            for line in (design_tmpdir / "source-env.sh").read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.startswith("export ISSUE_NUMBER="):
-                    issue_number = line.split("=", 1)[1].strip("'\"")
-                    break
+            issue_number = larch_io.kv_value(
+                text="\n".join((design_tmpdir / "source-env.sh").read_text(encoding="utf-8", errors="replace").splitlines()),
+                key="export ISSUE_NUMBER",
+                duplicate_policy="first",
+            ).strip("'\"")
         if not issue_number:
             kvs["POSTPLAN_EMIT_STATUS"] = "pause-failed"
             flush()

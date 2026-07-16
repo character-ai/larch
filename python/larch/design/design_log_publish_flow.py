@@ -356,12 +356,13 @@ def _scrub_violations(commit_stdout: str) -> str:
     scrubbed before commit, so a non-zero count means a secret-shaped value was
     redacted from the logs and the operator must rotate the exposed credential.
     """
-    value = "0"
-    for line in commit_stdout.splitlines():
-        if line.startswith("SECRET_SCRUB_VIOLATIONS="):
-            candidate = line.split("=", 1)[1].strip()
-            value = candidate if candidate.isdigit() else "0"
-    return value
+    candidate = larch_io.kv_value(
+        text="\n".join(commit_stdout.splitlines()),
+        key="SECRET_SCRUB_VIOLATIONS",
+        default="",
+        duplicate_policy="last",
+    ).strip()
+    return candidate if candidate.isdigit() else "0"
 
 
 def _run_log_commit_scrub_failed(commit: subprocess.CompletedProcess[str]) -> bool:

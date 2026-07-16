@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
+from larch import io as larch_io
 from larch.git.repo_roots import consumer_repo_root
 
 from larch.design.design_router import _extract_args, _normalize_step, _parse_stdout_kv
@@ -30,9 +31,9 @@ from larch.design.design_step0_env import _load_wrapper_env, _parse_wrapper_args
 def brainstorm_stderr_sink_for_output(*, output_path: Path, design_tmpdir: Path) -> Path | None:
     meta = output_path.with_name(output_path.name + ".meta")
     if meta.is_file():
-        for line in meta.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.startswith("STDERR_SINK=") and line.split("=", 1)[1]:
-                return Path(line.split("=", 1)[1])
+        sink = larch_io.kv_value(text="\n".join(meta.read_text(encoding="utf-8", errors="replace").splitlines()), key="STDERR_SINK", duplicate_policy="first")
+        if sink:
+            return Path(sink)
     if output_path.name == "cursor-brainstorm-output.txt":
         return design_tmpdir / "cursor-brainstorm-launch.failure.log"
     if output_path.name == "codex-brainstorm-output.txt":
@@ -51,11 +52,9 @@ def brainstorm_collect_launch_failure_once(*, plugin_root: Path, design_tmpdir: 
     sentinel = design_tmpdir / f".brainstorm-{log_path.name}.runlog-appended"
     if sentinel.exists():
         return
-    exit_code = "1"
-    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("LAUNCHER_EXIT=") and line.split("=", 1)[1].isdigit():
-            exit_code = line.split("=", 1)[1]
-            break
+    exit_code = larch_io.kv_value(text="\n".join(log_path.read_text(encoding="utf-8", errors="replace").splitlines()), key="LAUNCHER_EXIT", default="1", duplicate_policy="first")
+    if not exit_code.isdigit():
+        exit_code = "1"
     if _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 1d.5", tool=tool, exit_code=exit_code, category="External Reviewer Issues", output_file=log_path):
         sentinel.write_text("", encoding="utf-8")
 

@@ -779,11 +779,7 @@ def _detect_step2b_drafter_dirty_block(design_tmpdir: Path) -> Step2bDrafterDirt
 def _warn_step2b_missing_scout_if_needed(*, status_text: str, design_tmpdir: Path, plugin_root: Path) -> None:
     if "SCOUT_WRITTEN=true" in status_text:
         return
-    scout_reason = "absent"
-    for line in status_text.splitlines():
-        if line.startswith("SCOUT_FAIL_REASON="):
-            scout_reason = line.split("=", 1)[1] or "absent"
-            break
+    scout_reason = larch_io.kv_value(text="\n".join(status_text.splitlines()), key="SCOUT_FAIL_REASON", default="absent", duplicate_policy="first") or "absent"
     print(f"**⚠ 2b: drafter dynamic-archetype manifest missing or invalid ({scout_reason}); plan review will use static reviewers only.**", file=sys.stderr)
     # lint-subprocess-via-runner: ok Step 2b scout warning contract pins silent subprocess.run.
     subprocess.run(
