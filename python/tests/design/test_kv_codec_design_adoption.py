@@ -1,4 +1,5 @@
 """Characterize shared-codec behavior at migrated /design call sites."""
+# pyright: reportPrivateUsage=false  # tests deliberately pin private migration seams
 
 from __future__ import annotations
 
@@ -41,14 +42,14 @@ def test_step0_env_readers_keep_allowlist_duplicate_and_empty_value_policy(
     tmp_path: Path,
 ) -> None:
     cache = tmp_path / "cache.env"
-    cache.write_text("# ignored\r\nKEEP=old\r\nKEEP=\r\nDROP=value\n", newline="")
+    _ = cache.write_text("# ignored\r\nKEEP=old\r\nKEEP=\r\nDROP=value\n", newline="")
 
     assert design_step0_env.load_bash_quoted_env(  # pyright: ignore[reportPrivateUsage] - characterize migration seam
         path=cache, allow_keys={"KEEP"}
     ) == {"KEEP": ""}
 
     source = tmp_path / "source.env"
-    source.write_text(" export KEEP=old\r\nexport KEEP=new\nKEEP=\n", newline="")
+    _ = source.write_text(" export KEEP=old\r\nexport KEEP=new\nKEEP=\n", newline="")
     assert design_step0_env._load_source_env(  # pyright: ignore[reportPrivateUsage] - characterize migration seam
         path=source, allow_keys={"KEEP"}
     ) == {"KEEP": ""}
@@ -58,7 +59,7 @@ def test_step1_stderr_sink_uses_first_matching_value_and_preserves_empty_fallbac
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "custom-output.txt"
-    output.with_name("custom-output.txt.meta").write_text(
+    _ = output.with_name("custom-output.txt.meta").write_text(
         "STDERR_SINK=first.log\nSTDERR_SINK=second.log\n", encoding="utf-8"
     )
 
@@ -69,7 +70,7 @@ def test_step1_stderr_sink_uses_first_matching_value_and_preserves_empty_fallbac
 
 def test_optional_trailers_preserve_input_order_and_duplicates(tmp_path: Path) -> None:
     values = tmp_path / "values.env"
-    values.write_text(
+    _ = values.write_text(
         " diff_deleted=2\r\ndiff_added=1\ndiff_deleted=3\nignored\n", newline=""
     )
 
@@ -84,7 +85,7 @@ def test_plan_scout_single_key_readers_use_first_value_and_reject_malformed(
     tmp_path: Path,
 ) -> None:
     launch = tmp_path / "launch.env"
-    launch.write_text(
+    _ = launch.write_text(
         "ELAPSED=4\r\nELAPSED=9\nSTATUS=first\nSTATUS=second\n", newline=""
     )
 
@@ -92,5 +93,5 @@ def test_plan_scout_single_key_readers_use_first_value_and_reject_malformed(
     assert plan_scout._parse_launch_status(launch) == "first"  # pyright: ignore[reportPrivateUsage] - characterize migration seam
 
     malformed = tmp_path / "malformed.env"
-    malformed.write_text("ELAPSED=not-a-number\n", encoding="utf-8")
+    _ = malformed.write_text("ELAPSED=not-a-number\n", encoding="utf-8")
     assert plan_scout._launch_latency_ms(malformed) == 0  # pyright: ignore[reportPrivateUsage] - characterize migration seam
