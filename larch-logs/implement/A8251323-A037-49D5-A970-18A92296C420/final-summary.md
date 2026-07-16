@@ -13,6 +13,14 @@ Warnings (9):
   6. Line 59 (in `_calibration_total`): `# type: ignore[reportPrivateUsage]` on `dc._token_timing(...)` — the code is present but no human reason follows it, which is exactly the "bare one reads as unex...
   7. Suggested fix: drop the unused `# pylint: disable=unused-argument` (the arguments are used), and give the `type: ignore` an inline reason, e.g. `# type: ignore[reportPrivateUsage] # test asserts cr...
 
+## Architectural invariants
+
+The change is a behavior-preserving deduplication of per-vendor token-total derivation across `python/larch/report/` and `python/larch/calibration/`, computing values from freshly-read report mappings, and it does not alter any gate, pause snapshot, persisted-step-result identity or consumption, run-log flush, committed run-log field, outcome label, panel-slot record, machine-parsed agent verdict, or ship-recovery mutation, so the workflow, run-log, panel, agent-contract, and ship invariants are not engaged.
+
+## Architectural guidelines
+
+The coder resolved both prior suppression findings and introduced no new deviation: the file-level unused-argument disable is gone entirely (its arguments are used in the parametrized body), the single remaining type-ignore carries an inline reason in the correct form, and the deduplication refactor routing scan, cost, and calibration through one shared per-vendor component table plus the shared totals/aggregate helpers leaves no surviving caller of the removed private helpers and no unswept sibling consumer.
+
 ## /implement run A8251323-A037-49D5-A970-18A92296C420: shipping
 
 - **Outcome**: shipping
