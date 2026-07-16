@@ -143,6 +143,79 @@ def test_lifecycle_prefix_call_compare_and_regex_contexts_are_not_double_reporte
     assert lscr.main(["--root", str(tmp_path)]) == 0
 
 
+def test_lifecycle_prefix_strip_loop_is_detected(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/mod.py": _module(
+                "LIFECYCLE_PREFIXES = ('[DONE] ',)\n"
+                "def strip(title: str) -> str:\n"
+                "    for prefix in LIFECYCLE_PREFIXES:\n"
+                "        if title.startswith(prefix):\n"
+                "            return title[len(prefix):]\n"
+                "    return title\n"
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 1
+    assert "use title_match.strip_lifecycle_prefix or title_match.detect_lifecycle_prefix" in capsys.readouterr().err
+
+
+def test_lifecycle_prefix_slice_loop_is_detected(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/mod.py": _module(
+                "LIFECYCLE_PREFIXES = ('[DONE] ',)\n"
+                "def trim(title: str) -> str:\n"
+                "    for prefix in LIFECYCLE_PREFIXES:\n"
+                "        return title[len(prefix):]\n"
+                "    return title\n"
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 1
+    assert "lifecycle-prefix-strip-loop" in capsys.readouterr().err
+
+
+def test_lifecycle_prefix_strip_loop_owner_is_allowlisted(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/issue/title_match.py": _module(
+                "LIFECYCLE_PREFIXES = ('[DONE] ',)\n"
+                "def strip(title: str) -> str:\n"
+                "    for prefix in LIFECYCLE_PREFIXES:\n"
+                "        if title.startswith(prefix):\n"
+                "            return title[len(prefix):]\n"
+                "    return title\n"
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_lifecycle_prefix_strip_loop_suppression_is_honored(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/mod.py": _module(
+                "LIFECYCLE_PREFIXES = ('[DONE] ',)\n"
+                "def strip(title: str) -> str:\n"
+                "    for prefix in LIFECYCLE_PREFIXES:  # lint-shared-convention-regex: ok fixture\n"
+                "        if title.startswith(prefix):\n"
+                "            return title[len(prefix):]\n"
+                "    return title\n"
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 0
+
+
 def test_scope_excludes_tests_helpers_and_vendor_dirs(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
