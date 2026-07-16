@@ -1,0 +1,2725 @@
+[
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_guideline_no_exception"
+    ],
+    "hash": "1628f6e763194b2c",
+    "lines": 12,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "if not root.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_guidelines_note_wrapper_bypass"
+    ],
+    "hash": "9ea9ef0efa896b49",
+    "lines": 11,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_lifecycle_prefix_literal"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_prefix_case_variant"
+    ],
+    "hash": "1628f6e763194b2c",
+    "lines": 12,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "if not root.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "9ea9ef0efa896b49",
+    "lines": 11,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_skill_description_length"
+    ],
+    "hash": "c829a2392b14913a",
+    "lines": 9,
+    "normalized_lines": [
+      "in_single = False",
+      "in_double = False",
+      "for index, char in enumerate(value):",
+      "if char == \"'\" and not in_double:",
+      "in_single = not in_single",
+      "elif char == '\"' and not in_single:",
+      "in_double = not in_double",
+      "elif char == \"",
+      "return value[:index].rstrip()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_skill_invocations"
+    ],
+    "hash": "90bce14db11dfd41",
+    "lines": 12,
+    "normalized_lines": [
+      "items: list[str] = []",
+      "current: list[str] = []",
+      "in_single = False",
+      "in_double = False",
+      "for char in inner:",
+      "if char == \"'\" and not in_double:",
+      "in_single = not in_single",
+      "current.append(char)",
+      "elif char == '\"' and not in_single:",
+      "in_double = not in_double",
+      "current.append(char)",
+      "elif char == \",\" and not in_single and not in_double:"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_agent_tool_contract",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_complexity_baseline",
+      "tests.lint.test_lint_complexity_baseline"
+    ],
+    "hash": "9be3df7822ea589b",
+    "lines": 9,
+    "normalized_lines": [
+      "\"file\",",
+      "\"code\",",
+      "\"qualified_symbol\",",
+      "\"metric\",",
+      "\"added_at\",",
+      "\"history\",",
+      "\"source_issue\",",
+      "\"reason\",",
+      "\"operator_override\","
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_engine_adoption",
+      "larch.lint.lint_module_manifest"
+    ],
+    "hash": "602b7d96cb330779",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return EXIT_ERROR",
+      "root = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_engine_adoption",
+      "larch.lint.lint_monkeypatch_facade_binding"
+    ],
+    "hash": "275b7f8e5f8cb196",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return EXIT_ERROR",
+      "root = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_engine_adoption",
+      "larch.lint.lint_tmpdir_arg_env_fallback"
+    ],
+    "hash": "7a476df305d65857",
+    "lines": 15,
+    "normalized_lines": [
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return EXIT_ERROR",
+      "root = Path(str(parsed.root)).resolve()",
+      "baseline_path = root / \"python\" / BASELINE_FILENAME",
+      "initial_reason = parsed.initial_reason",
+      "if initial_reason is not None and not str(initial_reason).strip():",
+      "print("
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_layering"
+    ],
+    "hash": "39fd2859a619ed91",
+    "lines": 12,
+    "normalized_lines": [
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_lifecycle_prefix_literal"
+    ],
+    "hash": "75ad0d17a5cd6ff7",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "new_findings: list[Finding] = []",
+      "warned: list[Finding] = []",
+      "for finding in sorted(live_findings, key=_finding_sort_key):",
+      "if finding.key() in baseline_keys:",
+      "warned.append(finding)",
+      "else:",
+      "new_findings.append(finding)",
+      "for finding in warned:",
+      "print(",
+      "\"warning: \""
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_lifecycle_prefix_literal"
+    ],
+    "hash": "99cbe36c4c85a7aa",
+    "lines": 17,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_monkeypatch_facade_binding"
+    ],
+    "hash": "a6ddfb0a8420834c",
+    "lines": 14,
+    "normalized_lines": [
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_monkeypatch_facade_binding"
+    ],
+    "hash": "ee01edea476334bf",
+    "lines": 15,
+    "normalized_lines": [
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "99cbe36c4c85a7aa",
+    "lines": 17,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "16ff84f66625dd08",
+    "lines": 15,
+    "normalized_lines": [
+      "live_findings = _filter_suppressed(",
+      "all_findings,",
+      "exemptions=exemptions,",
+      "source_lines_by_file=source_lines_by_file,",
+      ")",
+      "new_findings: list[Finding] = []",
+      "warned: list[Finding] = []",
+      "for finding in sorted(live_findings, key=_finding_sort_key):",
+      "if finding.key() in baseline_keys:",
+      "warned.append(finding)",
+      "else:",
+      "new_findings.append(finding)",
+      "for finding in warned:",
+      "print(",
+      "\"warning: \""
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "394e756498abf043",
+    "lines": 11,
+    "normalized_lines": [
+      "f\"{format_key(finding.key())}: {_format_relocation_key(relocation_key)}\"",
+      ")",
+      "if reason is None and reason_default:",
+      "reason = reason_default",
+      "if reason is None:",
+      "missing.append(format_key(finding.key()))",
+      "continue",
+      "records.append(",
+      "{",
+      "\"file\": finding.file,",
+      "\"qualified_symbol\": finding.qualified_symbol,"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "4b16e13c1ae7a567",
+    "lines": 29,
+    "normalized_lines": [
+      "has_baseline = baseline_path.is_file()",
+      "if has_baseline:",
+      "baseline_records = load_baseline(baseline_path)",
+      "preserved = {_record_key(record): record[\"reason\"] for record in baseline_records}",
+      "baseline_relocation_counts = Counter(_relocation_key(record) for record in baseline_records)",
+      "relocation_reasons = {",
+      "_relocation_key(record): record[\"reason\"]",
+      "for record in baseline_records",
+      "if baseline_relocation_counts[_relocation_key(record)] == 1",
+      "}",
+      "live_relocation_counts = Counter(_relocation_key(finding) for finding in findings)",
+      "reason_default = initial_reason.strip() if initial_reason is not None else None",
+      "records: list[Record] = []",
+      "missing: list[str] = []",
+      "for finding in sorted(findings, key=_finding_sort_key):",
+      "reason = preserved.get(finding.key())",
+      "relocation_key = _relocation_key(finding)",
+      "baseline_relocation_count = baseline_relocation_counts[relocation_key]",
+      "live_relocation_count = live_relocation_counts[relocation_key]",
+      "if (",
+      "reason is None",
+      "and baseline_relocation_count == 1",
+      "and live_relocation_count == 1",
+      "):",
+      "reason = relocation_reasons[relocation_key]",
+      "elif reason is None and has_baseline and (",
+      "baseline_relocation_count > 1 or live_relocation_count > 1",
+      "):",
+      "raise BaselineError("
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "51ea262f41c453bd",
+    "lines": 16,
+    "normalized_lines": [
+      "occurrence=occurrence,",
+      "lineno=lineno if isinstance(lineno, int) else 0,",
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "6b961fc58186b8b0",
+    "lines": 20,
+    "normalized_lines": [
+      "\"occurrence\": occurrence,",
+      "\"reason\": reason,",
+      "}",
+      "try:",
+      "data = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except OSError as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "items = cast(\"list[object]\", data)",
+      "records = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(items)",
+      "]",
+      "duplicate = _first_duplicate(_record_key(record) for record in records)",
+      "if duplicate is not None:",
+      "raise BaselineError(f\"{path}: duplicate baseline identity {format_key(duplicate)}\")",
+      "return records"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "7ce44873e61346bf",
+    "lines": 10,
+    "normalized_lines": [
+      "item[\"occurrence\"],",
+      ")",
+      "return finding.key()",
+      "if not isinstance(item, dict):",
+      "raise BaselineError(f\"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}\")",
+      "record = cast(\"dict[str, object]\", item)",
+      "if set(record) != set(BASELINE_KEYS):",
+      "raise BaselineError(f\"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}\")",
+      "file_name = _validate_normalized_file(record[\"file\"], source=source, index=index, kind=\"record\")",
+      "qualified_symbol = record[\"qualified_symbol\"]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "8e9f70ebced5d5f9",
+    "lines": 21,
+    "normalized_lines": [
+      "if not path.is_file():",
+      "return []",
+      "try:",
+      "data = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except OSError as exc:",
+      "raise BaselineError(f\"{path}: cannot read exemptions: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: exemptions must be a top-level JSON array\")",
+      "items = cast(\"list[object]\", data)",
+      "return [",
+      "_validate_exemption(item, index=index, source=path)",
+      "for index, item in enumerate(items)",
+      "]",
+      "lines = source_lines_by_file.get(finding.file, ())",
+      "index = finding.lineno - 1",
+      "if 0 <= index < len(lines) and PRAGMA_RE.search(lines[index]):",
+      "return True",
+      "previous = index - 1",
+      "return 0 <= previous < len(lines) and STANDALONE_PRAGMA_RE.match(lines[previous]) is not None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "99cbe36c4c85a7aa",
+    "lines": 17,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "c47aeafac6de7f94",
+    "lines": 13,
+    "normalized_lines": [
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []",
+      "findings: list[Finding] = []",
+      "_collect_scope(",
+      "tree.body,",
+      "prefix=(),",
+      "normalized_file=path.relative_to(python_dir).as_posix(),"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "ca27c799a601c90a",
+    "lines": 13,
+    "normalized_lines": [
+      "duplicate = _check_duplicate_live(all_findings)",
+      "if duplicate is not None:",
+      "raise BaselineError(duplicate)",
+      "findings = _filter_suppressed(",
+      "all_findings,",
+      "exemptions=exemptions,",
+      "source_lines_by_file=source_lines_by_file,",
+      ")",
+      "records = _records_for_write(",
+      "findings,",
+      "baseline_path=baseline_path,",
+      "initial_reason=initial_reason,",
+      ")"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "d03c11470508ef60",
+    "lines": 21,
+    "normalized_lines": [
+      "if not isinstance(value, str) or not value:",
+      "raise BaselineError(f\"{source}: {kind} {index} has invalid file\")",
+      "normalized = normalize_python_file_path(value)",
+      "parts = normalized.split(\"/\")",
+      "if (",
+      "normalized != value",
+      "or normalized.startswith(\"/\")",
+      "or \"\" in parts",
+      "or \".\" in parts",
+      "or \"..\" in parts",
+      "):",
+      "raise BaselineError(f\"{source}: {kind} {index} has invalid file\")",
+      "return normalized",
+      "result: list[Path] = []",
+      "for path in sorted(python_dir.rglob(\"*.py\")):",
+      "if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):",
+      "continue",
+      "relative = path.relative_to(python_dir)",
+      "if EXCLUDED_DIRS.intersection(relative.parts):",
+      "continue",
+      "normalized = relative.as_posix()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "ec5a54be2c1855a2",
+    "lines": 9,
+    "normalized_lines": [
+      "try:",
+      "return tuple(path.read_text(encoding=\"utf-8\").splitlines())",
+      "except OSError:",
+      "return ()",
+      "findings: list[Finding] = []",
+      "source_lines_by_file: dict[str, tuple[str, ...]] = {}",
+      "for path in iter_source_files(python_dir):",
+      "normalized = path.relative_to(python_dir).as_posix()",
+      "source_lines_by_file[normalized] = _source_lines(path)"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "529fe4259ca4161e",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_env_via_config_constant",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "d7d35e023cd1ba5f",
+    "lines": 20,
+    "normalized_lines": [
+      "occurrence=occurrence,",
+      "lineno=lineno if isinstance(lineno, int) else 0,",
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []",
+      "findings: list[Finding] = []",
+      "_collect_scope(",
+      "tree.body,",
+      "prefix=(),"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_git_push_refspec"
+    ],
+    "hash": "63e1deb80e5cd9be",
+    "lines": 13,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root = Path(str(parsed.root)).resolve()",
+      "python_dir = root / \"python\"",
+      "if not python_dir.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_git_push_refspec"
+    ],
+    "hash": "f64ffe6fe475ac4b",
+    "lines": 11,
+    "normalized_lines": [
+      "comments: dict[int, list[str]] = {}",
+      "try:",
+      "for token in tokenize.generate_tokens(io.StringIO(source).readline):",
+      "if token.type == tokenize.COMMENT:",
+      "comments.setdefault(token.start[0], []).append(token.string)",
+      "except tokenize.TokenError as exc:",
+      "raise RuntimeError(f\"cannot tokenize source: {exc}\") from exc",
+      "return {line: tuple(values) for line, values in comments.items()}",
+      "return finding.file.startswith(\"python/tests/\") and any(",
+      "PRAGMA_RE.search(comment) for comment in comments_by_line.get(finding.lineno, ())",
+      ")"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_git_push_refspec"
+    ],
+    "hash": "fc8f489c49d33159",
+    "lines": 12,
+    "normalized_lines": [
+      "relative = path.relative_to(root).as_posix()",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise RuntimeError(f\"{relative}: cannot read source: {exc}\") from exc",
+      "try:",
+      "tree = ast.parse(source, filename=relative)",
+      "except SyntaxError as exc:",
+      "raise RuntimeError(f\"{relative}: cannot parse source: {exc}\") from exc",
+      "comments_by_line = _comment_tokens_by_line(source)",
+      "findings: list[Finding] = []",
+      "for node in ast.walk(tree):"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_module_manifest"
+    ],
+    "hash": "cbf4c5d1ca4c4f83",
+    "lines": 9,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_self_disarmable_gate"
+    ],
+    "hash": "f04a278490c26b6a",
+    "lines": 10,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "9e1276f32c6f4d6d",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root = Path(str(parsed.root)).resolve()",
+      "python_dir = root / \"python\"",
+      "if not python_dir.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_gh_argv_literal",
+      "larch.lint.lint_wire_artifact_pairing"
+    ],
+    "hash": "6241d6f2422cc604",
+    "lines": 9,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_git_push_refspec",
+      "larch.lint.lint_module_manifest"
+    ],
+    "hash": "cbf4c5d1ca4c4f83",
+    "lines": 9,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_git_push_refspec",
+      "larch.lint.lint_self_disarmable_gate"
+    ],
+    "hash": "f04a278490c26b6a",
+    "lines": 10,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_git_push_refspec",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "9e1276f32c6f4d6d",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root = Path(str(parsed.root)).resolve()",
+      "python_dir = root / \"python\"",
+      "if not python_dir.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_git_push_refspec",
+      "larch.lint.lint_wire_artifact_pairing"
+    ],
+    "hash": "6241d6f2422cc604",
+    "lines": 9,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_guidelines_note_wrapper_bypass"
+    ],
+    "hash": "f2921aebed846377",
+    "lines": 12,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_lifecycle_prefix_literal"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_lifecycle_prefix_literal"
+    ],
+    "hash": "6ad0c913807068db",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "data: object = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "records: list[Record] = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(cast(\"list[object]\", data))",
+      "]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_prefix_case_variant"
+    ],
+    "hash": "766a51bf19219786",
+    "lines": 13,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "if not root.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "6ad0c913807068db",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "data: object = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "records: list[Record] = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(cast(\"list[object]\", data))",
+      "]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "f2921aebed846377",
+    "lines": 12,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guideline_no_exception",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "6ad0c913807068db",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "data: object = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "records: list[Record] = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(cast(\"list[object]\", data))",
+      "]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_lifecycle_prefix_literal"
+    ],
+    "hash": "c9f77b64f74b9b41",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "larch_dir: Path = root / \"python\" / \"larch\"",
+      "if not larch_dir.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_prefix_case_variant"
+    ],
+    "hash": "f2921aebed846377",
+    "lines": 12,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "0c6b7b1aeb0abff6",
+    "lines": 10,
+    "normalized_lines": [
+      "name: str = path.name",
+      "return (name.startswith(\"test_\") and name.endswith(\".py\")) or name in EXEMPT_FILENAMES",
+      "result: list[Path] = []",
+      "for path in sorted(larch_dir.rglob(\"*.py\")):",
+      "if not path.is_file() or path.is_symlink() or is_exempt_path(path):",
+      "continue",
+      "relative: Path = path.relative_to(larch_dir.parent)",
+      "normalized: str = relative.as_posix()",
+      "if EXCLUDED_DIRS.intersection(relative.parts):",
+      "continue"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "533f081c6ae86707",
+    "lines": 9,
+    "normalized_lines": [
+      "comments: dict[int, list[str]] = {}",
+      "try:",
+      "for token in tokenize.generate_tokens(io.StringIO(source).readline):",
+      "if token.type == tokenize.COMMENT:",
+      "comments.setdefault(token.start[0], []).append(token.string)",
+      "except tokenize.TokenError:",
+      "return {}",
+      "return {line: tuple(values) for line, values in comments.items()}",
+      "return any(PRAGMA_RE.search(comment) for comment in comments_by_line.get(finding.lineno, ()))"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "c74c8a0ca8b665cf",
+    "lines": 14,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "larch_dir: Path = root / \"python\" / \"larch\"",
+      "if not larch_dir.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_guidelines_note_wrapper_bypass",
+      "larch.lint.unreachable_branch_detector"
+    ],
+    "hash": "ddbffb61bc95c9bc",
+    "lines": 11,
+    "normalized_lines": [
+      "continue",
+      "result.append(path)",
+      "return result",
+      "comments: dict[int, list[str]] = {}",
+      "try:",
+      "for token in tokenize.generate_tokens(io.StringIO(source).readline):",
+      "if token.type == tokenize.COMMENT:",
+      "comments.setdefault(token.start[0], []).append(token.string)",
+      "except tokenize.TokenError:",
+      "return {}",
+      "return {line: tuple(values) for line, values in comments.items()}"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_layering",
+      "larch.lint.lint_monkeypatch_facade_binding"
+    ],
+    "hash": "39fd2859a619ed91",
+    "lines": 12,
+    "normalized_lines": [
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_layering",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "39fd2859a619ed91",
+    "lines": 12,
+    "normalized_lines": [
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_layering",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "39fd2859a619ed91",
+    "lines": 12,
+    "normalized_lines": [
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_layering",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "9ee9e6b63439d6a1",
+    "lines": 9,
+    "normalized_lines": [
+      "result: list[Path] = []",
+      "for path in sorted(larch_dir.rglob(\"*.py\")):",
+      "if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):",
+      "continue",
+      "relative = path.relative_to(larch_dir.parent)",
+      "if EXCLUDED_DIRS.intersection(relative.parts):",
+      "continue",
+      "result.append(path)",
+      "return result"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_monkeypatch_facade_binding"
+    ],
+    "hash": "ee01edea476334bf",
+    "lines": 15,
+    "normalized_lines": [
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_prefix_case_variant"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "0a46bced7cc61312",
+    "lines": 21,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "6ad0c913807068db",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "data: object = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "records: list[Record] = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(cast(\"list[object]\", data))",
+      "]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "c9f77b64f74b9b41",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "larch_dir: Path = root / \"python\" / \"larch\"",
+      "if not larch_dir.is_dir():"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "75ad0d17a5cd6ff7",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "new_findings: list[Finding] = []",
+      "warned: list[Finding] = []",
+      "for finding in sorted(live_findings, key=_finding_sort_key):",
+      "if finding.key() in baseline_keys:",
+      "warned.append(finding)",
+      "else:",
+      "new_findings.append(finding)",
+      "for finding in warned:",
+      "print(",
+      "\"warning: \""
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "99cbe36c4c85a7aa",
+    "lines": 17,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "152191e2d3b681cb",
+    "lines": 15,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "d8c0338b47e2f864",
+    "lines": 10,
+    "normalized_lines": [
+      "records: list[Record] = []",
+      "missing: list[str] = []",
+      "for finding in sorted(findings, key=_finding_sort_key):",
+      "reason: str | None = preserved.get(finding.key()) or reason_default",
+      "if reason is None:",
+      "missing.append(format_key(finding.key()))",
+      "continue",
+      "records.append(",
+      "{",
+      "\"file\": finding.file,"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_lifecycle_prefix_literal",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "f36d3c4637330436",
+    "lines": 15,
+    "normalized_lines": [
+      "\"occurrence\": occurrence,",
+      "\"reason\": reason,",
+      "}",
+      "try:",
+      "data: object = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "records: list[Record] = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(cast(\"list[object]\", data))",
+      "]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_module_manifest",
+      "larch.lint.lint_monkeypatch_facade_binding"
+    ],
+    "hash": "602b7d96cb330779",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return EXIT_ERROR",
+      "root = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_module_manifest",
+      "larch.lint.lint_self_disarmable_gate"
+    ],
+    "hash": "cbf4c5d1ca4c4f83",
+    "lines": 9,
+    "normalized_lines": [
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_module_manifest",
+      "larch.lint.lint_tmpdir_arg_env_fallback"
+    ],
+    "hash": "602b7d96cb330779",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return EXIT_ERROR",
+      "root = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_monkeypatch_facade_binding",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "ee01edea476334bf",
+    "lines": 15,
+    "normalized_lines": [
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_monkeypatch_facade_binding",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "a6ddfb0a8420834c",
+    "lines": 14,
+    "normalized_lines": [
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_monkeypatch_facade_binding",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "e467e18fa32569c4",
+    "lines": 17,
+    "normalized_lines": [
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_monkeypatch_facade_binding",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "529fe4259ca4161e",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_monkeypatch_facade_binding",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "a6ddfb0a8420834c",
+    "lines": 14,
+    "normalized_lines": [
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_monkeypatch_facade_binding",
+      "larch.lint.lint_tmpdir_arg_env_fallback"
+    ],
+    "hash": "275b7f8e5f8cb196",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return EXIT_ERROR",
+      "root = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_prefix_case_variant",
+      "larch.lint.lint_renderer_golden_tests"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_prefix_case_variant",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "f2921aebed846377",
+    "lines": 12,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_prefix_case_variant",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_renderer_golden_tests",
+      "larch.lint.lint_shared_convention_regex"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_renderer_golden_tests",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "99cbe36c4c85a7aa",
+    "lines": 17,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(\"--root\", default=str(Path(__file__).resolve().parents[3]))",
+      "_ = parser.add_argument(",
+      "\"--write\",",
+      "action=\"store_true\",",
+      "help=f\"Regenerate {BASELINE_FILENAME} from live AST scan.\",",
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_renderer_golden_tests",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "63047d1fcce9bebf",
+    "lines": 16,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()",
+      "python_dir: Path = root / \"python\""
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_renderer_golden_tests",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "6ad0c913807068db",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "data: object = json.loads(path.read_text(encoding=\"utf-8\"))",
+      "except (OSError, UnicodeDecodeError) as exc:",
+      "raise BaselineError(f\"{path}: cannot read baseline: {exc}\") from exc",
+      "except json.JSONDecodeError as exc:",
+      "raise BaselineError(f\"{path}: invalid JSON: {exc}\") from exc",
+      "if not isinstance(data, list):",
+      "raise BaselineError(f\"{path}: baseline must be a top-level JSON array\")",
+      "records: list[Record] = [",
+      "_validate_record(item, index=index, source=path)",
+      "for index, item in enumerate(cast(\"list[object]\", data))",
+      "]"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_self_disarmable_gate",
+      "larch.lint.lint_subprocess_via_runner"
+    ],
+    "hash": "6241d6f2422cc604",
+    "lines": 9,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_self_disarmable_gate",
+      "larch.lint.lint_wire_artifact_pairing"
+    ],
+    "hash": "6241d6f2422cc604",
+    "lines": 9,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_shared_convention_regex",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "617367741f115c63",
+    "lines": 10,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed: argparse.Namespace | None = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT",
+      "root: Path = Path(str(parsed.root)).resolve()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_subprocess_via_runner",
+      "larch.lint.lint_suppression_reason"
+    ],
+    "hash": "529fe4259ca4161e",
+    "lines": 11,
+    "normalized_lines": [
+      ")",
+      "_ = parser.add_argument(",
+      "\"--initial-reason\",",
+      "help=\"Reason used for live findings without preserved baseline reasons.\",",
+      ")",
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_subprocess_via_runner",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "0c2c3528474af60d",
+    "lines": 19,
+    "normalized_lines": [
+      "occurrence = 0",
+      "symbol = qualified_symbol(prefix, module_symbol=MODULE_SYMBOL)",
+      "nonlocal occurrence",
+      "if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):",
+      "_collect_scope(",
+      "node.body,",
+      "prefix=(*prefix, node.name),",
+      "normalized_file=normalized_file,",
+      "findings=findings,",
+      ")",
+      "return",
+      "if isinstance(node, ast.ClassDef):",
+      "_collect_scope(",
+      "node.body,",
+      "prefix=(*prefix, node.name),",
+      "normalized_file=normalized_file,",
+      "findings=findings,",
+      ")",
+      "return"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_subprocess_via_runner",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "2c8124d41c173468",
+    "lines": 12,
+    "normalized_lines": [
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []",
+      "findings: list[Finding] = []",
+      "_collect_scope(",
+      "tree.body,",
+      "prefix=(),"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_subprocess_via_runner",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "2cc9d9e6eae18090",
+    "lines": 14,
+    "normalized_lines": [
+      "lineno = getattr(node, \"lineno\", 0)",
+      "findings.append(",
+      "Finding(",
+      "file=normalized_file,",
+      "qualified_symbol=symbol,",
+      "callee=callee,",
+      "occurrence=occurrence,",
+      "lineno=lineno if isinstance(lineno, int) else 0,",
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_subprocess_via_runner",
+      "larch.lint.lint_tempfile_dir"
+    ],
+    "hash": "51ea262f41c453bd",
+    "lines": 16,
+    "normalized_lines": [
+      "occurrence=occurrence,",
+      "lineno=lineno if isinstance(lineno, int) else 0,",
+      ")",
+      ")",
+      "for child in ordered_ast_child_nodes(node):",
+      "walk(child)",
+      "for statement in body:",
+      "walk(statement)",
+      "try:",
+      "source = path.read_text(encoding=\"utf-8\")",
+      "except OSError:",
+      "return []",
+      "try:",
+      "tree = ast.parse(source)",
+      "except SyntaxError:",
+      "return []"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.lint_subprocess_via_runner",
+      "larch.lint.lint_wire_artifact_pairing"
+    ],
+    "hash": "6241d6f2422cc604",
+    "lines": 9,
+    "normalized_lines": [
+      "try:",
+      "return parser.parse_args(argv)",
+      "except SystemExit as exc:",
+      "if exc.code == 0:",
+      "raise",
+      "return None",
+      "parsed = _parse_args(argv if argv is not None else sys.argv[1:])",
+      "if parsed is None:",
+      "return TOOL_FAILURE_EXIT"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.markdown_heading_fence_state_detector",
+      "larch.lint.self_disarmable_gate_detector"
+    ],
+    "hash": "36387dfe4a239aad",
+    "lines": 15,
+    "normalized_lines": [
+      "comments: dict[int, list[str]] = {}",
+      "try:",
+      "for token in tokenize.generate_tokens(io.StringIO(source).readline):",
+      "if token.type == tokenize.COMMENT:",
+      "comments.setdefault(token.start[0], []).append(token.string)",
+      "except tokenize.TokenError:",
+      "return {}",
+      "return {line: tuple(values) for line, values in comments.items()}",
+      "for comment in comments_by_line.get(lineno, ()):",
+      "match = PRAGMA_RE.search(comment)",
+      "if match is not None:",
+      "return match.group(1).strip()",
+      "if EMPTY_PRAGMA_RE.search(comment) is not None:",
+      "return \"\"",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.markdown_heading_fence_state_detector",
+      "larch.lint.unreachable_branch_detector"
+    ],
+    "hash": "36387dfe4a239aad",
+    "lines": 15,
+    "normalized_lines": [
+      "comments: dict[int, list[str]] = {}",
+      "try:",
+      "for token in tokenize.generate_tokens(io.StringIO(source).readline):",
+      "if token.type == tokenize.COMMENT:",
+      "comments.setdefault(token.start[0], []).append(token.string)",
+      "except tokenize.TokenError:",
+      "return {}",
+      "return {line: tuple(values) for line, values in comments.items()}",
+      "for comment in comments_by_line.get(lineno, ()):",
+      "match = PRAGMA_RE.search(comment)",
+      "if match is not None:",
+      "return match.group(1).strip()",
+      "if EMPTY_PRAGMA_RE.search(comment) is not None:",
+      "return \"\"",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "larch.lint.self_disarmable_gate_detector",
+      "larch.lint.unreachable_branch_detector"
+    ],
+    "hash": "36387dfe4a239aad",
+    "lines": 15,
+    "normalized_lines": [
+      "comments: dict[int, list[str]] = {}",
+      "try:",
+      "for token in tokenize.generate_tokens(io.StringIO(source).readline):",
+      "if token.type == tokenize.COMMENT:",
+      "comments.setdefault(token.start[0], []).append(token.string)",
+      "except tokenize.TokenError:",
+      "return {}",
+      "return {line: tuple(values) for line, values in comments.items()}",
+      "for comment in comments_by_line.get(lineno, ()):",
+      "match = PRAGMA_RE.search(comment)",
+      "if match is not None:",
+      "return match.group(1).strip()",
+      "if EMPTY_PRAGMA_RE.search(comment) is not None:",
+      "return \"\"",
+      "return None"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.agents.test_agent_voters",
+      "tests.review.test_voting"
+    ],
+    "hash": "72605008072cf72d",
+    "lines": 10,
+    "normalized_lines": [
+      "consumer = tmp_path / \"consumer\"",
+      "(consumer / \"larch-logs\").mkdir(parents=True)",
+      "plugin = tmp_path / \"plugin\"",
+      "(plugin / \"larch-logs\").mkdir(parents=True)",
+      "implement = tmp_path / \"implement\"",
+      "implement.mkdir()",
+      "review = implement / \"round-1\"",
+      "review.mkdir()",
+      "(implement / \"session-env.sh\").write_text(\"",
+      "(review / \".larch-keepalive\").write_text(f\"CLONE_PATH={consumer}\\n\", encoding=\"utf-8\")"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.git.test_git",
+      "tests.git.test_rebase"
+    ],
+    "hash": "bf0c1554de667ec6",
+    "lines": 11,
+    "normalized_lines": [
+      "return subprocess.run(",
+      "[\"git\", \"-C\", str(repo), *args],",
+      "check=True,",
+      "capture_output=True,",
+      "text=True,",
+      ").stdout.strip()",
+      "origin = tmp_path / \"origin.git\"",
+      "source = tmp_path / \"source\"",
+      "repo = tmp_path / \"repo\"",
+      "_ = subprocess.run([\"git\", \"init\", \"--bare\", \"-q\", str(origin)], check=True)",
+      "_ = subprocess.run([\"git\", \"init\", \"-q\", \"-b\", \"main\", str(source)], check=True)"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.implement.test_run_step_checks",
+      "tests.implement.test_step_6_entry"
+    ],
+    "hash": "e758e03388cda065",
+    "lines": 12,
+    "normalized_lines": [
+      "repo = make_committed_repo(tmp_path)",
+      "impl = tmp_path / \"impl\"",
+      "impl.mkdir()",
+      "_ = (impl / \"session-env.sh\").write_text(f\"REPO_ROOT={repo.resolve()}\\n\", encoding=\"utf-8\")",
+      "monkeypatch.setenv(\"IMPLEMENT_TMPDIR\", str(impl))",
+      "monkeypatch.setenv(\"CLAUDE_PLUGIN_ROOT\", str(Path(__file__).resolve().parents[3]))",
+      "monkeypatch.setenv(\"LARCH_CLAUDE_PID\", str(os.getpid()))",
+      "monkeypatch.setattr(route.bgjob_daemon, \"owner_identity_from_env\", lambda _pid: object())",
+      "return impl, repo",
+      "_impl, repo = _session(tmp_path, monkeypatch)",
+      "captured: list[model.JobSpec] = []",
+      "monkeypatch.setattr(route.bgjob_adapt, \"start_or_reattach\", _capture_spec(captured))"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_engine_adoption",
+      "tests.lint.test_lint_pylint_skip_file"
+    ],
+    "hash": "f328db6d9fdbfee7",
+    "lines": 16,
+    "normalized_lines": [
+      "\"reason\": reason,",
+      "}",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = run_rule(",
+      "lint.RULE,",
+      "root,",
+      "runner,",
+      "paths=paths,",
+      "baseline_path=baseline_path,",
+      "write_baseline=write_baseline,",
+      "initial_reason=initial_reason,",
+      "strict_stale=strict_stale,",
+      ")",
+      "return code, stdout.getvalue(), stderr.getvalue()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_env_via_config_constant",
+      "tests.lint.test_lint_subprocess_via_runner"
+    ],
+    "hash": "6146ad41cb8c3557",
+    "lines": 9,
+    "normalized_lines": [
+      "\"--root\",",
+      "str(tmp_path),",
+      "\"--write\",",
+      "\"--initial-reason\",",
+      "\"new reason\",",
+      "]) == 2",
+      "_write_project(",
+      "tmp_path,",
+      "files={"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_gh_argv_literal",
+      "tests.lint.test_lint_git_push_refspec"
+    ],
+    "hash": "bfb2412183be3660",
+    "lines": 11,
+    "normalized_lines": [
+      "class CaptureResult(Protocol):",
+      "err: str",
+      "class CaptureFixture(Protocol):",
+      "def readouterr(self) -> CaptureResult: ...",
+      "for relpath, source in files.items():",
+      "path = root / \"python\" / relpath",
+      "path.parent.mkdir(parents=True, exist_ok=True)",
+      "_ = path.write_text(source, encoding=\"utf-8\")",
+      "_write_project(",
+      "tmp_path,",
+      "files={"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_lifecycle_prefix_literal",
+      "tests.lint.test_lint_subprocess_via_runner"
+    ],
+    "hash": "b5f60c17638c5d57",
+    "lines": 10,
+    "normalized_lines": [
+      "\"occurrence\": occurrence,",
+      "\"reason\": reason,",
+      "}",
+      "record.update(extra)",
+      "return record",
+      "python_dir = root / \"python\"",
+      "for relpath, source in files.items():",
+      "path = python_dir / relpath",
+      "path.parent.mkdir(parents=True, exist_ok=True)",
+      "_ = path.write_text(source, encoding=\"utf-8\")"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_lifecycle_prefix_literal",
+      "tests.lint.test_lint_suppression_reason"
+    ],
+    "hash": "f980098f0b38ad79",
+    "lines": 11,
+    "normalized_lines": [
+      "\"occurrence\": occurrence,",
+      "\"reason\": reason,",
+      "}",
+      "record.update(extra)",
+      "return record",
+      "python_dir = root / \"python\"",
+      "for relpath, source in files.items():",
+      "path = python_dir / relpath",
+      "path.parent.mkdir(parents=True, exist_ok=True)",
+      "_ = path.write_text(source, encoding=\"utf-8\")",
+      "if baseline is not None:"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_status_routing_truthiness",
+      "tests.lint.test_lint_tmpdir_arg_env_fallback"
+    ],
+    "hash": "4906fbd3f31521e0",
+    "lines": 18,
+    "normalized_lines": [
+      "\"reason\": reason,",
+      "}",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = lint.main([\"--root\", str(root), *argv])",
+      "return code, stdout.getvalue(), stderr.getvalue()",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = run_rule(",
+      "lint.RULE,",
+      "root,",
+      "runner,",
+      "paths=None,",
+      "baseline_path=root / \"python\" / baseline_name,",
+      "write_baseline=write_baseline,",
+      "initial_reason=initial_reason,"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_status_routing_truthiness",
+      "tests.lint.test_lint_unreachable_branch"
+    ],
+    "hash": "7a4d5717d94c5f1e",
+    "lines": 23,
+    "normalized_lines": [
+      "return {",
+      "\"file\": file,",
+      "\"qualified_symbol\": qualified_symbol,",
+      "\"occurrence\": occurrence,",
+      "\"normalized_condition\": normalized_condition,",
+      "\"reason\": reason,",
+      "}",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = lint.main([\"--root\", str(root), *argv])",
+      "return code, stdout.getvalue(), stderr.getvalue()",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = run_rule(",
+      "lint.RULE,",
+      "root,",
+      "runner,",
+      "paths=None,",
+      "baseline_path=root / \"python\" / baseline_name,",
+      "write_baseline=write_baseline,",
+      "initial_reason=initial_reason,"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_subprocess_via_runner",
+      "tests.lint.test_lint_suppression_reason"
+    ],
+    "hash": "b5f60c17638c5d57",
+    "lines": 10,
+    "normalized_lines": [
+      "\"occurrence\": occurrence,",
+      "\"reason\": reason,",
+      "}",
+      "record.update(extra)",
+      "return record",
+      "python_dir = root / \"python\"",
+      "for relpath, source in files.items():",
+      "path = python_dir / relpath",
+      "path.parent.mkdir(parents=True, exist_ok=True)",
+      "_ = path.write_text(source, encoding=\"utf-8\")"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  },
+  {
+    "modules": [
+      "tests.lint.test_lint_tmpdir_arg_env_fallback",
+      "tests.lint.test_lint_unreachable_branch"
+    ],
+    "hash": "ccab6a32dffb43d5",
+    "lines": 21,
+    "normalized_lines": [
+      "\"reason\": reason,",
+      "}",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = lint.main([\"--root\", str(root), *argv])",
+      "return code, stdout.getvalue(), stderr.getvalue()",
+      "stdout = io.StringIO()",
+      "stderr = io.StringIO()",
+      "with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):",
+      "code = run_rule(",
+      "lint.RULE,",
+      "root,",
+      "runner,",
+      "paths=None,",
+      "baseline_path=root / \"python\" / baseline_name,",
+      "write_baseline=write_baseline,",
+      "initial_reason=initial_reason,",
+      "strict_stale=strict_stale,",
+      ")",
+      "return code, stdout.getvalue(), stderr.getvalue()"
+    ],
+    "reason": "findings predate the duplicate-code shrink-only ratchet"
+  }
+]
