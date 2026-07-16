@@ -27,6 +27,7 @@ from larch.lint.engine import (
     SourceFile,
     has_inline_pragma,
     is_exempt_python_source,
+    iter_python_source_files,
     load_json_array,
     normalize_python_file_path,
     parse_lint_argv,
@@ -97,18 +98,11 @@ def _validate_normalized_file(value: object, *, source: Path, index: int, kind: 
 
 def iter_source_files(python_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files, sorted."""
-    result: list[Path] = []
-    for path in sorted(python_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
-            continue
-        relative = path.relative_to(python_dir)
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        normalized = relative.as_posix()
-        if normalized == CONFIG_RELPATH:
-            continue
-        result.append(path)
-    return result
+    return iter_python_source_files(
+        python_dir,
+        excluded_dirs=EXCLUDED_DIRS,
+        excluded_relpaths=frozenset({CONFIG_RELPATH}),
+    )
 
 
 def is_production_source_path(rel_path: str) -> bool:

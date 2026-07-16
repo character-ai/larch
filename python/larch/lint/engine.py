@@ -232,6 +232,56 @@ def is_production_python_path(rel_path: str, *, prefix: str = PYTHON_TREE_PREFIX
     )
 
 
+def iter_python_source_files(
+    root: Path,
+    *,
+    scope: Path = Path(),
+    is_exempt: Callable[[Path], bool] = is_exempt_python_source,
+    excluded_dirs: frozenset[str] = PYTHON_EXCLUDED_DIRS,
+    excluded_relpaths: frozenset[str] = frozenset(),
+) -> list[Path]:
+    """Return sorted regular Python files within a rule-defined production scope."""
+    scope_root = root / scope
+    if not scope_root.is_dir():
+        return []
+    files: list[Path] = []
+    for path in sorted(scope_root.rglob("*.py")):
+        if not path.is_file() or path.is_symlink() or is_exempt(path):
+            continue
+        relative = path.relative_to(root)
+        if excluded_dirs.intersection(relative.parts) or any(
+            relative.is_relative_to(Path(excluded)) for excluded in excluded_relpaths
+        ):
+            continue
+        files.append(path)
+    return files
+
+
+def iter_all_python_source_files(
+    root: Path, *, excluded_relpaths: frozenset[str] = frozenset()
+) -> list[Path]:
+    """Return all regular Python files, including test fixtures, in a rule scope."""
+    return iter_python_source_files(
+        root,
+        is_exempt=lambda _path: False,
+        excluded_dirs=frozenset(),
+        excluded_relpaths=excluded_relpaths,
+    )
+
+
+def read_python_ast(path: Path, *, root: Path) -> tuple[str, ast.Module]:
+    """Read and parse one Python source file relative to a rule root."""
+    relative = path.relative_to(root).as_posix()
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ScanError(f"{relative}: cannot read source: {exc}") from exc
+    try:
+        return source, ast.parse(source, filename=relative)
+    except SyntaxError as exc:
+        raise ScanError(f"{relative}: cannot parse source: {exc}") from exc
+
+
 def qualified_symbol(prefix: tuple[str, ...], *, module_symbol: str = "<module>") -> str:
     """Render a nested AST scope as its stable baseline symbol."""
     return ".".join(prefix) if prefix else module_symbol
@@ -804,7 +854,8 @@ def _syntax_finding_line(source: SourceFile, error: SyntaxError) -> int:
     return 1
 
 
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
+def comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
+    """Return source comments keyed by one-based line number."""
     comments: dict[int, list[str]] = {}
     try:
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -817,13 +868,14 @@ def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
     return {line: tuple(values) for line, values in comments.items()}
 
 
-def _suppression_reason(
+def suppression_reason(
     lineno: int,
     *,
     comments_by_line: Mapping[int, tuple[str, ...]],
     pragma_re: re.Pattern[str],
     empty_pragma_re: re.Pattern[str],
 ) -> str | None:
+    """Return a pragma reason, an empty marker, or no matching pragma."""
     for comment in comments_by_line.get(lineno, ()):
         match = pragma_re.search(comment)
         if match is not None:
@@ -973,10 +1025,10 @@ def _apply_inline_suppressions(
     pragma_re: re.Pattern[str],
     empty_pragma_re: re.Pattern[str],
 ) -> list[Finding]:
-    comments_by_line = _comment_tokens_by_line(source.text)
+    comments_by_line = comment_tokens_by_line(source.text)
     accepted: list[Finding] = []
     for finding in findings:
-        reason = _suppression_reason(
+        reason = suppression_reason(
             finding.line,
             comments_by_line=comments_by_line,
             pragma_re=pragma_re,

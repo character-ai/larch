@@ -8,15 +8,13 @@ reason-bearing pragma.
 from __future__ import annotations
 
 import ast
-import io
 import re
 import sys
-import tokenize
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.lint.engine import RuleCli, run_root_cli
+from larch.lint.engine import RuleCli, ScanError, comment_tokens_by_line, iter_all_python_source_files, read_python_ast, run_root_cli
 
 TOOL_FAILURE_EXIT = 2
 PUSH_COMMAND_ELEMENTS = 2
@@ -28,26 +26,6 @@ PRAGMA_RE = re.compile(r"#\s*lint-git-push-refspec:\s*ok\s+(\S.*)$")
 class Finding:
     file: str
     lineno: int
-
-
-def iter_source_files(python_dir: Path) -> list[Path]:
-    """Return sorted regular, non-symlink Python files in the complete scope."""
-    return [
-        path
-        for path in sorted(python_dir.rglob("*.py"))
-        if path.is_file() and not path.is_symlink()
-    ]
-
-
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError as exc:
-        raise RuntimeError(f"cannot tokenize source: {exc}") from exc
-    return {line: tuple(values) for line, values in comments.items()}
 
 
 def _is_fixture_pragma(
@@ -92,14 +70,10 @@ def scan_file(path: Path, *, root: Path) -> list[Finding]:
     """Return raw Git push argv lists without an explicit refspec operand."""
     relative = path.relative_to(root).as_posix()
     try:
-        source = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise RuntimeError(f"{relative}: cannot read source: {exc}") from exc
-    try:
-        tree = ast.parse(source, filename=relative)
-    except SyntaxError as exc:
-        raise RuntimeError(f"{relative}: cannot parse source: {exc}") from exc
-    comments_by_line = _comment_tokens_by_line(source)
+        source, tree = read_python_ast(path, root=root)
+    except ScanError as exc:
+        raise RuntimeError(str(exc)) from exc
+    comments_by_line = comment_tokens_by_line(source)
     findings: list[Finding] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.List) or not _is_raw_git_push_argv(node) or _has_explicit_refspec(node):
@@ -122,7 +96,7 @@ def _run(root: Path) -> int:
     try:
         findings = [
             finding
-            for path in iter_source_files(python_dir)
+            for path in iter_all_python_source_files(python_dir)
             for finding in scan_file(path, root=root)
         ]
     except RuntimeError as exc:

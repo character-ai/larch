@@ -18,8 +18,8 @@ from typing import cast
 
 from larch.core import proc
 from larch.lint.engine import (
-    is_exempt_python_source,
     is_production_python_path,
+    iter_python_source_files,
     ordered_ast_child_nodes,
     qualified_symbol,
     Finding as EngineFinding,
@@ -78,15 +78,11 @@ class Finding:
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
-    result: list[Path] = []
-    for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
-            continue
-        relative = path.relative_to(larch_dir.parent)
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        result.append(path)
-    return result
+    return iter_python_source_files(
+        larch_dir.parent,
+        scope=Path("larch"),
+        excluded_dirs=EXCLUDED_DIRS,
+    )
 
 
 def _importer_package(normalized_file: str) -> str | None:

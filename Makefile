@@ -264,73 +264,17 @@ regen-markdown-heading-fence-state-baseline:
 skill-closure-size:
 	$(PYTHON) python/cli.py skill-closure report
 
-.PHONY: lint-lifecycle-prefix-literal lint-prefix-case-variant
+.PHONY: FORCE
+FORCE:
 
-lint-skill-closure-growth:
-	$(PYTHON) python/cli.py lint skill-closure-growth
+lint-%: FORCE
+	$(PYTHON) python/cli.py lint $*
 
 lint-guideline-no-exception:
 	$(PYTHON) python/cli.py lint guideline-no-exception
 
-lint-lifecycle-prefix-literal:
-	$(PYTHON) python/cli.py lint lifecycle-prefix-literal
-
-lint-prefix-case-variant:
-	$(PYTHON) python/cli.py lint prefix-case-variant
-
 test-lint-guideline-no-exception:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_guideline_no_exception.py -q
-
-.PHONY: lint-markdown-heading-fence-state test-lint-markdown-heading-fence-state lint-doc-pointer-paths test-lint-doc-pointer-paths lint-self-disarmable-gate test-lint-self-disarmable-gate lint-unreachable-branch test-lint-unreachable-branch lint-status-routing-truthiness test-lint-status-routing-truthiness lint-pylint-skip-file test-lint-pylint-skip-file
-lint-markdown-heading-fence-state:
-	$(PYTHON) python/cli.py lint markdown-heading-fence-state
-
-test-lint-markdown-heading-fence-state:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_markdown_heading_fence_state.py -q
-
-lint-doc-pointer-paths:
-	$(PYTHON) python/cli.py lint doc-pointer-paths
-
-test-lint-doc-pointer-paths:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_doc_pointer_paths.py -q
-
-lint-self-disarmable-gate:
-	$(PYTHON) python/cli.py lint self-disarmable-gate
-
-test-lint-self-disarmable-gate:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_self_disarmable_gate.py -q
-
-lint-unreachable-branch:
-	$(PYTHON) python/cli.py lint unreachable-branch
-
-test-lint-unreachable-branch:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_unreachable_branch.py -q
-
-lint-status-routing-truthiness:
-	$(PYTHON) python/cli.py lint status-routing-truthiness
-
-test-lint-status-routing-truthiness:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_status_routing_truthiness.py -q
-
-lint-pylint-skip-file:
-	$(PYTHON) python/cli.py lint pylint-skip-file
-
-test-lint-pylint-skip-file:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_pylint_skip_file.py -q
-
-.PHONY: lint-module-manifest test-lint-module-manifest
-lint-module-manifest:
-	$(PYTHON) python/cli.py lint module-manifest
-
-test-lint-module-manifest:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_module_manifest.py -q
-
-.PHONY: lint-engine-adoption test-lint-engine-adoption
-lint-engine-adoption:
-	$(PYTHON) python/cli.py lint engine-adoption
-
-test-lint-engine-adoption:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_engine_adoption.py -q
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \

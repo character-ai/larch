@@ -10,11 +10,9 @@ row.
 from __future__ import annotations
 
 import ast
-import io
 import re
 from re import Pattern
 import sys
-import tokenize
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +21,7 @@ from larch.lint.engine import (
     IdentityLintCli,
     RendererGoldenTestsBaselineRow,
     ScanError,
+    comment_tokens_by_line,
     compare_identity_baseline,
     first_duplicate as _first_duplicate,
     load_identity_baseline,
@@ -100,17 +99,6 @@ def scan_file(path: Path, *, python_dir: Path) -> list[Candidate]:
     return candidates
 
 
-def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
-    comments: dict[int, list[str]] = {}
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                comments.setdefault(token.start[0], []).append(token.string)
-    except tokenize.TokenError:
-        return {}
-    return {line: tuple(values) for line, values in comments.items()}
-
-
 def _is_suppressed(candidate: Candidate, *, comments_by_line: Mapping[int, tuple[str, ...]]) -> bool:
     return any(PRAGMA_RE.search(comment) for comment in comments_by_line.get(candidate.lineno, ()))
 
@@ -143,7 +131,7 @@ def _collect_all(
     for path in iter_report_files(report_dir):
         normalized_file: str = path.relative_to(python_dir).as_posix()
         source: str = _read_source(path, python_dir=python_dir)
-        comments_by_file[normalized_file] = _comment_tokens_by_line(source)
+        comments_by_file[normalized_file] = comment_tokens_by_line(source)
         tree: ast.Module = _parse_source(source, normalized_file=normalized_file)
         for statement in tree.body:
             if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):

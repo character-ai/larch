@@ -19,7 +19,7 @@ from larch.lint.engine import (
     LintRule,
     RuleCli,
     SourceFile,
-    is_exempt_python_source,
+    iter_python_source_files,
     is_production_python_path,
     ordered_ast_child_nodes,
     qualified_symbol,
@@ -50,15 +50,11 @@ class Finding:
 
 def iter_source_files(larch_dir: Path) -> list[Path]:
     """Return recursively discovered production Python files under larch/, sorted."""
-    result: list[Path] = []
-    for path in sorted(larch_dir.rglob("*.py")):
-        if not path.is_file() or path.is_symlink() or is_exempt_python_source(path):
-            continue
-        relative = path.relative_to(larch_dir.parent)
-        if EXCLUDED_DIRS.intersection(relative.parts):
-            continue
-        result.append(path)
-    return result
+    return iter_python_source_files(
+        larch_dir.parent,
+        scope=Path("larch"),
+        excluded_dirs=EXCLUDED_DIRS,
+    )
 
 
 def _tempfile_callee(node: ast.AST) -> str | None:
