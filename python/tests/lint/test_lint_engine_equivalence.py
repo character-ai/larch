@@ -18,6 +18,7 @@ from typing import Final, cast
 import pytest
 
 from larch.lint import lint_markdown_heading_fence_state as lint_md
+from larch.lint import lint_monkeypatch_facade_binding as lint_mp
 from larch.lint import lint_self_disarmable_gate as lint_sd
 from larch.lint import lint_unreachable_branch as lint_ub
 from larch.lint import self_disarmable_gate_detector as _sd_detector
@@ -38,6 +39,7 @@ EXPECTED_FIXTURE_FILENAMES: Final[frozenset[str]] = frozenset(
         "markdown_heading_fence_state.json",
         "unreachable_branch.json",
         "self_disarmable_gate.json",
+        "monkeypatch_facade_binding.json",
     }
 )
 
@@ -373,10 +375,26 @@ def test_markdown_adapter_preserves_repo_relative_paths_and_occurrence_codec(
     assert _occurrence_json_file(row.path) == "larch/mod.py"
 
 
+def adapt_monkeypatch_facade_binding(repo_root: Path) -> list[Finding]:
+    """Scan synthetic python/ test modules with the monkeypatch detector."""
+    python_dir: Path = repo_root / "python"
+    resolver = lint_mp.ModuleResolver(python_dir)
+    findings: list[Finding] = []
+    for path in lint_mp.iter_source_files(python_dir):
+        legacy = lint_mp.scan_file(path, python_dir=python_dir, resolver=resolver)
+        findings.extend(
+            lint_mp._to_engine_finding(item)  # type: ignore[reportPrivateUsage]  # test adapter
+            for item in legacy
+            if not item.suppressed
+        )
+    return findings
+
+
 ADAPTER_REGISTRY: Final[dict[str, AdapterFn]] = {
     lint_md.SUPPRESSION: adapt_markdown_heading_fence_state,
     lint_ub.SUPPRESSION: adapt_unreachable_branch,
     lint_sd.SUPPRESSION: adapt_self_disarmable_gate,
+    lint_mp.RULE_ID: adapt_monkeypatch_facade_binding,
 }
 
 
@@ -489,7 +507,12 @@ def test_fixture_registry_and_suppression_completeness() -> None:
         f"expected={sorted(EXPECTED_FIXTURE_FILENAMES)!r}"
     )
     suppression_ids: frozenset[str] = frozenset(
-        {lint_md.SUPPRESSION, lint_ub.SUPPRESSION, lint_sd.SUPPRESSION}
+        {
+            lint_md.SUPPRESSION,
+            lint_ub.SUPPRESSION,
+            lint_sd.SUPPRESSION,
+            lint_mp.RULE_ID,
+        }
     )
     registry_ids: frozenset[str] = frozenset(ADAPTER_REGISTRY)
     assert registry_ids == suppression_ids, (

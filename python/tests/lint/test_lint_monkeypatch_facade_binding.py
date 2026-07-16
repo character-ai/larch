@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from textwrap import dedent
 
@@ -33,6 +34,29 @@ def _record(
     return record
 
 
+def _git_init(root: Path) -> None:
+    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    _ = subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=root,
+        check=True,
+    )
+    _ = subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=root,
+        check=True,
+    )
+    marker = root / ".fixture"
+    if not marker.exists():
+        _ = marker.write_text("fixture\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    _ = subprocess.run(
+        ["git", "commit", "-q", "-m", "fixture", "--allow-empty"],
+        cwd=root,
+        check=True,
+    )
+
+
 def _write_project(root: Path, *, files: dict[str, str], baseline: object | None) -> None:
     python_dir = root / "python"
     python_dir.mkdir(parents=True, exist_ok=True)
@@ -41,7 +65,10 @@ def _write_project(root: Path, *, files: dict[str, str], baseline: object | None
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(dedent(source), encoding="utf-8")
     if baseline is not None:
-        _ = (python_dir / lmfb.BASELINE_FILENAME).write_text(json.dumps(baseline), encoding="utf-8")
+        _ = (python_dir / lmfb.BASELINE_FILENAME).write_text(
+            json.dumps(baseline, indent=2) + "\n", encoding="utf-8"
+        )
+    _git_init(root)
 
 
 def _base_files(test_source: str, *, facade_source: str = "from larch.defs import target\n") -> dict[str, str]:
@@ -361,10 +388,10 @@ def test_bare_suppression_without_reason_does_not_suppress(tmp_path: Path) -> No
     )
 
     assert _scan_single(tmp_path)[0].suppressed is False
-    assert lmfb.main(["--root", str(tmp_path)]) == 1
+    assert lmfb.main(["--root", str(tmp_path)]) == 2
 
 
-def test_baseline_entries_are_honored(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_baseline_entries_are_honored(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
         files=_base_files(
@@ -379,7 +406,6 @@ def test_baseline_entries_are_honored(tmp_path: Path, capsys: pytest.CaptureFixt
     )
 
     assert lmfb.main(["--root", str(tmp_path)]) == 0
-    assert "warning: test_facade.py:5:test_patch patches larch.facade.target" in capsys.readouterr().err
 
 
 def test_baseline_file_validation_accepts_test_paths(tmp_path: Path) -> None:
@@ -395,14 +421,12 @@ def test_baseline_file_validation_accepts_test_paths(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "file_name",
     [
-        "larch/test_bad.py",
-        "tests/helper.py",
-        "pkg/test_bad.py",
         "tests/../test_bad.py",
+        "/abs/test_bad.py",
         "python/test_bad.py",
     ],
 )
-def test_baseline_file_validation_rejects_out_of_scope_paths(tmp_path: Path, file_name: str) -> None:
+def test_baseline_file_validation_rejects_malformed_paths(tmp_path: Path, file_name: str) -> None:
     _write_project(tmp_path, files={}, baseline=[_record(file=file_name)])
 
     assert lmfb.main(["--root", str(tmp_path)]) == 2
@@ -499,13 +523,8 @@ def test_absent_baseline_bootstrap_succeeds(tmp_path: Path) -> None:
     assert rows == [_record(reason="bootstrap")]
 
 
-def test_write_migrates_renamed_test_symbol(tmp_path: Path) -> None:
-    """An external implementer renaming a test must not strand its baseline row.
-
-    The stale row (old symbol) is paired with the new live finding by the
-    identity that survives a rename, and its reason is carried over so the
-    regen succeeds without ``--initial-reason``.
-    """
+def test_write_renamed_symbol_requires_initial_reason(tmp_path: Path) -> None:
+    """Engine baselines key on qualified_symbol; renames need an explicit reason."""
     _write_project(
         tmp_path,
         files=_base_files(
@@ -519,14 +538,26 @@ def test_write_migrates_renamed_test_symbol(tmp_path: Path) -> None:
         baseline=[_record(qualified_symbol="test_patch", reason="grandfathered rename")],
     )
 
-    assert lmfb.main(["--root", str(tmp_path), "--write"]) == 0
+    assert lmfb.main(["--root", str(tmp_path), "--write"]) == 2
+    assert (
+        lmfb.main(
+            [
+                "--root",
+                str(tmp_path),
+                "--write",
+                "--initial-reason",
+                "grandfathered rename",
+            ]
+        )
+        == 0
+    )
     rows = json.loads((tmp_path / "python" / lmfb.BASELINE_FILENAME).read_text(encoding="utf-8"))
-    assert rows == [_record(qualified_symbol="test_patch_renamed", reason="grandfathered rename")]
+    assert rows == [
+        _record(qualified_symbol="test_patch_renamed", reason="grandfathered rename")
+    ]
 
 
-def test_check_mode_hints_at_rename_migration(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_check_mode_flags_renamed_symbol(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
         files=_base_files(
@@ -541,17 +572,9 @@ def test_check_mode_hints_at_rename_migration(
     )
 
     assert lmfb.main(["--root", str(tmp_path)]) == 1
-    err = capsys.readouterr().err
-    assert "likely rename of baselined symbol 'test_patch' to 'test_patch_renamed'" in err
-    assert "lint monkeypatch-facade-binding --write" in err
 
 
-def test_write_rename_ambiguous_requires_reason(tmp_path: Path) -> None:
-    """Two same-fingerprint renames cannot be paired unambiguously.
-
-    With two stale rows and two new findings sharing one fingerprint, neither
-    carries over; the regen still demands an explicit reason.
-    """
+def test_write_ambiguous_rename_requires_reason(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
         files=_base_files(
