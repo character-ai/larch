@@ -1,0 +1,40 @@
+{
+  "rule": "monkeypatch-facade-binding",
+  "cases": [
+    {
+      "label": "facade-reexport-patch",
+      "sources": {
+        "larch/defs.py": "def target():\n    return 'real'\n",
+        "larch/facade.py": "from larch.defs import target\n",
+        "test_facade.py": "from larch import facade\n\ndef test_patch(monkeypatch):\n    monkeypatch.setattr(facade, \"target\", lambda: None)\n"
+      },
+      "expected": [
+        {
+          "path": "python/test_facade.py",
+          "line": 4,
+          "rule_id": "monkeypatch-facade-binding",
+          "message": "patches larch.facade.target, imported from larch.defs occurrence 1; patch the defining module, or patch the consuming module's own binding",
+          "qualified_symbol": "test_patch",
+          "rendered": "python/test_facade.py:4: monkeypatch-facade-binding patches larch.facade.target, imported from larch.defs occurrence 1; patch the defining module, or patch the consuming module's own binding"
+        }
+      ]
+    },
+    {
+      "label": "defining-module-patch-clean",
+      "sources": {
+        "larch/defs.py": "def target():\n    return 'real'\n",
+        "larch/facade.py": "from larch.defs import target\n",
+        "test_facade.py": "from larch import defs\n\ndef test_patch(monkeypatch):\n    monkeypatch.setattr(defs, \"target\", lambda: None)\n"
+      },
+      "expected": []
+    },
+    {
+      "label": "no-findings-empty",
+      "sources": {
+        "larch/defs.py": "def target():\n    return 'real'\n",
+        "test_facade.py": "def test_noop():\n    return None\n"
+      },
+      "expected": []
+    }
+  ]
+}

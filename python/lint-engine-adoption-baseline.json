@@ -128,22 +128,6 @@
     "rule_id": "engine-adoption"
   },
   {
-    "anchor": "baseline-io",
-    "line": 786,
-    "message": "direct *-baseline.json I/O outside shared lint engine",
-    "path": "python/larch/lint/lint_monkeypatch_facade_binding.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
-    "anchor": "argparse-construction",
-    "line": 841,
-    "message": "legacy ArgumentParser construction outside shared lint engine",
-    "path": "python/larch/lint/lint_monkeypatch_facade_binding.py",
-    "reason": "Pre-engine legacy lint module; grandfathered until ported onto larch.lint.engine (#6967).",
-    "rule_id": "engine-adoption"
-  },
-  {
     "anchor": "argparse-construction",
     "line": 157,
     "message": "legacy ArgumentParser construction outside shared lint engine",

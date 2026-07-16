@@ -11,51 +11,33 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
 
+from larch.core import proc
 from larch.lint.engine import (
-    first_duplicate as _first_duplicate,
-    normalize_python_file_path,
+    EXIT_ERROR,
+    Finding as EngineFinding,
+    LintRule,
+    SourceFile,
     ordered_ast_child_nodes,
     qualified_symbol,
+    run_rule,
 )
 
 TOOL_FAILURE_EXIT = 2
+RULE_ID = "monkeypatch-facade-binding"
 BASELINE_FILENAME = "monkeypatch-facade-binding-baseline.json"
-BASELINE_KEYS = frozenset(
-    {
-        "file",
-        "qualified_symbol",
-        "facade_module",
-        "attribute",
-        "defining_module",
-        "occurrence",
-        "reason",
-    }
-)
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__"})
 MODULE_SYMBOL = "<module>"
+SUPPRESSION_TOKEN = "lint-monkeypatch-binding"
 SUPPRESSION_RE = re.compile(r"#\s*lint-monkeypatch-binding:\s*ok\s+\S")
 OBJECT_SETATTR_MIN_ARGS = 2
-
-
-class Record(TypedDict):
-    file: str
-    qualified_symbol: str
-    facade_module: str
-    attribute: str
-    defining_module: str
-    occurrence: int
-    reason: str
-
-
-class BaselineError(ValueError):
-    """Raised when the baseline cannot be trusted."""
+OCCURRENCE_FIELDS = ("facade_module", "attribute", "defining_module")
+PATHSPECS = ("python",)
+PYTHON_PREFIX = "python/"
 
 
 @dataclass(frozen=True)
@@ -256,15 +238,6 @@ def _is_valid_test_file(value: str) -> bool:
     if not filename.startswith("test_"):
         return False
     return len(parts) == 1 or parts[0] == "tests"
-
-
-def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
-    if not isinstance(value, str) or not value:
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    normalized = normalize_python_file_path(value)
-    if normalized != value or not _is_valid_test_file(normalized):
-        raise BaselineError(f"{source}: record {index} has invalid file")
-    return normalized
 
 
 def iter_source_files(python_dir: Path) -> list[Path]:
@@ -580,266 +553,77 @@ def scan_file(path: Path, *, python_dir: Path, resolver: ModuleResolver) -> list
     return findings
 
 
-def _record_key(record: Record) -> tuple[str, str, str, str, str, int]:
-    return (
-        record["file"],
-        record["qualified_symbol"],
-        record["facade_module"],
-        record["attribute"],
-        record["defining_module"],
-        record["occurrence"],
+def is_test_source_path(rel_path: str) -> bool:
+    """Pre-load filter for repo-relative monkeypatch test paths."""
+    if not rel_path.startswith(PYTHON_PREFIX) or not rel_path.endswith(".py"):
+        return False
+    under_python = rel_path[len(PYTHON_PREFIX) :]
+    if EXCLUDED_DIRS.intersection(Path(under_python).parts):
+        return False
+    return _is_valid_test_file(under_python)
+
+
+def _to_engine_finding(finding: Finding) -> EngineFinding:
+    return EngineFinding(
+        path=f"{PYTHON_PREFIX}{finding.file}",
+        line=finding.lineno,
+        rule_id=RULE_ID,
+        message=(
+            f"patches {finding.facade_module}.{finding.attribute}, imported from "
+            f"{finding.defining_module} occurrence {finding.occurrence}; patch the "
+            "defining module, or patch the consuming module's own binding"
+        ),
+        qualified_symbol=finding.qualified_symbol,
+        pattern_name=finding.facade_module,
+        occurrence=finding.occurrence,
+        occurrence_values=(
+            ("facade_module", finding.facade_module),
+            ("attribute", finding.attribute),
+            ("defining_module", finding.defining_module),
+        ),
     )
 
 
-def _rename_fingerprint(
-    key: tuple[str, str, str, str, str, int],
-) -> tuple[str, str, str, str, int]:
-    """Drop ``qualified_symbol`` (index 1) from a baseline identity.
-
-    Two monkeypatch findings that differ only in the test function that owns
-    them (a rename) share this fingerprint, so a stale baseline row can be
-    paired with the live finding that replaced it without matching on the
-    symbol an external implementer renamed.
-    """
-    return (key[0], key[2], key[3], key[4], key[5])
-
-
-def _rename_pairs(
-    baseline_records: list[Record],
-    new_findings: list[Finding],
-    live_keys: frozenset[tuple[str, str, str, str, str, int]],
-) -> dict[tuple[str, str, str, str, int], tuple[str, str]]:
-    """Pair stale baseline rows with new live findings across a test rename.
-
-    Returns ``fingerprint -> (old qualified_symbol, reason)`` for the stale
-    baseline rows (rows whose full identity is no longer live). A pair forms
-    only when exactly one stale row and exactly one new finding share the
-    fingerprint, so an ambiguous rename (two rows or two findings sharing it)
-    still requires an explicit reason instead of a silent carry-over.
-    """
-    stale_counts: dict[tuple[str, str, str, str, int], int] = {}
-    stale_rows: dict[tuple[str, str, str, str, int], Record] = {}
-    for record in baseline_records:
-        full = _record_key(record)
-        if full in live_keys:
-            continue
-        fingerprint = _rename_fingerprint(full)
-        stale_counts[fingerprint] = stale_counts.get(fingerprint, 0) + 1
-        stale_rows[fingerprint] = record
-    new_counts: dict[tuple[str, str, str, str, int], int] = {}
-    for finding in new_findings:
-        fingerprint = _rename_fingerprint(finding.key())
-        new_counts[fingerprint] = new_counts.get(fingerprint, 0) + 1
-    return {
-        fingerprint: (stale_rows[fingerprint]["qualified_symbol"], stale_rows[fingerprint]["reason"])
-        for fingerprint, count in stale_counts.items()
-        if count == 1 and new_counts.get(fingerprint, 0) == 1
-    }
-
-
-def _finding_sort_key(finding: Finding) -> tuple[str, str, str, str, str, int]:
-    return finding.key()
-
-
-def _validate_record(item: object, *, index: int, source: Path) -> Record:
-    if not isinstance(item, dict):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    record = cast("dict[str, object]", item)
-    if set(record) != set(BASELINE_KEYS):
-        raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
-    file_name = _validate_normalized_file(record["file"], source=source, index=index)
-    qualified_symbol = record["qualified_symbol"]
-    facade_module = record["facade_module"]
-    attribute = record["attribute"]
-    defining_module = record["defining_module"]
-    occurrence = record["occurrence"]
-    reason = record["reason"]
-    if not isinstance(qualified_symbol, str) or not qualified_symbol:
-        raise BaselineError(f"{source}: record {index} has invalid qualified_symbol")
-    if not isinstance(facade_module, str) or not _valid_module_name(facade_module):
-        raise BaselineError(f"{source}: record {index} has invalid facade_module")
-    if not isinstance(attribute, str) or not attribute.isidentifier():
-        raise BaselineError(f"{source}: record {index} has invalid attribute")
-    if not isinstance(defining_module, str) or not _valid_module_name(defining_module):
-        raise BaselineError(f"{source}: record {index} has invalid defining_module")
-    if not isinstance(occurrence, int) or isinstance(occurrence, bool) or occurrence < 1:
-        raise BaselineError(f"{source}: record {index} has invalid occurrence")
-    if not isinstance(reason, str) or not reason.strip():
-        raise BaselineError(f"{source}: record {index} has invalid reason")
-    return {
-        "file": file_name,
-        "qualified_symbol": qualified_symbol,
-        "facade_module": facade_module,
-        "attribute": attribute,
-        "defining_module": defining_module,
-        "occurrence": occurrence,
-        "reason": reason,
-    }
-
-
-def load_baseline(path: Path) -> list[Record]:
-    """Load and validate the committed baseline."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise BaselineError(f"{path}: baseline must be a top-level JSON array")
-    records = [_validate_record(item, index=index, source=path) for index, item in enumerate(cast("list[object]", data))]
-    duplicate = _first_duplicate(_record_key(record) for record in records)
-    if duplicate is not None:
-        raise BaselineError(f"{path}: duplicate baseline identity {format_key(duplicate)}")
-    return records
-
-
-def _collect_all(python_dir: Path) -> list[Finding]:
+def build_rule(root: Path) -> LintRule:
+    """Build an engine rule closed over a ModuleResolver for ``root``."""
+    python_dir = root / "python"
     resolver = ModuleResolver(python_dir)
-    findings: list[Finding] = []
-    for path in iter_source_files(python_dir):
-        findings.extend(scan_file(path, python_dir=python_dir, resolver=resolver))
-    return findings
 
+    def detect(source: SourceFile) -> list[EngineFinding]:
+        if not source.is_python or not is_test_source_path(source.path):
+            return []
+        rel = source.path[len(PYTHON_PREFIX) :]
+        path = python_dir / rel
+        legacy = scan_file(path, python_dir=python_dir, resolver=resolver)
+        # Engine applies inline suppression; emit every live site.
+        return [_to_engine_finding(finding) for finding in legacy]
 
-def _active_findings(findings: list[Finding]) -> list[Finding]:
-    return [finding for finding in findings if not finding.suppressed]
-
-
-def _check_duplicate_live(findings: list[Finding]) -> str | None:
-    duplicate = _first_duplicate(finding.key() for finding in _active_findings(findings))
-    if duplicate is None:
-        return None
-    return f"duplicate live identity {format_key(duplicate)}"
-
-
-def format_key(key: tuple[str, str, str, str, str, int]) -> str:
-    file_name, qualified_symbol, facade_module, attribute, defining_module, occurrence = key
-    return f"{file_name}:{qualified_symbol} {facade_module}.{attribute} from {defining_module}#{occurrence}"
-
-
-def serialize_baseline(records: list[Record]) -> str:
-    """Return canonical sorted JSON for the baseline."""
-    ordered = sorted(records, key=_record_key)
-    return json.dumps(ordered, indent=2) + "\n"
-
-
-def _records_for_write(
-    findings: list[Finding],
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> list[Record]:
-    baseline_records: list[Record] = []
-    if baseline_path.is_file():
-        baseline_records = load_baseline(baseline_path)
-    preserved = {_record_key(record): record["reason"] for record in baseline_records}
-    active = sorted(_active_findings(findings), key=_finding_sort_key)
-    live_keys = frozenset(finding.key() for finding in active)
-    new_findings = [finding for finding in active if finding.key() not in preserved]
-    rename_pairs = _rename_pairs(baseline_records, new_findings, live_keys)
-    reason_default = initial_reason.strip() if initial_reason is not None else None
-    records: list[Record] = []
-    missing: list[str] = []
-    for finding in active:
-        pair = rename_pairs.get(_rename_fingerprint(finding.key()))
-        reason = preserved.get(finding.key()) or (pair[1] if pair else None) or reason_default
-        if reason is None:
-            missing.append(format_key(finding.key()))
-            continue
-        records.append(
-            {
-                "file": finding.file,
-                "qualified_symbol": finding.qualified_symbol,
-                "facade_module": finding.facade_module,
-                "attribute": finding.attribute,
-                "defining_module": finding.defining_module,
-                "occurrence": finding.occurrence,
-                "reason": reason,
-            }
-        )
-    if missing:
-        joined = "\n  ".join(missing)
-        raise BaselineError("missing baseline reasons for live monkeypatch facade-binding findings:\n  " + joined)
-    return records
-
-
-def _run_write(
-    python_dir: Path,
-    *,
-    baseline_path: Path,
-    initial_reason: str | None,
-) -> int:
-    try:
-        findings = _collect_all(python_dir)
-        duplicate = _check_duplicate_live(findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-        records = _records_for_write(
-            findings,
-            baseline_path=baseline_path,
-            initial_reason=initial_reason,
-        )
-    except BaselineError as exc:
-        print(f"lint-monkeypatch-facade-binding: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
-    print(f"lint-monkeypatch-facade-binding: wrote {len(records)} records to {baseline_path}", file=sys.stderr)
-    return 0
-
-
-def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
-    try:
-        baseline_records = load_baseline(baseline_path)
-        findings = _collect_all(python_dir)
-        duplicate = _check_duplicate_live(findings)
-        if duplicate is not None:
-            raise BaselineError(duplicate)
-    except BaselineError as exc:
-        print(f"lint-monkeypatch-facade-binding: {exc}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    active = sorted(_active_findings(findings), key=_finding_sort_key)
-    baseline_keys = frozenset(_record_key(record) for record in baseline_records)
-    new_findings: list[Finding] = []
-    warned: list[Finding] = []
-    for finding in active:
-        if finding.key() in baseline_keys:
-            warned.append(finding)
-        else:
-            new_findings.append(finding)
-    live_keys = frozenset(finding.key() for finding in active)
-    rename_pairs = _rename_pairs(baseline_records, new_findings, live_keys)
-    for finding in warned:
-        print(
-            "warning: "
-            f"{finding.file}:{finding.lineno}:{finding.qualified_symbol} patches "
-            f"{finding.facade_module}.{finding.attribute}, imported from {finding.defining_module} "
-            f"occurrence {finding.occurrence} (baselined)",
-            file=sys.stderr,
-        )
-    for finding in new_findings:
-        pair = rename_pairs.get(_rename_fingerprint(finding.key()))
-        suffix = ""
-        if pair is not None:
-            suffix = (
-                f"; likely rename of baselined symbol '{pair[0]}' to "
-                f"'{finding.qualified_symbol}', run "
-                "`python3 python/cli.py lint monkeypatch-facade-binding --write` "
-                "to migrate the baseline"
-            )
-        print(
-            f"{finding.file}:{finding.lineno}:{finding.qualified_symbol} patches "
-            f"{finding.facade_module}.{finding.attribute}, imported from {finding.defining_module} "
-            f"occurrence {finding.occurrence}; patch the defining module, or patch the "
-            f"consuming module's own binding{suffix}",
-            file=sys.stderr,
-        )
-    return 1 if new_findings else 0
+    return LintRule(
+        rule_id=RULE_ID,
+        description=(
+            "Ratchet monkeypatches away from facade-only imported bindings"
+        ),
+        detect=detect,
+        syntax_policy="skip",
+        suppression_token=SUPPRESSION_TOKEN,
+        pathspecs=PATHSPECS,
+        source_filter=is_test_source_path,
+        occurrence_baseline=True,
+        occurrence_fields=OCCURRENCE_FIELDS,
+        require_baseline=True,
+    )
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint monkeypatch-facade-binding", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
+    parser = argparse.ArgumentParser(
+        prog="cli.py lint monkeypatch-facade-binding",
+        description=__doc__,
+    )
+    _ = parser.add_argument(
+        "--root",
+        default=str(Path(__file__).resolve().parents[3]),
+        help="Repository root (default: checkout containing this module).",
+    )
     _ = parser.add_argument(
         "--write",
         action="store_true",
@@ -858,22 +642,34 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry registered as ``python3 python/cli.py lint monkeypatch-facade-binding``."""
     parsed = _parse_args(argv if argv is not None else sys.argv[1:])
     if parsed is None:
-        return TOOL_FAILURE_EXIT
+        return EXIT_ERROR
     root = Path(str(parsed.root)).resolve()
     python_dir = root / "python"
     if not python_dir.is_dir():
-        print(f"lint-monkeypatch-facade-binding: python directory not found: {python_dir}", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    baseline_path = python_dir / BASELINE_FILENAME
-    initial_reason = cast("str | None", parsed.initial_reason)
-    if initial_reason is not None and not initial_reason.strip():
-        print("lint-monkeypatch-facade-binding: --initial-reason must be non-empty", file=sys.stderr)
-        return TOOL_FAILURE_EXIT
-    if bool(parsed.write):
-        return _run_write(python_dir, baseline_path=baseline_path, initial_reason=initial_reason)
-    return _run_check(python_dir, baseline_path=baseline_path)
+        print(
+            f"lint-monkeypatch-facade-binding: python directory not found: {python_dir}",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    initial_reason = parsed.initial_reason
+    if initial_reason is not None and not str(initial_reason).strip():
+        print(
+            "lint-monkeypatch-facade-binding: --initial-reason must be non-empty",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    return run_rule(
+        build_rule(root),
+        root,
+        proc.ProcRunner(),
+        baseline_path=python_dir / BASELINE_FILENAME,
+        write_baseline=bool(parsed.write),
+        initial_reason=None if initial_reason is None else str(initial_reason),
+        strict_stale=False,
+    )
 
 
 if __name__ == "__main__":
