@@ -15,6 +15,7 @@ from larch.core import config
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.rendering import rendering
+from larch.rendering import _rendering_helpers as helpers
 from larch.agents import review_dispatch
 from larch.review import voting
 from tests.support.design_wire import plan_body, run_params_json
@@ -1830,4 +1831,60 @@ def test_render_voter_payload_sidecar_counts_scope_anchor(tmp_path: Path, capsys
     )
 
     assert sidecar.read_text(encoding="utf-8") == f"{len(anchor.read_bytes())}\n"
+
+
+def test_rendering_helpers_extract_and_replace(tmp_path: Path) -> None:
+    template = tmp_path / "template.md"
+    _ = template.write_text(
+        "## Reviewer: Demo\n"
+        "<!-- BEGIN GENERATED_BODY -->\n"
+        "```\n"
+        "### In-Scope Findings\n"
+        "- {OUTPUT_INSTRUCTION}\n"
+        "### Out-of-Scope Observations\n"
+        "- {OUTPUT_INSTRUCTION}\n"
+        "```\n"
+        "<!-- END GENERATED_BODY -->\n",
+        encoding="utf-8",
+    )
+    body = helpers.extract_generated_body(template, heading="## Reviewer: Demo")
+    replaced = helpers.replace_output_instruction(body, inscope=["keep this"], oos=["note that"])
+    assert "### In-Scope Findings" in replaced
+    assert "- keep this" in replaced
+    assert "- note that" in replaced
+    assert "{OUTPUT_INSTRUCTION}" not in replaced
+
+
+def test_rendering_helpers_frontmatter_and_checksum(tmp_path: Path) -> None:
+    path = tmp_path / "agent.md"
+    _ = path.write_text("---\nname: demo\n---\nBody line\n", encoding="utf-8")
+    assert helpers.frontmatter_body(path) == "Body line"
+    digest = helpers.sha256_path(path)
+    assert len(digest) == 64
+    assert all(ch in "0123456789abcdef" for ch in digest)
+
+
+def test_rendering_helper_imports_are_cycle_free() -> None:
+    """Load helpers and both callers in fresh interpreters without eager cycles."""
+    snippets = (
+        "from larch.rendering import _rendering_helpers as h; "
+        "assert h.RenderError is not None; print('helpers-ok')",
+        "from larch.rendering import _rendering_generators as g; "
+        "assert g.RenderError is not None; "
+        "assert 'larch.rendering.rendering' not in __import__('sys').modules; "
+        "print('generators-ok')",
+        "from larch.rendering import rendering as r; "
+        "from larch.rendering import _rendering_helpers as h; "
+        "assert r.RenderError is h.RenderError; print('rendering-ok')",
+    )
+    for snippet in snippets:
+        result = subprocess.run(
+            [sys.executable, "-c", f"import sys; sys.path.insert(0, {str(PYTHON_DIR)!r}); {snippet}"],
+            capture_output=True,
+            text=True,
+            cwd=str(PYTHON_DIR),
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip().endswith("-ok")
 # pyright: reportArgumentType=false

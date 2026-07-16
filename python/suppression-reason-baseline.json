@@ -3144,13 +3144,6 @@
   },
   {
     "file": "larch/rendering/_rendering_generators.py",
-    "suppression_kind": "pylint-skip-file",
-    "text": "pylint: skip-file",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/rendering/_rendering_generators.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedImport=false, reportUnusedFunction=false",
     "occurrence": 1,
