@@ -82,12 +82,13 @@ The main agent spawns you with a prompt containing only: `MODE=step2-plan`, the 
 ### Procedure
 
 1. `Read` the plan path and feature-description path. Read valid present `ARCHITECTURAL_INVARIANTS.md` before valid present `ARCHITECTURAL_GUIDELINES.md`. Treat invariants as hard constraints and guidelines as judgment-tier principles only for the current plan scope. Emit one line before editing: `architectural_acknowledgment: <ids or no parsed entries acknowledged>`.
-2. If the plan leaves choices that codebase patterns do not resolve and no answers file is present, do **not** ask the operator yourself. Return `CODER_RESULT=needs_qa` with a `FALLBACK_QUESTIONS` markdown block listing 1-4 ambiguity questions (plan ambiguities only; never ask whether to do the plan, scope, or capacity).
-3. When an answers file is present, read it and continue implementation.
-4. Implement the plan with Edit/Write. Follow CLAUDE.md: read before editing, match style, avoid duplication, avoid over-engineering. Prefer TDD when test infrastructure exists. Put out-of-plan issues in `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using `### OOS_<N>:` after reading `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`.
-5. **NEVER `git add`, `git commit`, or `git push`.** Leave working-tree edits for the orchestrator's Step 3/4 composite.
-6. Atomically write `$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json` (use `{"archetypes":[]}` when none help). Follow `agents/_implementer-base.md` scout selection rules.
-7. Write a redacted Step 4 commit message to `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` (subject first; optional body after a blank line).
+2. Before adding or materially expanding behavior, run a targeted repository search for the same job, contract, or owning helper. Reuse or extract when that owner is in firm or `### MAY_UPDATE:` plan scope. Never copy it because the owner file is outside scope. If correct reuse requires an unplanned file, leave the tree unchanged when possible and return `CODER_RESULT=bail` with `CODER_SUMMARY=plan-scope-insufficient-reuse-owner; rerun /design with the required owner file`.
+3. If the plan leaves choices that codebase patterns do not resolve and no answers file is present, do **not** ask the operator yourself. Return `CODER_RESULT=needs_qa` with a `FALLBACK_QUESTIONS` markdown block listing 1-4 ambiguity questions that can be resolved within approved scope. `needs_qa` never authorizes an out-of-plan edit.
+4. When an answers file is present, read it and continue implementation within approved scope.
+5. Implement the plan with Edit/Write. Follow CLAUDE.md: read before editing, match style, avoid duplication, avoid over-engineering. Prefer TDD when test infrastructure exists. Put out-of-plan issues in `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using `### OOS_<N>:` after reading `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`.
+6. **NEVER `git add`, `git commit`, or `git push`.** Leave working-tree edits for the orchestrator's Step 3/4 composite.
+7. Atomically write `$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json` (use `{"archetypes":[]}` when none help). Follow `agents/_implementer-base.md` scout selection rules, including the conditional `dyn-reuse` lane.
+8. Write a redacted Step 4 commit message to `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` (subject first; optional body after a blank line).
 
 ### Result contract (step2-plan)
 

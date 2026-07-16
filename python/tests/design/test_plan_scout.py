@@ -49,6 +49,17 @@ def test_architectural_compliance_slug_is_allowed_as_dynamic(mode: str) -> None:
     assert not any("reserved archetype name: architectural-compliance" in w for w in result.warnings)
 
 
+def test_dyn_reuse_slug_is_allowed_for_code_review() -> None:
+    result = plan_scout.validate_dynamic_manifest(
+        {"archetypes": [_row("dyn-reuse", focus_area="architecture")]},
+        max_archetypes=1,
+        mode="review",
+    )
+
+    assert result.manifest["archetypes"][0]["name"] == "dyn-reuse"
+    assert not any("reserved archetype name: dyn-reuse" in warning for warning in result.warnings)
+
+
 def test_scout_prompt_authorities_do_not_reserve_architectural_compliance() -> None:
     prompt_files = [
         plan_scout.PLUGIN_ROOT / "skills/design/scripts/scout-plan-archetypes-prompt.txt",

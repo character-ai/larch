@@ -19,6 +19,8 @@ Before exit, atomically write `<SCOUT_MANIFEST_PATH>` as a best-effort Step 5 si
 
 Use short lowercase slugs, preferably `dyn-<topic>`. Do not duplicate static reviewers or reserved slugs (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, `security`; authoritative `REVIEW_RESERVED` in `python/plan_scout.py`). Keep `rationale` single-line and `prompt_body` about changed code to inspect, not output format. Scout sidecar failure is reported but nonblocking.
 
+Emit a `dyn-reuse` reviewer when the change adds a substantial helper or module, the plan names an existing sibling or canonical owner, an extraction occurred, or the plan records a deliberate `G-Dup-1` exception. Direct it to search for overlapping implementations and verify that the planned owner was reused. Otherwise do not add a reuse specialist merely to fill the sidecar.
+
 ## Mode boundary
 
 This base is shared with the `larch:claude-implementer` subagent. That subagent may run `MODE=plan-revise` for `/design` Gate C, where it edits only the design `plan.txt`, writes no manifest or scout sidecar, and performs none of the repository-edit, staging, commit, or implementation side effects below. Codex and Cursor are launched only for `/implement` Step 2 code implementation and are never invoked in `MODE=plan-revise`; every manifest, repository-edit, and implementation instruction below applies to you unchanged.
@@ -43,6 +45,10 @@ Preventive checks, not hard guards:
 - Legacy lifecycle title-prefix literals such as `[IN PROGRESS]` or `[PLANNED]`: run or account for `scripts/test-legacy-title-prefix-literals-scope.sh` and extend `ALLOW=`.
 - Tests in files split across Makefile targets: keep `-k` selectors disjoint per `scripts/lint-harness-pytest-partition.py`.
 - PLR0911 is enforced; when a function is near the return limit, consolidate equivalent guard returns instead of adding duplicate early returns or suppression comments.
+
+## Reuse-before-write check
+
+Before adding or materially expanding behavior, run a targeted repository search for the same job, contract, or owning helper. Reuse or extract the existing owner when it is within firm or `### MAY_UPDATE:` plan scope. Never copy an implementation solely because its owner file is outside scope. `needs_qa` resolves ambiguity only within approved scope; it never authorizes an out-of-plan edit. If correct reuse requires an unplanned file, leave the tree unchanged when possible and emit `status=bailed` with `bail_reason="plan-scope-insufficient-reuse-owner"`; the operator must rerun `/design` with the required owner file. Do not invent a manifest field for reuse evidence.
 
 ## Runtime type validation
 
