@@ -1366,3 +1366,5 @@ skills/implement/scripts/test-step-18.sh	#7063
 skills/implement/scripts/test-implement-review-token-propagation.sh	#7063
 skills/design/scripts/design-step3b-sanitize.sh	#7481
 skills/design/scripts/design-step3b-sanitize.md	#7481
+skills/design/scripts/design-step35-settle.sh	#7484
+skills/design/scripts/design-step35-settle.md	#7484

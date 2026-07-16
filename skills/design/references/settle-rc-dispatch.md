@@ -1,16 +1,16 @@
 # Settle-wrapper dispatch
 
-**Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, Round 2 post-plan discussion revision, and Gate C plan revision after `design-step35-settle.sh` returns.
+**Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, Round 2 post-plan discussion revision, and Gate C plan revision after `python/cli.py design step35-settle` returns.
 
-**Contract**: prompt-side branch bodies for `design-step35-settle.sh` machine actions. Python chooses the action through `python/cli.py design settle-next-action`; this file does not derive actions from rc values.
+**Contract**: prompt-side branch bodies for `python/cli.py design step35-settle` machine actions. Python chooses the action through `python/cli.py design settle-next-action`; this file does not derive actions from rc values.
 
-**When to load**: immediately before any orchestrator branches on `design-step35-settle.sh` output at Gate B post-apply, Gate A re-entry trailer guard, or discussion-round2 plan revision after the settle wrapper returns.
+**When to load**: immediately before any orchestrator branches on `python/cli.py design step35-settle` output at Gate B post-apply, Gate A re-entry trailer guard, or discussion-round2 plan revision after settle returns.
 
 ---
 
 ## Dispatch key
 
-Primary key: branch on the whole-line `SETTLE_NEXT_ACTION=...` row from `design-step35-settle.sh` stdout.
+Primary key: branch on the whole-line `SETTLE_NEXT_ACTION=...` row from `python/cli.py design step35-settle` stdout.
 
 If the `SETTLE_NEXT_ACTION` action row is absent, stop for operator repair. Do not route from the wrapper rc when the action row is missing.
 
@@ -49,4 +49,4 @@ Gate C also emits the shared `dedup-revise` and `pause` actions (rows above): `d
 
 ## Compatibility note
 
-`design-step35-settle.sh` still maps `gate-a` and `discussion-round2` to `python/cli.py design step2b-postplan --site discussion-round2` internally.
+`python/cli.py design step35-settle` still maps `gate-a` and `discussion-round2` to `python/cli.py design step2b-postplan --site discussion-round2` internally.

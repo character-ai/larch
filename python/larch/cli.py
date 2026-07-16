@@ -326,7 +326,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("plan-review", "step3b-tail"): ("larch.review.plan_review", "step3b_tail_main", True),
     ("plan-review", "emit-rejected"): ("larch.review.plan_review", "emit_rejected_main", True),
     ("plan-review", "step35"): ("larch.review.plan_review", "step35_main", True),
-    ("plan-review", "step35-settle"): ("larch.review.plan_review", "step35_settle_main", True),
+    ("plan-review", "step35-settle"): ("larch.design.design_settle", "step35_settle_main", True),
     ("plan-review", "json-get-bool"): ("larch.review.plan_review", "json_get_bool_main", True),
     ("plan-review", "round-artifact-included"): ("larch.review.plan_review", "round_artifact_included_main", False),
     ("plan-review", "round-revise-artifact-included"): (
@@ -392,6 +392,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("design", "step2b-drafter"): ("larch.design.design_step2b", "step2b_drafter_main", True),
     ("design", "step2b-postplan"): ("larch.design.design_step2b", "step2b_postplan_main", True),
     ("design", "settle-next-action"): ("larch.design.design_session", "settle_next_action_main", True),
+    ("design", "step35-settle"): ("larch.design.design_settle", "step35_settle_main", True),
     ("design", "prelude"): ("larch.design.design_session", "prelude_main", True),
     ("design", "step3-continuation-entry"): ("larch.design.design_session", "step3_continuation_entry_main", True),
     ("design", "dialectic-gatec"): ("larch.design.design_dialectic", "gatec_main", False),

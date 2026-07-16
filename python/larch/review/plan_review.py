@@ -712,10 +712,9 @@ def step35(argv: Sequence[str]) -> int:
 
 
 def step35_settle(argv: Sequence[str]) -> int:
-    script = _plugin_root() / "skills" / "design" / "scripts" / "design-step35-settle.sh"
-    bash = shutil.which("bash") or "/bin/bash"
-    proc = subprocess.run([bash, str(script), *argv], cwd=str(_REPO_ROOT), check=False)
-    return proc.returncode
+    from larch.design.design_settle import step35_settle_main as _settle_main  # noqa: PLC0415 - lint-layering: ok plan-review CLI façade delegates settle to design owner
+
+    return _settle_main(argv)
 
 
 def _delegate_step3_script(*, script_name: str, argv: Sequence[str]) -> int:
