@@ -12,6 +12,7 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.bgjob import registry as bgjob_registry
 from larch.state._tokens import (
     _abandoned_checks_bgjob_registry_paths,
@@ -30,11 +31,12 @@ def _state_layer_paths(tmpdir: Path) -> list[Path]:
 def _rewrite_state_keys(*, path: Path, updates: Mapping[str, str]) -> bool:
     if path.is_symlink() or not path.is_file() or not os.access(path, os.W_OK):
         return False
-    existing: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if "=" in line and not line.startswith("#"):
-            key, value = line.split("=", 1)
-            existing[key] = value
+    existing = larch_io.read_kvs(
+        path,
+        duplicate_policy="last",
+        skip_comments=True,
+        cr_strip="suffix",
+    )
     existing.update(updates)
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:

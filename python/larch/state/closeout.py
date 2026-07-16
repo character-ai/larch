@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from larch import io as larch_io
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -26,9 +27,13 @@ def _plugin_root() -> Path:
     if tmpdir:
         plugin_env = Path(tmpdir) / "plugin-root.env"
         if plugin_env.is_file():
-            for line in plugin_env.read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.startswith("CLAUDE_PLUGIN_ROOT="):
-                    return Path(line.split("=", 1)[1])
+            values = larch_io.read_kvs(
+                plugin_env,
+                duplicate_policy="all",
+                cr_strip="suffix",
+            )
+            if values.get("CLAUDE_PLUGIN_ROOT"):
+                return Path(values["CLAUDE_PLUGIN_ROOT"][0])
         session = Path(tmpdir) / "session-env.sh"
         value = _read_key(path=session, key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
         if value:

@@ -15,6 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
@@ -836,11 +837,17 @@ def larch_log_commit_main(argv: list[str]) -> int:
         return result.returncode
     commit_sha = ""
     extra: dict[str, str | int] = {}
+    output_values = larch_io.parse_kv(
+        result.stdout,
+        duplicate_policy="last",
+        allowed_keys={"SECRET_SCRUB_VIOLATIONS"},
+        cr_strip="suffix",
+    )
     for line in result.stdout.splitlines():
         if re.fullmatch(r"[0-9a-f]{40}", line):
             commit_sha = line
-        elif line.startswith("SECRET_SCRUB_VIOLATIONS="):
-            extra["SECRET_SCRUB_VIOLATIONS"] = line.split("=", 1)[1]
+    if "SECRET_SCRUB_VIOLATIONS" in output_values:
+        extra["SECRET_SCRUB_VIOLATIONS"] = output_values["SECRET_SCRUB_VIOLATIONS"]
     unchanged = result.argv in {("true",), ("larch-log-volatile-only",)}
     path = _repo_run_dir(repo_root=_resolve_consumer_repo_root(str(Path.cwd())), skill=args.skill, run_id=args.run_id)
     _emit_larch_log_envelope(

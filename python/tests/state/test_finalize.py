@@ -882,6 +882,20 @@ def test_implement_finalize_rejects_malformed_bool(tmp_path: Path, capsys: pytes
     assert "state-file key DRAFT must be true or false" in capsys.readouterr().err
 
 
+def test_implement_finalize_rejects_duplicate_state_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(ctx=_ctx(tmp_path), path=state)
+    state.write_text(state.read_text(encoding="utf-8") + "DRAFT=true\n", encoding="utf-8")
+
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+
+    assert rc == 2
+    assert "duplicate state-file key: DRAFT" in capsys.readouterr().err
+
+
 def test_implement_finalize_postbump_rejects_invalid_new_version(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

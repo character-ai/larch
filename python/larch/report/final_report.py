@@ -428,7 +428,8 @@ def _merge_line_count_state(*, ship: Path, pr_number: str, lines: tokens.PrLineC
         return
     preserved: list[str] = []
     for line in ship.read_text(encoding="utf-8", errors="replace").splitlines():
-        key = line.split("=", 1)[0] if "=" in line else ""
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        key = next(iter(parsed), "")
         if key and key not in {"LINES_PR_NUMBER", "LINES_STATUS", "CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"}:
             preserved.append(line)
     tmp = ship.with_suffix(ship.suffix + ".tmp")
