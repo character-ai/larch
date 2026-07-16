@@ -381,23 +381,16 @@ def _load_round_env_keys(session_env_path: str) -> dict[str, str]:
     """Read Gate B round keys from the session env file (not on the shared allowlist)."""
     if not session_env_path:
         return {}
-    source = Path(session_env_path)
-    if source.is_symlink() or not source.is_file():
-        return {}
-    out: dict[str, str] = {}
-    try:
-        text = source.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return out
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        line = line.removeprefix("export ")
-        key, _, value = line.partition("=")
-        if key in _ROUND_ENV_KEYS and key not in out:
-            out[key] = value.strip().strip("'\"")
-    return out
+    return larch_io.read_kvs(
+        session_env_path,
+        allowed_keys=_ROUND_ENV_KEYS,
+        duplicate_policy="first",
+        skip_comments=True,
+        reject_symlink=True,
+        on_error_default=True,
+        errors="replace",
+        default={},
+    )
 
 
 def _consume_flag_value(args: list[str], index: int) -> tuple[str, int] | None:
