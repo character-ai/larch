@@ -308,6 +308,7 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         (["implement", "step-6-entry"], "larch.implement.implement_dispatch", "step6_entry_main"),
         (["implement", "step-8-oos-checkpoint"], "larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),
         (["implement", "step-18-gate-finalize"], "larch.implement.implement_dispatch", "step_18_gate_finalize_main"),
+        (["implement", "step-18"], "larch.implement.implement_dispatch", "step_18_main"),
         (["run-log", "validate-run-id", "--run-id=-abc123"], "larch.report.run_logs", "larch_log_validate_run_id_main"),
     ]
     for argv, module_name, func_name in cases:

@@ -166,6 +166,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "clone-tag"): ("larch.implement.implement_dispatch", "clone_tag_main", False),
     ("implement", "kill-active-leg"): ("larch.implement.implement_dispatch", "kill_active_leg_main", False),
     ("implement", "normalize-coder-scout"): ("larch.implement.implement_dispatch", "normalize_coder_scout_main", False),
+    ("implement", "step-0-bootstrap"): ("larch.implement.implement_dispatch", "step0_bootstrap_main", False),
     ("implement", "step-0-degraded-gate"): ("larch.implement.implement_dispatch", "step0_degraded_gate_main", False),
     ("implement", "step-2-post-dispatch"): ("larch.implement.implement_dispatch", "step2_post_dispatch_main", False),
     ("implement", "step-5-review"): ("larch.implement.implement_dispatch", "step5_review_main", False),
@@ -175,6 +176,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "step-8-seed-initial"): ("larch.implement.implement_dispatch", "step8_seed_initial_main", False),
     ("implement", "step-8-ship"): ("larch.implement.implement_dispatch", "step8_ship_main", False),
     ("implement", "step-8-oos-checkpoint"): ("larch.implement.implement_dispatch", "step8_oos_checkpoint_main", True),
+    ("implement", "step-18"): ("larch.implement.implement_dispatch", "step_18_main", True),
     ("implement", "step-18-gate-finalize"): ("larch.implement.implement_dispatch", "step_18_gate_finalize_main", True),
     ("implement", "run-step-checks"): ("larch.implement.implement_dispatch", "run_step_checks_main", False),
     ("implement", "checks-result-identity"): (
@@ -800,6 +802,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("session", "write-design-env"): ("larch.state.session_env", "write_design_env_main", False),
     ("session", "check-live-mutation-auth"): ("larch.state.session_env", "check_live_mutation_auth_main", False),
     ("session", "validate-design-tmpdir"): ("larch.state.session_env", "validate_design_tmpdir_main", False),
+    ("session", "require-plugin-root"): ("larch.state.session_env", "require_plugin_root_main", False),
     ("session", "resolve-trusted-design-env"): ("larch.state.session_env", "resolve_trusted_design_env_main", False),
     ("session", "write-implement-env"): ("larch.state.session_env", "write_implement_env_main", False),
     ("session", "clear-implement-pointer"): ("larch.state.session_env", "clear_implement_pointer_main", False),

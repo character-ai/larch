@@ -258,6 +258,12 @@ def require_plugin_root() -> int:
     return 0
 
 
+def require_plugin_root_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="session require-plugin-root", add_help=False)
+    _ = parser.parse_args(argv or [])
+    return require_plugin_root()
+
+
 @dataclass(frozen=True)
 class WriteEnvResult:
     """Result of :func:`write_env`.
@@ -1070,6 +1076,9 @@ def validate_design_tmpdir_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
     except SystemExit:
         return 2
+    plugin_rc = require_plugin_root()
+    if plugin_rc != 0:
+        return plugin_rc
     ok, message = validate_design_tmpdir(args.path)
     if not ok:
         _plain_err(message)

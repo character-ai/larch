@@ -68,11 +68,14 @@ case "$PHASE" in
     *) usage; exit 2 ;;
 esac
 
-_cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ "${CLAUDE_PLUGIN_ROOT:-}" = "$_cpr_literal" ]; then
-    printf '%s\n' '/design Step 3 MAV: CLAUDE_PLUGIN_ROOT required' >&2
-    exit 1
-fi
+_cpr_literal='${CLAUDE_PLUGIN_ROOT}'
+_cpr_cli_root="${CLAUDE_PLUGIN_ROOT:-}"
+case "${_cpr_cli_root}" in
+    ""|"$_cpr_literal")
+        _cpr_cli_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+        ;;
+esac
+python3 "$_cpr_cli_root/python/cli.py" session require-plugin-root || exit $?
 export CLAUDE_PLUGIN_ROOT
 
 if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then

@@ -146,15 +146,14 @@ if [ "$RESUME_FINDINGS_FILE_SEEN" = true ] && [ -z "$RESUME_FINDINGS_FILE" ]; th
 fi
 
 design_require_plugin_root() {
-  _cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
-  if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-    printf '%s\n' "/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort" >&2
-    exit 1
-  fi
-  if [ "${CLAUDE_PLUGIN_ROOT:-}" = "$_cpr_literal" ]; then
-    printf '%s\n' "/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal ${_cpr_literal}; abort" >&2
-    exit 1
-  fi
+  _cpr_literal='${CLAUDE_PLUGIN_ROOT}'
+  _cpr_cli_root="${CLAUDE_PLUGIN_ROOT:-}"
+  case "${_cpr_cli_root}" in
+    ""|"$_cpr_literal")
+      _cpr_cli_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+      ;;
+  esac
+  python3 "${_cpr_cli_root}/python/cli.py" session require-plugin-root || exit $?
   export CLAUDE_PLUGIN_ROOT
 }
 

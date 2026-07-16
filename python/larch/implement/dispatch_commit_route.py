@@ -144,12 +144,17 @@ def _bgjob_spec(request: BgjobRequest) -> bgjob_model.JobSpec:
     )
 
 
-def _run_adapter(spec: bgjob_model.JobSpec, *, repo_root: Path | None = None) -> int:
+def _run_adapter(
+    spec: bgjob_model.JobSpec,
+    *,
+    repo_root: Path | None = None,
+    options: bgjob_adapt.AdaptOptions | None = None,
+) -> int:
     try:
         if repo_root is None:
-            return bgjob_adapt.start_or_reattach(spec)
+            return bgjob_adapt.start_or_reattach(spec, options=options)
         with contextlib.chdir(repo_root):
-            return bgjob_adapt.start_or_reattach(spec)
+            return bgjob_adapt.start_or_reattach(spec, options=options)
     except bgjob_adapt.AdaptError as exc:
         print(f"BGJOB_ERROR={exc.token}")
         return 2

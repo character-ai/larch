@@ -2388,11 +2388,22 @@ def _install_step18_finalize(
     rc: int = 0,
     stdout: str = "EMIT_BODY=false\n",
 ) -> None:
-    def fake_run(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(list(args))
-        return subprocess.CompletedProcess(list(args), rc, stdout, "finalize stderr\n" if rc else "")
+    def fake_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
+        calls.append([
+            "step-18-finalize",
+            str(implement_tmpdir),
+            "--step17-emitted",
+            step17_emitted,
+        ])
+        if stdout:
+            sys.stdout.write(stdout)
+            sys.stdout.flush()
+        if rc:
+            sys.stderr.write("finalize stderr\n")
+            sys.stderr.flush()
+        return rc
 
-    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(dispatch_step18, "_step18_finalize", fake_finalize)
 
 
 def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
@@ -2431,15 +2442,12 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
         "--in-memory-stall-tracking",
         "false",
     ]]
-    assert Path(finalize_calls[0][0]).name == "bash"
-    assert finalize_calls[0][1:] == [
-        str(tmp / "larch-run.sh"),
-        "skills/implement/scripts/step-18.sh",
-        "--phase",
-        "finalize",
+    assert finalize_calls == [[
+        "step-18-finalize",
+        str(tmp),
         "--step17-emitted",
         "true",
-    ]
+    ]]
 
 
 def test_step18_gate_finalize_empty_tmpdir_argv_falls_back_to_env(

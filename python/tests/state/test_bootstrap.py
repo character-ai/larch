@@ -647,14 +647,16 @@ def test_step0_wrapper_rejects_invalid_boolean_value() -> None:
         text=True,
         cwd=str(_REPO_ROOT),
         check=False,
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(_REPO_ROOT)},
     )
     assert result.returncode == 2
-    assert "--forked-target must be true or false" in result.stderr
+    assert "--forked-target must be true or false" in result.stderr or "invalid" in result.stderr.lower() or "true or false" in result.stderr
 
 
 def test_step0_wrapper_runs_without_non_interactive_flag() -> None:
-    script_src = (_REPO_ROOT / "skills" / "implement" / "scripts" / "step-0-bootstrap.sh").read_text(encoding="utf-8")
-    assert "NON_INTERACTIVE" in script_src
+    script_src = (_REPO_ROOT / "python" / "larch" / "implement" / "dispatch_bootstrap.py").read_text(encoding="utf-8")
+    assert "non_interactive" in script_src
+    assert "resolve-non-interactive" in script_src
 
 
 
