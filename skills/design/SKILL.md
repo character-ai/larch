@@ -491,14 +491,14 @@ Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, and 
 <!-- step:3b: Finalize plan-review artifacts -->
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode finalize
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step3b-entry --mode finalize
 ```
 
 Print: `> **🔶 /design 3b: finalize**`
 
 This pre-Gate-C boundary writes `.completed/step-3.5`, honors pause-save, runs FINALIZE, runs probe-only dialectic eligibility, emits and persists `STEP4_MODE`, then writes `.completed/step-3b`. Driver success alone does not complete Step 3b.
 
-After `design-step3b-entry.sh --mode finalize`, bind `STEP4_MODE` from a whole-line `STEP4_MODE=foreground|background` row in the finalize wrapper stdout. On `resume@4`, or when `.completed/step-3b` exists without `.completed/step-4` and fresh finalize stdout is unavailable, read `$DESIGN_TMPDIR/.step4-mode.env` and bind the same grammar from that sidecar. Stop for repair if both sources are missing or if the value is not exactly `foreground` or `background`.
+After `python/cli.py design step3b-entry --mode finalize`, bind `STEP4_MODE` from a whole-line `STEP4_MODE=foreground|background` row in the entry stdout. On `resume@4`, or when `.completed/step-3b` exists without `.completed/step-4` and fresh finalize stdout is unavailable, read `$DESIGN_TMPDIR/.step4-mode.env` and bind the same grammar from that sidecar. Stop for repair if both sources are missing or if the value is not exactly `foreground` or `background`.
 
 Do not classify plans, generate diagrams, write `architecture-diagram.*`, or run the Mermaid sanitizer in Step 3b. Gate C **Discuss further** and **Re-run review panel** re-entries must return through this finalize boundary and Step 4 without diagram work. Architecture diagram work runs only at Step 5b.5 after a later Gate C **Approve** or `--skip-approve` auto-approve.
 
@@ -581,7 +581,7 @@ When annotate returns `annotate-label-failed`, `.oos-priority-label-pending` exi
 Run after Gate C approval and Step 5b, before Step 5c.
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode diagram
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step3b-entry --mode diagram
 ```
 
 Print: `> **🔶 /design 5b.5: arch diagram**`
