@@ -40,22 +40,6 @@ from larch.lint.engine import (
 RULE_ID = "lifecycle-prefix-literal"
 SUPPRESSION_TOKEN = "lint-lifecycle-prefix"
 BASELINE_FILENAME = "lifecycle-prefix-literal-baseline.json"
-CONTEXT_KINDS = frozenset(
-    {
-        "startswith",
-        "endswith",
-        "removeprefix",
-        "lstrip",
-        "compare_eq",
-        "compare_ne",
-        "membership_in",
-        "membership_not_in",
-        "regex_pattern",
-        "fstring_compose",
-        "concat_compose",
-        "format_compose",
-    }
-)
 PREFIX_METHODS = frozenset({"startswith", "endswith", "removeprefix", "lstrip"})
 REGEX_FUNCTIONS = frozenset({"compile", "search", "match", "fullmatch"})
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__", "tests"})

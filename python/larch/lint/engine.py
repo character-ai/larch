@@ -919,7 +919,11 @@ class OccurrenceBaselineRow:
     @property
     def occurrence_values(self) -> tuple[tuple[str, str], ...]:
         """Return explicit fields, retaining the original single-field constructor."""
-        return self.values or (("pattern_name", self.pattern_name),)
+        if self.values:
+            return self.values
+        if self.pattern_name:
+            return (("pattern_name", self.pattern_name),)
+        return ()
 
     @property
     def identity(self) -> tuple[object, ...]:

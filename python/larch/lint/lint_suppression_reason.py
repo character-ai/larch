@@ -62,18 +62,6 @@ KIND_PYLINT_SKIP_FILE = "pylint-skip-file"
 KIND_TYPE_IGNORE = "type-ignore"
 KIND_PYRIGHT_IGNORE = "pyright-ignore"
 KIND_PYRIGHT_REPORT = "pyright-report"
-SUPPORTED_KINDS = frozenset(
-    {
-        KIND_NOQA,
-        KIND_RUFF_NOQA,
-        KIND_PYLINT_DISABLE,
-        KIND_PYLINT_DISABLE_NEXT,
-        KIND_PYLINT_SKIP_FILE,
-        KIND_TYPE_IGNORE,
-        KIND_PYRIGHT_IGNORE,
-        KIND_PYRIGHT_REPORT,
-    }
-)
 
 SUPPRESSION_PREFIX = r"(?:^|;\s*)"
 NOQA_FAMILY_RE = re.compile(SUPPRESSION_PREFIX + r"(?P<label>ruff:\s*noqa|noqa)\b", re.IGNORECASE)

@@ -382,3 +382,41 @@ def test_old_subprocess_baseline_rows_still_validate_with_gh_baseline(tmp_path: 
     _ = (tmp_path / "python" / lsvr.GH_BASELINE_FILENAME).write_text("[]", encoding="utf-8")
 
     assert lsvr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_gh_write_is_byte_stable_without_phantom_pattern_name(tmp_path: Path) -> None:
+    """A gh-finding write must omit occurrence value fields (occurrence_fields=())."""
+    _write_project(
+        tmp_path,
+        files={"mod.py": "def run(runner):\n    runner.run(['gh', 'pr', 'view'])\n"},
+        baseline=[],
+    )
+    gh_baseline = tmp_path / "python" / lsvr.GH_BASELINE_FILENAME
+    expected = [
+        {
+            "file": "mod.py",
+            "qualified_symbol": "run",
+            "occurrence": 1,
+            "reason": "seed",
+        }
+    ]
+    expected_bytes = json.dumps(expected, indent=2) + "\n"
+
+    assert lsvr.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "seed",
+    ]) == 0
+    assert gh_baseline.read_text(encoding="utf-8") == expected_bytes
+
+    # Byte-stable noop rewrite: the second write produces identical bytes.
+    assert lsvr.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "seed",
+    ]) == 0
+    assert gh_baseline.read_text(encoding="utf-8") == expected_bytes

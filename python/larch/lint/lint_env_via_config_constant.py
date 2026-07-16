@@ -41,7 +41,6 @@ REQUIRED_EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__"})
 CONFIG_RELPATH = "larch/core/config.py"
-ACCESS_KINDS = frozenset({"get", "subscript_load", "subscript_store"})
 MODULE_SYMBOL = "<module>"
 PRAGMA_RE = re.compile(r"#\s*lint-env-via-config-constant:\s*ok\s+(\S.*)$")
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-env-via-config-constant:\s*ok\s+(\S.*)$")
