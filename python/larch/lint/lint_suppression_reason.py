@@ -114,6 +114,7 @@ REASON_SUPPRESSION_PREFIX_RE = re.compile(
     r"pyright:\s*(?:ignore(?:\[[^\]]+\])?|report[A-Za-z0-9_]+\s*=\s*false))",
     re.IGNORECASE,
 )
+PYTHON_PREFIX = "python/"
 
 
 class BaselineError(ValueError):
@@ -407,16 +408,16 @@ def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
 
 def is_production_source_path(rel_path: str) -> bool:
     """Pre-load filter for repo-relative suppression scan paths."""
-    if not rel_path.startswith("python/") or not rel_path.endswith(".py"):
+    if not rel_path.startswith(PYTHON_PREFIX) or not rel_path.endswith(".py"):
         return False
-    relative: Path = Path(rel_path[len("python/") :])
+    relative: Path = Path(rel_path[len(PYTHON_PREFIX) :])
     return not _is_excluded_relative_path(relative)
 
 
 def to_engine_finding(finding: Finding) -> EngineFinding:
     """Adapt one suppression finding to the shared engine finding shape."""
     return EngineFinding(
-        path=f"python/{finding.file}",
+        path=f"{PYTHON_PREFIX}{finding.file}",
         line=finding.lineno,
         rule_id=RULE_ID,
         message=(
@@ -436,7 +437,7 @@ def detect(source: SourceFile) -> list[EngineFinding]:
     """Engine detector entry: tokenize one source and emit symbol-free findings."""
     if not source.is_python or not is_production_source_path(source.path):
         return []
-    normalized_file = source.path.removeprefix("python/")
+    normalized_file = source.path.removeprefix(PYTHON_PREFIX)
     findings = findings_from_source(source.text, normalized_file=normalized_file)
     return [to_engine_finding(finding) for finding in findings]
 
