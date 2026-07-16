@@ -137,6 +137,30 @@ jobs:
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
 
+  # The complete duplicate-code scan remains manually dispatched because it is
+  # expensive. This gate materializes the PR base and candidate revisions, then
+  # compares only pairs containing changed Python files.
+  duplicate-code:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/requirements-dev.txt
+      - name: Install Python lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
+        run: pip install -r python/requirements-dev.txt
+      - name: Gate diff-introduced duplicate code
+        run: make py-lint-duplicate-code-diff
+
   # Dedicated shellcheck job — installs the pinned shellcheck-py==0.11.0.1
   # binary directly (no pre-commit overhead) and runs shellcheck -x in
   # parallel via xargs over scripts, skills, and .claude. The pre-commit
