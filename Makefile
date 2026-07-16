@@ -89,7 +89,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-result-env-key-parity-baseline regen-tmpdir-arg-env-fallback-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-kv-codec-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-status-routing-truthiness-baseline regen-markdown-heading-fence-state-baseline
+.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-kv-codec-baseline regen-skill-closure-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -107,159 +107,43 @@ regen-kv-codec-baseline:
 	# Regenerate the strict shared-codec adoption baseline from production scans.
 	$(PYTHON) python/cli.py lint kv-codec --write
 
-regen-subprocess-via-runner-baseline:
-	# Regenerate python/subprocess-via-runner-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/subprocess-via-runner-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint subprocess-via-runner --write; \
-	else \
-		$(PYTHON) python/cli.py lint subprocess-via-runner --write --initial-reason 'grandfathered direct subprocess usage pre-G-Py-9 ratchet'; \
-	fi
-
-regen-wire-artifact-pairing-baseline:
-	# Regenerate python/wire-artifact-pairing-baseline.json from live manifest scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/wire-artifact-pairing-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint wire-artifact-pairing --write; \
-	else \
-		$(PYTHON) python/cli.py lint wire-artifact-pairing --write --initial-reason 'grandfathered one-sided wire artifact pre-pairing ratchet'; \
-	fi
-
-regen-tempfile-dir-baseline:
-	# Regenerate python/tempfile-dir-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/tempfile-dir-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint tempfile-dir --write; \
-	else \
-		$(PYTHON) python/cli.py lint tempfile-dir --write --initial-reason 'grandfathered ambient tempfile usage pre-tempfile-dir ratchet'; \
-	fi
-
-regen-result-env-key-parity-baseline:
-	# Regenerate python/result-env-key-parity-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/result-env-key-parity-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint result-env-key-parity --write; \
-	else \
-		$(PYTHON) python/cli.py lint result-env-key-parity --write --initial-reason 'grandfathered divergent result-env writers pre-parity ratchet'; \
-	fi
-
-regen-tmpdir-arg-env-fallback-baseline:
-	# Regenerate python/tmpdir-arg-env-fallback-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/tmpdir-arg-env-fallback-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint tmpdir-arg-env-fallback --write; \
-	else \
-		$(PYTHON) python/cli.py lint tmpdir-arg-env-fallback --write --initial-reason 'grandfathered direct args.tmpdir consumption pre-tmpdir-arg-env-fallback ratchet'; \
-	fi
-
-regen-monkeypatch-facade-binding-baseline:
-	# Regenerate python/monkeypatch-facade-binding-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/monkeypatch-facade-binding-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint monkeypatch-facade-binding --write; \
-	else \
-		$(PYTHON) python/cli.py lint monkeypatch-facade-binding --write --initial-reason 'grandfathered monkeypatch facade binding pre-ratchet'; \
-	fi
-
-regen-env-via-config-constant-baseline:
-	# Regenerate python/env-via-config-constant-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/env-via-config-constant-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint env-via-config-constant --write; \
-	else \
-		$(PYTHON) python/cli.py lint env-via-config-constant --write --initial-reason 'grandfathered bare env literal pre-G-Cfg-2 ratchet'; \
-	fi
-
-regen-lifecycle-prefix-literal-baseline:
-	# Regenerate python/lifecycle-prefix-literal-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/lifecycle-prefix-literal-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint lifecycle-prefix-literal --write; \
-	else \
-		$(PYTHON) python/cli.py lint lifecycle-prefix-literal --write --initial-reason 'grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet'; \
-	fi
-
-regen-renderer-golden-tests-baseline:
-	# Regenerate python/renderer-golden-tests-baseline.json from live report renderer scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/renderer-golden-tests-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint renderer-golden-tests --write; \
-	else \
-		$(PYTHON) python/cli.py lint renderer-golden-tests --write --initial-reason 'grandfathered current report helper before renderer golden-test coverage ratchet'; \
-	fi
-
-regen-suppression-reason-baseline:
-	# Regenerate python/suppression-reason-baseline.json from live suppression scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/suppression-reason-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint suppression-reason --write; \
-	else \
-		$(PYTHON) python/cli.py lint suppression-reason --write --initial-reason 'grandfathered pre-G-Py-11 suppression without inline reason'; \
-	fi
-
-regen-pylint-skip-file-baseline:
-	# Regenerate python/pylint-skip-file-baseline.json from live skip-file scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/pylint-skip-file-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint pylint-skip-file --write; \
-	else \
-		$(PYTHON) python/cli.py lint pylint-skip-file --write --initial-reason 'deferred module debt: grandfathered pylint skip-file pending duplicate-code burndown'; \
-	fi
-
-regen-layering-baseline:
-	# Regenerate python/layering-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/layering-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint layering --write; \
-	else \
-		$(PYTHON) python/cli.py lint layering --write --initial-reason 'grandfathered upward import pre-layering-ratchet'; \
-	fi
-
 regen-skill-closure-baseline:
 	# Regenerate python/skill-closure-baseline.json from live ratcheted prompt closure size.
 	$(PYTHON) python/cli.py lint skill-closure-growth --write
 
-regen-unreachable-branch-baseline:
-	# Regenerate python/unreachable-branch-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/unreachable-branch-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint unreachable-branch --write; \
-	else \
-		$(PYTHON) python/cli.py lint unreachable-branch --write --initial-reason 'grandfathered unreachable branch pre-unreachable-branch ratchet'; \
-	fi
+# Generic baseline descriptors use target|filename|bootstrap-reason, with +
+# representing spaces in the reason. The template preserves reasons during
+# routine regeneration and supplies the exact bootstrap reason only when the
+# baseline is absent.
+REGEN_BASELINE_DESCRIPTORS := \
+	subprocess-via-runner|subprocess-via-runner-baseline.json|grandfathered+direct+subprocess+usage+pre-G-Py-9+ratchet \
+	wire-artifact-pairing|wire-artifact-pairing-baseline.json|grandfathered+one-sided+wire+artifact+pre-pairing+ratchet \
+	tempfile-dir|tempfile-dir-baseline.json|grandfathered+ambient+tempfile+usage+pre-tempfile-dir+ratchet \
+	result-env-key-parity|result-env-key-parity-baseline.json|grandfathered+divergent+result-env+writers+pre-parity+ratchet \
+	tmpdir-arg-env-fallback|tmpdir-arg-env-fallback-baseline.json|grandfathered+direct+args.tmpdir+consumption+pre-tmpdir-arg-env-fallback+ratchet \
+	monkeypatch-facade-binding|monkeypatch-facade-binding-baseline.json|grandfathered+monkeypatch+facade+binding+pre-ratchet \
+	env-via-config-constant|env-via-config-constant-baseline.json|grandfathered+bare+env+literal+pre-G-Cfg-2+ratchet \
+	lifecycle-prefix-literal|lifecycle-prefix-literal-baseline.json|grandfathered+lifecycle+prefix+literal+pre-lifecycle-prefix+ratchet \
+	renderer-golden-tests|renderer-golden-tests-baseline.json|grandfathered+current+report+helper+before+renderer+golden-test+coverage+ratchet \
+	suppression-reason|suppression-reason-baseline.json|grandfathered+pre-G-Py-11+suppression+without+inline+reason \
+	pylint-skip-file|pylint-skip-file-baseline.json|deferred+module+debt:+grandfathered+pylint+skip-file+pending+duplicate-code+burndown \
+	layering|layering-baseline.json|grandfathered+upward+import+pre-layering-ratchet \
+	unreachable-branch|unreachable-branch-baseline.json|grandfathered+unreachable+branch+pre-unreachable-branch+ratchet \
+	status-routing-truthiness|status-routing-truthiness-baseline.json|pre-existing+status+truthiness+before+the+status-routing-truthiness+ratchet \
+	markdown-heading-fence-state|markdown-heading-fence-state-baseline.json|grandfathered+heading+regex+without+fence+state+pre-G-Md-3+ratchet
 
-regen-status-routing-truthiness-baseline:
-	# Regenerate python/status-routing-truthiness-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/status-routing-truthiness-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint status-routing-truthiness --write; \
-	else \
-		$(PYTHON) python/cli.py lint status-routing-truthiness --write --initial-reason 'pre-existing status truthiness before the status-routing-truthiness ratchet'; \
-	fi
+empty :=
+space := $(empty) $(empty)
+regen_descriptor_parts = $(subst |,$(space),$1)
+regen_descriptor_reason = $(subst +,$(space),$(word 3,$(call regen_descriptor_parts,$1)))
 
-regen-markdown-heading-fence-state-baseline:
-	# Regenerate python/markdown-heading-fence-state-baseline.json from live AST scan.
-	# Routine regen preserves matching per-record reasons; the bootstrap reason
-	# is used only when the baseline file is absent.
-	@if [ -f python/markdown-heading-fence-state-baseline.json ]; then \
-		$(PYTHON) python/cli.py lint markdown-heading-fence-state --write; \
-	else \
-		$(PYTHON) python/cli.py lint markdown-heading-fence-state --write --initial-reason 'grandfathered heading regex without fence state pre-G-Md-3 ratchet'; \
-	fi
+define GENERIC_REGEN_BASELINE
+.PHONY: regen-$(word 1,$(call regen_descriptor_parts,$1))-baseline
+regen-$(word 1,$(call regen_descriptor_parts,$1))-baseline:
+	@$(PYTHON) python/cli.py lint $(word 1,$(call regen_descriptor_parts,$1)) --write $(if $(wildcard python/$(word 2,$(call regen_descriptor_parts,$1))),,--initial-reason '$(call regen_descriptor_reason,$1)')
+endef
+
+$(foreach descriptor,$(REGEN_BASELINE_DESCRIPTORS),$(eval $(call GENERIC_REGEN_BASELINE,$(descriptor))))
 
 skill-closure-size:
 	$(PYTHON) python/cli.py skill-closure report
@@ -273,8 +157,42 @@ lint-%: FORCE
 lint-guideline-no-exception:
 	$(PYTHON) python/cli.py lint guideline-no-exception
 
-test-lint-guideline-no-exception:
-	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_guideline_no_exception.py -q
+# Common lint-test descriptors use target|pytest-module. The template keeps the
+# established timing-harness envelope while giving every standard focused test
+# one owner. Bash harnesses and tests requiring selectors stay explicit below.
+LINT_TEST_DESCRIPTORS := \
+	guideline-no-exception|python/tests/lint/test_lint_guideline_no_exception.py \
+	markdown-heading-fence-state|python/tests/lint/test_lint_markdown_heading_fence_state.py \
+	doc-pointer-paths|python/tests/lint/test_lint_doc_pointer_paths.py \
+	self-disarmable-gate|python/tests/lint/test_lint_self_disarmable_gate.py \
+	unreachable-branch|python/tests/lint/test_lint_unreachable_branch.py \
+	status-routing-truthiness|python/tests/lint/test_lint_status_routing_truthiness.py \
+	pylint-skip-file|python/tests/lint/test_lint_pylint_skip_file.py \
+	module-manifest|python/tests/lint/test_lint_module_manifest.py \
+	engine-adoption|python/tests/lint/test_lint_engine_adoption.py \
+	tier1a-size|python/tests/lint/test_lint_tier1a.py \
+	em-dash-output|python/tests/lint/test_lint_em_dash_output.py \
+	consecutive-bash|python/tests/lint/test_lint_consecutive_bash.py \
+	bg-wait-coverage|python/tests/lint/test_lint_bg_wait_coverage.py \
+	flat-tests|python/tests/lint/test_lint_flat_tests.py \
+	readability-preamble|python/tests/lint/test_lint_readability_preamble.py \
+	skill-md-flag-signature|python/tests/lint/test_lint_skill_md_flag_signature.py \
+	skill-awk-field-refs|python/tests/lint/test_lint_skill_awk_field_refs.py \
+	skill-description-length|python/tests/lint/test_lint_skill_description_length.py \
+	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
+	skill-closure-growth|python/tests/lint/test_lint_skill_closure_growth.py \
+	skill-invocations|python/tests/lint/test_lint_skill_invocations.py \
+	harness-session-env|python/tests/lint/test_lint_harness_session_env.py
+
+lint_test_descriptor_parts = $(subst |,$(space),$1)
+
+define COMMON_LINT_TEST
+.PHONY: test-lint-$(word 1,$(call lint_test_descriptor_parts,$1))
+test-lint-$(word 1,$(call lint_test_descriptor_parts,$1)):
+	$(PYTHON) python/cli.py timing harness-mark --label $$@ -- $(PYTHON) -m pytest $(word 2,$(call lint_test_descriptor_parts,$1)) -q
+endef
+
+$(foreach descriptor,$(LINT_TEST_DESCRIPTORS),$(eval $(call COMMON_LINT_TEST,$(descriptor))))
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
@@ -323,18 +241,12 @@ lint-tier1a-size:
 lint-run-log-walkers:
 	python3 python/cli.py lint run-log-walkers
 
-test-lint-tier1a-size:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_tier1a.py -q
-
 lint-readability-preamble:
 	python3 python/cli.py lint readability-preamble
 
 
 lint-em-dash-output:
 	python3 python/cli.py lint em-dash-output
-
-test-lint-em-dash-output:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_em_dash_output.py -q
 
 lint-renderer-substitution-safety:
 	bash scripts/lint-renderer-substitution-safety.sh
@@ -357,22 +269,12 @@ lint-codex-exec-auth:
 lint-consecutive-bash:
 	python3 python/cli.py lint consecutive-bash
 
-test-lint-consecutive-bash:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_consecutive_bash.py -q
-
 lint-bg-wait-coverage:
 	python3 python/cli.py lint bg-wait-coverage
 
 
 lint-flat-tests:
 	python3 python/cli.py lint flat-tests
-
-test-lint-bg-wait-coverage:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_bg_wait_coverage.py -q
-
-
-test-lint-flat-tests:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_flat_tests.py -q
 
 lint-awk-multibyte-regex:
 	python3 python/cli.py lint awk-multibyte-regex
@@ -796,29 +698,12 @@ test-step0b-router-flag-recovery:
 test-brainstorm-prompts:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
 
-test-lint-readability-preamble:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_readability_preamble.py -q
-
-test-lint-skill-md-flag-signature:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_md_flag_signature.py -q
-
-test-lint-skill-awk-field-refs:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_awk_field_refs.py -q
-
-test-lint-skill-description-length:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_description_length.py -q
-
-test-lint-codex-exec-auth:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_codex_exec_auth.py -q
-
-test-lint-skill-closure-growth:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q
-
-test-lint-skill-invocations:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_invocations.py -q
-
 test-lint-renderer-substitution-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-renderer-substitution-safety.sh
+
+.PHONY: test-lint-makefile-contracts
+test-lint-makefile-contracts:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_makefile_contracts.py -q
 
 
 test-lint-bare-grep-probe:
@@ -1324,9 +1209,6 @@ lint-bash32:
 
 lint-harness-session-env:
 	python3 python/cli.py lint harness-session-env
-
-test-lint-harness-session-env:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_harness_session_env.py -q
 
 lint-gh-body-inline:
 	python3 python/cli.py lint gh-body-inline

@@ -305,6 +305,13 @@ The PR creation surface now lives in `python/cli.py pr create`. Before cutting a
 
 ## Makefile Targets
 
+Standard focused Python lint tests are declared in Makefile's
+`LINT_TEST_DESCRIPTORS` mapping, which owns each `lint-name` to pytest-module
+contract and generates `test-lint-name`. `REGEN_BASELINE_DESCRIPTORS` likewise
+owns the routine baseline filename and absent-file bootstrap reason for generic
+`regen-name-baseline` targets. The Makefile contract test validates these
+descriptors plus every lint command documented here.
+
 | Target | Description |
 |--------|-------------|
 | `make lint` | Run all linters repo-wide |
@@ -316,6 +323,7 @@ The PR creation surface now lives in `python/cli.py pr create`. Before cutting a
 | `make test-lint-em-dash-output` | Run pytest coverage for the em dash output lint. |
 | `make lint-engine-adoption` | Fail on legacy ArgumentParser construction or sibling `*-baseline.json` I/O in `python/larch/lint/lint_*.py` outside the shared engine (baseline-grandfathered). |
 | `make test-lint-engine-adoption` | Run pytest coverage for the shared lint-engine adoption ratchet. |
+| `make test-lint-makefile-contracts` | Validate documented, registered, test, and baseline-regeneration lint Make targets without running the lint commands. |
 | `make shellcheck` | Run shellcheck only |
 | `make markdownlint` | Run markdownlint only |
 | `make jsonlint` | Run JSON validation only |
