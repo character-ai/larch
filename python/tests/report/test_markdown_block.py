@@ -11,13 +11,13 @@ from larch.report import markdown_block, timing, tokens
 
 
 def _run_tokens(target: Path, block: str) -> None:
-    tokens._replace_block(  # pyright: ignore[reportPrivateUsage]
+    tokens._replace_block(  # pyright: ignore[reportPrivateUsage]  # calling the private _replace_block wrapper to exercise the public delegation contract
         target=target, block=block, begin="token-report-begin", end="token-report-end"
     )
 
 
 def _run_timing(target: Path, block: str) -> None:
-    timing._replace_block(target=target, block=block)  # pyright: ignore[reportPrivateUsage]
+    timing._replace_block(target=target, block=block)  # pyright: ignore[reportPrivateUsage]  # calling the private _replace_block wrapper to exercise the public delegation contract
 
 
 # Each caller's private _replace_block wrapper, the diagnostic label it passes,
@@ -134,7 +134,7 @@ def test_replace_block_runs_same_table_through_both_callers(
     target = tmp_path / "body.md"
     _ = target.write_text(_render(before_tpl, begin, end), encoding="utf-8")
 
-    run_fn(target, block)  # type: ignore[operator]
+    run_fn(target, block)  # type: ignore[operator]  # run_fn is an object-typed callable from the CALLERS table
 
     assert target.read_text(encoding="utf-8") == _render(expected_tpl, begin, end)
     captured = capsys.readouterr()
@@ -235,10 +235,10 @@ def test_callers_delegate_without_local_marker_or_temp_logic(
     recorded: list[markdown_block.BlockMarkers] = []
 
     def _spy(**kwargs: object) -> None:
-        recorded.append(kwargs["markers"])  # type: ignore[index]
+        recorded.append(kwargs["markers"])  # type: ignore[index]  # kwargs is object-typed in the spy signature
 
     monkeypatch.setattr(markdown_block, "replace_markdown_block", _spy)
-    run_fn(target, "NEW\n")  # type: ignore[operator]
+    run_fn(target, "NEW\n")  # type: ignore[operator]  # run_fn is an object-typed callable from the CALLERS table
     assert len(recorded) == 1
     assert recorded[0] == markdown_block.BlockMarkers(begin=begin, end=end)
     assert target.read_text(encoding="utf-8") == "unchanged\n"
