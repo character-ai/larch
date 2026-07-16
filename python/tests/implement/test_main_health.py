@@ -94,9 +94,10 @@ def test_empty_run_list_without_requested_sha_returns_skip() -> None:
     assert result.detail == "no default-branch push workflow runs found"
 
 
-def test_no_sha_match_and_malformed_json_return_error() -> None:
+def test_no_sha_match_returns_error_when_push_history_exists() -> None:
     no_match = RecordingRunner(
         responses=[
+            _res("[]"),
             _res('[{"databaseId":4,"status":"completed","conclusion":"success","headSha":"old","event":"push"}]'),
         ],
     )
@@ -104,6 +105,20 @@ def test_no_sha_match_and_malformed_json_return_error() -> None:
         main_health.read_main_health(no_match, _query("abc")).status
         == "error"
     )
+
+
+def test_no_push_history_for_requested_sha_returns_skip() -> None:
+    runner = RecordingRunner(responses=[_res("[]"), _res("[]")])
+
+    result = main_health.read_main_health(runner, _query("abc"))
+
+    assert result.status == "skip"
+    assert result.detail == "no default-branch push workflow runs found"
+    assert runner.calls[0][runner.calls[0].index("--commit") + 1] == "abc"
+    assert "--commit" not in runner.calls[1]
+
+
+def test_no_sha_match_and_malformed_json_return_error() -> None:
     malformed = RecordingRunner(responses=[_res("{")])
     assert (
         main_health.read_main_health(malformed, _query()).status
@@ -112,7 +127,7 @@ def test_no_sha_match_and_malformed_json_return_error() -> None:
 
 
 def test_filtered_argv_uses_repo_bare_branch_event_workflow_limit_and_commit() -> None:
-    runner = RecordingRunner(responses=[_res("[]")])
+    runner = RecordingRunner(responses=[_res("[]"), _res("[]")])
 
     _ = main_health.read_main_health(
         runner,
@@ -133,6 +148,8 @@ def test_filtered_argv_uses_repo_bare_branch_event_workflow_limit_and_commit() -
     assert call[call.index("--workflow") + 1] == "CI"
     assert call[call.index("--limit") + 1] == "17"
     assert call[call.index("--commit") + 1] == "abc"
+    history_call = runner.calls[1]
+    assert "--commit" not in history_call
 
 
 def test_missing_default_workflow_returns_skip() -> None:

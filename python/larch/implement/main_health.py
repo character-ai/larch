@@ -76,6 +76,39 @@ def _read_failure_detail(result: CommandResult) -> str:
     return f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
 
 
+def _read_error_status(
+    result: CommandResult,
+    *,
+    workflow: str,
+) -> MainHealthStatus | None:
+    if result.returncode == 0:
+        return None
+    if (
+        workflow == config.MAIN_HEALTH_DEFAULT_WORKFLOW
+        and gh.is_missing_named_workflow(result, workflow=workflow)
+    ):
+        detail = f"configured main-health workflow {workflow} not present in repo"
+        return MainHealthStatus(status="skip", detail=_bounded_detail(detail))
+    return MainHealthStatus(status="error", detail=_bounded_detail(_read_failure_detail(result)))
+
+
+def _workflow_run_filters(
+    query: MainHealthQuery,
+    *,
+    repo: str,
+    commit: str | None,
+) -> gh.WorkflowRunListFilters:
+    return gh.WorkflowRunListFilters(
+        repo=repo,
+        branch=query.base_branch,
+        workflow=query.workflow,
+        event="push",
+        commit=commit,
+        limit=query.limit,
+        cwd=query.cwd,
+    )
+
+
 def _has_named_repository_failure(
     runner: Runner,
     run: gh.WorkflowRun,
@@ -196,26 +229,25 @@ def read_main_health(
     query: MainHealthQuery,
 ) -> MainHealthStatus:
     query_repo = query.upstream_repo or query.repo
-    filters = gh.WorkflowRunListFilters(
-        repo=query_repo,
-        branch=query.base_branch,
-        workflow=query.workflow,
-        event="push",
-        commit=query.head_sha,
-        limit=query.limit,
-        cwd=query.cwd,
-    )
+    filters = _workflow_run_filters(query, repo=query_repo, commit=query.head_sha)
     try:
         result = gh.run_list_filtered_read(runner, filters)
-        if result.returncode != 0:
-            if (
-                query.workflow == config.MAIN_HEALTH_DEFAULT_WORKFLOW
-                and gh.is_missing_named_workflow(result, workflow=query.workflow)
-            ):
-                detail = f"configured main-health workflow {query.workflow} not present in repo"
-                return MainHealthStatus(status="skip", detail=_bounded_detail(detail))
-            return MainHealthStatus(status="error", detail=_bounded_detail(_read_failure_detail(result)))
+        read_error = _read_error_status(result, workflow=query.workflow)
+        if read_error is not None:
+            return read_error
         runs = gh.parse_run_list_filtered_result(result)
+        if query.head_sha and not runs:
+            history_filters = _workflow_run_filters(query, repo=query_repo, commit=None)
+            history_result = gh.run_list_filtered_read(runner, history_filters)
+            history_error = _read_error_status(history_result, workflow=query.workflow)
+            if history_error is not None:
+                return history_error
+            history = gh.parse_run_list_filtered_result(history_result)
+            if not history:
+                return MainHealthStatus(
+                    status="skip",
+                    detail=_bounded_detail("no default-branch push workflow runs found"),
+                )
         return _classify_runs(
             runner,
             runs,
