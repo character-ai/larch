@@ -85,12 +85,16 @@ def test_matching_in_progress_returns_pending() -> None:
     assert result.status == "pending"
 
 
-def test_no_rows_no_sha_match_and_malformed_json_return_error() -> None:
+def test_empty_run_list_without_requested_sha_returns_skip() -> None:
     no_rows = RecordingRunner(responses=[_res("[]")])
-    assert (
-        main_health.read_main_health(no_rows, _query()).status
-        == "error"
-    )
+
+    result = main_health.read_main_health(no_rows, _query())
+
+    assert result.status == "skip"
+    assert result.detail == "no default-branch push workflow runs found"
+
+
+def test_no_sha_match_and_malformed_json_return_error() -> None:
     no_match = RecordingRunner(
         responses=[
             _res('[{"databaseId":4,"status":"completed","conclusion":"success","headSha":"old","event":"push"}]'),
@@ -157,7 +161,7 @@ def test_non_matching_gh_failure_returns_error() -> None:
     assert "gh command failed (1)" in result.detail
 
 
-def test_empty_run_list_still_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_empty_run_list_returns_skip_without_using_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_if_wrapper_runs(*_args: object, **_kwargs: object) -> tuple[main_health.gh.WorkflowRun, ...]:
         raise AssertionError("read_main_health must inspect raw run_list_filtered_read result")
 
@@ -166,8 +170,8 @@ def test_empty_run_list_still_returns_error(monkeypatch: pytest.MonkeyPatch) -> 
 
     result = main_health.read_main_health(runner, _query())
 
-    assert result.status == "error"
-    assert "no matching push workflow runs" in result.detail
+    assert result.status == "skip"
+    assert "no default-branch push workflow runs found" in result.detail
 
 
 def test_forked_upstream_repo_uses_bare_main_branch() -> None:
