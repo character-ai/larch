@@ -404,7 +404,7 @@ test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-ses
 
 test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts flush-execution-issues-bash-harness
 
-test-harnesses-5: test-step3-review-cap test-findings-classification test-design-step3-entry test-design-step3-entry-symlink test-file-failure-report-cross-repo test-check-topology-rule-paths test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip
+test-harnesses-5: test-step3-review-cap test-findings-classification test-design-step3-entry test-design-small-session-entries test-file-failure-report-cross-repo test-check-topology-rule-paths test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip
 
 test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -1363,7 +1363,7 @@ trufflehog:
 setup:
 	pre-commit install
 
-.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3b-tail test-design-step3-entry test-design-step3-entry-symlink test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
+.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3b-tail test-design-step3-entry test-design-small-session-entries test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'stage_terminal_state or capture_contract or clarify_hard_halt'
@@ -1383,8 +1383,8 @@ test-design-step3b-tail:
 test-design-step3-entry:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
 
-test-design-step3-entry-symlink:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry-symlink.sh
+test-design-small-session-entries:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_small_session_entries.py
 
 test-design-step0-init:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or decode_bash_percent_q or degraded_tools or relay_degraded or require_design or resolve_repo or wrapper or core_style_ctx'

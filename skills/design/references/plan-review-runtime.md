@@ -13,7 +13,7 @@
 
 ## Step 3 entry preview contract
 
-SKILL.md loads this runtime slice before `design-step3-entry.sh`, which calls `design-step3-entry-preview.sh` internally. The wrapper runs `python/cli.py plan-review preview --variant step3` and emits the result under `## Plan Candidate for Review`. `.step3-entry-plan-printed` suppresses later re-entry prints.
+SKILL.md loads this runtime slice before `design-step3-entry.sh`, which calls `python/cli.py plan-review step3-entry-preview` internally. The entry point runs `python/cli.py plan-review preview --variant step3` and emits the result under `## Plan Candidate for Review`. `.step3-entry-plan-printed` suppresses later re-entry prints.
 
 For a large plan, use the preview helper's parsed threshold, bounded outline, and fallback preview. Preserve its note that the operator may ask to show the full plan before voting kickoff. `plan-before-review.txt` is the Step 3 entry snapshot consumed by the Gate C accepted-findings audit.
 

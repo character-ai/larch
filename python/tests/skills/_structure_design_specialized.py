@@ -181,8 +181,8 @@ def run(repo_root: Path) -> list[str]:
         if count != 1: failures.append(f"finalize-step5 must reference readability-style.md once, found {count}")
     entry_count = skill_text.count('"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh')
     if entry_count != 1: failures.append(f"SKILL must retain exactly one Step 3 entry launcher fence, found {entry_count}")
-    bypass_count = skill_text.count('"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-gate-b-bypass.sh')
-    if bypass_count != 0: failures.append(f"SKILL Gate-B-bypass routing row owns contract; must not retain inline launcher fence, found {bypass_count}")
+    bypass_count = skill_text.count("plan-review step3-gate-b-bypass")
+    if bypass_count != 1: failures.append(f"SKILL must directly invoke the Gate-B-bypass entry point once before routing rows, found {bypass_count}")
 
     attic = p("docs/attic/dialectic-legacy.md")
     if not attic.is_file(): failures.append("dialectic legacy attic doc missing")
