@@ -133,10 +133,13 @@ def _classify_runs(
     skip_flap_check: bool = query.skip_flap_check
     matching = _matching_runs(runs, head_sha=requested_head_sha)
     if not matching:
-        detail = "no matching push workflow runs"
         if requested_head_sha:
             detail = f"no push workflow runs matched head SHA {requested_head_sha}"
-        return MainHealthStatus(status="error", detail=_bounded_detail(detail))
+            return MainHealthStatus(status="error", detail=_bounded_detail(detail))
+        return MainHealthStatus(
+            status="skip",
+            detail=_bounded_detail("no default-branch push workflow runs found"),
+        )
     latest = matching[0]
     status = latest.status.lower()
     conclusion = (latest.conclusion or "").lower()
