@@ -33,29 +33,11 @@ from larch.report.report_tokens_cost import (
 from larch.core import config as larch_config
 from larch.report.report_tokens_models import RunRecord, VendorTotals
 
+from test_support import RecordingRunner
+
 
 def _calls() -> list[list[str]]:
     return []
-
-
-@dataclass
-class Runner:
-    response: CommandResult
-    calls: list[list[str]] = field(default_factory=_calls)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        return self.response
 
 
 def _record() -> RunRecord:
@@ -106,7 +88,7 @@ def test_zero_bucket_uses_aggregate_tokens() -> None:
 
 
 def test_price_run_uses_python_pricing() -> None:
-    runner = Runner(CommandResult(("unused",), 1, "", "ignored", 0.01))
+    runner = RecordingRunner(default=CommandResult(("unused",), 1, "", "ignored", 0.01))
     priced = price_run(runner, record=_record(), plugin_root=Path.cwd().parent)
     assert priced.priced_by_token_cost is True
     assert not runner.calls
@@ -127,7 +109,7 @@ def test_python_pricing_includes_claude_sub_cost() -> None:
         phase_rows=(),
         raw_report={"BUCKETS_claude_sub": {"input": 1_000_000}},
     )
-    priced = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=record, plugin_root=Path.cwd().parent)
+    priced = price_run(RecordingRunner(default=CommandResult(("unused",), 0, "", "", 0.01)), record=record, plugin_root=Path.cwd().parent)
     assert priced.claude_sub_cost == rates.claude_input
     assert priced.total_cost == rates.claude_input
 
@@ -149,7 +131,7 @@ def test_real_token_cost_override() -> None:
             phase_rows=(),
             raw_report={"BUCKETS_claude": {"input": 1_000_000}},
         )
-        priced = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=record, plugin_root=Path.cwd().parent)
+        priced = price_run(RecordingRunner(default=CommandResult(("unused",), 0, "", "", 0.01)), record=record, plugin_root=Path.cwd().parent)
         assert priced.claude_cost == 10.0
     finally:
         if old is None:
@@ -384,7 +366,7 @@ def test_real_token_cost_script_receives_rate_override(monkeypatch: pytest.Monke
 
 
 def test_python_pricing_blended_warning(capsys: pytest.CaptureFixture[str]) -> None:
-    _ = price_run(Runner(CommandResult(("unused",), 1, "", "bad", 0.01)), record=_record(), plugin_root=Path.cwd().parent)
+    _ = price_run(RecordingRunner(default=CommandResult(("unused",), 1, "", "bad", 0.01)), record=_record(), plugin_root=Path.cwd().parent)
     captured = capsys.readouterr()
     assert "using blended rate" in captured.err
 
@@ -392,7 +374,7 @@ def test_python_pricing_blended_warning(capsys: pytest.CaptureFixture[str]) -> N
 def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_CODEX_RATE_PER_M", "1")
     monkeypatch.setenv("LARCH_CURSOR_RATE_PER_M", "1")
-    runner = Runner(CommandResult(("token-cost",), 1, "", "bad", 0.01))
+    runner = RecordingRunner(default=CommandResult(("token-cost",), 1, "", "bad", 0.01))
     record = RunRecord(
         number=1,
         title="t",
@@ -882,8 +864,8 @@ def test_price_run_preserves_cursor_lanes_only_for_valid_model_map() -> None:
         },
     )
 
-    priced_detailed = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=detailed)
-    priced_malformed = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=malformed)
+    priced_detailed = price_run(RecordingRunner(default=CommandResult(("unused",), 0, "", "", 0.01)), record=detailed)
+    priced_malformed = price_run(RecordingRunner(default=CommandResult(("unused",), 0, "", "", 0.01)), record=malformed)
 
     assert priced_detailed.cursor_composer_cost is not None
     assert priced_detailed.cursor_grok_cost is not None

@@ -45,6 +45,7 @@ __all__ = [
     "PR_VIEW_OPEN_JSON",
     "ROOT",
     "RecordingRunner",
+    "RunCall",
     "capture_start",
     "completed",
     "gh_pr_view",
@@ -78,6 +79,14 @@ def _empty_results() -> list[CommandResult]:
     return []
 
 
+def _empty_matchers() -> list[ArgvMatcher]:
+    return []
+
+
+def _empty_records() -> list[RunCall]:
+    return []
+
+
 def capture_start(captured: list[T]) -> Callable[[T], int]:
     """Return a successful starter fake that records its specification."""
     def fake_start(spec: T) -> int:
@@ -87,14 +96,56 @@ def capture_start(captured: list[T]) -> Callable[[T], int]:
     return fake_start
 
 
+@dataclass(frozen=True)
+class RunCall:
+    """One recorded ``RecordingRunner.run`` invocation with its call options."""
+
+    argv: tuple[str, ...]
+    timeout: float | None = None
+    cwd: str | None = None
+    env: Mapping[str, str] | None = None
+    check: bool = False
+    stdout: int | None = None
+    stderr: int | None = None
+
+
+# An expected-argv matcher is either the exact argv sequence or a predicate over it.
+ArgvMatcher = Sequence[str] | Callable[[Sequence[str]], bool]
+
+
+def _argv_matches(matcher: ArgvMatcher, argv: tuple[str, ...]) -> bool:
+    if callable(matcher):
+        return matcher(argv)
+    return list(matcher) == list(argv)
+
+
+def _matcher_repr(matcher: ArgvMatcher) -> str:
+    if callable(matcher):
+        return f"predicate {getattr(matcher, '__name__', repr(matcher))}"
+    return f"argv {list(matcher)}"
+
+
 @dataclass
 class RecordingRunner:
-    """Indexed response-queue runner for unit tests."""
+    """Indexed response-queue runner for unit tests.
+
+    Records each call's argv in ``calls`` and its full options in ``records``.
+    Returns queued ``responses`` in order, then a ``default`` result, or, in
+    ``strict`` mode, raises once the queue is exhausted. Optional per-call
+    ``matchers`` assert the positional argv (exact sequence or predicate) and
+    raise a precise diagnostic on mismatch, ``on_call`` observes each call's
+    options, and ``route_fds`` writes a queued result's captured output to the
+    explicit stdout/stderr file descriptors the caller passed.
+    """
 
     calls: list[list[str]] = field(default_factory=_empty_calls)
     responses: list[CommandResult] = field(default_factory=_empty_results)
     strict: bool = False
     default: CommandResult | None = None
+    matchers: list[ArgvMatcher] = field(default_factory=_empty_matchers)
+    on_call: Callable[[RunCall], None] | None = None
+    route_fds: bool = False
+    records: list[RunCall] = field(default_factory=_empty_records)
     _index: int = 0
 
     @classmethod
@@ -111,14 +162,39 @@ class RecordingRunner:
         self,
         argv: Sequence[str],
         *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
     ) -> CommandResult:
-        self.calls.append(list(argv))
+        call = RunCall(tuple(argv), timeout, cwd, env, check, stdout, stderr)
+        self.calls.append(list(call.argv))
+        self.records.append(call)
+        self._assert_matcher(call)
+        if self.on_call is not None:
+            self.on_call(call)
+        result = self._next_result(call.argv)
+        if self.route_fds:
+            return self._route_fds(result, call)
+        return result
+
+    def _assert_matcher(self, call: RunCall) -> None:
+        index = len(self.records) - 1
+        if index >= len(self.matchers):
+            return
+        matcher = self.matchers[index]
+        if _argv_matches(matcher, call.argv):
+            return
+        remaining = len(self.responses) - self._index
+        msg = (
+            f"call {index}: argv {list(call.argv)} does not match expected "
+            f"{_matcher_repr(matcher)} ({remaining} queued response(s) remaining)"
+        )
+        raise AssertionError(msg)
+
+    def _next_result(self, argv: tuple[str, ...]) -> CommandResult:
         if self._index >= len(self.responses):
             if self.strict:
                 msg = f"no response for call {argv}"
@@ -127,6 +203,20 @@ class RecordingRunner:
         result = self.responses[self._index]
         self._index += 1
         return result
+
+    def _route_fds(self, result: CommandResult, call: RunCall) -> CommandResult:
+        payload = (result.stdout + result.stderr).encode()
+        if call.stdout is not None:
+            _ = os.write(call.stdout, payload)
+        elif call.stderr is not None:
+            _ = os.write(call.stderr, payload)
+        return CommandResult(
+            argv=call.argv,
+            returncode=result.returncode,
+            stdout=result.stdout if call.stdout is None else "",
+            stderr=result.stderr if call.stderr is None else "",
+            duration=result.duration,
+        )
 
 
 def run_cli(

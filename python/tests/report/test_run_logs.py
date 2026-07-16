@@ -7,7 +7,7 @@ import json
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, dataclass
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -25,37 +25,24 @@ from larch.report import tokens
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 
-from test_support import RecordingRunner as _RecordingRunner, make_run_context
+from test_support import RecordingRunner as _RecordingRunner, RunCall, make_run_context
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
 
 
+@dataclass
 class RecordingRunner(_RecordingRunner):
+    """Shared queue runner that also tallies ``git commit -m`` calls."""
+
     git_commits: int = 0
 
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        if tuple(argv[:3]) == ("git", "commit", "-m"):
+    def __post_init__(self) -> None:
+        self.on_call = self._count_git_commits
+
+    def _count_git_commits(self, call: RunCall) -> None:
+        if call.argv[:3] == ("git", "commit", "-m"):
             self.git_commits += 1
-        return super().run(
-            argv,
-            timeout=timeout,
-            cwd=cwd,
-            env=env,
-            check=check,
-            stdout=stdout,
-            stderr=stderr,
-        )
 
 
 def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:

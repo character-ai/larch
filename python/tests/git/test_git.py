@@ -6,7 +6,6 @@ import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -778,26 +777,10 @@ def test_is_ancestor_mapping() -> None:
 
 def test_rebase_continue_sets_editors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_DIR", "/evil")
-    captured: dict[str, object] = {}
+    runner = RecordingRunner()
 
-    class CaptureRunner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            _ = timeout, cwd, check, stdout, stderr
-            captured["env"] = dict(env) if env else {}
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    _ = git.rebase_continue(CaptureRunner())
-    env = cast("dict[str, str]", captured["env"])
+    _ = git.rebase_continue(runner)
+    env = dict(runner.records[-1].env or {})
     assert env.get("GIT_SEQUENCE_EDITOR") == "true"
     assert env.get("GIT_EDITOR") == "true"
 
@@ -923,26 +906,10 @@ def test_force_push_recovery_ignores_adverse_tracking(tmp_path: Path) -> None:
 def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_DIR", "/evil")
     monkeypatch.setenv("GIT_WORK_TREE", "/evil")
-    captured: dict[str, object] = {}
+    runner = RecordingRunner()
 
-    class CaptureRunner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            _ = timeout, cwd, check, stdout, stderr
-            captured["env"] = dict(env) if env else {}
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    _ = git.rebase_onto(CaptureRunner(), "HEAD~2", "HEAD~1")
-    env = cast("dict[str, str]", captured["env"])
+    _ = git.rebase_onto(runner, "HEAD~2", "HEAD~1")
+    env = dict(runner.records[-1].env or {})
     assert "GIT_DIR" not in env
     assert "GIT_WORK_TREE" not in env
     assert env.get("GIT_SEQUENCE_EDITOR") == "true"

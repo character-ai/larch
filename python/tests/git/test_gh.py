@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -23,41 +22,16 @@ class RecordingRunner(_RecordingRunner):
     strict: bool = True
 
 
-def _empty_timeouts() -> list[float | None]:
-    return []
-
-
-def _empty_cwds() -> list[str | None]:
-    return []
-
-
-@dataclass
 class TimeoutRecordingRunner(RecordingRunner):
-    timeouts: list[float | None] = field(default_factory=_empty_timeouts)
-    cwds: list[str | None] = field(default_factory=_empty_cwds)
+    """Strict shared runner exposing recorded timeouts and cwds for assertions."""
 
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        self.timeouts.append(timeout)
-        self.cwds.append(cwd)
-        return super().run(
-            argv,
-            timeout=timeout,
-            cwd=cwd,
-            env=env,
-            check=check,
-            stdout=stdout,
-            stderr=stderr,
-        )
+    @property
+    def timeouts(self) -> list[float | None]:
+        return [call.timeout for call in self.records]
+
+    @property
+    def cwds(self) -> list[str | None]:
+        return [call.cwd for call in self.records]
 
 
 def test_pr_view_parses_json() -> None:

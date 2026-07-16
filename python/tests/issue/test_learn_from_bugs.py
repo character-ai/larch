@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,7 @@ from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
 from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX
-from test_support import RecordingRunner
+from test_support import RecordingRunner, RunCall
 
 
 def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
@@ -650,25 +649,11 @@ def test_run_prepare_captures_scan_started_at_before_issue_list(
         events.append("clock")
         return "2026-07-09T11:00:00Z"
 
-    class EventRunner(RecordingRunner):
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            events.append("gh")
-            return super().run(
-                argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr
-            )
+    def record_gh_call(_call: RunCall) -> None:
+        events.append("gh")
 
     monkeypatch.setattr(learn_from_bugs, "_utc_now_iso", fake_now)
-    runner = EventRunner(responses=[_result("[]")], strict=True)
+    runner = RecordingRunner(responses=[_result("[]")], strict=True, on_call=record_gh_call)
 
     stats = learn_from_bugs.run_prepare(
         runner,

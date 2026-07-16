@@ -17,32 +17,6 @@ from larch.errors import ShipError, Stalled
 from larch.core.proc import CommandResult
 
 
-class ProcRunner:
-    """Adapt proc.run to the Runner protocol for integration tests."""
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        return proc.run(
-            argv,
-            timeout=timeout,
-            cwd=cwd,
-            env=env,
-            check=check,
-            stdout=stdout,
-            stderr=stderr,
-        )
-
-
-
 @dataclass
 class StubRunner:
     responses: dict[tuple[str, ...], CommandResult]
@@ -292,7 +266,7 @@ def test_classify_deleted_skill_major(tmp_path: Path) -> None:
     skill = repo / "skills/base/SKILL.md"
     _ = subprocess.run(["git", "rm", "-q", str(skill.relative_to(repo))], cwd=repo, check=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "remove base skill"], cwd=repo, check=True)
-    result = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
+    result = version_bump.classify_bump(proc.ProcRunner(), cwd=str(repo))
     assert result.bump_type == "MAJOR"
     assert any("Deleted" in reason for reason in result.major_reasons)
 
