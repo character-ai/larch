@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import proc
 from larch.git import gh
 from larch.errors import ShipError
+from larch.report import markdown_block
 from larch.report import run_log_corpus
 from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
 from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
@@ -1328,68 +1329,13 @@ def _markdown(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vend
     return "\n".join(parts)
 
 
-def _marker_line_re(marker: str) -> re.Pattern[str]:
-    return re.compile(rf"^\s*<!-- {re.escape(marker)} -->\s*$")
-
-
 def _replace_block(*, target: Path, block: str, begin: str, end: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    existing = target.read_text(encoding="utf-8") if target.is_file() else ""
-    begin_re = _marker_line_re(begin)
-    end_re = _marker_line_re(end)
-    lines = existing.splitlines(keepends=True)
-    begin_idx: int | None = None
-    end_idx: int | None = None
-    has_begin = False
-    has_end = False
-    for idx, line in enumerate(lines):
-        stripped = line.rstrip("\r\n")
-        if begin_re.match(stripped):
-            has_begin = True
-            if begin_idx is None:
-                begin_idx = idx
-        if end_re.match(stripped):
-            has_end = True
-            if begin_idx is not None and end_idx is None:
-                end_idx = idx
-    if has_begin and has_end and begin_idx is not None and end_idx is not None:
-        text = "".join(lines[:begin_idx]) + block + "".join(lines[end_idx + 1 :])
-    elif has_begin and not has_end:
-        print(
-            f"token report: warning: {target} has lone <!-- {begin} --> marker; truncating from marker and rewriting block",
-            file=sys.stderr,
-        )
-        kept: list[str] = []
-        for line in lines:
-            if begin_re.match(line.rstrip("\r\n")):
-                break
-            kept.append(line)
-        text = "".join(kept)
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += block
-    elif has_end and not has_begin:
-        print(
-            f"token report: warning: {target} has lone <!-- {end} --> marker; dropping head through marker and rewriting block",
-            file=sys.stderr,
-        )
-        kept_tail: list[str] = []
-        past = False
-        for line in lines:
-            if end_re.match(line.rstrip("\r\n")):
-                past = True
-                continue
-            if past:
-                kept_tail.append(line)
-        text = "".join(kept_tail)
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += block
-    else:
-        text = existing + ("\n" if existing else "") + block
-    tmp = target.with_name(target.name + ".tmp")
-    _ = tmp.write_text(text, encoding="utf-8")
-    _ = tmp.replace(target)
+    markdown_block.replace_markdown_block(
+        target=target,
+        block=block,
+        markers=markdown_block.BlockMarkers(begin=begin, end=end),
+        label="token report",
+    )
 
 
 def _transcript_sources(
