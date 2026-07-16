@@ -217,6 +217,52 @@ def _vendor_connectivity_failure(*, tool: str, text: str) -> LaunchFailure | Non
     return None
 
 
+def _diagnostic_failure(
+    *,
+    sidecar: str | Path | None,
+    tool: str,
+    output_file: str | Path | None,
+) -> LaunchFailure | None:
+    """Classify a known failure represented in launcher diagnostic artifacts."""
+    diagnostics = "\n".join(
+        _read_text(path) for path in (sidecar, output_file) if path
+    )
+    connectivity_failure = _vendor_connectivity_failure(tool=tool, text=diagnostics)
+    if connectivity_failure is not None:
+        return connectivity_failure
+    if sidecar:
+        text = _read_text(sidecar)
+        if _PARSE_RE.search(text):
+            return LaunchFailure(failure_class="other", reason="parse")
+        if _REFUSAL_RE.search(text):
+            return LaunchFailure(failure_class="other", reason="refusal")
+    if output_file and _PARSE_RE.search(_read_text(output_file)):
+        return LaunchFailure(failure_class="other", reason="parse")
+    return None
+
+
+def _classify_non_quota_failure(
+    *,
+    launcher_exit: int,
+    sidecar: str | Path | None,
+    tool: str,
+    output_file: str | Path | None,
+) -> LaunchFailure:
+    """Classify non-auth, non-quota failures from launcher diagnostic artifacts."""
+    diagnostic_failure = _diagnostic_failure(
+        sidecar=sidecar, tool=tool, output_file=output_file
+    )
+    if diagnostic_failure is not None:
+        return diagnostic_failure
+    if output_file and is_transient_infra_failure(
+        tool=tool, exit_code=launcher_exit, output_file=output_file
+    ):
+        return LaunchFailure(failure_class="health", reason="health-probe")
+    if launcher_exit == config.EXIT_TIMEOUT:
+        return LaunchFailure(failure_class="other", reason="timeout")
+    return LaunchFailure(failure_class="other", reason="unknown")
+
+
 def classify_launch_failure(
     *,
     launcher_exit: int,
@@ -237,27 +283,12 @@ def classify_launch_failure(
         output_file and is_quota_failure(tool=tool, sidecar=output_file)
     ):
         return LaunchFailure(failure_class="health", reason="quota")
-    diagnostics = "\n".join(
-        _read_text(path) for path in (sidecar, output_file) if path
+    return _classify_non_quota_failure(
+        launcher_exit=launcher_exit,
+        sidecar=sidecar,
+        tool=tool,
+        output_file=output_file,
     )
-    connectivity_failure = _vendor_connectivity_failure(tool=tool, text=diagnostics)
-    if connectivity_failure is not None:
-        return connectivity_failure
-    if output_file and is_transient_infra_failure(tool=tool, exit_code=launcher_exit, output_file=output_file):
-        return LaunchFailure(failure_class="health", reason="health-probe")
-    if launcher_exit == config.EXIT_TIMEOUT:
-        return LaunchFailure(failure_class="other", reason="timeout")
-    if sidecar:
-        text = _read_text(sidecar)
-        if _PARSE_RE.search(text):
-            return LaunchFailure(failure_class="other", reason="parse")
-        if _REFUSAL_RE.search(text):
-            return LaunchFailure(failure_class="other", reason="refusal")
-    if output_file:
-        text = _read_text(output_file)
-        if _PARSE_RE.search(text):
-            return LaunchFailure(failure_class="other", reason="parse")
-    return LaunchFailure(failure_class="other", reason="unknown")
 
 
 def resolve_model_args(
