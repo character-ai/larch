@@ -28,15 +28,6 @@ class Finding:
     lineno: int
 
 
-def iter_source_files(python_dir: Path) -> list[Path]:
-    """Return sorted regular, non-symlink Python files in the complete scope."""
-    return iter_python_source_files(
-        python_dir,
-        is_exempt=lambda _path: False,
-        excluded_dirs=frozenset(),
-    )
-
-
 def _is_fixture_pragma(
     finding: Finding, *, comments_by_line: Mapping[int, tuple[str, ...]]
 ) -> bool:
@@ -109,7 +100,11 @@ def _run(root: Path) -> int:
     try:
         findings = [
             finding
-            for path in iter_source_files(python_dir)
+            for path in iter_python_source_files(
+                python_dir,
+                is_exempt=lambda _path: False,
+                excluded_dirs=frozenset(),
+            )
             for finding in scan_file(path, root=root)
         ]
     except RuntimeError as exc:
