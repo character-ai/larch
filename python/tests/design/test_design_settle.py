@@ -6,11 +6,13 @@ from pathlib import Path
 
 import pytest
 
+from larch.design import design_dialectic, design_pause
 from larch.design.design_settle import (
     ChildCapture,
     SettleRequest,
     SettleResult,
     SettleRunners,
+    default_settle_runners,
     step35_settle_for,
     step35_settle_main,
 )
@@ -238,6 +240,55 @@ def test_settle_dialectic_warning_fail_open(tmp_path: Path, capsys: pytest.Captu
     err = capsys.readouterr().err
     assert "dialectic-clear-stale failed after dedup" in err
     assert "dialectic-clear-stale failed after postplan" in err
+
+
+def test_default_dialectic_clear_shape_error_is_fail_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = make_design_tmpdir(tmp_path)
+
+    def boom(_design: object, *, reason: str) -> int:
+        _ = reason
+        raise design_dialectic.DialecticShapeError("simulated shape error")
+
+    monkeypatch.setattr(design_dialectic, "clear_stale", boom)
+    runners = default_settle_runners()
+    # Keep postplan/dedup offline so this only exercises dialectic fail-open.
+    runners = SettleRunners(
+        dedup=lambda _d: ChildCapture(rc=0, stdout="GATE_B_DEDUP_STATUS=ok\n"),
+        postplan=lambda _r, _s: ChildCapture(rc=0, stdout="POSTPLAN_RC=0\n"),
+        dialectic_clear=runners.dialectic_clear,
+        pause_save=lambda _r: ChildCapture(rc=0, stdout=""),
+    )
+    result = step35_settle_for(
+        request=_request(design, site="gate-c", round_num=None),
+        runners=runners,
+    )
+    assert result.exit_rc == 0
+    err = capsys.readouterr().err
+    assert "dialectic-clear-stale failed after dedup" in err
+    assert "dialectic-clear-stale failed after postplan" in err
+
+
+def test_default_pause_save_forwards_empty_issue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = make_design_tmpdir(tmp_path)
+    seen: list[list[str]] = []
+
+    def fake_pause(args: list[str]) -> int:
+        seen.append(list(args))
+        return 1
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    _ = (design / ".pause-requested").write_text("", encoding="utf-8")
+    result = step35_settle_for(
+        request=SettleRequest(site="gate-a", design_tmpdir=design, issue_number=""),
+        runners=default_settle_runners(),
+    )
+    assert result.exit_rc == 1
+    assert seen
+    assert seen[0][seen[0].index("--issue") + 1] == ""
 
 
 def test_settle_pause_requested(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

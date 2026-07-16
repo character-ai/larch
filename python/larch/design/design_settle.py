@@ -133,6 +133,9 @@ def _default_dedup(design_tmpdir: Path) -> ChildCapture:
 def _default_postplan(request: SettleRequest, postplan_site: str) -> ChildCapture:
     from larch.design.design_step2b import step2b_postplan_main  # noqa: PLC0415 - deferred to keep settle import light
 
+    # Honor the typed request path even when callers invoke step35_settle_for
+    # without going through step35_settle_main's env rehydrate.
+    os.environ[config.ENV_DESIGN_TMPDIR] = str(request.design_tmpdir)
     argv: list[str] = [
         "--session-env-path",
         request.session_env_path,
@@ -152,11 +155,18 @@ def _default_postplan(request: SettleRequest, postplan_site: str) -> ChildCaptur
 
 
 def _default_dialectic_clear(design_tmpdir: Path) -> int:
-    return int(design_dialectic.clear_stale(design_tmpdir, reason="plan-rewrite"))
+    # Match design dialectic-clear-stale CLI: shape errors are fail-open warnings
+    # at settle, not hard aborts (Gate C fingerprint binding still gates debate).
+    try:
+        return int(design_dialectic.clear_stale(design_tmpdir, reason="plan-rewrite"))
+    except design_dialectic.DialecticShapeError:
+        return 2
 
 
 def _default_pause_save(request: SettleRequest) -> ChildCapture:
-    args = ["--design-tmpdir", str(request.design_tmpdir), "--issue", request.issue_number or "0"]
+    # Preserve bash wrapper argv shape: pass ISSUE_NUMBER through even when empty
+    # so pause-save applies the same required-flag rejection as before.
+    args = ["--design-tmpdir", str(request.design_tmpdir), "--issue", request.issue_number]
     if request.repo:
         args.extend(["--repo", request.repo])
     buf = io.StringIO()
