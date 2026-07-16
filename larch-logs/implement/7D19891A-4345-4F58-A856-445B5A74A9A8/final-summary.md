@@ -15,7 +15,7 @@ No review rounds completed.
 - **Dynamic archetypes**: N/A
 - **Code review**: 1/1 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/7520
 - **Exec issues**: 0
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/7D19891A-4345-4F58-A856-445B5A74A9A8/`
