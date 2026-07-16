@@ -73,10 +73,11 @@ _cpr_cli_root="${CLAUDE_PLUGIN_ROOT:-}"
 case "${_cpr_cli_root}" in
     ""|"$_cpr_literal")
         _cpr_cli_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+        CLAUDE_PLUGIN_ROOT="$_cpr_cli_root"
         ;;
 esac
-python3 "$_cpr_cli_root/python/cli.py" session require-plugin-root || exit $?
 export CLAUDE_PLUGIN_ROOT
+python3 "$_cpr_cli_root/python/cli.py" session require-plugin-root || exit $?
 
 if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
     # shellcheck source=/dev/null

@@ -397,10 +397,10 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
         if result.returncode != 2:
             fail(f"{label} target expected exit 2, got {result.returncode}")
 
-    step0_program = extract_root_awk_program(Path("skills/implement/scripts/step-0-bootstrap.sh").read_text(encoding="utf-8"))
+    bootstrap_program = extract_root_awk_program(Path("python/larch/state/bootstrap.py").read_text(encoding="utf-8"))
     generated_program = extract_root_awk_program(launcher.read_text(encoding="utf-8"))
-    if step0_program != generated_program:
-        fail("generated larch-run.sh awk fallback drifted from step-0-bootstrap.sh")
+    if bootstrap_program != generated_program:
+        fail("generated larch-run.sh awk fallback drifted from bootstrap.py template")
 
 
 with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tmp:

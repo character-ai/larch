@@ -164,8 +164,8 @@ def run(repo_root: Path) -> list[str]:
         ("For Codex lanes, call `bgjob start` once per lane from foreground Bash with a unique `--step` slug.", "[bgjob transport] research-phase.md must require per-lane bgjob starts"),
         ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \\', "[bgjob transport] research-phase.md must invoke bgjob start"),
         ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \\', "[bgjob transport] research-phase.md must invoke bgjob wait"),
-        ("If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for the same slot with no intervening prose, reads, monitors, probes, sleeps, or other tools.", "[bgjob transport] research-phase.md must pin immediate repeated wait"),
-        ("continue the lane as passed when either the DONE stdout KV block or", "[bgjob transport] research-phase.md must gate continuation on stdout KV or result env"),
+        ("Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md` for each research lane wait.", "[bgjob transport] research-phase.md must pin immediate repeated wait"),
+        ("On `DONE` with `BGJOB_RC=0` and `STEP=research-<slot>` in the DONE stdout or", "[bgjob transport] research-phase.md must gate continuation on stdout KV or result env"),
     ):
         contains(research, literal, label)
     for slug in ("research-arch", "research-edge", "research-ext", "research-sec"):
@@ -176,8 +176,8 @@ def run(repo_root: Path) -> list[str]:
         ("Cursor and Codex use foreground `bgjob start` launches with unique per-lane step slugs.", "[bgjob transport] validation-phase.md must require external bgjob starts"),
         ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \\', "[bgjob transport] validation-phase.md must invoke bgjob start"),
         ('python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \\', "[bgjob transport] validation-phase.md must invoke bgjob wait"),
-        ("If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for that lane with no intervening prose, reads, monitors, probes, sleeps, or other tools.", "[bgjob transport] validation-phase.md must pin immediate repeated wait"),
-        ("continue the lane as passed when either the DONE stdout KV block or", "[bgjob transport] validation-phase.md must gate continuation on stdout KV or result env"),
+        ("Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md` for each validation lane wait.", "[bgjob transport] validation-phase.md must pin immediate repeated wait"),
+        ("On `DONE` with `BGJOB_RC=0` and `STEP=validation-<tool>` in the DONE stdout or", "[bgjob transport] validation-phase.md must gate continuation on stdout KV or result env"),
         ("`validation-code`", "[bgjob transport] validation-phase.md must retain Code lane identity"),
     ):
         contains(validation, literal, label)

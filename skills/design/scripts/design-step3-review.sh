@@ -151,10 +151,11 @@ design_require_plugin_root() {
   case "${_cpr_cli_root}" in
     ""|"$_cpr_literal")
       _cpr_cli_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+      CLAUDE_PLUGIN_ROOT="$_cpr_cli_root"
       ;;
   esac
-  python3 "${_cpr_cli_root}/python/cli.py" session require-plugin-root || exit $?
   export CLAUDE_PLUGIN_ROOT
+  python3 "${_cpr_cli_root}/python/cli.py" session require-plugin-root || exit $?
 }
 
 design_require_plugin_root
