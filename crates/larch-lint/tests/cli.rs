@@ -100,6 +100,12 @@ fn rules_lists_registered_rules_in_name_order() {
         .stdout(predicate::str::contains(
             "skill-documentation\tRequire public, alias, and private skills in both documentation catalogs\n",
         ))
+        .stdout(predicate::str::contains(
+            "run-log-corpus-walkers\tReject raw committed run-log corpus walkers outside the shared owner\n",
+        ))
+        .stdout(predicate::str::contains(
+            "wire-artifact-pairing\tRequire a production writer for every wire-artifact reader\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 
