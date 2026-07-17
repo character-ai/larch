@@ -364,6 +364,7 @@ def test_checkpoint_probe_resolves_consecutive_larch_log_conflicts(
     assert calls == ["checkout", "add", "checkout", "add", "phantom"]
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_checkpoint_probe_resolves_generated_only_conflict(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

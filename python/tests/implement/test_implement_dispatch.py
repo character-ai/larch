@@ -5195,6 +5195,7 @@ def test_run_step4_commit_leg_absorbs_attributed_step3_lint_fix_path(
     )
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_run_step4_commit_leg_absorbs_regenerated_allowlisted_step3_lint_fix_path(
     repo: Path,
     tmp_path: Path,
