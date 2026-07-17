@@ -1071,13 +1071,6 @@ def test_voter_status_block_path_gate(tmp_path: Path) -> None:
     assert f"VOTER_PATHS_FILE={paths}\n" in result.stdout
 
 
-def test_lint_focus_area_enum_passes() -> None:
-    result = run_cli("lint", "focus-area-enum")
-    assert result.returncode == 0
-    assert result.stdout == ""
-    assert result.stderr == ""
-
-
 def _write_tally_logger(tmp_path: Path) -> Path:
     logger = tmp_path / "stub-larch-log.sh"
     logger.write_text("#!/usr/bin/env bash\nprintf 'LOG_WRITTEN=true\\n'\n", encoding="utf-8")

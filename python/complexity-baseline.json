@@ -7693,14 +7693,6 @@
   {
     "file": "larch/review/voting.py",
     "code": "C901",
-    "qualified_symbol": "lint_focus_area_enum_main",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/review/voting.py",
-    "code": "C901",
     "qualified_symbol": "tally_vote_main",
     "metric": 11,
     "added_at": "legacy",

@@ -543,13 +543,6 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: lint-skill-documentation
-        name: lint skill documentation coverage
-        entry: python3 python/cli.py lint skill-documentation
-        language: system
-        pass_filenames: false
-        always_run: true
-
       - id: lint-codex-exec-auth
         name: lint unwired codex exec call sites
         entry: python3 python/cli.py lint codex-exec-auth

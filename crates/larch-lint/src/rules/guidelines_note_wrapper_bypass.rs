@@ -116,13 +116,10 @@ fn resolve_findings(
     source: &str,
     lines: &BTreeSet<u32>,
 ) -> Result<Vec<Finding>, LintError> {
-    let source_lines: Vec<&str> = source.lines().collect();
     let mut findings = Vec::new();
     for line in lines {
-        let line_text = source_lines
-            .get(usize::try_from(line.saturating_sub(1)).unwrap_or(0))
-            .copied()
-            .unwrap_or("");
+        let line_index = usize::try_from(line.saturating_sub(1)).unwrap_or(0);
+        let line_text = source.lines().nth(line_index).unwrap_or("");
         if suppression::reason(line_text, SUPPRESSION_TOKEN)?.is_some() {
             continue;
         }
