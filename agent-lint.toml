@@ -28,9 +28,6 @@ suppress = [
   # is pathless, so a file override cannot represent this exception. Generated
   # reviewer checks and the focus-area enum guard cover template drift.
   "template-count-mismatch",
-  # Slash-command references and glob-shaped skill paths are plugin syntax,
-  # not filesystem paths. D005 still validates concrete Tier-1 doc paths.
-  "instruction-file-path",
   # larch skills intentionally require the full Bash tool surface. Their
   # prompts scope commands through explicit policy and script contracts, not
   # by an allowlist that would prevent valid lifecycle operations.
@@ -1308,6 +1305,11 @@ files = [
 ]
 suppress = ["template-marker-missing"]
 reason = "These agents define assessor, fixer, implementer, deduplication, self-review, or aggregation roles; they are not derived from the shared code-reviewer templates and must not claim that marker."
+
+[[lint.overrides]]
+files = ["AGENTS.md"]
+suppress = ["instruction-file-path"]
+reason = "The reported `/report-tokens` token is a slash command, not a filesystem path; D005 still validates concrete Tier-1 path pointers in AGENTS.md."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
