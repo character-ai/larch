@@ -304,6 +304,7 @@ dependencies = [
  "globset",
  "inventory",
  "predicates",
+ "proc-macro2",
  "pulldown-cmark",
  "regex",
  "serde",
