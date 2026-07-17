@@ -16,57 +16,7 @@ impl TempRepo {
         let directory = tempfile::tempdir().expect("tempdir");
         run_git(directory.path(), ["init", "--quiet"]);
         let repository = Self { directory };
-        for rule in [
-            "bg-wait-coverage",
-            "fixture",
-            "guideline-no-exception",
-            "literal-counts",
-        ] {
-            repository.write(
-                &format!("crates/larch-lint/migration-ledger/{rule}.toml"),
-                format!("rule = \"{rule}\"\n").as_bytes(),
-            );
-        }
-        repository.write(
-            "crates/larch-lint/config/bg-wait-allowlist.txt",
-            b"# no retained exceptions\n",
-        );
-        repository.write(
-            "crates/larch-lint/config/guideline-no-exception-baseline.json",
-            b"[]\n",
-        );
-        repository.write(
-            "ARCHITECTURAL_GUIDELINES.md",
-            b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/git-push-refspec.toml",
-            b"rule = \"git-push-refspec\"\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/gh-argv-literal.toml",
-            b"rule = \"gh-argv-literal\"\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/kv-codec.toml",
-            b"rule = \"kv-codec\"\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/result-env-key-parity.toml",
-            b"rule = \"result-env-key-parity\"\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/tempfile-dir.toml",
-            b"rule = \"tempfile-dir\"\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/tmpdir-arg-env-fallback.toml",
-            b"rule = \"tmpdir-arg-env-fallback\"\n",
-        );
-        repository.write(
-            "crates/larch-lint/migration-ledger/subprocess-via-runner.toml",
-            b"rule = \"subprocess-via-runner\"\n",
-        );
+        seed_tracked_tree(&repository);
         repository
     }
 
@@ -103,6 +53,52 @@ impl TempRepo {
         let mut command = AssertCommand::cargo_bin("larch-lint").expect("larch-lint binary");
         command.current_dir(cwd.into());
         command
+    }
+}
+
+fn seed_tracked_tree(repository: &TempRepo) {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (source_name, destination_prefix) in [
+        ("migration-ledger", "crates/larch-lint/migration-ledger"),
+        ("policy", "crates/larch-lint/policy"),
+        ("config", "crates/larch-lint/config"),
+    ] {
+        let source = manifest_dir.join(source_name);
+        if source.is_dir() {
+            copy_tree(repository, &source, destination_prefix);
+        }
+    }
+    // Fixture repos use an empty guideline baseline and a short guidelines
+    // document so shared CLI tests stay independent of live debt.
+    repository.write(
+        "crates/larch-lint/config/guideline-no-exception-baseline.json",
+        b"[]\n",
+    );
+    repository.write(
+        "crates/larch-lint/config/bg-wait-allowlist.txt",
+        b"# no retained exceptions\n",
+    );
+    repository.write(
+        "ARCHITECTURAL_GUIDELINES.md",
+        b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
+    );
+}
+
+fn copy_tree(repository: &TempRepo, source_dir: &Path, destination_prefix: &str) {
+    let mut entries: Vec<_> = fs::read_dir(source_dir)
+        .unwrap_or_else(|error| panic!("read {}: {error}", source_dir.display()))
+        .map(|entry| entry.expect("directory entry"))
+        .collect();
+    entries.sort_by_key(fs::DirEntry::file_name);
+    for entry in entries {
+        let metadata = entry.metadata().expect("entry metadata");
+        if !metadata.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let contents = fs::read(entry.path()).expect("read seeded file");
+        repository.write(&format!("{destination_prefix}/{name}"), &contents);
     }
 }
 

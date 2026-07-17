@@ -29,6 +29,9 @@ fn rules_lists_registered_rules_in_name_order() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
+            "env-via-config-constant\tReject bare environment-key literals already owned by shared ENV_* constants\n",
+        ))
+        .stdout(predicate::str::contains(
             "fixture\tValidate decentralized rule registration\n",
         ))
         .stdout(predicate::str::contains(
@@ -51,6 +54,9 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "result-env-key-parity\tReject divergent key sets across sibling writers of the same result-env basename\n",
+        ))
+        .stdout(predicate::str::contains(
+            "root-resolution\tReject private root helpers and direct git rev-parse --show-toplevel construction\n",
         ))
         .stdout(predicate::str::contains(
             "tempfile-dir\tRequire the scratch owner for ambient temporary directories\n",

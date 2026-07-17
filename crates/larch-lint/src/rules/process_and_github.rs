@@ -6,7 +6,7 @@ use regex::Regex;
 use syn::{Expr, ExprCall, ExprLit, ItemUse, Lit, UseTree, visit::Visit};
 
 use crate::{
-    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata,
+    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
     suppression,
     syntax::RustSyntax,
 };
@@ -59,14 +59,14 @@ impl Rule for ProcessRule {
         PROCESS_DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
-        check_repository(
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
+        Ok(RuleOutput::from_findings(check_repository(
             repository,
             RUST_SOURCE,
             PROCESS_NAME,
             PROCESS_OWNER,
             FindingKind::Process,
-        )
+        )?))
     }
 }
 
@@ -79,14 +79,14 @@ impl Rule for GitHubRule {
         GITHUB_DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
-        check_repository(
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
+        Ok(RuleOutput::from_findings(check_repository(
             repository,
             ALL_RUST_SOURCE,
             GITHUB_NAME,
             GITHUB_OWNER,
             FindingKind::GitHub,
-        )
+        )?))
     }
 }
 
