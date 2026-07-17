@@ -22,7 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  "body-no-default",
   "mcp-tool-unqualified",
   "desc-body-misalign",
   "terminology-inconsistent",
@@ -1221,6 +1220,33 @@ files = [
 ]
 suppress = ["script-deps-missing"]
 reason = "Larch centralizes installation and runtime prerequisites in docs/installation-and-setup.md; repeating package prose in each stdlib-backed coordinator would create a second owner."
+
+[[lint.overrides]]
+files = [
+  "skills/alias/SKILL.md",
+  "skills/block-issue/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/f/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/fm/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/im/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["body-no-default"]
+reason = "These prompts list conditional flags, states, or outcomes rather than interchangeable choices; adding one blanket default would change or duplicate their existing per-case routing contracts."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
