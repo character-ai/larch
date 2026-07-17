@@ -177,7 +177,8 @@ LINT_TEST_DESCRIPTORS := \
 	readability-preamble|python/tests/lint/test_lint_readability_preamble.py \
 	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
 	skill-closure-growth|python/tests/lint/test_lint_skill_closure_growth.py \
-	harness-session-env|python/tests/lint/test_lint_harness_session_env.py
+	harness-session-env|python/tests/lint/test_lint_harness_session_env.py \
+	skill-documentation|python/tests/lint/test_lint_skill_documentation.py
 
 lint_test_descriptor_parts = $(subst |,$(space),$1)
 

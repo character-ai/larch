@@ -37,6 +37,7 @@
     {"module": "lint_self_disarmable_gate.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_shared_convention_regex.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_skill_closure_growth.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_skill_documentation.py", "host_decision": "new-module-justified", "justification": "No existing lint owns parity between the live public/private skill inventory and the separate README summary table plus docs/skills.md detailed catalog (#7589).", "source_issue": 7589},
     {"module": "lint_status_routing_truthiness.py", "host_decision": "new-module-justified", "justification": "unreachable_branch_detector.py proves later path contradiction after a return, while this rule classifies the first reachable boolean decision using same-scope status semantics (#7434).", "source_issue": 7434},
     {"module": "lint_subprocess_via_runner.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_suppression_reason.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
