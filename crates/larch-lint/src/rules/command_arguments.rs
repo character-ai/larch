@@ -10,6 +10,8 @@ use syn::{
     visit::{self, Visit},
 };
 
+use super::syn_helpers;
+
 /// One command argument whose literal value may or may not be statically known.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum Argument {
@@ -95,12 +97,6 @@ impl<'syntax> Constants<'syntax> {
         resolving: &mut BTreeSet<String>,
     ) -> Option<String> {
         match expression {
-            Expr::Lit(literal) => match &literal.lit {
-                syn::Lit::Str(value) => Some(value.value()),
-                _ => None,
-            },
-            Expr::Reference(reference) => self.string_inner(&reference.expr, resolving),
-            Expr::Paren(parenthesized) => self.string_inner(&parenthesized.expr, resolving),
             Expr::Path(path) => {
                 let name = simple_path_name(path)?;
                 let value = self.values.get(&name)?;
@@ -111,7 +107,7 @@ impl<'syntax> Constants<'syntax> {
                 resolving.remove(&name);
                 string
             }
-            _ => None,
+            other => syn_helpers::string_literal(other),
         }
     }
 

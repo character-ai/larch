@@ -3,13 +3,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use regex::Regex;
-use syn::{Expr, ExprCall, ExprLit, ItemUse, Lit, UseTree, visit::Visit};
+use syn::{Expr, ExprCall, ItemUse, UseTree, visit::Visit};
 
 use crate::{
     Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
     suppression,
     syntax::RustSyntax,
 };
+
+use super::syn_helpers;
 
 const PROCESS_NAME: &str = "subprocess-via-runner";
 const PROCESS_DESCRIPTION: &str = "Require std::process::Command ownership by the shared runner";
@@ -281,10 +283,7 @@ impl<'ast> Visit<'ast> for CommandVisitor {
 }
 
 fn string_literal(expression: &Expr) -> Option<String> {
-    let Expr::Lit(ExprLit { lit: Lit::Str(value), .. }) = expression else {
-        return None;
-    };
-    Some(value.value())
+    syn_helpers::string_literal(expression)
 }
 
 fn source_line(source: &str, spelling: &str, occurrence: usize) -> Option<u32> {

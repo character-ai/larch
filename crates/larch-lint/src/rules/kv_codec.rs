@@ -19,8 +19,9 @@ use syn::{
 
 use crate::{
     Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
-    syntax::RustSyntax,
 };
+
+use super::path_discovery;
 
 const NAME: &str = "kv-codec";
 const DESCRIPTION: &str =
@@ -96,8 +97,7 @@ impl ViolationKind {
 }
 
 fn check_rust_file(repository: &Repository, path: &RepoPath) -> Result<Vec<Finding>, LintError> {
-    let source = repository.read_utf8(path)?;
-    let syntax = RustSyntax::parse(path.as_str(), &source)?;
+    let (source, syntax) = path_discovery::read_rust_syntax(repository, path)?;
     let mut visitor = KvCodecVisitor {
         reader_owner: is_reader_owner(path.as_str()),
         emitter_owner: path.as_str() == EMITTER_OWNER,

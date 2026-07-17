@@ -22,8 +22,9 @@ use syn::{
 use crate::{
     Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason as suppression_reason,
-    syntax::RustSyntax,
 };
+
+use super::path_discovery;
 
 const NAME: &str = "status-routing";
 const DESCRIPTION: &str =
@@ -75,8 +76,7 @@ impl Rule for StatusRoutingRule {
 crate::register_rule!(METADATA, RULE);
 
 fn check_rust_file(repository: &Repository, path: &RepoPath) -> Result<Vec<Finding>, LintError> {
-    let source = repository.read_utf8(path)?;
-    let syntax = RustSyntax::parse(path.as_str(), &source)?;
+    let (source, syntax) = path_discovery::read_rust_syntax(repository, path)?;
     let mut functions = FunctionVisitor::default();
     functions.visit_file(syntax.file());
 

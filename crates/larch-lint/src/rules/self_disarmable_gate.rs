@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 
 use proc_macro2::Span;
 use syn::{
-    BinOp, Block, Expr, ExprField, ExprIf, ExprLit, ExprPath, ItemFn, Lit, Local, Member, Pat,
+    BinOp, Block, Expr, ExprField, ExprIf, ExprLit, ExprPath, ItemFn, Lit, Local, Member,
     Stmt,
     spanned::Spanned,
     visit::{self, Visit},
@@ -24,6 +24,8 @@ use crate::{
     suppression::reason,
     syntax::RustSyntax,
 };
+
+use super::syn_helpers;
 
 const NAME: &str = "self-disarmable-gate";
 const DESCRIPTION: &str =
@@ -135,7 +137,7 @@ impl<'findings> FunctionScanner<'findings> {
             .inputs
             .iter()
             .filter_map(|argument| match argument {
-                syn::FnArg::Typed(typed) => pattern_name(&typed.pat),
+                syn::FnArg::Typed(typed) => syn_helpers::pattern_name(&typed.pat),
                 syn::FnArg::Receiver(_) => None,
             })
             .filter(|name| looks_like_hard_trigger(name))
@@ -159,7 +161,7 @@ impl<'findings> FunctionScanner<'findings> {
     }
 
     fn scan_local(&mut self, local: &Local, hard_names: &mut BTreeSet<String>) {
-        let Some(name) = pattern_name(&local.pat) else {
+        let Some(name) = syn_helpers::pattern_name(&local.pat) else {
             return;
         };
         let Some(initializer) = &local.init else {
@@ -235,14 +237,6 @@ impl<'findings> FunctionScanner<'findings> {
     fn record(&mut self, span: Span, message: String) {
         let line = u32::try_from(span.start().line).unwrap_or(u32::MAX);
         self.findings.push(PendingFinding { line, message });
-    }
-}
-
-fn pattern_name(pattern: &Pat) -> Option<String> {
-    match pattern {
-        Pat::Ident(ident) => Some(ident.ident.to_string()),
-        Pat::Type(typed) => pattern_name(&typed.pat),
-        _ => None,
     }
 }
 

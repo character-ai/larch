@@ -40,6 +40,20 @@ pub(super) fn selected_rust_sources(
         .collect())
 }
 
+/// Read one tracked Rust source and parse it with the shared syntax helper.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be read or is not valid Rust.
+pub(super) fn read_rust_syntax(
+    repository: &Repository,
+    path: &RepoPath,
+) -> Result<(String, crate::syntax::RustSyntax), LintError> {
+    let source = repository.read_utf8(path)?;
+    let syntax = crate::syntax::RustSyntax::parse(path.as_str(), &source)?;
+    Ok((source, syntax))
+}
+
 fn workspace_package_prefixes(root: &Path) -> Result<Option<BTreeSet<String>>, LintError> {
     let manifest = root.join("Cargo.toml");
     if !manifest.is_file() {
