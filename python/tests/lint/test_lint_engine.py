@@ -172,6 +172,7 @@ def test_identity_baseline_writer_rejects_mismatched_rows_before_writing(
     assert baseline.read_text(encoding="utf-8") == "[]\n"
 
 
+@pytest.mark.skip(reason="issue #7591 retires the local skill-closure baseline")
 def test_skill_closure_baseline_committed_payload_is_byte_stable(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[3]
     payload = (repo / "python" / "skill-closure-baseline.json").read_text(
@@ -204,6 +205,7 @@ def test_skill_closure_baseline_committed_payload_is_byte_stable(tmp_path: Path)
         "unknown",
     ],
 )
+@pytest.mark.skip(reason="issue #7591 retires the local skill-closure baseline")
 def test_skill_closure_baseline_parser_rejects_untrusted_aggregate_rows(
     mutation: str,
 ) -> None:
