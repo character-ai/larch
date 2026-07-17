@@ -213,7 +213,7 @@ repos:
         always_run: true
 
   - repo: https://github.com/zhupanov/agent-lint
-    rev: v2.6.0
+    rev: v3.0.0
     hooks:
       - id: agent-lint
         args: [--pedantic]
