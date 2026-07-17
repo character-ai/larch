@@ -22,7 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  "script-deps-missing",
   "body-no-default",
   "mcp-tool-unqualified",
   "desc-body-misalign",
@@ -1207,6 +1206,21 @@ files = [
 ]
 suppress = ["body-too-long"]
 reason = "These orchestrators exceed the generic 500-line limit; progressive-disclosure references and dedicated structure harnesses bound their load-bearing inline contracts."
+
+[[lint.overrides]]
+files = [
+  "skills/cleanup/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/pause/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/review-and-fix/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["script-deps-missing"]
+reason = "Larch centralizes installation and runtime prerequisites in docs/installation-and-setup.md; repeating package prose in each stdlib-backed coordinator would create a second owner."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
