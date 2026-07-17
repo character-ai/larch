@@ -20,7 +20,7 @@ use syn::{
 };
 
 use crate::{
-    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata,
+    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason,
     syntax::RustSyntax,
 };
@@ -61,7 +61,7 @@ impl Rule for MarkdownHeadingFenceStateRule {
         DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(&["crates/**/*.rs"], &[])?;
         let mut findings = Vec::new();
         for path in selector.select(repository) {
@@ -69,7 +69,7 @@ impl Rule for MarkdownHeadingFenceStateRule {
         }
         findings.sort();
         findings.dedup();
-        Ok(findings)
+        Ok(RuleOutput::from_findings(findings))
     }
 }
 
