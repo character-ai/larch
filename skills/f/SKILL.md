@@ -11,7 +11,7 @@ Auto-generated alias created by larch /alias. Invokes /implement with preset fla
 
 ## Usage
 
-/f <arguments> is equivalent to /implement --force --self-review --self-implement <arguments>
+/f $ARGUMENTS is equivalent to /implement --force --self-review --self-implement $ARGUMENTS
 
 ## Flags
 

@@ -232,8 +232,8 @@ Before writing `<MANIFEST_PATH>`, verify:
 - [ ] `summary_bullets`: WHY, not HOW; public PR body and CHANGELOG copy.
 - [ ] `oos_observations`: only post-triage filed-OOS candidates not fixed here; exclude folded rules 1-2 and SECURITY.md-routed findings; each entry has `title`, `description`, `phase: "implement"`.
 - [ ] `todos_left`: actionable deferred implementation work only. Do not list unrun full-suite validation commands, including full `make py-lint` / `make py-test`, when focused relevant checks passed or `/implement`/CI owns later validation.
-- [ ] Manifest `jq -e` self-validation against <MANIFEST_PATH>.tmp exited 0.
-- [ ] For `needs_qa`, qa-pending `jq -e` self-validation against <QA_PENDING_PATH>.tmp exited 0.
+- [ ] Manifest `jq -e` self-validation against `<MANIFEST_PATH>.tmp` exited 0.
+- [ ] For `needs_qa`, qa-pending `jq -e` self-validation against `<QA_PENDING_PATH>.tmp` exited 0.
 
 Then atomic-write `<MANIFEST_PATH>` and exit 0. The dispatcher validates schema, paths, branch, and submodules; runs `git add -A && git commit -F <commit-message-file>` on `complete` with `commit_message` piped through `python/cli.py redact secrets`; and emits the final KV envelope. No diff or subject cross-check occurs.
 

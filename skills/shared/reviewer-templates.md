@@ -309,7 +309,7 @@ Tag each finding with focus area: `code-quality`, `risk-integration`, `correctne
 
 ### Prose length cap
 
-Be concise. **Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
+**Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
 
 ### In-Scope Findings
 Numbered list: severity (`**Major**` / `**Minor**`), focus-area tag, file:line or plan requirement anchor, what the issue is, concrete breakage path, suggested fix.
@@ -405,7 +405,7 @@ Tag each finding with focus area: `code-quality`, `risk-integration`, `correctne
 
 ### Prose length cap
 
-Be concise. **Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
+**Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
 
 ### In-Scope Findings
 Numbered list: severity (`**Major**` / `**Minor**`), focus-area tag, file:line, what the issue is, suggested fix.
@@ -497,7 +497,7 @@ Tag each finding with focus area: `code-quality`, `risk-integration`, `correctne
 
 ### Prose length cap
 
-Be concise. **Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
+**Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
 
 ### In-Scope Findings
 Numbered list: severity (`**Major**` / `**Minor**`), focus-area tag, file:line, what the issue is, suggested fix.
@@ -679,7 +679,7 @@ Tag each finding with focus area: {FOCUS_AREA_VALUES}. Return two sections.
 
 ### Prose length cap
 
-Be concise. **Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
+**Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
 
 ### In-Scope Findings
 

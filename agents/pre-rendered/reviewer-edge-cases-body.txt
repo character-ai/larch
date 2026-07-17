@@ -36,7 +36,7 @@ Tag each finding with focus area: `code-quality` / `risk-integration` / `correct
 
 ### Prose length cap
 
-Be concise. **Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
+**Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
 
 ### In-Scope Findings
 

@@ -217,7 +217,7 @@ repos:
         always_run: true
 
   - repo: https://github.com/zhupanov/agent-lint
-    rev: v2.4.0
+    rev: v2.5.0
     hooks:
       - id: agent-lint
         args: [--pedantic]
@@ -735,7 +735,7 @@ repos:
         name: Lint AI agent configuration files
         entry: agnix . --strict
         language: node
-        additional_dependencies: ['agnix@0.17.0']
+        additional_dependencies: ['agnix@0.40.0']
         pass_filenames: false
         files: |
           (?x)^(
