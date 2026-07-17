@@ -57,7 +57,6 @@ LEGACY_SEED_MODULES = frozenset(
         "lint_no_raw_stderr_after_quiet_init.py",
         "lint_prefix_case_variant.py",
         "lint_pylint_skip_file.py",
-        "lint_readability_preamble.py",
         "lint_renderer_golden_tests.py",
         "lint_run_log_run_id.py",
         "lint_run_log_walkers.py",

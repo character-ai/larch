@@ -106,6 +106,9 @@ fn rules_lists_registered_rules_in_name_order() {
         .stdout(predicate::str::contains(
             "wire-artifact-pairing\tRequire a production writer for every wire-artifact reader\n",
         ))
+        .stdout(predicate::str::contains(
+            "readability-preamble\tRequire manifest-declared readability preamble directives\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 

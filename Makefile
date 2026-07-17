@@ -31,14 +31,13 @@ CARGO_DENY_VERSION ?= 0.20.2
 .PHONY: test-design-step1d5 test-design-log-ship
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
-.PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-codex-exec-auth rust-lint lint-retired-scripts lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-harness-session-env lint-em-dash-output lint-codex-exec-auth rust-lint lint-retired-scripts lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -157,7 +156,6 @@ LINT_TEST_DESCRIPTORS := \
 	engine-adoption|python/tests/lint/test_lint_engine_adoption.py \
 	em-dash-output|python/tests/lint/test_lint_em_dash_output.py \
 	flat-tests|python/tests/lint/test_lint_flat_tests.py \
-	readability-preamble|python/tests/lint/test_lint_readability_preamble.py \
 	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
 	harness-session-env|python/tests/lint/test_lint_harness_session_env.py
 
@@ -238,10 +236,6 @@ lint-only:
 
 lint-run-log-walkers:
 	python3 python/cli.py lint run-log-walkers
-
-lint-readability-preamble:
-	python3 python/cli.py lint readability-preamble
-
 
 lint-em-dash-output:
 	python3 python/cli.py lint em-dash-output

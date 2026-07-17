@@ -582,10 +582,6 @@ ignore = [
 "lint_no_raw_stderr_after_quiet_init.py" = [
     "C901",
 ]
-"lint_readability_preamble.py" = [
-    "C901",
-    "PLR0912",
-]
 "lint_unreachable_branch.py" = [
     "F401",
 ]
