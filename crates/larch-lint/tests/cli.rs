@@ -79,6 +79,15 @@ fn rules_lists_registered_rules_in_name_order() {
         .stdout(predicate::str::contains(
             "self-disarmable-gate\tReject optional metadata that suppresses a design size or publish hard gate\n",
         ))
+        .stdout(predicate::str::contains(
+            "layering\tRequire Rust workspace packages to follow the larch dependency tiers\n",
+        ))
+        .stdout(predicate::str::contains(
+            "flat-tests\tRequire Rust tests to use crate-local cfg(test) modules or integration tests\n",
+        ))
+        .stdout(predicate::str::contains(
+            "renderer-golden-tests\tRequire Rust report renderer helpers to have explicit golden-test references\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 

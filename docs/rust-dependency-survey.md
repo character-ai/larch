@@ -59,3 +59,15 @@ terminal-return proofs for equivalent source conditions and `match true`
 arms. It invalidates proofs after a potential mutation, supports inline reason-bearing
 suppression, and intentionally has no Rust baseline: the initial repository
 scan must be clean.
+
+## C13 package and test architecture (issue #7625)
+
+`cargo_metadata` supplies the workspace package graph and distinguishes normal
+from development dependencies, so package layering does not parse manifests.
+`syn` supplies test attributes and path references for the source-local test
+and renderer checks. The C13 leaf adds no dependency: no selected workspace
+crate exposes a stable, Cargo-aware Rust module graph that resolves `#[path]`,
+re-exports, and conditional modules. Adding one would violate the umbrella's
+independent-leaf dependency contract. The rule consequently leaves package
+edges to Cargo metadata and uses syntax only for source-local contracts; it
+does not claim to implement a general module resolver.
