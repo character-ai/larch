@@ -22,17 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  # nested-ref-deep is suppressed because the anti-halt continuation banner
-  # (closes #177) requires every orchestrator SKILL.md to cite
-  # skills/shared/subskill-invocation.md as the canonical source of the
-  # rule. subskill-invocation.md itself contains many inline SKILL.md
-  # example references (which the S029 rule counts as "nested"), but the
-  # banner carries the operative one-sentence rule inline — the canonical
-  # reference is a discoverability aid, not a mandatory cross-ref chain.
-  # The rule's stated concern ("humans/LLMs chasing chained refs") does not
-  # apply to this use case. See `skills/shared/subskill-invocation.md`
-  # (normative home of the anti-halt banner convention).
-  "nested-ref-deep",
   # template-count-mismatch is suppressed because the specialist reviewer
   # agents (agents/reviewer-{structure,correctness,testing,security,edge-cases}.md)
   # are hand-authored specialist variants derived from the shared Code Reviewer
