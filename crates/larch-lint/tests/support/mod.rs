@@ -25,6 +25,10 @@ impl TempRepo {
             b"rule = \"git-push-refspec\"\n",
         );
         repository.write(
+            "crates/larch-lint/migration-ledger/gh-argv-literal.toml",
+            b"rule = \"gh-argv-literal\"\n",
+        );
+        repository.write(
             "crates/larch-lint/migration-ledger/kv-codec.toml",
             b"rule = \"kv-codec\"\n",
         );
@@ -39,6 +43,10 @@ impl TempRepo {
         repository.write(
             "crates/larch-lint/migration-ledger/tmpdir-arg-env-fallback.toml",
             b"rule = \"tmpdir-arg-env-fallback\"\n",
+        );
+        repository.write(
+            "crates/larch-lint/migration-ledger/subprocess-via-runner.toml",
+            b"rule = \"subprocess-via-runner\"\n",
         );
         repository
     }

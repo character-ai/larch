@@ -35,6 +35,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "git-push-refspec\tRequire Git push commands to name a destination refspec\n",
         ))
         .stdout(predicate::str::contains(
+            "gh-argv-literal\tRequire raw gh command ownership by the GitHub wrapper\n",
+        ))
+        .stdout(predicate::str::contains(
             "kv-codec\tReject ad-hoc KEY=value readers and emitters outside shared codec owners\n",
         ))
         .stdout(predicate::str::contains(
@@ -45,6 +48,9 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "tmpdir-arg-env-fallback\tRequire an environment fallback for args.tmpdir\n",
+        ))
+        .stdout(predicate::str::contains(
+            "subprocess-via-runner\tRequire std::process::Command ownership by the shared runner\n",
         ))
         .stderr(predicate::str::is_empty());
 }
