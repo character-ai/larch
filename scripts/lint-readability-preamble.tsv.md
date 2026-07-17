@@ -1,6 +1,6 @@
 # lint-readability-preamble.tsv
 
-Tab-separated manifest consumed by `python3 python/cli.py lint readability-preamble` and `python/tests/lint/test_lint_readability_preamble.py`.
+Tab-separated manifest consumed by `cargo run --locked --package larch-lint -- rule readability-preamble` and `crates/larch-lint/tests/readability_preamble.rs`.
 
 ## Schema
 
@@ -18,7 +18,7 @@ Comment lines (`#` in column 1) and blank lines are skipped.
 
 ## Shared reader contract
 
-Both `python3 python/cli.py lint readability-preamble` and the Python test consumer MUST parse this file with equivalent row filtering and field extraction:
+The Rust rule and its integration tests must preserve this row filtering and field extraction:
 
 - Skip rows where column 1 matches `^#` or the line is empty.
 - Emit `path`, `variant`, `expected_count`, `prompt_kind`, `step_markers` by splitting on literal tab characters without collapsing empty middle fields.
@@ -38,4 +38,4 @@ The lint also walks `agents/code-reviewer.md` and `agents/reviewer-*.md`, so rev
 
 ## Edit in sync
 
-When adding or renaming readability amendment sites, update this TSV, the Python lint/test consumers, and any structural harness pins together. After a step ID rename, update `step_markers` on the row or placement lint fails closed with `step "<id>": ... marker not found`.
+When adding or renaming readability amendment sites, update this TSV, the Rust rule and integration tests, and any structural harness pins together. After a step ID rename, update `step_markers` on the row or placement lint fails closed with `step "<id>": ... marker not found`.

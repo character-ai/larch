@@ -5102,22 +5102,6 @@
     "history": []
   },
   {
-    "file": "larch/lint/lint_readability_preamble.py",
-    "code": "C901",
-    "qualified_symbol": "check_step_placement",
-    "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/lint_readability_preamble.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 11,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/lint/migration_lint.py",
     "code": "C901",
     "qualified_symbol": "main",

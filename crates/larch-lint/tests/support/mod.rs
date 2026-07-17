@@ -87,6 +87,10 @@ fn seed_tracked_tree(repository: &TempRepo) {
         b"<table>\n<tr><td><a href=\"docs/skills.md#design\"><code>/design</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#review\"><code>/review</code></a></td></tr>\n</table>\n",
     );
     repository.write("docs/skills.md", b"### `/design`\n\n### `/review`\n");
+    repository.write(
+        "scripts/lint-readability-preamble.tsv",
+        b"__metadata__\tmetadata-min-count\t0\t\nskills/design/SKILL.md\tskill-exempt\t0\tfixture\t\nskills/review/SKILL.md\tskill-exempt\t0\tfixture\t\n",
+    );
     for path in [
         "skills/shared/reviewer-templates.md",
         "agents/code-reviewer.md",
@@ -101,7 +105,7 @@ fn seed_tracked_tree(repository: &TempRepo) {
     ] {
         repository.write(
             path,
-            b"`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`\n",
+            b"**MANDATORY: READ ENTIRE FILE before composing fixture text: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**\n`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`\n",
         );
     }
     for path in [
