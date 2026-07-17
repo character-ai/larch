@@ -28,13 +28,6 @@ suppress = [
   # is pathless, so a file override cannot represent this exception. Generated
   # reviewer checks and the focus-area enum guard cover template drift.
   "template-count-mismatch",
-  # tools-unknown (S040) is suppressed because agent-lint's built-in
-  # tool registry still does not recognize the `Monitor` tool (a first-party
-  # Claude Code tool used by loop-driver SKILL.md files for passive
-  # log-tailing observability). Suppression is global because agent-lint
-  # does not support per-file or per-token exceptions for this rule.
-  # Revisit when a future agent-lint upgrade adds Monitor to the registry.
-  "tools-unknown",
   # template-marker-missing (A006) requires every agent file to carry the
   # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
   # is meaningful for the Code Reviewer archetype family (code-reviewer.md
