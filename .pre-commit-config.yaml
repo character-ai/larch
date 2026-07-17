@@ -223,12 +223,13 @@ repos:
     hooks:
       - id: actionlint
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.4
+  - repo: local
     hooks:
       - id: gitleaks
-        # Override upstream's `gitleaks protect --staged` and use
-        # `detect --no-git` so the hook scans the working tree (which
+        name: gitleaks (pinned release binary)
+        # The shared wrapper downloads and checksum-verifies the same release
+        # artifact path used by CI. Its working-tree mode uses `--no-git`, so
+        # the hook scans the working tree (which
         # includes staged/uncommitted content at commit time). `--no-git`
         # is load-bearing: without it, `gitleaks detect` scans only git
         # history and silently passes secrets that are staged but not
@@ -237,7 +238,8 @@ repos:
         # invoked with a scoped `--files <path>` argument. Git-history
         # scanning is the dedicated CI job's responsibility (see
         # .github/workflows/ci.yaml `gitleaks` job).
-        entry: gitleaks detect --source . --no-git --redact --no-banner
+        entry: python3 python/cli.py checks gitleaks --mode working-tree
+        language: system
         pass_filenames: false
 
   - repo: local
