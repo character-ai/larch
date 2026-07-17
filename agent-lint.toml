@@ -22,13 +22,11 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  # template-count-mismatch is suppressed because the specialist reviewer
-  # agents (agents/reviewer-{structure,correctness,testing,security,edge-cases}.md)
-  # are hand-authored specialist variants derived from the shared Code Reviewer
-  # archetype but maintained independently — they do NOT each have a matching
-  # `## Reviewer` section in skills/shared/reviewer-templates.md. The shared
-  # template defines the generic archetype (1 section); the specialists narrow
-  # it to focus areas. CI's focus-area enum check covers drift prevention.
+  # A007 currently reports one repository-wide diagnostic: 17 agent files and
+  # 9 `## Reviewer` sections in skills/shared/reviewer-templates.md. Several
+  # non-reviewer agents intentionally have no reviewer template. The diagnostic
+  # is pathless, so a file override cannot represent this exception. Generated
+  # reviewer checks and the focus-area enum guard cover template drift.
   "template-count-mismatch",
   # tools-unknown (S040) is suppressed because agent-lint's built-in
   # tool registry still does not recognize the `Monitor` tool (a first-party
