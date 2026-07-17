@@ -16,7 +16,6 @@ from larch.report import run_log_flush, run_log_manifest, progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
-from larch.git import rebase
 
 from test_support import RecordingRunner, make_run_context
 
@@ -298,130 +297,6 @@ def test_postbump_exception_uses_bash_status_token(
     )
     result = finalize.postbump(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.status == "rebase-failed"
-
-
-@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
-def test_resolve_generated_conflicts_invokes_cli(tmp_path: Path) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("py", "cli"), 0, "", "", 0.01),
-            CommandResult(("git", "add"), 0, "", "", 0.01),
-        ],
-    )
-    ok = rebase.resolve_generated_conflicts(
-        runner,
-        paths=("python/skill-closure-baseline.json",),
-        cwd=str(tmp_path),
-    )
-    assert ok is True
-    assert runner.calls[-2][1:] == ["python/cli.py", "lint", "skill-closure-growth", "--write"]
-    assert runner.calls[-1] == ["git", "add", "--", "python/skill-closure-baseline.json"]
-
-
-@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
-def test_autoresolve_generated_conflicts_regenerates_and_continues(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    calls: list[str] = []
-
-    def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
-        return ["python/skill-closure-baseline.json"]
-
-    def fake_resolve(*_args: object, paths: tuple[str, ...], **_kwargs: object) -> bool:
-        calls.append("resolve:" + ",".join(paths))
-        return True
-
-    def fake_continue(*_args: object, **_kwargs: object) -> CommandResult:
-        calls.append("continue")
-        return CommandResult(("git", "rebase", "--continue"), 0, "", "", 0.01)
-
-    def fake_in_progress(*_args: object, **_kwargs: object) -> bool:
-        return False
-
-    monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(rebase, "resolve_generated_conflicts", fake_resolve)
-    monkeypatch.setattr(finalize.git, "rebase_continue", fake_continue)
-    monkeypatch.setattr(finalize.git, "rebase_in_progress", fake_in_progress)
-
-    result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
-    assert result.status == "rebased"
-    assert not result.conflict_files
-    assert calls == [
-        "resolve:python/skill-closure-baseline.json",
-        "continue",
-    ]
-
-
-@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
-def test_autoresolve_generated_conflicts_resolves_across_multiple_commits(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    # Two replayed commits both conflict on the generated baseline: the first
-    # `rebase --continue` re-conflicts, the loop regenerates again, and the
-    # second continue completes the rebase (issue #5930 "remaining commits").
-    state: dict[str, int] = {"continue_calls": 0}
-
-    def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
-        return ["python/skill-closure-baseline.json"]
-
-    def fake_resolve(*_args: object, **_kwargs: object) -> bool:
-        return True
-
-    def fake_continue(*_args: object, **_kwargs: object) -> CommandResult:
-        state["continue_calls"] += 1
-        rc = 1 if state["continue_calls"] == 1 else 0
-        return CommandResult(("git", "rebase", "--continue"), rc, "", "", 0.01)
-
-    def fake_in_progress(*_args: object, **_kwargs: object) -> bool:
-        return False
-
-    monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(rebase, "resolve_generated_conflicts", fake_resolve)
-    monkeypatch.setattr(finalize.git, "rebase_continue", fake_continue)
-    monkeypatch.setattr(finalize.git, "rebase_in_progress", fake_in_progress)
-
-    result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
-    assert result.status == "rebased"
-    assert state["continue_calls"] == 2  # looped once after the first continue re-conflicted
-
-
-@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
-def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
-        return ["python/skill-closure-baseline.json", "python/larch/state/finalize.py"]
-
-    monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-
-    result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
-    assert result.status == "failed"
-    assert result.conflict_files == (
-        "python/skill-closure-baseline.json",
-        "python/larch/state/finalize.py",
-    )
-
-
-@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
-def test_autoresolve_generated_conflicts_stalls_when_regen_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
-        return ["python/skill-closure-baseline.json"]
-
-    def fake_resolve(*_args: object, **_kwargs: object) -> bool:
-        return False
-
-    monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
-    monkeypatch.setattr(rebase, "resolve_generated_conflicts", fake_resolve)
-
-    result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
-    assert result.status == "failed"
-    assert result.conflict_files == ("python/skill-closure-baseline.json",)
 
 
 def test_rebase_no_push_aborts_and_reports_conflict_files_on_stall(

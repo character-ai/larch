@@ -364,32 +364,6 @@ def test_checkpoint_probe_resolves_consecutive_larch_log_conflicts(
     assert calls == ["checkout", "add", "checkout", "add", "phantom"]
 
 
-@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
-def test_checkpoint_probe_resolves_generated_only_conflict(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    results = iter([
-        rebase.RebasePushResult(
-            exit_code=1,
-            conflict_files="python/skill-closure-baseline.json",
-        ),
-        rebase.RebasePushResult(exit_code=0),
-    ])
-    calls: list[str] = []
-
-    def resolve_generated(*_args: object, paths: list[str], **_kwargs: object) -> bool:
-        calls.append("resolve:" + ",".join(paths))
-        return True
-
-    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(rebase, "resolve_generated_conflicts", resolve_generated)
-    _stub_clean_phantom(monkeypatch, calls)
-    assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
-    assert "ROUTE=continue" in capsys.readouterr().out
-    assert calls == ["resolve:python/skill-closure-baseline.json", "phantom"]
-
-
 def test_checkpoint_probe_mixed_conflict_resolves_only_larch_logs(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

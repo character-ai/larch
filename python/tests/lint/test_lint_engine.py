@@ -11,8 +11,6 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
-
 import pytest
 from larch.lint import engine as lint_engine
 
@@ -171,69 +169,6 @@ def test_identity_baseline_writer_rejects_mismatched_rows_before_writing(
 
     assert baseline.read_text(encoding="utf-8") == "[]\n"
 
-
-@pytest.mark.skip(reason="issue #7591 retires the local skill-closure baseline")
-def test_skill_closure_baseline_committed_payload_is_byte_stable(tmp_path: Path) -> None:
-    repo = Path(__file__).resolve().parents[3]
-    payload = (repo / "python" / "skill-closure-baseline.json").read_text(
-        encoding="utf-8"
-    )
-    baseline = tmp_path / "python" / "skill-closure-baseline.json"
-    baseline.parent.mkdir()
-    _ = baseline.write_text(payload, encoding="utf-8")
-
-    rows = lint_engine.load_skill_closure_baseline(
-        "python/skill-closure-baseline.json", root=tmp_path
-    )
-    written = lint_engine.write_skill_closure_baseline(
-        "python/skill-closure-baseline.json", root=tmp_path, rows=rows
-    )
-
-    assert written == rows
-    assert baseline.read_text(encoding="utf-8") == payload
-
-
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        "missing",
-        "duplicate",
-        "extra",
-        "bool",
-        "parent",
-        "backslash",
-        "unknown",
-    ],
-)
-@pytest.mark.skip(reason="issue #7591 retires the local skill-closure baseline")
-def test_skill_closure_baseline_parser_rejects_untrusted_aggregate_rows(
-    mutation: str,
-) -> None:
-    repo = Path(__file__).resolve().parents[3]
-    payload = json.loads(
-        (repo / "python" / "skill-closure-baseline.json").read_text(encoding="utf-8")
-    )
-    assert isinstance(payload, list)
-    records = [dict(item) for item in cast("list[dict[str, object]]", payload)]
-    if mutation == "missing":
-        _ = records.pop()
-    elif mutation == "duplicate":
-        records.append(dict(records[0]))
-    elif mutation == "extra":
-        records.append({**records[0], "skill": "unknown"})
-    elif mutation == "bool":
-        records[0]["closure_lines"] = True
-    elif mutation == "parent":
-        records[0]["files"] = ["../outside.md"]
-    elif mutation == "backslash":
-        records[0]["files"] = ["skills\\design\\SKILL.md"]
-    else:
-        records[0]["unknown"] = 1
-
-    with pytest.raises(lint_engine.ScanError):
-        _ = lint_engine.parse_skill_closure_baseline(
-            json.dumps(records), source="fixture"
-        )
 
 
 def _rule(
