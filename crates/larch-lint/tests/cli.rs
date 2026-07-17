@@ -91,6 +91,9 @@ fn rules_lists_registered_rules_in_name_order() {
         .stdout(predicate::str::contains(
             "renderer-golden-tests\tRequire Rust report renderer helpers to have explicit golden-test references\n",
         ))
+        .stdout(predicate::str::contains(
+            "lifecycle-prefix-literal\tRatchet lifecycle and bug title-prefix literals toward shared constants\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 
