@@ -11,7 +11,7 @@ Auto-generated alias created by larch /alias. Invokes /implement with preset fla
 
 ## Usage
 
-/im <arguments> is equivalent to /implement --merge <arguments>
+/im $ARGUMENTS is equivalent to /implement --merge $ARGUMENTS
 
 ## Flags
 

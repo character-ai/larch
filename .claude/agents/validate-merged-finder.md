@@ -26,6 +26,6 @@ symbol, or finding you did not read. Cap findings at 10.
 
 In refuter mode, independently try to disprove the one queue-row candidate by
 reading the cited code and consumers, including later fixes. Return exactly one
-strict JSONL object: `{"merge_sha": <40-char SHA>, "finding_index": <integer>,
+strict JSONL object: `{"merge_sha": <40-char SHA>, "finding_index": 0,
 "verdict": "survives|refuted"}`. Return `refuted` when evidence is unreadable,
 and never invent file contents or tool results.

@@ -11,7 +11,7 @@ Auto-generated alias created by larch /alias. Invokes /implement with preset fla
 
 ## Usage
 
-/fm <arguments> is equivalent to /implement --force --self-review --self-implement --merge <arguments> (same as /f --merge <arguments>).
+/fm $ARGUMENTS is equivalent to /implement --force --self-review --self-implement --merge $ARGUMENTS (same as /f --merge $ARGUMENTS).
 
 ## Flags
 
