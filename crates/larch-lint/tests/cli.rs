@@ -29,6 +29,9 @@ fn rules_lists_registered_rules_in_name_order() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
+            "duplicate-code\tReject normalized duplicate production Rust blocks across modules\n",
+        ))
+        .stdout(predicate::str::contains(
             "env-via-config-constant\tReject bare environment-key literals already owned by shared ENV_* constants\n",
         ))
         .stdout(predicate::str::contains(

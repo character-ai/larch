@@ -22,8 +22,9 @@ use syn::{
 use crate::{
     Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason,
-    syntax::RustSyntax,
 };
+
+use super::{path_discovery, syn_helpers};
 
 const NAME: &str = "markdown-heading-fence-state";
 const DESCRIPTION: &str = "Require fence-aware Markdown heading regex parsing";
@@ -76,8 +77,7 @@ impl Rule for MarkdownHeadingFenceStateRule {
 crate::register_rule!(METADATA, RULE);
 
 fn check_rust_file(repository: &Repository, path: &RepoPath) -> Result<Vec<Finding>, LintError> {
-    let source = repository.read_utf8(path)?;
-    let syntax = RustSyntax::parse(path.as_str(), &source)?;
+    let (source, syntax) = path_discovery::read_rust_syntax(repository, path)?;
     let bindings = Bindings::collect(syntax.file());
     let mut visitor = LoopVisitor {
         bindings: &bindings,
@@ -137,7 +137,9 @@ struct BindingVisitor<'bindings> {
 
 impl<'ast> Visit<'ast> for BindingVisitor<'_> {
     fn visit_local(&mut self, node: &'ast Local) {
-        if let (Some(name), Some(initializer)) = (pattern_name(&node.pat), &node.init) {
+        if let (Some(name), Some(initializer)) =
+            (syn_helpers::pattern_name(&node.pat), &node.init)
+        {
             if is_regex_expression(
                 &initializer.expr,
                 &self.bindings.regexes,
@@ -165,14 +167,6 @@ impl<'ast> Visit<'ast> for BindingVisitor<'_> {
     fn visit_item_use(&mut self, node: &'ast ItemUse) {
         collect_regex_aliases(&node.tree, false, &mut self.bindings.regex_types);
         visit::visit_item_use(self, node);
-    }
-}
-
-fn pattern_name(pattern: &Pat) -> Option<String> {
-    match pattern {
-        Pat::Ident(ident) => Some(ident.ident.to_string()),
-        Pat::Type(typed) => pattern_name(&typed.pat),
-        _ => None,
     }
 }
 
@@ -223,23 +217,13 @@ fn heading_regex_construction(expression: &Expr, regex_types: &BTreeSet<String>)
             .is_some_and(|type_segment| regex_types.contains(&type_segment.ident.to_string()))
         && args
             .first()
-            .and_then(string_literal)
+            .and_then(syn_helpers::string_literal)
             .is_some_and(|pattern| is_heading_pattern(&pattern))
 }
 
 const fn expression_path(expression: &Expr) -> Option<&syn::ExprPath> {
     match expression {
         Expr::Path(path) => Some(path),
-        _ => None,
-    }
-}
-
-fn string_literal(expression: &Expr) -> Option<String> {
-    match expression {
-        Expr::Lit(literal) => match &literal.lit {
-            syn::Lit::Str(value) => Some(value.value()),
-            _ => None,
-        },
         _ => None,
     }
 }

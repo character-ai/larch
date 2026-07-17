@@ -22,6 +22,8 @@ use crate::{
     syntax::RustSyntax,
 };
 
+use super::syn_helpers;
+
 const NAME: &str = "result-env-key-parity";
 const DESCRIPTION: &str =
     "Reject divergent key sets across sibling writers of the same result-env basename";
@@ -275,14 +277,9 @@ fn keys_from_elements<'a>(elements: impl Iterator<Item = &'a Expr>) -> Option<BT
 
 fn string_literal(expr: &Expr) -> Option<String> {
     match expr {
-        Expr::Lit(lit) => match &lit.lit {
-            Lit::Str(string) => Some(string.value()),
-            _ => None,
-        },
-        Expr::Reference(reference) => string_literal(&reference.expr),
         Expr::Call(call) => call.args.iter().find_map(string_literal),
         Expr::MethodCall(method) => method.args.iter().find_map(string_literal),
-        _ => None,
+        other => syn_helpers::string_literal(other),
     }
 }
 

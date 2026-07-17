@@ -47,7 +47,7 @@ impl Rule for EnvViaConfigConstantRule {
         let exemptions = load_exemptions(repository)?;
         let mut findings = Vec::new();
         for path in path_discovery::selected_rust_sources(repository)? {
-            if path.as_str() == OWNER_PATH || is_test_path(path.as_str()) {
+            if path.as_str() == OWNER_PATH || path_discovery::is_test_path(path.as_str()) {
                 continue;
             }
             let source = repository.read_utf8(path)?;
@@ -331,13 +331,6 @@ fn optional_string(
     }
 }
 
-fn is_test_path(path: &str) -> bool {
-    path.split('/').any(|part| part == "tests")
-        || path.rsplit('/').next().is_some_and(|name| {
-            name.starts_with("test_") || name.ends_with("_test.rs") || name == "tests.rs"
-        })
-}
-
 fn scan_source(
     path: &str,
     source: &str,
@@ -351,7 +344,6 @@ fn scan_source(
         matches: Vec::new(),
     };
     visitor.visit_file(syntax.file());
-    let lines: Vec<&str> = source.lines().collect();
     let mut occurrence = 0_u32;
     let mut needle_counts: HashMap<String, u32> = HashMap::new();
     let mut findings = Vec::new();
@@ -362,7 +354,6 @@ fn scan_source(
         occurrence = occurrence.saturating_add(1);
         let needle_occurrence = needle_counts.entry(needle.clone()).or_insert(0);
         *needle_occurrence = needle_occurrence.saturating_add(1);
-        let line = line_of_needle(source, &needle, *needle_occurrence)?;
         let raw = RawFinding {
             env_name: env_name.clone(),
             constant: constant.clone(),
@@ -375,11 +366,11 @@ fn scan_source(
         {
             continue;
         }
-        let line_index = usize::try_from(line.saturating_sub(1)).unwrap_or(0);
-        let line_text = lines.get(line_index).copied().unwrap_or("");
-        if suppression::reason(line_text, SUPPRESSION_TOKEN)?.is_some() {
+        let Some(line) =
+            suppression::line_unless_suppressed(source, &needle, *needle_occurrence, SUPPRESSION_TOKEN)?
+        else {
             continue;
-        }
+        };
         findings.push(Finding::new(
             path,
             line,
@@ -404,24 +395,6 @@ fn exemption_matches(exemption: &Exemption, path: &str, finding: &RawFinding) ->
         (Some(env_name), None) => finding.env_name == *env_name,
         (None, Some(constant)) => finding.constant == *constant,
     }
-}
-
-fn line_of_needle(source: &str, needle: &str, occurrence: u32) -> Result<u32, LintError> {
-    let mut seen = 0_u32;
-    for (index, line) in source.lines().enumerate() {
-        let mut rest = line;
-        while let Some(offset) = rest.find(needle) {
-            seen = seen.saturating_add(1);
-            if seen == occurrence {
-                return u32::try_from(index + 1)
-                    .map_err(|_| LintError::new("line number exceeds u32"));
-            }
-            rest = &rest[offset + needle.len()..];
-        }
-    }
-    Err(LintError::new(format!(
-        "cannot locate environment literal needle {needle:?}"
-    )))
 }
 
 struct EnvVisitor {

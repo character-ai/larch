@@ -7,6 +7,15 @@ use cargo_metadata::MetadataCommand;
 
 use crate::{LintError, PathSelector, RepoPath, Repository};
 
+/// Return whether a repository-relative path is a Rust test source.
+#[must_use]
+pub(super) fn is_test_path(path: &str) -> bool {
+    path.split('/').any(|part| part == "tests")
+        || path.rsplit('/').next().is_some_and(|name| {
+            name.starts_with("test_") || name.ends_with("_test.rs") || name == "tests.rs"
+        })
+}
+
 /// Select tracked Rust sources, preferring workspace package roots when present.
 ///
 /// # Errors
@@ -29,6 +38,20 @@ pub(super) fn selected_rust_sources(
                 .any(|prefix| path_under_prefix(path.as_str(), prefix))
         })
         .collect())
+}
+
+/// Read one tracked Rust source and parse it with the shared syntax helper.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be read or is not valid Rust.
+pub(super) fn read_rust_syntax(
+    repository: &Repository,
+    path: &RepoPath,
+) -> Result<(String, crate::syntax::RustSyntax), LintError> {
+    let source = repository.read_utf8(path)?;
+    let syntax = crate::syntax::RustSyntax::parse(path.as_str(), &source)?;
+    Ok((source, syntax))
 }
 
 fn workspace_package_prefixes(root: &Path) -> Result<Option<BTreeSet<String>>, LintError> {
