@@ -20,6 +20,14 @@ impl TempRepo {
             "crates/larch-lint/migration-ledger/fixture.toml",
             b"rule = \"fixture\"\n",
         );
+        repository.write(
+            "crates/larch-lint/migration-ledger/kv-codec.toml",
+            b"rule = \"kv-codec\"\n",
+        );
+        repository.write(
+            "crates/larch-lint/migration-ledger/result-env-key-parity.toml",
+            b"rule = \"result-env-key-parity\"\n",
+        );
         repository
     }
 

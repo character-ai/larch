@@ -22,13 +22,21 @@ fn all_resolves_root_from_a_nested_working_directory() {
 }
 
 #[test]
-fn rules_lists_the_empty_foundation_registry() {
+fn rules_lists_registered_rules_in_name_order() {
     let repository = TempRepo::new();
     TempRepo::command_from(repository.path())
         .arg("rules")
         .assert()
         .success()
-        .stdout("fixture\tValidate decentralized rule registration\n")
+        .stdout(predicate::str::contains(
+            "fixture\tValidate decentralized rule registration\n",
+        ))
+        .stdout(predicate::str::contains(
+            "kv-codec\tReject ad-hoc KEY=value readers and emitters outside shared codec owners\n",
+        ))
+        .stdout(predicate::str::contains(
+            "result-env-key-parity\tReject divergent key sets across sibling writers of the same result-env basename\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 
@@ -107,6 +115,64 @@ fn malformed_cli_input_has_the_error_exit() {
         .assert()
         .code(2)
         .stderr("error: unrecognized subcommand\n");
+}
+
+#[test]
+fn kv_codec_and_result_env_rules_are_clean_on_empty_rust_corpus() {
+    let repository = TempRepo::new();
+    repository.write("crates/demo/src/lib.rs", b"pub fn ok() {}\n");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "kv-codec"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+    TempRepo::command_from(repository.path())
+        .args(["rule", "result-env-key-parity"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn kv_codec_reports_ad_hoc_split() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        b"fn parse(line: &str) {\n    let _ = line.split_once('=');\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "kv-codec"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crates/demo/src/lib.rs:2: ad-hoc KEY=value split",
+        ));
+}
+
+#[test]
+fn result_env_key_parity_reports_divergent_siblings() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/a/src/lib.rs",
+        b"fn emit() {\n    write_result_env(\"slot.env\", [(\"A\", \"1\"), (\"B\", \"2\")]);\n}\n",
+    );
+    repository.write(
+        "crates/b/src/lib.rs",
+        b"fn emit() {\n    write_result_env(\"slot.env\", [(\"A\", \"1\")]);\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "result-env-key-parity"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "slot.env writer missing key B present in sibling writers",
+        ));
 }
 
 #[test]
