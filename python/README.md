@@ -14,7 +14,7 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `larch/lint/gitleaks.py`: checksum-pinned release bootstrap shared by local pre-commit and CI gitleaks scans
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
-- `lint_literal_counts.py`, `lint_no_raw_stderr_after_quiet_init.py`, `check_topology_rule_paths.py` — local lint surfaces exposed as `python/cli.py lint literal-counts`, `python/cli.py lint no-raw-stderr-after-quiet-init`, and `python/cli.py lint topology-rule-paths`.
+- `lint_no_raw_stderr_after_quiet_init.py`, `check_topology_rule_paths.py` — local lint surfaces exposed as `python/cli.py lint no-raw-stderr-after-quiet-init` and `python/cli.py lint topology-rule-paths`.
 - `render_session_transcript.py`, `cleanup_implement_logs.py`, `retro_v3_sweep.py` — run-log maintenance surfaces exposed as `python/cli.py run-log render-session-transcript`, `python/cli.py run-log cleanup-implement-logs`, and `python/cli.py run-log retro-v3-sweep`.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
@@ -96,7 +96,7 @@ Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, har
 
 ## Phase 4 scope note (branch hygiene)
 
-The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `scripts/test-lint-literal-counts.sh`, `scripts/test-plan-review-loop.sh`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.
+The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `scripts/test-plan-review-loop.sh`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.
 
 ## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
 

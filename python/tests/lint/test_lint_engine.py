@@ -131,7 +131,6 @@ def _git_ok_runner(root: Path, tracked: Sequence[str]) -> RecordingRunner:
         ("keyword-only-baseline.json", "keyword_only"),
         ("wire-artifact-pairing-baseline.json", "wire_artifact_pairing"),
         ("renderer-golden-tests-baseline.json", "renderer_golden_tests"),
-        ("guideline-no-exception-baseline.json", "guideline_no_exception"),
     ],
 )
 def test_identity_baseline_schemas_parse_committed_payloads(

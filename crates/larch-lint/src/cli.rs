@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 
 use crate::{
     GitCli, Repository, registered_rule_registry,
-    runner::{ExitCode, render_error, render_findings, render_rule_list, run},
+    runner::{ExitCode, render_error, render_findings, render_rule_list, render_warnings, run},
 };
 
 /// Check larch repository policy.
@@ -111,14 +111,17 @@ fn execute<'rule>(
     repository: &Repository,
     rules: impl IntoIterator<Item = &'rule dyn crate::Rule>,
 ) -> i32 {
-    let findings = match run(repository, rules) {
-        Ok(findings) => findings,
+    let report = match run(repository, rules) {
+        Ok(report) => report,
         Err(error) => return render_error(&error, &mut std::io::stderr()).as_i32(),
     };
-    let exit = crate::runner::finding_exit_code(&findings);
+    if let Err(error) = render_warnings(report.warnings(), &mut std::io::stderr()) {
+        return render_error(&error, &mut std::io::stderr()).as_i32();
+    }
+    let exit = crate::runner::finding_exit_code(report.findings());
     if exit == ExitCode::Clean {
         exit.as_i32()
-    } else if let Err(error) = render_findings(&findings, &mut std::io::stdout()) {
+    } else if let Err(error) = render_findings(report.findings(), &mut std::io::stdout()) {
         render_error(&error, &mut std::io::stderr()).as_i32()
     } else {
         exit.as_i32()

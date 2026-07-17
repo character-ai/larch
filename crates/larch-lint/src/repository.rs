@@ -59,15 +59,15 @@ pub trait Git {
     /// Returns an error when the root cannot be determined or trusted.
     fn repository_root(&self, cwd: &Path) -> Result<PathBuf, LintError>;
 
-    /// Return NUL-delimited paths tracked in `root`.
+    /// Return NUL-delimited, non-ignored paths currently known to Git in `root`.
     ///
     /// # Errors
     ///
-    /// Returns an error when Git cannot provide its tracked-file view.
+    /// Returns an error when Git cannot provide its working-tree file view.
     fn tracked_paths(&self, root: &Path) -> Result<Vec<u8>, LintError>;
 }
 
-/// Production adapter that treats Git's index as the discovery authority.
+/// Production adapter that treats Git's non-ignored working tree as discovery authority.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GitCli;
 
@@ -94,10 +94,13 @@ impl Git for GitCli {
 
     fn tracked_paths(&self, root: &Path) -> Result<Vec<u8>, LintError> {
         command_output(
-            Command::new("git")
-                .arg("-C")
-                .arg(root)
-                .args(["ls-files", "--cached", "-z"]),
+            Command::new("git").arg("-C").arg(root).args([
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ]),
             "discover tracked files",
         )
     }
@@ -121,7 +124,7 @@ fn command_output(command: &mut Command, operation: &str) -> Result<Vec<u8>, Lin
     Ok(output.stdout)
 }
 
-/// A repository snapshot whose files are the current tracked regular files.
+/// A repository snapshot whose files are current non-ignored regular files.
 #[derive(Debug)]
 pub struct Repository {
     root: PathBuf,
@@ -140,12 +143,19 @@ impl Repository {
             LintError::new(format!("cannot canonicalize repository root: {error}"))
         })?;
         let stream = git.tracked_paths(&root)?;
-        let paths = parse_tracked_paths(&stream)?;
-        for path in &paths {
+        let discovered = parse_tracked_paths(&stream)?;
+        let mut paths = Vec::with_capacity(discovered.len());
+        for path in discovered {
             let candidate = root.join(path.as_str());
-            let metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
-                LintError::new(format!("{path}: cannot inspect tracked path: {error}"))
-            })?;
+            let metadata = match std::fs::symlink_metadata(&candidate) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(LintError::new(format!(
+                        "{path}: cannot inspect tracked path: {error}"
+                    )));
+                }
+            };
             if metadata.file_type().is_symlink() {
                 return Err(LintError::new(format!(
                     "{path}: tracked symlinks are not supported"
@@ -156,6 +166,7 @@ impl Repository {
                     "{path}: tracked path is not a regular file"
                 )));
             }
+            paths.push(path);
         }
         Ok(Self { root, paths })
     }
@@ -271,7 +282,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{Git, LintError, PathSelector, RepoPath, Repository, parse_tracked_paths};
-    use crate::{Finding, Rule, run};
+    use crate::{Finding, Rule, RuleOutput, run};
 
     #[derive(Debug)]
     struct FakeGit {
@@ -301,12 +312,12 @@ mod tests {
             "fixture rule"
         }
 
-        fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+        fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
             assert_eq!(repository.paths().len(), 2);
-            Ok(vec![
+            Ok(RuleOutput::from_findings(vec![
                 Finding::new("z.md", 1, "later"),
                 Finding::new("a.md", 2, "first"),
-            ])
+            ]))
         }
     }
 
@@ -341,6 +352,21 @@ mod tests {
         .expect("discover fixture repository");
         let path = RepoPath::parse("invalid.txt").expect("valid path");
         assert!(repository.read_utf8(&path).is_err());
+    }
+
+    #[test]
+    fn current_snapshot_ignores_deleted_index_paths() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        std::fs::write(temporary.path().join("present.txt"), "present").expect("write fixture");
+        let repository = Repository::discover(
+            &FakeGit {
+                root: temporary.path().to_path_buf(),
+                stream: b"deleted.txt\0present.txt\0".to_vec(),
+            },
+            temporary.path(),
+        )
+        .expect("discover fixture repository");
+        assert_eq!(repository.paths(), [RepoPath("present.txt".to_owned())]);
     }
 
     #[test]
@@ -379,6 +405,6 @@ mod tests {
         let rule = FixtureRule;
         let rules: [&dyn Rule; 1] = [&rule];
         let findings = run(&repository, rules).expect("run fixture rule");
-        assert_eq!(findings[0].to_string(), "a.md:2: first");
+        assert_eq!(findings.findings()[0].to_string(), "a.md:2: first");
     }
 }

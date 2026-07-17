@@ -13,7 +13,7 @@ use syn::{
 };
 
 use crate::{
-    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata,
+    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason as suppression_reason,
 };
 
@@ -57,7 +57,7 @@ impl Rule for TempfileDirRule {
         TEMPFILE_DIR_DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(RUST_SOURCES, RUST_TESTS)?;
         let mut findings = Vec::new();
         for path in selector.select(repository) {
@@ -73,7 +73,7 @@ impl Rule for TempfileDirRule {
             visitor.visit_file(&file);
             findings.extend(visitor.tempfile_findings()?);
         }
-        Ok(findings)
+        Ok(RuleOutput::from_findings(findings))
     }
 }
 
@@ -86,7 +86,7 @@ impl Rule for TmpdirFallbackRule {
         TMPDIR_FALLBACK_DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(RUST_SOURCES, RUST_TESTS)?;
         let mut findings = Vec::new();
         for path in selector.select(repository) {
@@ -99,7 +99,7 @@ impl Rule for TmpdirFallbackRule {
             visitor.visit_file(&file);
             findings.extend(visitor.tmpdir_findings()?);
         }
-        Ok(findings)
+        Ok(RuleOutput::from_findings(findings))
     }
 }
 

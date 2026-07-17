@@ -30,6 +30,63 @@ pub struct Finding {
     message: String,
 }
 
+/// Diagnostics for one completed rule that do not fail the command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RuleOutput {
+    findings: Vec<Finding>,
+    warnings: Vec<String>,
+}
+
+impl RuleOutput {
+    /// Construct a completed rule output.
+    #[must_use]
+    pub const fn new(findings: Vec<Finding>, warnings: Vec<String>) -> Self {
+        Self { findings, warnings }
+    }
+
+    /// Construct an output containing only findings.
+    #[must_use]
+    pub const fn from_findings(findings: Vec<Finding>) -> Self {
+        Self::new(findings, Vec::new())
+    }
+
+    /// Construct a clean output.
+    #[must_use]
+    pub const fn clean() -> Self {
+        Self {
+            findings: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Return the rule violations.
+    #[must_use]
+    pub fn findings(&self) -> &[Finding] {
+        &self.findings
+    }
+}
+
+/// The combined report emitted by one or more rules.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LintReport {
+    findings: Vec<Finding>,
+    warnings: Vec<String>,
+}
+
+impl LintReport {
+    /// Return sorted rule violations.
+    #[must_use]
+    pub fn findings(&self) -> &[Finding] {
+        &self.findings
+    }
+
+    /// Return sorted non-failing diagnostics.
+    #[must_use]
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+}
+
 impl Finding {
     /// Construct a finding for a repository-relative path and one-based line.
     #[must_use]
@@ -81,7 +138,7 @@ pub trait Rule: Sync {
     /// # Errors
     ///
     /// Returns an error when the rule cannot produce a trustworthy result.
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError>;
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError>;
 }
 
 /// An immutable, name-indexed set of rules.
@@ -150,14 +207,18 @@ impl RuleRegistry<'static> {
 pub fn run<'rule>(
     repository: &Repository,
     rules: impl IntoIterator<Item = &'rule dyn Rule>,
-) -> Result<Vec<Finding>, LintError> {
-    let mut findings = Vec::new();
+) -> Result<LintReport, LintError> {
+    let mut report = LintReport::default();
     for rule in rules {
-        findings.extend(rule.check(repository)?);
+        let output = rule.check(repository)?;
+        report.findings.extend(output.findings);
+        report.warnings.extend(output.warnings);
     }
-    findings.sort();
-    findings.dedup();
-    Ok(findings)
+    report.findings.sort();
+    report.findings.dedup();
+    report.warnings.sort();
+    report.warnings.dedup();
+    Ok(report)
 }
 
 /// Return the process outcome associated with a completed rule run.
@@ -182,6 +243,18 @@ pub fn render_findings(
     Ok(())
 }
 
+/// Print non-failing diagnostics in a stable format.
+pub fn render_warnings(
+    warnings: &[String],
+    output: &mut impl std::io::Write,
+) -> Result<(), LintError> {
+    for warning in warnings {
+        writeln!(output, "warning: {warning}")
+            .map_err(|error| LintError::new(format!("cannot write warning: {error}")))?;
+    }
+    Ok(())
+}
+
 /// Print a deterministic rule list.
 pub fn render_rule_list(
     registry: &RuleRegistry<'_>,
@@ -202,7 +275,7 @@ pub fn render_error(error: &LintError, output: &mut impl std::io::Write) -> Exit
 
 #[cfg(test)]
 mod tests {
-    use super::{Finding, LintError, Rule, RuleRegistry};
+    use super::{Finding, LintError, Rule, RuleOutput, RuleRegistry};
     use crate::repository::Repository;
 
     #[derive(Debug)]
@@ -217,11 +290,11 @@ mod tests {
             "fixture rule"
         }
 
-        fn check(&self, _repository: &Repository) -> Result<Vec<Finding>, LintError> {
-            Ok(vec![
+        fn check(&self, _repository: &Repository) -> Result<RuleOutput, LintError> {
+            Ok(RuleOutput::from_findings(vec![
                 Finding::new("z.md", 1, "later"),
                 Finding::new("a.md", 2, "first"),
-            ])
+            ]))
         }
     }
 

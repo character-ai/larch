@@ -18,7 +18,7 @@ use syn::{
 };
 
 use crate::{
-    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, suppression,
+    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, suppression,
     syntax::RustSyntax,
 };
 
@@ -53,7 +53,7 @@ impl Rule for ResultEnvKeyParityRule {
         DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(&["crates/**/*.rs"], &[])?;
         let mut writers = Vec::new();
         let mut sources: BTreeMap<String, String> = BTreeMap::new();
@@ -70,7 +70,7 @@ impl Rule for ResultEnvKeyParityRule {
                 writer.occurrence,
             );
         }
-        findings_for_writers(&writers, &sources)
+        Ok(RuleOutput::from_findings(findings_for_writers(&writers, &sources)?))
     }
 }
 
@@ -450,6 +450,7 @@ mod tests {
             ResultEnvKeyParityRule
                 .check(&fixture.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
     }
@@ -469,9 +470,9 @@ mod tests {
         let findings = ResultEnvKeyParityRule
             .check(&fixture.repository)
             .expect("check");
-        assert_eq!(findings.len(), 1);
+        assert_eq!(findings.findings().len(), 1);
         assert_eq!(
-            findings[0].to_string(),
+            findings.findings()[0].to_string(),
             "crates/b/src/lib.rs:2: slot.env writer missing key B present in sibling writers"
         );
     }
@@ -486,6 +487,7 @@ mod tests {
             ResultEnvKeyParityRule
                 .check(&solo.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
 
@@ -503,6 +505,7 @@ mod tests {
             ResultEnvKeyParityRule
                 .check(&dynamic.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
     }
@@ -523,6 +526,7 @@ mod tests {
             ResultEnvKeyParityRule
                 .check(&fixture.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
     }
@@ -542,8 +546,10 @@ mod tests {
         let findings = ResultEnvKeyParityRule
             .check(&fixture.repository)
             .expect("check");
-        assert_eq!(findings.len(), 1);
-        assert!(findings[0].to_string().contains("missing key B"));
+        assert_eq!(findings.findings().len(), 1);
+        assert!(findings.findings()[0]
+            .to_string()
+            .contains("missing key B"));
     }
 
     #[test]

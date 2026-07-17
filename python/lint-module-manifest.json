@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "modules": [
-    {"module": "lint_bg_wait_coverage.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_codex_exec_auth.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_common.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_complexity_baseline.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
@@ -13,13 +12,11 @@
     {"module": "lint_gh_argv_literal.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_harness_session_env.py", "host_decision": "new-module-justified", "justification": "Dedicated shell-harness preamble scanner; agent-lint G010 enforces portability constructs and cannot own session-state isolation or its suppression grammar (#7562).", "source_issue": 7562},
     {"module": "lint_git_push_refspec.py", "host_decision": "new-module-justified", "justification": "Distinct AST rule for Git push destination operands; lint_gh_argv_literal only rejects raw GitHub CLI ownership bypasses and cannot enforce Git refspec policy (#7489).", "source_issue": 7489},
-    {"module": "lint_guideline_no_exception.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_guidelines_note_wrapper_bypass.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_keyword_only.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_kv_codec.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_layering.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_lifecycle_prefix_literal.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
-    {"module": "lint_literal_counts.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_markdown_heading_fence_state.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_module_manifest.py", "host_decision": "new-module-justified", "justification": "Hosts the host-or-justify backstop on the shared lint engine so every python/larch/lint/lint_*.py module records a reviewable manifest entry.", "source_issue": 6968},
     {"module": "lint_monkeypatch_facade_binding.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

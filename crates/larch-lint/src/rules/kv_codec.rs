@@ -18,7 +18,8 @@ use syn::{
 };
 
 use crate::{
-    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, syntax::RustSyntax,
+    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
+    syntax::RustSyntax,
 };
 
 const NAME: &str = "kv-codec";
@@ -61,7 +62,7 @@ impl Rule for KvCodecRule {
         DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(&["crates/**/*.rs"], &[])?;
         let mut findings = Vec::new();
         for path in selector.select(repository) {
@@ -69,7 +70,7 @@ impl Rule for KvCodecRule {
         }
         findings.sort();
         findings.dedup();
-        Ok(findings)
+        Ok(RuleOutput::from_findings(findings))
     }
 }
 
@@ -415,9 +416,11 @@ mod tests {
             "fn parse(rows: &[String]) {\n    for line in rows {\n        let _ = line.split_once('=');\n    }\n}\n",
         )]);
         let findings = KvCodecRule.check(&fixture.repository).expect("check");
-        assert_eq!(findings.len(), 1);
-        assert!(findings[0].to_string().contains(":3:"));
-        assert!(findings[0].to_string().contains("ad-hoc KEY=value split"));
+        assert_eq!(findings.findings().len(), 1);
+        assert!(findings.findings()[0].to_string().contains(":3:"));
+        assert!(findings.findings()[0]
+            .to_string()
+            .contains("ad-hoc KEY=value split"));
     }
 
     #[test]
@@ -430,6 +433,7 @@ mod tests {
             KvCodecRule
                 .check(&option.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
 
@@ -441,6 +445,7 @@ mod tests {
             KvCodecRule
                 .check(&owner.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
     }
@@ -452,7 +457,7 @@ mod tests {
             "fn emit_kv(key: &str, value: &str) {\n    println!(\"{key}={value}\");\n}\nfn read(line: &str) {\n    let _ = line.splitn(2, '=');\n}\n",
         )]);
         let findings = KvCodecRule.check(&fixture.repository).expect("check");
-        let messages: Vec<_> = findings.iter().map(ToString::to_string).collect();
+        let messages: Vec<_> = findings.findings().iter().map(ToString::to_string).collect();
         assert!(
             messages
                 .iter()
@@ -483,6 +488,7 @@ mod tests {
             KvCodecRule
                 .check(&fixture.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
     }
@@ -497,6 +503,7 @@ mod tests {
             KvCodecRule
                 .check(&fixture.repository)
                 .expect("check")
+                .findings()
                 .is_empty()
         );
     }

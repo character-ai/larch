@@ -70,7 +70,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-codex-exec-auth
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-codex-exec-auth
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -128,7 +128,7 @@ jobs:
         # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
         # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright) are skipped here.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint,larch-lint
         run: make lint-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
@@ -365,6 +365,8 @@ jobs:
         run: make rust-fmt
       - name: Run Clippy with warnings denied
         run: make rust-clippy
+      - name: Run larch-lint repository rules
+        run: make rust-lint
       # cargo-deny-action v2.1.1. Pin the full SHA so dependency policy cannot
       # change without a reviewed workflow edit.
       - name: Check Rust dependency policy
