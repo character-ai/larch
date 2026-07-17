@@ -96,6 +96,10 @@ impl<'rule> RuleRegistry<'rule> {
     ///
     /// Returns an error when a rule name is malformed or duplicated.
     pub fn new(rules: &'rule [&'rule dyn Rule]) -> Result<Self, LintError> {
+        Self::from_rules(rules.iter().copied())
+    }
+
+    fn from_rules(rules: impl IntoIterator<Item = &'rule dyn Rule>) -> Result<Self, LintError> {
         let mut registered = BTreeMap::new();
         for rule in rules {
             let name = rule.name();
@@ -106,7 +110,7 @@ impl<'rule> RuleRegistry<'rule> {
             {
                 return Err(LintError::new(format!("invalid rule name: {name:?}")));
             }
-            if registered.insert(name, *rule).is_some() {
+            if registered.insert(name, rule).is_some() {
                 return Err(LintError::new(format!("duplicate rule name: {name}")));
             }
         }
@@ -122,6 +126,19 @@ impl<'rule> RuleRegistry<'rule> {
     /// Iterate rules in stable name order.
     pub fn iter(&self) -> impl Iterator<Item = &dyn Rule> {
         self.rules.values().copied()
+    }
+}
+
+impl RuleRegistry<'static> {
+    /// Build a registry from distributed static registrations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a rule name is malformed or duplicated.
+    pub fn from_static(
+        rules: impl IntoIterator<Item = &'static dyn Rule>,
+    ) -> Result<Self, LintError> {
+        Self::from_rules(rules)
     }
 }
 
