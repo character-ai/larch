@@ -94,7 +94,7 @@ after="${template#*<FEATURE_DESCRIPTION>}"
 rendered="${before}${feature_description}${after}"
 ```
 
-This is the canonical `%%` / `##` split pattern for prompt renderers. If global replacement is necessary, pre-escape `&` inside a Bash-version-scoped helper with a comment. CI enforces this via `make lint-renderer-substitution-safety`.
+This is the canonical `%%` / `##` split pattern for prompt renderers. If global replacement is necessary, pre-escape `&` inside a Bash-version-scoped helper with a comment. Agent-lint G009 enforces this in the residual script inventory.
 
 Run `make agent-lint` after shell-script edits. Suppress fixture tokens only on that line with the G010-compatible `# lint-bash32: ok <reason>` pragma.
 

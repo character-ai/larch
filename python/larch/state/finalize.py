@@ -22,7 +22,6 @@ from larch.issue import execution_issues
 from larch.report import progress_file
 from larch.git import gh
 from larch.git import git
-from larch.git import rebase
 from larch.issue import issue_query
 from larch.core import logging_util
 from larch.core import proc
@@ -227,38 +226,6 @@ def _rebase_failed_detail(conflict_files: tuple[str, ...]) -> str:
     return "rebase failed"
 
 
-def _autoresolve_generated_conflicts(runner: Runner, *, cwd: str | None) -> RebaseNoPushResult:
-    """Auto-resolve an in-progress rebase whose conflicts are confined to known
-    regeneratable generated files by regenerating each and running
-    ``git rebase --continue``.
-
-    Returns ``rebased`` on full success, or ``failed`` (carrying the current
-    unmerged paths) when a conflict falls outside the allow-list, regeneration
-    fails, or the continue loop cannot make progress. Does not abort; the caller
-    aborts any still-in-progress rebase on failure.
-    """
-    for _ in range(config.REBASE_AUTORESOLVE_MAX_STEPS):
-        unmerged = tuple(git.try_unmerged_paths(runner, cwd=cwd))
-        if not unmerged:
-            # Non-conflict rebase failure: nothing to auto-resolve.
-            return RebaseNoPushResult("failed")
-        if not rebase.resolve_generated_conflicts(runner, paths=unmerged, cwd=cwd):
-            return RebaseNoPushResult("failed", conflict_files=unmerged)
-        continue_result = git.rebase_continue(runner, cwd=cwd)
-        if continue_result.returncode == 0 and not git.rebase_in_progress(runner, cwd=cwd):
-            logging_util.BreadcrumbWriter().emit(
-                f"postbump: auto-resolved rebase conflict in generated file(s): {', '.join(unmerged)}",
-                quiet=False,
-            )
-            return RebaseNoPushResult("rebased")
-        if continue_result.returncode != 0 and not git.try_unmerged_paths(runner, cwd=cwd):
-            # rebase --continue failed without new conflicts (e.g. empty commit):
-            # not something we can mechanically resolve here.
-            return RebaseNoPushResult("failed", conflict_files=unmerged)
-        # Otherwise the next replayed commit conflicts again → loop and resolve.
-    return RebaseNoPushResult("failed")
-
-
 def _rebase_no_push(
     runner: Runner,
     *,
@@ -273,12 +240,10 @@ def _rebase_no_push(
     result = git.rebase(runner, base, cwd=cwd)
     if result.returncode == 0:
         return RebaseNoPushResult("rebased")
-    resolved = _autoresolve_generated_conflicts(runner, cwd=cwd)
-    if resolved.status == "rebased":
-        return resolved
-    if git.rebase_in_progress(runner, cwd=cwd) and not resolved.conflict_files:
+    conflict_files = tuple(git.try_unmerged_paths(runner, cwd=cwd))
+    if git.rebase_in_progress(runner, cwd=cwd):
         _ = git.rebase(runner, "--abort", cwd=cwd)
-    return resolved
+    return RebaseNoPushResult("failed", conflict_files=conflict_files)
 
 
 @dataclass(frozen=True)

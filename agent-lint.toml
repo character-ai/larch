@@ -5,7 +5,8 @@
 # inline-path-prefixes mirror the retired `lint doc-pointer-paths` approved
 # prefix set so D005 validates the same Tier-1 doc path pointers.
 desc-truncated-max-chars = 200
-error = ["G010", "G011"]
+error = ["S021", "G009", "G010", "G011"]
+claude-import-path-budgets = { "AGENTS.md" = 89, "KARPATHY_CLAUDE.md" = 54, "BASH_AUTHORING.md" = 115 }
 inline-path-prefixes = [
   "python/",
   "skills/",
@@ -71,10 +72,6 @@ suppress = [
   # python3 python/cli.py generate code-reviewer-agent --check via scripts/generators.tsv)
   # + the existing CI pin on the focus-area enum.
   "template-marker-missing",
-  # S021 cannot preserve the one-command launcher fence contract enforced by
-  # scripts/test-implement-fence-shape.sh. Keep the stricter local
-  # consecutive-bash lint, which supports reviewed line-level exceptions.
-  "consecutive-bash",
   # Slash-command references and glob-shaped skill paths are plugin syntax,
   # not filesystem paths. D005 still validates concrete Tier-1 doc paths.
   "instruction-file-path",
@@ -126,10 +123,6 @@ suppress = [
 # `lint-no-raw-stderr-after-quiet-init`) and is therefore not excluded; the test
 # harness is referenced only from Makefile
 # (test-lint-no-raw-stderr-after-quiet-init target) and python/lint_no_raw_stderr_after_quiet_init.md.
-#
-# scripts/lint-renderer-substitution-safety.sh is a pre-commit / Makefile-only
-# lint. The renderer-substitution harness remains shell-based and is excluded
-# with its sibling contract.
 #
 # python/test_bootstrap.py is the regression harness for
 # python/cli.py bootstrap parse-routing (Makefile
@@ -764,10 +757,6 @@ exclude = [
   "python/lint_no_raw_stderr_after_quiet_init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
-  "scripts/lint-renderer-substitution-safety.sh",
-  "scripts/lint-renderer-substitution-safety.md",
-  "scripts/test-lint-renderer-substitution-safety.sh",
-  "scripts/test-lint-renderer-substitution-safety.md",
   # python/cli.py agent launch-codex-exec — markdown-fence + lint-fix-loop launcher-variable indirection.
   "python/cli.py agent launch-codex-exec",
   "python/agents.py",
@@ -1210,3 +1199,102 @@ exclude = [
   "python/cli.py ci behind-count",
 
 ]
+
+# Agent-lint owns the former local closure ratchets. Limits equal the last
+# reviewed measurements so growth remains an intentional, tracked TOML change.
+[[lint.prompt-source-budgets]]
+name = "design"
+roots = ["skills/design/SKILL.md"]
+conditional-sources = [
+  "skills/design/references/flags.md",
+  "skills/design/references/brainstorm.md",
+  "skills/design/references/sentinel-host-table.md",
+  "skills/shared/final-summary-emit.md",
+  "skills/design/references/finalize-step5-failures.md",
+  "skills/design/references/approval-gates-gate-a.md",
+  "skills/design/references/settle-rc-dispatch.md",
+  "skills/design/references/step2b-drafter-failsafe.md",
+  "skills/design/references/step2b5-rc-handling.md",
+  "skills/design/references/decompose-panel.md",
+  "skills/design/references/dialectic-clarifier.md",
+  "skills/design/references/validator-failure.md",
+]
+root-max-lines = 693
+root-max-tokens = 26340
+root-max-content-tokens = 26286
+closure-max-lines = 1647
+closure-max-tokens = 49573
+closure-max-content-tokens = 49449
+conditional-max-lines = 661
+conditional-max-tokens = 18524
+conditional-max-content-tokens = 18465
+
+[[lint.prompt-source-budgets]]
+name = "implement"
+roots = ["skills/implement/SKILL.md"]
+conditional-sources = [
+  "skills/implement/references/extracted-script-registry.md",
+  "skills/implement/references/bootstrap-recovery.md",
+  "skills/implement/references/rebase-checkpoint-routing.md",
+  "skills/implement/references/checks-repair-loop.md",
+  "skills/implement/references/step5-review-branches.md",
+  "skills/implement/references/force-mode.md",
+  "skills/implement/references/phantom-probe.md",
+  "skills/implement/references/conflict-resolution.md",
+  "skills/implement/references/stall-recovery.md",
+]
+root-max-lines = 879
+root-max-tokens = 35383
+root-max-content-tokens = 35301
+closure-max-lines = 3540
+closure-max-tokens = 139802
+closure-max-content-tokens = 139510
+conditional-max-lines = 589
+conditional-max-tokens = 18764
+conditional-max-content-tokens = 18717
+
+[[lint.prompt-source-budgets]]
+name = "review"
+roots = ["skills/review/SKILL.md"]
+conditional-sources = [
+  "skills/shared/run-id-flag.md",
+  "skills/review/references/heavy-worker.md",
+  "skills/review/references/self-review.md",
+]
+root-max-lines = 124
+root-max-tokens = 5670
+root-max-content-tokens = 5660
+closure-max-lines = 124
+closure-max-tokens = 5670
+closure-max-content-tokens = 5660
+conditional-max-lines = 156
+conditional-max-tokens = 3508
+conditional-max-content-tokens = 3497
+
+[[lint.prompt-source-budgets]]
+name = "panel-tier"
+roots = [
+  "agents/_implementer-base.md",
+  "agents/arch-assessor.md",
+  "agents/ci-fixer.md",
+  "agents/claude-implementer.md",
+  "agents/claude-self-reviewer.md",
+  "agents/code-reviewer.md",
+  "agents/codex-implementer.md",
+  "agents/cursor-implementer.md",
+  "agents/issue-dedup.md",
+  "agents/orchestrator-aggregator.md",
+  "agents/reviewer-code-robustness.md",
+  "agents/reviewer-correctness.md",
+  "agents/reviewer-edge-cases.md",
+  "agents/reviewer-plan-fidelity.md",
+  "agents/reviewer-security-structure-tests.md",
+  "agents/reviewer-security.md",
+  "agents/reviewer-structure.md",
+  "agents/reviewer-testing.md",
+  "skills/shared/reviewer-templates.md",
+  "skills/shared/voting-protocol.md",
+]
+closure-max-lines = 5828
+closure-max-tokens = 165174
+closure-max-content-tokens = 164719
