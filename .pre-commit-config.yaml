@@ -212,6 +212,20 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: cargo-fmt
+        name: Rust format check
+        entry: make rust-fmt
+        language: system
+        pass_filenames: false
+        files: ^(Cargo\.(toml|lock)|deny\.toml|rust-toolchain\.toml|crates/.*(Cargo\.toml|\.rs))$
+
+      - id: cargo-clippy
+        name: Rust Clippy lint
+        entry: make rust-clippy
+        language: system
+        pass_filenames: false
+        files: ^(Cargo\.(toml|lock)|deny\.toml|rust-toolchain\.toml|crates/.*(Cargo\.toml|\.rs))$
+
   - repo: https://github.com/zhupanov/agent-lint
     rev: v3.0.1
     hooks:

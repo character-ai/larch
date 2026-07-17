@@ -513,9 +513,19 @@ def _existing_regular_files(*, repo: Path, paths: Iterable[str]) -> tuple[str, .
     return tuple(regular)
 
 
-# Direct make-target fan-out intentionally stays empty on the local path. Heavy
-# pytest, pylint, and shell harness coverage runs in CI, where it is parallelized
-# and handled by the autonomous CI-fix loop.
+_RUST_RELEVANT_ROOT_FILES: Final = frozenset(
+    {"Cargo.lock", "Cargo.toml", "deny.toml", "rust-toolchain.toml"}
+)
+
+
+def _is_rust_relevant_path(path: str) -> bool:
+    if path in _RUST_RELEVANT_ROOT_FILES or path.startswith(".cargo/"):
+        return True
+    return path.startswith("crates/") and path.endswith((".rs", "/Cargo.toml"))
+
+
+# Heavy Python and shell coverage stays CI-first. Rust inputs route to the
+# bounded workspace check because Cargo can replay their complete local gate.
 
 def _direct_targets(
     *, runner: Runner,
@@ -524,10 +534,9 @@ def _direct_targets(
     env: dict[str, str],
     log_fd: int,
 ) -> tuple[str, ...]:
-    _ = runner, changed, cwd, env, log_fd
-    # The local relevant-checks path is intentionally CI-first: pre-commit
-    # carries scoped ruff/pyright, while pytest, pylint, and harness make
-    # targets run in CI where they are parallelized and fixed by the CI loop.
+    _ = runner, cwd, env, log_fd
+    if any(_is_rust_relevant_path(path) for path in changed):
+        return ("rust-check",)
     return ()
 
 

@@ -1,0 +1,15 @@
+[package]
+name = "larch-lint"
+version = "0.1.0"
+description = "Repository policy linter for larch"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap.workspace = true
+
+[lints]
+workspace = true

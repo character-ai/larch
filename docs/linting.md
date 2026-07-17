@@ -10,6 +10,9 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | [markdownlint](https://github.com/igorshubovych/markdownlint-cli) | `.md` | Markdown style enforcement (config: `.markdownlint.json`). `larch-logs/` is excluded via `.markdownlintignore` — those files are runtime artifact archives, not authoring-quality docs. |
 | [jq](https://jqlang.github.io/jq/) | `.json` | JSON syntax validation |
 | [actionlint](https://github.com/rhysd/actionlint) | `.yml`, `.yaml` | GitHub Actions workflow validation |
+| [rustfmt](https://github.com/rust-lang/rustfmt) | `.rs` | Workspace formatting through `make rust-fmt`, using the toolchain pinned in `rust-toolchain.toml`. |
+| [Clippy](https://github.com/rust-lang/rust-clippy) | Rust workspace | Warnings, standard lint groups, and explicit complexity lints are denied through inherited workspace settings and `make rust-clippy`. Rust has no complexity baseline. |
+| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) | `Cargo.lock`, Cargo manifests | CI checks advisories, allowed licenses, duplicate versions, wildcard requirements, and dependency sources through `deny.toml`. |
 | [agnix](https://github.com/agent-sh/agnix) | `SKILL.md`, `CLAUDE.md`, agent configs | AI agent configuration linting (config: `.agnix.toml`). Runs in strict mode (warnings fail) in both the local pre-commit hook and the dedicated CI job. |
 | Agent tool contract | `agents/*.md`, `.claude/agents/*.md` | The pinned `agent-lint` rules A012 and A013 run two independent checks: (1) rejects agent frontmatter that explicitly restricts tools without `Read` while the prompt body instructs the agent to read files, bundles, paths, diffs, artifacts, markdown, or logs; (2) rejects prompts that pair read intent with a machine-parsed-only JSON or JSONL output mandate but carry no fail-closed instruction for unreadable evidence. |
 | Tier-1 instruction import size | `AGENTS.md`, `KARPATHY_CLAUDE.md`, `BASH_AUTHORING.md` | Agent-lint D004 enforces the distinct path-specific caps in `agent-lint.toml` for the root imports loaded by `CLAUDE.md`. |
@@ -48,6 +51,16 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | [gitleaks](https://github.com/gitleaks/gitleaks) | all tracked files | Secret detection (pre-commit + dedicated CI job, full-history). Path allowlist in `.gitleaks.toml`. See `SECURITY.md` → "Layered secret scanning". |
 
 ## Usage
+
+### Rust checks
+
+Install the pinned toolchain with [rustup](https://rustup.rs/). The
+`rust-toolchain.toml` file installs the required `rustfmt` and Clippy
+components. Install the dependency-policy tool with
+`cargo install cargo-deny --version 0.20.2 --locked`. Run `make rust-check` for
+formatting, Clippy, build, test, and dependency policy. CI runs the same checks
+through parallel lint and build/test lanes behind the stable `rust-gate`. See
+[`docs/rust-dependency-survey.md`](rust-dependency-survey.md) for crate choices.
 
 ### Python complexity ratchet
 
