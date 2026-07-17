@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 
@@ -146,16 +145,6 @@ def run(repo_root: Path) -> list[str]:
     for category in ("scale", "plan", "interactive", "adjudicate", "token-budget", "keep-sidecar", "verbosity"):
         contains(skill, category, f"[fail-closed recovery hint] SKILL.md must mention removed-flag category '{category}' in the unknown-flag-guard recovery hint")
     contains(skill, "--no-issue", "[flag surface] SKILL.md must surface --no-issue")
-
-    for file, display in ((skill, "SKILL.md"), (research, "research-phase.md"), (validation, "validation-phase.md")):
-        result = subprocess.run(
-            ["python3", str(path("python/cli.py")), "lint", "p3119-fence-absence", str(file), display],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode:
-            failures.append(f"(3119) {display} still has removed Family-B fence tokens")
 
     research_tree = path("skills/research")
     if any("run_in_background" in text(file) for file in research_tree.rglob("*") if file.is_file()):

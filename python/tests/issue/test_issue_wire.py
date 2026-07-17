@@ -715,16 +715,6 @@ def test_untrusted_helpers(tmp_path: Path) -> None:
     assert issue_wire.emit_untrusted_file_block(tag="tag", path=file) == '<tag encoding="literal-redacted">\n&lt;x&gt;\n\n</tag>\n\n'
 
 
-def test_p3119_lint_constructed_tokens(tmp_path: Path) -> None:
-    clean = tmp_path / "clean.md"
-    _ = clean.write_text("ok", encoding="utf-8")
-    assert issue_wire.lint_p3119_fence_absence(path=clean, label="clean") == []
-    bad = tmp_path / "bad.md"
-    _ = bad.write_text("\n".join(issue_wire.P3119_TOKENS), encoding="utf-8")
-    violations = issue_wire.lint_p3119_fence_absence(path=bad, label="bad")
-    assert len(violations) == len(issue_wire.P3119_TOKENS)
-
-
 def test_gh_issue_view_body_and_edit_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = IssueRunner("body", edit_failures=2)
     def retry_no_sleep(

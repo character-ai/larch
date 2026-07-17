@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 
@@ -170,11 +169,4 @@ def run(repo_root: Path) -> list[str]:
     require(types, "_SECURITY_FIELD_RE", "(20d) review_types.py must carry _SECURITY_FIELD_RE for is_security_block_text")
     require(voting, "is_security_block_text", "(20e) voting.py::is_security_block must delegate to review_types.is_security_block_text")
 
-    for check, label in (
-        (file("skills/review/references/heavy-worker.md"), "(3119) heavy-worker.md still has removed Family-B fence tokens"),
-        (file("skills/shared/external-reviewers.md"), "(3119) external-reviewers.md still has removed Family-B fence tokens"),
-        (protocol, "(3119) voting-protocol.md still has removed Family-B fence tokens"),
-    ):
-        result = subprocess.run(["python3", str(file("python/cli.py")), "lint", "p3119-fence-absence", str(check), check.name], cwd=repo_root, capture_output=True, text=True)
-        if result.returncode: failures.append(label)
     return failures

@@ -163,7 +163,7 @@ impl<'rule> RuleRegistry<'rule> {
             if name.is_empty()
                 || !name
                     .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte == b'-')
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
             {
                 return Err(LintError::new(format!("invalid rule name: {name:?}")));
             }

@@ -77,24 +77,6 @@ def ledger_reason(block_text: str) -> str:
             return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
     return ""
 
-BACKTICKED_FOCUS_FILES = (
-    "skills/shared/reviewer-templates.md",
-    "agents/code-reviewer.md",
-    "agents/reviewer-structure.md",
-    "agents/reviewer-correctness.md",
-    "agents/reviewer-testing.md",
-    "agents/reviewer-security.md",
-    "agents/reviewer-edge-cases.md",
-    "agents/reviewer-plan-fidelity.md",
-    "agents/reviewer-code-robustness.md",
-    "docs/review-agents.md",
-)
-UNQUOTED_FOCUS_FILES = (
-    "skills/review/SKILL.md",
-    "python/larch/rendering/rendering.py",
-    "skills/design/SKILL.md",
-)
-
 _ALLOWED_CODE_REVIEW_HEADERS = {
     "# Rejected Findings",
     "## Accepted Findings",
@@ -1801,40 +1783,3 @@ def scoreboard_main(argv: list[str]) -> int:
     output_file.write_text("\n".join(rows) + "\n", encoding="utf-8")
     print(f"SCOREBOARD_FILE={bash_printf_q(str(output_file))}")
     return 0
-
-def lint_focus_area_enum_main(argv: list[str]) -> int:
-    if argv:
-        return _error("usage: lint focus-area-enum")
-    exit_code = 0
-    root = _plugin_root()
-    hits_re = re.compile(r"`code-quality`.*`risk-integration`.*`correctness`.*`architecture`")
-    unquoted_re = re.compile(r"code-quality / risk-integration / correctness / architecture")
-    for rel in BACKTICKED_FOCUS_FILES:
-        path = root / rel
-        if not path.is_file():
-            print(f"::error file={rel}::expected file is missing")
-            exit_code = 1
-            continue
-        hits = [(i, line) for i, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1) if hits_re.search(line)]
-        if not hits:
-            print(f"::error file={rel}::no backticked focus-area enumeration found")
-            exit_code = 1
-        for line_no, line_text in hits:
-            if "security" not in line_text:
-                print(f"::error file={rel},line={line_no}::backticked focus-area enumeration does not include 'security': {line_text}")
-                exit_code = 1
-    for rel in UNQUOTED_FOCUS_FILES:
-        path = root / rel
-        if not path.is_file():
-            print(f"::error file={rel}::expected file is missing")
-            exit_code = 1
-            continue
-        hits = [(i, line) for i, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1) if unquoted_re.search(line)]
-        if not hits:
-            print(f"::error file={rel}::no unquoted focus-area enumeration found")
-            exit_code = 1
-        for line_no, line_text in hits:
-            if "security" not in line_text:
-                print(f"::error file={rel},line={line_no}::unquoted focus-area enumeration does not include 'security': {line_text}")
-                exit_code = 1
-    return exit_code

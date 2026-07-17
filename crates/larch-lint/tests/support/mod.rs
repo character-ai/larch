@@ -82,6 +82,38 @@ fn seed_tracked_tree(repository: &TempRepo) {
         "ARCHITECTURAL_GUIDELINES.md",
         b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
     );
+    repository.write(
+        "README.md",
+        b"<table>\n<tr><td><a href=\"docs/skills.md#design\"><code>/design</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#review\"><code>/review</code></a></td></tr>\n</table>\n",
+    );
+    repository.write("docs/skills.md", b"### `/design`\n\n### `/review`\n");
+    for path in [
+        "skills/shared/reviewer-templates.md",
+        "agents/code-reviewer.md",
+        "agents/reviewer-structure.md",
+        "agents/reviewer-correctness.md",
+        "agents/reviewer-testing.md",
+        "agents/reviewer-security.md",
+        "agents/reviewer-edge-cases.md",
+        "agents/reviewer-plan-fidelity.md",
+        "agents/reviewer-code-robustness.md",
+        "docs/review-agents.md",
+    ] {
+        repository.write(
+            path,
+            b"`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`\n",
+        );
+    }
+    for path in [
+        "skills/review/SKILL.md",
+        "python/larch/rendering/rendering.py",
+        "skills/design/SKILL.md",
+    ] {
+        repository.write(
+            path,
+            b"code-quality / risk-integration / correctness / architecture / security\n",
+        );
+    }
 }
 
 fn copy_tree(repository: &TempRepo, source_dir: &Path, destination_prefix: &str) {

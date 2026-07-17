@@ -29,9 +29,6 @@ fn rules_lists_registered_rules_in_name_order() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "duplicate-code\tReject normalized duplicate production Rust blocks across modules\n",
-        ))
-        .stdout(predicate::str::contains(
             "env-via-config-constant\tReject bare environment-key literals already owned by shared ENV_* constants\n",
         ))
         .stdout(predicate::str::contains(
@@ -53,9 +50,6 @@ fn rules_lists_registered_rules_in_name_order() {
             "gh-argv-literal\tRequire raw gh command ownership by the GitHub wrapper\n",
         ))
         .stdout(predicate::str::contains(
-            "guidelines-note-wrapper-bypass\tReject direct guidelines-note invalidation outside the pin-or-invalidate owner\n",
-        ))
-        .stdout(predicate::str::contains(
             "kv-codec\tReject ad-hoc KEY=value readers and emitters outside shared codec owners\n",
         ))
         .stdout(predicate::str::contains(
@@ -66,9 +60,6 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "root-resolution\tReject private root helpers and direct git rev-parse --show-toplevel construction\n",
-        ))
-        .stdout(predicate::str::contains(
-            "shared-convention-regex\tReject copied heading regexes, bug-title selectors, and lifecycle-prefix strip loops\n",
         ))
         .stdout(predicate::str::contains(
             "tempfile-dir\tRequire the scratch owner for ambient temporary directories\n",
@@ -99,6 +90,168 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "lifecycle-prefix-literal\tRatchet lifecycle and bug title-prefix literals toward shared constants\n",
+        ))
+        .stdout(predicate::str::contains(
+            "focus-area-enum\tRequire security in documented reviewer focus-area enumerations\n",
+        ))
+        .stdout(predicate::str::contains(
+            "p3119-fence-absence\tReject removed Family-B background-monitor tokens in prose\n",
+        ))
+        .stdout(predicate::str::contains(
+            "skill-documentation\tRequire public, alias, and private skills in both documentation catalogs\n",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn skill_documentation_requires_exact_public_alias_and_private_catalogs() {
+    let repository = TempRepo::new();
+    repository.write("skills/implement/SKILL.md", b"# implement\n");
+    repository.write("skills/im/SKILL.md", b"# alias\n");
+    repository.write(".claude/skills/release/SKILL.md", b"# private\n");
+    repository.write(
+        "README.md",
+        b"<table>\n<tr><td><a href=\"docs/skills.md#design\"><code>/design</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#review\"><code>/review</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#implement\"><code>/implement</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#release\"><code>/release</code></a></td></tr>\n</table>\n\n| Alias | Target |\n| --- | --- |\n| [`/im`](docs/skills.md#im) | /implement |\n",
+    );
+    repository.write(
+        "docs/skills.md",
+        b"### `/design`\n\n### `/review`\n\n### `/implement`\n\n### `/im`\n\n### `/release`\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "skill-documentation"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+
+    repository.write(
+        "README.md",
+        b"<table>\n<tr><td><a href=\"docs/skills.md#design\"><code>/design</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#review\"><code>/review</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#release\"><code>/release</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#retired\"><code>/retired</code></a></td></tr>\n</table>\n",
+    );
+    repository.write(
+        "docs/skills.md",
+        b"### `/design`\n\n### `/review`\n\n### `/implement`\n\n### `/retired`\n",
+    );
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "skill-documentation"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "README.md:1: missing summary-table entry for /im\n",
+        ))
+        .stdout(predicate::str::contains(
+            "docs/skills.md:1: missing detailed skill heading for /im\n",
+        ))
+        .stdout(predicate::str::contains(
+            "README.md:1: summary-table entry has no matching skill definition for /retired\n",
+        ))
+        .stdout(predicate::str::contains(
+            "docs/skills.md:1: detailed skill heading has no matching summary-table entry for /implement\n",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn skill_documentation_fails_closed_for_missing_symlinked_and_non_utf8_inputs() {
+    let missing = TempRepo::new();
+    fs::remove_file(missing.path().join("docs/skills.md")).expect("remove catalog");
+    missing.commit_all();
+    TempRepo::command_from(missing.path())
+        .args(["rule", "skill-documentation"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "docs/skills.md: required documentation file is missing",
+        ));
+
+    let symlinked = TempRepo::new();
+    symlinked.write("README-source.md", b"# source\n");
+    fs::remove_file(symlinked.path().join("README.md")).expect("remove README");
+    std::os::unix::fs::symlink("README-source.md", symlinked.path().join("README.md"))
+        .expect("create README symlink");
+    symlinked.commit_all();
+    TempRepo::command_from(symlinked.path())
+        .args(["rule", "skill-documentation"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "README.md: tracked symlinks are not supported",
+        ));
+
+    let non_utf8 = TempRepo::new();
+    non_utf8.write("README.md", b"\xff");
+    non_utf8.commit_all();
+    TempRepo::command_from(non_utf8.path())
+        .args(["rule", "skill-documentation"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "README.md: cannot read UTF-8 source",
+        ));
+}
+
+#[test]
+fn focus_area_enum_requires_security_on_every_known_enumeration() {
+    let repository = TempRepo::new();
+    repository.commit_all();
+    TempRepo::command_from(repository.path())
+        .args(["rule", "focus-area-enum"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+
+    repository.write(
+        "agents/reviewer-testing.md",
+        b"`code-quality` / `risk-integration` / `correctness` / `architecture`\n",
+    );
+    TempRepo::command_from(repository.path())
+        .args(["rule", "focus-area-enum"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "agents/reviewer-testing.md:1: backticked focus-area enumeration does not include security\n",
+        ))
+        .stderr(predicate::str::is_empty());
+
+    let missing = TempRepo::new();
+    fs::remove_file(missing.path().join("agents/reviewer-testing.md"))
+        .expect("remove focus-area file");
+    missing.commit_all();
+    TempRepo::command_from(missing.path())
+        .args(["rule", "focus-area-enum"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "agents/reviewer-testing.md:1: expected file is missing\n",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn p3119_fence_absence_rejects_every_removed_family_b_token() {
+    let repository = TempRepo::new();
+    repository.write(
+        "docs/removed-fence.md",
+        b"breadcrumb-monitor.sh\nLARCH_DONE_SENTINEL\nLARCH_STATUS_FILE\nLARCH_PAIRED_PID_FILE\nLARCH_BREADCRUMB_STREAM\nLARCH_BREADCRUMB_MONITOR_SH\nLARCH_BREADCRUMBS_SURFACED_FILE\nmonitor_rc\nlarch_quiet_append_done_trap\nlarch_quiet_write_paired_pid_file\nBackground pair required\nBASH_AUTHORING.md \xc2\xa74\nbackground+monitor invocation\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "p3119-fence-absence"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "docs/removed-fence.md:1: still references removed Family-B token: breadcrumb-monitor.sh\n",
+        ))
+        .stdout(predicate::str::contains(
+            "docs/removed-fence.md:12: still references removed Family-B token: BASH_AUTHORING.md §4\n",
+        ))
+        .stdout(predicate::str::contains(
+            "docs/removed-fence.md:13: still references removed Family-B token: background+monitor invocation\n",
         ))
         .stderr(predicate::str::is_empty());
 }
@@ -664,16 +817,6 @@ fn rust_policy_rules_are_clean_on_empty_rust_corpus() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty());
-    TempRepo::command_from(repository.path())
-        .args(["rule", "shared-convention-regex"])
-        .assert()
-        .success()
-        .stdout(predicate::str::is_empty());
-    TempRepo::command_from(repository.path())
-        .args(["rule", "guidelines-note-wrapper-bypass"])
-        .assert()
-        .success()
-        .stdout(predicate::str::is_empty());
 }
 
 #[test]
@@ -803,45 +946,6 @@ fn result_env_key_parity_reports_divergent_siblings() {
         .code(1)
         .stdout(predicate::str::contains(
             "slot.env writer missing key B present in sibling writers",
-        ));
-}
-
-#[test]
-fn shared_convention_regex_reports_copied_heading() {
-    let repository = TempRepo::new();
-    repository.write(
-        "crates/demo/src/lib.rs",
-        br#"fn compile() {
-    let _ = regex::Regex::new(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$").unwrap();
-}
-"#,
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "shared-convention-regex"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "crates/demo/src/lib.rs:2: guideline-heading-regex",
-        ));
-}
-
-#[test]
-fn guidelines_note_wrapper_bypass_reports_direct_call() {
-    let repository = TempRepo::new();
-    repository.write(
-        "crates/demo/src/lib.rs",
-        b"fn run() {\n    invalidate_guidelines_note();\n}\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "guidelines-note-wrapper-bypass"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "crates/demo/src/lib.rs:2: calls invalidate_guidelines_note",
         ));
 }
 

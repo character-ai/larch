@@ -159,8 +159,7 @@ LINT_TEST_DESCRIPTORS := \
 	flat-tests|python/tests/lint/test_lint_flat_tests.py \
 	readability-preamble|python/tests/lint/test_lint_readability_preamble.py \
 	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
-	harness-session-env|python/tests/lint/test_lint_harness_session_env.py \
-	skill-documentation|python/tests/lint/test_lint_skill_documentation.py
+	harness-session-env|python/tests/lint/test_lint_harness_session_env.py
 
 lint_test_descriptor_parts = $(subst |,$(space),$1)
 
@@ -1128,7 +1127,7 @@ test-run-external-agent:
 agent-sync:
 	python3 python/cli.py generate check
 	python3 python/cli.py lint topology-rule-paths
-	python3 python/cli.py lint focus-area-enum
+	cargo run --quiet --locked --package larch-lint -- rule focus-area-enum
 
 # Opt-in /research evaluation harness (closes #419 under umbrella #413). NOT a
 # lint prerequisite — runs ~20 questions × ~30-60s each, costs real tokens.
