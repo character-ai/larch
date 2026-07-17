@@ -22,7 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  "desc-body-misalign",
   "terminology-inconsistent",
   # Q002 requires every negative instruction to state a nearby positive
   # alternative. Larch's safety, trust-boundary, and lifecycle contracts use
