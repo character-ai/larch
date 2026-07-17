@@ -1,4 +1,4 @@
-use crate::{Finding, LintError, PathSelector, Repository, Rule, RuleMetadata};
+use crate::{Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput};
 
 const NAME: &str = "fixture";
 const DESCRIPTION: &str = "Validate decentralized rule registration";
@@ -23,7 +23,7 @@ impl Rule for FixtureRule {
         DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(&["fixtures/**/*.fixture"], &[])?;
         let mut findings = Vec::new();
         for path in selector.select(repository) {
@@ -36,7 +36,7 @@ impl Rule for FixtureRule {
                 }
             }
         }
-        Ok(findings)
+        Ok(RuleOutput::from_findings(findings))
     }
 }
 

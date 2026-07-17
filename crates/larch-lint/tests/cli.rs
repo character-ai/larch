@@ -32,6 +32,15 @@ fn rules_lists_registered_rules_in_name_order() {
             "fixture\tValidate decentralized rule registration\n",
         ))
         .stdout(predicate::str::contains(
+            "guideline-no-exception\tRequire baselines for no-exception architectural guidelines\n",
+        ))
+        .stdout(predicate::str::contains(
+            "literal-counts\tReject drift-prone literal item counts in Markdown\n",
+        ))
+        .stdout(predicate::str::contains(
+            "bg-wait-coverage\tReject unallowlisted background-launch prose in skills\n",
+        ))
+        .stdout(predicate::str::contains(
             "git-push-refspec\tRequire Git push commands to name a destination refspec\n",
         ))
         .stdout(predicate::str::contains(
@@ -231,6 +240,167 @@ fn git_push_refspec_requires_reasoned_test_only_suppressions() {
         .code(2)
         .stdout(predicate::str::is_empty())
         .stderr("larch-lint: error: suppression lint-git-push-refspec lacks a reason\n");
+}
+
+#[test]
+fn literal_counts_covers_violations_fences_pragmas_and_untracked_markdown() {
+    let repository = TempRepo::new();
+    repository.write(
+        "docs/policy.md",
+        b"5 reviewers require a refresh.\n```markdown\n7 agents are fenced.\n```\n8 rows fixed by statute. <!-- lint-literal-counts: allow historical -->\n",
+    );
+    repository.write(
+        "larch-logs/implement/run/final-summary.md",
+        b"9 reviewers are historical artifacts.\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "literal-counts"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "docs/policy.md:1: literal item count",
+        ))
+        .stdout(predicate::str::contains("larch-logs/implement/run/final-summary.md").not())
+        .stderr(predicate::str::is_empty());
+
+    repository.write("docs/untracked.md", b"6 specialists are untracked.\n");
+    TempRepo::command_from(repository.path())
+        .args(["rule", "literal-counts"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "docs/untracked.md:1: literal item count",
+        ));
+}
+
+#[test]
+fn literal_counts_rejects_malformed_utf8() {
+    let repository = TempRepo::new();
+    repository.write("docs/invalid.md", b"\xff");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "literal-counts"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "docs/invalid.md: cannot read UTF-8 source",
+        ));
+}
+
+#[test]
+fn background_wait_coverage_allows_documented_exceptions_and_rejects_new_prose() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-lint/config/bg-wait-allowlist.txt",
+        b"skills/shared/legacy.md\tretained migration contract\n",
+    );
+    repository.write(
+        "skills/shared/legacy.md",
+        b"Use `run_in_background: true` for the retained contract.\n",
+    );
+    repository.write(
+        "skills/implement/SKILL.md",
+        b"do NOT set `run_in_background: true` for this lane.\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "bg-wait-coverage"])
+        .assert()
+        .success();
+
+    repository.write(
+        "skills/design/SKILL.md",
+        b"Set `run_in_background: true` for this lane.\n",
+    );
+    TempRepo::command_from(repository.path())
+        .args(["rule", "bg-wait-coverage"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "skills/design/SKILL.md:1: run_in_background is forbidden",
+        ));
+}
+
+#[test]
+fn background_wait_coverage_rejects_malformed_allowlist_rows() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-lint/config/bg-wait-allowlist.txt",
+        b"skills/design/SKILL.md\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "bg-wait-coverage"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("malformed allowlist row 1"));
+}
+
+#[test]
+fn guideline_no_exception_warns_for_baselined_entries_and_fails_new_or_stale_ones() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-lint/config/guideline-no-exception-baseline.json",
+        b"[{\"guideline_id\":\"G-Kept-1\",\"reason\":\"kept as guidance\"}]\n",
+    );
+    repository.write(
+        "ARCHITECTURAL_GUIDELINES.md",
+        b"### G-Kept-1: Kept guidance\n- Why: fixture body.\n- Deviate when: never; fixture.\n\n### G-New-1: New guidance\n- Why: fixture body.\n- Deviate when: n/a for fixture.\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "guideline-no-exception"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "ARCHITECTURAL_GUIDELINES.md:7: G-New-1 has a no-exception",
+        ))
+        .stderr(predicate::str::contains(
+            "warning: G-Kept-1 line 3 has a no-exception deviate clause (baselined)",
+        ));
+
+    repository.write(
+        "ARCHITECTURAL_GUIDELINES.md",
+        b"### G-Kept-1: Kept guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
+    );
+    TempRepo::command_from(repository.path())
+        .args(["rule", "guideline-no-exception"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "guideline-no-exception-baseline.json:1: stale baseline row: G-Kept-1",
+        ));
+}
+
+#[test]
+fn guideline_no_exception_rejects_malformed_baselines_and_ignores_fenced_headings() {
+    let repository = TempRepo::new();
+    repository.write(
+        "ARCHITECTURAL_GUIDELINES.md",
+        b"```markdown\n### G-Fenced-1: Not an entry\n- Deviate when: never.\n```\n### G-Real-1: Real entry\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
+    );
+    repository.commit_all();
+    TempRepo::command_from(repository.path())
+        .args(["rule", "guideline-no-exception"])
+        .assert()
+        .success();
+
+    repository.write(
+        "crates/larch-lint/config/guideline-no-exception-baseline.json",
+        b"[{\"guideline_id\":\"G-Real-1\"}]\n",
+    );
+    TempRepo::command_from(repository.path())
+        .args(["rule", "guideline-no-exception"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("invalid JSON baseline"));
 }
 
 #[test]

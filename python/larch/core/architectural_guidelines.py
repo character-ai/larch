@@ -24,7 +24,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS, _MARKDOWN_HEADING_RE  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]  # re-export: lint consumers import _MARKDOWN_HEADING_RE from this module
+from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.errors import ShipError
 from larch.core.repo_roots import consumer_repo_root
 

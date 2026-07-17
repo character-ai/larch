@@ -258,13 +258,12 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-literal-counts
-        name: Lint drift-prone literal item counts in markdown
-        entry: python3 python/cli.py lint literal-counts
+      - id: larch-lint
+        name: larch-lint repository policy rules
+        entry: cargo run --quiet --locked --package larch-lint -- all
         language: system
         pass_filenames: false
         always_run: true
-        files: \.md$
 
   - repo: local
     hooks:
@@ -557,14 +556,6 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-
-      - id: lint-bg-wait-coverage
-        name: lint background wait marker coverage
-        entry: python3 python/cli.py lint bg-wait-coverage
-        language: system
-        pass_filenames: false
-        files: ^skills/(design|implement|review|review-and-fix)/
-        files: ^skills/(design|implement|review|review-and-fix)/
 
       - id: test-legacy-title-prefix-literals-scope
         name: Check legacy title-prefix literal scope

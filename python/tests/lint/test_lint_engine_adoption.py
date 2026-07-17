@@ -554,6 +554,5 @@ def test_committed_tree_projection_covers_legacy_and_spares_engine() -> None:
         f"{SCOPE}/lint_keyword_only.py",
         f"{SCOPE}/lint_wire_artifact_pairing.py",
         f"{SCOPE}/lint_renderer_golden_tests.py",
-        f"{SCOPE}/lint_guideline_no_exception.py",
     ):
         assert not any(row[0] == clean for row in live_ids)

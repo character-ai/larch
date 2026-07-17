@@ -6,7 +6,7 @@ use proc_macro2::LineColumn;
 use syn::{ExprArray, ExprMethodCall, spanned::Spanned, visit::Visit};
 
 use crate::{
-    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata,
+    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason,
     syntax::RustSyntax,
 };
@@ -40,7 +40,7 @@ impl Rule for GitPushRefspecRule {
         DESCRIPTION
     }
 
-    fn check(&self, repository: &Repository) -> Result<Vec<Finding>, LintError> {
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let selector = PathSelector::new(&["**/*.rs"], &[])?;
         let mut findings = Vec::new();
         for path in selector.select(repository) {
@@ -60,7 +60,7 @@ impl Rule for GitPushRefspecRule {
                 ));
             }
         }
-        Ok(findings)
+        Ok(RuleOutput::from_findings(findings))
     }
 }
 

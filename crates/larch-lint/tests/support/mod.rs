@@ -16,9 +16,28 @@ impl TempRepo {
         let directory = tempfile::tempdir().expect("tempdir");
         run_git(directory.path(), ["init", "--quiet"]);
         let repository = Self { directory };
+        for rule in [
+            "bg-wait-coverage",
+            "fixture",
+            "guideline-no-exception",
+            "literal-counts",
+        ] {
+            repository.write(
+                &format!("crates/larch-lint/migration-ledger/{rule}.toml"),
+                format!("rule = \"{rule}\"\n").as_bytes(),
+            );
+        }
         repository.write(
-            "crates/larch-lint/migration-ledger/fixture.toml",
-            b"rule = \"fixture\"\n",
+            "crates/larch-lint/config/bg-wait-allowlist.txt",
+            b"# no retained exceptions\n",
+        );
+        repository.write(
+            "crates/larch-lint/config/guideline-no-exception-baseline.json",
+            b"[]\n",
+        );
+        repository.write(
+            "ARCHITECTURAL_GUIDELINES.md",
+            b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
         );
         repository.write(
             "crates/larch-lint/migration-ledger/git-push-refspec.toml",

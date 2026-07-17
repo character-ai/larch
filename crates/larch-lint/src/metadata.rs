@@ -208,7 +208,7 @@ fn parse_ledger_rule(path: &str, content: &str) -> Result<String, LintError> {
 #[cfg(test)]
 mod tests {
     use super::{RuleMetadata, RuleRegistration, registry_from_registrations};
-    use crate::{Finding, LintError, Repository, Rule};
+    use crate::{LintError, Repository, Rule, RuleOutput};
 
     #[derive(Debug)]
     struct DriftRule;
@@ -222,8 +222,8 @@ mod tests {
             "actual rule"
         }
 
-        fn check(&self, _repository: &Repository) -> Result<Vec<Finding>, LintError> {
-            Ok(Vec::new())
+        fn check(&self, _repository: &Repository) -> Result<RuleOutput, LintError> {
+            Ok(RuleOutput::clean())
         }
     }
 

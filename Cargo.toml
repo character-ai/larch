@@ -21,6 +21,7 @@ pulldown-cmark = { version = "0.13.4", default-features = false }
 proc-macro2 = { version = "1.0.106", default-features = false, features = ["span-locations"] }
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
 serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0.149", default-features = false, features = ["std"] }
 syn = { version = "2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit"] }
 tempfile = { version = "3.27.0", default-features = false }
 toml = { version = "1.1.3", default-features = false, features = ["parse", "serde", "std"] }

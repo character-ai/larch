@@ -1632,7 +1632,7 @@ def complexity_history_events(
 # those lints the same trusted read, strict JSON, duplicate, and atomic-write
 # contract without weakening their committed payloads into free-form records.
 IdentityBaselineKind = Literal[
-    "keyword_only", "wire_artifact_pairing", "renderer_golden_tests", "guideline_no_exception"
+    "keyword_only", "wire_artifact_pairing", "renderer_golden_tests"
 ]
 
 
@@ -1674,23 +1674,10 @@ class RendererGoldenTestsBaselineRow:
         return (self.file, self.function_name)
 
 
-@dataclass(frozen=True)
-class GuidelineNoExceptionBaselineRow:
-    """Reason-bearing identity for one guideline exception."""
-
-    guideline_id: str
-    reason: str
-
-    @property
-    def identity(self) -> tuple[str]:
-        return (self.guideline_id,)
-
-
 IdentityBaselineRow: TypeAlias = (
     KeywordOnlyBaselineRow
     | WireArtifactPairingBaselineRow
     | RendererGoldenTestsBaselineRow
-    | GuidelineNoExceptionBaselineRow
 )
 
 
@@ -2148,9 +2135,7 @@ def _identity_baseline_kind(row: IdentityBaselineRow) -> IdentityBaselineKind:
         return "keyword_only"
     if isinstance(row, WireArtifactPairingBaselineRow):
         return "wire_artifact_pairing"
-    if isinstance(row, RendererGoldenTestsBaselineRow):
-        return "renderer_golden_tests"
-    return "guideline_no_exception"
+    return "renderer_golden_tests"
 
 
 def identity_baseline_identity(row: IdentityBaselineRow) -> tuple[object, ...]:
@@ -2206,18 +2191,6 @@ def _renderer_identity_row(record: Mapping[str, object], *, index: int, source: 
     return RendererGoldenTestsBaselineRow(cast("str", file_name), cast("str", function_name), cast("str", reason))
 
 
-def _guideline_identity_row(record: Mapping[str, object], *, index: int, source: str) -> GuidelineNoExceptionBaselineRow:
-    _require_identity_keys(record, expected=frozenset({"guideline_id", "reason"}), index=index, source=source)
-    guideline_id, reason = record["guideline_id"], record["reason"]
-    if (
-        not _nonempty_single_line(guideline_id)
-        or re.fullmatch(r"G-[A-Za-z][A-Za-z0-9-]*-\d+", cast("str", guideline_id)) is None
-        or not _nonempty_single_line(reason)
-    ):
-        raise ScanError(f"{source}: baseline row {index} has invalid guideline row")
-    return GuidelineNoExceptionBaselineRow(cast("str", guideline_id), cast("str", reason))
-
-
 def _identity_baseline_row(record: Mapping[str, object], *, kind: IdentityBaselineKind, index: int, source: str) -> IdentityBaselineRow:
     if kind == "keyword_only":
         return _keyword_only_identity_row(record, index=index, source=source)
@@ -2225,7 +2198,7 @@ def _identity_baseline_row(record: Mapping[str, object], *, kind: IdentityBaseli
         return _wire_artifact_identity_row(record, index=index, source=source)
     if kind == "renderer_golden_tests":
         return _renderer_identity_row(record, index=index, source=source)
-    return _guideline_identity_row(record, index=index, source=source)
+    raise ScanError(f"{source}: unsupported identity baseline kind {kind}")
 
 
 def parse_identity_baseline(
@@ -2282,10 +2255,8 @@ def serialize_identity_baseline(rows: Sequence[IdentityBaselineRow]) -> str:
             records.append({"file": row.file, "qualified_symbol": row.qualified_symbol})
         elif isinstance(row, WireArtifactPairingBaselineRow):
             records.append({"artifact": row.artifact, "side": row.side, "reason": row.reason})
-        elif isinstance(row, RendererGoldenTestsBaselineRow):
-            records.append({"file": row.file, "function_name": row.function_name, "reason": row.reason})
         else:
-            records.append({"guideline_id": row.guideline_id, "reason": row.reason})
+            records.append({"file": row.file, "function_name": row.function_name, "reason": row.reason})
     return json.dumps(records, indent=2) + "\n"
 
 
@@ -2334,10 +2305,8 @@ def write_identity_baseline(  # noqa: PLR0913 - public baseline-write contract i
             continue
         if isinstance(row, WireArtifactPairingBaselineRow):
             written.append(WireArtifactPairingBaselineRow(row.artifact, row.side, cast("str", reason)))
-        elif isinstance(row, RendererGoldenTestsBaselineRow):
-            written.append(RendererGoldenTestsBaselineRow(row.file, row.function_name, cast("str", reason)))
         else:
-            written.append(GuidelineNoExceptionBaselineRow(row.guideline_id, cast("str", reason)))
+            written.append(RendererGoldenTestsBaselineRow(row.file, row.function_name, cast("str", reason)))
     if missing_reason_ids:
         labels = "\n  ".join(":".join(str(value) for value in identity) for identity in missing_reason_ids)
         raise ScanError(

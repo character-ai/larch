@@ -21,7 +21,10 @@ pub use metadata::{
     RuleMetadata, RuleRegistration, registered_rule_registry, validate_migration_ledger,
 };
 pub use repository::{Git, GitCli, PathSelector, RepoPath, Repository};
-pub use runner::{ExitCode, Finding, LintError, Rule, RuleRegistry, finding_exit_code, run};
+pub use runner::{
+    ExitCode, Finding, LintError, LintReport, Rule, RuleOutput, RuleRegistry, finding_exit_code,
+    run,
+};
 
 /// Register a static rule and its co-located metadata without editing a shared
 /// registry. The matching migration-ledger record is verified before a rule

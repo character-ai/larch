@@ -56,15 +56,6 @@ suppress = [
 # excluded; the test script is referenced only from Makefile, matching the
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
-# scripts/test-lint-literal-counts.sh is the regression harness for
-# python3 python/cli.py lint literal-counts (the drift-prone literal item-count markdown
-# lint). The lint module is structurally referenced from
-# .pre-commit-config.yaml (local hook `lint-literal-counts`) and is therefore
-# not excluded; the test harness is referenced only from Makefile
-# (test-lint-literal-counts target) and python/lint_literal_counts.md
-# (primary contract), matching the same Makefile-only pattern as the other
-# test-* harnesses above.
-#
 # scripts/test-lint-no-raw-stderr-after-quiet-init.sh is the regression harness
 # for python3 python/cli.py lint no-raw-stderr-after-quiet-init (S041/no-raw-stderr-after-
 # quiet-init). The lint module is structurally referenced from
@@ -702,7 +693,6 @@ exclude = [
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  "scripts/test-lint-literal-counts.sh",
   "python/lint_no_raw_stderr_after_quiet_init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
