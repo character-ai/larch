@@ -3953,6 +3953,22 @@ def test_direct_targets_are_ci_first_no_local_make_fanout(tmp_path: Path) -> Non
     assert not _direct_targets_for(("python/test_plan_review.py",), tmp_path)
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml",
+        "rust-toolchain.toml",
+        ".cargo/config.toml",
+        "crates/larch-lint/Cargo.toml",
+        "crates/larch-lint/src/main.rs",
+    ],
+)
+def test_direct_targets_route_rust_inputs(path: str, tmp_path: Path) -> None:
+    assert _direct_targets_for((path,), tmp_path) == ("rust-check",)
+
+
 def test_local_relevant_checks_ci_superset_guard() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     precommit = (repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
@@ -3967,6 +3983,15 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     assert "python-lint:" in workflow
     assert "python-pyright:" in workflow
     assert "agent-lint:" in workflow
+    assert "rust-lint:" in workflow
+    assert "rust-build-test:" in workflow
+    assert "rust-gate:" in workflow
+    assert "needs: [rust-lint, rust-build-test]" in workflow
+    assert "make rust-fmt" in workflow
+    assert "make rust-clippy" in workflow
+    assert "make rust-build" in workflow
+    assert "make rust-test" in workflow
+    assert "cargo-deny-action@" in workflow
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

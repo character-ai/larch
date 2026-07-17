@@ -1,0 +1,25 @@
+[workspace]
+members = ["crates/larch-lint"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/character-ai/larch"
+rust-version = "1.94.1"
+
+[workspace.dependencies]
+clap = { version = "4.6.2", default-features = false, features = ["derive", "help", "std", "usage"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+too_many_lines = "deny"
+type_complexity = "deny"

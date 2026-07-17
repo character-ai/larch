@@ -17,7 +17,7 @@ If you discover a security vulnerability in larch, please report it responsibly:
 2. **Do not** open a public GitHub issue for security vulnerabilities
 3. Include steps to reproduce the issue and any relevant context
 
-You should receive an acknowledgment within 72 hours. We will work with you to understand the issue and coordinate a fix before any public disclosure.
+You should receive an acknowledgment within 72 hours. We will work with you to understand the issue and coordinate a fix before any public disclosure. Rust dependencies are reproducible through the tracked `Cargo.lock` and pinned `rust-toolchain.toml`; CI's required `rust-gate` runs a full-SHA-pinned `cargo-deny` action against `deny.toml` to reject known advisories, unapproved licenses, duplicate versions, wildcard requirements, and unapproved registries or Git sources.
 
 ## Scoped Live-Mutation Authorization Boundary
 
