@@ -53,6 +53,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "gh-argv-literal\tRequire raw gh command ownership by the GitHub wrapper\n",
         ))
         .stdout(predicate::str::contains(
+            "guidelines-note-wrapper-bypass\tReject direct guidelines-note invalidation outside the pin-or-invalidate owner\n",
+        ))
+        .stdout(predicate::str::contains(
             "kv-codec\tReject ad-hoc KEY=value readers and emitters outside shared codec owners\n",
         ))
         .stdout(predicate::str::contains(
@@ -63,6 +66,9 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "root-resolution\tReject private root helpers and direct git rev-parse --show-toplevel construction\n",
+        ))
+        .stdout(predicate::str::contains(
+            "shared-convention-regex\tReject copied heading regexes, bug-title selectors, and lifecycle-prefix strip loops\n",
         ))
         .stdout(predicate::str::contains(
             "tempfile-dir\tRequire the scratch owner for ambient temporary directories\n",
@@ -658,6 +664,16 @@ fn rust_policy_rules_are_clean_on_empty_rust_corpus() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty());
+    TempRepo::command_from(repository.path())
+        .args(["rule", "shared-convention-regex"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+    TempRepo::command_from(repository.path())
+        .args(["rule", "guidelines-note-wrapper-bypass"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
 }
 
 #[test]
@@ -787,6 +803,45 @@ fn result_env_key_parity_reports_divergent_siblings() {
         .code(1)
         .stdout(predicate::str::contains(
             "slot.env writer missing key B present in sibling writers",
+        ));
+}
+
+#[test]
+fn shared_convention_regex_reports_copied_heading() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        br#"fn compile() {
+    let _ = regex::Regex::new(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$").unwrap();
+}
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "shared-convention-regex"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crates/demo/src/lib.rs:2: guideline-heading-regex",
+        ));
+}
+
+#[test]
+fn guidelines_note_wrapper_bypass_reports_direct_call() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        b"fn run() {\n    invalidate_guidelines_note();\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "guidelines-note-wrapper-bypass"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crates/demo/src/lib.rs:2: calls invalidate_guidelines_note",
         ));
 }
 
