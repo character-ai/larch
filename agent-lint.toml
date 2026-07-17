@@ -22,8 +22,8 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  # A007 currently reports one repository-wide diagnostic: 17 agent files and
-  # 9 `## Reviewer` sections in skills/shared/reviewer-templates.md. Several
+  # A007 reports one repository-wide count mismatch between agent files and
+  # `## Reviewer` sections in skills/shared/reviewer-templates.md. Several
   # non-reviewer agents intentionally have no reviewer template. The diagnostic
   # is pathless, so a file override cannot represent this exception. Generated
   # reviewer checks and the focus-area enum guard cover template drift.
