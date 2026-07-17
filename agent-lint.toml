@@ -22,7 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  "terminology-inconsistent",
   # Q002 requires every negative instruction to state a nearby positive
   # alternative. Larch's safety, trust-boundary, and lifecycle contracts use
   # concise negative requirements deliberately; adding generic alternatives
@@ -1266,6 +1265,17 @@ files = [
 ]
 suppress = ["mcp-tool-unqualified"]
 reason = "Backtick-quoted snake_case tokens in these prompts are state keys, fields, and helper symbols, not MCP tool names; preserving identifier quoting keeps machine-facing contracts precise."
+
+[[lint.overrides]]
+files = [
+  "skills/design/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/triage/SKILL.md",
+]
+suppress = ["terminology-inconsistent"]
+reason = "Execute, invoke, and launch describe different operations in these orchestrators: commands execute, skills are invoked, and agent processes launch. Collapsing them would reduce contract precision."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
