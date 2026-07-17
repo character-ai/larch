@@ -22,11 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  # Q002 requires every negative instruction to state a nearby positive
-  # alternative. Larch's safety, trust-boundary, and lifecycle contracts use
-  # concise negative requirements deliberately; adding generic alternatives
-  # would dilute their machine-pinned wording without changing behavior.
-  "prompt-negative-only",
   # nested-ref-deep is suppressed because the anti-halt continuation banner
   # (closes #177) requires every orchestrator SKILL.md to cite
   # skills/shared/subskill-invocation.md as the canonical source of the
@@ -1276,6 +1271,62 @@ files = [
 ]
 suppress = ["terminology-inconsistent"]
 reason = "Execute, invoke, and launch describe different operations in these orchestrators: commands execute, skills are invoked, and agent processes launch. Collapsing them would reduce contract precision."
+
+[[lint.overrides]]
+files = [
+  ".claude/agents/bug-fix-triage.md",
+  ".claude/agents/sweep-bug-finder.md",
+  ".claude/agents/validate-merged-finder.md",
+  ".claude/skills/agnix-fix/SKILL.md",
+  ".claude/skills/analyze-bugs/SKILL.md",
+  ".claude/skills/analyze-issues/SKILL.md",
+  ".claude/skills/audit-runs/SKILL.md",
+  ".claude/skills/combine-issues/SKILL.md",
+  ".claude/skills/larch-size/SKILL.md",
+  ".claude/skills/release/SKILL.md",
+  ".claude/skills/validate-merged/SKILL.md",
+  "agents/arch-assessor.md",
+  "agents/ci-fixer.md",
+  "agents/claude-implementer.md",
+  "agents/claude-self-reviewer.md",
+  "agents/code-reviewer.md",
+  "agents/codex-implementer.md",
+  "agents/cursor-implementer.md",
+  "agents/issue-dedup.md",
+  "agents/orchestrator-aggregator.md",
+  "agents/reviewer-code-robustness.md",
+  "agents/reviewer-correctness.md",
+  "agents/reviewer-edge-cases.md",
+  "agents/reviewer-plan-fidelity.md",
+  "agents/reviewer-security-structure-tests.md",
+  "agents/reviewer-security.md",
+  "agents/reviewer-structure.md",
+  "agents/reviewer-testing.md",
+  "skills/alias/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/cleanup/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/f/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/fm/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/im/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/status/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["prompt-negative-only"]
+reason = "These safety, trust-boundary, and lifecycle contracts use concise negative requirements deliberately; adding generic nearby alternatives would dilute machine-pinned wording without changing behavior."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
