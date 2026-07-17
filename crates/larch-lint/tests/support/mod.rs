@@ -28,6 +28,14 @@ impl TempRepo {
             "crates/larch-lint/migration-ledger/result-env-key-parity.toml",
             b"rule = \"result-env-key-parity\"\n",
         );
+        repository.write(
+            "crates/larch-lint/migration-ledger/tempfile-dir.toml",
+            b"rule = \"tempfile-dir\"\n",
+        );
+        repository.write(
+            "crates/larch-lint/migration-ledger/tmpdir-arg-env-fallback.toml",
+            b"rule = \"tmpdir-arg-env-fallback\"\n",
+        );
         repository
     }
 
