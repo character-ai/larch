@@ -28,19 +28,6 @@ suppress = [
   # is pathless, so a file override cannot represent this exception. Generated
   # reviewer checks and the focus-area enum guard cover template drift.
   "template-count-mismatch",
-  # template-marker-missing (A006) requires every agent file to carry the
-  # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
-  # is meaningful for the Code Reviewer archetype family (code-reviewer.md
-  # and the reviewer-*.md specialists), but agents/codex-implementer.md,
-  # and agents/cursor-implementer.md are
-  # NON-reviewer agents — system-prompt bodies loaded by the Step 2
-  # implementer launchers, not review/synthesis agents.
-  # Suppression is global because agent-lint does not support per-file
-  # exceptions for this rule. Drift defense for the reviewer family lives
-  # in the registry walker (python3 python/cli.py generate check, which dispatches
-  # python3 python/cli.py generate code-reviewer-agent --check via scripts/generators.tsv)
-  # + the existing CI pin on the focus-area enum.
-  "template-marker-missing",
   # Slash-command references and glob-shaped skill paths are plugin syntax,
   # not filesystem paths. D005 still validates concrete Tier-1 doc paths.
   "instruction-file-path",
@@ -1307,6 +1294,20 @@ files = [
 ]
 suppress = ["prompt-negative-only"]
 reason = "These safety, trust-boundary, and lifecycle contracts use concise negative requirements deliberately; adding generic nearby alternatives would dilute machine-pinned wording without changing behavior."
+
+[[lint.overrides]]
+files = [
+  "agents/arch-assessor.md",
+  "agents/ci-fixer.md",
+  "agents/claude-implementer.md",
+  "agents/claude-self-reviewer.md",
+  "agents/codex-implementer.md",
+  "agents/cursor-implementer.md",
+  "agents/issue-dedup.md",
+  "agents/orchestrator-aggregator.md",
+]
+suppress = ["template-marker-missing"]
+reason = "These agents define assessor, fixer, implementer, deduplication, self-review, or aggregation roles; they are not derived from the shared code-reviewer templates and must not claim that marker."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
