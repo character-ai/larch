@@ -286,7 +286,7 @@ A partial edit that updates the Makefile but forgets the workflow YAML would sil
 
 Two scanners run as dedicated CI jobs in `.github/workflows/ci.yaml`:
 
-- **`gitleaks`** — Installs the same pinned `v8.18.4` engine used by the pre-commit hook (via a checksum-verified direct download of `gitleaks_8.18.4_linux_x64.tar.gz`) and scans the git log (`gitleaks detect --source .`) with `fetch-depth: 0`. Complementary to the `lint` job, which runs the pre-commit hook in `--no-git` mode over the working tree only — together they cover working-tree + full history with one pinned engine version.
+- **`gitleaks`**: Local pre-commit and CI call `python3 python/cli.py checks gitleaks`. It verifies the host's pinned `v8.18.4` release archive, extracted binary, and reported version. CI scans the working tree and PR commit range; local pre-commit scans the working tree with `--no-git`.
 - **`trufflehog`** — Runs `trufflesecurity/trufflehog` pinned to its commit SHA for `v3.82.13` (supply-chain: tags are mutable) with `version: 3.82.13` pinning the Docker image and `--only-verified`, so findings fire only for credentials that authenticate against a live provider API.
 
 See `SECURITY.md` → "Layered secret scanning" for the full three-layer model and allowlist discussion.
@@ -324,7 +324,7 @@ descriptors plus every lint command documented here.
 | `make jsonlint` | Run JSON validation only |
 | `make actionlint` | Run actionlint only |
 | `make agnix` | Run agnix only |
-| `make gitleaks` | Run gitleaks only (via pre-commit; scans the working tree with `--no-git`) |
+| `make gitleaks` | Run gitleaks only via pre-commit. The shared wrapper downloads the pinned release binary on first use, then scans the working tree with `--no-git`. |
 | `make trufflehog` | Run trufflehog via Docker in `filesystem` mode over the working tree (same pinned image and `--only-verified` flag as the CI `trufflehog` job, but CI uses the action's default `git` mode over the PR range — local and CI are not byte-identical invocations). Requires Docker daemon running locally |
 | `make setup` | Install pre-commit git hooks |
 | `make test-check-mid-run-dirty-tree` | Run pytest coverage for `python/cli.py dirty-tree` baseline and checkpoint behavior. Exercises clean/dirty states, sidecar emission, missing-baseline ambiguity, and git-failure degradation. |

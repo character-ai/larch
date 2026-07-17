@@ -353,8 +353,8 @@ jobs:
   # Dedicated gitleaks gate — runs two sequential scans: (1) working-tree
   # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved
   # here to reduce `lint`'s wall-clock time) and (2) git-history scan
-  # (walks the full git log; `fetch-depth: 0` required). Both use the same
-  # pinned v8.18.4 engine so local pre-commit and CI agree on scanner version.
+  # (covers the PR commit range; `fetch-depth: 0` supports merge-base lookup).
+  # Both use the same checksum-pinned release artifact path as local pre-commit.
   gitleaks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -363,41 +363,21 @@ jobs:
         with:
           fetch-depth: 0
       - name: Cache gitleaks binary
-        id: cache-gitleaks
         uses: actions/cache@v5
         with:
-          path: /usr/local/bin/gitleaks
-          key: gitleaks-bin-${{ runner.os }}-8.18.4
-      - name: Install gitleaks v8.18.4
-        if: steps.cache-gitleaks.outputs.cache-hit != 'true'
-        # SHA256 pinned for supply-chain integrity — a swapped release
-        # asset would change this hash. Sourced from the upstream
-        # gitleaks_8.18.4_checksums.txt; verify on bump:
-        #   curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_checksums.txt \
-        #     | grep linux_x64
-        env:
-          GITLEAKS_SHA256: ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d
-        run: |
-          set -euo pipefail
-          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
-            -o /tmp/gitleaks.tar.gz \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
-          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum --check --strict
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp/
-          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
-      - name: Verify gitleaks
-        run: gitleaks version
+          path: ~/.cache/larch/tools/gitleaks
+          key: gitleaks-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('python/larch/lint/gitleaks.py') }}
+      - name: Prepare verified gitleaks release
+        run: python3 python/cli.py checks gitleaks --mode verify
       - name: Scan working tree
-        run: |
-          set -euo pipefail
-          gitleaks detect --source . --no-git --redact --no-banner
+        run: python3 python/cli.py checks gitleaks --mode working-tree
       - name: Scan git history
         run: |
           set -euo pipefail
           # Limit scan to new commits in this PR to avoid false positives from
           # historical test-fixture keys in the main branch.
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
-          gitleaks detect --source . --redact --no-banner --log-opts "${BASE}..HEAD"
+          python3 python/cli.py checks gitleaks --mode history --log-opts "${BASE}..HEAD"
 
 
   # Generator and local metadata drift checks. Uses a sparse checkout because
