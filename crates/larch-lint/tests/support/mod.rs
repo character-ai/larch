@@ -58,15 +58,30 @@ impl TempRepo {
 
 fn seed_tracked_tree(repository: &TempRepo) {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    copy_tree(
-        repository,
-        &manifest_dir.join("migration-ledger"),
-        "crates/larch-lint/migration-ledger",
-    );
-    let policy = manifest_dir.join("policy");
-    if policy.is_dir() {
-        copy_tree(repository, &policy, "crates/larch-lint/policy");
+    for (source_name, destination_prefix) in [
+        ("migration-ledger", "crates/larch-lint/migration-ledger"),
+        ("policy", "crates/larch-lint/policy"),
+        ("config", "crates/larch-lint/config"),
+    ] {
+        let source = manifest_dir.join(source_name);
+        if source.is_dir() {
+            copy_tree(repository, &source, destination_prefix);
+        }
     }
+    // Fixture repos use an empty guideline baseline and a short guidelines
+    // document so shared CLI tests stay independent of live debt.
+    repository.write(
+        "crates/larch-lint/config/guideline-no-exception-baseline.json",
+        b"[]\n",
+    );
+    repository.write(
+        "crates/larch-lint/config/bg-wait-allowlist.txt",
+        b"# no retained exceptions\n",
+    );
+    repository.write(
+        "ARCHITECTURAL_GUIDELINES.md",
+        b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
+    );
 }
 
 fn copy_tree(repository: &TempRepo, source_dir: &Path, destination_prefix: &str) {
