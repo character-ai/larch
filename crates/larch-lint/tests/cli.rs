@@ -40,6 +40,106 @@ fn rules_lists_registered_rules_in_name_order() {
         .stdout(predicate::str::contains(
             "result-env-key-parity\tReject divergent key sets across sibling writers of the same result-env basename\n",
         ))
+        .stdout(predicate::str::contains(
+            "tempfile-dir\tRequire the scratch owner for ambient temporary directories\n",
+        ))
+        .stdout(predicate::str::contains(
+            "tmpdir-arg-env-fallback\tRequire an environment fallback for args.tmpdir\n",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn temporary_directory_policy_covers_constructor_builder_and_suppression_shapes() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch/src/worker.rs",
+        br"use tempfile::{tempdir as make_dir, Builder, TempDir};
+
+fn create() {
+    let _ = tempfile::tempdir();
+    let _ = TempDir::new();
+    let _ = Builder::new().tempdir();
+    let _ = make_dir();
+    let _ = tempfile::tempdir(); // lint-tempfile-dir: ok fixture exemption
+}
+",
+    );
+    repository.write(
+        "crates/larch/src/scratch.rs",
+        b"fn create() { let _ = tempfile::tempdir(); }\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "tempfile-dir"])
+        .assert()
+        .code(1)
+        .stdout(concat!(
+            "crates/larch/src/worker.rs:4: ambient temporary directory; use the scratch owner\n",
+            "crates/larch/src/worker.rs:5: ambient temporary directory; use the scratch owner\n",
+            "crates/larch/src/worker.rs:6: ambient temporary directory; use the scratch owner\n",
+            "crates/larch/src/worker.rs:7: ambient temporary directory; use the scratch owner\n",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn temporary_directory_policy_ignores_unrelated_constructor_names() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch/src/worker.rs",
+        br"struct TempDir;
+impl TempDir { fn new() -> Self { Self } }
+struct Builder;
+impl Builder {
+    fn new() -> Self { Self }
+    fn tempdir(self) {}
+}
+fn tempdir() {}
+fn create() {
+    tempdir();
+    let _ = TempDir::new();
+    Builder::new().tempdir();
+}
+",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "tempfile-dir"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn tmpdir_policy_requires_an_option_environment_fallback_and_reasoned_suppression() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch/src/worker.rs",
+        br"use std::path::PathBuf;
+
+fn create(args: Args) {
+    let _ = args.tmpdir;
+    let _ = args.tmpdir.as_deref();
+    let _ = args.tmpdir.or_else(|| std::env::var_os(config::ENV_IMPLEMENT_TMPDIR).map(PathBuf::from));
+    let _ = args.tmpdir.as_deref().or_else(|| std::env::var_os(config::ENV_IMPLEMENT_TMPDIR).as_deref());
+    let _ = args.tmpdir; // lint-tmpdir-arg-env-fallback: ok fixture exemption
+}
+",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "tmpdir-arg-env-fallback"])
+        .assert()
+        .code(1)
+        .stdout(concat!(
+            "crates/larch/src/worker.rs:4: direct args.tmpdir consumption; use ENV_IMPLEMENT_TMPDIR fallback\n",
+            "crates/larch/src/worker.rs:5: direct args.tmpdir consumption; use ENV_IMPLEMENT_TMPDIR fallback\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 
