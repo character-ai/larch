@@ -1,4 +1,5 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportAttributeAccessIssue=false
+# pylint: disable=no-member
 """Tests for finalize.py."""
 
 from __future__ import annotations
@@ -299,6 +300,7 @@ def test_postbump_exception_uses_bash_status_token(
     assert result.status == "rebase-failed"
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_resolve_generated_conflicts_invokes_cli(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
@@ -316,6 +318,7 @@ def test_resolve_generated_conflicts_invokes_cli(tmp_path: Path) -> None:
     assert runner.calls[-1] == ["git", "add", "--", "python/skill-closure-baseline.json"]
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_autoresolve_generated_conflicts_regenerates_and_continues(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -350,6 +353,7 @@ def test_autoresolve_generated_conflicts_regenerates_and_continues(
     ]
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_autoresolve_generated_conflicts_resolves_across_multiple_commits(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -383,6 +387,7 @@ def test_autoresolve_generated_conflicts_resolves_across_multiple_commits(
     assert state["continue_calls"] == 2  # looped once after the first continue re-conflicted
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -400,6 +405,7 @@ def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
     )
 
 
+@pytest.mark.skip(reason="issue #7591 retires generated closure-baseline conflict resolution")
 def test_autoresolve_generated_conflicts_stalls_when_regen_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
