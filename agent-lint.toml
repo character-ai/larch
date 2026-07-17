@@ -28,10 +28,6 @@ suppress = [
   # is pathless, so a file override cannot represent this exception. Generated
   # reviewer checks and the focus-area enum guard cover template drift.
   "template-count-mismatch",
-  # larch skills intentionally require the full Bash tool surface. Their
-  # prompts scope commands through explicit policy and script contracts, not
-  # by an allowlist that would prevent valid lifecycle operations.
-  "bash-unscoped",
 ]
 
 # scripts/test-sessionstart-health.sh is the regression test for the
@@ -1310,6 +1306,43 @@ reason = "These agents define assessor, fixer, implementer, deduplication, self-
 files = ["AGENTS.md"]
 suppress = ["instruction-file-path"]
 reason = "The reported `/report-tokens` token is a slash command, not a filesystem path; D005 still validates concrete Tier-1 path pointers in AGENTS.md."
+
+[[lint.overrides]]
+files = [
+  ".claude/skills/agnix-fix/SKILL.md",
+  ".claude/skills/analyze-bugs/SKILL.md",
+  ".claude/skills/analyze-issues/SKILL.md",
+  ".claude/skills/audit-runs/SKILL.md",
+  ".claude/skills/combine-issues/SKILL.md",
+  ".claude/skills/larch-size/SKILL.md",
+  ".claude/skills/rebalance-tests/SKILL.md",
+  ".claude/skills/release/SKILL.md",
+  ".claude/skills/validate-merged/SKILL.md",
+  "skills/alias/SKILL.md",
+  "skills/block-issue/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/cleanup/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review-and-fix/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/status/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/upgrade-larch/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["bash-unscoped"]
+reason = "These lifecycle skills require dynamic Bash operations whose valid argv cannot be represented by a stable command-prefix allowlist; prompt policy and script contracts provide command scope."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
