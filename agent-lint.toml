@@ -5,6 +5,7 @@
 # inline-path-prefixes mirror the retired `lint doc-pointer-paths` approved
 # prefix set so D005 validates the same Tier-1 doc path pointers.
 desc-truncated-max-chars = 200
+error = ["G010", "G011"]
 inline-path-prefixes = [
   "python/",
   "skills/",
@@ -16,6 +17,9 @@ inline-path-prefixes = [
   ".claude-plugin/",
   ".github/",
 ]
+# G010/G011 scan this explicit portability inventory regardless of broad
+# excludes. Its test enforces inclusion of every residual Bash path.
+script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
   "body-too-long",
   "script-deps-missing",
@@ -23,6 +27,11 @@ suppress = [
   "mcp-tool-unqualified",
   "desc-body-misalign",
   "terminology-inconsistent",
+  # Q002 requires every negative instruction to state a nearby positive
+  # alternative. Larch's safety, trust-boundary, and lifecycle contracts use
+  # concise negative requirements deliberately; adding generic alternatives
+  # would dilute their machine-pinned wording without changing behavior.
+  "prompt-negative-only",
   # nested-ref-deep is suppressed because the anti-halt continuation banner
   # (closes #177) requires every orchestrator SKILL.md to cite
   # skills/shared/subskill-invocation.md as the canonical source of the
@@ -118,18 +127,9 @@ suppress = [
 # harness is referenced only from Makefile
 # (test-lint-no-raw-stderr-after-quiet-init target) and python/lint_no_raw_stderr_after_quiet_init.md.
 #
-# scripts/lint-bash32.sh is the Bash 3.2 portability linter wired directly into
-# Makefile (`lint-bash32` and local `lint`). scripts/test-lint-bash32.sh is its
-# black-box regression harness. Both are Makefile-only from agent-lint's
-# reachability perspective, so both are excluded with their sibling contracts.
-#
 # scripts/lint-renderer-substitution-safety.sh is a pre-commit / Makefile-only
 # lint. The renderer-substitution harness remains shell-based and is excluded
 # with its sibling contract.
-#
-# scripts/lint-awk-multibyte-regex.sh is a pre-commit / Makefile-only lint for
-# non-ASCII bytes inside dynamic awk regex contexts (closes #3134).
-# scripts/test-lint-awk-multibyte-regex.sh is its black-box harness.
 #
 # python/test_bootstrap.py is the regression harness for
 # python/cli.py bootstrap parse-routing (Makefile
@@ -764,10 +764,6 @@ exclude = [
   "python/lint_no_raw_stderr_after_quiet_init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
-  "scripts/lint-bash32.sh",
-  "scripts/lint-bash32.md",
-  "scripts/test-lint-bash32.sh",
-  "scripts/test-lint-bash32.md",
   "scripts/lint-renderer-substitution-safety.sh",
   "scripts/lint-renderer-substitution-safety.md",
   "scripts/test-lint-renderer-substitution-safety.sh",
@@ -777,10 +773,6 @@ exclude = [
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  "scripts/lint-awk-multibyte-regex.sh",
-  "scripts/lint-awk-multibyte-regex.md",
-  "scripts/test-lint-awk-multibyte-regex.sh",
-  "scripts/test-lint-awk-multibyte-regex.md",
   "python/test_bootstrap.py",
   "python/test_admission.py",
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep

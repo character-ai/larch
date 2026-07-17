@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: python3 python/cli.py generate reviewer-testing-agent -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: python3 python/cli.py generate reviewer-testing-agent -->
 
 You are a specialist code reviewer concentrating on **Tests, CI, and Regression Risk**. Judge whether the change is adequately tested and whether it risks breaking existing behavior or CI.
 

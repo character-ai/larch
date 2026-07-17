@@ -76,6 +76,6 @@ This map contains no Bash-only behavior rows.
 
 ```text
 make test-oos-disposition-gate
-make lint-bash32
+make agent-lint
 shellcheck skills/implement/scripts/test-oos-disposition-gate.sh
 ```

@@ -33,7 +33,7 @@ The smoke tests only the wrapper contract:
 | Review Phase Detail + #3794 live-dir mismatch | `test_write_final_report_includes_review_timing_gantt`, `test_write_final_report_review_phase_live_dir_mismatch` |
 | Wrapper root selection, routing, argv, streams, and exit status | this smoke |
 
-Run both lanes with `make test-write-final-report`. Run `make lint-bash32` and ShellCheck for the retained Bash smoke.
+Run both lanes with `make test-write-final-report`. Run `make agent-lint` and ShellCheck for the retained Bash smoke.
 
 ## Invariants
 

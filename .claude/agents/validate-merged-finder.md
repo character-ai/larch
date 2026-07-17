@@ -21,7 +21,7 @@ breaks, wrong fields or keys, and static logic errors. Return exactly one strict
 JSONL object: `{"merge_sha": <40-char SHA>, "findings": [...]}`. Each finding
 has `file`, `symbol`, `description`, `severity`, and `confidence`; use only
 `high`, `medium`, or `low`, and return an empty list when the evidence is
-unreadable or no supported defect exists. Never invent a merge SHA, file path,
+unreadable or no supported defect exists. Report missing evidence rather than inventing a merge SHA, file path,
 symbol, or finding you did not read. Cap findings at 10.
 
 In refuter mode, independently try to disprove the one queue-row candidate by

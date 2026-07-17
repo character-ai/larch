@@ -32,7 +32,7 @@ The smoke tests only the wrapper contract:
 | Transcript KVs, session lookup, and terminal KVs | transcript, session, and terminal-KV tests in `test_step_7a.py` |
 | Wrapper root selection, routing, argv, streams, and exit status | this smoke |
 
-Run both lanes with `make test-step-7a`. Run `make lint-bash32` and ShellCheck for the retained Bash smoke.
+Run both lanes with `make test-step-7a`. Run `make agent-lint` and ShellCheck for the retained Bash smoke.
 
 ## Invariants
 

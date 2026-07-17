@@ -225,14 +225,13 @@ def test_failed_jobs_usage_exits_two():
     assert ci.failed_jobs_main([]) == 2
 
 
-def test_failed_jobs_classifies_legacy_fixable_jobs() -> None:
+def test_failed_jobs_classifies_fixable_jobs() -> None:
     classified = ci_monitor.classify_failed_jobs(
         (
             ci_monitor.FailedJob(name="lint-local", conclusion="failure"),
-            ci_monitor.FailedJob(name="bash32-check", conclusion="failure"),
         ),
     )
-    assert [job.name for job in classified.fixable] == ["lint-local", "bash32-check"]
+    assert [job.name for job in classified.fixable] == ["lint-local"]
 
 
 def test_wait_bail_exits_zero_and_emits_contract(monkeypatch, capsys):
