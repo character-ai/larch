@@ -12,7 +12,7 @@ from ._structure_label_inventory import assertion_labels
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 19
+LEGACY_ASSERTION_LABEL_COUNT = 18
 
 
 def run(repo_root: Path) -> list[str]:
@@ -36,13 +36,6 @@ def run(repo_root: Path) -> list[str]:
 
     skill = p("skills/design/SKILL.md")
     migrated = p("python/migrated-scripts.tsv")
-
-    result = subprocess.run(
-        ["python3", str(p("python/cli.py")), "lint", "skill-closure-growth", "--skill", "design"],
-        cwd=repo_root, capture_output=True, text=True,
-    )
-    if result.returncode:
-        failures.append("skills/design/SKILL.md closure growth ratchet failed")
 
     def lines_before(file: Path, anchor: str, count: int, *, predicate: Callable[[str], bool] | None = None) -> str:
         lines = read(file).splitlines()

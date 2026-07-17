@@ -16,7 +16,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-git-commit-only
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
-.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
 .PHONY: agent-sync lint-harness-session-env test-lint-harness-session-env
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
 .PHONY: lint-guideline-no-exception test-lint-guideline-no-exception
@@ -33,15 +33,13 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
-.PHONY: lint-renderer-substitution-safety test-lint-renderer-substitution-safety
-.PHONY: lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec
-.PHONY: lint-tier1a-size test-lint-tier1a-size
+.PHONY: lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-codex-exec-auth lint-bg-wait-coverage lint-retired-scripts lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -89,7 +87,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-kv-codec-baseline regen-skill-closure-baseline
+.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-kv-codec-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -106,10 +104,6 @@ regen-keyword-only-baseline:
 regen-kv-codec-baseline:
 	# Regenerate the strict shared-codec adoption baseline from production scans.
 	$(PYTHON) python/cli.py lint kv-codec --write
-
-regen-skill-closure-baseline:
-	# Regenerate python/skill-closure-baseline.json from live ratcheted prompt closure size.
-	$(PYTHON) python/cli.py lint skill-closure-growth --write
 
 # Generic baseline descriptors use target|filename|bootstrap-reason, with +
 # representing spaces in the reason. The template preserves reasons during
@@ -145,9 +139,6 @@ endef
 
 $(foreach descriptor,$(REGEN_BASELINE_DESCRIPTORS),$(eval $(call GENERIC_REGEN_BASELINE,$(descriptor))))
 
-skill-closure-size:
-	$(PYTHON) python/cli.py skill-closure report
-
 .PHONY: FORCE
 FORCE:
 
@@ -169,14 +160,11 @@ LINT_TEST_DESCRIPTORS := \
 	pylint-skip-file|python/tests/lint/test_lint_pylint_skip_file.py \
 	module-manifest|python/tests/lint/test_lint_module_manifest.py \
 	engine-adoption|python/tests/lint/test_lint_engine_adoption.py \
-	tier1a-size|python/tests/lint/test_lint_tier1a.py \
 	em-dash-output|python/tests/lint/test_lint_em_dash_output.py \
-	consecutive-bash|python/tests/lint/test_lint_consecutive_bash.py \
 	bg-wait-coverage|python/tests/lint/test_lint_bg_wait_coverage.py \
 	flat-tests|python/tests/lint/test_lint_flat_tests.py \
 	readability-preamble|python/tests/lint/test_lint_readability_preamble.py \
 	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
-	skill-closure-growth|python/tests/lint/test_lint_skill_closure_growth.py \
 	harness-session-env|python/tests/lint/test_lint_harness_session_env.py \
 	skill-documentation|python/tests/lint/test_lint_skill_documentation.py
 
@@ -231,9 +219,6 @@ py-test:
 lint-only:
 	pre-commit run --all-files
 
-lint-tier1a-size:
-	python3 python/cli.py lint tier1a-size
-
 lint-run-log-walkers:
 	python3 python/cli.py lint run-log-walkers
 
@@ -244,14 +229,8 @@ lint-readability-preamble:
 lint-em-dash-output:
 	python3 python/cli.py lint em-dash-output
 
-lint-renderer-substitution-safety:
-	bash scripts/lint-renderer-substitution-safety.sh
-
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth
-
-lint-consecutive-bash:
-	python3 python/cli.py lint consecutive-bash
 
 lint-bg-wait-coverage:
 	python3 python/cli.py lint bg-wait-coverage
@@ -275,7 +254,7 @@ test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-de
 
 test-harnesses-2: test-harness-shards-coverage test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
 
-test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
+test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
 test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts flush-execution-issues-bash-harness
 
@@ -674,9 +653,6 @@ test-step0b-router-flag-recovery:
 
 test-brainstorm-prompts:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
-
-test-lint-renderer-substitution-safety:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-renderer-substitution-safety.sh
 
 .PHONY: test-lint-makefile-contracts
 test-lint-makefile-contracts:

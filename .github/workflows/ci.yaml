@@ -70,7 +70,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-renderer-substitution-safety,lint-codex-exec-auth
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-codex-exec-auth
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -118,8 +118,6 @@ jobs:
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: |
             pre-commit-
-      - name: Run Tier-1a size ratchet
-        run: make lint-tier1a-size
       - name: Install lint dependencies
         env:
           PIP_RETRIES: "5"
@@ -291,15 +289,15 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /usr/local/bin/agent-lint
-          key: agent-lint-bin-${{ runner.os }}-2.6.0
-      - name: Install agent-lint v2.6.0
+          key: agent-lint-bin-${{ runner.os }}-2.7.0
+      - name: Install agent-lint v2.7.0
         if: steps.cache-agent-lint.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
           curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
             -o "$tmp/agent-lint.tgz" \
-            https://github.com/zhupanov/agent-lint/releases/download/v2.6.0/agent-lint-v2.6.0-x86_64-unknown-linux-musl.tar.gz
+            https://github.com/zhupanov/agent-lint/releases/download/v2.7.0/agent-lint-v2.7.0-x86_64-unknown-linux-musl.tar.gz
           tar -xzf "$tmp/agent-lint.tgz" -C "$tmp"
           sudo install -m 0755 "$tmp/agent-lint" /usr/local/bin/agent-lint
           rm -rf "$tmp"

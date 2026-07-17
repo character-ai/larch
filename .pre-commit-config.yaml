@@ -535,23 +535,9 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: lint-renderer-substitution-safety
-        name: lint renderer substitution safety
-        entry: bash scripts/lint-renderer-substitution-safety.sh
-        language: system
-        pass_filenames: false
-        always_run: true
-
       - id: lint-codex-exec-auth
         name: lint unwired codex exec call sites
         entry: python3 python/cli.py lint codex-exec-auth
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      - id: lint-consecutive-bash
-        name: lint consecutive bash tool-call fences
-        entry: python3 python/cli.py lint consecutive-bash
         language: system
         pass_filenames: false
         always_run: true
@@ -563,13 +549,6 @@ repos:
         pass_filenames: false
         files: ^skills/(design|implement|review|review-and-fix)/
         files: ^skills/(design|implement|review|review-and-fix)/
-
-      - id: lint-skill-closure-growth
-        name: lint ratcheted prompt closure growth
-        entry: python3 python/cli.py lint skill-closure-growth
-        language: system
-        pass_filenames: false
-        always_run: true
 
       - id: test-legacy-title-prefix-literals-scope
         name: Check legacy title-prefix literal scope

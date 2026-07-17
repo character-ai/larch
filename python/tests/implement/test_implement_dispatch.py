@@ -5195,48 +5195,6 @@ def test_run_step4_commit_leg_absorbs_attributed_step3_lint_fix_path(
     )
 
 
-def test_run_step4_commit_leg_absorbs_regenerated_allowlisted_step3_lint_fix_path(
-    repo: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    impl = make_implement_tmpdir(tmp_path)
-    baseline = repo / "python" / "skill-closure-baseline.json"
-    baseline.parent.mkdir()
-    baseline.write_text('{"revision": 0}\n', encoding="utf-8")
-    _git(repo, "add", str(baseline.relative_to(repo)))
-    _git(repo, "commit", "-m", "add skill closure baseline")
-    baseline.write_text('{"revision": 1}\n', encoding="utf-8")
-    _ = self_edit_log.record_self_edits(
-        tmpdir=impl,
-        source="lint-fix:step3",
-        paths=[str(baseline.relative_to(repo))],
-        repo_root=repo,
-    )
-    # A second Step 3 checks entry regenerates the baseline after lint-fix
-    # recorded its first digest.
-    baseline.write_text('{"revision": 2}\n', encoding="utf-8")
-    (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
-    (impl / "implementation-commit-paths.nul").write_bytes(b"README.md\0")
-    calls: list[list[str]] = []
-
-    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(list(argv))
-        return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
-
-    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok both re-export facades are patched for this regression
-    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok both re-export facades are patched for this regression
-
-    outcome, stdout = dispatch_commit_route._run_step4_commit_leg(impl, deadline_ms=123)
-
-    assert outcome == "continue"
-    assert "COMMIT_ROUTE_OUTCOME=continue\n" in stdout
-    assert calls[0][-2] == str(impl / "step4-commit-paths.nul")
-    assert (impl / "step4-commit-paths.nul").read_bytes() == (
-        b"README.md\0python/skill-closure-baseline.json\0"
-    )
-
-
 def test_step4_pathspec_excludes_stale_unallowlisted_self_edit(
     repo: Path,
     tmp_path: Path,

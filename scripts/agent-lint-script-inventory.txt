@@ -16,7 +16,6 @@ scripts/file-failure-report-cross-repo.sh
 scripts/flush-vendor-failure-diagnostics.sh
 scripts/hook-anti-read-poll.sh
 scripts/sessionstart-statusline.sh
-scripts/lint-renderer-substitution-safety.sh
 scripts/pre-commit-bash-syntax.sh
 scripts/pre-commit-shellcheck.sh
 scripts/read-result-env.sh
@@ -54,7 +53,6 @@ scripts/test-implement-timing-rehydration.sh
 scripts/test-legacy-title-prefix-literals-scope.sh
 scripts/test-lint-literal-counts.sh
 scripts/test-lint-no-raw-stderr-after-quiet-init.sh
-scripts/test-lint-renderer-substitution-safety.sh
 scripts/test-orchestrator-scope-sync.sh
 scripts/test-pipe-sigpipe-safety.sh
 scripts/test-plan-adequacy-audit.sh

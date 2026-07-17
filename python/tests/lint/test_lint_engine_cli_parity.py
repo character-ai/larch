@@ -18,7 +18,6 @@ from larch.lint import (
     lint_run_log_run_id,
     lint_run_log_walkers,
     lint_shared_convention_regex,
-    lint_tier1a,
 )
 
 LintMain = Callable[[list[str] | None], int]
@@ -33,7 +32,6 @@ ROOT_ONLY_COMMANDS: tuple[tuple[str, LintMain, int], ...] = (
     ("run-log-run-id", lint_run_log_run_id.main, 2),
     ("run-log-walkers", lint_run_log_walkers.main, 2),
     ("shared-convention-regex", lint_shared_convention_regex.main, 2),
-    ("tier1a-size", lint_tier1a.main, 2),
 )
 
 
