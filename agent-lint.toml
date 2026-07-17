@@ -22,63 +22,12 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  "body-too-long",
-  "script-deps-missing",
-  "body-no-default",
-  "mcp-tool-unqualified",
-  "desc-body-misalign",
-  "terminology-inconsistent",
-  # Q002 requires every negative instruction to state a nearby positive
-  # alternative. Larch's safety, trust-boundary, and lifecycle contracts use
-  # concise negative requirements deliberately; adding generic alternatives
-  # would dilute their machine-pinned wording without changing behavior.
-  "prompt-negative-only",
-  # nested-ref-deep is suppressed because the anti-halt continuation banner
-  # (closes #177) requires every orchestrator SKILL.md to cite
-  # skills/shared/subskill-invocation.md as the canonical source of the
-  # rule. subskill-invocation.md itself contains many inline SKILL.md
-  # example references (which the S029 rule counts as "nested"), but the
-  # banner carries the operative one-sentence rule inline — the canonical
-  # reference is a discoverability aid, not a mandatory cross-ref chain.
-  # The rule's stated concern ("humans/LLMs chasing chained refs") does not
-  # apply to this use case. See `skills/shared/subskill-invocation.md`
-  # (normative home of the anti-halt banner convention).
-  "nested-ref-deep",
-  # template-count-mismatch is suppressed because the specialist reviewer
-  # agents (agents/reviewer-{structure,correctness,testing,security,edge-cases}.md)
-  # are hand-authored specialist variants derived from the shared Code Reviewer
-  # archetype but maintained independently — they do NOT each have a matching
-  # `## Reviewer` section in skills/shared/reviewer-templates.md. The shared
-  # template defines the generic archetype (1 section); the specialists narrow
-  # it to focus areas. CI's focus-area enum check covers drift prevention.
+  # A007 reports one repository-wide count mismatch between agent files and
+  # `## Reviewer` sections in skills/shared/reviewer-templates.md. Several
+  # non-reviewer agents intentionally have no reviewer template. The diagnostic
+  # is pathless, so a file override cannot represent this exception. Generated
+  # reviewer checks and the focus-area enum guard cover template drift.
   "template-count-mismatch",
-  # tools-unknown (S040) is suppressed because agent-lint's built-in
-  # tool registry still does not recognize the `Monitor` tool (a first-party
-  # Claude Code tool used by loop-driver SKILL.md files for passive
-  # log-tailing observability). Suppression is global because agent-lint
-  # does not support per-file or per-token exceptions for this rule.
-  # Revisit when a future agent-lint upgrade adds Monitor to the registry.
-  "tools-unknown",
-  # template-marker-missing (A006) requires every agent file to carry the
-  # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
-  # is meaningful for the Code Reviewer archetype family (code-reviewer.md
-  # and the reviewer-*.md specialists), but agents/codex-implementer.md,
-  # and agents/cursor-implementer.md are
-  # NON-reviewer agents — system-prompt bodies loaded by the Step 2
-  # implementer launchers, not review/synthesis agents.
-  # Suppression is global because agent-lint does not support per-file
-  # exceptions for this rule. Drift defense for the reviewer family lives
-  # in the registry walker (python3 python/cli.py generate check, which dispatches
-  # python3 python/cli.py generate code-reviewer-agent --check via scripts/generators.tsv)
-  # + the existing CI pin on the focus-area enum.
-  "template-marker-missing",
-  # Slash-command references and glob-shaped skill paths are plugin syntax,
-  # not filesystem paths. D005 still validates concrete Tier-1 doc paths.
-  "instruction-file-path",
-  # larch skills intentionally require the full Bash tool surface. Their
-  # prompts scope commands through explicit policy and script contracts, not
-  # by an allowlist that would prevent valid lifecycle operations.
-  "bash-unscoped",
 ]
 
 # scripts/test-sessionstart-health.sh is the regression test for the
@@ -1199,6 +1148,201 @@ exclude = [
   "python/cli.py ci behind-count",
 
 ]
+
+[[lint.overrides]]
+files = [
+  "skills/design/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+]
+suppress = ["body-too-long"]
+reason = "These orchestrators exceed the generic 500-line limit; progressive-disclosure references and dedicated structure harnesses bound their load-bearing inline contracts."
+
+[[lint.overrides]]
+files = [
+  "skills/cleanup/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/pause/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/review-and-fix/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["script-deps-missing"]
+reason = "Larch centralizes installation and runtime prerequisites in docs/installation-and-setup.md; repeating package prose in each stdlib-backed coordinator would create a second owner."
+
+[[lint.overrides]]
+files = [
+  "skills/alias/SKILL.md",
+  "skills/block-issue/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/f/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/fm/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/im/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["body-no-default"]
+reason = "These prompts list conditional flags, states, or outcomes rather than interchangeable choices; adding one blanket default would change or duplicate their existing per-case routing contracts."
+
+[[lint.overrides]]
+files = [
+  ".claude/skills/agnix-fix/SKILL.md",
+  ".claude/skills/analyze-issues/SKILL.md",
+  ".claude/skills/audit-runs/SKILL.md",
+  ".claude/skills/combine-issues/SKILL.md",
+  ".claude/skills/rebalance-tests/SKILL.md",
+  ".claude/skills/release/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+]
+suppress = ["mcp-tool-unqualified"]
+reason = "Backtick-quoted snake_case tokens in these prompts are state keys, fields, and helper symbols, not MCP tool names; preserving identifier quoting keeps machine-facing contracts precise."
+
+[[lint.overrides]]
+files = [
+  "skills/design/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/triage/SKILL.md",
+]
+suppress = ["terminology-inconsistent"]
+reason = "Execute, invoke, and launch describe different operations in these orchestrators: commands execute, skills are invoked, and agent processes launch. Collapsing them would reduce contract precision."
+
+[[lint.overrides]]
+files = [
+  ".claude/agents/bug-fix-triage.md",
+  ".claude/agents/sweep-bug-finder.md",
+  ".claude/agents/validate-merged-finder.md",
+  ".claude/skills/agnix-fix/SKILL.md",
+  ".claude/skills/analyze-bugs/SKILL.md",
+  ".claude/skills/analyze-issues/SKILL.md",
+  ".claude/skills/audit-runs/SKILL.md",
+  ".claude/skills/combine-issues/SKILL.md",
+  ".claude/skills/larch-size/SKILL.md",
+  ".claude/skills/release/SKILL.md",
+  ".claude/skills/validate-merged/SKILL.md",
+  "agents/arch-assessor.md",
+  "agents/ci-fixer.md",
+  "agents/claude-implementer.md",
+  "agents/claude-self-reviewer.md",
+  "agents/code-reviewer.md",
+  "agents/codex-implementer.md",
+  "agents/cursor-implementer.md",
+  "agents/issue-dedup.md",
+  "agents/orchestrator-aggregator.md",
+  "agents/reviewer-code-robustness.md",
+  "agents/reviewer-correctness.md",
+  "agents/reviewer-edge-cases.md",
+  "agents/reviewer-plan-fidelity.md",
+  "agents/reviewer-security-structure-tests.md",
+  "agents/reviewer-security.md",
+  "agents/reviewer-structure.md",
+  "agents/reviewer-testing.md",
+  "skills/alias/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/cleanup/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/f/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/fm/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/im/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/status/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["prompt-negative-only"]
+reason = "These safety, trust-boundary, and lifecycle contracts use concise negative requirements deliberately; adding generic nearby alternatives would dilute machine-pinned wording without changing behavior."
+
+[[lint.overrides]]
+files = [
+  "agents/arch-assessor.md",
+  "agents/ci-fixer.md",
+  "agents/claude-implementer.md",
+  "agents/claude-self-reviewer.md",
+  "agents/codex-implementer.md",
+  "agents/cursor-implementer.md",
+  "agents/issue-dedup.md",
+  "agents/orchestrator-aggregator.md",
+]
+suppress = ["template-marker-missing"]
+reason = "These agents define assessor, fixer, implementer, deduplication, self-review, or aggregation roles; they are not derived from the shared code-reviewer templates and must not claim that marker."
+
+[[lint.overrides]]
+files = ["AGENTS.md"]
+suppress = ["instruction-file-path"]
+reason = "The reported `/report-tokens` token is a slash command, not a filesystem path; D005 still validates concrete Tier-1 path pointers in AGENTS.md."
+
+[[lint.overrides]]
+files = [
+  ".claude/skills/agnix-fix/SKILL.md",
+  ".claude/skills/analyze-bugs/SKILL.md",
+  ".claude/skills/analyze-issues/SKILL.md",
+  ".claude/skills/audit-runs/SKILL.md",
+  ".claude/skills/combine-issues/SKILL.md",
+  ".claude/skills/larch-size/SKILL.md",
+  ".claude/skills/rebalance-tests/SKILL.md",
+  ".claude/skills/release/SKILL.md",
+  ".claude/skills/validate-merged/SKILL.md",
+  "skills/alias/SKILL.md",
+  "skills/block-issue/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/cleanup/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/gc-run-logs/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review-and-fix/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/status/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/upgrade-larch/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["bash-unscoped"]
+reason = "These lifecycle skills require dynamic Bash operations whose valid argv cannot be represented by a stable command-prefix allowlist; prompt policy and script contracts provide command scope."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
