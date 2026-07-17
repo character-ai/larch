@@ -12,7 +12,7 @@ from ._structure_label_inventory import assertion_labels
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 19
+LEGACY_ASSERTION_LABEL_COUNT = 18
 
 
 def run(repo_root: Path) -> list[str]:

@@ -455,7 +455,7 @@ def test_rebase_no_push_aborts_and_reports_conflict_files_on_stall(
     result = finalize._rebase_no_push(RecordingRunner(), base_remote="origin", cwd=str(tmp_path))
     assert result.status == "failed"
     assert result.conflict_files == ("docs/some-guide.md",)
-    assert "--abort" not in rebase_calls  # conflicts stay in progress for handoff
+    assert rebase_calls == ["origin/main", "--abort"]
 
 
 def test_postbump_surfaces_conflict_files_on_rebase_failed(
