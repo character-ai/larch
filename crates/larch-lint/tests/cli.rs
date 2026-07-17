@@ -53,6 +53,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "kv-codec\tReject ad-hoc KEY=value readers and emitters outside shared codec owners\n",
         ))
         .stdout(predicate::str::contains(
+            "markdown-heading-fence-state\tRequire fence-aware Markdown heading regex parsing\n",
+        ))
+        .stdout(predicate::str::contains(
             "result-env-key-parity\tReject divergent key sets across sibling writers of the same result-env basename\n",
         ))
         .stdout(predicate::str::contains(
@@ -637,6 +640,96 @@ fn rust_policy_rules_are_clean_on_empty_rust_corpus() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn markdown_heading_fence_state_requires_guards_for_regex_aliases_and_search_forms() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        br#"use regex::Regex as HeadingRegex;
+
+fn heading_helper() -> HeadingRegex {
+    HeadingRegex::new(r"^#{1,6}\s+").unwrap()
+}
+
+fn outside_fence(line: &MarkdownLine<'_>) -> bool {
+    line.fence_state() == FenceState::Outside
+}
+
+fn misleading_fence_helper(line: &MarkdownLine<'_>) -> bool {
+    let _state = line.fence_state();
+    false
+}
+
+fn scan(source: &str, document: MarkdownDocument<'_>) {
+    let heading = HeadingRegex::new(r"^#{1,6}\s+").unwrap();
+    let alias = &heading;
+    let helper_alias = heading_helper();
+    for raw in source.lines() {
+        heading.is_match(raw);
+        alias.find(raw);
+        helper_alias.captures(raw);
+        heading.is_match(raw); // lint-markdown-heading-fence-state: ok fixture tests a reasoned exception
+    }
+    for line in document.lines() {
+        if line.fence_state() == FenceState::Outside && heading.is_match(line.text()) {}
+    }
+    for line in document.lines() {
+        if line.fence_state() != FenceState::Outside {
+            continue;
+        }
+        alias.find(line.text());
+    }
+    for line in document.lines() {
+        if outside_fence(&line) && helper_alias.captures(line.text()).is_some() {}
+    }
+    for line in document.lines() {
+        if misleading_fence_helper(&line) && heading.find(line.text()).is_some() {}
+    }
+}
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "markdown-heading-fence-state"])
+        .assert()
+        .code(1)
+        .stdout(
+            "crates/demo/src/lib.rs:21: applies a Markdown heading regex to lines without fence-state gating\n\
+             crates/demo/src/lib.rs:22: applies a Markdown heading regex to lines without fence-state gating\n\
+             crates/demo/src/lib.rs:23: applies a Markdown heading regex to lines without fence-state gating\n\
+             crates/demo/src/lib.rs:39: applies a Markdown heading regex to lines without fence-state gating\n",
+        )
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn markdown_heading_fence_state_rejects_empty_suppression_reasons() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        br#"use regex::Regex;
+
+fn scan(source: &str) {
+    let heading = Regex::new(r"^#{1,6}\s+").unwrap();
+    for raw in source.lines() {
+        heading.is_match(raw); // lint-markdown-heading-fence-state: ok
+    }
+}
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "markdown-heading-fence-state"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(
+            "larch-lint: error: suppression lint-markdown-heading-fence-state lacks a reason\n",
+        );
 }
 
 #[test]

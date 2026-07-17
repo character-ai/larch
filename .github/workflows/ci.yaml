@@ -344,7 +344,6 @@ jobs:
         with:
           sparse-checkout: |
             /*
-            !/larch-logs/
           sparse-checkout-cone-mode: false
       - name: Install pinned Rust toolchain
         run: |
