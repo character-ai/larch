@@ -1144,7 +1144,7 @@ def test_parse_guideline_entries_mixes_marked_and_unmarked_entries_in_order() ->
 
 ### G-Bash-3: Keep shell scripts portable
 - Why: this must not appear.
-- Mechanized: `make lint-bash32` covers Bash 3.2 constructs.
+- Mechanized: `make agent-lint` covers Bash 3.2 constructs.
 - Deviate when: this carve-out must not appear.
 
 ### G-Obs-3: Record execution issues
@@ -1160,7 +1160,7 @@ def test_parse_guideline_entries_mixes_marked_and_unmarked_entries_in_order() ->
 - Deviate when: a documented degraded path exists.
 
 ### G-Bash-3: Keep shell scripts portable
-- Mechanized: `make lint-bash32` covers Bash 3.2 constructs.
+- Mechanized: `make agent-lint` covers Bash 3.2 constructs.
 
 ### G-Obs-3: Record execution issues
 - Why: tmpdir-only failures vanish.

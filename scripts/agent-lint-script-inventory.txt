@@ -1,6 +1,8 @@
 
 # Blank lines and comments are ignored. Paths are repo-relative.
-# Residual Bash inventory for bash-targeting linters and CI shellcheck.
+# Explicit agent-lint G010/G011 scope. Keep every residual Bash path from
+# residual-bash-paths.txt here and add every standalone source `.awk` helper.
+# Agent-lint validates every row as a regular .sh, .inc.bash, or .awk file.
 # Terminal shared libraries, retired non-thin utilities, verified-zero-consumer includes,
 # live orchestration bodies, and sourced helper libraries are intentionally absent.
 .claude/skills/combine-issues/scripts/search-implementing-issue.sh

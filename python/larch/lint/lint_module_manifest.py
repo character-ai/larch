@@ -39,8 +39,6 @@ RECORD_KEYS = frozenset({"module", "host_decision", "justification", "source_iss
 # code-level constant, never derived from the manifest or the filesystem.
 LEGACY_SEED_MODULES = frozenset(
     {
-        "lint_awk_multibyte_regex.py",
-        "lint_bash32.py",
         "lint_bg_wait_coverage.py",
         "lint_codex_exec_auth.py",
         "lint_common.py",

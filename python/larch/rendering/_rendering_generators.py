@@ -212,7 +212,7 @@ def _reviewer_agent_text(verb: str) -> str:
     if verb in SPECIALIST_VERBS:
         unique = _specialist_unique_body(verb)
         shared = _extract_template_fragment(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", name="SPECIALIST_SHARED_SECTIONS")
-        return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(unique)}\n\n{_render_wire_value_placeholders(shared)}\n"
+        return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(unique)}\n\n{_render_wire_value_placeholders(shared)}\n"
 
     body = _extract_generated_body(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", heading=REVIEWER_SECTION[verb])
     if verb == "code-reviewer-agent":
@@ -233,7 +233,7 @@ def _reviewer_agent_text(verb: str) -> str:
             inscope=["File path and line number(s) (if reviewing code) or the specific concern (if reviewing a plan)", "What the issue is", "Suggested fix (be specific)"],
             oos=["File path and line number(s) or the specific concern (use `<expected-path>:1` for absent-artifact observations)", "What the issue is", "Suggested fix"],
         )
-    return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(body)}\n"
+    return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(body)}\n"
 
 
 def _diff_or_write(*, target: Path, text: str, check: bool, label: str) -> int:
@@ -313,7 +313,7 @@ name: codex-implementer
 description: Codex implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by python/cli.py agent launch-codex-implement; not invoked as a Claude subagent.
 ---
 
-<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB['codex-implementer']} -->
+<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: {AUTO_HEADER_BY_VERB['codex-implementer']} -->
 
 # Codex implementer (system prompt)
 
@@ -338,7 +338,7 @@ name: cursor-implementer
 description: Cursor implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by python/cli.py agent launch-cursor-implement; not invoked as a Claude subagent.
 ---
 
-<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB['cursor-implementer']} -->
+<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: {AUTO_HEADER_BY_VERB['cursor-implementer']} -->
 
 # Cursor implementer (system prompt)
 

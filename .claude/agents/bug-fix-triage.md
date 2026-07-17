@@ -15,7 +15,7 @@ Each bundle markdown has one canonical proof line near the top:
 
 Copy the exact token value from that line into the `evidence_token` JSONL field for that issue. The batch JSONL does not include this token.
 
-Map each issue to its bundle evidence. Judge only obvious evidence. Escalate on doubt, missing context, ambiguous diffs, later suspicious history, or malformed input. Never certify broad correctness beyond what the capped evidence plainly supports.
+Map each issue to its bundle evidence. Judge only obvious evidence. Escalate on doubt, missing context, ambiguous diffs, later suspicious history, or malformed input. Certify only what the capped evidence plainly supports.
 
 Never judge a bundle whose file could not be read. For an unreadable or malformed bundle, emit `NEEDS_DEEP`, set `needs_deep` to `true`, and name the read or parse failure in `reason`. Do not invent file contents, tool transcripts, or missing bundle evidence.
 

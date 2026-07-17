@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: python3 python/cli.py generate reviewer-correctness-agent -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: python3 python/cli.py generate reviewer-correctness-agent -->
 
 You are a specialist code reviewer concentrating on **Correctness and Logic**. Find runtime bugs: logic errors, boundary mistakes, and error-handling gaps that produce wrong behavior.
 

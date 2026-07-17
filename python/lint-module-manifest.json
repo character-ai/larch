@@ -1,8 +1,6 @@
 {
   "schema_version": 1,
   "modules": [
-    {"module": "lint_awk_multibyte_regex.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
-    {"module": "lint_bash32.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_bg_wait_coverage.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_codex_exec_auth.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_common.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
@@ -14,7 +12,7 @@
     {"module": "lint_env_via_config_constant.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_flat_tests.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_gh_argv_literal.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
-    {"module": "lint_harness_session_env.py", "host_decision": "new-module-justified", "justification": "Dedicated shell-harness preamble scanner; lint_bash32 enforces portability constructs and cannot own session-state isolation or its suppression grammar (#7562).", "source_issue": 7562},
+    {"module": "lint_harness_session_env.py", "host_decision": "new-module-justified", "justification": "Dedicated shell-harness preamble scanner; agent-lint G010 enforces portability constructs and cannot own session-state isolation or its suppression grammar (#7562).", "source_issue": 7562},
     {"module": "lint_git_push_refspec.py", "host_decision": "new-module-justified", "justification": "Distinct AST rule for Git push destination operands; lint_gh_argv_literal only rejects raw GitHub CLI ownership bypasses and cannot enforce Git refspec policy (#7489).", "source_issue": 7489},
     {"module": "lint_guideline_no_exception.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_guidelines_note_wrapper_bypass.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

@@ -199,4 +199,4 @@ Retired terminal helpers, orphan includes, and the PR-body `Closes #N` helper ar
 
 Contract-bearing hooks now own their stdout streams locally. `scripts/deny-edit-write.sh`, `scripts/sessionstart-health.sh`, and `skills/implement/scripts/hook-stop-fail-close.sh` emit hook JSON through per-hook `hook_emit` functions. `scripts/sessionstart-health.sh` keeps a stdout fallback when stripped PATH prevents quiet setup.
 
-`lint-awk-multibyte-regex` has dual discovery. It scans residual shell and include paths from the manifest, and it still scans tracked standalone `*.awk` files outside the manifest. CI shard rebalance is deferred to `/rebalance-tests` and is not part of this sweep.
+Agent-lint owns Bash 3.2 and dynamic-AWK portability through G010 and G011. Its explicit `script-inventory` is `scripts/agent-lint-script-inventory.txt`, which duplicates the residual-Bash inventory and adds standalone source `.awk` helpers; its test keeps the Bash portion complete. CI shard rebalance is deferred to `/rebalance-tests` and is not part of this sweep.

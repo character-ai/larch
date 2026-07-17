@@ -17,7 +17,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
-.PHONY: lint-bash32 test-lint-bash32 agent-sync lint-harness-session-env test-lint-harness-session-env
+.PHONY: agent-sync lint-harness-session-env test-lint-harness-session-env
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
 .PHONY: lint-guideline-no-exception test-lint-guideline-no-exception
 .PHONY: lint-flat-tests test-lint-flat-tests
@@ -34,14 +34,14 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety test-lint-renderer-substitution-safety
-.PHONY: lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
+.PHONY: lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec
 .PHONY: lint-tier1a-size test-lint-tier1a-size
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-harness-session-env lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -260,9 +260,6 @@ lint-bg-wait-coverage:
 lint-flat-tests:
 	python3 python/cli.py lint flat-tests
 
-lint-awk-multibyte-regex:
-	python3 python/cli.py lint awk-multibyte-regex
-
 # Bash regression-harness shards (#1294, #1585, #1911, #2080, #2252, #2262, #2291, #2349, #2366,
 # #2386, #5429 — originally 20 shards mixing pytest wrappers with bash scripts; collapsed to 6, then 5
 # bash-only shards after pruning 193 pytest-wrapper targets that duplicated the python-tests job).
@@ -274,11 +271,11 @@ lint-awk-multibyte-regex:
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 
-test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
+test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
 test-harnesses-2: test-harness-shards-coverage test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
 
-test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
+test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
 test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts flush-execution-issues-bash-harness
 
@@ -535,10 +532,6 @@ test-lint-literal-counts:
 test-lint-no-raw-stderr-after-quiet-init:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
 
-test-lint-bash32:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-bash32.sh
-
-
 test-anti-halt:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-halt-banners.sh
 
@@ -692,9 +685,6 @@ test-lint-makefile-contracts:
 
 test-launch-codex-exec:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k launch_codex_exec
-
-test-lint-awk-multibyte-regex:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-awk-multibyte-regex.sh
 
 test-scout-plan-archetypes-wrapper:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k plan_wrapper
@@ -1183,9 +1173,6 @@ test-eval-research-baseline-flag:
 
 shellcheck:
 	pre-commit run shellcheck --all-files
-
-lint-bash32:
-	python3 python/cli.py lint bash32
 
 lint-harness-session-env:
 	python3 python/cli.py lint harness-session-env

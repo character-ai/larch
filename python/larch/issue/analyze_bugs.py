@@ -106,7 +106,6 @@ CERTIFIABLE_FIXED_VERDICTS: Final = frozenset({"CONFIRMED_FIXED", "FIXED_CLEAR",
 HARNESS_MAP: Final[tuple[tuple[str, str], ...]] = (
     ("skills/implement/", "test-architectural-guidelines-step"),
     ("scripts/test-implement-anti-halt.sh", "test-implement-anti-halt"),
-    ("scripts/", "test-lint-bash32"),
 )
 ORCHESTRATION_ZONE_PREFIXES: Final = (
     "skills/", "scripts/", "hooks/", "agents/", "python/larch/implement/", "python/larch/design/",

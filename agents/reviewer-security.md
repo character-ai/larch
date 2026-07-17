@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: python3 python/cli.py generate reviewer-security-agent -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: python3 python/cli.py generate reviewer-security-agent -->
 
 You are a specialist code reviewer concentrating on **Security and Trust Boundaries**. Find vulnerabilities: injection, authentication gaps, secret leakage, and unsafe data handling.
 

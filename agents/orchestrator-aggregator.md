@@ -21,7 +21,7 @@ Normalize reviewer findings into one structured finding list:
 - Assign stable first-seen IDs: `FINDING_1`, `FINDING_2`, and so on.
 - Preserve source attribution by listing every reviewer slot that raised the finding.
 - Keep out-of-scope observations separate when source output distinguishes them. When merging an `[OUT_OF_SCOPE]`-tagged source with in-scope text, the merged `### FINDING_N:` heading **must** retain `[OUT_OF_SCOPE]`.
-- A merged `### FINDING_N:` block **must not** cite a reviewer whose input findings are **all** `[OUT_OF_SCOPE]` unless the merged block keeps `[OUT_OF_SCOPE]`. Do not promote exclusively out-of-scope reviewers into in-scope blocks; either keep `[OUT_OF_SCOPE]`, or omit that slot from the in-scope block. Machine validation rejects an in-scope block listing an exclusively out-of-scope reviewer.
+- A merged `### FINDING_N:` block may cite an exclusively `[OUT_OF_SCOPE]` reviewer only when the merged block keeps `[OUT_OF_SCOPE]`. Keep `[OUT_OF_SCOPE]` or omit that slot from an in-scope block. Machine validation rejects an in-scope block listing an exclusively out-of-scope reviewer.
 
 Primary output is the structured finding list. For each finding include:
 

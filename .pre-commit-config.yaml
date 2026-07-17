@@ -38,8 +38,6 @@ repos:
             scripts/hook\-anti\-read\-poll\.sh|
             scripts/hook\-bg\-poll\-guard\.sh|
             scripts/hook\-progress\-report\.sh|
-            scripts/lint\-awk\-multibyte\-regex\.sh|
-            scripts/lint\-bash32\.sh|
             scripts/lint\-renderer\-substitution\-safety\.sh|
             scripts/pre\-commit\-bash\-syntax\.sh|
             scripts/pre\-commit\-shellcheck\.sh|
@@ -81,8 +79,6 @@ repos:
             scripts/test\-implement\-structure\.sh|
             scripts/test\-implement\-timing\-rehydration\.sh|
             scripts/test\-legacy\-title\-prefix\-literals\-scope\.sh|
-            scripts/test\-lint\-awk\-multibyte\-regex\.sh|
-            scripts/test\-lint\-bash32\.sh|
             scripts/test\-lint\-literal\-counts\.sh|
             scripts/test\-lint\-no\-raw\-stderr\-after\-quiet\-init\.sh|
             scripts/test\-lint\-renderer\-substitution\-safety\.sh|
@@ -217,7 +213,7 @@ repos:
         always_run: true
 
   - repo: https://github.com/zhupanov/agent-lint
-    rev: v2.5.0
+    rev: v2.6.0
     hooks:
       - id: agent-lint
         args: [--pedantic]
@@ -367,144 +363,6 @@ repos:
         pass_filenames: false
         always_run: true
         files: ^python/larch/.*\.py$|^python/pylint-skip-file-baseline\.json$
-
-      - id: lint-bash32
-        name: Lint Bash 3.2 portability of shell scripts
-        entry: bash scripts/lint-bash32.sh
-        language: system
-        files: |
-          (?x)^(
-            \.claude/skills/combine\-issues/scripts/search\-implementing\-issue\.sh|
-            scripts/audit\-edit\-write\.sh|
-            scripts/block\-submodule\-edit\.sh|
-            scripts/check\-stale\-plugin\.sh|
-            scripts/deny\-edit\-write\.sh|
-            scripts/external\-tool\-registry\.sh|
-            scripts/file\-failure\-report\-cross\-repo\.sh|
-            scripts/flush\-vendor\-failure\-diagnostics\.sh|
-            scripts/hook\-anti\-read\-poll\.sh|
-            scripts/hook\-bg\-poll\-guard\.sh|
-            scripts/hook\-progress\-report\.sh|
-            scripts/lint\-awk\-multibyte\-regex\.sh|
-            scripts/lint\-bash32\.sh|
-            scripts/lint\-renderer\-substitution\-safety\.sh|
-            scripts/pre\-commit\-bash\-syntax\.sh|
-            scripts/pre\-commit\-shellcheck\.sh|
-            scripts/read\-result\-env\.sh|
-            scripts/resolve\-upstream\-larch\-repo\.sh|
-            scripts/sessionstart\-health\.sh|
-            scripts/sleep\-seconds\.sh|
-            scripts/test\-alias\-structure\.sh|
-            scripts/test\-anti\-halt\-banners\.sh|
-            scripts/test\-anti\-improvised\-wakeup\.sh|
-            scripts/test\-audit\-edit\-write\.sh|
-            scripts/test\-block\-submodule\-edit\.sh|
-            scripts/test\-bug\-structure\.sh|
-            scripts/test\-cache\-key\-discipline\.sh|
-            scripts/test\-cache\-root\-validation\.sh|
-            scripts/test\-check\-stale\-plugin\.sh|
-            scripts/test\-check\-topology\-rule\-paths\.sh|
-            scripts/test\-compose\-plan\-goals\-test\.sh|
-            scripts/test\-deny\-edit\-write\.sh|
-            scripts/test\-design\-multi\-round\-integration\.sh|
-            scripts/test\-design\-structure\.sh|
-            scripts/test\-effort\-prose\.sh|
-            scripts/test\-external\-tool\-registry\.sh|
-            scripts/test\-file\-failure\-report\-cross\-repo\.sh|
-            scripts/test\-flush\-vendor\-failure\-diagnostics\.sh|
-            scripts/test\-harness\-shards\-coverage\.sh|
-            scripts/test\-hook\-anti\-read\-poll\.sh|
-            scripts/test\-hook\-bg\-poll\-guard\.sh|
-            scripts/test\-hook\-progress\-report\.sh|
-            scripts/test\-hook\-stop\-fail\-close\.sh|
-            scripts/test\-implement\-anti\-halt\.sh|
-            scripts/test\-implement\-anti\-polling\-rule\.sh|
-            scripts/test\-implement\-cleanup\-roundtrip\.sh|
-            scripts/test\-implement\-fence\-shape\.sh|
-            scripts/test\-implement\-positional\-issue\.sh|
-            scripts/test\-implement\-rebase\-macro\.sh|
-            scripts/test\-implement\-step2\-routing\.sh|
-            scripts/test\-implement\-step8\-exit3\-first\-fixer\.sh|
-            scripts/test\-implement\-structure\.sh|
-            scripts/test\-implement\-timing\-rehydration\.sh|
-            scripts/test\-legacy\-title\-prefix\-literals\-scope\.sh|
-            scripts/test\-lint\-awk\-multibyte\-regex\.sh|
-            scripts/test\-lint\-bash32\.sh|
-            scripts/test\-lint\-literal\-counts\.sh|
-            scripts/test\-lint\-no\-raw\-stderr\-after\-quiet\-init\.sh|
-            scripts/test\-lint\-renderer\-substitution\-safety\.sh|
-            scripts/test\-orchestrator\-scope\-sync\.sh|
-            scripts/test\-pipe\-sigpipe\-safety\.sh|
-            scripts/test\-plan\-adequacy\-audit\.sh|
-            scripts/test\-prompt\-template\-invariants\.sh|
-            scripts/test\-quick\-mode\-docs\-sync\.sh|
-            scripts/test\-read\-result\-env\.sh|
-            scripts/test\-references\-headers\.sh|
-            scripts/test\-render\-cost\-line\-callsites\.sh|
-            scripts/test\-research\-structure\.sh|
-            scripts/test\-resolve\-upstream\-larch\-repo\.sh|
-            scripts/test\-review\-structure\.sh|
-            scripts/test\-sessionstart\-health\.sh|
-            scripts/test\-subskill\-anchors\.sh|
-            scripts/test\-token\-vendor\-scrapers\.sh|
-            skills/design/scripts/design\-clarify\.sh|
-            skills/design/scripts/design\-step3b\-tail\.sh|
-            skills/design/scripts/design\-step5\.sh|
-            skills/design/scripts/design\-step5b\-annotate\.sh|
-            skills/design/scripts/design\-step5b\-prepare\.sh|
-            skills/design/scripts/design\-step5c\.sh|
-            skills/design/scripts/fixtures/validate\-plan\-commands/demo\-empty\-help\.sh|
-            skills/design/scripts/fixtures/validate\-plan\-commands/demo\-help\-nonzero\-rc\.sh|
-            skills/design/scripts/fixtures/validate\-plan\-commands/demo\-stdout\-help\.sh|
-            skills/design/scripts/fixtures/validate\-plan\-commands/demo\-tier3\-dry\.sh|
-            skills/design/scripts/fixtures/validate\-plan\-commands/demo\-tier3\-fail\.sh|
-            skills/design/scripts/fixtures/validate\-plan\-commands/demo\-tier3\-validate\-only\.sh|
-            skills/design/scripts/test\-auto\-fix\-plan\-commands\.sh|
-            skills/design/scripts/test\-brainstorm\-prompts\.sh|
-            skills/design/scripts/test\-design\-clarify\.sh|
-            skills/design/scripts/test\-design\-step3\-entry\.sh|
-            skills/design/scripts/test\-design\-step3\-mav\.sh|
-            skills/design/scripts/test\-design\-step3\-review\.sh|
-            skills/design/scripts/test\-design\-step5c\.sh|
-            skills/design/scripts/test\-findings\-classification\.sh|
-            skills/design/scripts/test\-gate\-b\-apply\-mode\.sh|
-            skills/design/scripts/test\-step3\-orchestrator\-fence\.sh|
-            skills/design/scripts/test\-step3\-review\-cap\.sh|
-            skills/design/scripts/test\-trailer\-awk\.sh|
-            skills/design/scripts/test\-trailer\-dedup\.sh|
-            skills/design/scripts/test\-trailer\-has\-any\.sh|
-            skills/design/scripts/test\-trailer\-helpers\.sh|
-            skills/design/scripts/test\-trailer\-validate\.sh|
-            skills/fluff\-analysis/scripts/test\-fluff\-analysis\-corpus\.sh|
-            skills/fluff\-analysis/scripts/test\-fluff\-analysis\.sh|
-            skills/implement/scripts/flush\-execution\-issues\.sh|
-            skills/implement/scripts/hook\-stop\-fail\-close\.sh|
-            skills/implement/scripts/oos\-disposition\-checkpoint\.sh|
-            skills/implement/scripts/oos\-disposition\-gate\.sh|
-            skills/implement/scripts/step\-2\-post\-dispatch\.sh|
-            skills/implement/scripts/step\-5\-review\.sh|
-            skills/implement/scripts/step\-7a\.sh|
-            skills/implement/scripts/test\-cleanup\.sh|
-            skills/implement/scripts/test\-flush\-execution\-issues\.sh|
-            skills/implement/scripts/test\-implement\-relevant\-checks\-anti\-halt\.sh|
-            skills/implement/scripts/test\-implement\-review\-token\-propagation\.sh|
-            skills/implement/scripts/test\-materialize\-manifest\-oos\.sh|
-            skills/implement/scripts/test\-oos\-disposition\-gate\.sh|
-            skills/implement/scripts/test\-oos\-file\-conflict\-deps\.sh|
-            skills/implement/scripts/test\-oos\-issue\-cap\.sh|
-            skills/implement/scripts/test\-refresh\-execution\-issues\.sh|
-            skills/implement/scripts/test\-slack\-issue\-announce\.sh|
-            skills/implement/scripts/test\-step\-18\.sh|
-            skills/implement/scripts/test\-step\-7a\.sh|
-            skills/implement/scripts/test\-step\-8\-ship\.sh|
-            skills/implement/scripts/test\-write\-final\-report\.sh|
-            skills/implement/scripts/write\-final\-report\.sh|
-            skills/pause/scripts/test\-pause\-skill\.sh|
-            skills/research/scripts/test\-research\-angle\-prompts\.sh|
-            skills/research/scripts/test\-synthesis\-subagent\.sh|
-            skills/voter\-calibration/scripts/test\-voter\-calibration\.sh
-          )$
-        pass_filenames: true
 
       - id: bash-syntax-check
         name: bash syntax check (-n)
@@ -705,13 +563,6 @@ repos:
         pass_filenames: false
         files: ^skills/(design|implement|review|review-and-fix)/
         files: ^skills/(design|implement|review|review-and-fix)/
-
-      - id: lint-awk-multibyte-regex
-        name: lint multi-byte UTF-8 in dynamic awk regex
-        entry: bash scripts/lint-awk-multibyte-regex.sh
-        language: system
-        pass_filenames: false
-        always_run: true
 
       - id: lint-skill-closure-growth
         name: lint ratcheted prompt closure growth

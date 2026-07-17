@@ -296,9 +296,9 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Deviate when: a rare reviewed fixture, suppressed inline through the pinned `agent-lint` rule S061 (bare-grep-probe) exception mechanism.
 
 ### G-Bash-3: Keep committed shell scripts compatible with macOS system Bash 3.2 unless the script documents a narrower runtime
-- Mechanized: `make lint-bash32` covers Bash 3.2 constructs; `make lint-renderer-substitution-safety` covers the renderer replacement hazard.
+- Mechanized: agent-lint G010 covers Bash 3.2 constructs through `make agent-lint`; `make lint-renderer-substitution-safety` covers the renderer replacement hazard.
 - Why: contributors and CI run on macOS, where `/bin/bash` is 3.2.57, so a Bash 4+ construct fails only there, often late or silently. Avoid associative arrays, namerefs, `mapfile`/`readarray`, case conversion (`${var^^}`/`${var,,}`), `&>>`, and coprocs; use `while IFS= read -r`, `case`/`tr`, and `>>file 2>&1`.
-- Deviate when: a script documents a narrower runtime at its top and is excluded from the sweep. Note: `make lint-bash32` mechanizes the construct list (`# lint-bash32: ok <reason>` suppresses a fixture); the residue is the renderer `&`-substitution hazard, where `${var//pat/$repl}` differs between 3.2 and 5.x (BASH_AUTHORING.md §3).
+- Deviate when: a script documents a narrower runtime at its top and is excluded from the inventory. Note: agent-lint G010 mechanizes the construct list (`# lint-bash32: ok <reason>` suppresses a fixture); the residue is the renderer `&`-substitution hazard, where `${var//pat/$repl}` differs between 3.2 and 5.x (BASH_AUTHORING.md §3).
 
 ### G-Bash-4: Start an executable shell script with strict mode, `set -euo pipefail`, so an unset variable, a failed command, or a broken pipe stage aborts instead of running on stale state
 - Why: without it, a failed command or a typo'd variable continues silently and corrupts later steps. Strict mode is the standard shell default. Pair it with `|| true` on commands you intend to let fail (G-Bash-2).

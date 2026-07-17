@@ -56,7 +56,6 @@ def test_harness_resolution_and_zone_labels_are_deterministic() -> None:
     assert analyze_bugs.resolve_runtime_harnesses(paths) == (
         "test-architectural-guidelines-step",
         "test-implement-anti-halt",
-        "test-lint-bash32",
     )
     assert analyze_bugs.runtime_zone_label("python/larch/implement/dispatch.py") == "python/larch/implement"
     assert analyze_bugs._runtime_uncovered_zones(("skills/other/SKILL.md",)) == ("skills",)  # pyright: ignore[reportPrivateUsage]  # pure coverage helper

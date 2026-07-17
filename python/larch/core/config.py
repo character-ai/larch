@@ -928,7 +928,6 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "python-pyright",
     "python-lint-duplicate-code",
     "python-tests",
-    "bash32-check",
 })
 
 # Phase 5 — PR / merge / logging (live/default Python driver)

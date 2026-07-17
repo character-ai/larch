@@ -7,9 +7,23 @@ from pathlib import Path
 from larch.core import residual_bash
 
 
+def _agent_lint_inventory(root: Path) -> set[str]:
+    inventory = root / "scripts" / "agent-lint-script-inventory.txt"
+    return {
+        line.strip()
+        for line in inventory.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+
 def test_manifest_includes_combine_issues_helper() -> None:
     paths = residual_bash.read_residual_paths(Path(__file__).resolve().parents[3])
     assert ".claude/skills/combine-issues/scripts/search-implementing-issue.sh" in paths
+
+
+def test_agent_lint_inventory_covers_residual_bash() -> None:
+    root = Path(__file__).resolve().parents[3]
+    assert set(residual_bash.read_residual_paths(root, check_exists=True)).issubset(_agent_lint_inventory(root))
 
 
 def test_manifest_excludes_retired_bash_artifacts() -> None:
