@@ -70,6 +70,9 @@ fn rules_lists_registered_rules_in_name_order() {
         .stdout(predicate::str::contains(
             "subprocess-via-runner\tRequire std::process::Command ownership by the shared runner\n",
         ))
+        .stdout(predicate::str::contains(
+            "self-disarmable-gate\tReject optional metadata that suppresses a design size or publish hard gate\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 
@@ -614,7 +617,7 @@ fn malformed_cli_input_has_the_error_exit() {
 }
 
 #[test]
-fn kv_codec_and_result_env_rules_are_clean_on_empty_rust_corpus() {
+fn rust_policy_rules_are_clean_on_empty_rust_corpus() {
     let repository = TempRepo::new();
     repository.write("crates/demo/src/lib.rs", b"pub fn ok() {}\n");
     repository.commit_all();
@@ -626,6 +629,11 @@ fn kv_codec_and_result_env_rules_are_clean_on_empty_rust_corpus() {
         .stdout(predicate::str::is_empty());
     TempRepo::command_from(repository.path())
         .args(["rule", "result-env-key-parity"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+    TempRepo::command_from(repository.path())
+        .args(["rule", "self-disarmable-gate"])
         .assert()
         .success()
         .stdout(predicate::str::is_empty());
