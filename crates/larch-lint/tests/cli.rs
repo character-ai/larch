@@ -32,12 +32,105 @@ fn rules_lists_registered_rules_in_name_order() {
             "fixture\tValidate decentralized rule registration\n",
         ))
         .stdout(predicate::str::contains(
+            "git-push-refspec\tRequire Git push commands to name a destination refspec\n",
+        ))
+        .stdout(predicate::str::contains(
             "kv-codec\tReject ad-hoc KEY=value readers and emitters outside shared codec owners\n",
         ))
         .stdout(predicate::str::contains(
             "result-env-key-parity\tReject divergent key sets across sibling writers of the same result-env basename\n",
         ))
         .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn git_push_refspec_flags_raw_arrays_slices_constants_and_builders() {
+    let repository = TempRepo::new();
+    repository.write(
+        "src/push.rs",
+        br#"const GIT: &str = "git";
+const PUSH: &str = "push";
+const BARE: [&str; 3] = [GIT, PUSH, "origin"];
+const DESTINATION: &[&str] = &["push", "origin", "HEAD:refs/heads/main"];
+
+fn commands(remote: &str, refspec: &str) {
+    let array = ["git", "push", "origin"];
+    let slice = &["git", "push", "origin"];
+    let accepted = ["git", "push", "origin", "HEAD:refs/heads/main"];
+    std::process::Command::new("git").args(["push", "origin"]);
+    std::process::Command::new("git").args(&["push", "origin"]);
+    std::process::Command::new("git").args(DESTINATION);
+    custom::Command::new("git").args(["push", "origin"]);
+    std::process::Command::new("git").args([
+        "push",
+        "--force-with-lease",
+        "origin",
+        "HEAD:refs/heads/main",
+    ]);
+    std::process::Command::new("git")
+        .arg("push")
+        .arg(remote)
+        .arg(refspec);
+    std::process::Command::new("git").args(["push", "origin", "HEAD:refs/heads/main"]);
+}
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "git-push-refspec"])
+        .assert()
+        .code(1)
+        .stdout(
+            "src/push.rs:3: contains git push without an explicit destination refspec\n\
+             src/push.rs:7: contains git push without an explicit destination refspec\n\
+             src/push.rs:8: contains git push without an explicit destination refspec\n\
+             src/push.rs:10: contains git push without an explicit destination refspec\n\
+             src/push.rs:11: contains git push without an explicit destination refspec\n",
+        )
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn git_push_refspec_requires_reasoned_test_only_suppressions() {
+    let suppressed = TempRepo::new();
+    suppressed.write(
+        "crates/larch-lint/tests/suppressed.rs",
+        b"fn fixture() { let bare = [\"git\", \"push\", \"origin\"]; // lint-git-push-refspec: ok fixture verifies config resolution\n}\n",
+    );
+    suppressed.commit_all();
+    TempRepo::command_from(suppressed.path())
+        .args(["rule", "git-push-refspec"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+
+    let production = TempRepo::new();
+    production.write(
+        "src/production.rs",
+        b"fn command() { let bare = [\"git\", \"push\", \"origin\"]; // lint-git-push-refspec: ok production exception\n}\n",
+    );
+    production.commit_all();
+    TempRepo::command_from(production.path())
+        .args(["rule", "git-push-refspec"])
+        .assert()
+        .code(1)
+        .stdout("src/production.rs:1: contains git push without an explicit destination refspec\n")
+        .stderr(predicate::str::is_empty());
+
+    let missing_reason = TempRepo::new();
+    missing_reason.write(
+        "crates/larch-lint/tests/missing_reason.rs",
+        b"fn fixture() { let bare = [\"git\", \"push\", \"origin\"]; // lint-git-push-refspec: ok\n}\n",
+    );
+    missing_reason.commit_all();
+    TempRepo::command_from(missing_reason.path())
+        .args(["rule", "git-push-refspec"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr("larch-lint: error: suppression lint-git-push-refspec lacks a reason\n");
 }
 
 #[test]

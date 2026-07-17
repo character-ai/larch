@@ -21,6 +21,10 @@ impl TempRepo {
             b"rule = \"fixture\"\n",
         );
         repository.write(
+            "crates/larch-lint/migration-ledger/git-push-refspec.toml",
+            b"rule = \"git-push-refspec\"\n",
+        );
+        repository.write(
             "crates/larch-lint/migration-ledger/kv-codec.toml",
             b"rule = \"kv-codec\"\n",
         );
