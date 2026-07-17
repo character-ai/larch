@@ -14,6 +14,10 @@ use crate::runner::LintError;
 pub struct RepoPath(String);
 
 impl RepoPath {
+    pub(crate) fn from_trusted(raw: &str) -> Self {
+        Self(raw.to_owned())
+    }
+
     fn parse(raw: &str) -> Result<Self, LintError> {
         let path = Path::new(raw);
         if raw.is_empty()

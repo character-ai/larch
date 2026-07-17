@@ -15,7 +15,12 @@ impl TempRepo {
     pub fn new() -> Self {
         let directory = tempfile::tempdir().expect("tempdir");
         run_git(directory.path(), ["init", "--quiet"]);
-        Self { directory }
+        let repository = Self { directory };
+        repository.write(
+            "crates/larch-lint/migration-ledger/fixture.toml",
+            b"rule = \"fixture\"\n",
+        );
+        repository
     }
 
     pub fn path(&self) -> &Path {

@@ -28,8 +28,64 @@ fn rules_lists_the_empty_foundation_registry() {
         .arg("rules")
         .assert()
         .success()
-        .stdout(predicate::str::is_empty())
+        .stdout("fixture\tValidate decentralized rule registration\n")
         .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn fixture_rule_is_discovered_without_a_central_registry_edit() {
+    let repository = TempRepo::new();
+    repository.write("fixtures/demo.fixture", b"allowed\nforbidden\n");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .arg("all")
+        .assert()
+        .code(1)
+        .stdout("fixtures/demo.fixture:2: fixture violation\n")
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn migration_ledger_rejects_missing_duplicate_and_stale_records() {
+    let missing = TempRepo::new();
+    fs::remove_file(
+        missing
+            .path()
+            .join("crates/larch-lint/migration-ledger/fixture.toml"),
+    )
+    .expect("remove default ledger");
+    missing.write("tracked.md", b"tracked\n");
+    missing.commit_all();
+    TempRepo::command_from(missing.path())
+        .arg("all")
+        .assert()
+        .code(2)
+        .stderr("larch-lint: error: missing migration-ledger record: crates/larch-lint/migration-ledger/fixture.toml\n");
+
+    let duplicate = TempRepo::new();
+    duplicate.write(
+        "crates/larch-lint/migration-ledger/fixture-copy.toml",
+        b"rule = \"fixture\"\n",
+    );
+    duplicate.commit_all();
+    TempRepo::command_from(duplicate.path())
+        .arg("all")
+        .assert()
+        .code(2)
+        .stderr("larch-lint: error: duplicate migration-ledger rule record: fixture\n");
+
+    let stale = TempRepo::new();
+    stale.write(
+        "crates/larch-lint/migration-ledger/obsolete.toml",
+        b"rule = \"obsolete\"\n",
+    );
+    stale.commit_all();
+    TempRepo::command_from(stale.path())
+        .arg("all")
+        .assert()
+        .code(2)
+        .stderr("larch-lint: error: stale migration-ledger rule record: obsolete\n");
 }
 
 #[test]
