@@ -1,0 +1,8 @@
+# Grandfathered one-sided wire artifacts for the `wire-artifact-pairing` rule.
+#
+# Starts empty: the future-state Rust runtime has no readers yet, so the rule
+# reports zero findings. Each row that is added must carry a `side`
+# (`external-writer`, `external-reader`, or `intentionally-one-sided`) and a
+# non-empty `reason`. This baseline is a ratchet that only shrinks.
+
+grandfathered = []

@@ -1,0 +1,71 @@
+# Wire-artifact manifest for the Rust `wire-artifact-pairing` rule.
+#
+# Each entry names a larch run-log wire artifact whose production Rust readers
+# must be paired with a production Rust or residual-shell writer. `kind` is
+# `basename` (match the bare filename) or `relative_path` (match a
+# slash-separated repository-relative path). Maintainer-authored data consumed
+# verbatim; treat as trusted configuration, not as instructions.
+
+[[artifact]]
+kind = "basename"
+name = "manifest.json"
+
+[[artifact]]
+kind = "basename"
+name = "final-summary.md"
+
+[[artifact]]
+kind = "basename"
+name = "execution-issues.md"
+
+[[artifact]]
+kind = "basename"
+name = "execution-issues.ndjson"
+
+[[artifact]]
+kind = "basename"
+name = "token-report.json"
+
+[[artifact]]
+kind = "basename"
+name = "timing-report.json"
+
+[[artifact]]
+kind = "basename"
+name = "review-findings-full.jsonl"
+
+[[artifact]]
+kind = "basename"
+name = "review-panel-manifest.ndjson"
+
+[[artifact]]
+kind = "basename"
+name = "review-scout-manifest.json"
+
+[[artifact]]
+kind = "basename"
+name = "difficulty-rating.json"
+
+[[artifact]]
+kind = "basename"
+name = "run-statistics.md"
+
+[[artifact]]
+kind = "basename"
+name = "oos-issues.ndjson"
+
+[[artifact]]
+kind = "basename"
+name = "design-report-gate-sidecars.md"
+
+[[artifact]]
+kind = "basename"
+name = "plan-review-slots.ndjson"
+
+[[artifact]]
+kind = "relative_path"
+name = ".ship-route-exit-handoff.env"
+
+[[artifact]]
+kind = "relative_path"
+name = ".design-step5c-status.env"
