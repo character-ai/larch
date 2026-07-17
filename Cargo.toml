@@ -9,7 +9,11 @@ repository = "https://github.com/character-ai/larch"
 rust-version = "1.94.1"
 
 [workspace.dependencies]
+assert_cmd = { version = "2.2.2", default-features = false }
 clap = { version = "4.6.2", default-features = false, features = ["derive", "help", "std", "usage"] }
+globset = { version = "0.4.19", default-features = false }
+predicates = { version = "3.1.4", default-features = false }
+tempfile = { version = "3.27.0", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
