@@ -7,6 +7,15 @@ use cargo_metadata::MetadataCommand;
 
 use crate::{LintError, PathSelector, RepoPath, Repository};
 
+/// Return whether a repository-relative path is a Rust test source.
+#[must_use]
+pub(super) fn is_test_path(path: &str) -> bool {
+    path.split('/').any(|part| part == "tests")
+        || path.rsplit('/').next().is_some_and(|name| {
+            name.starts_with("test_") || name.ends_with("_test.rs") || name == "tests.rs"
+        })
+}
+
 /// Select tracked Rust sources, preferring workspace package roots when present.
 ///
 /// # Errors

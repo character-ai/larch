@@ -71,3 +71,17 @@ re-exports, and conditional modules. Adding one would violate the umbrella's
 independent-leaf dependency contract. The rule consequently leaves package
 edges to Cargo metadata and uses syntax only for source-local contracts; it
 does not claim to implement a general module resolver.
+
+## Duplicate-code detector (issue #7626)
+
+Issue #7626 requires a Rust-native production duplicate-code gate. The survey
+checked crates.io and repository metadata on 2026-07-17.
+
+| Need | Candidates | Maintenance, license, and fit check | Selection |
+|------|------------|-------------------------------------|-----------|
+| Rust duplicate detection | [`dupes-core` / `cargo-dupes` 0.2.1](https://crates.io/crates/dupes-core), [`polydup` 0.9.3](https://crates.io/crates/polydup), [`find-dup-defs`](https://github.com/prostomarkeloff/find-dup-defs), [`jscpd` 5.x](https://www.npmjs.com/package/jscpd) | `dupes-core` is MIT and syn-based, but young (first release 2026-02-17, low download volume), function-unit oriented rather than arbitrary production blocks, walks the filesystem instead of the tracked-index contract, and would add workspace dependencies. `polydup` is MIT OR Apache-2.0 but pulls a Tree-sitter multi-language stack and is still early. `find-dup-defs` clusters top-level definitions only, so it misses block-level clones. `jscpd` is maintained and MIT, but ships as an external Node/binary workflow rather than an in-process `larch-lint` rule. | Do not adopt a third-party detector in this leaf. Implement a bespoke `duplicate-code` rule on the already-selected `syn` / `proc-macro2` stack so the gate stays inside the repository-policy runner, uses tracked-file discovery, and adds no root dependency. |
+
+The bespoke rule normalizes production token streams (comments and formatting
+dropped by lexing, `use` / `extern crate` skipped, generated markers and test
+paths / `#[cfg(test)]` / `#[test]` skipped), reports exact cross-module clone
+families at a fixed token threshold, and carries no baseline.

@@ -1,6 +1,7 @@
 //! Reason-bearing, same-line lint suppression parsing.
 
 use crate::LintError;
+use crate::syntax;
 
 /// A validated inline suppression reason.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,6 +45,27 @@ pub fn reason<'source>(
     Ok(Some(SuppressionReason(reason)))
 }
 
+/// Locate a needle occurrence and skip it when the line carries a suppression.
+///
+/// # Errors
+///
+/// Returns an error when the occurrence cannot be located or the suppression
+/// token is present without a reason.
+pub fn line_unless_suppressed(
+    source: &str,
+    needle: &str,
+    occurrence: u32,
+    token: &str,
+) -> Result<Option<u32>, LintError> {
+    let line = syntax::line_of_occurrence(source, needle, occurrence)?;
+    let line_index = usize::try_from(line.saturating_sub(1)).unwrap_or(0);
+    let line_text = source.lines().nth(line_index).unwrap_or("");
+    if reason(line_text, token)?.is_some() {
+        return Ok(None);
+    }
+    Ok(Some(line))
+}
+
 #[cfg(test)]
 mod tests {
     use super::reason;
@@ -72,6 +94,20 @@ mod tests {
         assert_eq!(
             reason("let value = lint-demo: ok", "lint-demo").expect("not a comment"),
             None
+        );
+    }
+
+    #[test]
+    fn line_unless_suppressed_honors_same_line_reasons() {
+        let source = "alpha\nbeta // lint-demo: ok fixture\ngamma\n";
+        assert!(
+            super::line_unless_suppressed(source, "beta", 1, "lint-demo")
+                .expect("lookup")
+                .is_none()
+        );
+        assert_eq!(
+            super::line_unless_suppressed(source, "gamma", 1, "lint-demo").expect("lookup"),
+            Some(3)
         );
     }
 }

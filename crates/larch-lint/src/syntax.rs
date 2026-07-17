@@ -36,6 +36,30 @@ impl RustSyntax {
     }
 }
 
+/// Return the one-based line of the `occurrence`-th match of `needle`.
+///
+/// # Errors
+///
+/// Returns an error when the occurrence cannot be located or the line number
+/// cannot be represented as `u32`.
+pub fn line_of_occurrence(source: &str, needle: &str, occurrence: u32) -> Result<u32, LintError> {
+    let mut seen = 0_u32;
+    for (index, line) in source.lines().enumerate() {
+        let mut rest = line;
+        while let Some(offset) = rest.find(needle) {
+            seen = seen.saturating_add(1);
+            if seen == occurrence {
+                return u32::try_from(index + 1)
+                    .map_err(|_| LintError::new("line number exceeds u32"));
+            }
+            rest = &rest[offset + needle.len()..];
+        }
+    }
+    Err(LintError::new(format!(
+        "cannot locate needle {needle:?} occurrence {occurrence}"
+    )))
+}
+
 /// Whether a Markdown line is outside a fence or inside one with an optional language.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FenceState<'source> {
@@ -183,7 +207,7 @@ impl<'source> OpenFence<'source> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FenceState, MarkdownDocument, RustSyntax};
+    use super::{FenceState, MarkdownDocument, RustSyntax, line_of_occurrence};
 
     #[test]
     fn rust_syntax_reports_the_source_path() {
@@ -195,6 +219,14 @@ mod tests {
                 .to_string()
                 .starts_with("src/bad.rs: invalid Rust syntax:")
         );
+    }
+
+    #[test]
+    fn line_of_occurrence_finds_the_nth_match() {
+        let source = "alpha\nbeta alpha\nalpha\n";
+        assert_eq!(line_of_occurrence(source, "alpha", 2).expect("second"), 2);
+        assert_eq!(line_of_occurrence(source, "alpha", 3).expect("third"), 3);
+        assert!(line_of_occurrence(source, "alpha", 4).is_err());
     }
 
     #[test]
