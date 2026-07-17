@@ -68,6 +68,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "tmpdir-arg-env-fallback\tRequire an environment fallback for args.tmpdir\n",
         ))
         .stdout(predicate::str::contains(
+            "unreachable-branch\tDetect branches contradicted by earlier same-value returns\n",
+        ))
+        .stdout(predicate::str::contains(
             "status-routing\tRequire explicit Option, Result, and status-enum variant routing instead of boolean shortcuts\n",
         ))
         .stdout(predicate::str::contains(

@@ -40,3 +40,22 @@ license-compatible with larch's MIT license.
 The F3 workspace dependency set is intentionally complete for the already
 filed leaves. A leaf may not add a root dependency: a newly discovered shared
 need requires a blocked foundation issue and an amended dependency graph.
+
+## Control-flow analysis (issue #7623)
+
+Before adding the Rust `unreachable-branch` rule, the maintained compiler and
+Clippy surfaces were evaluated on 2026-07-17. `rustc`'s `unreachable_code`
+lint reports general control-flow unreachable code, while Clippy is a broad
+collection of correctness and style lints. Neither provides larch's exact,
+deliberately narrow invariant: a later `if` is reportable only when an earlier
+return under that same condition proves the later branch impossible and both
+returns have the same source value. Reusing either diagnostic would widen the
+rule to unrelated unreachable code and would not preserve the required
+same-value predicate.
+
+The rule therefore uses the already-selected, maintained `syn` parser rather
+than adding a control-flow framework. Its small custom traversal records only
+terminal-return proofs for equivalent source conditions and `match true`
+arms. It invalidates proofs after a potential mutation, supports inline reason-bearing
+suppression, and intentionally has no Rust baseline: the initial repository
+scan must be clean.
