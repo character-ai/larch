@@ -22,7 +22,6 @@ inline-path-prefixes = [
 # excludes. Its test enforces inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
-  "mcp-tool-unqualified",
   "desc-body-misalign",
   "terminology-inconsistent",
   # Q002 requires every negative instruction to state a nearby positive
@@ -1247,6 +1246,27 @@ files = [
 ]
 suppress = ["body-no-default"]
 reason = "These prompts list conditional flags, states, or outcomes rather than interchangeable choices; adding one blanket default would change or duplicate their existing per-case routing contracts."
+
+[[lint.overrides]]
+files = [
+  ".claude/skills/agnix-fix/SKILL.md",
+  ".claude/skills/analyze-issues/SKILL.md",
+  ".claude/skills/audit-runs/SKILL.md",
+  ".claude/skills/combine-issues/SKILL.md",
+  ".claude/skills/rebalance-tests/SKILL.md",
+  ".claude/skills/release/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+]
+suppress = ["mcp-tool-unqualified"]
+reason = "Backtick-quoted snake_case tokens in these prompts are state keys, fields, and helper symbols, not MCP tool names; preserving identifier quoting keeps machine-facing contracts precise."
 
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
