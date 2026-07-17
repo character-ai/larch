@@ -65,8 +65,129 @@ fn rules_lists_registered_rules_in_name_order() {
             "tmpdir-arg-env-fallback\tRequire an environment fallback for args.tmpdir\n",
         ))
         .stdout(predicate::str::contains(
+            "status-routing\tRequire explicit Option, Result, and status-enum variant routing instead of boolean shortcuts\n",
+        ))
+        .stdout(predicate::str::contains(
             "subprocess-via-runner\tRequire std::process::Command ownership by the shared runner\n",
         ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn status_routing_requires_explicit_variants_without_a_baseline() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        br"enum Status { Done, Pending }
+
+fn enum_route(status: Status) {
+    match status {
+        Status::Done if audit() => finish(),
+        Status::Pending => retry(),
+    }
+    let _ = status.is_empty();
+}
+
+fn option_route(status: Option<Status>) {
+    if let Some(Status::Done) = status {
+        finish();
+    }
+    if status.is_some() {
+        finish();
+    }
+    if Option::is_none(&status) {
+        retry();
+    }
+}
+
+fn result_route(result: Result<Status, ()>) {
+    match result {
+        Ok(Status::Done) => finish(),
+        Err(_) => retry(),
+    }
+    if result.is_ok() {
+        finish();
+    }
+    let _ = Result::is_err(&result);
+}
+
+fn adapter_route(outcome: Status) {
+    if outcome == Status::Done {
+        finish();
+    }
+    let _ = bool::from(outcome);
+    let _ = Into::<bool>::into(outcome);
+}
+
+fn optional_value(message: Option<String>) {
+    if message.is_some() {
+        print(message);
+    }
+}
+
+fn explicit_option_route(status: Option<Status>) {
+    if matches!(status, Some(Status::Done)) {
+        finish();
+    }
+    if status.is_some() {
+        finish();
+    }
+}
+
+fn unrelated_optional_check(status: Option<Status>, settings: Settings) {
+    if status == settings.default {
+        finish();
+    }
+    if status.is_some() {
+        finish();
+    }
+}
+",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "status-routing"])
+        .assert()
+        .code(1)
+        .stdout(concat!(
+            "crates/demo/src/lib.rs:8: boolean shortcut is_empty on routed status; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:15: boolean shortcut is_some on routed status; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:18: boolean shortcut is_none on routed status; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:28: boolean shortcut is_ok on routed result; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:31: boolean shortcut is_err on routed result; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:38: boolean shortcut bool::from on routed outcome; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:39: boolean shortcut Into::<bool>::into on routed outcome; use an explicit variant pattern\n",
+            "crates/demo/src/lib.rs:52: boolean shortcut is_some on routed status; use an explicit variant pattern\n",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn status_routing_honors_reasoned_suppressions() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/demo/src/lib.rs",
+        br"enum Status { Done }
+
+fn route(status: Option<Status>) {
+    match status {
+        Some(Status::Done) => finish(),
+        None => retry(),
+    }
+    if status.is_some() { // lint-status-routing: ok fixture exercises suppression
+        finish();
+    }
+}
+",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "status-routing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
         .stderr(predicate::str::is_empty());
 }
 
