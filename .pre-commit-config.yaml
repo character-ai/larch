@@ -552,7 +552,7 @@ repos:
     hooks:
       - id: lint-retired-scripts
         name: Lint references to retired script paths
-        entry: python3 python/cli.py lint retired-scripts
+        entry: cargo run --quiet --locked --package larch-lint -- rule retired-scripts
         language: system
         pass_filenames: false
         always_run: true

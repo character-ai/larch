@@ -64,7 +64,7 @@ fn execute_all(root: Option<&Path>) -> i32 {
     if let Err(error) = crate::validate_migration_ledger(&repository, &registry) {
         return render_error(&error, &mut std::io::stderr()).as_i32();
     }
-    execute(&repository, registry.iter())
+    execute(&repository, registry.iter(), false)
 }
 
 fn execute_named(name: &str, root: Option<&Path>) -> i32 {
@@ -86,7 +86,11 @@ fn execute_named(name: &str, root: Option<&Path>) -> i32 {
     if let Err(error) = crate::validate_migration_ledger(&repository, &registry) {
         return render_error(&error, &mut std::io::stderr()).as_i32();
     }
-    execute(&repository, std::iter::once(rule))
+    execute(
+        &repository,
+        std::iter::once(rule),
+        name == "retired-scripts",
+    )
 }
 
 fn discover_repository(root: Option<&Path>) -> Result<Repository, i32> {
@@ -110,6 +114,7 @@ fn discover_repository(root: Option<&Path>) -> Result<Repository, i32> {
 fn execute<'rule>(
     repository: &Repository,
     rules: impl IntoIterator<Item = &'rule dyn crate::Rule>,
+    render_contract: bool,
 ) -> i32 {
     let report = match run(repository, rules) {
         Ok(report) => report,
@@ -119,13 +124,18 @@ fn execute<'rule>(
         return render_error(&error, &mut std::io::stderr()).as_i32();
     }
     let exit = crate::runner::finding_exit_code(report.findings());
-    if exit == ExitCode::Clean {
-        exit.as_i32()
-    } else if let Err(error) = render_findings(report.findings(), &mut std::io::stdout()) {
-        render_error(&error, &mut std::io::stderr()).as_i32()
-    } else {
-        exit.as_i32()
+    if exit == ExitCode::Findings
+        && let Err(error) = render_findings(report.findings(), &mut std::io::stdout())
+    {
+        return render_error(&error, &mut std::io::stderr()).as_i32();
     }
+    if render_contract
+        && let Err(error) =
+            crate::render_contract_lines(report.contract_lines(), &mut std::io::stdout())
+    {
+        return render_error(&error, &mut std::io::stderr()).as_i32();
+    }
+    exit.as_i32()
 }
 
 #[cfg(test)]

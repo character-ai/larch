@@ -229,6 +229,36 @@ impl Repository {
     /// Returns an error when `path` is not tracked, is no longer a regular
     /// file, cannot be read, or is not UTF-8.
     pub fn read_utf8(&self, path: &RepoPath) -> Result<String, LintError> {
+        let bytes = self.read_bytes(path)?;
+        String::from_utf8(bytes)
+            .map_err(|error| LintError::new(format!("{path}: cannot read UTF-8 source: {error}")))
+    }
+
+    /// Read a required tracked regular file as UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns `missing_message` when `path` is absent from the snapshot, or
+    /// propagates the regular-file and UTF-8 validation errors from
+    /// [`Self::read_utf8`].
+    pub fn read_required_utf8(
+        &self,
+        path: &RepoPath,
+        missing_message: impl Into<String>,
+    ) -> Result<String, LintError> {
+        if self.paths.binary_search(path).is_err() {
+            return Err(LintError::new(missing_message));
+        }
+        self.read_utf8(path)
+    }
+
+    /// Read one tracked regular file as bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `path` is not tracked, is no longer a regular
+    /// file, or cannot be read.
+    pub fn read_bytes(&self, path: &RepoPath) -> Result<Vec<u8>, LintError> {
         if self.paths.binary_search(path).is_err() {
             return Err(LintError::new(format!("{path}: path is not tracked")));
         }
@@ -241,8 +271,8 @@ impl Repository {
                 "{path}: tracked path is no longer a regular file"
             )));
         }
-        std::fs::read_to_string(candidate)
-            .map_err(|error| LintError::new(format!("{path}: cannot read UTF-8 source: {error}")))
+        std::fs::read(candidate)
+            .map_err(|error| LintError::new(format!("{path}: cannot read source: {error}")))
     }
 }
 

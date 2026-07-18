@@ -23,7 +23,7 @@ pub use metadata::{
 pub use repository::{Git, GitCli, PathSelector, RepoPath, Repository};
 pub use runner::{
     ExitCode, Finding, LintError, LintReport, Rule, RuleOutput, RuleRegistry, finding_exit_code,
-    run,
+    render_contract_lines, run,
 };
 
 /// Register a static rule and its co-located metadata without editing a shared

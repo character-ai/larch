@@ -5094,46 +5094,6 @@
     "history": []
   },
   {
-    "file": "larch/lint/migration_lint.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 23,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/migration_lint.py",
-    "code": "PLR0911",
-    "qualified_symbol": "main",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/migration_lint.py",
-    "code": "PLR0912",
-    "qualified_symbol": "main",
-    "metric": 22,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/migration_lint.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_line_references_retired",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/lint/migration_lint.py",
-    "code": "PLR0915",
-    "qualified_symbol": "main",
-    "metric": 72,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/release/promote_release.py",
     "code": "C901",
     "qualified_symbol": "promote_latest_main",

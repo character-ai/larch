@@ -103,14 +103,6 @@ def test_dispatch_session_resolve_implement_tmpdir() -> None:
     assert rc == 0
 
 
-def test_dispatch_lint_retired_scripts() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.lint.migration_lint": MagicMock(main=mock_main)}):
-        rc = cli.main(["lint", "retired-scripts"])
-    mock_main.assert_called_once_with([])
-    assert rc == 0
-
-
 def test_dispatch_lint_duplicate_code() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"larch.lint.duplicate_code": MagicMock(duplicate_code_main=mock_main)}):
@@ -391,29 +383,6 @@ def test_subprocess_version_guard() -> None:
     dispatcher_path = CLI_PATH.parent / "larch" / "cli.py"
     source = dispatcher_path.read_text(encoding="utf-8")
     assert "Python 3.11 or newer" in source
-
-
-def test_subprocess_lint_clean_manifest(tmp_path: Path) -> None:
-    """Lint retired-scripts exits 0 on an empty manifest."""
-    manifest = tmp_path / "manifest.tsv"
-    _ = manifest.write_text("# empty\n", encoding="utf-8")
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI_PATH),
-            "lint",
-            "retired-scripts",
-            "--manifest",
-            str(manifest),
-            "--root",
-            str(tmp_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert "LINT_STATUS=ok" in result.stdout
 
 
 def test_subprocess_report_tokens_analyze_no_issue(tmp_path: Path) -> None:

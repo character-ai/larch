@@ -588,13 +588,6 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"migration_lint.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "oos_disposition.py" = [
     "C901",
 ]
