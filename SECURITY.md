@@ -25,7 +25,7 @@ The tag-triggered Rust asset workflow checks out the exact tag commit and requir
 
 Each matrix job attests its archive through GitHub artifact attestations. The collector accepts only one archive and one metadata fragment for each required target. It rejects missing, duplicate, empty, unexpected, mismatched, or non-deterministic inputs. It recomputes archive sizes and SHA-256 digests, emits the schema-v1 manifest and checksum file, attests both, verifies all six attestations against this repository, and revalidates the final six-file allowlist before upload.
 
-GitHub provenance ties bytes to a commit and workflow; it does not make the source, dependencies, infrastructure, GitHub, or maintainers trustworthy. Checksums index integrity, not trust. `/release` uploads only the validated six-file set to a mutable draft, gates merge on its digests and attestations, and preserves the tagged candidate through a merge commit. It rechecks ancestry and versions, publishes without Latest, verifies every immutable asset, then promotes. Failures resume the same draft or release; published tags and assets never change. Installation verifies separately.
+GitHub provenance ties bytes to a commit and workflow, not source or infrastructure trust. Checksums index integrity, not trust. `/release` uploads only the validated six-file set to a mutable draft, gates merge on its digests and attestations, and preserves the tagged candidate through a merge commit. It rechecks ancestry and versions, publishes without Latest, verifies every immutable asset, then promotes. Failures resume the same draft or release; published tags and assets never change. Installation verifies separately.
 
 ## Rust Bootstrap and Atomic Installation
 

@@ -404,7 +404,7 @@ Runtime helpers:
 - `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `python3 "$PWD/python/cli.py" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `python3 "$PWD/python/cli.py" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
-- `python3 "$PWD/python/cli.py" release stage`: tag the candidate commit and create or verify its mutable draft Release
+- `python3 "$PWD/python/cli.py" release stage`: tag the candidate and create or verify its draft Release
 - `python3 "$PWD/python/cli.py" release asset-run`: resolve the exact tag-triggered asset workflow run
 - `python3 "$PWD/python/cli.py" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
 - `python3 "$PWD/python/cli.py" release finish`: revalidate, publish immutable, verify release attestations, and promote Latest
