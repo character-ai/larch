@@ -27,6 +27,24 @@ Each matrix job attests its archive through GitHub artifact attestations. The co
 
 This provenance proves that GitHub Actions built the bytes from the recorded repository commit under the named workflow. It does not make the source, dependencies, runner images, pinned container images, GitHub Actions service, or maintainers intrinsically trustworthy. The checksum file is an integrity index, not an independent trust root. Consumers must verify GitHub attestations and the strict manifest contract before installation. Immutable Release publication and installer-side verification are separate gates owned by the release publication and bootstrap flows.
 
+## Rust Bootstrap and Atomic Installation
+
+`scripts/larch.sh` is the only clean-install exec shim and uses no Python. It
+maps four targets and verifies the exact immutable release, tag commit, asset
+allowlist, build attestations, strict manifest and checksums, sizes, digests,
+platform identity, and raw USTAR layout. It rejects symlinks, special files,
+traversal, extra members, malformed archives, and trailing data before
+extracting only `larch`.
+
+The staged binary must pass `--version` and compact-JSON
+`larch bootstrap self-check`. A same-directory rename installs it atomically;
+an existing regular binary retains a hard-link rollback through post-install
+verification. A bounded `CLAUDE_PLUGIN_DATA/bootstrap.lock` serializes first
+use, reclaims revalidated dead-owner locks, and makes waiters re-check before
+downloading. Cleanup removes only process-owned state. Local `.git` checkouts
+require an explicit matching `LARCH_BINARY`. These controls do not defend
+against a hostile same-UID process that can rewrite plugin cache or data files.
+
 ## Scoped Live-Mutation Authorization Boundary
 
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.

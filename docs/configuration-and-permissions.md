@@ -10,6 +10,11 @@
 
 **Copy-paste settings.allow snippet (Skill entries only).** Add these to your `.claude/settings.json` `permissions.allow` list, maintaining strict ASCII code-point order across the entire list. This snippet covers only the `Skill(...)` authorizations; you will also need `Bash(...)` allowlist patterns for larch's shell helpers — see larch's own [`.claude/settings.json`](../.claude/settings.json) for the full reference.
 
+The documented plugin-cache `Bash(.../scripts/*)` rule also authorizes
+`scripts/larch.sh`. Rust-backed skills and hooks must call that shim by
+absolute path. They must not ask strict-permission consumers to authorize a
+bare `bin/larch` command.
+
 ```json
 "Skill(alias)",
 "Skill(block-issue)",
@@ -167,6 +172,17 @@ The default Step 2 order depends on the implementation difficulty: **TRIVIAL** u
 The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly. Passing both flags together is a parse-time error.
 
 ## Environment Variables
+
+### `LARCH_BINARY`
+
+`LARCH_BINARY` selects an explicit local Rust executable for `scripts/larch.sh`.
+Use it with `claude --plugin-dir` development, where automatic release downloads
+are refused. The value must be an absolute, non-symlinked executable whose
+machine-readable version and target match the active plugin and host.
+
+Marketplace users normally leave it unset. Claude Code supplies
+`CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA`; the bootstrap installs under the
+former and keeps its bounded concurrency lock under the latter.
 
 ### Stall Recovery Reports
 

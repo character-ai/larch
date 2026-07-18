@@ -1,0 +1,601 @@
+#!/usr/bin/env bash
+# Install the release-matched Rust executable when needed, then replace this
+# process with it. Keep this bootstrap compatible with macOS Bash 3.2.
+set -eEuo pipefail
+
+readonly RELEASE_REPO="character-ai/larch"
+readonly RELEASE_WORKFLOW="character-ai/larch/.github/workflows/rust-release-assets.yaml"
+readonly LOCK_WAIT_SECONDS=120
+
+plugin_root=""
+plugin_data=""
+bin_dir=""
+binary_path=""
+stage_dir=""
+lock_dir=""
+lock_held=false
+sha_command=""
+
+retry_hint() {
+    printf '%s\n' "Retry the command after correcting the reported problem. No existing larch binary was changed before verified installation." >&2
+}
+
+die() {
+    printf 'larch bootstrap: %s\n' "$1" >&2
+    retry_hint
+    exit 1
+}
+
+read_lock_owner() {
+    local owner_path="$1"
+    local owner=""
+    [ -f "$owner_path" ] && [ ! -L "$owner_path" ] || return 1
+    owner="$(awk 'NR == 1 && $0 ~ /^[1-9][0-9]*$/ { value = $0; next } { exit 1 } END { if (NR == 1) print value; else exit 1 }' "$owner_path")" || return 1
+    printf '%s\n' "$owner"
+}
+
+cleanup() {
+    local owner=""
+    if [ "$lock_held" = true ] && [ -n "$lock_dir" ] && [ -d "$lock_dir" ] && [ ! -L "$lock_dir" ]; then
+        owner="$(read_lock_owner "$lock_dir/owner" 2>/dev/null || true)"
+        if [ "$owner" = "$$" ]; then
+            rm -f -- "$lock_dir/owner"
+            rmdir "$lock_dir" 2>/dev/null || true
+        fi
+    fi
+    lock_held=false
+    if [ -n "$stage_dir" ] && [ -n "$bin_dir" ]; then
+        case "$stage_dir" in
+            "$bin_dir"/.larch-bootstrap.*)
+                if [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ]; then
+                    rm -rf -- "$stage_dir"
+                fi
+                ;;
+        esac
+    fi
+    stage_dir=""
+}
+
+unexpected_error() {
+    local status="$1"
+    local line="$2"
+    trap - ERR
+    printf 'larch bootstrap: installation failed at script line %s (exit %s).\n' "$line" "$status" >&2
+    retry_hint
+    exit "$status"
+}
+
+trap cleanup EXIT
+trap 'unexpected_error "$?" "$LINENO"' ERR
+
+validate_absolute_path() {
+    local label="$1"
+    local path="$2"
+    local probe=""
+    case "$path" in
+        /*) ;;
+        *) die "$label must be an absolute path" ;;
+    esac
+    case "$path/" in
+        *$'\n'*|*'/../'*|*'/./'*|*'//'*) die "$label contains an unsafe path component" ;;
+    esac
+    probe="$path"
+    while [ "$probe" != "/" ]; do
+        if [ -L "$probe" ]; then
+            die "$label or one of its existing ancestors is a symlink: $probe"
+        fi
+        probe="${probe%/*}"
+        [ -n "$probe" ] || probe="/"
+    done
+}
+
+read_plugin_version() {
+    local manifest="$1"
+    local version=""
+    [ -f "$manifest" ] && [ ! -L "$manifest" ] || die "plugin manifest is missing or unsafe: $manifest"
+    version="$(awk -F '"' '$2 == "version" { count++; value = $4 } END { if (count == 1) print value; else exit 1 }' "$manifest")" || die "plugin manifest must contain exactly one version string"
+    if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+        die "plugin manifest version is not a release semantic version"
+    fi
+    printf '%s\n' "$version"
+}
+
+resolve_target() {
+    local os_name=""
+    local architecture=""
+    os_name="$(uname -s)"
+    architecture="$(uname -m)"
+    case "$os_name:$architecture" in
+        Darwin:arm64|Darwin:aarch64) printf '%s\n' "aarch64-apple-darwin" ;;
+        Darwin:x86_64|Darwin:amd64) printf '%s\n' "x86_64-apple-darwin" ;;
+        Linux:arm64|Linux:aarch64) printf '%s\n' "aarch64-unknown-linux-gnu" ;;
+        Linux:x86_64|Linux:amd64) printf '%s\n' "x86_64-unknown-linux-gnu" ;;
+        *) die "unsupported operating system or architecture: $os_name/$architecture" ;;
+    esac
+}
+
+binary_matches_version() {
+    local candidate="$1"
+    local expected_version="$2"
+    local reported=""
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate" ] || return 1
+    reported="$("$candidate" --version 2>/dev/null)" || return 1
+    [ "$reported" = "larch $expected_version" ]
+}
+
+binary_passes_self_check() {
+    local candidate="$1"
+    local expected_version="$2"
+    local expected_target="$3"
+    local reported=""
+    local expected=""
+    reported="$("$candidate" bootstrap self-check 2>/dev/null)" || return 1
+    expected="{\"schema_version\":1,\"version\":\"$expected_version\",\"target\":\"$expected_target\"}"
+    [ "$reported" = "$expected" ]
+}
+
+require_commands() {
+    local command_name=""
+    for command_name in awk chmod cmp dd gh gzip kill ln mkdir mktemp mv rm rmdir sed sleep sort tar tr uname wc; do
+        command -v "$command_name" >/dev/null 2>&1 || die "required tool is missing: $command_name"
+    done
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha_command="sha256sum"
+    elif command -v shasum >/dev/null 2>&1; then
+        sha_command="shasum"
+    else
+        die "required SHA-256 tool is missing: install sha256sum or shasum"
+    fi
+    gh release verify --help >/dev/null 2>&1 || die "GitHub CLI is too old: gh release verify is required"
+    gh attestation verify --help >/dev/null 2>&1 || die "GitHub CLI is too old: gh attestation verify is required"
+    gh release view --help 2>/dev/null | awk '/isImmutable/ { found = 1 } END { exit(found ? 0 : 1) }' || die "GitHub CLI is too old: immutable release metadata is required"
+}
+
+sha256_file() {
+    local path="$1"
+    local digest=""
+    if [ "$sha_command" = "sha256sum" ]; then
+        digest="$(sha256sum "$path" | awk '{ print $1 }')"
+    else
+        digest="$(shasum -a 256 "$path" | awk '{ print $1 }')"
+    fi
+    case "$digest" in
+        *[!0-9a-f]*|'') die "SHA-256 tool returned an invalid digest for ${path##*/}" ;;
+    esac
+    [ "${#digest}" -eq 64 ] || die "SHA-256 tool returned an invalid digest length for ${path##*/}"
+    printf '%s\n' "$digest"
+}
+
+acquire_lock() {
+    local attempts=0
+    local observed_owner=""
+    local moved_owner=""
+    local stale_claim=""
+    mkdir -p -- "$plugin_data"
+    [ -d "$plugin_data" ] && [ ! -L "$plugin_data" ] || die "plugin data root is not a real directory"
+    chmod 700 "$plugin_data"
+    lock_dir="$plugin_data/bootstrap.lock"
+    while ! mkdir "$lock_dir" 2>/dev/null; do
+        [ -d "$lock_dir" ] && [ ! -L "$lock_dir" ] || die "bootstrap lock path is unsafe"
+        observed_owner="$(read_lock_owner "$lock_dir/owner" 2>/dev/null || true)"
+        if [ -n "$observed_owner" ] && ! kill -0 "$observed_owner" 2>/dev/null; then
+            stale_claim="$plugin_data/.bootstrap-lock-stale.$$"
+            [ ! -e "$stale_claim" ] && [ ! -L "$stale_claim" ] || die "stale-lock claim path already exists"
+            if mv "$lock_dir" "$stale_claim" 2>/dev/null; then
+                moved_owner="$(read_lock_owner "$stale_claim/owner" 2>/dev/null || true)"
+                if [ "$moved_owner" != "$observed_owner" ]; then
+                    [ -e "$lock_dir" ] || mv "$stale_claim" "$lock_dir"
+                else
+                    rm -f -- "$stale_claim/owner"
+                    if ! rmdir "$stale_claim"; then
+                        [ -e "$lock_dir" ] || mv "$stale_claim" "$lock_dir"
+                        die "stale bootstrap lock contains unexpected files"
+                    fi
+                fi
+            fi
+        elif [ -z "$observed_owner" ] && [ "$attempts" -ge 2 ]; then
+            rmdir "$lock_dir" 2>/dev/null || true
+        fi
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt "$LOCK_WAIT_SECONDS" ] || die "timed out waiting for another larch bootstrap; retry after it exits"
+        sleep 1
+    done
+    lock_held=true
+    umask 077
+    printf '%s\n' "$$" > "$lock_dir/owner"
+    [ "$(read_lock_owner "$lock_dir/owner")" = "$$" ] || die "bootstrap lock ownership could not be verified"
+}
+
+write_expected_release_assets() {
+    local version="$1"
+    local output="$2"
+    printf '%s\n' \
+        "larch-v$version-SHA256SUMS" \
+        "larch-v$version-aarch64-apple-darwin.tar.gz" \
+        "larch-v$version-aarch64-unknown-linux-gnu.tar.gz" \
+        "larch-v$version-manifest.json" \
+        "larch-v$version-x86_64-apple-darwin.tar.gz" \
+        "larch-v$version-x86_64-unknown-linux-gnu.tar.gz" | sort > "$output"
+}
+
+verify_release_surface() {
+    local version="$1"
+    local tag="$2"
+    local release_info="$stage_dir/release-info.txt"
+    local actual_assets="$stage_dir/release-assets.txt"
+    local expected_assets="$stage_dir/expected-assets.txt"
+    gh release verify "$tag" --repo "$RELEASE_REPO" >/dev/null
+    gh release view "$tag" --repo "$RELEASE_REPO" \
+        --json tagName,isImmutable,isDraft,isPrerelease,assets \
+        --jq '.tagName, (.isImmutable | tostring), (.isDraft | tostring), (.isPrerelease | tostring), (.assets[].name)' > "$release_info"
+    [ "$(sed -n '1p' "$release_info")" = "$tag" ] || die "release tag identity mismatch"
+    [ "$(sed -n '2p' "$release_info")" = "true" ] || die "release is not immutable"
+    [ "$(sed -n '3p' "$release_info")" = "false" ] || die "release is still a draft"
+    [ "$(sed -n '4p' "$release_info")" = "false" ] || die "release is a prerelease"
+    sed -n '5,$p' "$release_info" | sort > "$actual_assets"
+    write_expected_release_assets "$version" "$expected_assets"
+    cmp -s "$actual_assets" "$expected_assets" || die "release asset allowlist mismatch"
+}
+
+validate_checksums() {
+    local path="$1"
+    local version="$2"
+    local target="$3"
+    awk -v version="$version" -v selected="$target" '
+        function target_at(asset_index) {
+            if (asset_index == 1) return "aarch64-apple-darwin"
+            if (asset_index == 2) return "x86_64-apple-darwin"
+            if (asset_index == 3) return "aarch64-unknown-linux-gnu"
+            if (asset_index == 4) return "x86_64-unknown-linux-gnu"
+            return ""
+        }
+        function fail() { exit 1 }
+        {
+            if (NR > 5 || length($0) < 67) fail()
+            digest = substr($0, 1, 64)
+            separator = substr($0, 65, 2)
+            name = substr($0, 67)
+            if (digest !~ /^[0-9a-f]+$/ || length(digest) != 64 || separator != "  ") fail()
+            if (NR <= 4) {
+                target = target_at(NR)
+                expected = "larch-v" version "-" target ".tar.gz"
+                if (name != expected) fail()
+                if (target == selected) selected_digest = digest
+            } else {
+                if (name != "larch-v" version "-manifest.json") fail()
+                manifest_digest = digest
+            }
+        }
+        END {
+            if (NR != 5 || selected_digest == "" || manifest_digest == "") exit 1
+            print manifest_digest, selected_digest
+        }
+    ' "$path"
+}
+
+validate_manifest() {
+    local path="$1"
+    local version="$2"
+    local tag="$3"
+    local source_commit="$4"
+    local selected_target="$5"
+    awk -v version="$version" -v tag="$tag" -v commit="$source_commit" -v selected="$selected_target" '
+        function fail() { exit 1 }
+        function target_at(asset_index) {
+            if (asset_index == 1) return "aarch64-apple-darwin"
+            if (asset_index == 2) return "x86_64-apple-darwin"
+            if (asset_index == 3) return "aarch64-unknown-linux-gnu"
+            if (asset_index == 4) return "x86_64-unknown-linux-gnu"
+            return ""
+        }
+        function kind_at(asset_index) { return asset_index <= 2 ? "macos" : "glibc" }
+        function floor_at(asset_index) {
+            if (asset_index == 1) return "11.0"
+            if (asset_index == 2) return "10.12"
+            return "2.17"
+        }
+        function exact(expected) { if ($0 != expected) fail() }
+        NR == 1 { exact("{"); next }
+        NR == 2 { exact("  \"schema_version\": 1,"); next }
+        NR == 3 { exact("  \"plugin_version\": \"" version "\","); next }
+        NR == 4 { exact("  \"tag\": \"" tag "\","); next }
+        NR == 5 { exact("  \"source_commit\": \"" commit "\","); next }
+        NR == 6 { exact("  \"assets\": ["); next }
+        NR >= 7 && NR <= 50 {
+            asset_index = int((NR - 7) / 11) + 1
+            position = (NR - 7) % 11 + 1
+            target = target_at(asset_index)
+            if (position == 1) exact("    {")
+            else if (position == 2) exact("      \"target\": \"" target "\",")
+            else if (position == 3) exact("      \"archive\": \"larch-v" version "-" target ".tar.gz\",")
+            else if (position == 4) {
+                if ($0 !~ /^      "byte_size": [1-9][0-9]*,$/) fail()
+                value = $0
+                sub(/^      "byte_size": /, "", value)
+                sub(/,$/, "", value)
+                if (target == selected) selected_size = value
+            }
+            else if (position == 5) {
+                if ($0 !~ /^      "sha256": "[0-9a-f]+",$/) fail()
+                value = $0
+                sub(/^      "sha256": "/, "", value)
+                sub(/",$/, "", value)
+                if (length(value) != 64) fail()
+                if (target == selected) selected_digest = value
+            }
+            else if (position == 6) exact("      \"binary_path\": \"larch\",")
+            else if (position == 7) exact("      \"minimum_os_or_libc\": {")
+            else if (position == 8) exact("        \"kind\": \"" kind_at(asset_index) "\",")
+            else if (position == 9) exact("        \"version\": \"" floor_at(asset_index) "\"")
+            else if (position == 10) exact("      }")
+            else if (asset_index < 4) exact("    },")
+            else exact("    }")
+            next
+        }
+        NR == 51 { exact("  ]"); next }
+        NR == 52 { exact("}"); next }
+        { fail() }
+        END {
+            if (NR != 52 || selected_size == "" || selected_digest == "") exit 1
+            print selected_size, selected_digest
+        }
+    ' "$path"
+}
+
+header_text() {
+    local tar_path="$1"
+    local offset="$2"
+    local length="$3"
+    dd if="$tar_path" bs=1 skip="$offset" count="$length" 2>/dev/null | tr -d '\000'
+}
+
+header_octal_size() {
+    local tar_path="$1"
+    local header_offset="$2"
+    local raw=""
+    raw="$(dd if="$tar_path" bs=1 skip="$((header_offset + 124))" count=12 2>/dev/null | tr -d '\000 ')"
+    case "$raw" in
+        *[!0-7]*|'') die "archive contains an invalid tar size field" ;;
+    esac
+    printf '%s\n' "$((8#$raw))"
+}
+
+validate_tar_header() {
+    local tar_path="$1"
+    local header_offset="$2"
+    local expected_name="$3"
+    [ "$(header_text "$tar_path" "$header_offset" 100)" = "$expected_name" ] || die "archive member name allowlist mismatch"
+    [ "$(header_text "$tar_path" "$((header_offset + 156))" 1)" = "0" ] || die "archive contains a symlink or special file"
+    [ -z "$(header_text "$tar_path" "$((header_offset + 157))" 100)" ] || die "archive member has an unexpected link target"
+    [ -z "$(header_text "$tar_path" "$((header_offset + 345))" 155)" ] || die "archive member has an unexpected path prefix"
+}
+
+validate_and_extract_archive() {
+    local archive="$1"
+    local output_binary="$2"
+    local tar_path="$stage_dir/archive.tar"
+    local members="$stage_dir/archive-members.txt"
+    local expected_members="$stage_dir/expected-members.txt"
+    local first_size=0
+    local second_offset=0
+    local second_size=0
+    local trailer_offset=0
+    local tar_size=0
+    local nonzero_trailer=0
+    gzip -dc "$archive" > "$tar_path"
+    tar -tzf "$archive" > "$members"
+    printf 'larch\nLICENSE\n' > "$expected_members"
+    cmp -s "$members" "$expected_members" || die "archive member allowlist mismatch"
+    validate_tar_header "$tar_path" 0 "larch"
+    first_size="$(header_octal_size "$tar_path" 0)"
+    [ "$first_size" -gt 0 ] || die "archive executable is empty"
+    second_offset=$((512 + ((first_size + 511) / 512) * 512))
+    validate_tar_header "$tar_path" "$second_offset" "LICENSE"
+    second_size="$(header_octal_size "$tar_path" "$second_offset")"
+    [ "$second_size" -gt 0 ] || die "archive license is empty"
+    trailer_offset=$((second_offset + 512 + ((second_size + 511) / 512) * 512))
+    tar_size="$(wc -c < "$tar_path" | tr -d '[:space:]')"
+    [ "$tar_size" -ge $((trailer_offset + 1024)) ] || die "archive is missing the tar end marker"
+    [ $((tar_size % 512)) -eq 0 ] || die "archive tar size is not block aligned"
+    nonzero_trailer="$(dd if="$tar_path" bs=1 skip="$trailer_offset" 2>/dev/null | tr -d '\000' | wc -c | tr -d '[:space:]')"
+    [ "$nonzero_trailer" -eq 0 ] || die "archive contains unexpected trailing data"
+    umask 077
+    tar -xOzf "$archive" larch > "$output_binary"
+    chmod 755 "$output_binary"
+    [ -f "$output_binary" ] && [ ! -L "$output_binary" ] && [ -x "$output_binary" ] || die "staged executable is not a regular executable file"
+}
+
+verify_download_set() {
+    local download_dir="$1"
+    local manifest_name="$2"
+    local checksums_name="$3"
+    local archive_name="$4"
+    local entry=""
+    local name=""
+    local count=0
+    for entry in "$download_dir"/* "$download_dir"/.[!.]* "$download_dir"/..?*; do
+        if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+            continue
+        fi
+        count=$((count + 1))
+        [ -f "$entry" ] && [ ! -L "$entry" ] || die "download staging contains a non-regular entry"
+        name="${entry##*/}"
+        case "$name" in
+            "$manifest_name"|"$checksums_name"|"$archive_name") ;;
+            *) die "download staging contains an unexpected asset: $name" ;;
+        esac
+    done
+    [ "$count" -eq 3 ] || die "download staging does not contain exactly three requested assets"
+}
+
+install_release_binary() {
+    local version="$1"
+    local target="$2"
+    local tag="v$version"
+    local source_commit=""
+    local download_dir=""
+    local manifest_name="larch-v$version-manifest.json"
+    local checksums_name="larch-v$version-SHA256SUMS"
+    local archive_name="larch-v$version-$target.tar.gz"
+    local manifest_path=""
+    local checksums_path=""
+    local archive_path=""
+    local checksum_record=""
+    local manifest_record=""
+    local manifest_checksum=""
+    local archive_checksum=""
+    local archive_size=""
+    local archive_manifest_digest=""
+    local actual_size=""
+    local actual_digest=""
+    local staged_binary=""
+    local previous_binary=""
+
+    verify_release_surface "$version" "$tag"
+    source_commit="$(gh api "repos/$RELEASE_REPO/commits/$tag" --jq '.sha')"
+    case "$source_commit" in
+        *[!0-9a-f]*|'') die "release source commit is invalid" ;;
+    esac
+    [ "${#source_commit}" -eq 40 ] || die "release source commit has an invalid length"
+
+    download_dir="$stage_dir/download"
+    mkdir "$download_dir"
+    gh release download "$tag" --repo "$RELEASE_REPO" --dir "$download_dir" \
+        --pattern "$manifest_name" --pattern "$checksums_name" --pattern "$archive_name"
+    verify_download_set "$download_dir" "$manifest_name" "$checksums_name" "$archive_name"
+    manifest_path="$download_dir/$manifest_name"
+    checksums_path="$download_dir/$checksums_name"
+    archive_path="$download_dir/$archive_name"
+
+    gh attestation verify "$manifest_path" --repo "$RELEASE_REPO" --signer-workflow "$RELEASE_WORKFLOW" \
+        --source-ref "refs/tags/$tag" --source-digest "$source_commit" --deny-self-hosted-runners >/dev/null
+    gh attestation verify "$checksums_path" --repo "$RELEASE_REPO" --signer-workflow "$RELEASE_WORKFLOW" \
+        --source-ref "refs/tags/$tag" --source-digest "$source_commit" --deny-self-hosted-runners >/dev/null
+    gh attestation verify "$archive_path" --repo "$RELEASE_REPO" --signer-workflow "$RELEASE_WORKFLOW" \
+        --source-ref "refs/tags/$tag" --source-digest "$source_commit" --deny-self-hosted-runners >/dev/null
+
+    if ! checksum_record="$(validate_checksums "$checksums_path" "$version" "$target")"; then
+        die "checksum file violates the release schema"
+    fi
+    case "$checksum_record" in
+        *' '*) ;;
+        *) die "checksum parser returned malformed data" ;;
+    esac
+    manifest_checksum="${checksum_record%% *}"
+    archive_checksum="${checksum_record#* }"
+    case "$archive_checksum" in
+        *' '*) die "checksum parser returned malformed data" ;;
+    esac
+    [ "$(sha256_file "$manifest_path")" = "$manifest_checksum" ] || die "manifest SHA-256 digest mismatch"
+
+    if ! manifest_record="$(validate_manifest "$manifest_path" "$version" "$tag" "$source_commit" "$target")"; then
+        die "manifest violates the strict schema or release identity"
+    fi
+    case "$manifest_record" in
+        *' '*) ;;
+        *) die "manifest parser returned malformed data" ;;
+    esac
+    archive_size="${manifest_record%% *}"
+    archive_manifest_digest="${manifest_record#* }"
+    case "$archive_manifest_digest" in
+        *' '*) die "manifest parser returned malformed data" ;;
+    esac
+    [ "$archive_manifest_digest" = "$archive_checksum" ] || die "archive digest differs between manifest and checksum file"
+    actual_size="$(wc -c < "$archive_path" | tr -d '[:space:]')"
+    [ "$actual_size" = "$archive_size" ] || die "archive byte size does not match the manifest"
+    actual_digest="$(sha256_file "$archive_path")"
+    [ "$actual_digest" = "$archive_manifest_digest" ] || die "archive SHA-256 digest mismatch"
+
+    staged_binary="$stage_dir/larch.staged"
+    validate_and_extract_archive "$archive_path" "$staged_binary"
+    binary_matches_version "$staged_binary" "$version" || die "staged executable reports the wrong version"
+    binary_passes_self_check "$staged_binary" "$version" "$target" || die "staged executable failed its machine-readable self-check"
+
+    if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then
+        [ -f "$binary_path" ] && [ ! -L "$binary_path" ] || die "existing larch binary is not a regular file"
+        previous_binary="$stage_dir/larch.previous"
+        ln "$binary_path" "$previous_binary"
+    fi
+    mv -f "$staged_binary" "$binary_path"
+    if ! binary_matches_version "$binary_path" "$version" || ! binary_passes_self_check "$binary_path" "$version" "$target"; then
+        if [ -n "$previous_binary" ] && [ -f "$previous_binary" ]; then
+            mv -f "$previous_binary" "$binary_path"
+        fi
+        die "installed executable failed post-install verification"
+    fi
+}
+
+run_binary() {
+    local candidate="$1"
+    shift
+    cleanup
+    trap - EXIT ERR
+    exec "$candidate" "$@"
+    die "verified larch executable could not be started"
+}
+
+main() {
+    local version=""
+    local target=""
+    local override="${LARCH_BINARY:-}"
+
+    plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+    [ -n "$plugin_root" ] || die "CLAUDE_PLUGIN_ROOT is required"
+    while [ "$plugin_root" != "/" ] && [ "${plugin_root%/}" != "$plugin_root" ]; do
+        plugin_root="${plugin_root%/}"
+    done
+    validate_absolute_path "CLAUDE_PLUGIN_ROOT" "$plugin_root"
+    [ -d "$plugin_root" ] && [ ! -L "$plugin_root" ] || die "CLAUDE_PLUGIN_ROOT is not a real directory"
+    version="$(read_plugin_version "$plugin_root/.claude-plugin/plugin.json")"
+    target="$(resolve_target)"
+
+    if [ -n "$override" ]; then
+        validate_absolute_path "LARCH_BINARY" "$override"
+        binary_matches_version "$override" "$version" || die "LARCH_BINARY is not an executable for plugin version $version"
+        binary_passes_self_check "$override" "$version" "$target" || die "LARCH_BINARY self-check does not match $version for $target"
+        run_binary "$override" "$@"
+    fi
+
+    bin_dir="$plugin_root/bin"
+    binary_path="$bin_dir/larch"
+    if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then
+        [ -f "$binary_path" ] && [ ! -L "$binary_path" ] || die "existing larch binary is not a regular file"
+        if binary_matches_version "$binary_path" "$version" && binary_passes_self_check "$binary_path" "$version" "$target"; then
+            run_binary "$binary_path" "$@"
+        fi
+    fi
+
+    if [ -e "$plugin_root/.git" ] || [ -L "$plugin_root/.git" ]; then
+        die "local --plugin-dir checkout needs an explicit build: run 'cargo build --locked --release --package larch-cli' and set LARCH_BINARY to target/release/larch"
+    fi
+
+    plugin_data="${CLAUDE_PLUGIN_DATA:-}"
+    [ -n "$plugin_data" ] || die "CLAUDE_PLUGIN_DATA is required for the bounded bootstrap lock"
+    while [ "$plugin_data" != "/" ] && [ "${plugin_data%/}" != "$plugin_data" ]; do
+        plugin_data="${plugin_data%/}"
+    done
+    validate_absolute_path "CLAUDE_PLUGIN_DATA" "$plugin_data"
+    require_commands
+    acquire_lock
+
+    if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then
+        [ -f "$binary_path" ] && [ ! -L "$binary_path" ] || die "existing larch binary is not a regular file"
+        if binary_matches_version "$binary_path" "$version" && binary_passes_self_check "$binary_path" "$version" "$target"; then
+            run_binary "$binary_path" "$@"
+        fi
+    fi
+
+    mkdir -p -- "$bin_dir"
+    [ -d "$bin_dir" ] && [ ! -L "$bin_dir" ] || die "plugin bin path is not a real directory"
+    chmod 700 "$bin_dir"
+    stage_dir="$(mktemp -d "$bin_dir/.larch-bootstrap.XXXXXX")"
+    case "$stage_dir" in
+        "$bin_dir"/.larch-bootstrap.*) ;;
+        *) die "mktemp returned a staging path outside the plugin bin directory" ;;
+    esac
+    [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || die "bootstrap staging path is unsafe"
+    install_release_binary "$version" "$target"
+    run_binary "$binary_path" "$@"
+}
+
+main "$@"
