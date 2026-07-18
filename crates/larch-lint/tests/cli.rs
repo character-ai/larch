@@ -77,7 +77,7 @@ fn rules_lists_registered_rules_in_name_order() {
             "status-routing\tRequire explicit Option, Result, and status-enum variant routing instead of boolean shortcuts\n",
         ))
         .stdout(predicate::str::contains(
-            "subprocess-via-runner\tRequire std::process::Command ownership by the shared runner\n",
+            "subprocess-via-runner\tRequire process Command ownership by the shared runner\n",
         ))
         .stdout(predicate::str::contains(
             "self-disarmable-gate\tReject optional metadata that suppresses a design size or publish hard gate\n",

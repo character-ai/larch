@@ -2,6 +2,7 @@
 
 pub mod clock;
 pub mod logging;
+pub mod process;
 pub mod retry;
 pub mod runtime;
 

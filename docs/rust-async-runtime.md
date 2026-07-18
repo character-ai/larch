@@ -7,10 +7,10 @@ must stay asynchronous and must not create or nest runtimes.
 
 ## Decision
 
-Use Tokio 1.53.0 with only the macros, runtime, signal, synchronization,
-test-time, and time features. Use `tokio-util` 0.7.18 for hierarchical
-cancellation tokens. Both crates are maintained, pure Rust, MIT licensed, and
-support an older Rust version than larch requires.
+Use Tokio 1.53.0 with only the I/O utility, macros, process, runtime, signal,
+synchronization, test-time, and time features. Use `tokio-util` 0.7.18 for
+hierarchical cancellation tokens. Both crates are maintained, pure Rust, MIT
+licensed, and support an older Rust version than larch requires.
 
 Tokio owns the facilities larch needs as one integrated stack: a multi-thread
 executor, deterministic timers, signals, synchronization, and task sets. Later
@@ -77,6 +77,17 @@ needed, and reaps the child. Persisted process identities require the separate
 identity re-verification rules in `SECURITY.md` before any signal. The generic
 `shutdown_child` helper owns only the graceful, deadline, force, and reap
 sequence. It does not choose platform signals or accept arbitrary process IDs.
+
+`TokioProcessRunner` is the sole product owner of process construction. The
+core `ExternalProcessRunner` port accepts a typed executable and argument
+array, never a command string. The request owns an absolute working directory,
+typed environment overrides, stdin bytes, per-stream capture limit, timeout,
+and shutdown grace period. The adapter clears the ambient environment and
+copies only common allowlisted keys. Vendor credentials require an explicit
+typed override and never enter the common inheritance list. On Unix, each
+child starts in its own process group; cancellation and timeout send SIGTERM
+to the group, escalate to SIGKILL, and reap the direct child. Other platforms
+use Tokio's safest available direct-child kill and reap path.
 
 ## Deterministic tests
 
