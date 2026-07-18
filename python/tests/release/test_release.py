@@ -182,6 +182,111 @@ def test_plugin_read_version_cli_captures_stdout_with_inherited_quiet(tmp_path: 
     assert res.stdout == "LARCH_PLUGIN_VERSION=9.8.7\n"
 
 
+def _write_release_version_repo(tmp_path: Path, *, cargo_version: str = "1.2.3") -> Path:
+    root = tmp_path / "repo"
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / ".claude-plugin/plugin.json").write_text(
+        json.dumps({"name": "larch", "version": "1.2.3"}) + "\n",
+        encoding="utf-8",
+    )
+    (root / "Cargo.toml").write_text(
+        f"""[workspace]
+members = ["crates/larch-cli", "crates/larch-core"]
+
+[workspace.package]
+version = "{cargo_version}"
+
+[workspace.dependencies]
+larch-core = {{ version = "={cargo_version}", path = "crates/larch-core" }}
+""",
+        encoding="utf-8",
+    )
+    for name in ("larch-cli", "larch-core"):
+        member = root / "crates" / name
+        member.mkdir(parents=True)
+        (member / "Cargo.toml").write_text(
+            f'[package]\nname = "{name}"\nversion.workspace = true\n',
+            encoding="utf-8",
+        )
+    (root / "Cargo.lock").write_text(
+        f"""version = 4
+
+[[package]]
+name = "larch-cli"
+version = "{cargo_version}"
+dependencies = ["larch-core"]
+
+[[package]]
+name = "larch-core"
+version = "{cargo_version}"
+""",
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_set_version_synchronizes_plugin_workspace_dependencies_and_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _write_release_version_repo(tmp_path)
+    monkeypatch.setenv("LARCH_RELEASE_SET_VERSION_REPO_ROOT", str(root))
+
+    assert version_bump.set_version_main(["1.2.4"]) == 0
+
+    assert json.loads((root / ".claude-plugin/plugin.json").read_text())["version"] == "1.2.4"
+    cargo = (root / "Cargo.toml").read_text(encoding="utf-8")
+    assert 'version = "1.2.4"' in cargo
+    assert 'larch-core = { version = "=1.2.4"' in cargo
+    lock = (root / "Cargo.lock").read_text(encoding="utf-8")
+    assert lock.count('version = "1.2.4"') == 2
+    assert capsys.readouterr().out == "PREVIOUS_VERSION=1.2.3\nNEW_VERSION=1.2.4\n"
+
+
+def test_set_version_rejects_mismatched_cargo_without_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _write_release_version_repo(tmp_path, cargo_version="1.2.2")
+    paths = (root / ".claude-plugin/plugin.json", root / "Cargo.toml", root / "Cargo.lock")
+    originals = {path: path.read_bytes() for path in paths}
+    monkeypatch.setenv("LARCH_RELEASE_SET_VERSION_REPO_ROOT", str(root))
+
+    assert version_bump.set_version_main(["1.2.4"]) == 1
+
+    assert "Cargo workspace version does not match" in capsys.readouterr().err
+    assert all(path.read_bytes() == originals[path] for path in paths)
+
+
+def test_set_version_rolls_back_a_partial_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _write_release_version_repo(tmp_path)
+    paths = (root / ".claude-plugin/plugin.json", root / "Cargo.toml", root / "Cargo.lock")
+    originals = {path: path.read_bytes() for path in paths}
+    real_atomic_replace = version_bump._atomic_replace
+    calls = 0
+
+    def fail_second_write(path: Path, content: bytes) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected write failure")
+        real_atomic_replace(path, content)
+
+    monkeypatch.setattr(version_bump, "_atomic_replace", fail_second_write)
+    monkeypatch.setenv("LARCH_RELEASE_SET_VERSION_REPO_ROOT", str(root))
+
+    assert version_bump.set_version_main(["1.2.4"]) == 1
+
+    assert "release version update failed" in capsys.readouterr().err
+    assert all(path.read_bytes() == originals[path] for path in paths)
+
+
 def test_set_version_rejects_downgrade(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     plugin = tmp_path / "plugin.json"
     plugin.write_text(json.dumps({"version": "2.0.0"}), encoding="utf-8")
