@@ -42,6 +42,18 @@ this file and to the `layering` repository rule in the same change.
 - Cut migrated commands directly to Rust. Do not add Python, `gh`, `gcloud`, or
   Git fallbacks outside the approved compatibility boundaries.
 
+## Command dispatch
+
+The executable parses `larch <domain> <verb> [arguments]` with Clap. Domains
+and verbs are closed enums. An unknown command is an error and never delegates
+to Python or another executable. The `example echo` command is non-production;
+it proves that the composition root dispatches into `larch-core` while command
+ports migrate incrementally.
+
+The workspace package version is the compiled binary version. The CLI test
+suite checks it against `.claude-plugin/plugin.json`, which is the plugin
+release version selected by the release and installation decision in #7670.
+
 ## Dependency policy
 
 `Cargo.toml` at the workspace root owns every crate version, feature set, and

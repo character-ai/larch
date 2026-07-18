@@ -20,14 +20,28 @@ impl BuildMetadata {
     }
 }
 
+/// Non-production use cases that prove command dispatch and library wiring.
+pub mod example {
+    /// Return a caller-owned message unchanged.
+    #[must_use]
+    pub const fn echo(message: &str) -> &str {
+        message
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::BuildMetadata;
+    use super::{BuildMetadata, example};
 
     #[test]
     fn build_metadata_preserves_the_version() {
         let metadata = BuildMetadata::new("1.2.3");
 
         assert_eq!(metadata.version(), "1.2.3");
+    }
+
+    #[test]
+    fn example_echo_preserves_the_message() {
+        assert_eq!(example::echo("library wiring"), "library wiring");
     }
 }
