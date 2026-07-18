@@ -3985,8 +3985,9 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     assert "agent-lint:" in workflow
     assert "rust-lint:" in workflow
     assert "rust-build-test:" in workflow
+    assert "rust-clippy:" in workflow
     assert "rust-gate:" in workflow
-    assert "needs: [rust-lint, rust-build-test]" in workflow
+    assert "needs: [rust-lint, rust-clippy, rust-build-test]" in workflow
     assert "make rust-fmt" in workflow
     assert "make rust-clippy" in workflow
     assert "make rust-build" in workflow
