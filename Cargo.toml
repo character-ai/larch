@@ -12,7 +12,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/character-ai/larch"
 rust-version = "1.94.1"
-version = "53.1.23"
+version = "53.1.24"
 
 [workspace.dependencies]
 assert_cmd = { version = "2.2.2", default-features = false }
@@ -23,8 +23,8 @@ clap = { version = "4.6.2", default-features = false, features = ["derive", "hel
 globset = { version = "0.4.19", default-features = false }
 gix = { version = "=0.85.0", default-features = false, features = ["revision", "sha1", "sha256", "status"] }
 inventory = { version = "0.3.24", default-features = false }
-larch-adapters = { version = "=53.1.23", path = "crates/larch-adapters" }
-larch-core = { version = "=53.1.23", path = "crates/larch-core" }
+larch-adapters = { version = "=53.1.24", path = "crates/larch-adapters" }
+larch-core = { version = "=53.1.24", path = "crates/larch-core" }
 nix = { version = "0.31.3", default-features = false, features = ["process", "signal"] }
 predicates = { version = "3.1.4", default-features = false }
 pulldown-cmark = { version = "0.13.4", default-features = false }
