@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # actionlint 1.7.9 predates GitHub's standard Intel runner label.
+  labels:
+    - macos-15-intel

@@ -19,6 +19,14 @@ If you discover a security vulnerability in larch, please report it responsibly:
 
 You should receive an acknowledgment within 72 hours. We will work with you to understand the issue and coordinate a fix before any public disclosure. Rust dependencies are reproducible through the tracked `Cargo.lock` and pinned `rust-toolchain.toml`; CI's required `rust-gate` runs a full-SHA-pinned `cargo-deny` action against `deny.toml` to reject known advisories, unapproved licenses, duplicate versions, wildcard requirements, and unapproved registries or Git sources.
 
+## Rust Release Build Provenance
+
+The tag-triggered Rust asset workflow checks out the exact tag commit and requires the tag, `.claude-plugin/plugin.json`, and Cargo workspace version to agree. It builds and runs each supported target natively. Linux builds run inside digest-pinned `manylinux2014` images and reject symbols newer than glibc 2.17. The workflow packages only `larch` and `LICENSE` with normalized archive metadata.
+
+Each matrix job attests its archive through GitHub artifact attestations. The collector accepts only one archive and one metadata fragment for each required target. It rejects missing, duplicate, empty, unexpected, mismatched, or non-deterministic inputs. It recomputes archive sizes and SHA-256 digests, emits the schema-v1 manifest and checksum file, attests both, verifies all six attestations against this repository, and revalidates the final six-file allowlist before upload.
+
+This provenance proves that GitHub Actions built the bytes from the recorded repository commit under the named workflow. It does not make the source, dependencies, runner images, pinned container images, GitHub Actions service, or maintainers intrinsically trustworthy. The checksum file is an integrity index, not an independent trust root. Consumers must verify GitHub attestations and the strict manifest contract before installation. Immutable Release publication and installer-side verification are separate gates owned by the release publication and bootstrap flows.
+
 ## Scoped Live-Mutation Authorization Boundary
 
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.
