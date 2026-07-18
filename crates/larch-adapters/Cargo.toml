@@ -1,0 +1,16 @@
+[package]
+name = "larch-adapters"
+version.workspace = true
+description = "Concrete external-system adapters for larch"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gix.workspace = true
+larch-core.workspace = true
+
+[lints]
+workspace = true

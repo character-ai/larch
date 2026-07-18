@@ -1,0 +1,115 @@
+# Rust Architecture
+
+Larch ships one Rust executable named `larch`. The Rust workspace grows by
+domain, not by copying the Python package tree. Python remains migration code
+until each command moves directly to its Rust owner.
+
+## Crates
+
+| Crate | Responsibility | Allowed workspace dependencies |
+|---|---|---|
+| `larch-core` | Effect-free domain types, use cases, and narrow ports for Git, GitHub, Google services, process execution, storage, and time. | None. |
+| `larch-adapters` | Concrete implementations of core ports. This includes filesystem and process boundaries, `gix`, Git CLI exceptions, GitHub and Google clients, and other external I/O. | `larch-core`. |
+| `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases. Its binary target is named `larch`. | `larch-core`, `larch-adapters`. |
+| `larch-lint` | Repository-only policy tooling. It is not linked into the product. | None of the product crates. |
+
+The product dependency direction is:
+
+```text
+larch-cli -> larch-adapters -> larch-core
+          \-----------------> larch-core
+```
+
+Dependency direction applies to normal and build dependencies. Tests may use
+dev-dependencies across layers when an integration test needs them. Product
+crates must not depend on `larch-lint`.
+
+Add modules inside these crates until a new crate has an independent ownership
+boundary, dependency set, and test surface. A new crate requires an update to
+this file and to the `layering` repository rule in the same change.
+
+## Boundary rules
+
+- Put domain request and response types and injected service traits in
+  `larch-core`. Keep them small. Domain code must not import concrete Git,
+  HTTP, GitHub, or Google clients.
+- Put concrete effects in `larch-adapters`. Each operation has one production
+  owner behind a core port. Callers cannot select between implementations.
+- Keep `larch-cli` thin. It owns parsing and composition, not domain behavior.
+- Preserve byte paths at repository boundaries. Parse external text once into
+  typed data. Treat repository configuration, API responses, and workflow text
+  as untrusted data.
+- Cut migrated commands directly to Rust. Do not add Python, `gh`, `gcloud`, or
+  Git fallbacks outside the approved compatibility boundaries.
+
+## Dependency policy
+
+`Cargo.toml` at the workspace root owns every crate version, feature set, and
+path dependency. Member manifests use only `dependency.workspace = true`.
+`Cargo.lock` records the resolved versions for reproducible executable builds.
+The `workspace-dependency-policy` repository rule rejects member-local versions
+and feature flags. The shared package version matches
+`.claude-plugin/plugin.json`; the release flow updates both. `cargo deny`
+continues to enforce licenses, sources, advisories, duplicate versions, and
+wildcard requirements.
+
+When adding or changing a dependency:
+
+1. Confirm that the standard library and current workspace dependencies do not
+   already own the behavior.
+2. Prefer a maintained pure-Rust crate. Disable default features and enable
+   only reviewed features. Network clients must use `rustls`, not native TLS.
+3. Add the version and complete feature set once under
+   `[workspace.dependencies]`. Inherit it from each member manifest.
+4. Review the lockfile, license, advisories, MSRV, duplicate versions, binary
+   size, and build time. Run `make rust-check`.
+5. For a native dependency, document why pure Rust cannot meet the contract,
+   list its system libraries and supported targets, and add release-platform
+   build coverage before merging. Do not add a native dependency by default.
+
+Feature flags describe real build variants. Do not add flags for speculative
+future use or use a feature to weaken a security check. Keep release builds on
+one reviewed feature set unless CI builds and tests every supported variant.
+
+## Selected external boundaries
+
+The completed spikes in issues #7670, #7671, and #7672 constrain later adapter
+work:
+
+- Git repository reads use `gix` 0.85.0 with default features disabled and
+  only `sha1`, `sha256`, `revision`, and `status`. The workspace records that
+  exact selection. Do not enable `gix` network, credential, archive, merge, or
+  worktree-mutation features without a bounded design and parity evidence.
+- Git mutations and network operations stay behind a closed, typed Git CLI
+  compatibility adapter where installed-Git behavior is part of the contract.
+  There is no public arbitrary-argv escape hatch.
+- GitHub code uses a larch-owned core service port. Its adapter uses a pinned
+  Octocrab client with native TLS disabled and `rustls` enabled. It accepts only
+  a non-empty `GH_TOKEN`, never reads GitHub CLI state, and does not expose an
+  arbitrary REST URL or GraphQL document to domain callers.
+- Google code uses larch-owned core ports and official Rust clients with
+  Application Default Credentials. It never shells out to `gcloud` or stores
+  access tokens. Credential configuration is trusted operator input, not
+  repository or workflow data.
+- Service adapters apply fixed hosts, deadlines, response limits, same-origin
+  redirect checks, bounded retries, mutation reconciliation, redaction, and
+  child-environment allowlists. Tests inject fakes at core ports and do not
+  require network access.
+
+Do not add Octocrab or Google clients until their implementation leaf lands.
+That leaf must centralize the reviewed version and rustls-only features in the
+workspace root.
+
+## Release constraints
+
+The executable must build and run without Python. The initial release targets
+are `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`aarch64-unknown-linux-gnu`, and `x86_64-unknown-linux-gnu`; Linux requires
+glibc 2.17 or newer. Windows and musl are not initial targets.
+
+Release archives contain only `larch` and `LICENSE`. Builds use the pinned Rust
+toolchain and lockfile. Release CI must build and smoke-test the supported
+targets without Python and must not introduce an undeclared native runtime
+library. A thin residual Bash bootstrap may install and execute the verified
+binary as specified by issue #7670. Bootstrap use of `gh` does not authorize
+runtime service adapters to shell out to it.

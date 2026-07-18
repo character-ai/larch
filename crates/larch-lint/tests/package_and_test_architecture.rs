@@ -6,13 +6,13 @@ use support::TempRepo;
 fn write_workspace(repository: &TempRepo, core_dependency: &str) {
     repository.write(
         "Cargo.toml",
-        b"[workspace]\nmembers = [\"crates/larch-io\", \"crates/larch-core\", \"crates/larch-cli\"]\nresolver = \"3\"\n",
+        b"[workspace]\nmembers = [\"crates/larch-adapters\", \"crates/larch-core\", \"crates/larch-cli\"]\nresolver = \"3\"\n",
     );
     repository.write(
-        "crates/larch-io/Cargo.toml",
-        b"[package]\nname = \"larch-io\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "crates/larch-adapters/Cargo.toml",
+        b"[package]\nname = \"larch-adapters\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     );
-    repository.write("crates/larch-io/src/lib.rs", b"");
+    repository.write("crates/larch-adapters/src/lib.rs", b"");
     repository.write(
         "crates/larch-cli/Cargo.toml",
         b"[package]\nname = \"larch-cli\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
@@ -41,9 +41,7 @@ fn package_layering_rejects_a_renamed_normal_dependency_on_a_higher_tier() {
         .args(["rule", "layering"])
         .assert()
         .code(1)
-        .stdout(
-            "crates/larch-core/Cargo.toml:1: package larch-core depends on higher layer larch-cli\n",
-        )
+        .stdout("crates/larch-core/Cargo.toml:1: package larch-core may not depend on larch-cli\n")
         .stderr(predicate::str::is_empty());
 }
 
@@ -52,7 +50,7 @@ fn package_layering_allows_downward_and_test_only_dependencies() {
     let repository = TempRepo::new();
     write_workspace(
         &repository,
-        "[dependencies]\nlarch-io = { path = \"../larch-io\" }\n[dev-dependencies]\nlarch-cli = { path = \"../larch-cli\" }\n",
+        "[dev-dependencies]\nlarch-cli = { path = \"../larch-cli\" }\n",
     );
     repository.commit_all();
 
@@ -61,6 +59,106 @@ fn package_layering_allows_downward_and_test_only_dependencies() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn package_layering_rejects_product_dependencies_on_repository_tooling() {
+    let repository = TempRepo::new();
+    repository.write(
+        "Cargo.toml",
+        b"[workspace]\nmembers = [\"crates/larch-cli\", \"crates/larch-lint\"]\nresolver = \"3\"\n",
+    );
+    repository.write(
+        "crates/larch-cli/Cargo.toml",
+        b"[package]\nname = \"larch-cli\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[dependencies]\nlarch-lint = { path = \"../larch-lint\" }\n",
+    );
+    repository.write("crates/larch-cli/src/lib.rs", b"");
+    repository.write(
+        "crates/larch-lint/Cargo.toml",
+        b"[package]\nname = \"larch-lint\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    repository.write("crates/larch-lint/src/lib.rs", b"");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "layering"])
+        .assert()
+        .code(1)
+        .stdout("crates/larch-cli/Cargo.toml:1: package larch-cli may not depend on larch-lint\n")
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn workspace_dependency_policy_allows_inherited_dependencies_in_all_sections() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-core/Cargo.toml",
+        b"[dependencies]\nserde.workspace = true\n[dev-dependencies]\ntempfile.workspace = true\n[target.'cfg(unix)'.build-dependencies]\ncc.workspace = true\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "workspace-dependency-policy"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn workspace_dependency_policy_rejects_member_local_dependency_settings() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-core/Cargo.toml",
+        b"[dependencies]\nserde = { version = \"1\", features = [\"derive\"] }\n[dev-dependencies]\ntempfile = \"3\"\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "workspace-dependency-policy"])
+        .assert()
+        .code(1)
+        .stdout(
+            "crates/larch-core/Cargo.toml:1: dependency serde must inherit its version and features from [workspace.dependencies]\n\
+             crates/larch-core/Cargo.toml:1: dependency tempfile must inherit its version and features from [workspace.dependencies]\n",
+        )
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn workspace_dependency_policy_rejects_member_local_package_versions() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-core/Cargo.toml",
+        b"[package]\nname = \"larch-core\"\nversion = \"0.1.0\"\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "workspace-dependency-policy"])
+        .assert()
+        .code(1)
+        .stdout(
+            "crates/larch-core/Cargo.toml:1: package version must inherit from [workspace.package]\n",
+        )
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn workspace_dependency_policy_requires_disabled_registry_defaults() {
+    let repository = TempRepo::new();
+    repository.write(
+        "Cargo.toml",
+        b"[workspace]\n[workspace.dependencies]\nlarch-core = { path = \"crates/larch-core\" }\nserde = { version = \"1\" }\ntoml = { version = \"1\", default-features = false }\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "workspace-dependency-policy"])
+        .assert()
+        .code(1)
+        .stdout("Cargo.toml:1: workspace dependency serde must set default-features = false\n")
         .stderr(predicate::str::is_empty());
 }
 
