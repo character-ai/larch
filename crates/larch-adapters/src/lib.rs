@@ -4,6 +4,13 @@ pub mod runtime;
 
 use larch_core::BuildMetadata;
 
+mod filesystem;
+
+pub use filesystem::{
+    ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,
+    SecureTempDir, SecureTempFile, TemporaryRoot, normalize_path,
+};
+
 /// Return metadata compiled into the adapter layer.
 #[must_use]
 pub const fn build_metadata() -> BuildMetadata {
