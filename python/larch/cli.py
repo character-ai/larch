@@ -606,7 +606,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("lint", "env-via-config-constant"): ("larch.lint.lint_env_via_config_constant", "main", False),
     ("lint", "root-resolution"): ("larch.lint.lint_root_resolution", "main", False),
     ("lint", "lifecycle-prefix-literal"): ("larch.lint.lint_lifecycle_prefix_literal", "main", False),
-    ("lint", "prefix-case-variant"): ("larch.lint.lint_prefix_case_variant", "main", False),
     ("lint", "shared-convention-regex"): ("larch.lint.lint_shared_convention_regex", "main", False),
     ("lint", "renderer-golden-tests"): ("larch.lint.lint_renderer_golden_tests", "main", False),
     ("lint", "suppression-reason"): ("larch.lint.lint_suppression_reason", "main", False),
