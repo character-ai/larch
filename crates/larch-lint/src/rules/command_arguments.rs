@@ -175,6 +175,17 @@ pub(super) fn record_longest_builder(
     }
 }
 
+/// Extend and record a command builder when a method call belongs to one.
+pub(super) fn record_builder_from_method<'syntax>(
+    constants: &Constants<'syntax>,
+    builders: &mut BTreeMap<LineColumn, BuilderCommand>,
+    method: &'syntax ExprMethodCall,
+) {
+    if let Some(command) = constants.extend_builder(method) {
+        record_longest_builder(builders, command);
+    }
+}
+
 struct ConstantCollector<'syntax> {
     values: BTreeMap<String, &'syntax Expr>,
 }

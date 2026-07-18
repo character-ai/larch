@@ -10,7 +10,7 @@ use crate::{
     syntax::RustSyntax,
 };
 
-use super::command_arguments::{Argument, BuilderCommand, Constants, array_arguments, record_longest_builder};
+use super::command_arguments::{Argument, BuilderCommand, Constants, array_arguments, record_builder_from_method};
 
 const NAME: &str = "git-push-refspec";
 const DESCRIPTION: &str = "Require Git push commands to name a destination refspec";
@@ -105,9 +105,7 @@ impl<'ast> Visit<'ast> for PushVisitor<'ast> {
     }
 
     fn visit_expr_method_call(&mut self, method: &'ast ExprMethodCall) {
-        if let Some(command) = self.constants.extend_builder(method) {
-            record_longest_builder(&mut self.builders, command);
-        }
+        record_builder_from_method(self.constants, &mut self.builders, method);
         syn::visit::visit_expr_method_call(self, method);
     }
 }
