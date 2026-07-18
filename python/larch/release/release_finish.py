@@ -30,7 +30,6 @@ _TAG_RE: Final = re.compile(
 )
 _SHA_RE: Final = re.compile(r"[0-9a-f]{40}")
 _DIGEST_RE: Final = re.compile(r"sha256:([0-9a-f]{64})")
-_NOT_FOUND_RE: Final = re.compile(r"\(HTTP 404\)\s*$")
 _LS_REMOTE_FIELD_COUNT: Final = 2
 
 JsonObject = dict[str, object]
@@ -251,6 +250,19 @@ def _asset_from_json(value: object) -> RemoteAsset:
     return RemoteAsset(name=name, size=size, digest=digest, state="uploaded")
 
 
+def _release_data_for_tag(releases: list[object], *, tag: str) -> JsonObject | None:
+    matches: list[JsonObject] = []
+    for value in releases:
+        if not isinstance(value, dict):
+            raise ReleaseError("release list contains a non-object entry")
+        typed_value = cast("JsonObject", value)
+        if typed_value.get("tag_name") == tag:
+            matches.append(typed_value)
+    if len(matches) > 1:
+        raise ReleaseError(f"multiple releases found for tag {tag}")
+    return matches[0] if matches else None
+
+
 def _release_state(
     runner: proc.Runner,
     *,
@@ -259,21 +271,26 @@ def _release_state(
     cwd: Path,
     missing_ok: bool = False,
 ) -> ReleaseState | None:
-    result = _gh(
-        runner,
-        [
-            "api",
-            "-H",
-            f"X-GitHub-Api-Version: {_API_VERSION}",
-            f"repos/{repo}/releases/tags/{tag}",
-        ],
-        cwd=cwd,
+    # The active candidate is newly created. One bounded page includes it and any
+    # duplicate drafts without rescanning the repository's full release history.
+    releases = _json_array(
+        _gh(
+            runner,
+            [
+                "api",
+                "-H",
+                f"X-GitHub-Api-Version: {_API_VERSION}",
+                f"repos/{repo}/releases?per_page=100",
+            ],
+            cwd=cwd,
+        ),
+        "release list read",
     )
-    if result.returncode != 0 and missing_ok:
-        if _NOT_FOUND_RE.search(result.stderr):
+    data = _release_data_for_tag(releases, tag=tag)
+    if data is None:
+        if missing_ok:
             return None
-        _ = _require_success(result, "release read")
-    data = _json_object(result, "release read")
+        raise ReleaseError(f"release {tag} was not found")
     database_id = data.get("id")
     tag_name = data.get("tag_name")
     draft = data.get("draft")
