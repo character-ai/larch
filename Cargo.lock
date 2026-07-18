@@ -1433,6 +1433,7 @@ version = "53.1.22"
 dependencies = [
  "gix",
  "larch-core",
+ "tempfile",
  "tokio",
  "tokio-util",
 ]
