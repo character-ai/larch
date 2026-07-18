@@ -526,7 +526,7 @@ repos:
 
       - id: lint-codex-exec-auth
         name: lint unwired codex exec call sites
-        entry: python3 python/cli.py lint codex-exec-auth
+        entry: make lint-codex-exec-auth
         language: system
         pass_filenames: false
         always_run: true

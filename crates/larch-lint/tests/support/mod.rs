@@ -100,6 +100,10 @@ fn seed_tracked_tree(repository: &TempRepo) {
         b"__metadata__\tmetadata-min-count\t0\t\nskills/design/SKILL.md\tskill-exempt\t0\tfixture\t\nskills/review/SKILL.md\tskill-exempt\t0\tfixture\t\n",
     );
     repository.write("python/migrated-scripts.tsv", b"# retired paths\n");
+    repository.write(
+        "python/larch/report/timing.py",
+        b"TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({\"fixture-kind\"})\n",
+    );
     repository.write("scripts/residual-bash-paths.txt", b"# residual paths\n");
     for path in [
         "skills/shared/reviewer-templates.md",

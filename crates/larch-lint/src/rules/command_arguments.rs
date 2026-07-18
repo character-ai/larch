@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use proc_macro2::Span;
+use proc_macro2::{LineColumn, Span};
 use syn::{
     Expr, ExprArray, ExprCall, ExprMethodCall, ExprPath, File, ItemConst, ItemStatic,
     PathArguments,
@@ -26,6 +26,8 @@ pub(super) enum Argument {
 pub(super) struct BuilderCommand {
     /// Span of the original `Command::new` construction.
     pub(super) root_span: Span,
+    /// End of the furthest builder call in this chain.
+    pub(super) end: LineColumn,
     /// Arguments accumulated across the builder calls.
     pub(super) arguments: Vec<Argument>,
 }
@@ -139,6 +141,7 @@ impl<'syntax> Constants<'syntax> {
             }
             _ => {}
         }
+        command.end = method.method.span().end();
         Some(command)
     }
 
@@ -147,10 +150,39 @@ impl<'syntax> Constants<'syntax> {
             return None;
         }
         let executable = self.argument(call.args.first()?);
-        (executable == Argument::Static("git".to_owned())).then_some(BuilderCommand {
+        Some(BuilderCommand {
             root_span: call.func.span(),
-            arguments: vec![Argument::Static("git".to_owned())],
+            end: call.func.span().end(),
+            arguments: vec![executable],
         })
+    }
+}
+
+/// Keep only the furthest builder call for each `Command::new` construction.
+pub(super) fn record_longest_builder(
+    builders: &mut BTreeMap<LineColumn, BuilderCommand>,
+    command: BuilderCommand,
+) {
+    let root = command.root_span.start();
+    match builders.entry(root) {
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            entry.insert(command);
+        }
+        std::collections::btree_map::Entry::Occupied(mut entry) if command.end > entry.get().end => {
+            entry.insert(command);
+        }
+        std::collections::btree_map::Entry::Occupied(_) => {}
+    }
+}
+
+/// Extend and record a command builder when a method call belongs to one.
+pub(super) fn record_builder_from_method<'syntax>(
+    constants: &Constants<'syntax>,
+    builders: &mut BTreeMap<LineColumn, BuilderCommand>,
+    method: &'syntax ExprMethodCall,
+) {
+    if let Some(command) = constants.extend_builder(method) {
+        record_longest_builder(builders, command);
     }
 }
 

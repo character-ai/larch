@@ -242,6 +242,7 @@ lint-em-dash-output:
 
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth
+	cargo run --quiet --locked --package larch-lint -- rule codex-exec-auth
 
 lint-flat-tests:
 	python3 python/cli.py lint flat-tests
