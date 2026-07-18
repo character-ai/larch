@@ -482,16 +482,16 @@ through the redaction and publication path described here.
      `.done`, `.status`, `.surfaced`, `.pid`), non-existent race-condition globs,
      non-regular files, and quiet-log candidates outside `larch-quiet-*-*.log`
      basenames.
-5. **Residual sensitive-content risk**: redaction is pattern-based (recognized
-   PEM blocks, common token shapes like `sk-*`, `crsr_` (Cursor API keys),
-   `ghp_`, JWTs, session-tmpdir paths). Reviewer-supplied non-pattern secrets, partial token fragments that
-   fall outside recognized patterns, internal hostnames, PII, and domain-specific
-   sensitive strings can still survive into committed logs. Operational
-   `wait-ci` / `warn` breadcrumb text may still be committed after secrets-family
-   redaction, so CI failure strings, check names, and similar diagnostics should
-   also be treated as public-boundary content. Operators must avoid placing such
-   content in breadcrumb messages; redaction is a backstop, not a comprehensive
-   classifier.
+5. **Rust and Python egress boundaries remain pattern-based**: Python breadcrumb
+   publication uses the pipeline above. Rust uses `larch_core::SafeText` for
+   errors, output, structured breadcrumbs, and journal fields; it redacts paths,
+   token families, and PEM blocks, then re-scans and withholds the whole value if
+   a recognized secret survives. Rust keeps human, machine, and contract writers
+   distinct, and contract rows reject line breaks before writing. Future process
+   and HTTP adapters must use this boundary instead of retaining raw responses in
+   displayable errors. Unknown credentials, partial token fragments, internal
+   hostnames, and PII can still survive. Minimize captured external text and treat
+   redaction as a final egress backstop, not a comprehensive classifier.
 
 See [docs/run-logs.md § breadcrumbs/](docs/run-logs.md#breadcrumbs) for the
 operator-facing directory contract; the same helper applies to every skill

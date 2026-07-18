@@ -1,0 +1,11 @@
+# input	expected
+/tmp/claude-implement-AbC123	<TMPDIR>
+/private/tmp/larch-design-run.123/private.txt	<TMPDIR>/private.txt
+/var/folders/aa/bb/T/larch-report-tokens-plot.xyz/x.png	<TMPDIR>/x.png
+/Users/example/larch3/scripts/foo.sh	<OPERATOR_REPO_PATH>/scripts/foo.sh
+/home/example/my.repo/file	<OPERATOR_REPO_PATH>/file
+cwd=/Users/example/foo,bar,	cwd=<OPERATOR_REPO_PATH>,bar,
+cwd=/Users/example/foo;bar;	cwd=<OPERATOR_REPO_PATH>;bar;
+cwd=/Users/example/foo:bar:	cwd=<OPERATOR_REPO_PATH>:bar:
+{"cwd":"/Users/example/my.repo","x":1}	{"cwd":"<OPERATOR_REPO_PATH>","x":1}
+{"cwd":"/Users/example/my}repo"}	{"cwd":"/Users/example/my}repo"}
