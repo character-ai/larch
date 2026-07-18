@@ -2,6 +2,7 @@
 
 mod config;
 mod context;
+mod env_file;
 mod error;
 mod outcome;
 mod retry;
@@ -9,6 +10,11 @@ mod time;
 
 pub use config::env;
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
+pub use env_file::{
+    CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
+    KeyPolicy, KvDocument, KvError, KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions,
+    RenderOptions, WhitespacePolicy,
+};
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };

@@ -6,8 +6,13 @@ pub mod runtime;
 
 use larch_core::BuildMetadata;
 
+mod file_io;
 mod filesystem;
 
+pub use file_io::{
+    FileIoError, FileIoErrorKind, atomic_write_utf8, guarded_update_env, read_utf8,
+    rename_same_directory,
+};
 pub use filesystem::{
     ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,
     SecureTempDir, SecureTempFile, TemporaryRoot, normalize_path,
