@@ -1,6 +1,6 @@
 [package]
 name = "larch-lint"
-version = "0.1.0"
+version.workspace = true
 description = "Repository policy linter for larch"
 publish = false
 edition.workspace = true

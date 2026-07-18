@@ -30,6 +30,9 @@ use crate::{
 const PACKAGE_LAYERING_NAME: &str = "layering";
 const PACKAGE_LAYERING_DESCRIPTION: &str =
     "Require Rust workspace packages to follow the larch dependency tiers";
+const WORKSPACE_DEPENDENCY_POLICY_NAME: &str = "workspace-dependency-policy";
+const WORKSPACE_DEPENDENCY_POLICY_DESCRIPTION: &str =
+    "Require member dependencies to inherit versions and features from the workspace";
 const TEST_LAYOUT_NAME: &str = "flat-tests";
 const TEST_LAYOUT_DESCRIPTION: &str =
     "Require Rust tests to use crate-local cfg(test) modules or integration tests";
@@ -48,6 +51,11 @@ pub static TEST_LAYOUT_METADATA: RuleMetadata = RuleMetadata::new(
     TEST_LAYOUT_DESCRIPTION,
     "crates/larch-lint/migration-ledger/flat-tests.toml",
 );
+pub static WORKSPACE_DEPENDENCY_POLICY_METADATA: RuleMetadata = RuleMetadata::new(
+    WORKSPACE_DEPENDENCY_POLICY_NAME,
+    WORKSPACE_DEPENDENCY_POLICY_DESCRIPTION,
+    "crates/larch-lint/migration-ledger/workspace-dependency-policy.toml",
+);
 pub static RENDERER_GOLDEN_TESTS_METADATA: RuleMetadata = RuleMetadata::new(
     RENDERER_GOLDEN_TESTS_NAME,
     RENDERER_GOLDEN_TESTS_DESCRIPTION,
@@ -57,11 +65,15 @@ pub static RENDERER_GOLDEN_TESTS_METADATA: RuleMetadata = RuleMetadata::new(
 #[derive(Debug)]
 pub struct PackageLayeringRule;
 #[derive(Debug)]
+pub struct WorkspaceDependencyPolicyRule;
+#[derive(Debug)]
 pub struct TestLayoutRule;
 #[derive(Debug)]
 pub struct RendererGoldenTestsRule;
 
 pub static PACKAGE_LAYERING_RULE: PackageLayeringRule = PackageLayeringRule;
+pub static WORKSPACE_DEPENDENCY_POLICY_RULE: WorkspaceDependencyPolicyRule =
+    WorkspaceDependencyPolicyRule;
 pub static TEST_LAYOUT_RULE: TestLayoutRule = TestLayoutRule;
 pub static RENDERER_GOLDEN_TESTS_RULE: RendererGoldenTestsRule = RendererGoldenTestsRule;
 
@@ -89,19 +101,78 @@ impl Rule for PackageLayeringRule {
             .collect();
         let mut findings = Vec::new();
         for package in metadata.workspace_packages() {
-            let importer_tier = package_tier(&package.name);
+            if !known_workspace_package(&package.name) {
+                findings.push(Finding::new(
+                    manifest_display_path(repository, package.manifest_path.as_std_path()),
+                    1,
+                    format!(
+                        "package {} has no declared layer in ARCHITECTURE.md",
+                        package.name
+                    ),
+                ));
+            }
             for dependency in &package.dependencies {
-                if dependency.kind == DependencyKind::Development || !workspace_names.contains(dependency.name.as_str()) {
+                if dependency.kind == DependencyKind::Development
+                    || !workspace_names.contains(dependency.name.as_str())
+                {
                     continue;
                 }
-                let dependency_tier = package_tier(&dependency.name);
-                if dependency_tier > importer_tier {
+                if !workspace_dependency_allowed(&package.name, &dependency.name) {
                     findings.push(Finding::new(
                         manifest_display_path(repository, package.manifest_path.as_std_path()),
                         1,
                         format!(
-                            "package {} depends on higher layer {}",
+                            "package {} may not depend on {}",
                             package.name, dependency.name
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(RuleOutput::from_findings(findings))
+    }
+}
+
+impl Rule for WorkspaceDependencyPolicyRule {
+    fn name(&self) -> &'static str {
+        WORKSPACE_DEPENDENCY_POLICY_NAME
+    }
+
+    fn description(&self) -> &'static str {
+        WORKSPACE_DEPENDENCY_POLICY_DESCRIPTION
+    }
+
+    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
+        let selector = PathSelector::new(&["crates/*/Cargo.toml"], &[])?;
+        let mut findings = Vec::new();
+        let root_path = RepoPath::from_trusted("Cargo.toml");
+        if repository.paths().contains(&root_path) {
+            let content = repository.read_utf8(&root_path)?;
+            let manifest = parse_manifest(&root_path, &content)?;
+            findings.extend(workspace_dependency_default_findings(&manifest));
+        }
+        for path in selector.select(repository) {
+            let content = repository.read_utf8(path)?;
+            let manifest = parse_manifest(path, &content)?;
+            if manifest.get("package").is_some() && !package_version_is_inherited(&manifest) {
+                findings.push(Finding::new(
+                    path.as_str(),
+                    1,
+                    "package version must inherit from [workspace.package]",
+                ));
+            }
+            for (dependency, value) in manifest_dependencies(&manifest) {
+                let inherited = value
+                    .as_table()
+                    .and_then(|settings| settings.get("workspace"))
+                    .and_then(toml::Value::as_bool)
+                    .is_some_and(|workspace| workspace);
+                if !inherited {
+                    findings.push(Finding::new(
+                        path.as_str(),
+                        1,
+                        format!(
+                            "dependency {dependency} must inherit its version and features from [workspace.dependencies]"
                         ),
                     ));
                 }
@@ -186,16 +257,93 @@ impl Rule for RendererGoldenTestsRule {
 }
 
 crate::register_rule!(PACKAGE_LAYERING_METADATA, PACKAGE_LAYERING_RULE);
+crate::register_rule!(
+    WORKSPACE_DEPENDENCY_POLICY_METADATA,
+    WORKSPACE_DEPENDENCY_POLICY_RULE
+);
 crate::register_rule!(TEST_LAYOUT_METADATA, TEST_LAYOUT_RULE);
 crate::register_rule!(RENDERER_GOLDEN_TESTS_METADATA, RENDERER_GOLDEN_TESTS_RULE);
 
-fn package_tier(name: &str) -> u8 {
-    match name {
-        "larch" | "larch-errors" | "larch-io" | "larch-outcomes" => 0,
-        "larch-core" => 1,
-        "larch-cli" => 3,
-        _ => 2,
+fn known_workspace_package(name: &str) -> bool {
+    matches!(
+        name,
+        "larch-core" | "larch-adapters" | "larch-cli" | "larch-lint"
+    )
+}
+
+fn workspace_dependency_allowed(importer: &str, dependency: &str) -> bool {
+    matches!(
+        (importer, dependency),
+        ("larch-adapters", "larch-core")
+            | ("larch-cli", "larch-core" | "larch-adapters")
+    )
+}
+
+fn manifest_dependencies(manifest: &toml::Table) -> Vec<(&str, &toml::Value)> {
+    let mut dependencies = Vec::new();
+    append_dependency_tables(manifest, &mut dependencies);
+    if let Some(targets) = manifest.get("target").and_then(toml::Value::as_table) {
+        for target in targets.values().filter_map(toml::Value::as_table) {
+            append_dependency_tables(target, &mut dependencies);
+        }
     }
+    dependencies
+}
+
+fn append_dependency_tables<'a>(
+    table: &'a toml::Table,
+    dependencies: &mut Vec<(&'a str, &'a toml::Value)>,
+) {
+    for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(entries) = table.get(section).and_then(toml::Value::as_table) {
+            dependencies.extend(entries.iter().map(|(name, value)| (name.as_str(), value)));
+        }
+    }
+}
+
+fn parse_manifest(path: &RepoPath, content: &str) -> Result<toml::Table, LintError> {
+    toml::from_str(content)
+        .map_err(|error| LintError::new(format!("{}: invalid TOML: {error}", path.as_str())))
+}
+
+fn package_version_is_inherited(manifest: &toml::Table) -> bool {
+    manifest
+        .get("package")
+        .and_then(toml::Value::as_table)
+        .and_then(|package| package.get("version"))
+        .and_then(toml::Value::as_table)
+        .and_then(|version| version.get("workspace"))
+        .and_then(toml::Value::as_bool)
+        .is_some_and(|workspace| workspace)
+}
+
+fn workspace_dependency_default_findings(manifest: &toml::Table) -> Vec<Finding> {
+    manifest
+        .get("workspace")
+        .and_then(toml::Value::as_table)
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(toml::Table::iter)
+        .filter_map(|(name, value)| {
+            let settings = value.as_table()?;
+            if settings.contains_key("path")
+                || settings
+                    .get("default-features")
+                    .and_then(toml::Value::as_bool)
+                    .is_some_and(|enabled| !enabled)
+            {
+                return None;
+            }
+            Some(Finding::new(
+                "Cargo.toml",
+                1,
+                format!(
+                    "workspace dependency {name} must set default-features = false"
+                ),
+            ))
+        })
+        .collect()
 }
 
 fn manifest_display_path(repository: &Repository, manifest: &std::path::Path) -> String {
@@ -425,14 +573,31 @@ fn collect_use_tree_identifiers(tree: &UseTree, references: &mut BTreeSet<String
 
 #[cfg(test)]
 mod tests {
-    use super::{has_cfg_test, is_integration_test, is_renderer_name, package_tier};
+    use super::{
+        has_cfg_test, is_integration_test, is_renderer_name, known_workspace_package,
+        workspace_dependency_allowed,
+    };
 
     #[test]
-    fn package_tiers_match_the_approved_direction() {
-        assert_eq!(package_tier("larch-io"), 0);
-        assert_eq!(package_tier("larch-core"), 1);
-        assert_eq!(package_tier("larch-issue"), 2);
-        assert_eq!(package_tier("larch-cli"), 3);
+    fn workspace_packages_and_edges_match_the_approved_architecture() {
+        assert!(known_workspace_package("larch-core"));
+        assert!(known_workspace_package("larch-adapters"));
+        assert!(known_workspace_package("larch-cli"));
+        assert!(known_workspace_package("larch-lint"));
+        assert!(!known_workspace_package("larch-report"));
+        assert!(workspace_dependency_allowed(
+            "larch-adapters",
+            "larch-core"
+        ));
+        assert!(workspace_dependency_allowed(
+            "larch-cli",
+            "larch-adapters"
+        ));
+        assert!(!workspace_dependency_allowed(
+            "larch-core",
+            "larch-adapters"
+        ));
+        assert!(!workspace_dependency_allowed("larch-cli", "larch-lint"));
     }
 
     #[test]

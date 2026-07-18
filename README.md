@@ -37,6 +37,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Linting](docs/linting.md) — linters, Makefile targets, halt-rate regression harness
   - [Issue-Anchored Plan](docs/issue-anchored-plan.md) — **live** wire format for the /design ↔ /implement plan handoff and clarification round-trip
 - **Architecture and workflow**
+  - [Rust Architecture](ARCHITECTURE.md) — crate ownership, dependency direction, external boundaries, and release constraints
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
   - [Design Flow](docs/collaborative-sketches.md) — direct plan drafting and plan review

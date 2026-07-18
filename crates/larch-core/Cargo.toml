@@ -1,0 +1,12 @@
+[package]
+name = "larch-core"
+version.workspace = true
+description = "Domain types and ports for larch"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
