@@ -54,6 +54,14 @@ The workspace package version is the compiled binary version. The CLI test
 suite checks it against `.claude-plugin/plugin.json`, which is the plugin
 release version selected by the release and installation decision in #7670.
 
+The migration-only command registry lives in
+`crates/larch-lint/data/command-registry.toml`. It records one owner and three
+independent milestones for each command: implementation parity, production
+consumer cutover, and Python removal. `larch-lint` imports the Python registry,
+inventories production callers, and blocks ownership or caller drift. Product
+crates do not depend on this repository-only migration ledger. See
+`docs/rust-command-registry.md` for the update workflow.
+
 ## Dependency policy
 
 `Cargo.toml` at the workspace root owns every crate version, feature set, and

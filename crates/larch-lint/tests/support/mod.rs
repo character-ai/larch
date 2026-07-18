@@ -101,6 +101,15 @@ fn seed_tracked_tree(repository: &TempRepo) {
     );
     repository.write("python/migrated-scripts.tsv", b"# retired paths\n");
     repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
+    );
+    repository.write("hooks/hooks.json", b"{\"hooks\": {}}\n");
+    repository.write(
+        "crates/larch-lint/data/command-registry.toml",
+        b"schema_version = 1\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nmigration_issue = 7661\n",
+    );
+    repository.write(
         "python/larch/report/timing.py",
         b"TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({\"fixture-kind\"})\n",
     );
