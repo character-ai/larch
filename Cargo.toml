@@ -28,7 +28,7 @@ larch-core = { version = "=53.1.22", path = "crates/larch-core" }
 predicates = { version = "3.1.4", default-features = false }
 pulldown-cmark = { version = "0.13.4", default-features = false }
 proc-macro2 = { version = "1.0.106", default-features = false, features = ["span-locations"] }
-regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
+regex = { version = "1.13.1", default-features = false, features = ["std", "perf", "unicode-perl"] }
 serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.149", default-features = false, features = ["std"] }
 syn = { version = "2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit"] }

@@ -1433,6 +1433,7 @@ version = "53.1.22"
 dependencies = [
  "gix",
  "larch-core",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -1453,6 +1454,9 @@ dependencies = [
 [[package]]
 name = "larch-core"
 version = "53.1.22"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "larch-lint"

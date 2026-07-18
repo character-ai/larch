@@ -5,7 +5,9 @@ mod context;
 mod env_file;
 mod error;
 mod outcome;
+mod redaction;
 mod retry;
+mod telemetry;
 mod time;
 
 pub use config::env;
@@ -19,10 +21,12 @@ pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };
 pub use outcome::{ExitCode, WorkflowOutcome};
+pub use redaction::{RedactionResult, SafeText, redact, redact_sensitive_paths};
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
     RetryPolicy, RetryPolicyError, StopReason,
 };
+pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 
 /// Immutable metadata about the running larch build.

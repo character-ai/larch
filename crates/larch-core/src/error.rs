@@ -1,6 +1,6 @@
 //! Categorized failures for domain and composition layers.
 
-use crate::ExitCode;
+use crate::{ExitCode, SafeText};
 use std::{error::Error, fmt};
 
 /// The actor or system responsible for resolving a failure.
@@ -87,7 +87,7 @@ impl FailureKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LarchError {
     kind: FailureKind,
-    message: String,
+    message: SafeText,
 }
 
 impl LarchError {
@@ -96,7 +96,7 @@ impl LarchError {
     pub fn new(kind: FailureKind, message: impl Into<String>) -> Self {
         Self {
             kind,
-            message: message.into(),
+            message: SafeText::from_untrusted(message.into()),
         }
     }
 
@@ -121,13 +121,13 @@ impl LarchError {
     /// Return the diagnostic without adding presentation text.
     #[must_use]
     pub fn message(&self) -> &str {
-        &self.message
+        self.message.as_str()
     }
 }
 
 impl fmt::Display for LarchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
+        formatter.write_str(self.message.as_str())
     }
 }
 
@@ -206,5 +206,17 @@ mod tests {
         assert_eq!(error.exit_code(), ExitCode::Transient);
         assert_eq!(error.message(), "GitHub request failed");
         assert_eq!(error.to_string(), "GitHub request failed");
+    }
+
+    #[test]
+    fn larch_error_redacts_external_diagnostics_before_storage() {
+        let token = ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789AB"].concat();
+        let error = LarchError::new(
+            FailureKind::Environment(EnvironmentalFailure::Transient),
+            format!("GitHub returned {token}"),
+        );
+
+        assert_eq!(error.message(), "GitHub returned <REDACTED-TOKEN>");
+        assert!(!error.to_string().contains(&token));
     }
 }

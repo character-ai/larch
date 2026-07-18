@@ -1,6 +1,7 @@
 //! Concrete adapters for filesystem, process, Git, time, and service boundaries.
 
 pub mod clock;
+pub mod logging;
 pub mod retry;
 pub mod runtime;
 
