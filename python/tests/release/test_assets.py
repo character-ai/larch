@@ -91,6 +91,20 @@ def test_release_workflow_installs_supported_python_before_cli_in_every_job() ->
         assert 'python-version: "3.11"' in job
 
 
+def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    macos_step = workflow.split("- name: Build and smoke-test on macOS", maxsplit=1)[1]
+    macos_step = macos_step.split("- name: Build and smoke-test at the GNU baseline", maxsplit=1)[0]
+    linux_step = workflow.split("- name: Build and smoke-test at the GNU baseline", maxsplit=1)[1]
+    linux_step = linux_step.split("- name: Package deterministic archive", maxsplit=1)[0]
+
+    sign = 'codesign --force --sign - --timestamp=none "$binary"'
+    verify = 'codesign --verify --verbose=2 "$binary"'
+    cargo_test = 'cargo test --locked --package larch-cli --target "$TARGET"'
+    assert macos_step.index(sign) < macos_step.index(verify)
+    assert linux_step.index('export PATH="/root/.cargo/bin:$PATH"') < linux_step.index(cargo_test)
+
+
 def test_validate_candidate_requires_matching_plugin_and_workspace_versions(tmp_path: Path) -> None:
     (tmp_path / ".claude-plugin").mkdir()
     _ = (tmp_path / ".claude-plugin" / "plugin.json").write_text(

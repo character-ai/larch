@@ -137,6 +137,7 @@ jobs:
             '
           })"
           test "$minimum" = "$MACOSX_DEPLOYMENT_TARGET"
+          codesign --force --sign - --timestamp=none "$binary"
           codesign --verify --verbose=2 "$binary"
       - name: Build and smoke-test at the GNU baseline
         if: matrix.family == 'linux'
@@ -166,6 +167,7 @@ jobs:
             --env EXPECTED_ARCHITECTURE="$EXPECTED_ARCHITECTURE" \
             "$CONTAINER_IMAGE" \
             bash -euo pipefail -c '
+              export PATH="/root/.cargo/bin:$PATH"
               cargo test --locked --package larch-cli --target "$TARGET"
               cargo build --locked --release --package larch-cli --target "$TARGET"
               binary="target/$TARGET/release/larch"
