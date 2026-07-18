@@ -371,7 +371,7 @@ def test_github_and_attestation_failures_leave_existing_binary_untouched(
     assert result.returncode != 0
     assert "Retry the command" in result.stderr
     assert binary.read_bytes() == original
-    assert list(binary.parent.glob(".larch-bootstrap.*")) == []
+    assert not list(binary.parent.glob(".larch-bootstrap.*"))
 
 
 def test_same_version_wrong_target_is_atomically_replaced(tmp_path: Path) -> None:
@@ -475,22 +475,24 @@ def test_concurrent_first_use_downloads_once(tmp_path: Path) -> None:
     environment = _environment(fixture, GH_DOWNLOAD_DELAY="1")
     command = ["/bin/bash", str(SCRIPT), "example", "echo", "concurrent"]
 
-    first = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=environment,
-    )
-    second = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=environment,
-    )
-    first_stdout, first_stderr = first.communicate(timeout=20)
-    second_stdout, second_stderr = second.communicate(timeout=20)
+    with (
+        subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        ) as first,
+        subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        ) as second,
+    ):
+        first_stdout, first_stderr = first.communicate(timeout=20)
+        second_stdout, second_stderr = second.communicate(timeout=20)
 
     assert first.returncode == 0, first_stderr
     assert second.returncode == 0, second_stderr
