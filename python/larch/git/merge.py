@@ -152,7 +152,12 @@ def merge_pr(
             return post_err
         return race
 
-    merge_outcome = _attempt_merge(runner=runner, ctx=ctx, pr_num=pr_num, cwd=cwd)
+    merge_outcome = _attempt_merge(
+        runner=runner,
+        ctx=ctx,
+        pr_num=pr_num,
+        cwd=cwd,
+    )
     if post_flush:
         post_err = _post_flush(runner=runner, ctx=ctx, merge_result=merge_outcome.result)
         if post_err is not None:
@@ -528,7 +533,7 @@ def _attempt_merge(
             runner,
             pr_num,
             repo=ctx.repo,
-            merge_method="squash",
+            merge_method=ctx.merge_method,
             admin=False,
             cwd=cwd,
         )
@@ -550,7 +555,7 @@ def _attempt_merge(
         runner,
         pr_num,
         repo=ctx.repo,
-        merge_method="squash",
+        merge_method=ctx.merge_method,
         admin=True,
         cwd=cwd,
     )
@@ -562,7 +567,7 @@ def _attempt_merge(
         runner,
         pr_num,
         repo=ctx.repo,
-        merge_method="squash",
+        merge_method=ctx.merge_method,
         admin=False,
         cwd=cwd,
     )
@@ -587,6 +592,7 @@ def pr_main(argv: list[str]) -> int:
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--no-admin-fallback", action="store_true")
+    parser.add_argument("--method", choices=("squash", "merge"), default="squash")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -606,6 +612,7 @@ def pr_main(argv: list[str]) -> int:
         repo_unavailable=False,
         pr_number=args.pr,
         no_logs_commit=True,
+        merge_method=args.method,
     )
     result = merge_pr(runner=proc, ctx=ctx, post_flush=False)
     logging_util.emit_kv(key="MERGE_RESULT", value=result.result)

@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Use when cutting a larch release: collect merged PRs, classify semver bump, open and merge the version PR, tag, publish GitHub Release, and promote Latest."
+description: "Use when cutting a larch release: create and tag a version candidate, validate its draft assets, merge it, publish immutable, and promote Latest."
 argument-hint: "[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]"
 allowed-tools: AskUserQuestion, Bash, Skill
 disable-model-invocation: true
@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
 
-Operator-run release cut for `character-ai/larch`. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
+Operator-run release cut for `character-ai/larch`. It gates candidate merge on the validated draft asset set, then gates Latest promotion on immutable release verification. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
 
 ## Flags
 
@@ -154,10 +154,10 @@ The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a pre
 - **Change bump (major/minor/patch)** — re-run prepare with the chosen override, then re-confirm
 - **Cancel** — stop (default when `PR_COUNT=0` unless the operator explicitly overrides)
 
-## Step 5 — Land the bump (PR → CI → merge)
+## Step 5 — Validate the candidate draft, then merge
 
 ```bash
-# lint-consecutive-bash: ok PR creation must finish before CI wait and merge
+# lint-consecutive-bash: ok PR creation must finish before candidate staging
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
@@ -171,44 +171,100 @@ Record `PR_NUMBER` from `python/cli.py pr create` stdout. Then:
 
 ```bash
 python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
-python3 "$PWD/python/cli.py" merge pr --pr "$PR_NUMBER" --repo "$REPO"
-```
-
-Invoke `python/cli.py ci wait` synchronously (no background polling). Set Bash `timeout: 1860000` (31 minutes) on that call so long release CI is not cut off by the orchestrator default.
-
-On CI or merge failure, surface the helper status and stop (no tag/Release/promote).
-
-## Step 6 — Tag, Release, promote
-
-```bash
+python3 "$PWD/python/cli.py" release ensure-policy --repo "$REPO"
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
-python3 "$PWD/python/cli.py" release finish \
+stage_out=$(python3 "$PWD/python/cli.py" release stage \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
   --repo "$REPO" \
-  --pr "$PR_NUMBER"
+  --pr "$PR_NUMBER")
+printf '%s\n' "$stage_out"
+SOURCE_COMMIT=""
+while IFS='=' read -r release_key release_value; do
+  case "$release_key" in SOURCE_COMMIT) SOURCE_COMMIT="$release_value" ;; esac
+done <<EOF
+$stage_out
+EOF
+test -n "$SOURCE_COMMIT"
+TAG="v${NEW_VERSION}"
+asset_run_out=$(python3 "$PWD/python/cli.py" release asset-run \
+  --repo "$REPO" \
+  --tag "$TAG" \
+  --source-commit "$SOURCE_COMMIT")
+printf '%s\n' "$asset_run_out"
+ASSET_RUN_ID=""
+while IFS='=' read -r release_key release_value; do
+  case "$release_key" in ASSET_RUN_ID) ASSET_RUN_ID="$release_value" ;; esac
+done <<EOF
+$asset_run_out
+EOF
+test -n "$ASSET_RUN_ID"
+python3 "$PWD/python/cli.py" bgjob start \
+  --step release-assets \
+  --tmpdir "$NOTES_DIR" \
+  --budget-s 7200 \
+  -- \
+  gh run watch "$ASSET_RUN_ID" --repo "$REPO" --compact --exit-status --interval 30
 ```
 
-See `$PWD/python/cli.py release finish` for `TARGET_OID` resolution and idempotent re-run safety.
+Invoke `python/cli.py ci wait` synchronously. Set Bash `timeout: 1860000` (31 minutes) on that call so candidate CI is not cut off by the orchestrator default. Continue only when the bgjob launch prints `BGJOB_STATUS=STARTED STEP=release-assets`.
 
-If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release prepare` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
+Wait for the tag-triggered asset workflow only through this command, with Bash `timeout: 330000`:
 
 ```bash
-RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
-RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
-python3 "$PWD/python/cli.py" release finish \
-  --version "$NEW_VERSION" \
-  --notes-file "$RECOVERY_NOTES_FILE" \
-  --repo "$REPO" \
-  --pr "$PR_NUMBER"
+NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+python3 "$PWD/python/cli.py" bgjob wait \
+  --step release-assets \
+  --tmpdir "$NOTES_DIR" \
+  --max-wait-s 270
 ```
 
-Or promote-only: `python3 "$PWD/python/cli.py" release promote "$NEW_VERSION" --repo "$REPO"`.
+On `BGJOB_STATUS=WAIT`, repeat the identical wait immediately. Emit no prose and call no other tool between waits. On `BGJOB_STATUS=DONE`, read the full KV block and `$NOTES_DIR/bgjob/release-assets.result.env`. Continue only when `BGJOB_RC=0`.
 
-After a successful `release finish` re-run or promote-only retry, continue to Step 7 (`/upgrade-larch`) and Step 8 (cleanup) so recovery paths still perform local teardown. When printing the `release finish` retry command after a failure, expand `"$RECOVERY_NOTES_FILE"` to its concrete path; the temp `"$NOTES_DIR"` may be removed after the durable recovery copy exists.
+After the workflow succeeds, validate the uploaded draft against the exact candidate and merge with a merge commit:
 
-**Recovery when remote tag exists on a different commit:** `release finish` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release finish` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (implementation: `python/release_finish.py`).
+```bash
+SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
+python3 "$PWD/python/cli.py" release validate-draft \
+  --version "$NEW_VERSION" \
+  --repo "$REPO" \
+  --pr "$PR_NUMBER" \
+  --source-commit "$SOURCE_COMMIT"
+python3 "$PWD/python/cli.py" merge pr \
+  --pr "$PR_NUMBER" \
+  --repo "$REPO" \
+  --method merge
+```
+
+The merge helper must report a merged result. The merge-commit method preserves the tagged candidate commit as an ancestor of `main`; ordinary larch PR callers still use the default squash method.
+
+On candidate CI, asset workflow, draft validation, or merge failure, stop before publication. Keep the candidate branch, tag, and mutable draft for repair. A failed asset workflow may be rerun for the same tag and draft; never cut a second version. Repeat `release stage`, the asset workflow wait, and `release validate-draft` for recovery. Asset replacement is allowed only while the Release remains a draft.
+
+## Step 6 — Publish the immutable Release and promote Latest
+
+```bash
+SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
+python3 "$PWD/python/cli.py" release finish \
+  --version "$NEW_VERSION" \
+  --repo "$REPO" \
+  --pr "$PR_NUMBER" \
+  --source-commit "$SOURCE_COMMIT"
+```
+
+`release finish` revalidates repository policy, tag identity, candidate ancestry, both `plugin.json` versions, the complete asset allowlist, every GitHub asset digest, the manifest, checksums, archives, and artifact attestations. It then publishes with `--latest=false`, verifies the immutable release attestation and every release asset against that attestation, and only then promotes the same release to Latest.
+
+If Step 6 fails after Step 5 merged the release PR, do **not** re-run full `/release`. Re-run Step 6 only with the same version, PR, and source commit:
+
+```bash
+python3 "$PWD/python/cli.py" release finish \
+  --version "$NEW_VERSION" \
+  --repo "$REPO" \
+  --pr "$PR_NUMBER" \
+  --source-commit "$SOURCE_COMMIT"
+```
+
+The recovery command never creates another tag or Release. If publication already succeeded, it verifies the same immutable release and resumes Latest promotion. Continue to Step 7 and Step 8 only after `IMMUTABLE_RELEASE_VALID=true` and `LATEST=true`.
 
 ## Step 7 — Upgrade local install
 
@@ -347,14 +403,18 @@ Runtime helpers:
 
 - `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `python3 "$PWD/python/cli.py" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
-- `python3 "$PWD/python/cli.py" release finish`: tag, GitHub Release, promote tail
+- `python3 "$PWD/python/cli.py" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
+- `python3 "$PWD/python/cli.py" release stage`: tag the candidate commit and create or verify its mutable draft Release
+- `python3 "$PWD/python/cli.py" release asset-run`: resolve the exact tag-triggered asset workflow run
+- `python3 "$PWD/python/cli.py" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
+- `python3 "$PWD/python/cli.py" release finish`: revalidate, publish immutable, verify release attestations, and promote Latest
 - `python3 "$PWD/python/cli.py" release promote`: promote a specific release after `finish`, or during promote-only recovery
 - `python3 "$PWD/python/cli.py" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
 
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `python/cli.py gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr`, `python3 "$PWD/python/cli.py" release promote` (contract: `python/cli.py release promote`)
+- `python/cli.py gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge`, and `python/cli.py bgjob {start,wait}`
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
@@ -363,6 +423,6 @@ Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 
 Offline harnesses:
 
-- `python/tests/release/test_release.py`: release prepare, set-version, finish, promote, and promote-latest regression coverage
+- `python/tests/release/test_release.py`: release prepare, set-version, candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
 - `python/test_version_bump.py`: bump classification and plugin version helper coverage
 - Makefile targets: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`

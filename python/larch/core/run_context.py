@@ -93,6 +93,7 @@ class RunContext:
     fix_attempts: int = 0
     transient_retries: int = 0
     oos_pending: bool = True
+    merge_method: str = "squash"
 
     @classmethod
     def from_env(cls, *, env: dict[str, str] | None = None) -> RunContext:
