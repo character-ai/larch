@@ -1,5 +1,7 @@
-//! Concrete adapters for filesystem, process, Git, and service boundaries.
+//! Concrete adapters for filesystem, process, Git, time, and service boundaries.
 
+pub mod clock;
+pub mod retry;
 pub mod runtime;
 
 use larch_core::BuildMetadata;
