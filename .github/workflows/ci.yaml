@@ -334,8 +334,11 @@ jobs:
       - name: Run agnix
         run: agnix . --strict --target claude-code --config .agnix.toml
 
-  # Rust lint and dependency policy lane, modeled on agent-lint's dedicated
-  # lint job. The aggregate rust-gate below is the stable required check.
+  # Rust format, repository-rule, and dependency-policy lane, modeled on
+  # agent-lint's dedicated lint job. Clippy — the dominant Rust lint cost —
+  # runs in the parallel `rust-clippy` job below so the two compile-heavy
+  # checks no longer run back-to-back on one runner. The aggregate rust-gate
+  # below is the stable required check and gates every Rust lane.
   rust-lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -362,8 +365,6 @@ jobs:
             cargo-${{ runner.os }}-${{ github.job }}-
       - name: Check Rust formatting
         run: make rust-fmt
-      - name: Run Clippy with warnings denied
-        run: make rust-clippy
       - name: Run larch-lint repository rules
         run: make rust-lint
       # cargo-deny-action v2.1.1. Pin the full SHA so dependency policy cannot
@@ -372,6 +373,38 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
         with:
           arguments: --locked --all-features
+
+  # Clippy is the dominant Rust lint cost: a full workspace, all-targets,
+  # all-features compile in check mode. It runs in its own job, in parallel
+  # with the `rust-lint` (fmt + larch-lint + deny) and `rust-build-test` lanes,
+  # instead of serially after fmt. The aggregate rust-gate below requires this
+  # lane, so splitting it out does not let clippy silently stop being enforced.
+  rust-clippy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+          sparse-checkout-cone-mode: false
+      - name: Install pinned Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+          rustup component list --installed
+      - name: Cache Cargo inputs and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ github.job }}-
+      - name: Run Clippy with warnings denied
+        run: make rust-clippy
 
   # Native Linux build and test lane, modeled on agent-lint's build-and-test
   # job and kept separate so it runs in parallel with Rust linting.
@@ -409,15 +442,17 @@ jobs:
   # shape changes. `if: always()` prevents a skipped dependency from passing.
   rust-gate:
     name: rust-gate
-    needs: [rust-lint, rust-build-test]
+    needs: [rust-lint, rust-clippy, rust-build-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every Rust lane to pass
         run: |
           lint_result="${{ needs.rust-lint.result }}"
+          clippy_result="${{ needs.rust-clippy.result }}"
           build_test_result="${{ needs.rust-build-test.result }}"
           [ "$lint_result" = success ] || { echo "::error::rust-lint result=$lint_result"; exit 1; }
+          [ "$clippy_result" = success ] || { echo "::error::rust-clippy result=$clippy_result"; exit 1; }
           [ "$build_test_result" = success ] || { echo "::error::rust-build-test result=$build_test_result"; exit 1; }
 
   contains-pins:
