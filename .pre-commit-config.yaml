@@ -267,16 +267,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-no-raw-stderr-after-quiet-init
-        name: Lint raw stderr after larch_quiet_init
-        entry: python3 python/cli.py lint no-raw-stderr-after-quiet-init
-        language: system
-        pass_filenames: false
-        always_run: true
-        files: ^(scripts/.*\.sh|hooks/.*\.sh|skills/[^/]+/scripts/.*\.sh)$
-
-  - repo: local
-    hooks:
       - id: lint-run-log-run-id
         name: Reject non-unique placeholder run-log run-ids (run-N)
         entry: cargo run --quiet --locked --package larch-lint -- rule run-log-run-id

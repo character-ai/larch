@@ -41,6 +41,16 @@ The F3 workspace dependency set is intentionally complete for the already
 filed leaves. A leaf may not add a root dependency: a newly discovered shared
 need requires a blocked foundation issue and an amended dependency graph.
 
+## Shell contract rules (issue #7610)
+
+The two shell-contract ports evaluate `tree-sitter-bash` and `brush-parser`.
+Both are maintained and MIT licensed. The workspace already reserves the
+tree-sitter grammar for these leaves, so the port uses it without adding a
+dependency. It recognizes Bash commands, redirections, comments, and heredoc
+bodies. The only source-line checks left are the established exact preamble
+literal and the existing reason-bearing suppression grammar. Those checks are
+bounded compatibility rules, not a second shell parser.
+
 ## Control-flow analysis (issue #7623)
 
 Before adding the Rust `unreachable-branch` rule, the maintained compiler and

@@ -18,7 +18,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
-.PHONY: agent-sync lint-harness-session-env test-lint-harness-session-env
+.PHONY: agent-sync
 .PHONY: lint-flat-tests test-lint-flat-tests
 .PHONY: test-hook-deny-run-in-background test-bgjob
 .PHONY: lint-em-dash-output test-lint-em-dash-output
@@ -37,7 +37,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-harness-session-env lint-em-dash-output lint-codex-exec-auth rust-lint lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-em-dash-output lint-codex-exec-auth rust-lint lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -156,8 +156,7 @@ LINT_TEST_DESCRIPTORS := \
 	engine-adoption|python/tests/lint/test_lint_engine_adoption.py \
 	em-dash-output|python/tests/lint/test_lint_em_dash_output.py \
 	flat-tests|python/tests/lint/test_lint_flat_tests.py \
-	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py \
-	harness-session-env|python/tests/lint/test_lint_harness_session_env.py
+	codex-exec-auth|python/tests/lint/test_lint_codex_exec_auth.py
 
 lint_test_descriptor_parts = $(subst |,$(space),$1)
 
@@ -259,7 +258,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
+test-harnesses-2: test-harness-shards-coverage test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
@@ -511,9 +510,6 @@ test-promote-release:
 test-git-push:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_push.py -q -k 'branch_push or branch_main or propagates_final_exit'
 
-
-test-lint-no-raw-stderr-after-quiet-init:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
 
 test-anti-halt:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-halt-banners.sh
@@ -1148,9 +1144,6 @@ test-eval-research-baseline-flag:
 
 shellcheck:
 	pre-commit run shellcheck --all-files
-
-lint-harness-session-env:
-	python3 python/cli.py lint harness-session-env
 
 markdownlint:
 	pre-commit run markdownlint --all-files

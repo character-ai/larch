@@ -14,7 +14,6 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `larch/lint/gitleaks.py`: checksum-pinned release bootstrap shared by local pre-commit and CI gitleaks scans
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
-- `lint_no_raw_stderr_after_quiet_init.py` — local lint surface exposed as `python/cli.py lint no-raw-stderr-after-quiet-init`.
 - `render_session_transcript.py`, `cleanup_implement_logs.py`, `retro_v3_sweep.py` — run-log maintenance surfaces exposed as `python/cli.py run-log render-session-transcript`, `python/cli.py run-log cleanup-implement-logs`, and `python/cli.py run-log retro-v3-sweep`.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
