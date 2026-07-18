@@ -82,10 +82,8 @@ def test_release_ensure_policy_mutates_then_reverifies(tmp_path: Path) -> None:
     assert runner.calls[3][-1] == "repos/o/r/immutable-releases"
 
 
-def test_release_missing_probe_accepts_only_http_404(tmp_path: Path) -> None:
-    missing_runner = QueueRunner(
-        [cr(["gh"], stderr="gh: Not Found (HTTP 404)\n", rc=1)]  # lint-gh-argv-literal: ok fixture assertion
-    )
+def test_release_list_probe_handles_missing_and_access_failure(tmp_path: Path) -> None:
+    missing_runner = QueueRunner([cr(["gh"], "[]")])  # lint-gh-argv-literal: ok fixture assertion
     assert (
         release_finish._release_state(
             missing_runner,
@@ -100,9 +98,31 @@ def test_release_missing_probe_accepts_only_http_404(tmp_path: Path) -> None:
     denied_runner = QueueRunner(
         [cr(["gh"], stderr="gh: Resource not accessible (HTTP 403)\n", rc=1)]  # lint-gh-argv-literal: ok fixture assertion
     )
-    with pytest.raises(release_finish.ReleaseError, match="release read failed"):
+    with pytest.raises(release_finish.ReleaseError, match="release list read failed"):
         _ = release_finish._release_state(
             denied_runner,
+            repo="o/r",
+            tag="v1.2.3",
+            cwd=tmp_path,
+            missing_ok=True,
+        )
+
+
+def test_release_list_rejects_duplicate_drafts_for_same_tag(tmp_path: Path) -> None:
+    draft = {
+        "id": 7,
+        "tag_name": "v1.2.3",
+        "draft": True,
+        "immutable": False,
+        "assets": [],
+    }
+    runner = QueueRunner(
+        [cr(["gh"], json.dumps([draft, {**draft, "id": 8}]))]  # lint-gh-argv-literal: ok fixture assertion
+    )
+
+    with pytest.raises(release_finish.ReleaseError, match="multiple releases found"):
+        _ = release_finish._release_state(
+            runner,
             repo="o/r",
             tag="v1.2.3",
             cwd=tmp_path,
@@ -127,14 +147,23 @@ def test_release_stage_resume_reuses_same_draft(
         release_finish, "_plugin_version_at", lambda *_args, **_kwargs: "1.2.3"
     )
     monkeypatch.setattr(release_finish, "_stage_tag", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        release_finish,
-        "_release_state",
-        lambda *_args, **_kwargs: _release_state(draft=True, immutable=False),
-    )
     notes = tmp_path / "notes.md"
     notes.write_text("notes\n", encoding="utf-8")
-    runner = ReleaseStateRunner()
+    draft = {
+        "id": 7,
+        "tag_name": "v1.2.3",
+        "draft": True,
+        "immutable": False,
+        "assets": [],
+    }
+    draft_page = json.dumps([draft])
+    runner = QueueRunner(
+        [
+            cr(["gh"], draft_page),  # lint-gh-argv-literal: ok fixture assertion
+            cr(["gh"]),  # lint-gh-argv-literal: ok fixture assertion
+            cr(["gh"], draft_page),  # lint-gh-argv-literal: ok fixture assertion
+        ]
+    )
     assert (
         release_finish.stage_candidate(
             runner=runner,
@@ -144,6 +173,9 @@ def test_release_stage_resume_reuses_same_draft(
         == SOURCE_COMMIT
     )
     assert not any(call[:3] == ["gh", "release", "create"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
+    list_calls = [call for call in runner.calls if "repos/o/r/releases?per_page=100" in call]
+    assert len(list_calls) == 2
+    assert all("--paginate" not in call for call in list_calls)
 
 
 def test_release_validate_draft_rejects_incomplete_allowlist(
