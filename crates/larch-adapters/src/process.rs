@@ -538,6 +538,7 @@ mod tests {
     use larch_core::{
         ExternalProgram, GitCliOperation, ProcessRequest, ProcessRequestError, VendorProgram,
     };
+    use larch_test_support::TestClock;
     use std::{
         num::NonZeroUsize,
         sync::Mutex,
@@ -637,20 +638,12 @@ mod tests {
         assert!(!inherited.contains(&"OPENAI_API_KEY"));
     }
 
-    struct FixedClock;
-
-    impl BusinessClock for FixedClock {
-        fn now(&self) -> SystemTime {
-            SystemTime::UNIX_EPOCH
-        }
-    }
-
     #[test]
     fn process_journal_records_only_closed_fields_and_counts() {
         let observer = ProcessJournalObserver::new(
             Vec::new(),
             RunId::parse("run-process").expect("run ID"),
-            FixedClock,
+            TestClock::new(SystemTime::UNIX_EPOCH),
         );
         observer.observe(ProcessEvent::new(
             ProcessEventKind::Exited,

@@ -1,0 +1,16 @@
+[package]
+name = "larch-test-support"
+version.workspace = true
+description = "Shared test fixtures for the larch Rust workspace"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+larch-core.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

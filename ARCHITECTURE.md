@@ -12,6 +12,7 @@ until each command moves directly to its Rust owner.
 | `larch-adapters` | Concrete implementations of core ports. This includes filesystem and process boundaries, `gix`, Git CLI exceptions, GitHub and Google clients, and other external I/O. | `larch-core`. |
 | `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases. Its binary target is named `larch`. | `larch-core`, `larch-adapters`. |
 | `larch-lint` | Repository-only policy tooling. It is not linked into the product. | None of the product crates. |
+| `larch-test-support` | Workspace-only fixture builders for files, environments, clocks, processes, and HTTP responses. Product crates may use it only as a dev-dependency. | `larch-core`. |
 
 The product dependency direction is:
 
@@ -23,11 +24,14 @@ larch-cli -> larch-adapters -> larch-core
 Dependency direction applies to normal and build dependencies. Tests may use
 dev-dependencies across layers when an integration test needs them. Product
 crates must not depend on `larch-lint`.
+`larch-test-support` also stays outside the product graph and release binary.
 
 Add modules inside these crates. A new crate needs an independent ownership
 boundary, dependency set, and test surface, plus updates to this file and the
 `layering` rule. The [shared async model](docs/rust-async-runtime.md) defines
 cancellation, task ownership, signals, and child shutdown.
+The [Rust testing guide](docs/rust-testing.md) defines fixture ownership,
+test boundaries, coverage, external access, and CI partitioning.
 
 ## Boundary rules
 

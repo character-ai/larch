@@ -19,5 +19,8 @@ tokio-util.workspace = true
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
+[dev-dependencies]
+larch-test-support.workspace = true
+
 [lints]
 workspace = true
