@@ -6,6 +6,7 @@
 //! must change when a later rule is added.
 
 mod cli;
+mod command_registry;
 mod metadata;
 mod repository;
 mod runner;
@@ -17,6 +18,7 @@ mod rules {
 }
 
 pub use cli::run_cli;
+pub use command_registry::{render_command_progress, sync_command_registry};
 pub use metadata::{
     RuleMetadata, RuleRegistration, registered_rule_registry, validate_migration_ledger,
 };

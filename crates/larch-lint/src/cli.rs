@@ -33,6 +33,21 @@ enum Command {
     },
     /// List registered rules in name order.
     Rules,
+    /// Maintain or report the Python-to-Rust command ownership ledger.
+    #[command(name = "command-registry", subcommand)]
+    Registry(CommandRegistryCommand),
+}
+
+#[derive(Clone, Copy, Debug, Subcommand)]
+enum CommandRegistryCommand {
+    /// Refresh Python command metadata and production caller inventory.
+    Sync {
+        /// Responsible issue assigned only to newly discovered commands.
+        #[arg(long, value_name = "NUMBER", value_parser = clap::value_parser!(u64).range(1..))]
+        migration_issue: u64,
+    },
+    /// Render migration progress for the Chief migration issue.
+    Report,
 }
 
 /// Run the production command-line interface.
@@ -49,6 +64,30 @@ pub fn run_cli() -> i32 {
         },
         Command::All => execute_all(cli.root.as_deref()),
         Command::Rule { name } => execute_named(&name, cli.root.as_deref()),
+        Command::Registry(command) => execute_command_registry(command, cli.root.as_deref()),
+    }
+}
+
+fn execute_command_registry(command: CommandRegistryCommand, root: Option<&Path>) -> i32 {
+    let repository = match discover_repository(root) {
+        Ok(repository) => repository,
+        Err(exit) => return exit,
+    };
+    let result = match command {
+        CommandRegistryCommand::Sync { migration_issue } => {
+            crate::sync_command_registry(&repository, migration_issue).map(|summary| {
+                print!("{summary}");
+            })
+        }
+        CommandRegistryCommand::Report => {
+            crate::render_command_progress(&repository).map(|report| {
+                print!("{report}");
+            })
+        }
+    };
+    match result {
+        Ok(()) => ExitCode::Clean.as_i32(),
+        Err(error) => render_error(&error, &mut std::io::stderr()).as_i32(),
     }
 }
 

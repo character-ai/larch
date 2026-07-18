@@ -44,6 +44,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "bg-wait-coverage\tReject unallowlisted background-launch prose in skills\n",
         ))
         .stdout(predicate::str::contains(
+            "command-registry\tValidate command ownership, migration state, and production caller inventory\n",
+        ))
+        .stdout(predicate::str::contains(
             "git-push-refspec\tRequire Git push commands to name a destination refspec\n",
         ))
         .stdout(predicate::str::contains(
