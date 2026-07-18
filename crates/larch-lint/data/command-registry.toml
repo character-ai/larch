@@ -5198,6 +5198,18 @@ migration_issue = 7687
 
 [[commands]]
 domain = "release"
+verb = "asset-run"
+python_module = "larch.release.release_finish"
+python_function = "asset_run_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
 verb = "classify-bump"
 python_module = "larch.release.version_bump"
 python_function = "classify_bump_main"
@@ -5213,6 +5225,18 @@ domain = "release"
 verb = "collect-assets"
 python_module = "larch.release.assets"
 python_function = "collect_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
+verb = "ensure-policy"
+python_module = "larch.release.release_finish"
+python_function = "ensure_policy_main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
@@ -5294,9 +5318,33 @@ migration_issue = 7687
 
 [[commands]]
 domain = "release"
+verb = "stage"
+python_module = "larch.release.release_finish"
+python_function = "stage_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
 verb = "validate-assets"
 python_module = "larch.release.assets"
 python_function = "validate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
+verb = "validate-draft"
+python_module = "larch.release.release_finish"
+python_function = "validate_draft_main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"

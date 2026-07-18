@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,9 +14,9 @@ from larch.git import git as git_module
 from larch.git import merge as merge_module
 from larch.report import run_log_manifest, run_log_flush
 from larch.core.proc import CommandResult
-from pathlib import Path
 
-from larch.core.run_context import RunContext
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 
 from test_support import RecordingRunner, make_run_context, merge_admin_responses
@@ -278,6 +280,29 @@ def test_merge_pr_emits_admin_merged(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+
+
+def test_merge_pr_opt_in_merge_commit_method_preserves_squash_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), merge_method="merge")
+    out = merge_module.merge_pr(runner=runner, ctx=ctx)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert "--merge" in runner.calls[-1]
+    assert "--squash" not in runner.calls[-1]
 
 
 def test_merge_pr_emits_merged_via_plain_fallback(

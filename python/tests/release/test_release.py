@@ -36,124 +36,279 @@ def cr(argv, stdout="", stderr="", rc=0):
     return CommandResult(tuple(argv), rc, stdout, stderr, 0.01)
 
 
-class ReleaseFinishRunner:
-    def __init__(self, *, remote_tag: str = "", local_tag: str = "", release_exists: bool = True, merge_oid: str = "abc1234", unresolved_target_attempts: int = 0, ancestry_failures: int = 0):
-        self.remote_tag = remote_tag
-        self.local_tag = local_tag
-        self.release_exists = release_exists
-        self.merge_oid = merge_oid
-        self.unresolved_target_attempts = unresolved_target_attempts
-        self.ancestry_failures = ancestry_failures
+class ReleaseStateRunner:
+    def __init__(self, *, ancestry_ok: bool = True):
+        self.ancestry_ok = ancestry_ok
         self.calls: list[list[str]] = []
 
     def run(self, argv, **_kwargs):
         self.calls.append(list(argv))
-        if argv[:3] == ["git", "fetch", "origin"]:
-            return cr(argv)
-        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "mergeCommit":  # lint-gh-argv-literal: ok fixture assertion
-            value = {"oid": self.merge_oid} if self.merge_oid else None
-            return cr(argv, json.dumps({"mergeCommit": value}))
-        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "state":  # lint-gh-argv-literal: ok fixture assertion
-            return cr(argv, '{"state":"MERGED"}\n')
-        if argv[:3] == ["git", "rev-parse", "--verify"]:
-            target = argv[3]
-            if target == "abc1234^{commit}":
-                if self.unresolved_target_attempts > 0:
-                    self.unresolved_target_attempts -= 1
-                    return cr(argv, rc=1)
-                return cr(argv, "abc1234\n")
-            if target == "v1.2.3^{commit}" and self.local_tag:
-                return cr(argv, f"{self.local_tag}\n")
-            if target == "v1.2.3^{commit}":
-                return cr(argv, rc=1)
-        if argv[:2] == ["git", "rev-parse"] and argv[2] == "origin/main^{commit}":
-            return cr(argv, "abc1234\n")
-        if argv[:2] == ["git", "rev-parse"] and argv[2] == "abc1234^{commit}":
-            return cr(argv, "abc1234\n")
         if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
-            if self.ancestry_failures > 0:
-                self.ancestry_failures -= 1
-                return cr(argv, rc=1)
-            return cr(argv)
-        if argv[:3] == ["git", "ls-remote", "origin"]:
-            return cr(argv, self.remote_tag)
-        if argv[:2] == ["git", "tag"]:
-            return cr(argv)
-        if argv[:2] == ["git", "push"]:  # lint-git-push-refspec: ok fixture prefix assertion
-            return cr(argv)
-        if argv[:3] == ["gh", "release", "view"]:  # lint-gh-argv-literal: ok fixture assertion
-            return cr(argv, rc=0 if self.release_exists else 1)
+            return cr(argv, rc=0 if self.ancestry_ok else 1)
+        return cr(argv)
+
+
+SOURCE_COMMIT = "a" * 40
+
+
+def _candidate(tmp_path: Path) -> release_finish.ReleaseCandidate:
+    return release_finish.ReleaseCandidate("1.2.3", "o/r", 5, SOURCE_COMMIT, tmp_path)
+
+
+def _release_state(
+    *, draft: bool, immutable: bool, names: tuple[str, ...] = ()
+) -> release_finish.ReleaseState:
+    remote_assets = tuple(
+        release_finish.RemoteAsset(
+            name=name, size=1, digest="sha256:" + "0" * 64, state="uploaded"
+        )
+        for name in names
+    )
+    return release_finish.ReleaseState(7, "v1.2.3", draft, immutable, remote_assets)
+
+
+def test_release_ensure_policy_mutates_then_reverifies(tmp_path: Path) -> None:
+    runner = QueueRunner(
+        [
+            cr(["gh"]),  # lint-gh-argv-literal: ok fixture assertion
+            cr(["gh"]),  # lint-gh-argv-literal: ok fixture assertion
+            cr(["gh"], '{"allow_merge_commit":true}'),  # lint-gh-argv-literal: ok fixture assertion
+            cr(["gh"], '{"enabled":true,"enforced_by_owner":false}'),  # lint-gh-argv-literal: ok fixture assertion
+        ]
+    )
+    release_finish.ensure_policy(runner=runner, repo="o/r", cwd=tmp_path)
+    assert [call[2] for call in runner.calls[:2]] == ["--method", "--method"]
+    assert runner.calls[2][:3] == ["gh", "api", "repos/o/r"]  # lint-gh-argv-literal: ok fixture assertion
+    assert runner.calls[3][-1] == "repos/o/r/immutable-releases"
+
+
+def test_release_missing_probe_accepts_only_http_404(tmp_path: Path) -> None:
+    missing_runner = QueueRunner(
+        [cr(["gh"], stderr="gh: Not Found (HTTP 404)\n", rc=1)]  # lint-gh-argv-literal: ok fixture assertion
+    )
+    assert (
+        release_finish._release_state(
+            missing_runner,
+            repo="o/r",
+            tag="v1.2.3",
+            cwd=tmp_path,
+            missing_ok=True,
+        )
+        is None
+    )
+
+    denied_runner = QueueRunner(
+        [cr(["gh"], stderr="gh: Resource not accessible (HTTP 403)\n", rc=1)]  # lint-gh-argv-literal: ok fixture assertion
+    )
+    with pytest.raises(release_finish.ReleaseError, match="release read failed"):
+        _ = release_finish._release_state(
+            denied_runner,
+            repo="o/r",
+            tag="v1.2.3",
+            cwd=tmp_path,
+            missing_ok=True,
+        )
+
+
+def test_release_stage_resume_reuses_same_draft(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        release_finish, "_verify_policy", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        release_finish,
+        "_pr_state",
+        lambda *_args, **_kwargs: release_finish.PullRequestState(
+            "OPEN", SOURCE_COMMIT
+        ),
+    )
+    monkeypatch.setattr(
+        release_finish, "_plugin_version_at", lambda *_args, **_kwargs: "1.2.3"
+    )
+    monkeypatch.setattr(release_finish, "_stage_tag", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        release_finish,
+        "_release_state",
+        lambda *_args, **_kwargs: _release_state(draft=True, immutable=False),
+    )
+    notes = tmp_path / "notes.md"
+    notes.write_text("notes\n", encoding="utf-8")
+    runner = ReleaseStateRunner()
+    assert (
+        release_finish.stage_candidate(
+            runner=runner,
+            request=release_finish.CandidateRequest("1.2.3", "o/r", 5, tmp_path),
+            notes_file=notes,
+        )
+        == SOURCE_COMMIT
+    )
+    assert not any(call[:3] == ["gh", "release", "create"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
+
+
+def test_release_validate_draft_rejects_incomplete_allowlist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    identity = release_finish.assets.release_identity("1.2.3", "v1.2.3", SOURCE_COMMIT)
+    incomplete = release_finish.assets.expected_asset_names(identity)[:-1]
+    monkeypatch.setattr(
+        release_finish, "_verify_policy", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        release_finish,
+        "_pr_state",
+        lambda *_args, **_kwargs: release_finish.PullRequestState(
+            "OPEN", SOURCE_COMMIT
+        ),
+    )
+    monkeypatch.setattr(
+        release_finish, "_remote_tag_oid", lambda *_args, **_kwargs: SOURCE_COMMIT
+    )
+    monkeypatch.setattr(
+        release_finish,
+        "_release_state",
+        lambda *_args, **_kwargs: _release_state(
+            draft=True, immutable=False, names=incomplete
+        ),
+    )
+    with pytest.raises(release_finish.ReleaseError, match="allowlist mismatch"):
+        _ = release_finish.validate_release_assets(
+            runner=ReleaseStateRunner(),
+            candidate=_candidate(tmp_path),
+            require_draft=True,
+        )
+
+
+def test_release_validate_draft_rejects_remote_digest_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    identity = release_finish.assets.release_identity("1.2.3", "v1.2.3", SOURCE_COMMIT)
+    names = release_finish.assets.expected_asset_names(identity)
+    monkeypatch.setattr(
+        release_finish, "_verify_policy", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        release_finish,
+        "_pr_state",
+        lambda *_args, **_kwargs: release_finish.PullRequestState(
+            "OPEN", SOURCE_COMMIT
+        ),
+    )
+    monkeypatch.setattr(
+        release_finish, "_remote_tag_oid", lambda *_args, **_kwargs: SOURCE_COMMIT
+    )
+    monkeypatch.setattr(
+        release_finish,
+        "_release_state",
+        lambda *_args, **_kwargs: _release_state(
+            draft=True, immutable=False, names=names
+        ),
+    )
+
+    def download_assets(*_args, names, destination, **_kwargs):
+        for name in names:
+            _ = (destination / name).write_bytes(b"x")
+
+    monkeypatch.setattr(release_finish, "_download_assets", download_assets)
+    with pytest.raises(release_finish.ReleaseError, match="digest mismatch"):
+        _ = release_finish.validate_release_assets(
+            runner=ReleaseStateRunner(),
+            candidate=_candidate(tmp_path),
+            require_draft=True,
+        )
+
+
+def _patch_finish_common(monkeypatch: pytest.MonkeyPatch, *, draft: bool) -> list[str]:
+    events: list[str] = []
+    monkeypatch.setattr(
+        release_finish,
+        "_pr_state",
+        lambda *_args, **_kwargs: release_finish.PullRequestState(
+            "MERGED", SOURCE_COMMIT
+        ),
+    )
+    monkeypatch.setattr(
+        release_finish, "_plugin_version_at", lambda *_args, **_kwargs: "1.2.3"
+    )
+    monkeypatch.setattr(
+        release_finish,
+        "_release_state",
+        lambda *_args, **_kwargs: _release_state(draft=draft, immutable=not draft),
+    )
+
+    def validate_assets(**_kwargs):
+        events.append("validate-draft")
+        return _release_state(draft=True, immutable=False)
+
+    def verify_release(**_kwargs):
+        events.append("verify-immutable")
+
+    latest_values = iter((False, True))
+    monkeypatch.setattr(release_finish, "validate_release_assets", validate_assets)
+    monkeypatch.setattr(release_finish, "_verify_release_attestation", verify_release)
+    monkeypatch.setattr(
+        release_finish, "_is_latest", lambda *_args, **_kwargs: next(latest_values)
+    )
+    return events
+
+
+def test_release_finish_publishes_only_after_draft_validation_and_verifies_before_latest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    events = _patch_finish_common(monkeypatch, draft=True)
+    runner = ReleaseStateRunner()
+    original_run = runner.run
+
+    def recording_run(argv, **kwargs):
         if argv[:3] == ["gh", "release", "edit"]:  # lint-gh-argv-literal: ok fixture assertion
-            return cr(argv)
-        if argv[:3] == ["gh", "release", "create"]:  # lint-gh-argv-literal: ok fixture assertion
-            return cr(argv)
-        raise AssertionError(f"unexpected argv: {argv}")
+            events.append("publish" if "--draft=false" in argv else "promote-latest")
+        return original_run(argv, **kwargs)
+
+    runner.run = recording_run
+    assert (
+        release_finish.finish_release(
+            runner=runner,
+            candidate=_candidate(tmp_path),
+        )
+        == "publish"
+    )
+    assert events == ["validate-draft", "publish", "verify-immutable", "promote-latest"]
 
 
-def _patch_release_finish(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, runner: ReleaseFinishRunner) -> Path:
-    root = tmp_path / "repo"
-    root.mkdir()
-    notes = tmp_path / "notes.md"
-    notes.write_text("notes\n", encoding="utf-8")
-    monkeypatch.setattr(release_finish, "_repo_root", lambda: root)
-    monkeypatch.setattr(release_finish, "_origin_repo", lambda _root: "o/r")
-    monkeypatch.setattr(release_finish, "_plugin_version_at", lambda _oid: "1.2.3")
-    def promote(version, repo, root):
-        runner.calls.append(["promote", version, repo, str(root)])
-        return cr(("promote", version, repo, str(root)))
-    monkeypatch.setattr(release_finish, "_promote_release", promote)
-    monkeypatch.setattr(release_finish.proc, "run", runner.run)
-    monkeypatch.setattr(release_finish.time, "sleep", lambda _seconds: None)
-    return notes
+def test_release_finish_recovery_never_republishes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    events = _patch_finish_common(monkeypatch, draft=False)
+    runner = ReleaseStateRunner()
+    assert (
+        release_finish.finish_release(
+            runner=runner,
+            candidate=_candidate(tmp_path),
+        )
+        == "resume-published"
+    )
+    release_edits = [call for call in runner.calls if call[:3] == ["gh", "release", "edit"]]  # lint-gh-argv-literal: ok fixture assertion
+    assert len(release_edits) == 1
+    assert "--latest" in release_edits[0]
+    assert events == ["verify-immutable"]
 
 
-def test_release_finish_remote_lightweight_tag_skips_push_and_edits_release(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = ReleaseFinishRunner(remote_tag="abc1234\trefs/tags/v1.2.3\n", release_exists=True)
-    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
-    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
-    out = capsys.readouterr().out
-    assert "RELEASE_ACTION=edit" in out
-    assert not any(call[:2] == ["git", "push"] for call in runner.calls)  # lint-git-push-refspec: ok fixture assertion
-
-
-def test_release_finish_existing_local_tag_creates_missing_release_and_promotes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = ReleaseFinishRunner(local_tag="abc1234", release_exists=False)
-    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
-    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
-    out = capsys.readouterr().out
-    assert "RELEASE_ACTION=create" in out
-    assert any(call[:3] == ["gh", "release", "create"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
-    assert any(call[0] == "promote" for call in runner.calls)
-
-
-def test_release_finish_falls_back_to_origin_main_when_merge_commit_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = ReleaseFinishRunner(local_tag="abc1234", release_exists=True, merge_oid="")
-    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
-    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
-    assert "TARGET_OID=abc1234" in capsys.readouterr().out
-    assert sum(call[:4] == ["gh", "pr", "view", "5"] and call[-1] == "mergeCommit" for call in runner.calls) == 5  # lint-gh-argv-literal: ok fixture assertion
-
-
-def test_release_finish_retries_until_target_reaches_origin_main(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = ReleaseFinishRunner(local_tag="abc1234", unresolved_target_attempts=2, ancestry_failures=1)
-    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
-    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
-    assert "TARGET_OID=abc1234" in capsys.readouterr().out
-    assert sum(call[:3] == ["git", "fetch", "origin"] for call in runner.calls) > 2
-
-
-def test_release_finish_origin_repo_mismatch_blocks_side_effects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    root = tmp_path / "repo"
-    root.mkdir()
-    notes = tmp_path / "notes.md"
-    notes.write_text("notes\n", encoding="utf-8")
-    runner = ReleaseFinishRunner()
-    monkeypatch.setattr(release_finish, "_repo_root", lambda: root)
-    monkeypatch.setattr(release_finish, "_origin_repo", lambda _root: "other/repo")
-    monkeypatch.setattr(release_finish.proc, "run", runner.run)
-    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 1
-    assert "ERROR=origin-repo-mismatch" in capsys.readouterr().err
-    assert runner.calls == []
+def test_release_finish_rejects_candidate_not_in_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        release_finish,
+        "_pr_state",
+        lambda *_args, **_kwargs: release_finish.PullRequestState(
+            "MERGED", SOURCE_COMMIT
+        ),
+    )
+    runner = ReleaseStateRunner(ancestry_ok=False)
+    with pytest.raises(release_finish.ReleaseError, match="not an ancestor"):
+        _ = release_finish.finish_release(
+            runner=runner,
+            candidate=_candidate(tmp_path),
+        )
 
 
 def test_read_plugin_version_best_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

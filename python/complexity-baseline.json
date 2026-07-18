@@ -5110,38 +5110,6 @@
     "history": []
   },
   {
-    "file": "larch/release/release_finish.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 36,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/release_finish.py",
-    "code": "PLR0911",
-    "qualified_symbol": "main",
-    "metric": 22,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/release_finish.py",
-    "code": "PLR0912",
-    "qualified_symbol": "main",
-    "metric": 40,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/release_finish.py",
-    "code": "PLR0915",
-    "qualified_symbol": "main",
-    "metric": 87,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/release/release_prepare.py",
     "code": "C901",
     "qualified_symbol": "main",

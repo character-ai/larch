@@ -99,6 +99,11 @@ def _identity(version: str, tag: str, source_commit: str) -> ReleaseIdentity:
     return ReleaseIdentity(version=version, tag=tag, source_commit=source_commit)
 
 
+def release_identity(version: str, tag: str, source_commit: str) -> ReleaseIdentity:
+    """Validate and construct the shared release identity."""
+    return _identity(version, tag, source_commit)
+
+
 def _load_json(path: Path) -> JsonValue:
     _ = _require_regular(path, "JSON file")
     try:
@@ -173,8 +178,20 @@ def _checksums_name(identity: ReleaseIdentity) -> str:
     return f"larch-v{identity.version}-SHA256SUMS"
 
 
+def expected_asset_names(identity: ReleaseIdentity) -> tuple[str, ...]:
+    """Return the canonical final Release asset allowlist in stable order."""
+    archives = tuple(_archive_name(identity, target) for target in TARGETS)
+    return (*archives, _manifest_name(identity), _checksums_name(identity))
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    """Hash a validated regular release asset."""
+    _ = _require_regular(path, "release asset")
+    return _sha256(path.read_bytes())
 
 
 def _atomic_write(path: Path, data: bytes, mode: int = 0o644) -> None:

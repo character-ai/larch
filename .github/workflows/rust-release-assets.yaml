@@ -209,7 +209,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
-      contents: read
+      contents: write
       id-token: write
       attestations: write
     steps:
@@ -275,6 +275,29 @@ jobs:
             --source-commit "$SOURCE_COMMIT" \
             --asset-dir dist \
             --license LICENSE
+      - name: Upload the validated set to the draft Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isImmutable,tagName)"
+          test "$(jq -r '.isDraft' <<<"$release_state")" = "true"
+          test "$(jq -r '.isImmutable' <<<"$release_state")" = "false"
+          test "$(jq -r '.tagName' <<<"$release_state")" = "$GITHUB_REF_NAME"
+          release_assets=(
+            "dist/larch-v$VERSION-aarch64-apple-darwin.tar.gz"
+            "dist/larch-v$VERSION-x86_64-apple-darwin.tar.gz"
+            "dist/larch-v$VERSION-aarch64-unknown-linux-gnu.tar.gz"
+            "dist/larch-v$VERSION-x86_64-unknown-linux-gnu.tar.gz"
+            "dist/larch-v$VERSION-manifest.json"
+            "dist/larch-v$VERSION-SHA256SUMS"
+          )
+          gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          remote_names="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq '.assets | map(select(.state == "uploaded" and (.digest | startswith("sha256:")))) | map(.name) | sort | .[]')"
+          local_names="$(printf '%s\n' "${release_assets[@]##*/}" | sort)"
+          test "$remote_names" = "$local_names"
       - name: Upload validated release asset set
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
