@@ -35,13 +35,32 @@ pub struct Finding {
 pub struct RuleOutput {
     findings: Vec<Finding>,
     warnings: Vec<String>,
+    contract_lines: Vec<String>,
 }
 
 impl RuleOutput {
     /// Construct a completed rule output.
     #[must_use]
     pub const fn new(findings: Vec<Finding>, warnings: Vec<String>) -> Self {
-        Self { findings, warnings }
+        Self {
+            findings,
+            warnings,
+            contract_lines: Vec::new(),
+        }
+    }
+
+    /// Construct an output with machine-readable lines for direct invocation.
+    #[must_use]
+    pub const fn with_contract(
+        findings: Vec<Finding>,
+        warnings: Vec<String>,
+        contract_lines: Vec<String>,
+    ) -> Self {
+        Self {
+            findings,
+            warnings,
+            contract_lines,
+        }
     }
 
     /// Construct an output containing only findings.
@@ -56,6 +75,7 @@ impl RuleOutput {
         Self {
             findings: Vec::new(),
             warnings: Vec::new(),
+            contract_lines: Vec::new(),
         }
     }
 
@@ -71,6 +91,7 @@ impl RuleOutput {
 pub struct LintReport {
     findings: Vec<Finding>,
     warnings: Vec<String>,
+    contract_lines: Vec<String>,
 }
 
 impl LintReport {
@@ -84,6 +105,12 @@ impl LintReport {
     #[must_use]
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// Return direct-invocation machine-readable lines.
+    #[must_use]
+    pub fn contract_lines(&self) -> &[String] {
+        &self.contract_lines
     }
 }
 
@@ -213,6 +240,7 @@ pub fn run<'rule>(
         let output = rule.check(repository)?;
         report.findings.extend(output.findings);
         report.warnings.extend(output.warnings);
+        report.contract_lines.extend(output.contract_lines);
     }
     report.findings.sort();
     report.findings.dedup();
@@ -251,6 +279,22 @@ pub fn render_warnings(
     for warning in warnings {
         writeln!(output, "warning: {warning}")
             .map_err(|error| LintError::new(format!("cannot write warning: {error}")))?;
+    }
+    Ok(())
+}
+
+/// Print machine-readable direct-invocation contract lines.
+///
+/// # Errors
+///
+/// Returns an error when the output stream cannot be written.
+pub fn render_contract_lines(
+    contract_lines: &[String],
+    output: &mut impl std::io::Write,
+) -> Result<(), LintError> {
+    for line in contract_lines {
+        writeln!(output, "{line}")
+            .map_err(|error| LintError::new(format!("cannot write contract line: {error}")))?;
     }
     Ok(())
 }

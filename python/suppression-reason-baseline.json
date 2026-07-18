@@ -2954,20 +2954,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/lint/migration_lint.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR2004",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/lint/migration_lint.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR2004",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/lint/timing_task_kind_allowlist.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLR2004",

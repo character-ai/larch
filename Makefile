@@ -37,7 +37,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-harness-session-env lint-em-dash-output lint-codex-exec-auth rust-lint lint-retired-scripts lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-harness-session-env lint-em-dash-output lint-codex-exec-auth rust-lint lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -872,9 +872,7 @@ test-token-cost:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k token_cost
 
 lint-retired-scripts:
-	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
-		|| (printf '%s\n' "ERROR: make lint-retired-scripts requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	$(PYTHON) python/cli.py lint retired-scripts
+	cargo run --quiet --locked --package larch-lint -- rule retired-scripts
 
 test-render-cost-line:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k render_cost_line

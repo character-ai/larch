@@ -84,10 +84,10 @@ struct ManifestRow {
 
 fn manifest_rows(repository: &Repository) -> Result<Vec<ManifestRow>, LintError> {
     let manifest = RepoPath::from_trusted(MANIFEST_PATH);
-    if repository.paths().binary_search(&manifest).is_err() {
-        return Err(LintError::new(format!("manifest not found: {MANIFEST_PATH}")));
-    }
-    let source = repository.read_utf8(&manifest)?;
+    let source = repository.read_required_utf8(
+        &manifest,
+        format!("manifest not found: {MANIFEST_PATH}"),
+    )?;
     source
         .lines()
         .enumerate()

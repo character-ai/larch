@@ -106,10 +106,10 @@ Wired into `make lint` and `.pre-commit-config.yaml`.
 # Direct call — no shim.
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr [args...]
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" report-tokens analyze [args...]
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" lint retired-scripts [args...]
+cargo run --quiet --locked --package larch-lint -- rule retired-scripts
 ```
 
-The `--help` flag lists all registered domain/verb pairs without importing any
+The Python CLI's `--help` flag lists all registered domain/verb pairs without importing any
 domain module (lazy import).
 
 ## Rate-override environment variables
@@ -140,7 +140,7 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 - Tracking issue read/write/summary helpers now live behind `python3 python/cli.py tracking-issue ...` verbs.
 - `tracking-issue read` preserves stdout failure envelopes for shell-level usage and validation failures; parser-level missing option values remain stderr-only.
 - Write-verb usage errors remain stderr-only. `tracking-issue upsert-summary` keeps non-usage failure envelopes on stderr so existing stderr capture files remain authoritative.
-- Retired shell helper paths are recorded in `python/migrated-scripts.tsv`; keep future prose on the Python CLI surface so `make lint-retired-scripts` stays path-clean.
+- Retired shell helper paths are recorded in `python/migrated-scripts.tsv`; keep future prose on the live CLI surface so `make lint-retired-scripts` stays path-clean.
 
 ### Plan-quality domain migration
 
