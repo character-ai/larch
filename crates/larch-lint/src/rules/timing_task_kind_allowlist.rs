@@ -13,18 +13,17 @@
 //! the allow-list into a second owner.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::LazyLock,
 };
 
-use proc_macro2::LineColumn;
 use regex::Regex;
 use syn::{Attribute, ExprArray, ExprMethodCall, Field, LitStr, spanned::Spanned, visit::Visit};
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax::RustSyntax};
 
-use super::command_arguments::{Argument, Constants, array_arguments};
+use super::command_arguments::{Argument, BuilderCommand, Constants, array_arguments, record_longest_builder};
 
 const NAME: &str = "timing-task-kind-allowlist";
 const DESCRIPTION: &str = "Require literal timing task kinds to appear in the canonical allow-list";
@@ -158,7 +157,7 @@ fn check_rust(path: &str, source: &str, allowed: &BTreeSet<String>) -> Result<Ve
 struct RustVisitor<'syntax> {
     constants: &'syntax Constants<'syntax>,
     arrays: BTreeMap<usize, String>,
-    builders: BTreeMap<LineColumn, BuilderCandidate>,
+    builders: BTreeMap<proc_macro2::LineColumn, BuilderCommand>,
     defaults: BTreeMap<usize, String>,
 }
 
@@ -177,7 +176,7 @@ impl<'syntax> RustVisitor<'syntax> {
         kinds.extend(self.defaults);
         for candidate in self.builders.into_values() {
             if let Some(kind) = kind_after_flag(&candidate.arguments) {
-                kinds.insert(candidate.line, kind);
+                kinds.insert(candidate.root_span.start().line, kind);
             }
         }
         kinds
@@ -194,21 +193,7 @@ impl<'ast> Visit<'ast> for RustVisitor<'_> {
 
     fn visit_expr_method_call(&mut self, method: &'ast ExprMethodCall) {
         if let Some(command) = self.constants.extend_builder(method) {
-            let root = command.root_span.start();
-            let candidate = BuilderCandidate {
-                line: root.line,
-                end: method.method.span().end(),
-                arguments: command.arguments,
-            };
-            match self.builders.entry(root) {
-                Entry::Vacant(entry) => {
-                    entry.insert(candidate);
-                }
-                Entry::Occupied(mut entry) if candidate.end > entry.get().end => {
-                    entry.insert(candidate);
-                }
-                Entry::Occupied(_) => {}
-            }
+            record_longest_builder(&mut self.builders, command);
         }
         syn::visit::visit_expr_method_call(self, method);
     }
@@ -220,13 +205,6 @@ impl<'ast> Visit<'ast> for RustVisitor<'_> {
         syn::visit::visit_field(self, field);
     }
 
-}
-
-#[derive(Clone)]
-struct BuilderCandidate {
-    line: usize,
-    end: LineColumn,
-    arguments: Vec<Argument>,
 }
 
 fn kind_after_flag(arguments: &[Argument]) -> Option<String> {

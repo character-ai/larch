@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use proc_macro2::Span;
+use proc_macro2::{LineColumn, Span};
 use syn::{
     Expr, ExprArray, ExprCall, ExprMethodCall, ExprPath, File, ItemConst, ItemStatic,
     PathArguments,
@@ -26,6 +26,8 @@ pub(super) enum Argument {
 pub(super) struct BuilderCommand {
     /// Span of the original `Command::new` construction.
     pub(super) root_span: Span,
+    /// End of the furthest builder call in this chain.
+    pub(super) end: LineColumn,
     /// Arguments accumulated across the builder calls.
     pub(super) arguments: Vec<Argument>,
 }
@@ -139,6 +141,7 @@ impl<'syntax> Constants<'syntax> {
             }
             _ => {}
         }
+        command.end = method.method.span().end();
         Some(command)
     }
 
@@ -149,8 +152,26 @@ impl<'syntax> Constants<'syntax> {
         let executable = self.argument(call.args.first()?);
         Some(BuilderCommand {
             root_span: call.func.span(),
+            end: call.func.span().end(),
             arguments: vec![executable],
         })
+    }
+}
+
+/// Keep only the furthest builder call for each `Command::new` construction.
+pub(super) fn record_longest_builder(
+    builders: &mut BTreeMap<LineColumn, BuilderCommand>,
+    command: BuilderCommand,
+) {
+    let root = command.root_span.start();
+    match builders.entry(root) {
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            entry.insert(command);
+        }
+        std::collections::btree_map::Entry::Occupied(mut entry) if command.end > entry.get().end => {
+            entry.insert(command);
+        }
+        std::collections::btree_map::Entry::Occupied(_) => {}
     }
 }
 

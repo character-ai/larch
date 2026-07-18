@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use proc_macro2::LineColumn;
 use syn::{ExprArray, ExprMethodCall, spanned::Spanned, visit::Visit};
 
 use crate::{
@@ -11,7 +10,7 @@ use crate::{
     syntax::RustSyntax,
 };
 
-use super::command_arguments::{Argument, Constants, array_arguments};
+use super::command_arguments::{Argument, BuilderCommand, Constants, array_arguments, record_longest_builder};
 
 const NAME: &str = "git-push-refspec";
 const DESCRIPTION: &str = "Require Git push commands to name a destination refspec";
@@ -67,7 +66,7 @@ impl Rule for GitPushRefspecRule {
 struct PushVisitor<'syntax> {
     constants: &'syntax Constants<'syntax>,
     array_lines: BTreeSet<u32>,
-    builders: BTreeMap<LineColumn, BuilderCandidate>,
+    builders: BTreeMap<proc_macro2::LineColumn, BuilderCommand>,
 }
 
 impl<'syntax> PushVisitor<'syntax> {
@@ -85,7 +84,7 @@ impl<'syntax> PushVisitor<'syntax> {
             self.builders
                 .into_values()
                 .filter(|candidate| lacks_refspec(&candidate.arguments))
-                .map(|candidate| candidate.line),
+                .filter_map(|candidate| line_number(candidate.root_span)),
         );
         lines
     }
@@ -107,30 +106,10 @@ impl<'ast> Visit<'ast> for PushVisitor<'ast> {
 
     fn visit_expr_method_call(&mut self, method: &'ast ExprMethodCall) {
         if let Some(command) = self.constants.extend_builder(method) {
-            let root = command.root_span.start();
-            let candidate = BuilderCandidate {
-                line: u32::try_from(root.line).unwrap_or(u32::MAX),
-                end: method.method.span().end(),
-                arguments: command.arguments,
-            };
-            self.builders
-                .entry(root)
-                .and_modify(|existing| {
-                    if candidate.end > existing.end {
-                        *existing = candidate.clone();
-                    }
-                })
-                .or_insert(candidate);
+            record_longest_builder(&mut self.builders, command);
         }
         syn::visit::visit_expr_method_call(self, method);
     }
-}
-
-#[derive(Clone)]
-struct BuilderCandidate {
-    line: u32,
-    end: LineColumn,
-    arguments: Vec<Argument>,
 }
 
 fn lacks_refspec(arguments: &[Argument]) -> bool {
