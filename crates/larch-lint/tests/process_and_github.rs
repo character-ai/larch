@@ -27,7 +27,7 @@ fn process_rule_rejects_direct_standard_process_construction() {
         .args(["rule", "subprocess-via-runner"])
         .assert()
         .code(1)
-        .stdout("crates/larch-lint/src/direct.rs:2: calls std::process::Command::new; route through the shared runner\n")
+        .stdout("crates/larch-lint/src/direct.rs:2: calls process Command::new; route through the shared runner\n")
         .stderr("");
 }
 
@@ -36,7 +36,7 @@ fn process_rule_allows_the_shared_runner_owner_and_reasoned_suppression() {
     let repository = TempRepo::new();
     prepare_repository(&repository);
     repository.write(
-        "crates/larch-lint/src/repository.rs",
+        "crates/larch-adapters/src/process.rs",
         b"use std::process::Command;\nfn run() { Command::new(\"git\"); }\n",
     );
     repository.write(
@@ -50,6 +50,24 @@ fn process_rule_allows_the_shared_runner_owner_and_reasoned_suppression() {
         .assert()
         .success()
         .stdout("")
+        .stderr("");
+}
+
+#[test]
+fn process_rule_rejects_direct_tokio_process_construction() {
+    let repository = TempRepo::new();
+    prepare_repository(&repository);
+    repository.write(
+        "crates/larch-core/src/direct.rs",
+        b"use tokio::process::Command;\nfn run() { Command::new(\"git\"); }\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "subprocess-via-runner"])
+        .assert()
+        .code(1)
+        .stdout("crates/larch-core/src/direct.rs:2: calls process Command::new; route through the shared runner\n")
         .stderr("");
 }
 

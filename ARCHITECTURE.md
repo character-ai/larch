@@ -104,6 +104,13 @@ work:
 - Git mutations and network operations stay behind a closed, typed Git CLI
   compatibility adapter where installed-Git behavior is part of the contract.
   There is no public arbitrary-argv escape hatch.
+- Product child processes use the `ExternalProcessRunner` core port. Its closed
+  executable enum permits Claude, Codex, Cursor, and the typed Git CLI
+  compatibility operations from issue #7671. The adapter accepts argument
+  arrays only, clears and rebuilds child environments from an allowlist, bounds
+  output, and owns cancellation, timeout, process-group termination, and reap.
+  Repository-only lint bootstrap calls stay outside the product dependency
+  graph and require reason-bearing lint suppressions.
 - GitHub code uses a larch-owned core service port. Its adapter uses a pinned
   Octocrab client with native TLS disabled and `rustls` enabled. It accepts only
   a non-empty `GH_TOKEN`, never reads GitHub CLI state, and does not expose an

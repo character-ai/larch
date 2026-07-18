@@ -14,14 +14,17 @@ use crate::{
 use super::syn_helpers;
 
 const PROCESS_NAME: &str = "subprocess-via-runner";
-const PROCESS_DESCRIPTION: &str = "Require std::process::Command ownership by the shared runner";
+const PROCESS_DESCRIPTION: &str = "Require process Command ownership by the shared runner";
 const GITHUB_NAME: &str = "gh-argv-literal";
 const GITHUB_DESCRIPTION: &str = "Require raw gh command ownership by the GitHub wrapper";
-const PROCESS_OWNER: &str = "crates/larch-lint/src/repository.rs";
+const PROCESS_OWNER: &str = "crates/larch-adapters/src/process.rs";
+// Repository-only lint bootstrap cannot depend on product crates.
+const PROCESS_BOOTSTRAP_OWNER: &str = "crates/larch-lint/src/repository.rs";
 const GITHUB_OWNER: &str = "crates/larch-lint/src/git/gh.rs";
 const RUST_SOURCE: &[&str] = &[
-    "crates/larch-lint/src/*.rs",
-    "crates/larch-lint/src/**/*.rs",
+    "crates/*/build.rs",
+    "crates/*/src/*.rs",
+    "crates/*/src/**/*.rs",
 ];
 const ALL_RUST_SOURCE: &[&str] = &[
     "crates/larch-lint/*.rs",
@@ -101,7 +104,7 @@ enum FindingKind {
 impl FindingKind {
     const fn message(self) -> &'static str {
         match self {
-            Self::Process => "calls std::process::Command::new; route through the shared runner",
+            Self::Process => "calls process Command::new; route through the shared runner",
             Self::GitHub => "constructs a raw gh command; use the GitHub wrapper",
         }
     }
@@ -125,7 +128,9 @@ fn check_repository(
     let suppression_token = format!("lint-{token}");
     let mut findings = Vec::new();
     for path in selector.select(repository) {
-        if path.as_str() == owner {
+        if path.as_str() == owner
+            || (kind == FindingKind::Process && path.as_str() == PROCESS_BOOTSTRAP_OWNER)
+        {
             continue;
         }
         let source = repository.read_utf8(path)?;
@@ -197,7 +202,7 @@ impl CommandVisitor {
                 let imported = rename.ident.to_string();
                 self.record_import(prefix, &imported, &rename.rename.to_string());
             }
-            UseTree::Glob(_) if prefix == ["std", "process"] => {
+            UseTree::Glob(_) if matches!(prefix, [root, process] if (root == "std" || root == "tokio") && process == "process") => {
                 self.command_aliases.insert("Command".to_owned());
             }
             UseTree::Group(group) => {
@@ -214,10 +219,10 @@ impl CommandVisitor {
         if imported != "self" {
             full.push(imported.to_owned());
         }
-        if full == ["std", "process", "Command"] {
+        if matches!(full.as_slice(), [root, process, command] if (root == "std" || root == "tokio") && process == "process" && command == "Command") {
             self.command_aliases.insert(local.to_owned());
         }
-        if full == ["std", "process"] {
+        if matches!(full.as_slice(), [root, process] if (root == "std" || root == "tokio") && process == "process") {
             self.process_aliases.insert(local.to_owned());
         }
     }
@@ -237,7 +242,7 @@ impl CommandVisitor {
             return None;
         }
         let prefix = &segments[..segments.len().saturating_sub(1)];
-        let standard_path = prefix == ["std", "process", "Command"];
+        let standard_path = matches!(prefix, [root, process, command] if (root == "std" || root == "tokio") && process == "process" && command == "Command");
         let command_alias = prefix.len() == 1 && self.command_aliases.contains(&prefix[0]);
         let process_alias = prefix.len() == 2
             && prefix[1] == "Command"
@@ -253,7 +258,7 @@ impl CommandVisitor {
             call.occurrence = *occurrence;
             call.line = source_line(source, &call.spelling, call.occurrence).ok_or_else(|| {
                 LintError::new(format!(
-                    "{path}: cannot locate parsed std::process::Command constructor"
+                    "{path}: cannot locate parsed process Command constructor"
                 ))
             })?;
         }
@@ -447,16 +452,16 @@ mod tests {
     }
 
     #[test]
-    fn ignores_non_standard_commands_comments_and_strings() {
+    fn detects_tokio_commands_and_ignores_comments_and_strings() {
         let source = r#"
             use tokio::process::Command;
             // std::process::Command::new("gh")
             const EXAMPLE: &str = "std::process::Command::new(\"gh\")";
             fn run() { Command::new("gh"); }
         "#;
-        assert!(calls_from_source(source, "src/example.rs")
-            .expect("valid source")
-            .is_empty());
+        let calls = calls_from_source(source, "src/example.rs").expect("valid source");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].program.as_deref(), Some("gh"));
     }
 
     #[test]

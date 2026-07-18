@@ -5,6 +5,7 @@ mod context;
 mod env_file;
 mod error;
 mod outcome;
+mod process;
 mod redaction;
 mod retry;
 mod telemetry;
@@ -21,6 +22,12 @@ pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };
 pub use outcome::{ExitCode, WorkflowOutcome};
+pub use process::{
+    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, ProcessCancellation,
+    ProcessError, ProcessErrorKind, ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver,
+    ProcessOutput, ProcessRequest, ProcessRequestError, ProcessRequestErrorKind, ProcessStatus,
+    VendorProgram,
+};
 pub use redaction::{RedactionResult, SafeText, redact, redact_sensitive_paths};
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
