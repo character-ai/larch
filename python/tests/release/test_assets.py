@@ -101,8 +101,10 @@ def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
     sign = 'codesign --force --sign - --timestamp=none "$binary"'
     verify = 'codesign --verify --verbose=2 "$binary"'
     cargo_test = 'cargo test --locked --package larch-cli --target "$TARGET"'
+    linux_path = 'export PATH="/opt/python/cp311-cp311/bin:/root/.cargo/bin:$PATH"'
     assert macos_step.index(sign) < macos_step.index(verify)
-    assert linux_step.index('export PATH="/root/.cargo/bin:$PATH"') < linux_step.index(cargo_test)
+    assert linux_step.index(linux_path) < linux_step.index("python3 --version")
+    assert linux_step.index("python3 --version") < linux_step.index(cargo_test)
 
 
 def test_validate_candidate_requires_matching_plugin_and_workspace_versions(tmp_path: Path) -> None:

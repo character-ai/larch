@@ -167,7 +167,8 @@ jobs:
             --env EXPECTED_ARCHITECTURE="$EXPECTED_ARCHITECTURE" \
             "$CONTAINER_IMAGE" \
             bash -euo pipefail -c '
-              export PATH="/root/.cargo/bin:$PATH"
+              export PATH="/opt/python/cp311-cp311/bin:/root/.cargo/bin:$PATH"
+              python3 --version
               cargo test --locked --package larch-cli --target "$TARGET"
               cargo build --locked --release --package larch-cli --target "$TARGET"
               binary="target/$TARGET/release/larch"
