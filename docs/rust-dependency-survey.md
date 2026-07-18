@@ -19,6 +19,18 @@ uses `assert_cmd`, `predicates`, and `tempfile`. Deferred selections stay out of
 `Cargo.lock` until code uses them. This keeps the foundation minimal and makes
 future dependency additions explicit review points.
 
+## Async runtime (issue #7659)
+
+The survey rechecked runtime metadata on 2026-07-18.
+
+| Need | Candidates | Maintenance, license, and fit check | Selection |
+|------|------------|-------------------------------------|-----------|
+| Async runtime | [`tokio` 1.53.0](https://crates.io/crates/tokio/1.53.0), [`smol` 2.0.2](https://crates.io/crates/smol/2.0.2), [`async-std` 1.13.2](https://crates.io/crates/async-std/1.13.2) | All are MIT or MIT OR Apache-2.0 and support larch's MSRV. `async-std` is deprecated in favor of `smol`. `smol` remains maintained but needs separate process, signal, cancellation, and task-tracking choices. | Use Tokio with narrow macro, runtime, signal, synchronization, test-time, and time features. One integrated executor and driver set gives larch one ownership model. |
+| Cancellation | [`tokio-util` 0.7.18](https://crates.io/crates/tokio-util/0.7.18), task abortion alone, custom token | `tokio-util` is maintained with Tokio, MIT licensed, and provides hierarchical cancellation. Task abortion skips cooperative cleanup. A custom token would duplicate wake and hierarchy behavior. | Use `tokio-util::sync::CancellationToken` behind larch's `Cancellation` type. |
+
+See [rust-async-runtime.md](rust-async-runtime.md) for the execution contract and
+rejected alternatives.
+
 ## Shared rule foundation (issue #7604)
 
 Issue #7604 establishes the extension points used by every remaining Rust lint.

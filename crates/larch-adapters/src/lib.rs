@@ -1,5 +1,7 @@
 //! Concrete adapters for filesystem, process, Git, and service boundaries.
 
+pub mod runtime;
+
 use larch_core::BuildMetadata;
 
 /// Return metadata compiled into the adapter layer.

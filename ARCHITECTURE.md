@@ -24,9 +24,10 @@ Dependency direction applies to normal and build dependencies. Tests may use
 dev-dependencies across layers when an integration test needs them. Product
 crates must not depend on `larch-lint`.
 
-Add modules inside these crates until a new crate has an independent ownership
-boundary, dependency set, and test surface. A new crate requires an update to
-this file and to the `layering` repository rule in the same change.
+Add modules inside these crates. A new crate needs an independent ownership
+boundary, dependency set, and test surface, plus updates to this file and the
+`layering` rule. The [shared async model](docs/rust-async-runtime.md) defines
+cancellation, task ownership, signals, and child shutdown.
 
 ## Boundary rules
 
