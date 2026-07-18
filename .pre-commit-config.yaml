@@ -279,7 +279,7 @@ repos:
     hooks:
       - id: lint-run-log-run-id
         name: Reject non-unique placeholder run-log run-ids (run-N)
-        entry: python3 python/cli.py lint run-log-run-id
+        entry: cargo run --quiet --locked --package larch-lint -- rule run-log-run-id
         language: system
         pass_filenames: false
         files: ^larch-logs/
@@ -522,10 +522,10 @@ repos:
     hooks:
       - id: check-topology-rule-paths
         name: Check topology-rule paths coverage
-        entry: python3 python/cli.py lint topology-rule-paths
+        entry: cargo run --quiet --locked --package larch-lint -- rule topology-rule-paths
         language: system
         pass_filenames: false
-        files: ^(skills/shared/topology\.tsv|python/larch/lint/check_topology_rule_paths\.py|python/check_topology_rule_paths\.md)$
+        files: ^(skills/shared/topology\.tsv|crates/larch-lint/(src/rules/topology_rule_paths\.rs|tests/topology_rule_paths\.rs|migration-ledger/topology-rule-paths\.toml))$
 
       - id: lint-em-dash-output
         name: lint emitted em dashes

@@ -24,7 +24,6 @@
     {"module": "lint_prefix_case_variant.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_pylint_skip_file.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_renderer_golden_tests.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
-    {"module": "lint_run_log_run_id.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_root_resolution.py", "host_decision": "new-module-justified", "justification": "Dedicated AST ratchet for root-owner consolidation; existing lint modules do not own private plugin-root functions or Git toplevel argument vectors (#7542).", "source_issue": 7542},
     {"module": "lint_run_log_walkers.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_self_disarmable_gate.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

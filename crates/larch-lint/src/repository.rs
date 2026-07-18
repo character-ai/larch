@@ -65,6 +65,19 @@ pub trait Git {
     ///
     /// Returns an error when Git cannot provide its working-tree file view.
     fn tracked_paths(&self, root: &Path) -> Result<Vec<u8>, LintError>;
+
+    /// Return NUL-delimited paths recorded in Git's index.
+    ///
+    /// The default preserves lightweight test adapters whose discovery stream
+    /// represents only committed fixture files. Production discovery overrides
+    /// it so rules can distinguish untracked working-tree files.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Git cannot provide its committed-file view.
+    fn committed_paths(&self, root: &Path) -> Result<Vec<u8>, LintError> {
+        self.tracked_paths(root)
+    }
 }
 
 /// Production adapter that treats Git's non-ignored working tree as discovery authority.
@@ -104,6 +117,16 @@ impl Git for GitCli {
             "discover tracked files",
         )
     }
+
+    fn committed_paths(&self, root: &Path) -> Result<Vec<u8>, LintError> {
+        command_output(
+            Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(["ls-files", "--cached", "-z"]),
+            "discover committed files",
+        )
+    }
 }
 
 fn command_output(command: &mut Command, operation: &str) -> Result<Vec<u8>, LintError> {
@@ -129,6 +152,7 @@ fn command_output(command: &mut Command, operation: &str) -> Result<Vec<u8>, Lin
 pub struct Repository {
     root: PathBuf,
     paths: Vec<RepoPath>,
+    committed_paths: Vec<RepoPath>,
 }
 
 impl Repository {
@@ -144,6 +168,7 @@ impl Repository {
         })?;
         let stream = git.tracked_paths(&root)?;
         let discovered = parse_tracked_paths(&stream)?;
+        let committed = parse_tracked_paths(&git.committed_paths(&root)?)?;
         let mut paths = Vec::with_capacity(discovered.len());
         for path in discovered {
             let candidate = root.join(path.as_str());
@@ -168,7 +193,15 @@ impl Repository {
             }
             paths.push(path);
         }
-        Ok(Self { root, paths })
+        let committed_paths = committed
+            .into_iter()
+            .filter(|path| paths.binary_search(path).is_ok())
+            .collect();
+        Ok(Self {
+            root,
+            paths,
+            committed_paths,
+        })
     }
 
     /// Return the canonical repository root.
@@ -181,6 +214,12 @@ impl Repository {
     #[must_use]
     pub fn paths(&self) -> &[RepoPath] {
         &self.paths
+    }
+
+    /// Return whether a repository-relative path is recorded in Git's index.
+    #[must_use]
+    pub fn is_committed(&self, path: &RepoPath) -> bool {
+        self.committed_paths.binary_search(path).is_ok()
     }
 
     /// Read one tracked regular file as UTF-8.

@@ -5086,14 +5086,6 @@
     "history": []
   },
   {
-    "file": "larch/lint/check_topology_rule_paths.py",
-    "code": "C901",
-    "qualified_symbol": "validate_repo_path",
-    "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/lint/lint_no_raw_stderr_after_quiet_init.py",
     "code": "C901",
     "qualified_symbol": "lint_file",
