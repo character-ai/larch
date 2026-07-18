@@ -3,6 +3,82 @@
 > **New to larch?** Set up your repository first. [Preparing Your Repository](preparing-your-repo.md) covers the instruction files, guardrails, and relevant-checks contract that larch, and coding agents generally, rely on.
 
 ## Pre-requisites
+
+### Authentication
+
+Set up GitHub and Google credentials before starting larch. Installing `gh` is
+separate from supplying the `GH_TOKEN` that larch uses for authenticated GitHub
+requests.
+
+#### GitHub
+
+Larch requires a non-empty `GH_TOKEN` in its environment. It does not fall
+back to `GITHUB_TOKEN`.
+
+Choose one source for the token:
+
+- **Reuse an existing GitHub CLI login.** Run this user setup command in your
+  shell:
+
+  ```bash
+  export GH_TOKEN="$(gh auth token)"
+  ```
+
+  To provide the value for one Claude session only, run:
+
+  ```bash
+  GH_TOKEN="$(gh auth token)" claude
+  ```
+
+  Larch does not run `gh auth token` during normal service calls.
+
+- **Create a personal access token (PAT).** Create it in GitHub
+  [Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens).
+  Prefer a [fine-grained PAT](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token)
+  when its [repository permissions and API coverage](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
+  are sufficient. Current larch operations can require a classic PAT when a
+  required GitHub API operation is not available to a fine-grained PAT. Export
+  the selected token as `GH_TOKEN`. Keep the value in a password manager or
+  secret manager; never commit it to a repository or a `.env` file.
+
+Verify the setup without printing the token:
+
+```bash
+test -n "$GH_TOKEN"
+gh api user >/dev/null
+```
+
+The commands succeed silently when `GH_TOKEN` is non-empty and authenticates
+to GitHub.
+
+#### Google Application Default Credentials
+
+Google-backed larch features require [Application Default Credentials (ADC)](https://cloud.google.com/docs/authentication/provide-credentials-adc).
+Running `gcloud auth login` does not create ADC. For local development, create
+them with:
+
+```bash
+gcloud auth application-default login
+```
+
+By default, ADC are stored at
+`~/.config/gcloud/application_default_credentials.json` on macOS and Linux,
+and at `%APPDATA%\gcloud\application_default_credentials.json` on Windows.
+Set [`GOOGLE_APPLICATION_CREDENTIALS`](https://cloud.google.com/docs/authentication/provide-credentials-adc#local-dev)
+to select another credential file. An attached service account or workload
+identity can also provide ADC without a local file.
+
+On macOS or Linux, verify a local ADC file is readable and verify ADC without
+printing an access token:
+
+```bash
+test -r "$HOME/.config/gcloud/application_default_credentials.json"
+gcloud auth application-default print-access-token >/dev/null
+```
+
+Both commands succeed silently when the expected local file is readable and
+ADC can obtain an access token.
+
 ### Install
 - **Anthropic / Claude Code**: `curl -fsSL https://claude.ai/install.sh | bash`
 - **OpenAI / Codex**: `npm install -g @openai/codex`
