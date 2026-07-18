@@ -1,6 +1,7 @@
 //! Shared Rust and Markdown syntax support for rule implementations.
 
 use pulldown_cmark::Parser;
+use tree_sitter::Parser as TreeSitterParser;
 
 use crate::LintError;
 
@@ -34,6 +35,21 @@ impl RustSyntax {
     pub const fn file(&self) -> &syn::File {
         &self.file
     }
+}
+
+/// Parse Bash source with the workspace's maintained grammar.
+///
+/// # Errors
+///
+/// Returns an error when the parser cannot be configured or produce a tree.
+pub fn parse_bash(source: &str) -> Result<tree_sitter::Tree, LintError> {
+    let mut parser = TreeSitterParser::new();
+    parser
+        .set_language(&tree_sitter_bash::LANGUAGE.into())
+        .map_err(|error| LintError::new(format!("cannot configure Bash parser: {error}")))?;
+    parser
+        .parse(source, None)
+        .ok_or_else(|| LintError::new("cannot parse Bash source"))
 }
 
 /// Return the one-based line of the `occurrence`-th match of `needle`.
@@ -75,6 +91,7 @@ pub struct MarkdownLine<'source> {
     number: usize,
     text: &'source str,
     fence_state: FenceState<'source>,
+    fence_boundary: bool,
 }
 
 impl<'source> MarkdownLine<'source> {
@@ -94,6 +111,12 @@ impl<'source> MarkdownLine<'source> {
     #[must_use]
     pub const fn fence_state(self) -> FenceState<'source> {
         self.fence_state
+    }
+
+    /// Return whether this line closes the active fenced code block.
+    #[must_use]
+    pub const fn is_fence_boundary(self) -> bool {
+        self.fence_boundary
     }
 }
 
@@ -137,28 +160,32 @@ impl<'source> Iterator for MarkdownLines<'source> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let (index, text) = self.lines.next()?;
-        let fence_state = match self.open_fence {
+        let (fence_state, fence_boundary) = match self.open_fence {
             Some(open_fence) if open_fence.closes(text) => {
                 let state = FenceState::Inside {
                     language: open_fence.language,
                 };
                 self.open_fence = None;
-                state
+                (state, true)
             }
-            Some(open_fence) => FenceState::Inside {
-                language: open_fence.language,
-            },
+            Some(open_fence) => (
+                FenceState::Inside {
+                    language: open_fence.language,
+                },
+                false,
+            ),
             None => {
                 if let Some(open_fence) = OpenFence::opens(text) {
                     self.open_fence = Some(open_fence);
                 }
-                FenceState::Outside
+                (FenceState::Outside, false)
             }
         };
         Some(MarkdownLine {
             number: index + 1,
             text,
             fence_state,
+            fence_boundary,
         })
     }
 }
@@ -240,6 +267,7 @@ mod tests {
                 language: Some("bash")
             }
         );
+        assert!(lines[3].is_fence_boundary());
         assert_eq!(lines[4].fence_state(), FenceState::Outside);
         assert!(document.parser().next().is_some());
     }

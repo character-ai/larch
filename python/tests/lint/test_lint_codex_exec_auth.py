@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from larch.lint.lint_codex_exec_auth import main
 from tests.lint.conftest import lint_runner
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def write(path: Path, *lines: str) -> None:
@@ -22,57 +24,11 @@ def test_clean_and_allowlisted_launcher(tmp_path: Path, capsys: pytest.CaptureFi
     assert rc == 0, err
 
 
-@pytest.mark.parametrize(
-    "line",
-    [
-        "codex exec --full-auto -C . hi",
-        '"codex" exec --full-auto -C . hi',
-        "'codex' exec --full-auto -C . hi",
-        "\\codex exec --full-auto -C . hi",
-        "CODEX_HOME=/tmp/codex OTHER=1 codex exec --full-auto -C . hi",
-        "A=1 B=codex exec --full-auto -C . hi",
-    ],
-)
-def test_shell_raw_exec_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str], line: str) -> None:
-    write(tmp_path / "scripts/bad.sh", "#!/bin/bash", line)
-    rc, err = run(tmp_path, capsys)
-    assert rc == 1
-    assert "scripts/bad.sh:2:" in err
-
-
-@pytest.mark.parametrize("rel", ["scripts/" + "check-reviewers" + ".sh", "scripts/" + "run-negotiation-round" + ".sh"])
-def test_retired_script_names_are_not_allowlisted(tmp_path: Path, capsys: pytest.CaptureFixture[str], rel: str) -> None:
-    write(tmp_path / rel, "#!/bin/bash", "codex exec --full-auto -C . hi")
-    rc, err = run(tmp_path, capsys)
-    assert rc == 1
-    assert f"{rel}:2:" in err
-
-
-def test_pragma_comments_and_continuation(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / "scripts/pragma.sh", "codex exec hi # lint-codex-exec-auth: ok fixture")
-    write(tmp_path / "scripts/comment.sh", "# codex exec hi")
+def test_non_python_surfaces_are_owned_by_rust(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / "scripts/bad.sh", "#!/bin/bash", "codex exec --full-auto -C . hi")
+    write(tmp_path / ".claude/skills/dev/SKILL.md", "```bash", "codex exec --full-auto -C . hi", "```")
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err
-    write(tmp_path / "scripts/continued.sh", "codex \\", "  exec --full-auto -C . hi")
-    rc, err = run(tmp_path, capsys)
-    assert rc == 1
-    assert "scripts/continued.sh:1:" in err
-
-
-def test_markdown_fences(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / "skills/foo/SKILL.md", "```Bash", "codex exec --full-auto -C . hi", "```")
-    rc, err = run(tmp_path, capsys)
-    assert rc == 1
-    assert "skills/foo/SKILL.md:2:" in err
-
-
-def test_claude_skills_markdown_scanned_but_rules_ignored(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / ".claude/skills/dev/SKILL.md", "```bash", "codex exec --full-auto -C . hi", "```")
-    write(tmp_path / ".claude" / "rules" / "retired.md", "```bash", "codex exec --full-auto -C . hi", "```")
-    rc, err = run(tmp_path, capsys)
-    assert rc == 1
-    assert ".claude/skills/dev/SKILL.md:2:" in err
-    assert "/rules/retired.md" not in err
 
 
 def test_python_raw_exec_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

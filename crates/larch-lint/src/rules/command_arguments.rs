@@ -147,9 +147,9 @@ impl<'syntax> Constants<'syntax> {
             return None;
         }
         let executable = self.argument(call.args.first()?);
-        (executable == Argument::Static("git".to_owned())).then_some(BuilderCommand {
+        Some(BuilderCommand {
             root_span: call.func.span(),
-            arguments: vec![Argument::Static("git".to_owned())],
+            arguments: vec![executable],
         })
     }
 }

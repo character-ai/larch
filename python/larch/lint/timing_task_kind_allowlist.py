@@ -2,18 +2,11 @@ from __future__ import annotations
 
 import ast
 import argparse
-import re
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-_TIMING_TASK_KIND_RE = re.compile(r"--timing-task-kind\s+([A-Za-z0-9][A-Za-z0-9_-]*)")
-
-# Minimum path-part counts for scope classification
-_SKILL_ROOT_MIN = 2
-_SKILL_REF_MIN = 3
-_SKILL_SCRIPT_MIN = 4
 _PYTHON_PKG_MIN = 2
 
 
@@ -24,12 +17,6 @@ def in_scope(rel: str) -> bool:
         return False
     if path.name.startswith("test-") or path.name.startswith("test_"):
         return False
-    if len(parts) >= _SKILL_ROOT_MIN and parts[0] == "skills" and path.name == "SKILL.md":
-        return True
-    if len(parts) >= _SKILL_REF_MIN and parts[0] == "skills" and parts[2] == "references" and path.suffix == ".md":
-        return True
-    if len(parts) >= _SKILL_SCRIPT_MIN and parts[0] == "skills" and parts[2] == "scripts" and path.suffix == ".sh":
-        return True
     return len(parts) >= _PYTHON_PKG_MIN and parts[0] == "python" and parts[1] == "larch" and path.suffix == ".py"
 
 
@@ -103,10 +90,6 @@ def scan_files(root: Path, rel_paths: Sequence[str]) -> dict[str, set[str]]:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if path.suffix in {".md", ".sh"}:
-            for match in _TIMING_TASK_KIND_RE.finditer(text):
-                _remember(found, rel, match.group(1))
-            continue
         if path.suffix == ".py":
             _scan_python_source(rel, text, found)
     return found

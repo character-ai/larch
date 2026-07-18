@@ -10,9 +10,9 @@
 use std::{collections::BTreeMap, sync::LazyLock};
 
 use regex::Regex;
-use tree_sitter::{Node, Parser};
+use tree_sitter::Node;
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax::parse_bash};
 
 const RAW_STDERR_NAME: &str = "no-raw-stderr-after-quiet-init";
 const RAW_STDERR_DESCRIPTION: &str = "Reject raw stderr diagnostics after larch_quiet_init";
@@ -109,7 +109,7 @@ crate::register_rule!(RAW_STDERR_METADATA, RAW_STDERR_RULE);
 crate::register_rule!(HARNESS_METADATA, HARNESS_RULE);
 
 fn raw_stderr_findings(path: &RepoPath, source: &str) -> Result<Vec<Finding>, LintError> {
-    let tree = parse_shell(source)?;
+    let tree = parse_bash(source)?;
     let mut rows = BTreeMap::<usize, CommandRows>::new();
     collect_command_rows(tree.root_node(), source, false, &mut rows);
     let source_lines: Vec<&str> = source.lines().collect();
@@ -134,7 +134,7 @@ fn raw_stderr_findings(path: &RepoPath, source: &str) -> Result<Vec<Finding>, Li
 }
 
 fn has_harness_preamble(source: &str) -> Result<bool, LintError> {
-    let tree = parse_shell(source)?;
+    let tree = parse_bash(source)?;
     let Some(first_command) = first_command(tree.root_node()) else {
         return Ok(false);
     };
@@ -142,16 +142,6 @@ fn has_harness_preamble(source: &str) -> Result<bool, LintError> {
         .lines()
         .nth(first_command.start_position().row)
         .is_some_and(|line| line == SESSION_ENV_PREAMBLE))
-}
-
-fn parse_shell(source: &str) -> Result<tree_sitter::Tree, LintError> {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_bash::LANGUAGE.into())
-        .map_err(|error| LintError::new(format!("cannot configure Bash parser: {error}")))?;
-    parser
-        .parse(source, None)
-        .ok_or_else(|| LintError::new("cannot parse Bash source"))
 }
 
 fn first_command(root: Node<'_>) -> Option<Node<'_>> {
