@@ -186,12 +186,12 @@ impl<'syntax> RustVisitor<'syntax> {
 impl<'ast> Visit<'ast> for RustVisitor<'_> {
     fn visit_expr_array(&mut self, array: &'ast ExprArray) {
         record_array_kind(self.constants, &mut self.arrays, array);
-        syn::visit::visit_expr_array(self, array);
+        visit_array_children(self, array);
     }
 
     fn visit_expr_method_call(&mut self, method: &'ast ExprMethodCall) {
         record_builder_from_method(self.constants, &mut self.builders, method);
-        syn::visit::visit_expr_method_call(self, method);
+        visit_method_children(self, method);
     }
 
     fn visit_field(&mut self, field: &'ast Field) {
@@ -214,6 +214,14 @@ fn record_array_kind(
     };
     let line = array.span().start().line;
     kinds.insert(line, kind);
+}
+
+fn visit_array_children(visitor: &mut RustVisitor<'_>, array: &ExprArray) {
+    syn::visit::visit_expr_array(visitor, array);
+}
+
+fn visit_method_children(visitor: &mut RustVisitor<'_>, method: &ExprMethodCall) {
+    syn::visit::visit_expr_method_call(visitor, method);
 }
 
 fn kind_after_flag(arguments: &[Argument]) -> Option<String> {
