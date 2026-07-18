@@ -63,6 +63,12 @@ inventories production callers, and blocks ownership or caller drift. Product
 crates do not depend on this repository-only migration ledger. See
 `docs/rust-command-registry.md` for the update workflow.
 
+Before a command advances to implementation parity, exercise its Python and
+Rust owners through the repository's [black-box parity
+harness](docs/rust-parity-harness.md). Cases run in isolated roots with live
+service credentials and endpoints disabled. They compare exit status, output,
+files, and declared side-effect records against reviewed goldens.
+
 ## Dependency policy
 
 `Cargo.toml` at the workspace root owns every crate version, feature set, and

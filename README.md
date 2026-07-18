@@ -39,6 +39,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **Architecture and workflow**
   - [Rust Architecture](ARCHITECTURE.md) — crate ownership, dependency direction, external boundaries, and release constraints
   - [Rust Async Runtime](docs/rust-async-runtime.md) — cancellation, timeouts, bounded tasks, signals, and child shutdown
+  - [Rust Parity Harness](docs/rust-parity-harness.md) — isolated Python-to-Rust command comparison and reviewed goldens
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
   - [Design Flow](docs/collaborative-sketches.md) — direct plan drafting and plan review

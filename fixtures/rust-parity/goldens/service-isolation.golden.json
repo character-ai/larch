@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "GH_TOKEN=absent\nGITHUB_API_URL=http://127.0.0.1:9\nCLOUDSDK_CONFIG=<SANDBOX>/.cloud-disabled\nPATH=<SANDBOX>/.bin\nLARCH_PARITY_LIVE_SERVICES=disabled\n"
+  }
+}
