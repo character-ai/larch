@@ -5186,6 +5186,18 @@ migration_issue = 7687
 
 [[commands]]
 domain = "release"
+verb = "asset-candidate"
+python_module = "larch.release.assets"
+python_function = "candidate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
 verb = "classify-bump"
 python_module = "larch.release.version_bump"
 python_function = "classify_bump_main"
@@ -5198,9 +5210,33 @@ migration_issue = 7687
 
 [[commands]]
 domain = "release"
+verb = "collect-assets"
+python_module = "larch.release.assets"
+python_function = "collect_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
 verb = "finish"
 python_module = "larch.release.release_finish"
 python_function = "main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
+verb = "package-asset"
+python_module = "larch.release.assets"
+python_function = "package_main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
@@ -5249,6 +5285,18 @@ domain = "release"
 verb = "set-version"
 python_module = "larch.release.version_bump"
 python_function = "set_version_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "release"
+verb = "validate-assets"
+python_module = "larch.release.assets"
+python_function = "validate_main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
@@ -7552,6 +7600,12 @@ migration_issue = 7687
 path = ".github/workflows/ci.yaml"
 kind = "ci"
 python = ["checks contains-pins", "checks gitleaks", "generate check", "residual-bash paths"]
+rust = []
+
+[[callers]]
+path = ".github/workflows/rust-release-assets.yaml"
+kind = "ci"
+python = ["release asset-candidate", "release collect-assets", "release package-asset", "release validate-assets"]
 rust = []
 
 [[callers]]
