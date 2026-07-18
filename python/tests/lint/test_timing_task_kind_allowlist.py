@@ -64,4 +64,4 @@ def test_non_python_surfaces_are_owned_by_rust(tmp_path: Path) -> None:
 
     found = allowlist.scan_files(tmp_path, [markdown, shell])
 
-    assert found == {}
+    assert not found
