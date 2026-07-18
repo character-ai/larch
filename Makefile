@@ -37,7 +37,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-em-dash-output lint-codex-exec-auth rust-lint lint-lifecycle-prefix-literal lint-prefix-case-variant lint-run-log-walkers lint-module-manifest lint-only
+lint: test-harnesses lint-em-dash-output lint-codex-exec-auth rust-lint lint-lifecycle-prefix-literal lint-run-log-walkers lint-module-manifest lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -55,7 +55,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
+	for chk in complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -238,6 +238,7 @@ lint-run-log-walkers:
 
 lint-em-dash-output:
 	python3 python/cli.py lint em-dash-output
+	cargo run --quiet --locked --package larch-lint -- rule em-dash-output
 
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth

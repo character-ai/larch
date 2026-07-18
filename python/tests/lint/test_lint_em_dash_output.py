@@ -128,44 +128,10 @@ def test_breadcrumb_writer_emit_fails(tmp_path: Path, capsys: pytest.CaptureFixt
     assert "python/larch/example.py:2: em dash in Python output literal" in err
 
 
-def test_skill_markdown_print_literal_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_markdown_is_out_of_scope_for_python_compatibility_rule(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     write(tmp_path, "skills/example/SKILL.md", "Print: `bad — text`\n")
-
-    rc, err = run(tmp_path, capsys)
-
-    assert rc == 1
-    assert "skills/example/SKILL.md:1: em dash in markdown print literal" in err
-
-
-def test_inline_print_template_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path, "skills/example/SKILL.md", "If skipped, print `⏩ step — skipped`.\n")
-
-    rc, err = run(tmp_path, capsys)
-
-    assert rc == 1
-    assert "skills/example/SKILL.md:1: em dash in markdown print literal" in err
-
-
-def test_line_leading_status_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path, "skills/example/SKILL.md", "⏩ step — skipped\n")
-
-    rc, err = run(tmp_path, capsys)
-
-    assert rc == 1
-    assert "skills/example/SKILL.md:1: em dash in markdown status line" in err
-
-
-def test_quoted_prose_and_fenced_content_are_ignored(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(
-        tmp_path,
-        "skills/example/SKILL.md",
-        "> quoted prose — not output\n"
-        "> Print: `quoted — template`\n"
-        "```\n"
-        "print `⏩ fixture — ignored`\n"
-        "⏩ fixture — ignored\n"
-        "```\n",
-    )
 
     rc, err = run(tmp_path, capsys)
 

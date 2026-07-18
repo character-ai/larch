@@ -19,7 +19,6 @@
     {"module": "lint_markdown_heading_fence_state.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_module_manifest.py", "host_decision": "new-module-justified", "justification": "Hosts the host-or-justify backstop on the shared lint engine so every python/larch/lint/lint_*.py module records a reviewable manifest entry.", "source_issue": 6968},
     {"module": "lint_monkeypatch_facade_binding.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
-    {"module": "lint_prefix_case_variant.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_pylint_skip_file.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_renderer_golden_tests.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_root_resolution.py", "host_decision": "new-module-justified", "justification": "Dedicated AST ratchet for root-owner consolidation; existing lint modules do not own private plugin-root functions or Git toplevel argument vectors (#7542).", "source_issue": 7542},

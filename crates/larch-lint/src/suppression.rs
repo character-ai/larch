@@ -66,6 +66,26 @@ pub fn line_unless_suppressed(
     Ok(Some(line))
 }
 
+/// Return a one-based line number unless its source line carries a suppression.
+///
+/// # Errors
+///
+/// Returns an error when the suppression token lacks a reason or the line
+/// number cannot be represented as `u32`.
+pub fn number_unless_suppressed(
+    source: &str,
+    line: usize,
+    token: &str,
+) -> Result<Option<u32>, LintError> {
+    let text = source.lines().nth(line.wrapping_sub(1)).unwrap_or("");
+    if reason(text, token)?.is_some() {
+        return Ok(None);
+    }
+    u32::try_from(line)
+        .map(Some)
+        .map_err(|_| LintError::new("line number exceeds u32"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::reason;
@@ -107,6 +127,19 @@ mod tests {
         );
         assert_eq!(
             super::line_unless_suppressed(source, "gamma", 1, "lint-demo").expect("lookup"),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn number_unless_suppressed_honors_the_source_line() {
+        let source = "alpha\nbeta // lint-demo: ok fixture\ngamma\n";
+        assert_eq!(
+            super::number_unless_suppressed(source, 2, "lint-demo").expect("lookup"),
+            None
+        );
+        assert_eq!(
+            super::number_unless_suppressed(source, 3, "lint-demo").expect("lookup"),
             Some(3)
         );
     }

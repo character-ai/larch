@@ -70,7 +70,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-em-dash-output,lint-codex-exec-auth
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-codex-exec-auth
         run: |
           set -euo pipefail
           log="$(mktemp)"

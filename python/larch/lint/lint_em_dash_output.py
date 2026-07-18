@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import re
 import sys
 from pathlib import Path
 
@@ -26,8 +25,6 @@ NAME_SINKS = frozenset(
     }
 )
 LOGGING_UTIL_SINKS = frozenset({"emit", "emit_kv", "diagnostic"})
-PRINT_TEMPLATE_RE = re.compile(r"\b(?:P|p)rint:?\s+`([^`\n]*)`")
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 def _repo_rel(path: Path, root: Path) -> str:
@@ -41,17 +38,8 @@ def _iter_python_files(root: Path) -> list[Path]:
     return sorted(path for path in source.rglob("*.py") if path.is_file() and not path.is_symlink())
 
 
-def _iter_markdown_files(root: Path) -> list[Path]:
-    files: list[Path] = []
-    for base in (root / "skills", root / "agents"):
-        if not base.is_dir():
-            continue
-        files.extend(path for path in base.rglob("*.md") if path.is_file() and not path.is_symlink())
-    return sorted(files)
-
-
 def _iter_files(root: Path) -> list[Path]:
-    return [*_iter_python_files(root), *_iter_markdown_files(root)]
+    return _iter_python_files(root)
 
 
 def _suppression_reason(line: str) -> str | None:
@@ -271,32 +259,6 @@ def _lint_python(path: Path, root: Path, text: str, lines: list[str]) -> list[st
     return violations
 
 
-def _is_fence_toggle(line: str) -> bool:
-    return FENCE_RE.match(line) is not None
-
-
-def _lint_markdown(path: Path, root: Path, lines: list[str]) -> list[str]:
-    rel = _repo_rel(path, root)
-    violations = _suppression_violations(lines, rel)
-    in_fence = False
-    for lineno, line in enumerate(lines, start=1):
-        if _is_fence_toggle(line):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if line.lstrip().startswith(">"):
-            continue
-        suppressed = _line_suppresses(lines, lineno)
-        for match in PRINT_TEMPLATE_RE.finditer(line):
-            if EM_DASH in match.group(1) and not suppressed:
-                violations.append(f"{rel}:{lineno}: em dash in markdown print literal")
-        stripped = line.lstrip()
-        if stripped.startswith("⏩") and EM_DASH in stripped and not suppressed:
-            violations.append(f"{rel}:{lineno}: em dash in markdown status line")
-    return violations
-
-
 def lint_file(*, path: Path, root: Path) -> list[str]:
     try:
         text = path.read_text(encoding="utf-8")
@@ -305,9 +267,7 @@ def lint_file(*, path: Path, root: Path) -> list[str]:
     except OSError as exc:
         raise lint_common.LintError(f"{_repo_rel(path, root)}: unable to read: {exc}") from exc
     lines = text.splitlines()
-    if path.suffix == ".py":
-        return _lint_python(path, root, text, lines)
-    return _lint_markdown(path, root, lines)
+    return _lint_python(path, root, text, lines)
 
 
 def main(argv: list[str] | None = None) -> int:

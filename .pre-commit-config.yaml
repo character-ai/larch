@@ -519,7 +519,7 @@ repos:
 
       - id: lint-em-dash-output
         name: lint emitted em dashes
-        entry: python3 python/cli.py lint em-dash-output
+        entry: cargo run --quiet --locked --package larch-lint -- rule em-dash-output
         language: system
         pass_filenames: false
         always_run: true

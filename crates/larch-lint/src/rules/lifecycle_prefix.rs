@@ -15,8 +15,9 @@
 use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::visit::{self, Visit};
 
-use crate::syntax::RustSyntax;
-use crate::{Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput, suppression};
+use crate::{Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput};
+
+use super::rust_scan;
 
 const NAME: &str = "lifecycle-prefix-literal";
 const DESCRIPTION: &str = "Ratchet lifecycle and bug title-prefix literals toward shared constants";
@@ -37,7 +38,7 @@ pub static RULE: LifecyclePrefixRule = LifecyclePrefixRule;
 /// `config.TRACKING_ISSUE_PREFIX_BY_STATE` values and `title_match.BUG_PREFIX`.
 /// Matching normalizes both sides, so the trailing space carried by the Python
 /// state prefixes is not repeated here.
-const PREFIXES: &[&str] = &[
+pub const PREFIXES: &[&str] = &[
     "[DESIGNING]",
     "[DESIGNED]",
     "[IMPLEMENTING]",
@@ -335,23 +336,15 @@ impl<'ast> Visit<'ast> for Collector {
 /// Returns an error when a suppression token lacks a reason or a line number
 /// exceeds `u32`. Unparseable Rust is skipped, mirroring the Python rule.
 fn check_source(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let Ok(syntax) = RustSyntax::parse(path, source) else {
-        return Ok(Vec::new());
-    };
-    let mut collector = Collector::default();
-    collector.visit_file(syntax.file());
-    let lines: Vec<&str> = source.lines().collect();
-    let mut findings = Vec::new();
-    for raw in &collector.findings {
-        let line_text = lines.get(raw.line.wrapping_sub(1)).copied().unwrap_or("");
-        if suppression::reason(line_text, SUPPRESSION_TOKEN)?.is_some() {
-            continue;
-        }
-        let line = u32::try_from(raw.line)
-            .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
-        findings.push(Finding::new(path, line, raw.message()));
-    }
-    Ok(findings)
+    rust_scan::findings(path, source, SUPPRESSION_TOKEN, |file| {
+        let mut collector = Collector::default();
+        collector.visit_file(file);
+        collector
+            .findings
+            .iter()
+            .map(|raw| (raw.line, raw.message()))
+            .collect()
+    })
 }
 
 impl Rule for LifecyclePrefixRule {
