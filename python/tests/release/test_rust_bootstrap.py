@@ -1,4 +1,4 @@
-"""Clean-install bootstrap, verification, locking, and attack coverage."""
+"""Rust clean-install bootstrap, verification, locking, and attack coverage."""
 
 from __future__ import annotations
 
