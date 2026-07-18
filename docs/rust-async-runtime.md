@@ -34,8 +34,18 @@ must observe their token at bounded intervals.
 
 `run_until` gives cancellation priority over a simultaneously ready timeout.
 Timeouts remain caller-owned policy. A shared primitive never chooses a domain
-timeout. Issue #7665 owns retry, deadline propagation, business clock ports,
-and backoff defaults.
+timeout. `larch-core` defines injectable `BusinessClock`, `MonotonicClock`, and
+`AsyncClock` ports. A propagated `Deadline` can create a shorter child deadline
+but can never outlive its parent. Production adapters use `SystemClock` for
+business timestamps and `TokioClock` for deadlines and sleeps.
+
+`RetryExecutor` owns the async retry loop. Domain code classifies typed errors
+as a closed `RetryDecision`; usage, authorization, and known permanent failures
+stop without another attempt. `RetryPolicy::default` owns the bounded attempt
+and full-jitter exponential-backoff defaults. Callers inject the jitter source,
+clock, cancellation token, optional deadline, and observation sink. Retry
+observations contain only closed classes, attempt counts, and bounded delays.
+They never contain the operation error or response payload.
 
 ## Task ownership and concurrency
 

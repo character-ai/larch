@@ -4,6 +4,8 @@ mod config;
 mod context;
 mod error;
 mod outcome;
+mod retry;
+mod time;
 
 pub use config::env;
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
@@ -11,6 +13,11 @@ pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };
 pub use outcome::{ExitCode, WorkflowOutcome};
+pub use retry::{
+    AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
+    RetryPolicy, RetryPolicyError, StopReason,
+};
+pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 
 /// Immutable metadata about the running larch build.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
