@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import re
 import shutil
 import tarfile
 from pathlib import Path
@@ -17,6 +18,9 @@ VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 SOURCE_COMMIT = "a" * 40
 IDENTITY = assets.ReleaseIdentity(VERSION, TAG, SOURCE_COMMIT)
+REPO_ROOT = Path(__file__).parents[3]
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "rust-release-assets.yaml"
+SETUP_PYTHON = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6"
 
 
 def _write_license(root: Path) -> Path:
@@ -72,6 +76,19 @@ def _json_object(path: Path) -> dict[str, object]:
 
 def _rewrite_json(path: Path, value: dict[str, object]) -> None:
     _ = path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def test_release_workflow_installs_supported_python_before_cli_in_every_job() -> None:
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    jobs = workflow.split("\njobs:\n", maxsplit=1)[1]
+    job_sections = re.split(r"(?m)^  (?=[a-z][a-z0-9_-]*:\n)", jobs)[1:]
+    cli_jobs = [job for job in job_sections if "python3 python/cli.py" in job]
+
+    assert len(cli_jobs) == 3
+    assert workflow.count(SETUP_PYTHON) == len(cli_jobs)
+    for job in cli_jobs:
+        assert job.index(SETUP_PYTHON) < job.index("python3 python/cli.py")
+        assert 'python-version: "3.11"' in job
 
 
 def test_validate_candidate_requires_matching_plugin_and_workspace_versions(tmp_path: Path) -> None:
