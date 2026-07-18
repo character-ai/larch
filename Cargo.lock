@@ -1424,7 +1424,9 @@ dependencies = [
  "assert_cmd",
  "clap",
  "larch-adapters",
+ "larch-core",
  "predicates",
+ "serde_json",
 ]
 
 [[package]]
