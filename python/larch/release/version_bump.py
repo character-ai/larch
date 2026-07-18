@@ -57,6 +57,13 @@ class ApplyResult:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class ReleaseVersionUpdate:
+    root: Path
+    current: str
+    new: str
+
+
 
 
 _redact_outbound = redact.redact_outbound
@@ -851,52 +858,35 @@ def _set_release_version(root: Path, *, current: str, new: str) -> None:
         raise ShipError(f"release version update failed: {exc}{detail}") from exc
 
 
-def set_version_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py release set-version")
-    parser.add_argument("version")
-    args = parser.parse_args(argv)
-    new_version = args.version
+def _release_version_update(new_version: str) -> ReleaseVersionUpdate:
     if not re.fullmatch(config.SEMVER_RE, new_version):
-        print(f"ERROR=invalid semver: {new_version}", file=sys.stderr)
-        return 1
+        raise ShipError(f"invalid semver: {new_version}")
     root_env = os.environ.get("LARCH_RELEASE_SET_VERSION_REPO_ROOT", "")
     plugin_env = os.environ.get("LARCH_RELEASE_SET_VERSION_PLUGIN_JSON", "")
     root = Path(root_env) if root_env else _repo_root_from_cli_file()
     plugin_json = Path(plugin_env) if plugin_env else root / config.PLUGIN_JSON_PATH
     if plugin_env and not root_env:
         root = plugin_json.parent.parent
-    if not plugin_json.is_file():
-        print(f"ERROR={plugin_json} not found", file=sys.stderr)
-        return 1
-    try:
-        plugin_value: object = json.loads(plugin_json.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        print(f"ERROR={plugin_json} is not valid JSON", file=sys.stderr)
-        return 1
-    if not isinstance(plugin_value, dict):
-        print(f"ERROR={plugin_json} does not contain an object", file=sys.stderr)
-        return 1
-    data = cast("dict[str, object]", plugin_value)
-    current = data.get("version")
-    if not isinstance(current, str) or not current:
-        print(f"ERROR={plugin_json} missing .version", file=sys.stderr)
-        return 1
-    if not re.fullmatch(config.SEMVER_RE, current):
-        print(f"ERROR=current version is not semver: {current}", file=sys.stderr)
-        return 1
+    current = _read_plugin_version(plugin_json)
     if new_version == current:
-        print(f"ERROR=no-op: version already {current}", file=sys.stderr)
-        return 1
+        raise ShipError(f"no-op: version already {current}")
     if _semver_parts(new_version) < _semver_parts(current):
-        print(f"ERROR=downgrade refused: {new_version} < {current}", file=sys.stderr)
-        return 1
+        raise ShipError(f"downgrade refused: {new_version} < {current}")
+    return ReleaseVersionUpdate(root=root, current=current, new=new_version)
+
+
+def set_version_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py release set-version")
+    parser.add_argument("version")
+    args = parser.parse_args(argv)
     try:
-        _set_release_version(root, current=current, new=new_version)
+        update = _release_version_update(args.version)
+        _set_release_version(update.root, current=update.current, new=update.new)
     except (OSError, ShipError, json.JSONDecodeError) as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         return 1
-    print(f"PREVIOUS_VERSION={current}")
-    print(f"NEW_VERSION={new_version}")
+    print(f"PREVIOUS_VERSION={update.current}")
+    print(f"NEW_VERSION={update.new}")
     return 0
 
 
