@@ -490,8 +490,6 @@ jobs:
           PIP_RETRIES: "5"
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
-      - name: Check topology-rule paths coverage
-        run: python3 python/cli.py lint topology-rule-paths
       - name: Assert focus-area enum includes 'security' in canonical surfaces
         run: |
           set -euo pipefail

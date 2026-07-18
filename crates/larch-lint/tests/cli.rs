@@ -104,6 +104,12 @@ fn rules_lists_registered_rules_in_name_order() {
             "run-log-corpus-walkers\tReject raw committed run-log corpus walkers outside the shared owner\n",
         ))
         .stdout(predicate::str::contains(
+            "run-log-run-id\tReject non-unique placeholder run-log run-ids\n",
+        ))
+        .stdout(predicate::str::contains(
+            "topology-rule-paths\tValidate topology TSV runtime authorities\n",
+        ))
+        .stdout(predicate::str::contains(
             "wire-artifact-pairing\tRequire a production writer for every wire-artifact reader\n",
         ))
         .stdout(predicate::str::contains(

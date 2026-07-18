@@ -83,6 +83,14 @@ fn seed_tracked_tree(repository: &TempRepo) {
         b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
     );
     repository.write(
+        "skills/shared/topology.tsv",
+        b"fixture\tfixture authority\tcomposition\tskills/shared/topology-authority.md\n",
+    );
+    repository.write(
+        "skills/shared/topology-authority.md",
+        b"fixture authority\n",
+    );
+    repository.write(
         "README.md",
         b"<table>\n<tr><td><a href=\"docs/skills.md#design\"><code>/design</code></a></td></tr>\n<tr><td><a href=\"docs/skills.md#review\"><code>/review</code></a></td></tr>\n</table>\n",
     );

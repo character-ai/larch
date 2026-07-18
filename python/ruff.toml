@@ -303,9 +303,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"check_topology_rule_paths.py" = [
-    "C901",
-]
 "checks.py" = []
 "checks_run_relevant.py" = [
     "C901",
