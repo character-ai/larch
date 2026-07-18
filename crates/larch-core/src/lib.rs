@@ -1,5 +1,17 @@
 //! Domain types, use cases, and effect-free service ports for larch.
 
+mod config;
+mod context;
+mod error;
+mod outcome;
+
+pub use config::env;
+pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
+pub use error::{
+    EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
+};
+pub use outcome::{ExitCode, WorkflowOutcome};
+
 /// Immutable metadata about the running larch build.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildMetadata {
