@@ -162,7 +162,7 @@ NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" release set-version "${NEW_VERSION}"
-git add .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json Cargo.toml Cargo.lock
 git commit -m "Release v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
 ```
@@ -346,7 +346,7 @@ If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=tr
 Runtime helpers:
 
 - `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
-- `python3 "$PWD/python/cli.py" release set-version`: atomic `plugin.json` version write
+- `python3 "$PWD/python/cli.py" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `python3 "$PWD/python/cli.py" release finish`: tag, GitHub Release, promote tail
 - `python3 "$PWD/python/cli.py" release promote`: promote a specific release after `finish`, or during promote-only recovery
 - `python3 "$PWD/python/cli.py" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
