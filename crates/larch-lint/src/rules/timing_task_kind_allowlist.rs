@@ -185,9 +185,7 @@ impl<'syntax> RustVisitor<'syntax> {
 
 impl<'ast> Visit<'ast> for RustVisitor<'_> {
     fn visit_expr_array(&mut self, array: &'ast ExprArray) {
-        if let Some(kind) = kind_after_flag(&array_arguments(self.constants, array)) {
-            self.arrays.insert(array.span().start().line, kind);
-        }
+        record_array_kind(self.constants, &mut self.arrays, array);
         syn::visit::visit_expr_array(self, array);
     }
 
@@ -203,6 +201,19 @@ impl<'ast> Visit<'ast> for RustVisitor<'_> {
         syn::visit::visit_field(self, field);
     }
 
+}
+
+fn record_array_kind(
+    constants: &Constants<'_>,
+    kinds: &mut BTreeMap<usize, String>,
+    array: &ExprArray,
+) {
+    let arguments = array_arguments(constants, array);
+    let Some(kind) = kind_after_flag(&arguments) else {
+        return;
+    };
+    let line = array.span().start().line;
+    kinds.insert(line, kind);
 }
 
 fn kind_after_flag(arguments: &[Argument]) -> Option<String> {
