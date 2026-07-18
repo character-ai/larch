@@ -240,18 +240,14 @@ def _asset_from_json(value: object) -> RemoteAsset:
     size = typed_value.get("size")
     digest = typed_value.get("digest")
     state = typed_value.get("state")
-    if (
-        not isinstance(name, str)
-        or not isinstance(size, int)
-        or isinstance(size, bool)
-        or size <= 0
-        or not isinstance(digest, str)
-        or _DIGEST_RE.fullmatch(digest) is None
-        or state != "uploaded"
-    ):
-        raise ReleaseError(
-            f"release asset metadata is incomplete: {name or '<unnamed>'}"
-        )
+    if not isinstance(name, str):
+        raise ReleaseError("release asset metadata has no name")
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+        raise ReleaseError(f"release asset metadata has invalid size: {name}")
+    if not isinstance(digest, str) or _DIGEST_RE.fullmatch(digest) is None:
+        raise ReleaseError(f"release asset metadata has invalid digest: {name}")
+    if state != "uploaded":
+        raise ReleaseError(f"release asset is not uploaded: {name}")
     return RemoteAsset(name=name, size=size, digest=digest, state="uploaded")
 
 
@@ -283,15 +279,14 @@ def _release_state(
     draft = data.get("draft")
     immutable = data.get("immutable")
     raw_assets = data.get("assets")
-    if (
-        not isinstance(database_id, int)
-        or isinstance(database_id, bool)
-        or tag_name != tag
-        or not isinstance(draft, bool)
-        or not isinstance(immutable, bool)
-        or not isinstance(raw_assets, list)
-    ):
-        raise ReleaseError("release state has invalid or missing fields")
+    if not isinstance(database_id, int) or isinstance(database_id, bool):
+        raise ReleaseError("release state has an invalid database ID")
+    if tag_name != tag:
+        raise ReleaseError("release state has an invalid tag")
+    if not isinstance(draft, bool) or not isinstance(immutable, bool):
+        raise ReleaseError("release state has invalid mutability fields")
+    if not isinstance(raw_assets, list):
+        raise ReleaseError("release state has an invalid asset list")
     typed_assets = cast("list[object]", raw_assets)
     parsed_assets = tuple(_asset_from_json(value) for value in typed_assets)
     return ReleaseState(database_id, tag, draft, immutable, parsed_assets)
