@@ -56,14 +56,6 @@ suppress = [
 # excluded; the test script is referenced only from Makefile, matching the
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
-# scripts/test-lint-no-raw-stderr-after-quiet-init.sh is the regression harness
-# for python3 python/cli.py lint no-raw-stderr-after-quiet-init (S041/no-raw-stderr-after-
-# quiet-init). The lint module is structurally referenced from
-# .pre-commit-config.yaml (local hook
-# `lint-no-raw-stderr-after-quiet-init`) and is therefore not excluded; the test
-# harness is referenced only from Makefile
-# (test-lint-no-raw-stderr-after-quiet-init target) and python/lint_no_raw_stderr_after_quiet_init.md.
-#
 # python/test_bootstrap.py is the regression harness for
 # python/cli.py bootstrap parse-routing (Makefile
 # `test-parse-bootstrap-routing-envelope`). The parser is structurally invoked
@@ -683,9 +675,6 @@ exclude = [
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  "python/lint_no_raw_stderr_after_quiet_init.md",
-  "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
-  "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
   # python/cli.py agent launch-codex-exec — markdown-fence + lint-fix-loop launcher-variable indirection.
   "python/cli.py agent launch-codex-exec",
   "python/agents.py",

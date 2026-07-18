@@ -48,7 +48,6 @@ scripts/test-implement-step2-routing.sh
 scripts/test-implement-step8-exit3-first-fixer.sh
 scripts/test-implement-timing-rehydration.sh
 scripts/test-legacy-title-prefix-literals-scope.sh
-scripts/test-lint-no-raw-stderr-after-quiet-init.sh
 scripts/test-orchestrator-scope-sync.sh
 scripts/test-pipe-sigpipe-safety.sh
 scripts/test-plan-adequacy-audit.sh
