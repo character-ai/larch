@@ -267,14 +267,18 @@ crate::register_rule!(RENDERER_GOLDEN_TESTS_METADATA, RENDERER_GOLDEN_TESTS_RULE
 fn known_workspace_package(name: &str) -> bool {
     matches!(
         name,
-        "larch-core" | "larch-adapters" | "larch-cli" | "larch-lint"
+        "larch-core"
+            | "larch-adapters"
+            | "larch-cli"
+            | "larch-lint"
+            | "larch-test-support"
     )
 }
 
 fn workspace_dependency_allowed(importer: &str, dependency: &str) -> bool {
     matches!(
         (importer, dependency),
-        ("larch-adapters", "larch-core")
+        ("larch-adapters" | "larch-test-support", "larch-core")
             | ("larch-cli", "larch-core" | "larch-adapters")
     )
 }
@@ -584,6 +588,7 @@ mod tests {
         assert!(known_workspace_package("larch-adapters"));
         assert!(known_workspace_package("larch-cli"));
         assert!(known_workspace_package("larch-lint"));
+        assert!(known_workspace_package("larch-test-support"));
         assert!(!known_workspace_package("larch-report"));
         assert!(workspace_dependency_allowed(
             "larch-adapters",
@@ -592,6 +597,10 @@ mod tests {
         assert!(workspace_dependency_allowed(
             "larch-cli",
             "larch-adapters"
+        ));
+        assert!(workspace_dependency_allowed(
+            "larch-test-support",
+            "larch-core"
         ));
         assert!(!workspace_dependency_allowed(
             "larch-core",

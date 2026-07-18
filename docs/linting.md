@@ -62,6 +62,10 @@ components. Install the dependency-policy tool with
 formatting, Clippy, build, test, and dependency policy. CI runs the same checks
 through parallel lint and build/test lanes behind the stable `rust-gate`. See
 [`docs/rust-dependency-survey.md`](rust-dependency-survey.md) for crate choices.
+Run `make rust-coverage-install` once, then `make rust-coverage` to enforce the
+measured line baseline and write `target/llvm-cov/lcov.info`. CI uploads the
+same report and includes coverage in `rust-gate`. See
+[`docs/rust-testing.md`](rust-testing.md) for exclusions and test boundaries.
 
 ### Python complexity ratchet
 

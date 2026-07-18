@@ -438,11 +438,45 @@ jobs:
       - name: Test Rust workspace
         run: make rust-test
 
+  # Whole-workspace coverage stays separate from test sharding so its measured
+  # baseline and exclusions remain stable.
+  rust-coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
+      - name: Cache Cargo inputs and coverage build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/cargo-llvm-cov
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'Makefile') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ github.job }}-
+      - name: Install pinned coverage tools
+        run: make rust-coverage-install
+      - name: Test Rust workspace with coverage
+        run: make rust-coverage
+      - name: Upload Rust coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-coverage-lcov
+          path: target/llvm-cov/lcov.info
+          if-no-files-found: error
+
   # Aggregate gate keeps one branch-protection name if the internal Rust job
   # shape changes. `if: always()` prevents a skipped dependency from passing.
   rust-gate:
     name: rust-gate
-    needs: [rust-lint, rust-clippy, rust-build-test]
+    needs: [rust-lint, rust-clippy, rust-build-test, rust-coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -451,9 +485,11 @@ jobs:
           lint_result="${{ needs.rust-lint.result }}"
           clippy_result="${{ needs.rust-clippy.result }}"
           build_test_result="${{ needs.rust-build-test.result }}"
+          coverage_result="${{ needs.rust-coverage.result }}"
           [ "$lint_result" = success ] || { echo "::error::rust-lint result=$lint_result"; exit 1; }
           [ "$clippy_result" = success ] || { echo "::error::rust-clippy result=$clippy_result"; exit 1; }
           [ "$build_test_result" = success ] || { echo "::error::rust-build-test result=$build_test_result"; exit 1; }
+          [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
 
   contains-pins:
     runs-on: ubuntu-latest

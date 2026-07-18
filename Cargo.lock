@@ -1439,6 +1439,7 @@ version = "53.1.23"
 dependencies = [
  "gix",
  "larch-core",
+ "larch-test-support",
  "nix",
  "serde_json",
  "tempfile",
@@ -1491,6 +1492,14 @@ dependencies = [
  "tree-sitter",
  "tree-sitter-bash",
  "uuid",
+]
+
+[[package]]
+name = "larch-test-support"
+version = "53.1.23"
+dependencies = [
+ "larch-core",
+ "tempfile",
 ]
 
 [[package]]
