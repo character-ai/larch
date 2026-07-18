@@ -84,7 +84,7 @@ ADC can obtain an access token.
 - **OpenAI / Codex**: `npm install -g @openai/codex`
 - **Cursor / Cursor CLI** (larch uses it only as an agent, but the whole editor package needs to be installed)
 - **git**: version control (used by all skills)
-- **gh**: [GitHub CLI](https://cli.github.com/), authenticated with repo write access (`gh auth login`). Required for PR creation, CI monitoring, and merge automation.
+- **gh**: [GitHub CLI](https://cli.github.com/), authenticated with repo write access (`gh auth login`). The installed version must provide `gh release verify`, `gh attestation verify`, and immutable release metadata. Larch uses these commands for the first Rust binary install, PR creation, CI monitoring, and merge automation.
 - **jq**: [JSON processor](https://jqlang.github.io/jq/).
 - **python3**: Python 3.11 or newer
 
@@ -126,6 +126,38 @@ Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/p
 claude plugin marketplace add character-ai/larch --sparse .claude-plugin agents docs hooks python scripts skills
 claude plugin install larch@larch-local
 ```
+
+### Rust executable bootstrap
+
+Every Rust-backed entrypoint must call
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. On first use, the shim installs the
+executable that exactly matches the plugin version.
+It downloads the versioned manifest, checksum file, and host archive from the
+immutable `v<plugin-version>` release. It verifies release and asset
+attestations, the strict manifest, SHA-256 digests, archive members, and the
+staged executable's machine-readable identity before atomically installing
+`${CLAUDE_PLUGIN_ROOT}/bin/larch`.
+
+Claude Code supplies `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` to plugin
+commands. The latter holds the bounded first-use lock. A failed bootstrap keeps
+an existing executable intact and prints retry guidance. Run the same command
+again after fixing a missing tool, authentication problem, or interrupted
+download.
+
+Local `--plugin-dir` development never downloads into the checkout. Build and
+select the executable explicitly:
+
+```bash
+cargo build --locked --release --package larch-cli
+CLAUDE_PLUGIN_ROOT="$PWD" \
+CLAUDE_PLUGIN_DATA="${TMPDIR:-/tmp}/larch-plugin-data" \
+LARCH_BINARY="$PWD/target/release/larch" \
+"$PWD/scripts/larch.sh" example echo "local build"
+```
+
+`LARCH_BINARY` must be an absolute, regular executable. Its version and target
+self-check must match the active plugin and host.
+
 ### Configure Claude
 Edit `~/.claude/settings.json` and add a `permissions`/`allow` section (if it does not have one yet) with this entry. NOTE: replace `<your-user-name>`!
 

@@ -4,6 +4,7 @@
       "Bash($PWD/.claude/skills/*)",
       "Bash($PWD/.claude/skills/release/scripts/*)",
       "Bash($PWD/scripts/*)",
+      "Bash($PWD/scripts/larch.sh:*)",
       "Bash($PWD/skills/implement/scripts/*)",
       "Bash($PWD/skills/report-tokens/scripts/*)",
       "Bash(./:*)",

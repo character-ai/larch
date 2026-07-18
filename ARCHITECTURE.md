@@ -144,6 +144,8 @@ glibc 2.17 or newer. Windows and musl are not initial targets.
 Release archives contain only `larch` and `LICENSE`. Builds use the pinned Rust
 toolchain and lockfile. Release CI must build and smoke-test the supported
 targets without Python and must not introduce an undeclared native runtime
-library. A thin residual Bash bootstrap may install and execute the verified
-binary as specified by issue #7670. Bootstrap use of `gh` does not authorize
-runtime service adapters to shell out to it.
+library. The thin residual `scripts/larch.sh` bootstrap verifies and atomically
+installs the release-matched binary as specified by issue #7670. Its hidden
+`larch bootstrap self-check` command reports the compiled version and target
+for staged validation. Bootstrap use of `gh` does not authorize runtime service
+adapters to shell out to it.

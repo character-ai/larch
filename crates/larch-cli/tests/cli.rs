@@ -58,6 +58,26 @@ fn version_reports_the_workspace_version() {
 }
 
 #[test]
+fn bootstrap_self_check_reports_machine_readable_build_identity() {
+    let output = larch()
+        .args(["bootstrap", "self-check"])
+        .output()
+        .expect("self-check should run");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("self-check should emit JSON");
+    assert_eq!(payload["schema_version"], 1);
+    assert_eq!(payload["version"], env!("CARGO_PKG_VERSION"));
+    assert!(
+        payload["target"]
+            .as_str()
+            .is_some_and(|target| !target.is_empty())
+    );
+}
+
+#[test]
 fn compiled_version_matches_the_plugin_release_version() {
     let plugin_manifest_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.claude-plugin/plugin.json");

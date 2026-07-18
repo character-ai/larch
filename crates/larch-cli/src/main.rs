@@ -16,9 +16,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Domain {
+    /// Internal bootstrap commands used before installation completes.
+    #[command(subcommand, hide = true)]
+    Bootstrap(BootstrapCommand),
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
+}
+
+#[derive(Subcommand)]
+enum BootstrapCommand {
+    /// Print the compiled version and target as machine-readable JSON.
+    SelfCheck,
 }
 
 #[derive(Subcommand)]
@@ -33,8 +42,11 @@ struct EchoArguments {
     message: String,
 }
 
-fn run(cli: Cli) {
+fn run(cli: Cli, metadata: larch_core::BuildMetadata) {
     match cli.domain {
+        Domain::Bootstrap(BootstrapCommand::SelfCheck) => {
+            println!("{}", larch_core::bootstrap_self_check(metadata));
+        }
         Domain::Example(ExampleCommand::Echo(arguments)) => {
             println!("{}", larch_core::example::echo(&arguments.message));
         }
@@ -46,6 +58,6 @@ fn main() -> ExitCode {
     let matches = Cli::command().version(metadata.version()).get_matches();
     let cli = Cli::from_arg_matches(&matches)
         .expect("arguments already validated by the generated Clap command");
-    run(cli);
+    run(cli, metadata);
     ExitCode::SUCCESS
 }

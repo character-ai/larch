@@ -23,7 +23,7 @@ pub use filesystem::{
 /// Return metadata compiled into the adapter layer.
 #[must_use]
 pub const fn build_metadata() -> BuildMetadata {
-    BuildMetadata::new(env!("CARGO_PKG_VERSION"))
+    BuildMetadata::new(env!("CARGO_PKG_VERSION"), env!("LARCH_BUILD_TARGET"))
 }
 
 #[cfg(test)]
@@ -33,5 +33,6 @@ mod tests {
     #[test]
     fn build_metadata_uses_the_workspace_version() {
         assert_eq!(build_metadata().version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(build_metadata().target(), env!("LARCH_BUILD_TARGET"));
     }
 }

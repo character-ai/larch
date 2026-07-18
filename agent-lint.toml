@@ -1358,9 +1358,9 @@ conditional-sources = [
 root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
-closure-max-lines = 3548
-closure-max-tokens = 139997
-closure-max-content-tokens = 139704
+closure-max-lines = 3566
+closure-max-tokens = 140255
+closure-max-content-tokens = 139961
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1407,6 +1407,6 @@ roots = [
   "skills/shared/reviewer-templates.md",
   "skills/shared/voting-protocol.md",
 ]
-closure-max-lines = 5836
-closure-max-tokens = 165469
-closure-max-content-tokens = 165014
+closure-max-lines = 5854
+closure-max-tokens = 165727
+closure-max-content-tokens = 165271

@@ -15,6 +15,7 @@ scripts/external-tool-registry.sh
 scripts/file-failure-report-cross-repo.sh
 scripts/flush-vendor-failure-diagnostics.sh
 scripts/hook-anti-read-poll.sh
+scripts/larch.sh
 scripts/sessionstart-statusline.sh
 scripts/pre-commit-bash-syntax.sh
 scripts/pre-commit-shellcheck.sh

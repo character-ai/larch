@@ -40,13 +40,14 @@ pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTim
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildMetadata {
     version: &'static str,
+    target: &'static str,
 }
 
 impl BuildMetadata {
     /// Create metadata for a compile-time version.
     #[must_use]
-    pub const fn new(version: &'static str) -> Self {
-        Self { version }
+    pub const fn new(version: &'static str, target: &'static str) -> Self {
+        Self { version, target }
     }
 
     /// Return the build version.
@@ -54,6 +55,22 @@ impl BuildMetadata {
     pub const fn version(self) -> &'static str {
         self.version
     }
+
+    /// Return the compilation target triple.
+    #[must_use]
+    pub const fn target(self) -> &'static str {
+        self.target
+    }
+}
+
+/// Render the machine-readable identity checked by the installation shim.
+#[must_use]
+pub fn bootstrap_self_check(metadata: BuildMetadata) -> String {
+    format!(
+        "{{\"schema_version\":1,\"version\":\"{}\",\"target\":\"{}\"}}",
+        metadata.version(),
+        metadata.target()
+    )
 }
 
 /// Non-production use cases that prove command dispatch and library wiring.
@@ -67,13 +84,24 @@ pub mod example {
 
 #[cfg(test)]
 mod tests {
-    use super::{BuildMetadata, example};
+    use super::{BuildMetadata, bootstrap_self_check, example};
 
     #[test]
     fn build_metadata_preserves_the_version() {
-        let metadata = BuildMetadata::new("1.2.3");
+        let metadata = BuildMetadata::new("1.2.3", "aarch64-apple-darwin");
 
         assert_eq!(metadata.version(), "1.2.3");
+        assert_eq!(metadata.target(), "aarch64-apple-darwin");
+    }
+
+    #[test]
+    fn bootstrap_self_check_is_compact_machine_readable_json() {
+        let metadata = BuildMetadata::new("1.2.3", "x86_64-unknown-linux-gnu");
+
+        assert_eq!(
+            bootstrap_self_check(metadata),
+            r#"{"schema_version":1,"version":"1.2.3","target":"x86_64-unknown-linux-gnu"}"#
+        );
     }
 
     #[test]

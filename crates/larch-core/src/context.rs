@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn runtime_context_preserves_validated_immutable_identity() {
         let context = RuntimeContext::new(
-            BuildMetadata::new("53.1.22"),
+            BuildMetadata::new("53.1.22", "aarch64-apple-darwin"),
             RunId::parse("run-abc").expect("fixture run ID should parse"),
             Some("session-123".to_owned()),
         );
