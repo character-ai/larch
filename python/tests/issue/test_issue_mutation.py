@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,16 +14,24 @@ from larch.core.proc import CommandResult
 from larch.issue import issue_mutation
 
 
+def _empty_labels() -> set[str]:
+    return set()
+
+
+def _empty_calls() -> list[list[str]]:
+    return []
+
+
 @dataclass
 class MutationRunner:
     title: str = "Regular issue"
     body: str = "Body"
-    labels: set[str] = field(default_factory=set)
+    labels: set[str] = field(default_factory=_empty_labels)
     state: str = "OPEN"
     second: int = 0
     advance_timestamp: bool = True
     edit_failure_after_apply: bool = False
-    calls: list[list[str]] = field(default_factory=list)
+    calls: list[list[str]] = field(default_factory=_empty_calls)
 
     @property
     def updated_at(self) -> str:
@@ -57,9 +66,9 @@ class MutationRunner:
         _ = (timeout, cwd, env, check, stdout, stderr)
         args = list(argv)
         self.calls.append(args)
-        if args[:4] == ["gh", "issue", "view", "7"]:  # lint-gh-argv-literal: fixture assertion
+        if args[:4] == ["gh", "issue", "view", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 0, self._snapshot(), "", 0.01)
-        if args[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: fixture assertion
+        if args[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             if "--title" in args:
                 self.title = args[args.index("--title") + 1]
             if "--body-file" in args:
@@ -76,7 +85,7 @@ class MutationRunner:
 
 
 def _request(
-    runner: MutationRunner, *, fields: frozenset[issue_mutation.MutationField], **kwargs: object
+    runner: MutationRunner, *, fields: frozenset[issue_mutation.MutationField], **kwargs: Any
 ) -> issue_mutation.IssueMutationRequest:
     snapshot = issue_mutation.read_snapshot(runner, repository="owner/repo", issue="7")
     return issue_mutation.request_for_snapshot(snapshot, fields=fields, **kwargs)
@@ -193,6 +202,9 @@ def test_named_block_rejects_foreign_text_and_redaction_failure(monkeypatch: pyt
         fields=frozenset({issue_mutation.MutationField.BODY}),
         body="new body",
     )
-    monkeypatch.setattr(issue_mutation.redact, "redact_secrets_only", lambda _value: "[content truncated")
+    def truncated_redaction(_value: str) -> str:
+        return "[content truncated"
+
+    monkeypatch.setattr(issue_mutation.redact, "redact_secrets_only", truncated_redaction)
     with pytest.raises(issue_mutation.ProtectedIssueMutation, match="redaction-failed"):
         _ = issue_mutation.apply(runner, request)

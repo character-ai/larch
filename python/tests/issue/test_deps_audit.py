@@ -518,7 +518,10 @@ def test_apply_rewrites_only_skips_edges(tmp_path: Path, monkeypatch, capsys) ->
         return {"number": issue, "title": "Regular", "state": "open"}
 
     monkeypatch.setattr(deps_audit, "_live_issue_meta", live_meta)
-    monkeypatch.setattr(deps_audit.issue_mutation, "update_body", lambda *_args, **_kwargs: None)
+    def update_body(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(deps_audit.issue_mutation, "update_body", update_body)
     assert deps_audit.apply_main(["--repo", "o/r", "--plan-file", str(plan), "--rewrites-only"]) == 0
     data = read_stdout_json(capsys)
     assert data["applied"] == [{"kind": "rewrite", "issue": 1}]

@@ -18,16 +18,15 @@ from larch.core.proc import Runner
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import issue_wire
-from larch.issue.title_match import detect_lifecycle_prefix
+from larch.core import config
+from larch.issue.title_match import LIFECYCLE_PREFIXES, detect_lifecycle_prefix
 
-_BUSY_PREFIXES: Final = {
-    "[DESIGNING]",
-    "[IMPLEMENTING]",
-    "[STALLED]",
-    "[DONE]",
-    "[IN PROGRESS]",
-    "[PLANNED]",
-}
+_MANAGED_BUSY_STATES: Final = ("designing", "implementing", "stalled", "done")
+_MANAGED_PREFIXES: Final = frozenset(config.TRACKING_ISSUE_PREFIX_BY_STATE.values())
+_BUSY_PREFIXES: Final = frozenset(
+    [config.TRACKING_ISSUE_PREFIX_BY_STATE[state].strip() for state in _MANAGED_BUSY_STATES]
+    + [prefix.strip() for prefix in LIFECYCLE_PREFIXES if prefix not in _MANAGED_PREFIXES]
+)
 _UPDATED_AT_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 

@@ -144,10 +144,11 @@ class IssueRunner:
         args = list(argv)
         self.calls.append(args)
         if args[:4] == ["gh", "issue", "view", "9"]:  # lint-gh-argv-literal: ok fixture assertion
-            payload = {
+            labels: list[object] = []
+            payload: dict[str, object] = {
                 "title": "Regular issue",
                 "body": self.body,
-                "labels": [],
+                "labels": labels,
                 "state": "OPEN",
                 "updatedAt": self.updated_at,
             }

@@ -148,7 +148,11 @@ def test_link_pr_closes_no_prefix_collision() -> None:
 
 def test_rename_strips_legacy_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner()
-    monkeypatch.setattr(tracking_issue.issue_mutation, "update_title", lambda *_args, **_kwargs: None)
+
+    def update_title(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(tracking_issue.issue_mutation, "update_title", update_title)
     title = "[IN PROGRESS] [DONE] My feature"
     new = tracking_issue.rename(
         runner,
@@ -270,10 +274,14 @@ def test_upsert_token_report_rename_matrix() -> None:
 def test_rename_truncates_after_redaction(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner()
     captured: dict[str, str] = {}
+
+    def update_title(*_args: object, title: str, **_kwargs: object) -> None:
+        captured.setdefault("title", title)
+
     monkeypatch.setattr(
         tracking_issue.issue_mutation,
         "update_title",
-        lambda *_args, title, **_kwargs: captured.setdefault("title", title),
+        update_title,
     )
     long_tail = "x" * 300
     title = f"[DESIGNING] {long_tail}"

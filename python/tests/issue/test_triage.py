@@ -107,7 +107,7 @@ def test_valid_apply_preserves_original_and_verifies_readback(
         nonlocal edited
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
-        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: fixture assertion
+        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             assert argv[:4] == ["gh", "issue", "edit", "7"]  # lint-gh-argv-literal: ok fixture assertion
             assert "--title" in argv
             assert argv[argv.index("--title") + 1] == expected_title
@@ -167,7 +167,7 @@ def test_valid_apply_bug_prefix_title_gets_triaged_infix(
         nonlocal edited
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
-        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: fixture assertion
+        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             assert "--title" in argv
             assert argv[argv.index("--title") + 1] == expected_title
             edited = True

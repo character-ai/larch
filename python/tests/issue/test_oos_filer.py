@@ -13,12 +13,13 @@ from typing import cast
 
 import pytest
 from larch.core import config
-from larch.core.proc import CommandResult
+from larch.errors import ShipError
 from larch import io as larch_io
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_filer
 from larch.issue import oos_priority
+from larch.issue import issue_mutation
 
 
 def _cp(args: list[str], stdout: str = "", stderr: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:
@@ -34,19 +35,33 @@ def _stub_priority_label_add(
     calls: list[tuple[str, str, str]] = []
     attempts = 0
 
-    def fake_label_add(_runner: object, number: str, label: str, *, repo: str | None = None, **_kwargs: object) -> CommandResult:
+    def fake_update_labels(
+        _runner: object,
+        *,
+        repository: str,
+        issue: str,
+        labels: frozenset[str],
+        **_kwargs: object,
+    ) -> None:
         nonlocal attempts
         attempts += 1
-        calls.append((number, label, repo or ""))
+        calls.append((issue, oos_priority.OOS_CORRECTNESS_LABEL, repository))
         if fail or (fail_once and attempts == 1):
-            return CommandResult(("gh", "issue", "edit", number), 1, "", "edit failed", 0.01)
-        return CommandResult(("gh", "issue", "edit", number), 0, "", "", 0.01)
+            raise ShipError("edit failed")
+        assert oos_priority.OOS_CORRECTNESS_LABEL in labels
 
     def fake_labels_list(_runner: object, number: str, *, repo: str, **_kwargs: object) -> list[str]:
         _ = (number, repo)
         return [oos_priority.OOS_CORRECTNESS_LABEL]
 
-    monkeypatch.setattr(oos_filer.gh, "issue_label_add", fake_label_add)
+    monkeypatch.setattr(
+        oos_filer.issue_mutation,
+        "read_snapshot",
+        lambda _runner, *, repository, issue: issue_mutation.IssueSnapshot(
+            repository, issue, "Regular", "", frozenset(), "OPEN", "2026-07-19T00:00:00Z"
+        ),
+    )
+    monkeypatch.setattr(oos_filer.issue_mutation, "update_labels", fake_update_labels)
     monkeypatch.setattr(oos_filer.gh, "issue_labels_list", fake_labels_list)
     return calls
 
@@ -1425,14 +1440,16 @@ def test_cmd_file_refuses_when_session_env_has_no_auth(tmp_path: Path, monkeypat
 
 
 def test_apply_priority_label_accepts_verified_label(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(oos_filer.gh, "issue_label_add", lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01))
+    monkeypatch.setattr(oos_filer.issue_mutation, "read_snapshot", lambda _runner, *, repository, issue: issue_mutation.IssueSnapshot(repository, issue, "Regular", "", frozenset(), "OPEN", "2026-07-19T00:00:00Z"))
+    monkeypatch.setattr(oos_filer.issue_mutation, "update_labels", lambda *_a, **_k: None)
     monkeypatch.setattr(oos_filer.gh, "issue_labels_list", lambda *_a, **_k: [oos_priority.OOS_CORRECTNESS_LABEL])
     ok = oos_filer._apply_priority_label(tmpdir=tmp_path, url="https://github.com/owner/repo/issues/77", repo="owner/repo")
     assert ok is True
 
 
 def test_apply_priority_label_flags_unverified_label(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(oos_filer.gh, "issue_label_add", lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01))
+    monkeypatch.setattr(oos_filer.issue_mutation, "read_snapshot", lambda _runner, *, repository, issue: issue_mutation.IssueSnapshot(repository, issue, "Regular", "", frozenset(), "OPEN", "2026-07-19T00:00:00Z"))
+    monkeypatch.setattr(oos_filer.issue_mutation, "update_labels", lambda *_a, **_k: None)
     monkeypatch.setattr(oos_filer.gh, "issue_labels_list", lambda *_a, **_k: [])
     failures: list[str] = []
 
