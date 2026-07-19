@@ -30,10 +30,15 @@ process launch. Current matches are controls or setup prose:
 | Google Cloud service APIs | None | None | Not applicable | Not applicable | Not applicable |
 | `gcloud` CLI | None | None | Not applicable | Not applicable | Not applicable |
 
-The Rust adapter now owns hardened ADC construction through
-`google-cloud-auth`. It is a credential boundary, not a service operation, and
-has no production consumer to cut over. No `google-cloud-*` service client or
-larch-owned service trait is present because the operation inventory is empty.
+`crates/larch-adapters/src/google_auth.rs` is the single concrete Google client
+owner. Its `GoogleAdc` wrapper builds the `google-cloud-auth` credentials and is
+the only module that names a `googleapis.com` service host. It is a credential
+boundary, not a service operation, and has no production consumer to cut over. No
+`google-cloud-*` service client or larch-owned service trait is present because
+the operation inventory is empty. The `service-ownership` rule in
+`crates/larch-lint` keeps concrete Google clients, `googleapis.com` request
+surfaces, and the `gcloud` CLI inside `crates/larch-adapters`; larch never shells
+out to `gcloud`.
 
 Before adding a Google operation, update this ledger with its production caller,
 service, exact OAuth scopes, minimum IAM permissions, larch-owned port and DTOs,

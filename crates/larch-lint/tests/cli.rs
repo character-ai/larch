@@ -22,6 +22,7 @@ fn all_resolves_root_from_a_nested_working_directory() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // one assertion per registered rule
 fn rules_lists_registered_rules_in_name_order() {
     let repository = TempRepo::new();
     TempRepo::command_from(repository.path())
@@ -78,6 +79,9 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "subprocess-via-runner\tRequire process Command ownership by the shared runner\n",
+        ))
+        .stdout(predicate::str::contains(
+            "service-ownership\tConfine service clients, request surfaces, and CLIs to the adapter boundary\n",
         ))
         .stdout(predicate::str::contains(
             "self-disarmable-gate\tReject optional metadata that suppresses a design size or publish hard gate\n",

@@ -171,6 +171,13 @@ work:
   redirect checks, bounded retries, mutation reconciliation, redaction, and
   child-environment allowlists. Tests inject fakes at core ports and do not
   require network access.
+- The `service-ownership` repository rule holds this boundary mechanically. It
+  confines Octocrab, `google-cloud-auth`, other HTTP clients, service request
+  hosts, and GraphQL documents to `larch-adapters`, requires one concrete client
+  owner per service, rejects `gcloud` and service-credential child environments
+  in production shell, and requires the GitHub and Google service inventories to
+  name each client owner. `gh-argv-literal` keeps raw `gh` construction in the
+  wrapper, and `subprocess-via-runner` keeps process spawns behind the runner.
 
 Do not add Octocrab or Google clients until their implementation leaf lands.
 That leaf must centralize the reviewed version and rustls-only features in the
