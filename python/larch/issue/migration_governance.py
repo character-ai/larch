@@ -71,6 +71,19 @@ RECEIPT_STALE_REASONS: Final = frozenset(
 )
 
 
+_OWNER_ROW_MIN_PARTS: Final = 2
+_BLOCKING_PARITY_PREFIXES: Final = (
+    f"{REASON_MISSING_NATIVE} ",
+    f"{REASON_UNDOCUMENTED_NATIVE} ",
+)
+
+
+def _is_blocking_parity_reason(reason: str) -> bool:
+    return reason == REASON_BLOCKER_READ_UNAVAILABLE or reason.startswith(
+        _BLOCKING_PARITY_PREFIXES
+    )
+
+
 @dataclass(frozen=True)
 class BlockerSnapshotRow:
     """Canonical blocker identity used for hashing and parity."""
@@ -98,15 +111,12 @@ class ParityVerdict:
 
     @property
     def blocking(self) -> bool:
-        return any(
-            reason == REASON_BLOCKER_READ_UNAVAILABLE
-            or reason.startswith(f"{REASON_MISSING_NATIVE} ")
-            or reason.startswith(f"{REASON_UNDOCUMENTED_NATIVE} ")
-            for reason in self.reasons
-        )
+        """True when any reason blocks migration admission."""
+        return any(_is_blocking_parity_reason(reason) for reason in self.reasons)
 
     @property
     def report_only(self) -> tuple[str, ...]:
+        """Closed retained edges that must not block admission."""
         return tuple(
             reason
             for reason in self.reasons
@@ -122,6 +132,7 @@ class FreshnessVerdict:
 
     @property
     def ok(self) -> bool:
+        """True when the receipt matches live inputs."""
         return not self.reasons
 
 
@@ -134,16 +145,14 @@ class GovernanceGateVerdict:
 
     @property
     def ok(self) -> bool:
+        """True when parity is non-blocking and the receipt is fresh."""
         return (not self.parity.blocking) and self.freshness.ok
 
     @property
     def blocking_reasons(self) -> tuple[str, ...]:
+        """Operator-visible blocking tokens from parity and freshness."""
         blocking = [
-            reason
-            for reason in self.parity.reasons
-            if reason == REASON_BLOCKER_READ_UNAVAILABLE
-            or reason.startswith(f"{REASON_MISSING_NATIVE} ")
-            or reason.startswith(f"{REASON_UNDOCUMENTED_NATIVE} ")
+            reason for reason in self.parity.reasons if _is_blocking_parity_reason(reason)
         ]
         blocking.extend(self.freshness.reasons)
         return tuple(blocking)
@@ -210,7 +219,7 @@ def owner_keys_from_rows(*, rows: Sequence[str]) -> tuple[str, ...]:
     keys: set[str] = set()
     for row in rows:
         parts = row.split("\t")
-        if len(parts) < 2:
+        if len(parts) < _OWNER_ROW_MIN_PARTS:
             continue
         kind = parts[0]
         if kind not in {"CREATE", "REUSE"}:
@@ -222,10 +231,12 @@ def owner_keys_from_rows(*, rows: Sequence[str]) -> tuple[str, ...]:
 
 
 def hash_plan_block(*, plan_inner: str) -> str:
+    """Hash exact plan-block inner bytes."""
     return _sha256_text(plan_inner)
 
 
 def hash_blocker_rows(*, rows: Sequence[BlockerSnapshotRow]) -> str:
+    """Hash sorted blocker number/state/updatedAt rows."""
     canonical = "\n".join(
         f"{row.number}\t{row.state}\t{row.updated_at}"
         for row in sorted(rows, key=lambda item: item.number)
@@ -234,6 +245,7 @@ def hash_blocker_rows(*, rows: Sequence[BlockerSnapshotRow]) -> str:
 
 
 def hash_owner_rows(*, rows: Sequence[str]) -> str:
+    """Hash sorted unique exact owner rows."""
     return _sha256_text("\n".join(sorted(set(rows))))
 
 
@@ -364,16 +376,23 @@ def compare_blocker_parity(
     body_numbers = {row.number for row in body_rows}
     open_body = {row.number for row in body_rows if row.state == "open"}
     open_native = {row.number for row in native_rows if row.state == "open"}
-    reasons: list[str] = []
-    for number in sorted(open_body):
-        if number not in open_native:
-            reasons.append(f"{REASON_MISSING_NATIVE} issue=#{number}")
-    for number in sorted(open_native):
-        if number not in body_numbers:
-            reasons.append(f"{REASON_UNDOCUMENTED_NATIVE} issue=#{number}")
-    for row in sorted(native_rows, key=lambda item: item.number):
-        if row.state != "open":
-            reasons.append(f"{REASON_CLOSED_RETAINED} issue=#{row.number}")
+    reasons: list[str] = [
+        *(
+            f"{REASON_MISSING_NATIVE} issue=#{number}"
+            for number in sorted(open_body)
+            if number not in open_native
+        ),
+        *(
+            f"{REASON_UNDOCUMENTED_NATIVE} issue=#{number}"
+            for number in sorted(open_native)
+            if number not in body_numbers
+        ),
+        *(
+            f"{REASON_CLOSED_RETAINED} issue=#{row.number}"
+            for row in sorted(native_rows, key=lambda item: item.number)
+            if row.state != "open"
+        ),
+    ]
     return ParityVerdict(reasons=tuple(reasons))
 
 
@@ -598,7 +617,7 @@ def validate_receipt_freshness(
     return FreshnessVerdict(reasons=tuple(reasons))
 
 
-def evaluate_governance_gate(
+def evaluate_governance_gate(  # noqa: PLR0913 - shared gate identity is deliberately explicit across four call sites
     runner: Runner,
     *,
     issue: str,
@@ -627,7 +646,7 @@ def evaluate_governance_gate(
     return GovernanceGateVerdict(parity=parity, freshness=freshness)
 
 
-def build_receipt_for_body(
+def build_receipt_for_body(  # noqa: PLR0913 - receipt identity inputs are deliberately explicit
     runner: Runner,
     *,
     issue: str,
@@ -719,6 +738,7 @@ def persist_plan_receipt(
 
 
 def format_gate_refusal(*, site: str, verdict: GovernanceGateVerdict) -> str:
+    """Render a single-line operator refusal for a failed governance gate."""
     tokens = ",".join(verdict.blocking_reasons) or "unknown"
     return f"**❌ {site}: migration governance blocked: `{tokens}`.**"
 
@@ -726,6 +746,7 @@ def format_gate_refusal(*, site: str, verdict: GovernanceGateVerdict) -> str:
 def read_issue_body(
     runner: Runner, *, issue: str, repo: str, cwd: str | None = None
 ) -> str:
+    """Read the issue body through the typed GitHub adapter."""
     result = gh.issue_view_field_read(
         runner, issue, "body", repo=repo or None, cwd=cwd
     )
@@ -744,13 +765,6 @@ def read_issue_body(
 # Re-export CommandResult for typed test doubles without importing proc at call sites.
 __all__ = [
     "BLOCKING_PARITY_REASONS",
-    "BlockerSnapshotRow",
-    "CommandResult",
-    "FreshnessVerdict",
-    "GovernanceGateVerdict",
-    "ParityVerdict",
-    "PlanReceipt",
-    "RECEIPT_STALE_REASONS",
     "REASON_BLOCKER_READ_UNAVAILABLE",
     "REASON_CLOSED_RETAINED",
     "REASON_MISSING_NATIVE",
@@ -759,6 +773,13 @@ __all__ = [
     "REASON_STALE_PLAN_BASE_SCOPE",
     "REASON_STALE_PLAN_BODY",
     "REASON_UNDOCUMENTED_NATIVE",
+    "RECEIPT_STALE_REASONS",
+    "BlockerSnapshotRow",
+    "CommandResult",
+    "FreshnessVerdict",
+    "GovernanceGateVerdict",
+    "ParityVerdict",
+    "PlanReceipt",
     "build_receipt_for_body",
     "compare_blocker_parity",
     "compute_base_scope_fingerprint",
