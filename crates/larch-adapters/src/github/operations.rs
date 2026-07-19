@@ -131,6 +131,21 @@ pub struct ReleasePullRequest {
     pub head_ref: String,
 }
 
+/// Candidate state and exact head object id used by release staging.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseCandidatePullRequest {
+    pub state: ReleaseCandidatePullRequestState,
+    pub head_oid: String,
+}
+
+/// Closed lifecycle states exposed by the release candidate check.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReleaseCandidatePullRequestState {
+    Open,
+    Closed,
+    Merged,
+}
+
 /// Typed, injectable GitHub reads used by release preparation.
 pub trait ReleasePlanningService: Sync {
     fn latest_release_tag<'a>(
@@ -381,6 +396,26 @@ enum DependencyWrite {
 }
 
 impl OctocrabGitHubService {
+    /// Read the lifecycle state and exact head object id of a release PR.
+    ///
+    /// # Errors
+    /// Returns a typed error when the request fails or the response does not
+    /// contain a full lowercase Git object id.
+    pub async fn release_candidate_pull_request(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<ReleaseCandidatePullRequest, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/pulls/{number}");
+        let value = self
+            .fetch_json(cancellation, self.client.get(route.as_str(), None::<&()>))
+            .await?;
+        parse_release_candidate_pull_request(&value)
+    }
+
     /// Read the unique GitHub Latest release tag.
     ///
     /// # Errors
@@ -1005,6 +1040,43 @@ fn parse_release_pull_request(
     })
 }
 
+fn parse_release_candidate_pull_request(
+    value: &Value,
+) -> Result<ReleaseCandidatePullRequest, GitHubOperationError> {
+    let object = as_object(value)?;
+    let state = match (
+        object.get("state").and_then(Value::as_str),
+        object.get("merged").and_then(Value::as_bool),
+    ) {
+        (_, Some(true)) => ReleaseCandidatePullRequestState::Merged,
+        (Some("open"), _) => ReleaseCandidatePullRequestState::Open,
+        (Some("closed"), _) => ReleaseCandidatePullRequestState::Closed,
+        _ => {
+            return Err(GitHubOperationError::Malformed(
+                "release pull request state",
+            ));
+        }
+    };
+    let head_oid = object
+        .get("head")
+        .and_then(Value::as_object)
+        .and_then(|head| head.get("sha"))
+        .and_then(Value::as_str)
+        .filter(|oid| {
+            matches!(oid.len(), 40 | 64)
+                && oid
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        .ok_or(GitHubOperationError::Malformed(
+            "release pull request head oid",
+        ))?;
+    Ok(ReleaseCandidatePullRequest {
+        state,
+        head_oid: head_oid.to_owned(),
+    })
+}
+
 fn parse_release_pull_requests(
     value: &Value,
     limits: GitHubResponseLimits,
@@ -1204,7 +1276,7 @@ mod tests {
         CreatePlan, DependencyRef, GitHubOperationError, MergeStateStatus, Mergeable,
         PullRequestState, ReviewDecision, classify_dependency_write, dependency_present, edit_body,
         is_safe_segment, parse_dependency_refs, parse_pull_request, parse_pull_requests,
-        parse_review_state, reconcile_create, validate_repo,
+        parse_release_candidate_pull_request, parse_review_state, reconcile_create, validate_repo,
     };
     use super::{DependencyWrite, PullRequestEdit};
     use larch_core::GitHubTransportPolicy;
@@ -1237,6 +1309,29 @@ mod tests {
         assert_eq!(parsed.base_ref(), "main");
         assert!(!parsed.draft());
         assert!(!parsed.merged());
+    }
+
+    #[test]
+    fn release_candidate_requires_exact_head_identity_and_tracks_merge_state() {
+        let value = json!({
+            "state": "closed",
+            "merged": true,
+            "head": {"sha": "1111111111111111111111111111111111111111"}
+        });
+        let parsed = parse_release_candidate_pull_request(&value).expect("candidate");
+        assert_eq!(
+            parsed.state,
+            super::ReleaseCandidatePullRequestState::Merged
+        );
+        assert_eq!(parsed.head_oid.len(), 40);
+        assert_eq!(
+            parse_release_candidate_pull_request(&json!({
+                "state": "open", "head": {"sha": "short"}
+            })),
+            Err(GitHubOperationError::Malformed(
+                "release pull request head oid"
+            ))
+        );
     }
 
     #[test]

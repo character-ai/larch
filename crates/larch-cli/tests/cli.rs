@@ -1066,6 +1066,57 @@ fn git_check_remote_branch_requires_branch_flag() {
         .stderr("");
 }
 
+#[test]
+fn release_stage_commands_enter_the_rust_service_boundary() {
+    let repository = repository();
+    let commands = [
+        vec!["release", "ensure-policy", "--repo", "character-ai/larch"],
+        vec![
+            "release",
+            "stage",
+            "--version",
+            "1.2.3",
+            "--notes-file",
+            "missing",
+            "--repo",
+            "character-ai/larch",
+            "--pr",
+            "7",
+        ],
+        vec![
+            "release",
+            "asset-run",
+            "--repo",
+            "character-ai/larch",
+            "--tag",
+            "v1.2.3",
+            "--source-commit",
+            "1111111111111111111111111111111111111111",
+        ],
+        vec![
+            "release",
+            "validate-draft",
+            "--version",
+            "1.2.3",
+            "--repo",
+            "character-ai/larch",
+            "--pr",
+            "7",
+            "--source-commit",
+            "1111111111111111111111111111111111111111",
+        ],
+    ];
+    for arguments in commands {
+        larch()
+            .current_dir(repository.path())
+            .env_remove("LARCH_GH_TOKEN")
+            .args(arguments)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("LARCH_GH_TOKEN is required"));
+    }
+}
+
 fn command_at_owned(root: &Path, arguments: &[String]) -> Command {
     let mut command = larch();
     command.current_dir(root).args(arguments);

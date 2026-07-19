@@ -5202,11 +5202,11 @@ verb = "asset-run"
 python_module = "larch.release.release_finish"
 python_function = "asset_run_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7751
 
 [[commands]]
 domain = "release"
@@ -5238,11 +5238,11 @@ verb = "ensure-policy"
 python_module = "larch.release.release_finish"
 python_function = "ensure_policy_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7751
 
 [[commands]]
 domain = "release"
@@ -5334,11 +5334,11 @@ verb = "stage"
 python_module = "larch.release.release_finish"
 python_function = "stage_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7751
 
 [[commands]]
 domain = "release"
@@ -5358,11 +5358,11 @@ verb = "validate-draft"
 python_module = "larch.release.release_finish"
 python_function = "validate_draft_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7751
 
 [[commands]]
 domain = "render"

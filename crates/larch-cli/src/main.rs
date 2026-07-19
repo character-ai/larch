@@ -23,6 +23,7 @@ mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
 mod release_prepare;
+mod release_stage;
 mod release_version;
 
 use git_commands::GitCommand;
@@ -199,10 +200,14 @@ enum ExampleCommand {
 enum ReleaseCommand {
     /// Validate the tagged release identity against plugin and Cargo versions.
     AssetCandidate(AssetCandidateArguments),
+    /// Resolve the exact tag-triggered release asset workflow run.
+    AssetRun(AssetRunArguments),
     /// Classify the semantic version bump for the public plugin surface.
     ClassifyBump(ClassifyBumpArguments),
     /// Collect matrix archives into the final release asset set.
     CollectAssets(CollectAssetsArguments),
+    /// Enable and verify release repository policy.
+    EnsurePolicy(EnsurePolicyArguments),
     /// Package one target archive and metadata fragment.
     PackageAsset(PackageAssetArguments),
     /// Prepare the release window, PR list, and aggregate bump.
@@ -211,8 +216,12 @@ enum ReleaseCommand {
     PluginRuntime(PluginRuntimeArguments),
     /// Update every synchronized release version surface.
     SetVersion(SetVersionArguments),
+    /// Tag the candidate and create or resume its mutable draft.
+    Stage(StageReleaseArguments),
     /// Validate the final release asset allowlist.
     ValidateAssets(ValidateAssetsArguments),
+    /// Validate the candidate-bound draft and complete asset set.
+    ValidateDraft(ValidateDraftArguments),
 }
 
 #[derive(Subcommand)]
@@ -227,6 +236,46 @@ struct AssetCandidateArguments {
     repo_root: PathBuf,
     #[arg(long)]
     tag: String,
+    #[arg(long)]
+    source_commit: String,
+}
+
+#[derive(Args)]
+struct AssetRunArguments {
+    #[arg(long = "repo")]
+    repository: String,
+    #[arg(long)]
+    tag: String,
+    #[arg(long)]
+    source_commit: String,
+}
+
+#[derive(Args)]
+struct EnsurePolicyArguments {
+    #[arg(long = "repo")]
+    repository: String,
+}
+
+#[derive(Args)]
+struct StageReleaseArguments {
+    #[arg(long)]
+    version: String,
+    #[arg(long)]
+    notes_file: PathBuf,
+    #[arg(long = "repo")]
+    repository: String,
+    #[arg(long)]
+    pr: String,
+}
+
+#[derive(Args)]
+struct ValidateDraftArguments {
+    #[arg(long)]
+    version: String,
+    #[arg(long = "repo")]
+    repository: String,
+    #[arg(long)]
+    pr: String,
     #[arg(long)]
     source_commit: String,
 }
@@ -443,6 +492,11 @@ fn run_release(
                 source_commit: arguments.source_commit,
             },
         )),
+        ReleaseCommand::AssetRun(arguments) => Ok(release_stage::asset_run(
+            &arguments.repository,
+            &arguments.tag,
+            &arguments.source_commit,
+        )),
         ReleaseCommand::ClassifyBump(arguments) => Ok(release_prepare::classify_bump(
             &release_prepare::ClassifyArguments {
                 base: arguments.base,
@@ -459,6 +513,9 @@ fn run_release(
                 license: arguments.license,
             },
         )),
+        ReleaseCommand::EnsurePolicy(arguments) => {
+            Ok(release_stage::ensure_policy(&arguments.repository))
+        }
         ReleaseCommand::PackageAsset(arguments) => Ok(release_assets::package_asset(
             &release_assets::PackageArguments {
                 version: arguments.version,
@@ -488,6 +545,12 @@ fn run_release(
             .map(|()| ExitCode::SUCCESS)
             .map_err(command_failure),
         ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
+        ReleaseCommand::Stage(arguments) => Ok(release_stage::stage(
+            &arguments.version,
+            &arguments.notes_file,
+            &arguments.repository,
+            &arguments.pr,
+        )),
         ReleaseCommand::ValidateAssets(arguments) => Ok(release_assets::validate_assets(
             &release_assets::ValidateArguments {
                 version: arguments.version,
@@ -497,6 +560,12 @@ fn run_release(
                 license: arguments.license,
                 verify_attestations: arguments.verify_attestations,
             },
+        )),
+        ReleaseCommand::ValidateDraft(arguments) => Ok(release_stage::validate_draft(
+            &arguments.version,
+            &arguments.repository,
+            &arguments.pr,
+            &arguments.source_commit,
         )),
     }
 }

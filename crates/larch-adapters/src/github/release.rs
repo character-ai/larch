@@ -210,12 +210,27 @@ pub trait ReleaseTransport: Send + Sync {
     ) -> ReleaseFuture<'a, Option<TagObjectId>>;
     /// Report whether immutable releases are enabled for the repository.
     fn immutable_releases_enabled<'a>(&'a self, repo: &RepoSlug) -> ReleaseFuture<'a, bool>;
+    /// Report whether merge commits are enabled for the repository.
+    fn merge_commits_enabled<'a>(&'a self, repo: &RepoSlug) -> ReleaseFuture<'a, bool>;
+    /// Enable merge commits through the fixed repository-settings operation.
+    fn enable_merge_commits<'a>(&'a self, repo: &RepoSlug) -> ReleaseFuture<'a, ()>;
+    /// Enable immutable releases through the fixed repository-settings operation.
+    fn enable_immutable_releases<'a>(&'a self, repo: &RepoSlug) -> ReleaseFuture<'a, ()>;
     /// Create one draft release.
     fn create_draft_release<'a>(
         &'a self,
         repo: &RepoSlug,
         input: &DraftReleaseInput,
     ) -> ReleaseFuture<'a, ReleaseState>;
+    /// Update the title and body of one existing mutable draft.
+    fn update_draft_release<'a>(
+        &'a self,
+        repo: &RepoSlug,
+        release_id: u64,
+        input: &DraftReleaseInput,
+    ) -> ReleaseFuture<'a, ReleaseState>;
+    /// Read the body of one release for exact update reconciliation.
+    fn release_body<'a>(&'a self, repo: &RepoSlug, release_id: u64) -> ReleaseFuture<'a, String>;
     /// Publish a staged draft release by database id.
     fn publish_release<'a>(
         &'a self,
@@ -321,11 +336,63 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         repo: &RepoSlug,
         input: &DraftReleaseInput,
     ) -> Result<ReleaseState, ReleaseServiceError> {
-        match self.transport.create_draft_release(repo, input).await {
-            Ok(state) => Ok(state),
-            Err(ReleaseServiceError::AmbiguousMutation) => self.reconcile_create(repo, input).await,
-            Err(other) => Err(other),
+        let state = match self.transport.create_draft_release(repo, input).await {
+            Ok(state) => state,
+            Err(error) if is_ambiguous_write(&error) => self.reconcile_create(repo, input).await?,
+            Err(other) => return Err(other),
+        };
+        if state.tag() != input.tag
+            || !state.is_mutable_draft()
+            || self
+                .transport
+                .release_body(repo, state.database_id())
+                .await?
+                != input.body
+        {
+            return Err(ReleaseServiceError::MutationLost);
         }
+        Ok(state)
+    }
+
+    /// Update a mutable draft and verify the exact body on both clear and
+    /// ambiguous mutation outcomes.
+    ///
+    /// # Errors
+    /// Fails when the update or its owning-surface read-back fails.
+    pub async fn update_draft_release(
+        &self,
+        repo: &RepoSlug,
+        release: &ReleaseState,
+        input: &DraftReleaseInput,
+    ) -> Result<ReleaseState, ReleaseServiceError> {
+        if !release.is_mutable_draft() {
+            return Err(ReleaseServiceError::MutationLost);
+        }
+        let result = self
+            .transport
+            .update_draft_release(repo, release.database_id(), input)
+            .await;
+        match result {
+            Ok(_) => {}
+            Err(error) if is_ambiguous_write(&error) => {}
+            Err(other) => return Err(other),
+        }
+        if self
+            .transport
+            .release_body(repo, release.database_id())
+            .await?
+            != input.body
+        {
+            return Err(ReleaseServiceError::MutationLost);
+        }
+        let observed = self
+            .release_for_tag(repo, &input.tag)
+            .await?
+            .ok_or(ReleaseServiceError::MutationLost)?;
+        if observed.database_id() != release.database_id() || !observed.is_mutable_draft() {
+            return Err(ReleaseServiceError::MutationLost);
+        }
+        Ok(observed)
     }
 
     async fn reconcile_create(
@@ -356,7 +423,7 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
             .await
         {
             Ok(state) => Ok(state),
-            Err(ReleaseServiceError::AmbiguousMutation) => {
+            Err(error) if is_ambiguous_write(&error) => {
                 let observed = self.release_for_tag(repo, release.tag()).await?;
                 let applied = observed.as_ref().is_some_and(|state| !state.is_draft());
                 match reconcile_mutation(GitHubRetryAction::ReconcileMutation, applied) {
@@ -391,7 +458,7 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
             .await
         {
             Ok(asset) => Ok(asset),
-            Err(ReleaseServiceError::AmbiguousMutation) => {
+            Err(error) if is_ambiguous_write(&error) => {
                 let observed = self.release_for_tag(repo, release.tag()).await?;
                 let landed = observed
                     .as_ref()
@@ -432,6 +499,60 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         repo: &RepoSlug,
     ) -> Result<bool, ReleaseServiceError> {
         self.transport.immutable_releases_enabled(repo).await
+    }
+
+    /// Verify both repository settings required by the release state machine.
+    ///
+    /// # Errors
+    /// Fails unless merge commits and immutable releases are both enabled.
+    pub async fn verify_repository_policy(
+        &self,
+        repo: &RepoSlug,
+    ) -> Result<bool, ReleaseServiceError> {
+        let (merge_commits, immutable_releases) = self.repository_policy(repo).await?;
+        Ok(merge_commits && immutable_releases)
+    }
+
+    /// Read both repository settings required by release staging.
+    ///
+    /// # Errors
+    /// Fails when either owning read surface fails.
+    pub async fn repository_policy(
+        &self,
+        repo: &RepoSlug,
+    ) -> Result<(bool, bool), ReleaseServiceError> {
+        Ok((
+            self.transport.merge_commits_enabled(repo).await?,
+            self.transport.immutable_releases_enabled(repo).await?,
+        ))
+    }
+
+    /// Enable both required settings and verify them on the owning read surfaces.
+    ///
+    /// # Errors
+    /// Fails on a definite mutation error or when read-back does not show both
+    /// settings enabled. Ambiguous writes are reconciled by the same read-back.
+    pub async fn ensure_repository_policy(
+        &self,
+        repo: &RepoSlug,
+    ) -> Result<(), ReleaseServiceError> {
+        let merge = self.transport.enable_merge_commits(repo).await;
+        if let Err(error) = &merge
+            && !is_ambiguous_write(error)
+        {
+            return merge;
+        }
+        let immutable = self.transport.enable_immutable_releases(repo).await;
+        if let Err(error) = &immutable
+            && !is_ambiguous_write(error)
+        {
+            return immutable;
+        }
+        if self.verify_repository_policy(repo).await? {
+            Ok(())
+        } else {
+            Err(ReleaseServiceError::MutationLost)
+        }
     }
 
     /// Download one release asset by id under the bounded, redirect-safe policy.
@@ -499,6 +620,14 @@ fn asset_download_url(repo: &RepoSlug, asset_id: u64) -> Result<Url, GitHubHostE
         repo.path()
     ))
     .map_err(|_| GitHubHostError::InvalidUrl)
+}
+
+const fn is_ambiguous_write(error: &ReleaseServiceError) -> bool {
+    matches!(
+        error,
+        ReleaseServiceError::AmbiguousMutation
+            | ReleaseServiceError::Completion(GitHubCompletionError::DeadlineExceeded)
+    )
 }
 
 type OctoResponse = http::Response<BoxBody<Bytes, octocrab::Error>>;
@@ -666,6 +795,7 @@ fn map_release(release: &Release) -> Result<ReleaseState, ReleaseServiceError> {
 fn map_asset(asset: &Asset) -> Result<RemoteAsset, ReleaseServiceError> {
     let size = u64::try_from(asset.size).unwrap_or(0);
     RemoteAsset::new(
+        asset.id.into_inner(),
         &asset.name,
         size,
         asset.digest.as_deref().unwrap_or_default(),
@@ -733,6 +863,47 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
         }))
     }
 
+    fn merge_commits_enabled<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, bool> {
+        let url = format!("https://{API_HOST}/repos/{}", repo.path());
+        Box::pin(self.guard(async move {
+            Ok(self
+                .get_json(url)
+                .await?
+                .as_ref()
+                .and_then(|value| value.get("allow_merge_commit"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false))
+        }))
+    }
+
+    fn enable_merge_commits<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, ()> {
+        let url = format!("https://{API_HOST}/repos/{}", repo.path());
+        Box::pin(self.guard(async move {
+            let body = serde_json::json!({"allow_merge_commit": true});
+            self.service
+                .client
+                .patch::<serde_json::Value, _, _>(url, Some(&body))
+                .await
+                .map(|_| ())
+                .map_err(|error| self.mutation_error(&error))
+        }))
+    }
+
+    fn enable_immutable_releases<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, ()> {
+        let url = format!(
+            "https://{API_HOST}/repos/{}/immutable-releases",
+            repo.path()
+        );
+        Box::pin(self.guard(async move {
+            self.service
+                .client
+                ._put(url, None::<&()>)
+                .await
+                .map(|_| ())
+                .map_err(|error| self.mutation_error(&error))
+        }))
+    }
+
     fn create_draft_release<'b>(
         &'b self,
         repo: &RepoSlug,
@@ -755,6 +926,49 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
                 .await
                 .map_err(|error| self.mutation_error(&error))?;
             map_release(&release)
+        }))
+    }
+
+    fn update_draft_release<'b>(
+        &'b self,
+        repo: &RepoSlug,
+        release_id: u64,
+        input: &DraftReleaseInput,
+    ) -> ReleaseFuture<'b, ReleaseState> {
+        let url = format!(
+            "https://{API_HOST}/repos/{}/releases/{release_id}",
+            repo.path()
+        );
+        let body = serde_json::json!({"name": input.tag, "body": input.body});
+        Box::pin(self.guard(async move {
+            self.service
+                .client
+                .patch::<Release, _, _>(url, Some(&body))
+                .await
+                .map_err(|error| self.mutation_error(&error))
+                .and_then(|release| map_release(&release))
+        }))
+    }
+
+    fn release_body<'b>(&'b self, repo: &RepoSlug, release_id: u64) -> ReleaseFuture<'b, String> {
+        let url = format!(
+            "https://{API_HOST}/repos/{}/releases/{release_id}",
+            repo.path()
+        );
+        Box::pin(self.guard(async move {
+            self.get_json(url)
+                .await?
+                .and_then(|value| {
+                    value
+                        .get("body")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                })
+                .ok_or_else(|| {
+                    ReleaseServiceError::Transport(
+                        self.service.redact_diagnostic("release body is missing"),
+                    )
+                })
         }))
     }
 
@@ -841,7 +1055,7 @@ mod release_tests {
     type ReleaseQueue<T> = Mutex<VecDeque<Result<T, ReleaseServiceError>>>;
 
     fn asset(name: &str) -> RemoteAsset {
-        RemoteAsset::new(name, 4, DIGEST, "uploaded").expect("valid asset")
+        RemoteAsset::new(7, name, 4, DIGEST, "uploaded").expect("valid asset")
     }
 
     fn release(
@@ -863,8 +1077,11 @@ mod release_tests {
         releases: Vec<ReleaseState>,
         tag: Option<TagObjectId>,
         immutable: bool,
+        merge_commits: bool,
+        release_body: String,
         list: ReleaseQueue<Vec<ReleaseState>>,
         create: ReleaseQueue<ReleaseState>,
+        update: ReleaseQueue<ReleaseState>,
         publish: ReleaseQueue<ReleaseState>,
         upload: ReleaseQueue<RemoteAsset>,
         hops: ReleaseQueue<FetchOutcome>,
@@ -893,6 +1110,19 @@ mod release_tests {
             Box::pin(async move { Ok(value) })
         }
 
+        fn merge_commits_enabled<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, bool> {
+            let value = self.merge_commits;
+            Box::pin(async move { Ok(value) })
+        }
+
+        fn enable_merge_commits<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, ()> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn enable_immutable_releases<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, ()> {
+            Box::pin(async { Ok(()) })
+        }
+
         fn create_draft_release<'a>(
             &'a self,
             _repo: &RepoSlug,
@@ -900,6 +1130,21 @@ mod release_tests {
         ) -> ReleaseFuture<'a, ReleaseState> {
             let outcome = pop(&self.create);
             Box::pin(async move { outcome.unwrap_or(Err(ReleaseServiceError::MutationLost)) })
+        }
+
+        fn update_draft_release<'a>(
+            &'a self,
+            _repo: &RepoSlug,
+            _id: u64,
+            _input: &DraftReleaseInput,
+        ) -> ReleaseFuture<'a, ReleaseState> {
+            let outcome = pop(&self.update);
+            Box::pin(async move { outcome.unwrap_or(Err(ReleaseServiceError::MutationLost)) })
+        }
+
+        fn release_body<'a>(&'a self, _repo: &RepoSlug, _id: u64) -> ReleaseFuture<'a, String> {
+            let body = self.release_body.clone();
+            Box::pin(async move { Ok(body) })
         }
 
         fn publish_release<'a>(
@@ -1013,6 +1258,7 @@ mod release_tests {
         let transport = FakeTransport {
             releases: vec![release(7, "v1", true, false, Vec::new())],
             create: Mutex::new([Err(ReleaseServiceError::AmbiguousMutation)].into()),
+            release_body: "notes".to_owned(),
             ..FakeTransport::default()
         };
         let input = DraftReleaseInput {
@@ -1038,6 +1284,7 @@ mod release_tests {
                 ]
                 .into(),
             ),
+            release_body: "notes".to_owned(),
             ..FakeTransport::default()
         };
         let input = DraftReleaseInput {
@@ -1049,6 +1296,62 @@ mod release_tests {
         let staged = run(ReleaseOperations::new(&transport).stage_draft_release(&repo(), &input))
             .expect("retried release");
         assert_eq!(staged.database_id(), 7);
+    }
+
+    #[test]
+    fn policy_enablement_and_draft_update_verify_owning_surfaces() {
+        let staged = release(7, "v1", true, false, Vec::new());
+        let transport = FakeTransport {
+            releases: vec![staged.clone()],
+            immutable: true,
+            merge_commits: true,
+            release_body: "notes".to_owned(),
+            update: Mutex::new(
+                [Err(ReleaseServiceError::Completion(
+                    GitHubCompletionError::DeadlineExceeded,
+                ))]
+                .into(),
+            ),
+            ..FakeTransport::default()
+        };
+        let operations = ReleaseOperations::new(&transport);
+        assert!(run(operations.ensure_repository_policy(&repo())).is_ok());
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "commit".to_owned(),
+            body: "notes".to_owned(),
+        };
+        assert_eq!(
+            run(operations.update_draft_release(&repo(), &staged, &input))
+                .expect("reconciled update")
+                .database_id(),
+            7
+        );
+    }
+
+    #[test]
+    fn policy_and_draft_read_back_fail_closed_on_wrong_state() {
+        let staged = release(7, "v1", true, false, Vec::new());
+        let transport = FakeTransport {
+            releases: vec![staged.clone()],
+            release_body: "old notes".to_owned(),
+            update: Mutex::new([Ok(staged.clone())].into()),
+            ..FakeTransport::default()
+        };
+        let operations = ReleaseOperations::new(&transport);
+        assert_eq!(
+            run(operations.ensure_repository_policy(&repo())),
+            Err(ReleaseServiceError::MutationLost)
+        );
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "commit".to_owned(),
+            body: "notes".to_owned(),
+        };
+        assert_eq!(
+            run(operations.update_draft_release(&repo(), &staged, &input)),
+            Err(ReleaseServiceError::MutationLost)
+        );
     }
 
     #[test]
@@ -1205,6 +1508,7 @@ mod release_tests {
             upload: Mutex::new([Ok(asset("larch"))].into()),
             tag: Some(TagObjectId::parse("0123456789abcdef0123456789abcdef01234567").expect("oid")),
             immutable: true,
+            release_body: "notes".to_owned(),
             ..FakeTransport::default()
         };
         let operations = ReleaseOperations::new(&transport);

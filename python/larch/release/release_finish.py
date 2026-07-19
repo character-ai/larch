@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import re
 import sys
 import tempfile
-from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
@@ -20,14 +18,10 @@ from larch.git import gh
 from larch.release import assets
 
 _API_VERSION: Final = "2026-03-10"
-_ASSET_WORKFLOW: Final = "rust-release-assets.yaml"
 _ASSET_SIGNER_WORKFLOW: Final = ".github/workflows/rust-release-assets.yaml"
 _REPO_RE: Final = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _SEMVER_RE: Final = re.compile(
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-)
-_TAG_RE: Final = re.compile(
-    r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 )
 _SHA_RE: Final = re.compile(r"[0-9a-f]{40}")
 _DIGEST_RE: Final = re.compile(r"sha256:([0-9a-f]{64})")
@@ -61,18 +55,6 @@ class ReleaseState:
     draft: bool
     immutable: bool
     assets: tuple[RemoteAsset, ...]
-
-
-@dataclass(frozen=True)
-class CandidateRequest:
-    version: str
-    repo: str
-    pr: int
-    cwd: Path
-
-    @property
-    def tag(self) -> str:
-        return f"v{self.version}"
 
 
 @dataclass(frozen=True)
@@ -120,19 +102,6 @@ def _require_success(result: proc.CommandResult, label: str) -> proc.CommandResu
         )[:500]
         raise ReleaseError(f"{label} failed: {diagnostic or 'no diagnostic'}")
     return result
-
-
-@contextlib.contextmanager
-def _redacted_notes(notes_file: Path) -> Generator[Path, None, None]:
-    text = notes_file.read_text(encoding="utf-8")
-    scrubbed = redact.redact(redact.redact_tmpdir_paths(text))
-    with tempfile.TemporaryDirectory(
-        prefix="larch-release-notes-",
-        dir=tempfile.gettempdir(),
-    ) as temporary:
-        redacted_path = Path(temporary) / "notes.md"
-        _ = redacted_path.write_text(scrubbed, encoding="utf-8")
-        yield redacted_path
 
 
 def _json_object(result: proc.CommandResult, label: str) -> JsonObject:
@@ -332,193 +301,6 @@ def _verify_policy(runner: proc.Runner, *, repo: str, cwd: Path) -> None:
     )
     if immutable.get("enabled") is not True:
         raise ReleaseError("immutable releases are not enabled")
-
-
-def ensure_policy(*, runner: proc.Runner, repo: str, cwd: Path) -> None:
-    if _REPO_RE.fullmatch(repo) is None:
-        raise ReleaseError(f"invalid repository: {repo}")
-    _ = _require_success(
-        _gh(
-            runner,
-            [
-                "api",
-                "--method",
-                "PATCH",
-                f"repos/{repo}",
-                "-F",
-                "allow_merge_commit=true",
-            ],
-            cwd=cwd,
-        ),
-        "enable merge commits",
-    )
-    _ = _require_success(
-        _gh(
-            runner,
-            [
-                "api",
-                "--method",
-                "PUT",
-                "-H",
-                f"X-GitHub-Api-Version: {_API_VERSION}",
-                f"repos/{repo}/immutable-releases",
-            ],
-            cwd=cwd,
-        ),
-        "enable immutable releases",
-    )
-    _verify_policy(runner, repo=repo, cwd=cwd)
-
-
-def _stage_tag(runner: proc.Runner, *, tag: str, source_commit: str, cwd: Path) -> None:
-    remote_oid = _remote_tag_oid(runner, tag=tag, cwd=cwd)
-    if remote_oid and remote_oid != source_commit:
-        raise ReleaseError(
-            f"remote tag {tag} points at {remote_oid}, not {source_commit}"
-        )
-    if not remote_oid:
-        local = _git(runner, ["rev-parse", "--verify", f"{tag}^{{commit}}"], cwd=cwd)
-        if local.returncode == 0 and local.stdout.strip() != source_commit:
-            raise ReleaseError(f"local tag {tag} points at a different commit")
-        if local.returncode != 0:
-            _ = _require_success(
-                _git(runner, ["tag", tag, source_commit], cwd=cwd), "local tag create"
-            )
-        _ = _require_success(
-            _git(
-                runner, ["push", "origin", f"refs/tags/{tag}:refs/tags/{tag}"], cwd=cwd
-            ),
-            "tag push",
-        )
-    if _remote_tag_oid(runner, tag=tag, cwd=cwd) != source_commit:
-        raise ReleaseError("remote tag postcondition failed")
-
-
-def stage_candidate(
-    *,
-    runner: proc.Runner,
-    request: CandidateRequest,
-    notes_file: Path,
-) -> str:
-    _verify_policy(runner, repo=request.repo, cwd=request.cwd)
-    pr_state = _pr_state(runner, repo=request.repo, pr=request.pr, cwd=request.cwd)
-    if pr_state.state != "OPEN":
-        raise ReleaseError("release candidate PR must be open while staging")
-    source_commit = pr_state.head_oid
-    if (
-        _plugin_version_at(runner, oid=source_commit, cwd=request.cwd)
-        != request.version
-    ):
-        raise ReleaseError(
-            "release candidate plugin version does not match the requested version"
-        )
-    _stage_tag(runner, tag=request.tag, source_commit=source_commit, cwd=request.cwd)
-    with _redacted_notes(notes_file) as redacted_notes:
-        release = _release_state(
-            runner,
-            repo=request.repo,
-            tag=request.tag,
-            cwd=request.cwd,
-            missing_ok=True,
-        )
-        if release is None:
-            _ = _require_success(
-                _gh(
-                    runner,
-                    [
-                        "release",
-                        "create",
-                        request.tag,
-                        "--repo",
-                        request.repo,
-                        "--draft",
-                        "--verify-tag",
-                        "--latest=false",
-                        "--title",
-                        request.tag,
-                        "--notes-file",
-                        str(redacted_notes),
-                    ],
-                    cwd=request.cwd,
-                ),
-                "draft release create",
-            )
-        elif release.draft and not release.immutable:
-            _ = _require_success(
-                _gh(
-                    runner,
-                    [
-                        "release",
-                        "edit",
-                        request.tag,
-                        "--repo",
-                        request.repo,
-                        "--title",
-                        request.tag,
-                        "--notes-file",
-                        str(redacted_notes),
-                    ],
-                    cwd=request.cwd,
-                ),
-                "draft release notes update",
-            )
-        release = _release_state(
-            runner,
-            repo=request.repo,
-            tag=request.tag,
-            cwd=request.cwd,
-        )
-    if release is None or not release.draft or release.immutable:
-        raise ReleaseError("staged release is not a mutable draft")
-    return source_commit
-
-
-def resolve_asset_run(
-    *, runner: proc.Runner, repo: str, tag: str, source_commit: str, cwd: Path
-) -> tuple[int, str]:
-    runs = _json_array(
-        _gh(
-            runner,
-            [
-                "run",
-                "list",
-                "--repo",
-                repo,
-                "--workflow",
-                _ASSET_WORKFLOW,
-                "--branch",
-                tag,
-                "--event",
-                "push",
-                "--commit",
-                source_commit,
-                "--limit",
-                "10",
-                "--json",
-                "databaseId,headSha,url",
-            ],
-            cwd=cwd,
-        ),
-        "asset workflow run read",
-    )
-    matches: list[tuple[int, str]] = []
-    for value in runs:
-        if not isinstance(value, dict):
-            continue
-        typed_value = cast("dict[str, object]", value)
-        if typed_value.get("headSha") != source_commit:
-            continue
-        database_id = typed_value.get("databaseId")
-        url = typed_value.get("url")
-        if (
-            isinstance(database_id, int)
-            and not isinstance(database_id, bool)
-            and isinstance(url, str)
-        ):
-            matches.append((database_id, url))
-    if not matches:
-        raise ReleaseError("tag-triggered asset workflow run is not registered")
-    return max(matches, key=lambda item: item[0])
 
 
 def _download_assets(
@@ -886,122 +668,6 @@ def finish_release(*, runner: proc.Runner, candidate: ReleaseCandidate) -> str:
     ):
         raise ReleaseError("Latest release promotion postcondition failed")
     return action
-
-
-def ensure_policy_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py release ensure-policy")
-    _ = parser.add_argument("--repo", required=True)
-    args = parser.parse_args(argv)
-    root = _repo_root()
-    try:
-        if _origin_repo(root, proc) != args.repo:
-            raise ReleaseError("origin repository does not match --repo")
-        ensure_policy(runner=proc, repo=args.repo, cwd=root)
-    except ReleaseError as error:
-        print(f"ERROR={error}", file=sys.stderr)
-        return 1
-    print("MERGE_COMMITS_ENABLED=true")
-    print("IMMUTABLE_RELEASES_ENABLED=true")
-    return 0
-
-
-def stage_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py release stage")
-    _ = parser.add_argument("--version", required=True)
-    _ = parser.add_argument("--notes-file", required=True)
-    _ = parser.add_argument("--repo", required=True)
-    _ = parser.add_argument("--pr", required=True)
-    args = parser.parse_args(argv)
-    root = _repo_root()
-    try:
-        tag, pr = _validated_args(args.version, args.repo, args.pr)
-        notes_file = Path(args.notes_file)
-        if not notes_file.is_file() or notes_file.is_symlink():
-            raise ReleaseError("notes file is missing or unsafe")
-        if _origin_repo(root, proc) != args.repo:
-            raise ReleaseError("origin repository does not match --repo")
-        source_commit = stage_candidate(
-            runner=proc,
-            request=CandidateRequest(
-                version=args.version,
-                repo=args.repo,
-                pr=pr,
-                cwd=root,
-            ),
-            notes_file=notes_file,
-        )
-    except (OSError, ReleaseError, assets.AssetError) as error:
-        print(f"ERROR={error}", file=sys.stderr)
-        return 1
-    print(f"TAG={tag}")
-    print(f"SOURCE_COMMIT={source_commit}")
-    print("DRAFT_READY=true")
-    return 0
-
-
-def asset_run_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py release asset-run")
-    _ = parser.add_argument("--repo", required=True)
-    _ = parser.add_argument("--tag", required=True)
-    _ = parser.add_argument("--source-commit", required=True)
-    args = parser.parse_args(argv)
-    root = _repo_root()
-    try:
-        if (
-            _REPO_RE.fullmatch(args.repo) is None
-            or _TAG_RE.fullmatch(args.tag) is None
-            or _SHA_RE.fullmatch(args.source_commit) is None
-        ):
-            raise ReleaseError("invalid release identity")
-        if _origin_repo(root, proc) != args.repo:
-            raise ReleaseError("origin repository does not match --repo")
-        run_id, url = resolve_asset_run(
-            runner=proc,
-            repo=args.repo,
-            tag=args.tag,
-            source_commit=args.source_commit,
-            cwd=root,
-        )
-    except ReleaseError as error:
-        print(f"ERROR={error}", file=sys.stderr)
-        return 1
-    print(f"ASSET_RUN_ID={run_id}")
-    print(f"ASSET_RUN_URL={url}")
-    return 0
-
-
-def validate_draft_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py release validate-draft")
-    _ = parser.add_argument("--version", required=True)
-    _ = parser.add_argument("--repo", required=True)
-    _ = parser.add_argument("--pr", required=True)
-    _ = parser.add_argument("--source-commit", required=True)
-    args = parser.parse_args(argv)
-    root = _repo_root()
-    try:
-        tag, pr = _validated_args(args.version, args.repo, args.pr)
-        if _SHA_RE.fullmatch(args.source_commit) is None:
-            raise ReleaseError("invalid source commit")
-        if _origin_repo(root, proc) != args.repo:
-            raise ReleaseError("origin repository does not match --repo")
-        _ = validate_release_assets(
-            runner=proc,
-            candidate=ReleaseCandidate(
-                version=args.version,
-                repo=args.repo,
-                pr=pr,
-                source_commit=args.source_commit,
-                cwd=root,
-            ),
-            require_draft=True,
-        )
-    except (OSError, ReleaseError, assets.AssetError) as error:
-        print(f"ERROR={error}", file=sys.stderr)
-        return 1
-    print(f"TAG={tag}")
-    print(f"SOURCE_COMMIT={args.source_commit}")
-    print("DRAFT_ASSETS_VALID=true")
-    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

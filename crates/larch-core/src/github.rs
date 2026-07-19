@@ -746,6 +746,8 @@ pub const fn classify_github_retry(
 /// such as asset names, tags, or object ids never enter a diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReleaseDataErrorKind {
+    /// An asset database id was absent or zero.
+    InvalidAssetId,
     /// An asset name was empty, oversized, or carried path or control bytes.
     InvalidAssetName,
     /// An asset byte size was absent, zero, or not a positive integer.
@@ -789,6 +791,7 @@ impl ReleaseDataError {
 impl fmt::Display for ReleaseDataError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self.kind {
+            ReleaseDataErrorKind::InvalidAssetId => "release asset database id is invalid",
             ReleaseDataErrorKind::InvalidAssetName => "release asset name is invalid",
             ReleaseDataErrorKind::InvalidAssetSize => {
                 "release asset size is not a positive integer"
@@ -886,6 +889,7 @@ pub fn resolve_tag_object_id(
 /// a name, a positive byte size, and a `sha256:` digest for an uploaded asset.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemoteAsset {
+    database_id: u64,
     name: String,
     size: u64,
     digest: AssetDigest,
@@ -895,9 +899,18 @@ impl RemoteAsset {
     /// Validate one asset metadata record.
     ///
     /// # Errors
-    /// Rejects an invalid name, a non-positive size, a malformed digest, or an
-    /// asset whose state is anything other than uploaded.
-    pub fn new(name: &str, size: u64, digest: &str, state: &str) -> Result<Self, ReleaseDataError> {
+    /// Rejects an invalid id or name, a non-positive size, a malformed digest,
+    /// or an asset whose state is anything other than uploaded.
+    pub fn new(
+        database_id: u64,
+        name: &str,
+        size: u64,
+        digest: &str,
+        state: &str,
+    ) -> Result<Self, ReleaseDataError> {
+        if database_id == 0 {
+            return Err(ReleaseDataError::new(ReleaseDataErrorKind::InvalidAssetId));
+        }
         if !is_valid_asset_name(name) {
             return Err(ReleaseDataError::new(
                 ReleaseDataErrorKind::InvalidAssetName,
@@ -914,10 +927,17 @@ impl RemoteAsset {
             ));
         }
         Ok(Self {
+            database_id,
             name: name.to_owned(),
             size,
             digest: AssetDigest::parse(digest)?,
         })
+    }
+
+    /// Return the release asset database id used by the bounded download API.
+    #[must_use]
+    pub const fn database_id(&self) -> u64 {
+        self.database_id
     }
 
     /// Borrow the asset name.
@@ -1278,7 +1298,7 @@ mod release_tests {
     const DIGEST: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
     fn asset(name: &str) -> RemoteAsset {
-        RemoteAsset::new(name, 10, DIGEST, "uploaded").expect("valid asset")
+        RemoteAsset::new(7, name, 10, DIGEST, "uploaded").expect("valid asset")
     }
 
     fn release(tag: &str, draft: bool, immutable: bool) -> ReleaseState {
@@ -1288,8 +1308,15 @@ mod release_tests {
     #[test]
     fn asset_metadata_validates_name_size_digest_and_state() {
         let parsed = asset("larch-v1.2.3-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(parsed.database_id(), 7);
         assert_eq!(parsed.size(), 10);
         assert_eq!(parsed.digest().as_str(), DIGEST);
+        assert_eq!(
+            RemoteAsset::new(0, "larch", 10, DIGEST, "uploaded")
+                .expect_err("zero id should fail")
+                .kind(),
+            ReleaseDataErrorKind::InvalidAssetId
+        );
 
         for (name, size, digest, state, kind) in [
             (
@@ -1329,7 +1356,7 @@ mod release_tests {
             ),
         ] {
             assert_eq!(
-                RemoteAsset::new(name, size, digest, state)
+                RemoteAsset::new(7, name, size, digest, state)
                     .expect_err("invalid asset should fail")
                     .kind(),
                 kind
