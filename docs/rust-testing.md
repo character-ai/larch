@@ -40,6 +40,12 @@ process environment or working directory. Product crates must still use the
 closed Git interfaces described in `ARCHITECTURE.md`; the fixture API does not
 authorize a production arbitrary-argument Git runner.
 
+Repository read differential tests exercise the public `RepositoryRead` port
+through `GixRepository`. Compare typed IDs, ref targets, config provenance,
+URLs, worktree records, and error classes with parsed Git oracle results. Path
+comparisons may normalize filesystem aliases such as macOS `/var` and
+`/private/var`, but the adapter result must retain its original path bytes.
+
 Use `SemanticSnapshot::capture` after each implementation runs against its own
 equivalent repository. Supply the operation's public result through
 `ExecutionSnapshot`. Compare the typed snapshots first. Use

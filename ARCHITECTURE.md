@@ -111,6 +111,11 @@ work:
   only `sha1`, `sha256`, `revision`, and `status`. The workspace records that
   exact selection. Do not enable `gix` network, credential, archive, merge, or
   worktree-mutation features without a bounded design and parity evidence.
+- `larch_core::RepositoryRead` owns the repository metadata read contract.
+  `larch_adapters::git::GixRepository` is its sole production implementation.
+  It reopens through strict config parsing and ownership checks before reading
+  mutable repository state. Callers receive core byte types and cannot select
+  `gix` or Git CLI reads.
 - Git mutations and network operations stay behind a closed, typed Git CLI
   compatibility adapter where installed-Git behavior is part of the contract.
   There is no public arbitrary-argv escape hatch.
