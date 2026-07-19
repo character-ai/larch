@@ -7689,8 +7689,8 @@ rust = []
 [[callers]]
 path = "agents/ci-fixer.md"
 kind = "agent"
-python = ["ci distill-log", "git stage", "push rebase"]
-rust = ["git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "push branch"]
+python = ["ci distill-log", "push rebase"]
+rust = ["git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "git stage", "push branch"]
 
 [[callers]]
 path = "agents/claude-implementer.md"
@@ -7882,7 +7882,7 @@ rust = []
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
 python = ["checks lint-fix", "checks run-relevant"]
-rust = []
+rust = ["git commit", "git stage"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
@@ -7891,10 +7891,22 @@ python = ["checks run-relevant"]
 rust = []
 
 [[callers]]
+path = "python/larch/implement/ci_monitor.py"
+kind = "python-runtime"
+python = []
+rust = ["git commit", "git stage"]
+
+[[callers]]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit", "review-and-fix commit-fixes"]
 rust = []
+
+[[callers]]
+path = "python/larch/implement/dispatch_recovery.py"
+kind = "python-runtime"
+python = []
+rust = ["git commit"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_ship.py"
@@ -8035,10 +8047,16 @@ python = ["run-log append-failure"]
 rust = []
 
 [[callers]]
+path = "python/larch/review/coder_runner.py"
+kind = "python-runtime"
+python = []
+rust = ["git commit"]
+
+[[callers]]
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = ["stall-recovery record-escalation"]
-rust = []
+rust = ["git commit"]
 
 [[callers]]
 path = "python/larch/review/round_runner.py"
