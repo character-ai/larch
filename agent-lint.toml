@@ -1364,9 +1364,9 @@ root-max-content-tokens = 35301
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose;
 # issue #7750 adds the release-version transaction boundary.
-closure-max-lines = 3823
-closure-max-tokens = 145247
-closure-max-content-tokens = 144942
+closure-max-lines = 3824
+closure-max-tokens = 145266
+closure-max-content-tokens = 144960
 conditional-max-lines = 591
 conditional-max-tokens = 18798
 conditional-max-content-tokens = 18750
@@ -1420,6 +1420,6 @@ roots = [
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 updates SECURITY.md force-admission trust-boundary prose;
 # issue #7750 adds the release-version transaction boundary.
-closure-max-lines = 6111
-closure-max-tokens = 170699
-closure-max-content-tokens = 170233
+closure-max-lines = 6112
+closure-max-tokens = 170718
+closure-max-content-tokens = 170251
