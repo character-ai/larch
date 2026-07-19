@@ -2,6 +2,14 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run B590487B-A4F7-4839-A81E-785F90AF0BC6: shipping
 
 - **Outcome**: shipping
