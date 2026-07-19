@@ -4,6 +4,7 @@ The GitHub adapter remains a thin transport layer.  This module owns the
 compare-and-swap, in-flight body protection, outbound redaction, and read-back
 postcondition required by every title, body, label, and named-block write.
 """
+# pylint: disable=cyclic-import  # accepted: plan named-block CAS strips adjacent receipt via migration_governance; persist_plan_receipt mutates back through this module (both function-level).
 
 from __future__ import annotations
 
@@ -204,7 +205,19 @@ def _is_protected(snapshot: IssueSnapshot) -> bool:
 def _only_named_block_changed(*, before: str, after: str, marker: str) -> bool:
     old_outer, old_error = issue_blocks.strip_named_block(body=before, marker=marker)
     new_outer, new_error = issue_blocks.strip_named_block(body=after, marker=marker)
-    return old_error == "" and new_error == "" and old_outer.rstrip() == new_outer.rstrip()
+    if old_error != "" or new_error != "":
+        return False
+    if old_outer.rstrip() == new_outer.rstrip():
+        return True
+    if marker != "plan":
+        return False
+    # Plan writes may also refresh the adjacent plan-receipt without counting
+    # as a foreign body edit (M5 receipt persistence).
+    from larch.issue import migration_governance  # noqa: PLC0415 - lint-layering: ok plan-receipt strip owned by migration_governance; avoid import cycle at module load
+
+    old_norm = migration_governance.strip_plan_receipt_lines(body=old_outer)
+    new_norm = migration_governance.strip_plan_receipt_lines(body=new_outer)
+    return old_norm.rstrip() == new_norm.rstrip()
 
 
 def _redact_body(body: str) -> str:

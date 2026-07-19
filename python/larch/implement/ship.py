@@ -77,6 +77,7 @@ from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stal
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
+from larch.issue import migration_governance
 
 # Re-exports from sibling modules — preserves `ship.X` access for callers and tests.
 from larch.implement.ship_state import (
@@ -159,6 +160,44 @@ from larch.implement.ship_seed import (
 class _AssessmentGatePair:
     invariants: InvariantsGateResult
     guidelines: GuidelinesGateResult
+
+
+def _governance_gate_result(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+    site: str,
+) -> ShipResult | None:
+    """Fail closed on blocker/receipt drift after rebase and before PR creation."""
+    issue = (ctx.issue_number or ctx.issue or "").strip()
+    repo = (ctx.repo or "").strip()
+    if not issue or not repo or ctx.repo_unavailable:
+        return None
+    try:
+        body = migration_governance.read_issue_body(
+            runner, issue=issue, repo=repo, cwd=cwd
+        )
+        verdict = migration_governance.evaluate_governance_gate(
+            runner,
+            issue=issue,
+            repo=repo,
+            body=body,
+            repo_root=Path(cwd),
+            cwd=cwd,
+        )
+    except ShipError as exc:
+        return ShipResult(
+            Outcome.STALLED,
+            detail=f"{site}: migration governance read failed: {exc}",
+        )
+    if verdict.ok:
+        return None
+    tokens = ",".join(verdict.blocking_reasons) or "unknown"
+    return ShipResult(
+        Outcome.STALLED,
+        detail=f"{site}: migration governance blocked: {tokens}",
+    )
 
 
 def _invalid_context_result(ctx: RunContext) -> ShipResult | None:
@@ -1524,6 +1563,14 @@ def run_ship(
         )
         if assessment_result is not None:
             return assessment_result
+        governance_blocked = _governance_gate_result(
+            runner=runner,
+            ctx=pr_context,
+            cwd=repo_root,
+            site="pre-pr",
+        )
+        if governance_blocked is not None:
+            return governance_blocked
         _write_ship_state(
             pr_context,
             phase="pr-create",
