@@ -3,6 +3,7 @@
 Owns canonical blocker-field parsing, native parity, receipt grammar, hashes,
 and freshness verdicts. Callers share one verifier and one input canonicalization.
 """
+# pylint: disable=cyclic-import  # accepted: persist_plan_receipt mutates via issue_mutation; plan CAS strips receipts via this module (both function-level).
 
 from __future__ import annotations
 

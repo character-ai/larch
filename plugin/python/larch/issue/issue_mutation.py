@@ -4,6 +4,7 @@ The GitHub adapter remains a thin transport layer.  This module owns the
 compare-and-swap, in-flight body protection, outbound redaction, and read-back
 postcondition required by every title, body, label, and named-block write.
 """
+# pylint: disable=cyclic-import  # accepted: plan named-block CAS strips adjacent receipt via migration_governance; persist_plan_receipt mutates back through this module (both function-level).
 
 from __future__ import annotations
 
