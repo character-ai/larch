@@ -34,7 +34,7 @@ def test_owner_block_roundtrip_and_fenced_lookalike() -> None:
     body = f"```text\n{rendered}```\n{rendered}"
     parsed = issue_wire.parse_owner_block(body=body)
     assert parsed.block == block
-    assert parsed.defects == ()
+    assert not parsed.defects
     assert parsed.block is not None
     assert issue_wire.render_owner_block(block=parsed.block) == rendered
 
