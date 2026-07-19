@@ -178,6 +178,32 @@ pub fn validate_assets(arguments: &ValidateArguments) -> ExitCode {
     }
 }
 
+pub fn release_asset_names(
+    version: &str,
+    tag: &str,
+    source_commit: &str,
+) -> Result<Vec<String>, String> {
+    identity(version, tag, source_commit)
+        .map(|identity| expected_asset_names(&identity))
+        .map_err(|error| error.to_string())
+}
+
+pub fn validate_downloaded_assets(
+    version: &str,
+    tag: &str,
+    source_commit: &str,
+    asset_dir: &Path,
+    license: &Path,
+) -> Result<(), String> {
+    let identity = identity(version, tag, source_commit).map_err(|error| error.to_string())?;
+    validate_assets_at(asset_dir, license, &identity).map_err(|error| error.to_string())
+}
+
+#[must_use]
+pub fn sha256_bytes(data: &[u8]) -> String {
+    sha256_hex(data)
+}
+
 fn fail(error: &AssetError) -> ExitCode {
     eprintln!("ERROR={error}");
     ExitCode::FAILURE
@@ -1247,7 +1273,7 @@ fn is_semver(value: &str) -> bool {
         })
 }
 
-fn is_commit(value: &str) -> bool {
+pub fn is_commit(value: &str) -> bool {
     value.len() == 40
         && value
             .bytes()

@@ -171,10 +171,10 @@ Record `PR_NUMBER` from `python/cli.py pr create` stdout. Then:
 
 ```bash
 python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
-python3 "$PWD/python/cli.py" release ensure-policy --repo "$REPO"
+"$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
-stage_out=$(python3 "$PWD/python/cli.py" release stage \
+stage_out=$("$PWD/scripts/larch.sh" release stage \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
   --repo "$REPO" \
@@ -188,7 +188,7 @@ $stage_out
 EOF
 test -n "$SOURCE_COMMIT"
 TAG="v${NEW_VERSION}"
-asset_run_out=$(python3 "$PWD/python/cli.py" release asset-run \
+asset_run_out=$("$PWD/scripts/larch.sh" release asset-run \
   --repo "$REPO" \
   --tag "$TAG" \
   --source-commit "$SOURCE_COMMIT")
@@ -226,7 +226,7 @@ After the workflow succeeds, validate the uploaded draft against the exact candi
 
 ```bash
 SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
-python3 "$PWD/python/cli.py" release validate-draft \
+"$PWD/scripts/larch.sh" release validate-draft \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
@@ -403,10 +403,10 @@ Runtime helpers:
 
 - `"$PWD/scripts/larch.sh" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `"$PWD/scripts/larch.sh" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
-- `python3 "$PWD/python/cli.py" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
-- `python3 "$PWD/python/cli.py" release stage`: tag the candidate and create or verify its draft Release
-- `python3 "$PWD/python/cli.py" release asset-run`: resolve the exact tag-triggered asset workflow run
-- `python3 "$PWD/python/cli.py" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
+- `"$PWD/scripts/larch.sh" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
+- `"$PWD/scripts/larch.sh" release stage`: tag the candidate and create or verify its draft Release
+- `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
+- `"$PWD/scripts/larch.sh" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
 - `python3 "$PWD/python/cli.py" release finish`: revalidate, publish immutable, verify release attestations, and promote Latest
 - `python3 "$PWD/python/cli.py" release promote`: promote a specific release after `finish`, or during promote-only recovery
 - `python3 "$PWD/python/cli.py" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
