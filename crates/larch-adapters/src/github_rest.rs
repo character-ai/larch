@@ -1137,6 +1137,7 @@ mod tests {
         );
         let policy = GitHubTransportPolicy::github_com();
         assert!(GitHubRepositoryRef::new("../owner", "repo").is_err());
+        assert!(GitHubRepositoryRef::new("o".repeat(101), "repo").is_err());
         assert_eq!(
             error_kind(validate_limit(policy.limits().items() + 1, policy)),
             LimitExceeded

@@ -226,6 +226,7 @@ impl GitHubRepositoryRef {
 
 fn valid_repository_part(value: &str) -> bool {
     !value.is_empty()
+        && value.len() <= 100
         && value != "."
         && value != ".."
         && value
@@ -814,5 +815,11 @@ mod tests {
             ),
             GitHubRetryAction::Stop(StopReason::Authorization)
         );
+    }
+
+    #[test]
+    fn actions_errors_render_their_safe_detail() {
+        let error = GitHubActionsError::new(GitHubActionsErrorKind::Transport, "request failed");
+        assert_eq!(error.to_string(), "request failed");
     }
 }

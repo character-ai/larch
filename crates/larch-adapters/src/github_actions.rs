@@ -508,7 +508,7 @@ impl OctocrabGitHubService {
                     response.headers(),
                     &["application/zip", "application/octet-stream"],
                 )?;
-                let expected_length = content_length(response.headers());
+                let expected_length = content_length(response.headers())?;
                 if expected_length.is_some_and(|length| length > LOG_BYTES) {
                     return Err(self.error(
                         GitHubActionsErrorKind::LogLimit,
@@ -859,13 +859,22 @@ fn require_content_type(
     }
 }
 
-fn content_length(headers: &http::HeaderMap) -> Option<usize> {
+fn content_length(headers: &http::HeaderMap) -> Result<Option<usize>, GitHubActionsError> {
     headers
-        .get(header::CONTENT_LENGTH)?
-        .to_str()
-        .ok()?
-        .parse()
-        .ok()
+        .get(header::CONTENT_LENGTH)
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .ok_or_else(|| {
+                    GitHubActionsError::new(
+                        GitHubActionsErrorKind::Response,
+                        "GitHub workflow log Content-Length is invalid",
+                    )
+                })
+        })
+        .transpose()
 }
 
 fn validate_log_redirect(
@@ -919,9 +928,100 @@ fn approved_log_host(host: &str) -> bool {
 mod tests {
     use super::*;
     use http_body_util::Full;
+    use std::collections::VecDeque;
+    use std::convert::Infallible;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use tower::service_fn;
 
     fn repository() -> GitHubRepositoryRef {
         GitHubRepositoryRef::new("octo-org", "octo-repo").expect("repository")
+    }
+
+    fn queued_service(responses: Vec<Response<Full<bytes::Bytes>>>) -> OctocrabGitHubService {
+        let responses = Arc::new(StdMutex::new(VecDeque::from(responses)));
+        let client = octocrab::OctocrabBuilder::new_empty()
+            .with_service(service_fn(
+                move |_request: http::Request<octocrab::OctoBody>| {
+                    let response = responses.lock().expect("response queue").pop_front();
+                    std::future::ready(Ok::<_, Infallible>(response.expect("queued response")))
+                },
+            ))
+            .with_auth(octocrab::AuthState::None)
+            .build()
+            .expect("test client");
+        OctocrabGitHubService::with_test_client(client)
+    }
+
+    fn response(
+        status: u16,
+        content_type: &str,
+        body: &'static str,
+    ) -> Response<Full<bytes::Bytes>> {
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(Full::new(bytes::Bytes::from_static(body.as_bytes())))
+            .expect("response")
+    }
+
+    #[test]
+    fn actions_port_exercises_successful_offline_operations() {
+        const RUN: &str = r#"{"id":1,"status":"completed","conclusion":"success","head_sha":"abc","event":"push","run_attempt":1}"#;
+        const RUNS: &str = r#"{"workflow_runs":[{"id":1,"status":"completed","conclusion":"success","head_sha":"abc","event":"push","run_attempt":1}]}"#;
+        let json = "application/json";
+        let responses = vec![
+            response(200, json, RUNS),
+            response(200, json, RUN),
+            response(
+                200,
+                json,
+                r#"{"jobs":[{"name":"job","status":"completed","conclusion":"success","started_at":null,"completed_at":null}]}"#,
+            ),
+            response(
+                200,
+                json,
+                r#"{"check_runs":[{"name":"check","status":"completed","conclusion":"success"}]}"#,
+            ),
+            response(200, json, RUN),
+            response(201, json, ""),
+            response(200, json, RUNS),
+            response(204, json, ""),
+            response(200, "application/zip", "ZIP"),
+        ];
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        runtime.block_on(async move {
+            let s = queued_service(responses);
+            let r = repository();
+            let c = crate::runtime::Cancellation::new();
+            let f = WorkflowRunFilters::default();
+            assert_eq!(
+                s.list_workflow_runs(&r, &f, &c).await.expect("runs").len(),
+                1
+            );
+            assert_eq!(s.workflow_run(&r, 1, &c).await.expect("run").database_id, 1);
+            assert_eq!(s.workflow_jobs(&r, 1, &c).await.expect("jobs").len(), 1);
+            assert_eq!(s.check_runs(&r, "abc", &c).await.expect("checks").len(), 1);
+            assert_eq!(
+                s.rerun_workflow(&r, 1, false, &c).await.expect("rerun"),
+                GitHubMutationOutcome::Accepted
+            );
+            let dispatch = WorkflowDispatchRequest {
+                repository: r.clone(),
+                workflow: String::from("ci.yml"),
+                git_reference: String::from("main"),
+            };
+            assert_eq!(
+                s.dispatch_workflow(&dispatch, &c).await.expect("dispatch"),
+                GitHubMutationOutcome::Accepted
+            );
+            assert_eq!(
+                s.download_workflow_logs(&r, 1, &c)
+                    .await
+                    .expect("logs")
+                    .as_bytes(),
+                b"ZIP"
+            );
+        });
     }
 
     #[test]
@@ -943,6 +1043,8 @@ mod tests {
             route,
             "/repos/octo-org/octo-repo/actions/workflows/ci+check.yml/runs?per_page=100&page=2&branch=topic%2Fname&event=pull_request&status=in_progress&head_sha=abc123"
         );
+        assert!(validate_selector("", "workflow").is_err());
+        assert!(require_positive_id(0).is_err());
     }
 
     #[test]
@@ -1036,6 +1138,17 @@ mod tests {
                 .await
                 .expect("at limit"),
             b"12345"
+        );
+
+        let headers = Response::builder()
+            .header(header::CONTENT_LENGTH, "invalid")
+            .body(())
+            .expect("response");
+        assert_eq!(
+            content_length(headers.headers())
+                .expect_err("malformed content length")
+                .kind(),
+            GitHubActionsErrorKind::Response
         );
     }
 
