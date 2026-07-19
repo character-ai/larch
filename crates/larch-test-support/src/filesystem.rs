@@ -76,7 +76,7 @@ impl TestWorkspace {
     }
 }
 
-fn validate_relative(path: &Path) -> io::Result<()> {
+pub fn validate_relative(path: &Path) -> io::Result<()> {
     if path.as_os_str().is_empty()
         || path
             .components()

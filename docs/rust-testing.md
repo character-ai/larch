@@ -17,10 +17,61 @@ crate-local tests where the dependency graph permits it.
   `ProcessOutputBuilder` creates byte-exact success and failure results.
 - `HttpResponseBuilder` creates in-memory responses and rejects invalid status
   codes, header names, and header line injection.
+- `GitRepository::builder` creates an owned repository through installed Git.
+  `GitFixture` names the shared unborn, detached, refs, changes, conflict,
+  non-UTF-8 path, special-file, attributes and filters, sparse-checkout,
+  submodule, linked-worktree, hooks and signing, remotes, and corruption states.
+  Select `GitObjectFormat::Sha1` or `GitObjectFormat::Sha256`. Match
+  `GitFixtureError::Skip` and print its `FixtureCapability` and reason when the
+  host lacks a feature. Never turn a capability skip into an unreported early
+  return.
 
 Never call `set_current_dir`, `set_var`, or `remove_var` in a test. Do not use a
 shared fixed path, port, clock, response queue, or mutable static. Give each
 test its own fixture and let Cargo run it in parallel.
+
+## Git oracle and semantic snapshots
+
+Git fixtures may invoke installed Git as a test oracle. `GitRepository` finds
+the executable once, then clears the child environment and supplies an owned
+home, temp directory, config, identity, dates, locale, and path. Commands set
+only the child working directory. Fixture code must not change the test
+process environment or working directory. Product crates must still use the
+closed Git interfaces described in `ARCHITECTURE.md`; the fixture API does not
+authorize a production arbitrary-argument Git runner.
+
+Use `SemanticSnapshot::capture` after each implementation runs against its own
+equivalent repository. Supply the operation's public result through
+`ExecutionSnapshot`. Compare the typed snapshots first. Use
+`SemanticSnapshot::render` only for a checked-in review artifact. The
+`larch-git-snapshot-v1` format captures:
+
+- exit class and bounded public stdout and stderr;
+- object IDs and types, refs, reflogs, index stages and modes, index flags,
+  and byte-preserving untracked and ignored paths;
+- worktree bytes, modes, symlinks, linked-worktree records, operation-state
+  files, relevant config, and hook or helper transcripts;
+- an independent `git fsck --full --no-dangling` result.
+
+Each byte field stores at most 1 MiB plus its full length, truncation state,
+and deterministic checksum. Each filesystem section stores at most 4,096
+entries and records section truncation. Rendered paths and bytes use lowercase
+hex. Capture replaces the owned temporary root with `<ROOT>` and redacts
+credential-bearing config and URL user information. Do not add normalization
+for object IDs, modes, paths, repository state, or other semantic values.
+
+Snapshot reviews must explain every changed semantic field. Update a checked-in
+render only after both implementations produce the intended state. Test
+success, injected failure, interruption, and corruption separately. A failed
+Git probe remains snapshot data so corrupt repositories stay comparable.
+
+Normal Git tests remain offline. Use local repositories for remotes and
+submodules. Use fixture scripts for hooks, filters, credential helpers,
+askpass, signing programs, and other child tools. Store their bounded
+transcripts under `GitRepository::transcript_root`; never use live credentials
+or a remote URL that can resolve to a service. Run the named fixture matrix on
+macOS and Linux. Capability skips must name the missing feature and host error
+in test output.
 
 ## Test boundaries
 
