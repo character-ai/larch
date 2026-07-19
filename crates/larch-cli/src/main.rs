@@ -1,6 +1,10 @@
-use std::{io::Write as _, process::ExitCode};
+use std::{
+    collections::BTreeMap, ffi::OsString, fmt::Write as _, fs, io::ErrorKind, io::Write as _,
+    path::Path, process::ExitCode,
+};
 
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
+use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
 mod release_plugin_runtime;
 
@@ -24,12 +28,42 @@ enum Domain {
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
+    /// Local repository status and snapshot operations.
+    #[command(subcommand)]
+    Git(GitCommand),
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
+}
+
+#[derive(Subcommand)]
+enum GitCommand {
+    /// Print the files and index stages that are currently conflicted.
+    ConflictFiles,
+    /// Report whether the worktree is clean using machine-readable key/value rows.
+    CleanTree(CleanTreeArguments),
+    /// Atomically write the sorted untracked-path baseline to an output file.
+    SnapshotUntracked(SnapshotUntrackedArguments),
+}
+
+#[derive(Args, Clone, Copy)]
+struct CleanTreeArguments {
+    /// Treat a repository probe failure as an error instead of a clean tree.
+    #[arg(long)]
+    fail_closed: bool,
+}
+
+#[derive(Args)]
+struct SnapshotUntrackedArguments {
+    /// File that receives the sorted untracked-path baseline.
+    #[arg(long)]
+    output: Option<std::path::PathBuf>,
+    /// Separate output paths with NUL bytes rather than line feeds.
+    #[arg(long)]
+    nul: bool,
 }
 
 #[derive(Subcommand)]
@@ -91,6 +125,7 @@ fn run(cli: Cli, metadata: larch_core::BuildMetadata) -> Result<ExitCode, String
             println!("{}", larch_core::example::echo(&arguments.message));
             Ok(ExitCode::SUCCESS)
         }
+        Domain::Git(command) => run_git(command),
         Domain::Release(ReleaseCommand::PluginRuntime(arguments)) => {
             release_plugin_runtime::run(arguments.check).map(|()| ExitCode::SUCCESS)
         }
@@ -146,6 +181,177 @@ fn parse_repository(value: &str) -> Result<larch_core::GitHubRepositoryRef, Stri
     larch_core::GitHubRepositoryRef::new(owner, name).map_err(|error| error.to_string())
 }
 
+fn run_git(command: GitCommand) -> Result<ExitCode, String> {
+    match command {
+        GitCommand::ConflictFiles => {
+            conflict_files()?;
+            Ok(ExitCode::SUCCESS)
+        }
+        GitCommand::CleanTree(arguments) => clean_tree(arguments),
+        GitCommand::SnapshotUntracked(arguments) => {
+            snapshot_untracked(arguments);
+            Ok(ExitCode::SUCCESS)
+        }
+    }
+}
+
+fn repository_status() -> Result<RepositoryStatus, larch_core::RepositoryError> {
+    larch_adapters::git::GixRepository::discover(".")?.local_status(&StatusOptions::default())
+}
+
+fn conflict_files() -> Result<(), String> {
+    let status = repository_status().map_err(|error| error.to_string())?;
+    for entry in status.unmerged {
+        println!("FILE={}", display_path(entry.path.as_bytes()));
+        for stage in 1..=3 {
+            println!(
+                "STAGE_{stage}={}",
+                entry.stages.iter().any(|item| item.stage == stage)
+            );
+        }
+        println!();
+    }
+    Ok(())
+}
+
+fn clean_tree(arguments: CleanTreeArguments) -> Result<ExitCode, String> {
+    match repository_status() {
+        Ok(status) => {
+            if status.is_dirty() {
+                println!("CLEAN=false");
+                println!("DIRTY_OUT={}", one_line(&porcelain(&status)));
+            } else {
+                println!("CLEAN=true");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(_error) if !arguments.fail_closed => {
+            println!("CLEAN=true");
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(error) => {
+            println!("CLEAN=unknown");
+            println!(
+                "PROBE_ERROR=git exited 1 ({})",
+                one_line(&error.to_string())
+            );
+            Err(String::new())
+        }
+    }
+}
+
+fn snapshot_untracked(arguments: SnapshotUntrackedArguments) {
+    let Some(output) = arguments.output else {
+        eprintln!("snapshot-untracked.sh: --output is required");
+        return;
+    };
+    let mut temporary_name = output
+        .file_name()
+        .map_or_else(OsString::new, OsString::from);
+    temporary_name.push(".tmp");
+    let temporary = output.with_file_name(temporary_name);
+    let result = repository_status();
+    let cleanup = || {
+        remove_if_present(&output);
+        remove_if_present(&temporary);
+    };
+    let Ok(status) = result else {
+        cleanup();
+        return;
+    };
+    let mut paths = status
+        .untracked
+        .into_iter()
+        .map(|path| path.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    let separator = if arguments.nul { 0 } else { b'\n' };
+    let mut data = Vec::new();
+    for path in paths {
+        data.extend(path);
+        data.push(separator);
+    }
+    if fs::write(&temporary, data).is_err() || fs::rename(&temporary, &output).is_err() {
+        cleanup();
+    }
+}
+
+fn remove_if_present(path: &Path) {
+    let _ = fs::remove_file(path).or_else(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            Ok(())
+        } else {
+            Err(error)
+        }
+    });
+}
+
+fn display_path(path: &[u8]) -> String {
+    String::from_utf8_lossy(path).into_owned()
+}
+
+fn one_line(value: &str) -> String {
+    value
+        .replace(['\n', '\r', '\t'], " ")
+        .chars()
+        .take(256)
+        .collect()
+}
+
+fn porcelain(status: &RepositoryStatus) -> String {
+    let mut rows = BTreeMap::<Vec<u8>, [char; 2]>::new();
+    for change in status.tree_to_index.entries() {
+        rows.entry(change.path.as_bytes().to_vec())
+            .or_insert([' ', ' '])[0] = status_code(change.kind);
+    }
+    for change in status.index_to_worktree.entries() {
+        rows.entry(change.path.as_bytes().to_vec())
+            .or_insert([' ', ' '])[1] = status_code(change.kind);
+    }
+    for entry in &status.unmerged {
+        rows.insert(
+            entry.path.as_bytes().to_vec(),
+            conflict_code(entry.kind)
+                .chars()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("two-byte conflict code"),
+        );
+    }
+    for path in &status.untracked {
+        rows.insert(path.as_bytes().to_vec(), ['?', '?']);
+    }
+    let mut output = String::new();
+    for (path, code) in rows {
+        let _ = writeln!(output, "{}{} {}", code[0], code[1], display_path(&path));
+    }
+    output
+}
+
+const fn status_code(kind: ChangeKind) -> char {
+    match kind {
+        ChangeKind::Added => 'A',
+        ChangeKind::Deleted => 'D',
+        ChangeKind::Modified | ChangeKind::SubmoduleModified => 'M',
+        ChangeKind::TypeChanged => 'T',
+        ChangeKind::Renamed => 'R',
+        ChangeKind::Copied => 'C',
+    }
+}
+
+const fn conflict_code(kind: larch_core::ConflictKind) -> &'static str {
+    match kind {
+        larch_core::ConflictKind::BothDeleted => "DD",
+        larch_core::ConflictKind::AddedByUs => "AU",
+        larch_core::ConflictKind::DeletedByThem => "UD",
+        larch_core::ConflictKind::AddedByThem => "UA",
+        larch_core::ConflictKind::DeletedByUs => "DU",
+        larch_core::ConflictKind::BothAdded => "AA",
+        larch_core::ConflictKind::BothModified => "UU",
+    }
+}
+
 fn main() -> ExitCode {
     let metadata = larch_adapters::build_metadata();
     let matches = Cli::command().version(metadata.version()).get_matches();
@@ -154,7 +360,9 @@ fn main() -> ExitCode {
     match run(cli, metadata) {
         Ok(exit_code) => exit_code,
         Err(error) => {
-            eprintln!("{error}");
+            if !error.is_empty() {
+                eprintln!("{error}");
+            }
             ExitCode::from(1)
         }
     }

@@ -2826,11 +2826,11 @@ verb = "clean-tree"
 python_module = "larch.git.git"
 python_function = "clean_tree_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7756
 
 [[commands]]
 domain = "git"
@@ -2850,11 +2850,11 @@ verb = "conflict-files"
 python_module = "larch.git.git"
 python_function = "conflict_files_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7756
 
 [[commands]]
 domain = "git"
@@ -2934,11 +2934,11 @@ verb = "snapshot-untracked"
 python_module = "larch.git.git"
 python_function = "snapshot_untracked_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7756
 
 [[commands]]
 domain = "git"

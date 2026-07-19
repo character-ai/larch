@@ -393,7 +393,7 @@ test-preflight-args:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_admission.py -x -q -k 'preflight'
 
 test-check-clean-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_git.py -q -k 'clean_tree'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state
 
 test-check-main-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_check_main_sync.py python/tests/git/test_git.py -q -k 'check_main_sync'

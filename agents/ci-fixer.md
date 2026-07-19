@@ -110,7 +110,7 @@ Any hard bail from any phase below must call `python3 "$CLAUDE_PLUGIN_ROOT/pytho
 
 Use `CONFLICT_FILES` from the spawn prompt. If absent or empty, fall back to `git diff --name-only --diff-filter=U`. On each Phase 4 `--continue` exit 1, re-capture `CONFLICT_FILES` from that invocation's stdout; do not reuse a stale list.
 
-Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git conflict-files` once and parse each block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines. Then for each file in `CONFLICT_FILES`:
+Run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git conflict-files` once and parse each block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines. Then for each file in `CONFLICT_FILES`:
 
 1. Look up that path in the conflict-files inventory from the single call above.
 2. **Unsupported conflict types**: if any required stage is missing, or the file is binary, classify as **uncertain**. Do not auto-resolve.

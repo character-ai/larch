@@ -21,6 +21,7 @@ from pathlib import Path
 from collections.abc import Callable, Mapping
 
 from larch.core import config
+from larch.core.repo_roots import larch_binary
 from larch.calibration import difficulty
 from larch.report import progress_report
 from larch.review import review_core_body
@@ -898,7 +899,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     round_dir = implement_tmpdir / f"round-{round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     if round_num == 1:
-        _run([sys.executable, str(_PY_CLI), "git", "snapshot-untracked", "--output", str(implement_tmpdir / "pre-review-untracked.txt")])
+        _run([str(larch_binary(Path(__file__).resolve().parents[3])), "git", "snapshot-untracked", "--output", str(implement_tmpdir / "pre-review-untracked.txt")])
         head = _git_head()
         if head:
             _write_text(path=implement_tmpdir / "pre-review-head.txt", text=head + "\n")

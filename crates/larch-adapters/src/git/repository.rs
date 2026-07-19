@@ -93,6 +93,100 @@ impl GixRepository {
         paths.dedup();
         Ok(paths)
     }
+
+    /// Return local status for a compatibility command without interpreting diff text.
+    ///
+    /// This deliberately retains configured filters in the gix traversal: these
+    /// commands report only status and untracked names, unlike callers that need
+    /// exact diff semantics and must use the strict port method below.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same typed discovery, index, or status failure as the strict
+    /// repository-read port.
+    pub fn local_status(
+        &self,
+        options: &StatusOptions,
+    ) -> Result<RepositoryStatus, RepositoryError> {
+        self.status_with_policy(options, false)
+    }
+
+    fn status_with_policy(
+        &self,
+        options: &StatusOptions,
+        reject_unsupported_semantics: bool,
+    ) -> Result<RepositoryStatus, RepositoryError> {
+        let repository = self.local()?;
+        if reject_unsupported_semantics {
+            reject_unsupported_status_semantics(&repository)?;
+        }
+        let index = repository
+            .index_or_empty()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let untracked = if options.include_untracked || options.include_ignored {
+            gix::status::UntrackedFiles::Files
+        } else {
+            gix::status::UntrackedFiles::None
+        };
+        let mut platform = repository
+            .status(gix::progress::Discard)
+            .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?
+            .index(gix::worktree::IndexPersistedOrInMemory::Persisted(
+                index.clone(),
+            ))
+            .untracked_files(untracked);
+        if options.include_ignored {
+            platform = platform.dirwalk_options(|dirwalk| {
+                dirwalk.emit_ignored(Some(gix::dir::walk::EmissionMode::Matching))
+            });
+        }
+        let patterns = options
+            .pathspecs
+            .iter()
+            .map(|path| path.as_bytes().into())
+            .collect::<Vec<gix::bstr::BString>>();
+        let tracked = tracked_entries(&repository, &index, &patterns)?;
+        let iter = platform
+            .into_iter(patterns)
+            .map_err(|error_value| map_status_init_error(&error_value))?;
+        let mut staged = Vec::new();
+        let mut unstaged = Vec::new();
+        let mut untracked_paths = Vec::new();
+        let mut ignored = Vec::new();
+        let mut unmerged = Vec::new();
+        for item in iter {
+            match item.map_err(|error_value| map_status_item_error(&error_value))? {
+                gix::status::Item::TreeIndex(change) => staged.push(index_change(change, &index)),
+                gix::status::Item::IndexWorktree(item) => collect_worktree_item(
+                    item,
+                    &mut unstaged,
+                    &mut untracked_paths,
+                    &mut ignored,
+                    &mut unmerged,
+                ),
+            }
+        }
+        unmerged.sort_by(|left, right| left.path.cmp(&right.path));
+        staged.retain(|change| !unmerged.iter().any(|entry| entry.path == change.path));
+        unstaged.retain(|change| !unmerged.iter().any(|entry| entry.path == change.path));
+        sort_changes(&mut staged);
+        sort_changes(&mut unstaged);
+        untracked_paths.sort();
+        untracked_paths.dedup();
+        if !options.include_untracked {
+            untracked_paths.clear();
+        }
+        ignored.sort_by(|left, right| left.path.cmp(&right.path));
+        ignored.dedup_by(|left, right| left.path == right.path);
+        Ok(RepositoryStatus {
+            tracked,
+            tree_to_index: ChangeSet::new(staged),
+            index_to_worktree: ChangeSet::new(unstaged),
+            untracked: untracked_paths,
+            ignored,
+            unmerged,
+        })
+    }
 }
 
 impl RepositoryRead for GixRepository {
@@ -381,76 +475,7 @@ impl RepositoryRead for GixRepository {
     }
 
     fn status(&self, options: &StatusOptions) -> Result<RepositoryStatus, RepositoryError> {
-        let repository = self.local()?;
-        reject_unsupported_status_semantics(&repository)?;
-        let index = repository
-            .index_or_empty()
-            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
-        let untracked = if options.include_untracked || options.include_ignored {
-            gix::status::UntrackedFiles::Files
-        } else {
-            gix::status::UntrackedFiles::None
-        };
-        let mut platform = repository
-            .status(gix::progress::Discard)
-            .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?
-            .index(gix::worktree::IndexPersistedOrInMemory::Persisted(
-                index.clone(),
-            ))
-            .untracked_files(untracked);
-        if options.include_ignored {
-            platform = platform.dirwalk_options(|dirwalk| {
-                dirwalk.emit_ignored(Some(gix::dir::walk::EmissionMode::Matching))
-            });
-        }
-        let patterns = options
-            .pathspecs
-            .iter()
-            .map(|path| path.as_bytes().into())
-            .collect::<Vec<gix::bstr::BString>>();
-        let tracked = tracked_entries(&repository, &index, &patterns)?;
-        let iter = platform
-            .into_iter(patterns)
-            .map_err(|error_value| map_status_init_error(&error_value))?;
-        let mut staged = Vec::new();
-        let mut unstaged = Vec::new();
-        let mut untracked_paths = Vec::new();
-        let mut ignored = Vec::new();
-        let mut unmerged = Vec::new();
-        for item in iter {
-            match item.map_err(|error_value| map_status_item_error(&error_value))? {
-                gix::status::Item::TreeIndex(change) => {
-                    staged.push(index_change(change, &index));
-                }
-                gix::status::Item::IndexWorktree(item) => collect_worktree_item(
-                    item,
-                    &mut unstaged,
-                    &mut untracked_paths,
-                    &mut ignored,
-                    &mut unmerged,
-                ),
-            }
-        }
-        unmerged.sort_by(|left, right| left.path.cmp(&right.path));
-        staged.retain(|change| !unmerged.iter().any(|entry| entry.path == change.path));
-        unstaged.retain(|change| !unmerged.iter().any(|entry| entry.path == change.path));
-        sort_changes(&mut staged);
-        sort_changes(&mut unstaged);
-        untracked_paths.sort();
-        untracked_paths.dedup();
-        if !options.include_untracked {
-            untracked_paths.clear();
-        }
-        ignored.sort_by(|left, right| left.path.cmp(&right.path));
-        ignored.dedup_by(|left, right| left.path == right.path);
-        Ok(RepositoryStatus {
-            tracked,
-            tree_to_index: ChangeSet::new(staged),
-            index_to_worktree: ChangeSet::new(unstaged),
-            untracked: untracked_paths,
-            ignored,
-            unmerged,
-        })
+        self.status_with_policy(options, true)
     }
 
     fn tree_changes(

@@ -314,44 +314,6 @@ def test_operation_helpers_build_expected_argv() -> None:
     assert git.ls_files(runner, "a.txt", "b.txt") == ("a.txt",)
 
 
-def test_snapshot_untracked_sorts_success_output(tmp_path: Path) -> None:
-    output = tmp_path / "baseline.z"
-    runner = StubRunner(
-        {
-            ("git", "ls-files", "--others", "--exclude-standard", "-z"): CommandResult(
-                ("git", "ls-files", "--others", "--exclude-standard", "-z"),
-                0,
-                "b.txt\x00a.txt\x00",
-                "",
-                0.01,
-            ),
-        },
-    )
-    assert git.snapshot_untracked(runner, str(output), nul=True) == 0
-    assert output.read_bytes() == b"a.txt\x00b.txt\x00"
-
-
-def test_snapshot_untracked_removes_stale_output_on_failure(tmp_path: Path) -> None:
-    output = tmp_path / "baseline.z"
-    _ = output.write_text("stale", encoding="utf-8")
-    tmp = tmp_path / "baseline.z.tmp"
-    _ = tmp.write_text("stale tmp", encoding="utf-8")
-    runner = StubRunner(
-        {
-            ("git", "ls-files", "--others", "--exclude-standard"): CommandResult(
-                ("git", "ls-files", "--others", "--exclude-standard"),
-                1,
-                "",
-                "fatal",
-                0.01,
-            ),
-        },
-    )
-    assert git.snapshot_untracked(runner, str(output)) == 0
-    assert not output.exists()
-    assert not tmp.exists()
-
-
 def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
     runner = StubRunner(
         {
@@ -1120,95 +1082,6 @@ def test_branch_info_emits_detached_empty_branch(monkeypatch: pytest.MonkeyPatch
     assert "CURRENT_BRANCH=" in out
 
 
-def test_clean_tree_fail_closed_probe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[CommandResult(("git",), 128, "", "no repo\n", 0.01)])
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.clean_tree_main(["--fail-closed"]) == 1
-    out = capsys.readouterr().out
-    assert "CLEAN=unknown" in out
-    assert "PROBE_ERROR=git exited 128" in out
-
-
-def test_clean_tree_clean_repo(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[CommandResult(("git", "status", "--porcelain"), 0, "", "", 0.01)])
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.clean_tree_main([]) == 0
-    out = capsys.readouterr().out
-    assert "CLEAN=true" in out
-    assert "DIRTY_OUT=" not in out
-
-
-def test_clean_tree_dirty_default(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("git", "status", "--porcelain"), 0, "?? untracked.txt\n", "", 0.01)],
-    )
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.clean_tree_main([]) == 0
-    out = capsys.readouterr().out
-    assert "CLEAN=false" in out
-    assert "DIRTY_OUT=" in out
-
-
-def test_clean_tree_dirty_fail_closed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("git", "status", "--porcelain"), 0, "?? untracked.txt\n", "", 0.01)],
-    )
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.clean_tree_main(["--fail-closed"]) == 0
-    out = capsys.readouterr().out
-    assert "CLEAN=false" in out
-    assert "DIRTY_OUT=" in out
-
-
-def test_clean_tree_probe_failure_default_fail_open(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("git", "status", "--porcelain"),
-                1,
-                "",
-                "fatal: shim status failed\nsecond line\twith tab\n",
-                0.01,
-            ),
-        ],
-    )
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.clean_tree_main([]) == 0
-    out = capsys.readouterr().out
-    assert "CLEAN=true" in out
-
-
-def test_clean_tree_probe_failure_fail_closed_sanitizes_summary(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("git", "status", "--porcelain"),
-                1,
-                "",
-                "fatal: shim status failed\nsecond line\twith tab\n",
-                0.01,
-            ),
-        ],
-    )
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.clean_tree_main(["--fail-closed"]) == 1
-    out = capsys.readouterr().out
-    assert "CLEAN=unknown" in out
-    assert "PROBE_ERROR=git exited 1" in out
-    assert "\t" not in out
-
-
-def test_clean_tree_bad_arg_exit_two(capsys: pytest.CaptureFixture[str]) -> None:
-    assert git.clean_tree_main(["--unknown-flag"]) == 2
-    assert "unknown" in capsys.readouterr().err.lower()
-
-
 def test_check_phantom_dirty_clean_omits_optional_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = RecordingRunner()
     monkeypatch.setattr(git, "proc", runner)
@@ -1243,12 +1116,6 @@ def test_emit_kv_rejects_multiline_values() -> None:
 
     with pytest.raises(ValueError, match="newline"):
         logging_util.emit_kv(key="ERROR", value="line1\nline2")
-
-
-def test_snapshot_untracked_usage_does_not_create_output(tmp_path: Path) -> None:
-    output = tmp_path / "should-not-exist.z"
-    assert git.snapshot_untracked_main(["--unknown", str(output)]) == 0
-    assert not output.exists()
 
 
 def test_phantom_probe_clean_omits_optional_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
