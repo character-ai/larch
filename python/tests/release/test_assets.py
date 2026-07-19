@@ -107,6 +107,20 @@ def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
     assert linux_step.index("python3 --version") < linux_step.index(cargo_test)
 
 
+def test_release_workflow_verifies_draft_assets_by_release_id() -> None:
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    upload_step = workflow.split("- name: Upload the validated set to the draft Release", maxsplit=1)[1]
+    upload_step = upload_step.split("- name: Upload validated release asset set", maxsplit=1)[0]
+
+    assert "databaseId,isDraft,isImmutable,tagName" in upload_step
+    assert 'release_id="$(jq -r \'.databaseId\' <<<"$release_state")"' in upload_step
+    assert '[[ "$release_id" =~ ^[1-9][0-9]*$ ]]' in upload_step
+    upload = 'gh release upload "$GITHUB_REF_NAME"'
+    verify = 'gh api "repos/$GITHUB_REPOSITORY/releases/$release_id"'
+    assert upload_step.index(upload) < upload_step.index(verify)
+    assert "releases/tags/" not in upload_step
+
+
 def test_validate_candidate_requires_matching_plugin_and_workspace_versions(tmp_path: Path) -> None:
     (tmp_path / ".claude-plugin").mkdir()
     _ = (tmp_path / ".claude-plugin" / "plugin.json").write_text(
