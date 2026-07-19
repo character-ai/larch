@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -89,3 +90,22 @@ def test_real_tree_three_way_split_is_total_disjoint_nonempty() -> None:
 
     assert sorted(covered) == sorted(all_files)  # no file dropped
     assert len(covered) == len(set(covered))  # no file double-linted
+
+
+def test_fast_checks_are_a_three_way_partition() -> None:
+    makefile = (_repo_root() / "Makefile").read_text(encoding="utf-8")
+
+    def checks_for(variable: str) -> list[str]:
+        match = re.search(rf"^{variable} := (.+)$", makefile, flags=re.MULTILINE)
+        assert match, f"missing {variable}"
+        return match.group(1).split()
+
+    all_checks = checks_for("PY_LINT_FAST_CHECKS")
+    shard_checks = [
+        check
+        for shard in range(1, 4)
+        for check in checks_for(f"PY_LINT_FAST_CHECKS_SHARD_{shard}")
+    ]
+
+    assert sorted(shard_checks) == sorted(all_checks)
+    assert len(shard_checks) == len(set(shard_checks))
