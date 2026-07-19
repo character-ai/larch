@@ -216,69 +216,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "get_installed_larch_version",
-    "env_name": "HOME",
-    "constant": "ENV_HOME",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "marketplace_clone_path",
-    "env_name": "HOME",
-    "constant": "ENV_HOME",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "marketplace_clone_path",
-    "env_name": "HOME",
-    "constant": "ENV_HOME",
-    "access": "subscript_load",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "release_step7_cache_parent",
-    "env_name": "HOME",
-    "constant": "ENV_HOME",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "release_step7_cache_parent",
-    "env_name": "HOME",
-    "constant": "ENV_HOME",
-    "access": "subscript_load",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "resolve_release_step7_root",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "run_main",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",

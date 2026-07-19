@@ -1211,7 +1211,6 @@
   "tests/issue/test_tracking_issue.py::test_upsert_summary_validation_failures_emit_stderr_under_inherited_quiet[args0-invalid marker-1]": 11,
   "tests/issue/test_tracking_issue.py::test_upsert_summary_validation_failures_emit_stderr_under_inherited_quiet[args1-content file not found-1]": 2,
   "tests/issue/test_tracking_issue.py::test_upsert_summary_validation_failures_emit_stderr_under_inherited_quiet[args2-invalid repo-1]": 13,
-  "tests/core/test_upgrade_larch.py::test_clean_test_files_from_cache_removes_dev_test_infrastructure": 9,
   "tests/release/test_version_bump.py::test_classify_deleted_skill_major": 11,
   "tests/review/test_voting.py::test_ballot_parse_tally_vote_and_scoreboard": 4,
   "tests/review/test_voting.py::test_compose_tally_record_allows_code_review_self_review_mode": 15,

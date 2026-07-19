@@ -1104,54 +1104,6 @@
     "history": []
   },
   {
-    "file": "larch/core/upgrade_larch.py",
-    "code": "C901",
-    "qualified_symbol": "clean_test_files_from_cache",
-    "metric": 15,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "code": "C901",
-    "qualified_symbol": "prune_cached_versions",
-    "metric": 11,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "code": "C901",
-    "qualified_symbol": "run_main",
-    "metric": 17,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "clean_test_files_from_cache",
-    "metric": 14,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_main",
-    "metric": 19,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/core/upgrade_larch.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_main",
-    "metric": 70,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/core/verify_skill.py",
     "code": "C901",
     "qualified_symbol": "main",

@@ -294,7 +294,7 @@ NEW_VERSION_INSTALLED=false
 RESTART_REQUIRED=false
 RESOLVED_ROOT=""
 
-ROOT_OUT=$(python3 "$PWD/python/cli.py" upgrade-larch release-step7-root --current-version "${CURRENT_VERSION:-}" 2>/dev/null || true)
+ROOT_OUT=$(cargo run --quiet --locked --package larch-cli -- upgrade-larch release-step7-root --current-version "${CURRENT_VERSION:-}" 2>/dev/null || true)
 case "$ROOT_OUT" in
   RESOLVED_ROOT=*) RESOLVED_ROOT="${ROOT_OUT#RESOLVED_ROOT=}" ;;
   *) RESOLVED_ROOT="" ;;
@@ -304,7 +304,7 @@ if [ -n "$RESOLVED_ROOT" ]; then
   echo "Applying the just-released larch marketplace source through the working-tree upgrade script..."
   upgrade_rc=0
   upgrade_out=$(
-    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" python3 "$PWD/python/cli.py" upgrade-larch run 2>&1
+    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" cargo run --quiet --locked --package larch-cli -- upgrade-larch run 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
   if [[ "$upgrade_out" == *"LARCH_MARKETPLACE_RECONCILED=true"* ]] || \

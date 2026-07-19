@@ -10,6 +10,7 @@ pub mod logging;
 pub mod process;
 pub mod retry;
 pub mod runtime;
+pub mod upgrade_larch;
 
 use larch_core::BuildMetadata;
 

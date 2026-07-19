@@ -15,12 +15,16 @@ pub mod env {
     pub const CLAUDE_PLUGIN_OPTION_CURSOR_MODEL: &str = "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL";
     /// Root of the installed Claude plugin.
     pub const CLAUDE_PLUGIN_ROOT: &str = "CLAUDE_PLUGIN_ROOT";
+    /// Persistent data root owned by the installed Claude plugin.
+    pub const CLAUDE_PLUGIN_DATA: &str = "CLAUDE_PLUGIN_DATA";
     /// Cursor API credential used by Cursor subprocesses.
     pub const CURSOR_API_KEY: &str = "CURSOR_API_KEY";
     /// Temporary directory for an active design run.
     pub const DESIGN_TMPDIR: &str = "DESIGN_TMPDIR";
     /// Legacy GitHub CLI credential, never read by the Rust GitHub service.
     pub const GH_TOKEN: &str = "GH_TOKEN";
+    /// Explicit GitHub CLI configuration directory used by the bootstrap exception.
+    pub const GH_CONFIG_DIR: &str = "GH_CONFIG_DIR";
     /// GitHub Actions credential, never read by the Rust GitHub service.
     pub const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
     /// Optional Google Application Default Credentials file.
@@ -43,6 +47,8 @@ pub mod env {
     pub const LARCH_CODEX_VOTE_MODEL: &str = "LARCH_CODEX_VOTE_MODEL";
     /// Optional Cursor model override.
     pub const LARCH_CURSOR_MODEL: &str = "LARCH_CURSOR_MODEL";
+    /// Release version pinned by the release workflow during a local upgrade.
+    pub const LARCH_EXPECTED_STABLE_VERSION: &str = "LARCH_EXPECTED_STABLE_VERSION";
     /// Sole credential read by the Rust GitHub service.
     pub const LARCH_GH_TOKEN: &str = "LARCH_GH_TOKEN";
     /// Disable run-log commits for the current workflow.
@@ -65,16 +71,20 @@ pub mod env {
     pub const TMPDIR: &str = "TMPDIR";
     /// Current user name.
     pub const USER: &str = "USER";
+    /// XDG configuration root used by external products when configured.
+    pub const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 30] = [
+    pub const ALL: [&str; 34] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
         CLAUDE_PLUGIN_OPTION_CURSOR_MODEL,
+        CLAUDE_PLUGIN_DATA,
         CLAUDE_PLUGIN_ROOT,
         CURSOR_API_KEY,
         DESIGN_TMPDIR,
+        GH_CONFIG_DIR,
         GH_TOKEN,
         GITHUB_TOKEN,
         GOOGLE_APPLICATION_CREDENTIALS,
@@ -87,6 +97,7 @@ pub mod env {
         LARCH_CODEX_REVIEW_MODEL,
         LARCH_CODEX_VOTE_MODEL,
         LARCH_CURSOR_MODEL,
+        LARCH_EXPECTED_STABLE_VERSION,
         LARCH_GH_TOKEN,
         LARCH_NO_LOGS_COMMIT,
         LARCH_RUN_ID,
@@ -98,6 +109,7 @@ pub mod env {
         SESSION_TMPDIR,
         TMPDIR,
         USER,
+        XDG_CONFIG_HOME,
     ];
 }
 

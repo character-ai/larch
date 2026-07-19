@@ -185,6 +185,14 @@ if [ "$1:$2" = "release:view" ]; then
     "larch-v$TEST_VERSION-SHA256SUMS"
   exit 0
 fi
+if [ "$1:$2" = "api:--help" ]; then
+  printf 'GitHub API help\n'
+  exit 0
+fi
+if [ "$1" = api ] && [ "$2" = --paginate ]; then
+  printf '%s\n' "v$TEST_VERSION"
+  exit 0
+fi
 if [ "$1" = api ]; then
   printf '%s\\n' "$TEST_SOURCE_COMMIT"
   exit 0
@@ -314,6 +322,15 @@ def test_release_preflight_verifies_without_touching_plugin_cache_root(tmp_path:
     assert marker.read_text(encoding="utf-8") == "unchanged"
     assert not (fixture.root / "bin").exists()
     assert not list(fixture.data.glob(".larch-bootstrap.*"))
+
+
+def test_latest_stable_version_uses_the_bounded_bootstrap_surface(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+
+    result = _run(fixture, "--latest-stable-version")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"LARCH_STABLE_VERSION={VERSION}\n"
 
 
 def test_unsupported_target_fails_with_retry_guidance(tmp_path: Path) -> None:

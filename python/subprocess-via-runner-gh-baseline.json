@@ -30,12 +30,6 @@
     "reason": "Legacy direct gh calls pending wrapper migration."
   },
   {
-    "file": "larch/core/upgrade_larch.py",
-    "qualified_symbol": "_get_stable_releases",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
     "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "_detect_repo",
     "occurrence": 1,

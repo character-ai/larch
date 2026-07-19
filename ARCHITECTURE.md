@@ -125,10 +125,10 @@ work:
   compatibility adapter where installed-Git behavior is part of the contract.
   There is no public arbitrary-argv escape hatch.
 - Product child processes use the `ExternalProcessRunner` core port. Its closed
-  executable enum permits Claude, Codex, Cursor, and the typed Git CLI
-  compatibility operations from issue #7671. The adapter accepts argument
-  arrays only, clears and rebuilds child environments from an allowlist, bounds
-  output, and owns cancellation, timeout, process-group termination, and reap.
+  enum permits typed Claude, Codex, Cursor, Git, and #7670 larch bootstrap or
+  self-check operations. Larch program paths derive from validated plugin roots.
+  The adapter accepts argument arrays only, rebuilds child environments from an
+  allowlist, bounds output, and owns cancellation, timeout, termination, and reap.
   Repository-only lint bootstrap calls stay outside the product dependency
   graph and require reason-bearing lint suppressions.
 - GitHub code uses a larch-owned core service port. Its adapter uses a pinned

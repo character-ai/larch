@@ -13,6 +13,7 @@ mod redaction;
 mod retry;
 mod telemetry;
 mod time;
+mod upgrade_larch;
 
 pub use config::env;
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
@@ -45,10 +46,10 @@ pub use github::{
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
-    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, ProcessCancellation,
-    ProcessError, ProcessErrorKind, ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver,
-    ProcessOutput, ProcessRequest, ProcessRequestError, ProcessRequestErrorKind, ProcessStatus,
-    VendorProgram,
+    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, LarchProgram,
+    ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent, ProcessEventKind,
+    ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest, ProcessRequestError,
+    ProcessRequestErrorKind, ProcessStatus, VendorProgram,
 };
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
 pub use retry::{
@@ -57,6 +58,10 @@ pub use retry::{
 };
 pub use telemetry::{Breadcrumb, JournalRecord, RecordError, RecordErrorKind};
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
+pub use upgrade_larch::{
+    ActiveRootState, InstalledVersionState, MarketplaceState, UpgradeDisposition,
+    classify as classify_upgrade,
+};
 
 /// Immutable metadata about the running larch build.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

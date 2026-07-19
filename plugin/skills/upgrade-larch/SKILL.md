@@ -17,11 +17,11 @@ Upgrade the larch plugin to the latest stable version. This skill is for the run
 1. Run the upgrade script:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" upgrade-larch run
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" upgrade-larch run
 ```
 
 2. Verify the script exited successfully with no recovery banner. If it printed `Binary verification passed. No upgrade needed.`, report that the current plugin and executable match, so no restart is required. If it printed `LARCH_MARKETPLACE_RECONCILED=true`, report the runtime-only marketplace migration. Otherwise, confirm the installed version block matches the preflighted version. Tell the user to restart Claude Code after an install or marketplace migration.
 
-See `${CLAUDE_PLUGIN_ROOT}/python/larch/core/upgrade_larch.py` for the driver contract and failure recovery. `/release` Step 7 sources `python/cli.py upgrade-larch release-step7-root` from the release working tree before executing the working-tree upgrade driver.
+See the Rust `upgrade-larch` command for the driver contract and failure recovery. `/release` Step 7 runs both `upgrade-larch release-step7-root` and `upgrade-larch run` from the release working tree.
 
-Edit-in-sync: marketplace-source changes also touch `.claude-plugin/marketplace.json`, `python/larch/core/upgrade_larch.py`, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, `SECURITY.md`, and `${CLAUDE_PLUGIN_ROOT}/python/tests/core/test_upgrade_larch.py`.
+Edit-in-sync: marketplace-source changes also touch `.claude-plugin/marketplace.json`, the Rust `upgrade-larch` command, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, and `SECURITY.md`.

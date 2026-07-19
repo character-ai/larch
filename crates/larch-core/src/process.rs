@@ -120,6 +120,79 @@ impl GitCliOperation {
 pub enum ExternalProgram {
     Vendor(VendorProgram),
     Git(GitCliOperation),
+    /// A fixed larch program derived from a validated plugin root.
+    Larch(LarchProgram),
+}
+
+/// Fixed larch executable selected from a canonical plugin root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LarchProgram {
+    path: PathBuf,
+    kind: LarchProgramKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LarchProgramKind {
+    Bootstrap,
+    Binary,
+}
+
+impl LarchProgram {
+    /// Select the bounded no-binary bootstrap exception from a plugin root.
+    ///
+    /// # Errors
+    /// Rejects a non-absolute or lexically unsafe root.
+    pub fn bootstrap(root: &Path) -> Result<Self, ProcessRequestError> {
+        Self::from_root(root, LarchProgramKind::Bootstrap)
+    }
+
+    /// Select the release-matched larch executable from a plugin root.
+    ///
+    /// # Errors
+    /// Rejects a non-absolute or lexically unsafe root.
+    pub fn binary(root: &Path) -> Result<Self, ProcessRequestError> {
+        Self::from_root(root, LarchProgramKind::Binary)
+    }
+
+    fn from_root(root: &Path, kind: LarchProgramKind) -> Result<Self, ProcessRequestError> {
+        if !root.is_absolute()
+            || root.components().any(|part| {
+                matches!(
+                    part,
+                    std::path::Component::CurDir | std::path::Component::ParentDir
+                )
+            })
+        {
+            return Err(ProcessRequestError {
+                kind: ProcessRequestErrorKind::UnsafeLarchProgramRoot,
+            });
+        }
+        let path = match kind {
+            LarchProgramKind::Bootstrap => root.join("scripts/larch.sh"),
+            LarchProgramKind::Binary => root.join("bin/larch"),
+        };
+        Ok(Self { path, kind })
+    }
+
+    fn executable(&self) -> &OsStr {
+        self.path.as_os_str()
+    }
+
+    const fn operation(&self) -> &'static str {
+        match self.kind {
+            LarchProgramKind::Bootstrap => "larch.bootstrap",
+            LarchProgramKind::Binary => "larch.self-check",
+        }
+    }
+
+    const fn reason(&self) -> &'static str {
+        match self.kind {
+            LarchProgramKind::Bootstrap => {
+                "bounded no-binary bootstrap exception approved by issue #7670"
+            }
+            LarchProgramKind::Binary => "release-matched larch executable self-check",
+        }
+    }
 }
 
 impl ExternalProgram {
@@ -129,6 +202,7 @@ impl ExternalProgram {
         match self {
             Self::Vendor(program) => OsStr::new(program.executable()),
             Self::Git(_) => OsStr::new("git"),
+            Self::Larch(program) => program.executable(),
         }
     }
 
@@ -140,6 +214,7 @@ impl ExternalProgram {
             Self::Vendor(VendorProgram::Codex) => "vendor.codex",
             Self::Vendor(VendorProgram::Cursor) => "vendor.cursor",
             Self::Git(operation) => operation.subcommand(),
+            Self::Larch(program) => program.operation(),
         }
     }
 
@@ -149,6 +224,7 @@ impl ExternalProgram {
         match self {
             Self::Vendor(program) => program.reason(),
             Self::Git(operation) => operation.reason(),
+            Self::Larch(program) => program.reason(),
         }
     }
 
@@ -185,6 +261,12 @@ pub enum ChildEnvironment {
     AnthropicApiKey,
     OpenAiApiKey,
     CursorApiKey,
+    ClaudePluginRoot,
+    ClaudePluginData,
+    GhToken,
+    GitHubToken,
+    GhConfigDir,
+    XdgConfigHome,
 }
 
 impl ChildEnvironment {
@@ -213,6 +295,12 @@ impl ChildEnvironment {
             Self::AnthropicApiKey => env::ANTHROPIC_API_KEY,
             Self::OpenAiApiKey => env::OPENAI_API_KEY,
             Self::CursorApiKey => env::CURSOR_API_KEY,
+            Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
+            Self::ClaudePluginData => env::CLAUDE_PLUGIN_DATA,
+            Self::GhToken => env::GH_TOKEN,
+            Self::GitHubToken => env::GITHUB_TOKEN,
+            Self::GhConfigDir => env::GH_CONFIG_DIR,
+            Self::XdgConfigHome => env::XDG_CONFIG_HOME,
         }
     }
 
@@ -248,6 +336,7 @@ pub enum ProcessRequestErrorKind {
     RelativeWorkingDirectory,
     ZeroTimeout,
     ZeroShutdownGrace,
+    UnsafeLarchProgramRoot,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -271,6 +360,9 @@ impl fmt::Display for ProcessRequestError {
             ProcessRequestErrorKind::ZeroTimeout => "child timeout must be non-zero",
             ProcessRequestErrorKind::ZeroShutdownGrace => {
                 "child shutdown grace period must be non-zero"
+            }
+            ProcessRequestErrorKind::UnsafeLarchProgramRoot => {
+                "larch program root must be absolute and lexically safe"
             }
         })
     }
@@ -732,6 +824,24 @@ mod tests {
         let mut arguments = vec![OsString::from("--exit-code")];
         ExternalProgram::Git(GitCliOperation::ExactDiff).append_fixed_arguments(&mut arguments);
         assert_eq!(arguments, ["diff", "--exit-code"]);
+    }
+
+    #[test]
+    fn larch_programs_are_derived_from_absolute_safe_roots() {
+        let error = LarchProgram::bootstrap(Path::new("relative"))
+            .expect_err("relative plugin root must fail");
+        assert_eq!(
+            error.kind(),
+            ProcessRequestErrorKind::UnsafeLarchProgramRoot
+        );
+        let root = std::env::current_dir().expect("absolute cwd");
+        let bootstrap = LarchProgram::bootstrap(&root).expect("safe bootstrap root");
+        let binary = LarchProgram::binary(&root).expect("safe binary root");
+        assert_eq!(
+            bootstrap.executable(),
+            root.join("scripts/larch.sh").as_os_str()
+        );
+        assert_eq!(binary.executable(), root.join("bin/larch").as_os_str());
     }
 
     #[test]

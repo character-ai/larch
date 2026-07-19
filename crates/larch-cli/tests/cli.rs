@@ -14,11 +14,12 @@ Larch workflow automation
 Usage: larch <COMMAND>
 
 Commands:
-  example  Non-production commands that exercise dispatcher wiring
-  git      Local repository status and snapshot operations
-  release  Release-maintenance commands
-  gh       GitHub workflow helper commands
-  help     Print this message or the help of the given subcommand(s)
+  example        Non-production commands that exercise dispatcher wiring
+  git            Local repository status and snapshot operations
+  release        Release-maintenance commands
+  gh             GitHub workflow helper commands
+  upgrade-larch  Upgrade the installed larch plugin and executable
+  help           Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help

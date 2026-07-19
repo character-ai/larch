@@ -700,13 +700,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/core/upgrade_larch.py",
-    "suppression_kind": "pyright-report",
-    "text": "pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/core/verify_main.py",
     "suppression_kind": "noqa",
     "text": "noqa: SLF001",
