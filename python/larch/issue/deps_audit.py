@@ -8,7 +8,6 @@ import argparse
 import json
 import re
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +15,7 @@ from larch.issue import blocker
 from larch.issue import combine_issues
 from larch.git import gh
 from larch.issue import issue_wire
+from larch.issue import issue_mutation
 from larch.issue.open_rows import (
     emit_json as _emit_json,
     load_json_file as _load_json_file,
@@ -737,14 +737,13 @@ def _revalidate_edge_before_write(*, edge: dict[str, Any], live_meta: dict[int, 
 
 def _apply_rewrite(*, repo: str, issue: int, body: str) -> tuple[bool, str]:
     sanitized = _sanitize_outbound_body(body)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as handle:
-        handle.write(sanitized)
-        path = handle.name
     try:
-        result = gh.issue_edit_body_file(proc, str(issue), path, repo=repo)
-    finally:
-        Path(path).unlink(missing_ok=True)
-    return result.returncode == 0, _redacted_gh_error(result) if result.returncode != 0 else ""
+        _ = issue_mutation.update_body(
+            proc, repository=repo, issue=str(issue), body=sanitized
+        )
+    except ShipError as exc:
+        return False, redact.redact(str(exc)).replace("\n", " ")[:500]
+    return True, ""
 
 
 def _apply_close(*, repo: str, issue: int) -> tuple[bool, str]:

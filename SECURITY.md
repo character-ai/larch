@@ -237,7 +237,13 @@ Scoped GitHub issue create, comment, close, and label operations require explici
 
 **Refusal behavior**: Unauthorized calls emit `ISSUE_FAILED=true` and a designated refusal exit code without making any `gh` call. Reporter-level refusals write a local fallback artifact with the designated reason and do not retry through another mutation route.
 
-**Residual limitation**: This boundary prevents accidental execution by in-dev code and test escapes. It does not prevent a malicious process that can alter code, session state, or credentials from bypassing the check. Unrelated existing GitHub mutation surfaces (tracking-issue lifecycle helpers, decomposition close-original, clarification mutations) remain outside this boundary.
+**Residual limitation**: This boundary prevents accidental execution by in-dev code and test escapes. It does not prevent a malicious process that can alter code, session state, or credentials from bypassing the check. Comment creation, native dependency mutations, issue creation and close flows, and decomposition close-original remain outside this boundary.
+
+## Freshness-checked GitHub issue fields
+
+`python/larch/issue/issue_mutation.py` is the single owner for production issue title, body, label, and named-block writes. It reads the fixed identity fields before each write, requires the caller's `updatedAt` and lifecycle state to still match, redacts outbound title and body text, and proves the requested postcondition with a read-back whose `updatedAt` is strictly newer. A stale identity, malformed read-back, redaction failure, write failure, unchanged timestamp, or missing postcondition fails with the stable `protected-issue-mutation` token.
+
+Bodies on in-flight lifecycle issues are protected. A write may change only one explicitly named larch block, must leave the rest of the body unchanged, and requires a matching implementation-lease marker when the issue is protected. The lease field is optional on unprotected requests, binds only that marker, and does not authorize title changes, labels, or unrelated body text. This protects against stale writers and accidental whole-body replacement, but it is not a substitute for GitHub permissions or an integrity boundary against a process that can modify the running code or its credentials.
 
 ## Security Findings in OOS Workflows
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import html
 import re
 import sys
@@ -12,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from larch.git import gh
+from larch.issue import issue_mutation
 from larch.design import plan_grammar
 from larch.core import logging_util
 from larch.core import proc
@@ -262,14 +264,33 @@ def named_block_write(
             composed = block if not current_body else current_body + "\n\n" + block
             mode = "appended"
 
+    if mode == "absent-noop":
+        return {
+            "written": False,
+            "mode": mode,
+            "markers_present": markers_present,
+            "body_bytes": len(current_body.encode("utf-8")),
+        }
+
     try:
         redacted_body = redact.redact_secrets_only(composed)
     except Exception as exc:  # pragma: no cover - defensive seam for monkeypatch tests
         msg = f"redaction:{exc}"
         raise ShipError(msg) from exc
-    result = gh.issue_edit_body_with_retry(runner, issue, redacted_body, repo=repo)
-    if result.returncode != 0:
-        raise ShipError(_single_line_redacted(result.stdout + result.stderr))
+    run_id = os.environ.get("RUN_ID", "").strip()
+    lease = (
+        issue_mutation.ImplementationLease(run_id=run_id, marker=marker)
+        if run_id
+        else None
+    )
+    _ = issue_mutation.update_named_block(
+        runner,
+        repository=repo,
+        issue=issue,
+        marker=marker,
+        body=redacted_body,
+        lease=lease,
+    )
     _verify_named_block_post_write(
         runner=runner, marker=marker, issue=issue, repo=repo, delete=delete,
     )

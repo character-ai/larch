@@ -128,6 +128,7 @@ class IssueRunner:
     calls: list[list[str]] = field(default_factory=_empty_call_list)
     edit_failures: int = 0
     persist_edits: bool = True
+    updated_at: str = "2026-07-19T00:00:00Z"
 
     def run(
         self,
@@ -143,7 +144,14 @@ class IssueRunner:
         args = list(argv)
         self.calls.append(args)
         if args[:4] == ["gh", "issue", "view", "9"]:  # lint-gh-argv-literal: ok fixture assertion
-            return CommandResult(tuple(args), 0, '{"body": ' + __import__("json").dumps(self.body) + "}", "", 0.01)
+            payload = {
+                "title": "Regular issue",
+                "body": self.body,
+                "labels": [],
+                "state": "OPEN",
+                "updatedAt": self.updated_at,
+            }
+            return CommandResult(tuple(args), 0, __import__("json").dumps(payload), "", 0.01)
         if args[:4] == ["gh", "issue", "edit", "9"]:  # lint-gh-argv-literal: ok fixture assertion
             body_file = args[args.index("--body-file") + 1]
             edited = Path(body_file).read_text(encoding="utf-8")
@@ -153,6 +161,7 @@ class IssueRunner:
                 return CommandResult(tuple(args), 1, "", "Could not resolve host", 0.01)
             if self.persist_edits:
                 self.body = edited
+                self.updated_at = "2026-07-19T00:00:01Z"
             return CommandResult(tuple(args), 0, "", "", 0.01)
         if args[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 0, "owner/repo\n", "", 0.01)
@@ -175,7 +184,7 @@ def test_named_block_write_append_replace_delete_and_lf_normalization() -> None:
     runner = IssueRunner("body")
     result = issue_wire.named_block_write(runner=runner, marker="design-pause", issue="9", repo="owner/repo", content=None, delete=True)
     assert result["mode"] == "absent-noop"
-    assert runner.edit_bodies == ["body\n"]
+    assert runner.edit_bodies == []
 
 
 def test_named_block_write_malformed_skips_edit() -> None:
@@ -225,7 +234,7 @@ def test_named_block_write_fails_closed_when_post_write_body_still_fenced_only()
         "```\n"
     )
     runner = IssueRunner(fenced_only, persist_edits=False)
-    with pytest.raises(ShipError, match="post-write-verify-missing"):
+    with pytest.raises(ShipError, match="protected-issue-mutation:non-fresh-read-back"):
         _ = issue_wire.named_block_write(
             runner=runner,
             marker="plan",
