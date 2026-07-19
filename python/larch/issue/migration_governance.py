@@ -20,7 +20,7 @@ from larch.core.proc import CommandResult, Runner
 from larch.design import plan_grammar
 from larch.errors import ShipError
 from larch.git import gh, git
-from larch.issue import issue_block, issue_blocks, issue_mutation
+from larch.issue import issue_block, issue_blocks
 from larch.issue.issue_blocks import parse_named_block
 
 _CODE_FENCE_RE: Final = re.compile(r"^\s*(?:```|~~~)")
@@ -447,12 +447,23 @@ def _issue_freshness_row(
         )
     data = _loads_json_object(result.stdout, context=f"issue #{issue} freshness")
     number_raw = data.get("number", issue)
-    try:
-        number = int(number_raw) if not isinstance(number_raw, int) else number_raw
-    except (TypeError, ValueError) as exc:
+    if isinstance(number_raw, bool):
         raise issue_block.DependencyReadError(
             f"issue freshness number invalid for #{issue}"
-        ) from exc
+        )
+    if isinstance(number_raw, int):
+        number = number_raw
+    elif isinstance(number_raw, str):
+        try:
+            number = int(number_raw)
+        except ValueError as exc:
+            raise issue_block.DependencyReadError(
+                f"issue freshness number invalid for #{issue}"
+            ) from exc
+    else:
+        raise issue_block.DependencyReadError(
+            f"issue freshness number invalid for #{issue}"
+        )
     state = _normalize_state(data.get("state"))
     updated_at = data.get("updatedAt")
     if not state or not isinstance(updated_at, str) or not updated_at:
@@ -687,6 +698,8 @@ def persist_plan_receipt(
     cwd: str | None = None,
 ) -> PlanReceipt:
     """Write and read-verify the receipt immediately after plan publication."""
+    from larch.issue import issue_mutation  # noqa: PLC0415 - lazy: avoid cycle with issue_mutation plan-receipt strip
+
     snapshot = issue_mutation.read_snapshot(
         runner, repository=repo, issue=issue, cwd=cwd
     )

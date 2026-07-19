@@ -1383,10 +1383,12 @@ def publish_core(argv: Sequence[str]) -> int:
         )
     _replace_kv(rows=kvs, key="PLAN_WRITE_OK", value="true")
     _checkpoint_result_env(path=result_env, rows=kvs, phase="plan-write")
-    try:
-        from larch.errors import ShipError  # noqa: PLC0415 - receipt failure path imports
-        from larch.issue.issue_mutation import ProtectedIssueMutation  # noqa: PLC0415 - receipt failure path imports
+    from larch.errors import ShipError  # noqa: PLC0415 - receipt failure path imports
+    from larch.issue.issue_mutation import (  # noqa: PLC0415 - receipt failure path imports
+        ProtectedIssueMutation,
+    )
 
+    try:
         _persist_published_plan_receipt(
             issue=parsed["--issue"],
             repo=parsed["--repo"],

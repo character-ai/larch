@@ -1,6 +1,6 @@
 """Tests for implement preflight Python port."""
 
-# pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 
 
 from __future__ import annotations
@@ -45,7 +45,11 @@ def _stub_migration_governance_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # p
         )
 
     monkeypatch.setattr(migration_governance, "evaluate_governance_gate", _ok)
-    monkeypatch.setattr(preflight.gh, "resolve_repo", lambda _runner: "o/r")
+
+    def _resolve_repo(_runner: object) -> str:
+        return "o/r"
+
+    monkeypatch.setattr(preflight.gh, "resolve_repo", _resolve_repo)
 
 
 def _write(handle: object, text: str) -> None:
@@ -753,7 +757,7 @@ def test_preflight_blocker_read_failure_before_success_envelope(
         ["--issue", "5", "--repo", "o/r", "--preflight-tmpdir", str(tmp_path)]
     )
     assert rc == 2
-    assert title_mutations == []
+    assert not title_mutations
     assert "blocker-read-unavailable" in capsys.readouterr().out
 
 
@@ -792,5 +796,5 @@ def test_preflight_receipt_failure_before_title_mutation(
         ["--issue", "5", "--repo", "o/r", "--preflight-tmpdir", str(tmp_path)]
     )
     assert rc == 2
-    assert title_mutations == []
+    assert not title_mutations
     assert "stale-plan-body" in capsys.readouterr().out

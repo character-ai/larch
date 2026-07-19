@@ -141,7 +141,7 @@ def test_load_blocker_snapshot_fail_closed_on_api_error(
         repo="o/r",
         body="Native blocker: #2.\n",
     )
-    assert rows == ()
+    assert not rows
     assert parity.reasons == (mg.REASON_BLOCKER_READ_UNAVAILABLE,)
     assert parity.blocking
 
