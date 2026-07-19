@@ -1221,7 +1221,14 @@ mod tests {
             runtime,
             runner,
             GitFixture::Refs,
-            |_| {},
+            |repository| {
+                repository
+                    .git(["config", "user.name", "Larch Fixture"])
+                    .expect("configure fixture author");
+                repository
+                    .git(["config", "user.email", "fixture@example.invalid"])
+                    .expect("configure fixture author");
+            },
             ["commit", "--allow-empty", "-m", "fixture commit"],
             |repository, runner, runtime| {
                 runtime.block_on(GitCli::new(runner, policy(repository.root())).commit(
