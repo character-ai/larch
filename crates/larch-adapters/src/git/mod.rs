@@ -646,15 +646,15 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    fn assert_argv(operation: &dyn GitOperation, want: &[&str]) {
+        assert_eq!(argv(operation), want);
+    }
+
     #[test]
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // covers remaining argv/validator branches for coverage
-    fn uncovered_argv_and_validator_branches() {
+    fn uncovered_validator_error_branches() {
         use std::os::unix::ffi::OsStringExt;
-
-        let check = |operation: &dyn GitOperation, want: &[&str]| {
-            assert_eq!(argv(operation), want);
-        };
 
         assert_eq!(
             GitCliInputError::new(GitCliInputErrorKind::Empty, "empty").kind(),
@@ -697,8 +697,12 @@ mod tests {
             .arguments()
             .is_err()
         );
+    }
 
-        check(
+    #[test]
+    #[cfg(unix)]
+    fn uncovered_config_remote_add_reset_argv_branches() {
+        assert_argv(
             &ExactDiffRequest {
                 cached: false,
                 name_only: false,
@@ -711,13 +715,13 @@ mod tests {
             },
             &["diff", "--name-status", "--quiet", "HEAD", "topic"],
         );
-        check(
+        assert_argv(
             &ConfigMutationRequest::Unset {
                 key: GitConfigKey::new("user.email").unwrap(),
             },
             &["config", "--local", "--unset", "user.email"],
         );
-        check(
+        assert_argv(
             &ConfigMutationRequest::Add {
                 key: GitConfigKey::new("remote.origin.fetch").unwrap(),
                 value: "+refs/heads/*:refs/remotes/origin/*".into(),
@@ -730,13 +734,13 @@ mod tests {
                 "+refs/heads/*:refs/remotes/origin/*",
             ],
         );
-        check(
+        assert_argv(
             &RemoteMutationRequest::Remove {
                 name: GitRemote::new("origin").unwrap(),
             },
             &["remote", "remove", "origin"],
         );
-        check(
+        assert_argv(
             &RemoteMutationRequest::SetUrl {
                 name: GitRemote::new("origin").unwrap(),
                 url: GitUrl::new("https://example.invalid/other.git").unwrap(),
@@ -748,14 +752,14 @@ mod tests {
                 "https://example.invalid/other.git",
             ],
         );
-        check(
+        assert_argv(
             &RemoteMutationRequest::Rename {
                 from: GitRemote::new("origin").unwrap(),
                 to: GitRemote::new("upstream").unwrap(),
             },
             &["remote", "rename", "origin", "upstream"],
         );
-        check(
+        assert_argv(
             &AddRequest {
                 all: false,
                 force: true,
@@ -764,7 +768,7 @@ mod tests {
             },
             &["add", "--force", "--pathspec-from-file=specs.txt"],
         );
-        check(
+        assert_argv(
             &AddRequest {
                 all: true,
                 force: false,
@@ -783,7 +787,7 @@ mod tests {
             .arguments()
             .is_err()
         );
-        check(
+        assert_argv(
             &ResetRequest {
                 mode: ResetMode::Soft,
                 target: GitRef::new("HEAD").unwrap(),
@@ -791,7 +795,7 @@ mod tests {
             },
             &["reset", "--soft", "HEAD"],
         );
-        check(
+        assert_argv(
             &ResetRequest {
                 mode: ResetMode::Mixed,
                 target: GitRef::new("HEAD").unwrap(),
@@ -808,7 +812,12 @@ mod tests {
             .arguments()
             .is_err()
         );
-        check(
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn uncovered_checkout_and_clean_argv_branches() {
+        assert_argv(
             &CheckoutRequest::Paths {
                 ours: true,
                 theirs: false,
@@ -816,7 +825,7 @@ mod tests {
             },
             &["checkout", "--ours", "--", "conflict.txt"],
         );
-        check(
+        assert_argv(
             &CheckoutRequest::Paths {
                 ours: false,
                 theirs: true,
@@ -833,7 +842,7 @@ mod tests {
             .arguments()
             .is_err()
         );
-        check(
+        assert_argv(
             &CheckoutRequest::Detach {
                 target: GitRef::new("HEAD").unwrap(),
             },
@@ -857,7 +866,12 @@ mod tests {
             .arguments()
             .is_err()
         );
-        check(
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn uncovered_commit_and_trailer_argv_branches() {
+        assert_argv(
             &CommitRequest {
                 message: Some(CommitMessage::File(GitPath::new("MSG").unwrap())),
                 amend: true,
@@ -865,16 +879,9 @@ mod tests {
                 allow_empty: false,
                 paths: vec![GitPath::new("tracked.txt").unwrap()],
             },
-            &[
-                "commit",
-                "--amend",
-                "--file",
-                "MSG",
-                "--",
-                "tracked.txt",
-            ],
+            &["commit", "--amend", "--file", "MSG", "--", "tracked.txt"],
         );
-        check(
+        assert_argv(
             &CommitRequest {
                 message: None,
                 amend: true,
@@ -904,7 +911,7 @@ mod tests {
             .arguments()
             .is_err()
         );
-        check(
+        assert_argv(
             &InterpretTrailersRequest {
                 trailers: vec!["Reviewed-by: A <a@b>".into()],
                 in_place: Some(GitPath::new("MSG").unwrap()),
@@ -918,28 +925,35 @@ mod tests {
                 "MSG",
             ],
         );
-        assert!(InterpretTrailersRequest {
-            trailers: vec!["Reviewed-by: A <a@b>".into()],
-            in_place: Some(GitPath::new("MSG").unwrap()),
-            stdin: Vec::new(),
-        }
-        .stdin()
-        .is_empty());
-        check(
+        assert!(
+            InterpretTrailersRequest {
+                trailers: vec!["Reviewed-by: A <a@b>".into()],
+                in_place: Some(GitPath::new("MSG").unwrap()),
+                stdin: Vec::new(),
+            }
+            .stdin()
+            .is_empty()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn uncovered_branch_worktree_and_misc_argv_branches() {
+        assert_argv(
             &BranchMutationRequest::Delete {
                 force: true,
                 name: GitRef::new("topic").unwrap(),
             },
             &["branch", "-D", "topic"],
         );
-        check(
+        assert_argv(
             &BranchMutationRequest::SetUpstream {
                 name: GitRef::new("topic").unwrap(),
                 upstream: GitRef::new("origin/topic").unwrap(),
             },
             &["branch", "--set-upstream-to", "origin/topic", "topic"],
         );
-        check(
+        assert_argv(
             &WorktreeRequest::Add {
                 branch: None,
                 path: GitPath::new("wt").unwrap(),
@@ -947,31 +961,34 @@ mod tests {
             },
             &["worktree", "add", "wt", "HEAD"],
         );
-        check(
+        assert_argv(
             &WorktreeRequest::Remove {
                 force: true,
                 path: GitPath::new("wt").unwrap(),
             },
             &["worktree", "remove", "--force", "wt"],
         );
-        check(
+        assert_argv(
             &InitRequest {
                 directory: Some(GitPath::new("repo").unwrap()),
                 initial_branch: None,
             },
             &["init", "repo"],
         );
-        check(
+        assert_argv(
             &SparseCheckoutRequest::Init { cone: true },
             &["sparse-checkout", "init", "--cone"],
         );
-        check(&SparseCheckoutRequest::Disable, &["sparse-checkout", "disable"]);
+        assert_argv(
+            &SparseCheckoutRequest::Disable,
+            &["sparse-checkout", "disable"],
+        );
         assert!(
             SparseCheckoutRequest::Set { paths: Vec::new() }
                 .arguments()
                 .is_err()
         );
-        check(
+        assert_argv(
             &RebaseRequest::Start {
                 onto: Some(GitRef::new("main").unwrap()),
                 upstream: GitRef::new("upstream").unwrap(),
@@ -979,12 +996,12 @@ mod tests {
             },
             &["rebase", "--onto", "main", "upstream", "topic"],
         );
-        check(&RebaseRequest::Continue, &["rebase", "--continue"]);
-        check(&RebaseRequest::Skip, &["rebase", "--skip"]);
-        check(&MergeRequest::Abort, &["merge", "--abort"]);
-        check(&StashRequest::Pop, &["stash", "pop"]);
-        check(&StashRequest::Drop, &["stash", "drop"]);
-        check(
+        assert_argv(&RebaseRequest::Continue, &["rebase", "--continue"]);
+        assert_argv(&RebaseRequest::Skip, &["rebase", "--skip"]);
+        assert_argv(&MergeRequest::Abort, &["merge", "--abort"]);
+        assert_argv(&StashRequest::Pop, &["stash", "pop"]);
+        assert_argv(&StashRequest::Drop, &["stash", "drop"]);
+        assert_argv(
             &PushRequest {
                 remote: GitRemote::new("origin").unwrap(),
                 refspec: GitRefspec::new("HEAD:main").unwrap(),
@@ -992,7 +1009,7 @@ mod tests {
             },
             &["push", "--force-with-lease=abc", "origin", "HEAD:main"],
         );
-        check(
+        assert_argv(
             &TagMutationRequest::Create {
                 force: true,
                 name: GitRef::new("v2").unwrap(),
@@ -1001,13 +1018,13 @@ mod tests {
             },
             &["tag", "--force", "v2", "HEAD"],
         );
-        check(
+        assert_argv(
             &TagMutationRequest::Delete {
                 name: GitRef::new("v1").unwrap(),
             },
             &["tag", "--delete", "v1"],
         );
-        check(
+        assert_argv(
             &SubmoduleRequest::Foreach {
                 recursive: true,
                 command: vec![GitToken::new("true").unwrap()],
