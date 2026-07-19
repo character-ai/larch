@@ -4,6 +4,7 @@ use http::header::HeaderName;
 use larch_core::{GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env};
 use octocrab::Octocrab;
 use std::{error::Error, ffi::OsString, fmt, future::Future};
+use tokio::sync::Mutex;
 use url::Url;
 
 const API_BASE: &str = "https://api.github.com/";
@@ -162,6 +163,7 @@ pub struct OctocrabGitHubService {
     pub(crate) client: Octocrab,
     pub(crate) policy: GitHubTransportPolicy,
     redactor: RuntimeRedactor,
+    pub(crate) mutation_lock: Mutex<()>,
 }
 
 impl OctocrabGitHubService {
@@ -171,6 +173,7 @@ impl OctocrabGitHubService {
             client,
             policy: GitHubTransportPolicy::github_com(),
             redactor: RuntimeRedactor::default(),
+            mutation_lock: Mutex::new(()),
         }
     }
 
@@ -201,7 +204,22 @@ impl OctocrabGitHubService {
             client,
             policy,
             redactor,
+            mutation_lock: Mutex::new(()),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_test_token(token: &str) -> Self {
+        struct TestEnvironment(OsString);
+
+        impl EnvironmentSource for TestEnvironment {
+            fn read(&self, name: &'static str) -> Option<OsString> {
+                (name == env::LARCH_GH_TOKEN).then(|| self.0.clone())
+            }
+        }
+
+        Self::from_source(&TestEnvironment(OsString::from(token)))
+            .expect("test token and active runtime must construct the client")
     }
 
     /// Fixed request headers applied to every GitHub API request.
@@ -218,6 +236,10 @@ impl OctocrabGitHubService {
     #[must_use]
     pub fn redact_diagnostic(&self, text: impl AsRef<str>) -> SafeText {
         self.redactor.safe_text(text)
+    }
+
+    pub(crate) const fn client(&self) -> &Octocrab {
+        &self.client
     }
 
     /// Resolve a response-supplied pagination or redirect continuation and

@@ -226,6 +226,7 @@ impl GitHubRepositoryRef {
 
 fn valid_repository_part(value: &str) -> bool {
     !value.is_empty()
+        && value.len() <= 100
         && value != "."
         && value != ".."
         && value
@@ -327,6 +328,204 @@ pub struct GitHubLabelCreate {
     pub color: String,
     pub description: String,
 }
+
+/// Owned future returned by the object-safe GitHub Actions port.
+pub type GitHubActionsFuture<'service, T> =
+    Pin<Box<dyn Future<Output = Result<T, GitHubActionsError>> + Send + 'service>>;
+
+/// Typed workflow, job, check, control, and log operations.
+pub trait GitHubActionsService: GitHubService {
+    fn list_workflow_runs<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        filters: &'service WorkflowRunFilters,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, Vec<WorkflowRun>>;
+
+    fn workflow_run<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        run_id: u64,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, WorkflowRun>;
+
+    fn workflow_jobs<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        run_id: u64,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, Vec<WorkflowJob>>;
+
+    fn check_runs<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        git_reference: &'service str,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, Vec<CheckRun>>;
+
+    fn rerun_workflow<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        run_id: u64,
+        failed_only: bool,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, GitHubMutationOutcome>;
+
+    fn dispatch_workflow<'service>(
+        &'service self,
+        request: &'service WorkflowDispatchRequest,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, GitHubMutationOutcome>;
+
+    fn download_workflow_logs<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        run_id: u64,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, WorkflowLogArchive>;
+}
+
+/// Additive filters for listing workflow runs.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct WorkflowRunFilters {
+    pub branch: Option<String>,
+    pub workflow: Option<String>,
+    pub event: Option<String>,
+    pub status: Option<String>,
+    pub commit: Option<String>,
+    pub limit: usize,
+}
+
+impl WorkflowRunFilters {
+    #[must_use]
+    pub const fn effective_limit(&self) -> usize {
+        if self.limit == 0 { 5 } else { self.limit }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowRun {
+    pub database_id: u64,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub head_sha: String,
+    pub event: String,
+    pub attempt: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowDispatchRequest {
+    pub repository: GitHubRepositoryRef,
+    pub workflow: String,
+    pub git_reference: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkflowJob {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub wall_clock_seconds: Option<f64>,
+}
+
+impl WorkflowJob {
+    #[must_use]
+    pub fn is_failed(&self) -> bool {
+        self.conclusion.as_deref() == Some("failure")
+    }
+
+    #[must_use]
+    pub fn harness_shard(&self) -> Option<u32> {
+        let shard = self
+            .name
+            .strip_prefix("test-harnesses (")?
+            .strip_suffix(')')?;
+        shard.parse().ok()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CheckBucket {
+    Pass,
+    Fail,
+    Pending,
+    Skipping,
+    Cancel,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckRun {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub bucket: CheckBucket,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubMutationOutcome {
+    Accepted,
+    Reconciled,
+    Ambiguous,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkflowLogArchive {
+    bytes: Vec<u8>,
+}
+
+impl WorkflowLogArchive {
+    #[must_use]
+    pub const fn new(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubActionsErrorKind {
+    InvalidInput,
+    Authorization,
+    RateLimited,
+    Transport,
+    Response,
+    Redirect,
+    LogLimit,
+    Cancelled,
+    DeadlineExceeded,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubActionsError {
+    kind: GitHubActionsErrorKind,
+    detail: SafeText,
+}
+
+impl GitHubActionsError {
+    #[must_use]
+    pub fn new(kind: GitHubActionsErrorKind, detail: impl AsRef<str>) -> Self {
+        Self {
+            kind,
+            detail: SafeText::from_untrusted(detail),
+        }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> GitHubActionsErrorKind {
+        self.kind
+    }
+}
+
+impl std::fmt::Display for GitHubActionsError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.detail.fmt(formatter)
+    }
+}
+
+impl std::error::Error for GitHubActionsError {}
 
 /// Fixed per-response and continuation bounds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -616,5 +815,11 @@ mod tests {
             ),
             GitHubRetryAction::Stop(StopReason::Authorization)
         );
+    }
+
+    #[test]
+    fn actions_errors_render_their_safe_detail() {
+        let error = GitHubActionsError::new(GitHubActionsErrorKind::Transport, "request failed");
+        assert_eq!(error.to_string(), "request failed");
     }
 }

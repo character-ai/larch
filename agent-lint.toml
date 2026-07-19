@@ -1362,10 +1362,10 @@ conditional-sources = [
 root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
-# Issues #7731/#7725/#7733 add trust boundaries to imported SECURITY.md.
-closure-max-lines = 3662
-closure-max-tokens = 141922
-closure-max-content-tokens = 141624
+# Issues #7731/#7725/#7733/#7726 add trust boundaries to imported SECURITY.md.
+closure-max-lines = 3684
+closure-max-tokens = 142244
+closure-max-content-tokens = 141944
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1412,7 +1412,7 @@ roots = [
   "skills/shared/reviewer-templates.md",
   "skills/shared/voting-protocol.md",
 ]
-# Issues #7731/#7725/#7733 add trust boundaries to imported SECURITY.md.
-closure-max-lines = 5950
-closure-max-tokens = 167394
-closure-max-content-tokens = 166934
+# Issues #7731/#7725/#7733/#7726 add trust boundaries to imported SECURITY.md.
+closure-max-lines = 5972
+closure-max-tokens = 167716
+closure-max-content-tokens = 167254
