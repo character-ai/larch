@@ -14,7 +14,7 @@ use larch_adapters::{
     LsRemoteRequest, NoopProcessObserver, TokioProcessRunner, runtime::Cancellation,
     runtime::LarchRuntime,
 };
-use larch_core::{Head, ObjectId, RefName, RepositoryRead, Revision, emit_kv};
+use larch_core::{Head, ObjectId, RefName, RepositoryRead, Revision, SafeText, emit_kv};
 
 const CURRENT_BRANCH_DETACHED: &str =
     "git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)";
@@ -330,10 +330,11 @@ fn classify_ls_remote(outcome: Result<GitCliResult, GitCliError>) -> LsRemoteCla
             if code == 2 {
                 return LsRemoteClass::Absent;
             }
+            // Match Python remote_branch_state: redact before ERROR= emission.
             let combined = format!(
                 "{}{}",
-                String::from_utf8_lossy(result.output().stdout()),
-                String::from_utf8_lossy(result.output().stderr())
+                result.safe_stdout().as_str(),
+                result.safe_stderr().as_str()
             );
             let summary = if combined.trim().is_empty() {
                 format!("git ls-remote failed (exit {code})")
@@ -346,11 +347,16 @@ fn classify_ls_remote(outcome: Result<GitCliResult, GitCliError>) -> LsRemoteCla
                 error: summary,
             }
         }
-        Err(error) => LsRemoteClass::Error {
-            rc: 128,
-            transient: is_transient_net(&error.to_string()),
-            error: error.to_string(),
-        },
+        Err(error) => {
+            let summary = SafeText::from_untrusted(error.to_string())
+                .as_str()
+                .to_owned();
+            LsRemoteClass::Error {
+                rc: 128,
+                transient: is_transient_net(&summary),
+                error: summary,
+            }
+        }
     }
 }
 
@@ -393,18 +399,29 @@ fn one_line_summary(text: &str) -> String {
 
 fn is_transient_net(content: &str) -> bool {
     let lower = content.to_ascii_lowercase();
+    // Keep the Python is_transient_net_signature exclusions for permanent DNS misses.
+    if lower.contains("no such hosted") || lower.contains("no such hostname") {
+        return false;
+    }
     [
-        "could not resolve host",
-        "temporary failure in name resolution",
+        "could not resolve",
+        "temporary failure",
+        "unable to access",
+        "connection refused",
         "connection timed out",
+        "timed out",
         "connection reset",
         "network is unreachable",
+        "network/auth issue",
+        "tls handshake",
         "ssl",
         "tls",
         "http 5",
         "502",
         "503",
         "504",
+        "context deadline exceeded",
+        "no such host",
     ]
     .iter()
     .any(|needle| lower.contains(needle))

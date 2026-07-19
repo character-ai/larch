@@ -65,6 +65,22 @@ fn current_branch_fails_when_detached() {
 }
 
 #[test]
+fn current_branch_emits_branch_when_unborn() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).expect("create repo");
+    git(&repo, &["init", "-b", "unborn-topic"]);
+
+    larch()
+        .args(["git", "current-branch"])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("BRANCH=unborn-topic\n")
+        .stderr("");
+}
+
+#[test]
 fn branch_info_emits_head_and_branch() {
     let temp = TempDir::new().expect("tempdir");
     let repo = init_repo(temp.path());
@@ -111,6 +127,35 @@ fn count_commits_reports_zero_on_main_without_origin() {
         .code(0)
         .stdout("0\n")
         .stderr("");
+}
+
+#[test]
+fn count_commits_missing_main_ref_warns_and_writes_status() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).expect("create repo");
+    git(&repo, &["init", "-b", "topic"]);
+    git(&repo, &["config", "user.email", "test@example.com"]);
+    git(&repo, &["config", "user.name", "Test"]);
+    fs::write(repo.join("file.txt"), "base\n").expect("write file");
+    git(&repo, &["add", "file.txt"]);
+    git(&repo, &["commit", "-m", "init"]);
+    let status = temp.path().join("status.txt");
+
+    larch()
+        .args(["git", "count-commits"])
+        .current_dir(&repo)
+        .env("COUNT_COMMITS_STATUS_FILE", &status)
+        .assert()
+        .code(0)
+        .stdout("0\n")
+        .stderr(
+            "WARN: lib-count-commits.sh: neither local 'main' nor 'origin/main' exists; cannot determine commit base. Returning 0.\n",
+        );
+    assert_eq!(
+        fs::read_to_string(status).expect("status"),
+        "missing_main_ref\n"
+    );
 }
 
 #[test]

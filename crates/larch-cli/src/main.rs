@@ -321,9 +321,11 @@ fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
         }
         GitSubcommand::RebaseAbort(arguments) => Ok(rebase_abort(&arguments)),
         GitSubcommand::RebaseSkip(arguments) => rebase_skip(&arguments),
-        GitSubcommand::BranchInfo(arguments) => Ok(git_commands::run(BranchGitCommand::BranchInfo {
-            args: arguments.args,
-        })),
+        GitSubcommand::BranchInfo(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::BranchInfo {
+                args: arguments.args,
+            }))
+        }
         GitSubcommand::CheckRemoteBranch(arguments) => {
             Ok(git_commands::run(BranchGitCommand::CheckRemoteBranch {
                 args: arguments.args,
