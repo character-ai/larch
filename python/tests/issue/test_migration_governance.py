@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -153,8 +154,6 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
     readme = repo / "README.md"
     _ = readme.write_text("v1\n", encoding="utf-8")
     # Minimal git repo for ls-tree/rev-parse.
-    import subprocess
-
     _ = subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
     _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
     _ = subprocess.run(
