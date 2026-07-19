@@ -647,6 +647,384 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    #[allow(clippy::too_many_lines)] // covers remaining argv/validator branches for coverage
+    fn uncovered_argv_and_validator_branches() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let check = |operation: &dyn GitOperation, want: &[&str]| {
+            assert_eq!(argv(operation), want);
+        };
+
+        assert_eq!(
+            GitCliInputError::new(GitCliInputErrorKind::Empty, "empty").kind(),
+            GitCliInputErrorKind::Empty
+        );
+        assert_eq!(
+            GitCliInputError::new(GitCliInputErrorKind::Empty, "empty").message(),
+            "empty"
+        );
+
+        assert!(GitPath::new("/abs").is_err());
+        assert!(GitPath::new("..").is_err());
+        assert!(GitPath::new("./ok").is_ok());
+        assert!(GitRef::new(OsString::from_vec(vec![0xff])).is_err());
+        assert!(GitRef::new("bad ref").is_err());
+        assert!(GitRef::new("a@{u}").is_err());
+        assert!(GitRemote::new(OsString::from_vec(vec![0xff])).is_err());
+        assert!(GitRemote::new("origin:x").is_err());
+        assert!(GitRefspec::new(OsString::from_vec(vec![0xff])).is_err());
+        assert!(GitRefspec::new("has space").is_err());
+        assert!(GitRefspec::new(":").is_err());
+        assert!(GitRefspec::new("src:").is_err());
+        assert!(GitConfigKey::new(OsString::from_vec(vec![0xff])).is_err());
+        assert!(GitConfigKey::new("solo").is_err());
+        assert!(GitUrl::new("").is_err());
+        assert!(GitToken::new(OsString::from_vec(b"a\0b".to_vec())).is_err());
+        assert!(
+            ConfigMutationRequest::Set {
+                key: GitConfigKey::new("user.name").unwrap(),
+                value: OsString::new(),
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            ConfigMutationRequest::Set {
+                key: GitConfigKey::new("user.name").unwrap(),
+                value: OsString::from_vec(b"a\0b".to_vec()),
+            }
+            .arguments()
+            .is_err()
+        );
+
+        check(
+            &ExactDiffRequest {
+                cached: false,
+                name_only: false,
+                name_status: true,
+                quiet: true,
+                exit_code: false,
+                base: Some(GitRef::new("HEAD").unwrap()),
+                head: Some(GitRef::new("topic").unwrap()),
+                paths: Vec::new(),
+            },
+            &["diff", "--name-status", "--quiet", "HEAD", "topic"],
+        );
+        check(
+            &ConfigMutationRequest::Unset {
+                key: GitConfigKey::new("user.email").unwrap(),
+            },
+            &["config", "--local", "--unset", "user.email"],
+        );
+        check(
+            &ConfigMutationRequest::Add {
+                key: GitConfigKey::new("remote.origin.fetch").unwrap(),
+                value: "+refs/heads/*:refs/remotes/origin/*".into(),
+            },
+            &[
+                "config",
+                "--local",
+                "--add",
+                "remote.origin.fetch",
+                "+refs/heads/*:refs/remotes/origin/*",
+            ],
+        );
+        check(
+            &RemoteMutationRequest::Remove {
+                name: GitRemote::new("origin").unwrap(),
+            },
+            &["remote", "remove", "origin"],
+        );
+        check(
+            &RemoteMutationRequest::SetUrl {
+                name: GitRemote::new("origin").unwrap(),
+                url: GitUrl::new("https://example.invalid/other.git").unwrap(),
+            },
+            &[
+                "remote",
+                "set-url",
+                "origin",
+                "https://example.invalid/other.git",
+            ],
+        );
+        check(
+            &RemoteMutationRequest::Rename {
+                from: GitRemote::new("origin").unwrap(),
+                to: GitRemote::new("upstream").unwrap(),
+            },
+            &["remote", "rename", "origin", "upstream"],
+        );
+        check(
+            &AddRequest {
+                all: false,
+                force: true,
+                pathspec_from_file: Some(GitPath::new("specs.txt").unwrap()),
+                paths: Vec::new(),
+            },
+            &["add", "--force", "--pathspec-from-file=specs.txt"],
+        );
+        check(
+            &AddRequest {
+                all: true,
+                force: false,
+                pathspec_from_file: None,
+                paths: Vec::new(),
+            },
+            &["add", "--all"],
+        );
+        assert!(
+            AddRequest {
+                all: false,
+                force: false,
+                pathspec_from_file: Some(GitPath::new("specs.txt").unwrap()),
+                paths: vec![GitPath::new("a").unwrap()],
+            }
+            .arguments()
+            .is_err()
+        );
+        check(
+            &ResetRequest {
+                mode: ResetMode::Soft,
+                target: GitRef::new("HEAD").unwrap(),
+                paths: Vec::new(),
+            },
+            &["reset", "--soft", "HEAD"],
+        );
+        check(
+            &ResetRequest {
+                mode: ResetMode::Mixed,
+                target: GitRef::new("HEAD").unwrap(),
+                paths: vec![GitPath::new("tracked.txt").unwrap()],
+            },
+            &["reset", "--mixed", "HEAD", "--", "tracked.txt"],
+        );
+        assert!(
+            ResetRequest {
+                mode: ResetMode::Hard,
+                target: GitRef::new("HEAD").unwrap(),
+                paths: vec![GitPath::new("tracked.txt").unwrap()],
+            }
+            .arguments()
+            .is_err()
+        );
+        check(
+            &CheckoutRequest::Paths {
+                ours: true,
+                theirs: false,
+                paths: vec![GitPath::new("conflict.txt").unwrap()],
+            },
+            &["checkout", "--ours", "--", "conflict.txt"],
+        );
+        check(
+            &CheckoutRequest::Paths {
+                ours: false,
+                theirs: true,
+                paths: vec![GitPath::new("conflict.txt").unwrap()],
+            },
+            &["checkout", "--theirs", "--", "conflict.txt"],
+        );
+        assert!(
+            CheckoutRequest::Paths {
+                ours: true,
+                theirs: true,
+                paths: vec![GitPath::new("conflict.txt").unwrap()],
+            }
+            .arguments()
+            .is_err()
+        );
+        check(
+            &CheckoutRequest::Detach {
+                target: GitRef::new("HEAD").unwrap(),
+            },
+            &["checkout", "--detach", "HEAD"],
+        );
+        assert!(
+            CheckoutRequest::Branch {
+                create: false,
+                force: true,
+                name: GitRef::new("topic").unwrap(),
+                start_point: None,
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            CleanRequest {
+                directories: false,
+                force: false,
+            }
+            .arguments()
+            .is_err()
+        );
+        check(
+            &CommitRequest {
+                message: Some(CommitMessage::File(GitPath::new("MSG").unwrap())),
+                amend: true,
+                no_edit: false,
+                allow_empty: false,
+                paths: vec![GitPath::new("tracked.txt").unwrap()],
+            },
+            &[
+                "commit",
+                "--amend",
+                "--file",
+                "MSG",
+                "--",
+                "tracked.txt",
+            ],
+        );
+        check(
+            &CommitRequest {
+                message: None,
+                amend: true,
+                no_edit: true,
+                allow_empty: false,
+                paths: Vec::new(),
+            },
+            &["commit", "--amend", "--no-edit"],
+        );
+        assert!(
+            CommitRequest {
+                message: None,
+                amend: false,
+                no_edit: false,
+                allow_empty: false,
+                paths: Vec::new(),
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            InterpretTrailersRequest {
+                trailers: Vec::new(),
+                in_place: None,
+                stdin: Vec::new(),
+            }
+            .arguments()
+            .is_err()
+        );
+        check(
+            &InterpretTrailersRequest {
+                trailers: vec!["Reviewed-by: A <a@b>".into()],
+                in_place: Some(GitPath::new("MSG").unwrap()),
+                stdin: Vec::new(),
+            },
+            &[
+                "interpret-trailers",
+                "--trailer",
+                "Reviewed-by: A <a@b>",
+                "--in-place",
+                "MSG",
+            ],
+        );
+        assert!(InterpretTrailersRequest {
+            trailers: vec!["Reviewed-by: A <a@b>".into()],
+            in_place: Some(GitPath::new("MSG").unwrap()),
+            stdin: Vec::new(),
+        }
+        .stdin()
+        .is_empty());
+        check(
+            &BranchMutationRequest::Delete {
+                force: true,
+                name: GitRef::new("topic").unwrap(),
+            },
+            &["branch", "-D", "topic"],
+        );
+        check(
+            &BranchMutationRequest::SetUpstream {
+                name: GitRef::new("topic").unwrap(),
+                upstream: GitRef::new("origin/topic").unwrap(),
+            },
+            &["branch", "--set-upstream-to", "origin/topic", "topic"],
+        );
+        check(
+            &WorktreeRequest::Add {
+                branch: None,
+                path: GitPath::new("wt").unwrap(),
+                start_point: Some(GitRef::new("HEAD").unwrap()),
+            },
+            &["worktree", "add", "wt", "HEAD"],
+        );
+        check(
+            &WorktreeRequest::Remove {
+                force: true,
+                path: GitPath::new("wt").unwrap(),
+            },
+            &["worktree", "remove", "--force", "wt"],
+        );
+        check(
+            &InitRequest {
+                directory: Some(GitPath::new("repo").unwrap()),
+                initial_branch: None,
+            },
+            &["init", "repo"],
+        );
+        check(
+            &SparseCheckoutRequest::Init { cone: true },
+            &["sparse-checkout", "init", "--cone"],
+        );
+        check(&SparseCheckoutRequest::Disable, &["sparse-checkout", "disable"]);
+        assert!(
+            SparseCheckoutRequest::Set { paths: Vec::new() }
+                .arguments()
+                .is_err()
+        );
+        check(
+            &RebaseRequest::Start {
+                onto: Some(GitRef::new("main").unwrap()),
+                upstream: GitRef::new("upstream").unwrap(),
+                branch: Some(GitRef::new("topic").unwrap()),
+            },
+            &["rebase", "--onto", "main", "upstream", "topic"],
+        );
+        check(&RebaseRequest::Continue, &["rebase", "--continue"]);
+        check(&RebaseRequest::Skip, &["rebase", "--skip"]);
+        check(&MergeRequest::Abort, &["merge", "--abort"]);
+        check(&StashRequest::Pop, &["stash", "pop"]);
+        check(&StashRequest::Drop, &["stash", "drop"]);
+        check(
+            &PushRequest {
+                remote: GitRemote::new("origin").unwrap(),
+                refspec: GitRefspec::new("HEAD:main").unwrap(),
+                force_with_lease: Some(ForceWithLease::Expecting(GitRef::new("abc").unwrap())),
+            },
+            &["push", "--force-with-lease=abc", "origin", "HEAD:main"],
+        );
+        check(
+            &TagMutationRequest::Create {
+                force: true,
+                name: GitRef::new("v2").unwrap(),
+                target: Some(GitRef::new("HEAD").unwrap()),
+                message: None,
+            },
+            &["tag", "--force", "v2", "HEAD"],
+        );
+        check(
+            &TagMutationRequest::Delete {
+                name: GitRef::new("v1").unwrap(),
+            },
+            &["tag", "--delete", "v1"],
+        );
+        check(
+            &SubmoduleRequest::Foreach {
+                recursive: true,
+                command: vec![GitToken::new("true").unwrap()],
+            },
+            &["submodule", "foreach", "--recursive", "true"],
+        );
+        assert!(
+            SubmoduleRequest::Foreach {
+                recursive: false,
+                command: Vec::new(),
+            }
+            .arguments()
+            .is_err()
+        );
+    }
+
+    #[test]
     fn fake_runner_records_cancellation_timeout_truncation_and_redaction() {
         let token = ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789AB"].concat();
         let runner = FakeProcessRunner::new([
