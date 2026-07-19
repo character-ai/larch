@@ -137,6 +137,7 @@ jobs:
             '
           })"
           test "$minimum" = "$MACOSX_DEPLOYMENT_TARGET"
+          codesign --force --sign - --timestamp=none "$binary"
           codesign --verify --verbose=2 "$binary"
       - name: Build and smoke-test at the GNU baseline
         if: matrix.family == 'linux'
@@ -166,6 +167,8 @@ jobs:
             --env EXPECTED_ARCHITECTURE="$EXPECTED_ARCHITECTURE" \
             "$CONTAINER_IMAGE" \
             bash -euo pipefail -c '
+              export PATH="/opt/python/cp311-cp311/bin:/root/.cargo/bin:$PATH"
+              python3 --version
               cargo test --locked --package larch-cli --target "$TARGET"
               cargo build --locked --release --package larch-cli --target "$TARGET"
               binary="target/$TARGET/release/larch"
@@ -294,7 +297,9 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
-          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isImmutable,tagName)"
+          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json databaseId,isDraft,isImmutable,tagName)"
+          release_id="$(jq -r '.databaseId' <<<"$release_state")"
+          [[ "$release_id" =~ ^[1-9][0-9]*$ ]]
           test "$(jq -r '.isDraft' <<<"$release_state")" = "true"
           test "$(jq -r '.isImmutable' <<<"$release_state")" = "false"
           test "$(jq -r '.tagName' <<<"$release_state")" = "$GITHUB_REF_NAME"
@@ -307,7 +312,7 @@ jobs:
             "dist/larch-v$VERSION-SHA256SUMS"
           )
           gh release upload "$GITHUB_REF_NAME" "${release_assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          remote_names="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq '.assets | map(select(.state == "uploaded" and (.digest | startswith("sha256:")))) | map(.name) | sort | .[]')"
+          remote_names="$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq '.assets | map(select(.state == "uploaded" and (.digest | startswith("sha256:")))) | map(.name) | sort | .[]')"
           local_names="$(printf '%s\n' "${release_assets[@]##*/}" | sort)"
           test "$remote_names" = "$local_names"
       - name: Upload validated release asset set

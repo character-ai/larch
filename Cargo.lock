@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "larch-adapters"
-version = "53.1.23"
+version = "53.1.24"
 dependencies = [
  "gix",
  "larch-core",
@@ -1449,7 +1449,7 @@ dependencies = [
 
 [[package]]
 name = "larch-cli"
-version = "53.1.23"
+version = "53.1.24"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1464,14 +1464,14 @@ dependencies = [
 
 [[package]]
 name = "larch-core"
-version = "53.1.23"
+version = "53.1.24"
 dependencies = [
  "regex",
 ]
 
 [[package]]
 name = "larch-lint"
-version = "53.1.23"
+version = "53.1.24"
 dependencies = [
  "assert_cmd",
  "automod",
@@ -1496,7 +1496,7 @@ dependencies = [
 
 [[package]]
 name = "larch-test-support"
-version = "53.1.23"
+version = "53.1.24"
 dependencies = [
  "larch-core",
  "tempfile",
