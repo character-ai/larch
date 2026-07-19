@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from larch.core import proc, redact
 from larch.core.proc import CommandResult, Runner
 from larch.git import gh
+from larch.issue import issue_mutation
 from larch.issue.title_match import insert_tag_after_bug_prefix
 from larch.state.session_env import check_live_mutation_auth
 
@@ -414,18 +415,26 @@ def _valid_apply(
     snapshot = _recheck_valid_snapshot(
         runner, snapshot=snapshot, issue=issue, repo=repo
     )
-    body_result = gh.issue_edit(
-        runner,
-        str(issue),
-        repo=repo,
-        title=new_title if new_title != snapshot.title else None,
-        body=new_body if new_body != snapshot.body else None,
-    )
-    if body_result.returncode != 0:
-        raise TriageError(
-            f"triage body update failed: {body_result.stderr or body_result.stdout}",
-            EXIT_MUTATION,
+    fields: set[issue_mutation.MutationField] = set()
+    if new_title != snapshot.title:
+        fields.add(issue_mutation.MutationField.TITLE)
+    if new_body != snapshot.body:
+        fields.add(issue_mutation.MutationField.BODY)
+    try:
+        _ = issue_mutation.apply(
+            runner,
+            issue_mutation.IssueMutationRequest(
+                repository=repo,
+                issue=str(issue),
+                expected_updated_at=snapshot.updated_at,
+                expected_state=snapshot.state,
+                fields=frozenset(fields),
+                title=new_title if new_title != snapshot.title else None,
+                body=new_body if new_body != snapshot.body else None,
+            ),
         )
+    except issue_mutation.ProtectedIssueMutation as exc:
+        raise TriageError(str(exc), EXIT_MUTATION) from exc
     current = _read_after_mutation(runner, issue=issue, repo=repo, previous=snapshot)
     if (
         current.body != new_body
@@ -542,19 +551,20 @@ def _restore_stale_title(
         snapshot=snapshot,
         request=request,
     )
-    _mutate(
-        runner,
-        [
-            "issue",
-            "edit",
-            str(request.issue),
-            "--repo",
-            request.repo,
-            "--title",
-            restored_title,
-        ],
-        action="triage title restoration",
-    )
+    try:
+        _ = issue_mutation.apply(
+            runner,
+            issue_mutation.IssueMutationRequest(
+                repository=request.repo,
+                issue=str(request.issue),
+                expected_updated_at=snapshot.updated_at,
+                expected_state=snapshot.state,
+                fields=frozenset({issue_mutation.MutationField.TITLE}),
+                title=restored_title,
+            ),
+        )
+    except issue_mutation.ProtectedIssueMutation as exc:
+        raise TriageError(str(exc), EXIT_MUTATION) from exc
     current = _read_after_mutation(
         runner, issue=request.issue, repo=request.repo, previous=snapshot
     )

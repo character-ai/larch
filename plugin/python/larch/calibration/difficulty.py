@@ -18,6 +18,8 @@ from larch.core import config
 from larch.design import plan_grammar
 from larch.core import proc
 from larch.git import gh
+from larch.issue import issue_mutation
+from larch.errors import ShipError
 
 TRIVIAL = config.DIFFICULTY_TIER_TRIVIAL
 MODERATE = config.DIFFICULTY_TIER_MODERATE
@@ -996,20 +998,28 @@ def sync_labels_main(argv: list[str] | None = None) -> int:
     if not tier_valid(tier):
         print("STATUS=error\nERROR=invalid-tier")
         return 2
-    repo = args.repo or None
-    for label in known_labels():
-        _ = gh.issue_label_remove(proc, str(args.issue), label, repo=repo)
+    repo = args.repo or gh.resolve_repo(proc)
+    if not repo:
+        print("STATUS=error")
+        print("ERROR=repo-unresolved")
+        return 1
     label = label_for_tier(tier)
     create_argv = ["label", "create", label]
-    if repo:
-        create_argv.extend(["--repo", repo])
+    create_argv.extend(["--repo", repo])
     create_argv.extend(["--color", "ededed", "--description", "larch difficulty rating"])
     create = gh.command(proc, create_argv)
     if create.returncode != 0 and "already exists" not in (create.stderr + create.stdout).lower():
         print("STATUS=warning")
         print("WARNING=label-create-failed")
-    add = gh.issue_label_add(proc, str(args.issue), label, repo=repo)
-    if add.returncode != 0:
+    try:
+        snapshot = issue_mutation.read_snapshot(proc, repository=repo, issue=str(args.issue))
+        _ = issue_mutation.update_labels(
+            proc,
+            repository=repo,
+            issue=str(args.issue),
+            labels=frozenset((snapshot.labels - set(known_labels())) | {label}),
+        )
+    except ShipError:
         print("STATUS=error")
         print("ERROR=label-add-failed")
         return 1

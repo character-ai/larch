@@ -10,6 +10,8 @@ import pytest
 from larch.calibration import difficulty
 from larch.core.proc import CommandResult
 from larch.design import plan_grammar
+from larch.errors import ShipError
+from larch.issue import issue_mutation
 
 
 def test_validate_rating_low_confidence_bumps_and_sanitizes() -> None:
@@ -407,23 +409,30 @@ def test_resolve_step2_effective_difficulty_invalid_inputs_fail_closed(tmp_path:
     assert difficulty.resolve_step2_effective_difficulty(tmp_path) == ""
 
 
-def test_sync_labels_uses_wrapper_remove_and_add(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    remove_calls: list[tuple[str, str, str | None]] = []
-    add_calls: list[tuple[str, str, str | None]] = []
+def test_sync_labels_uses_freshness_checked_label_mutation(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    label_updates: list[frozenset[str]] = []
 
-    def fake_remove(_runner: object, issue: str, label: str, *, repo: str | None = None, **_kwargs: object) -> CommandResult:
-        remove_calls.append((issue, label, repo))
-        return CommandResult(("gh",), 0, "", "", 0.01)
+    def fake_snapshot(_runner: object, *, repository: str, issue: str, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+        return issue_mutation.IssueSnapshot(
+            repository=repository,
+            issue=issue,
+            title="title",
+            body="",
+            labels=frozenset({"difficulty:trivial", "keep"}),
+            state="OPEN",
+            updated_at="2026-07-19T18:00:00Z",
+        )
 
-    def fake_add(_runner: object, issue: str, label: str, *, repo: str | None = None, **_kwargs: object) -> CommandResult:
-        add_calls.append((issue, label, repo))
-        return CommandResult(("gh",), 0, "", "", 0.01)
+    def fake_update(_runner: object, *, labels: frozenset[str], **_kwargs: object) -> None:
+        label_updates.append(labels)
 
     def fake_proc_run(argv: list[str] | tuple[str, ...], **_kwargs: object) -> CommandResult:
         return CommandResult(tuple(argv), 0, "", "", 0.01)
 
-    monkeypatch.setattr(difficulty.gh, "issue_label_remove", fake_remove)
-    monkeypatch.setattr(difficulty.gh, "issue_label_add", fake_add)
+    monkeypatch.setattr(difficulty.issue_mutation, "read_snapshot", fake_snapshot)
+    monkeypatch.setattr(difficulty.issue_mutation, "update_labels", fake_update)
     monkeypatch.setattr(difficulty.proc, "run", fake_proc_run)
 
     rc = difficulty.sync_labels_main(["--issue", "9", "--tier", "HARD", "--repo", "o/r"])
@@ -431,21 +440,27 @@ def test_sync_labels_uses_wrapper_remove_and_add(monkeypatch: pytest.MonkeyPatch
     out = capsys.readouterr().out
     assert "STATUS=ok" in out
     assert "LABEL=difficulty:hard" in out
-    assert all(repo == "o/r" for _issue, _label, repo in remove_calls)
-    assert add_calls == [("9", "difficulty:hard", "o/r")]
+    assert label_updates == [frozenset({"difficulty:hard", "keep"})]
 
 
 def test_sync_labels_add_failure_returns_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(
-        difficulty.gh,
-        "issue_label_remove",
-        lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01),
-    )
-    monkeypatch.setattr(
-        difficulty.gh,
-        "issue_label_add",
-        lambda *_a, **_k: CommandResult(("gh",), 1, "", "add failed", 0.01),
-    )
+    def fake_snapshot(_runner: object, *, repository: str, issue: str, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+        return issue_mutation.IssueSnapshot(
+            repository=repository,
+            issue=issue,
+            title="title",
+            body="",
+            labels=frozenset(),
+            state="OPEN",
+            updated_at="2026-07-19T18:00:00Z",
+        )
+
+    def fake_update(*_args: object, **_kwargs: object) -> None:
+        raise ShipError("label add failed")
+
+    monkeypatch.setattr(difficulty.gh, "resolve_repo", lambda _runner: "o/r")
+    monkeypatch.setattr(difficulty.issue_mutation, "read_snapshot", fake_snapshot)
+    monkeypatch.setattr(difficulty.issue_mutation, "update_labels", fake_update)
     monkeypatch.setattr(
         difficulty.proc,
         "run",

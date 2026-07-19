@@ -21,6 +21,7 @@ from larch.design import design_terminal
 from larch.design import design_pause
 from larch.design import design_summary
 from larch.git import gh
+from larch.issue import issue_mutation
 from larch.core.repo_roots import plugin_root
 from larch import io as larch_io
 from larch.core import logging_util
@@ -455,16 +456,24 @@ def clarify_label(
             )
             if create_result.returncode != 0 and _DUPLICATE_LABEL_RE.search(_combined(create_result)) is None:
                 raise ShipError(_combined(create_result) or "gh label create failed")
-        add_result = gh.issue_label_add(runner, issue_text, LABEL_NAME, repo=resolved_repo, cwd=cwd)
-        if add_result.returncode != 0:
-            raise ShipError(_combined(add_result) or "gh issue label add failed")
+        _ = issue_mutation.update_labels(
+            runner,
+            repository=resolved_repo,
+            issue=issue_text,
+            labels=frozenset({*labels, LABEL_NAME}),
+            cwd=cwd,
+        )
         return ClarifyLabelResult(changed=True, action=action, label=LABEL_NAME)
 
     if not has_label:
         return ClarifyLabelResult(changed=False, action=action, label=LABEL_NAME)
-    remove_result = gh.issue_label_remove(runner, issue_text, LABEL_NAME, repo=resolved_repo, cwd=cwd)
-    if remove_result.returncode != 0:
-        raise ShipError(_combined(remove_result) or "gh issue label remove failed")
+    _ = issue_mutation.update_labels(
+        runner,
+        repository=resolved_repo,
+        issue=issue_text,
+        labels=frozenset(label for label in labels if label != LABEL_NAME),
+        cwd=cwd,
+    )
     return ClarifyLabelResult(changed=True, action=action, label=LABEL_NAME)
 
 

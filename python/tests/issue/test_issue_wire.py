@@ -185,7 +185,7 @@ def test_named_block_write_append_replace_delete_and_lf_normalization() -> None:
     runner = IssueRunner("body")
     result = issue_wire.named_block_write(runner=runner, marker="design-pause", issue="9", repo="owner/repo", content=None, delete=True)
     assert result["mode"] == "absent-noop"
-    assert runner.edit_bodies == []
+    assert not runner.edit_bodies
 
 
 def test_named_block_write_malformed_skips_edit() -> None:

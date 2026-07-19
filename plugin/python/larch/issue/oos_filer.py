@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import proc
 from larch.errors import ShipError
 from larch.git import gh
+from larch.issue import issue_mutation
 from larch.core.repo_roots import consumer_repo_root
 from larch.issue import file_oos
 from larch.issue import issue_create
@@ -650,8 +651,17 @@ def _apply_priority_label(*, tmpdir: Path, url: str, repo: str) -> bool:
         detail = "missing repo for oos-correctness label application" if not repo else f"could not parse issue number from {url}"
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="gh issue edit", rc=1, output=detail)
         return False
-    result = gh.issue_label_add(proc, number, oos_priority.OOS_CORRECTNESS_LABEL, repo=repo)
-    if result.returncode == 0:
+    try:
+        snapshot = issue_mutation.read_snapshot(proc, repository=repo, issue=number)
+        _ = issue_mutation.update_labels(
+            proc,
+            repository=repo,
+            issue=number,
+            labels=frozenset({*snapshot.labels, oos_priority.OOS_CORRECTNESS_LABEL}),
+        )
+    except ShipError:
+        pass
+    else:
         if _priority_label_present(number=number, repo=repo):
             return True
         _append_tool_failure(
@@ -666,8 +676,8 @@ def _apply_priority_label(*, tmpdir: Path, url: str, repo: str) -> bool:
         tmpdir=tmpdir,
         site="step-9a1-oos-file",
         tool="gh issue edit",
-        rc=result.returncode or 1,
-        output=result.stderr or result.stdout or f"oos-correctness label application failed for {url}",
+        rc=1,
+        output=f"oos-correctness label application failed for {url}",
     )
     return False
 

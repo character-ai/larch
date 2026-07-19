@@ -15,6 +15,7 @@ from typing import NoReturn, cast
 from larch.core import config
 from larch.git import gh
 from larch.issue import issue_wire
+from larch.issue import issue_mutation
 from larch.issue.title_match import detect_lifecycle_prefix, strip_lifecycle_prefix
 from larch.core import logging_util
 from larch.core import proc
@@ -370,9 +371,12 @@ def rename_with_details(
     if new_title == current_canonical:
         return RenameOutput(renamed=False, new_title=new_title)
 
-    result = _retry_gh(lambda: gh.issue_edit(runner, issue, repo=repo, title=new_title, cwd=cwd))
-    if result.returncode != 0:
-        raise CliFailure(_redact_gh_error(result.stderr), 2)
+    try:
+        _ = issue_mutation.update_title(
+            runner, repository=repo, issue=issue, title=new_title, cwd=cwd
+        )
+    except ShipError as exc:
+        raise CliFailure(_redact_gh_error(str(exc)), 2) from exc
     return RenameOutput(renamed=True, new_title=new_title)
 
 
@@ -996,9 +1000,12 @@ def mark_false_positive(
     if new_title == redacted_current:
         return MarkFalsePositiveOutput(marked=False, new_title=redacted_current)
     new_title = _truncate_title(new_title)
-    result = _retry_gh(lambda: gh.issue_edit(runner, issue, repo=repo, title=new_title, cwd=cwd))
-    if result.returncode != 0:
-        raise CliFailure(_redact_gh_error(result.stderr), 2)
+    try:
+        _ = issue_mutation.update_title(
+            runner, repository=repo, issue=issue, title=new_title, cwd=cwd
+        )
+    except ShipError as exc:
+        raise CliFailure(_redact_gh_error(str(exc)), 2) from exc
     return MarkFalsePositiveOutput(marked=True, new_title=new_title)
 
 

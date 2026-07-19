@@ -9,11 +9,11 @@ import html
 import re
 import sys
 from pathlib import Path
-from collections.abc import Sequence
-from dataclasses import dataclass
 
 from larch.git import gh
+from larch.issue import issue_blocks
 from larch.issue import issue_mutation
+from larch.issue.issue_blocks import classify_named_block_lines, parse_named_block, strip_named_block
 from larch.design import plan_grammar
 from larch.core import logging_util
 from larch.core import proc
@@ -47,86 +47,16 @@ _LIFECYCLE_INSERT_PREFIXES = (
 )
 
 
+def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
+    """Compatibility export for callers of the issue-body wire module."""
+    return issue_blocks.named_block_marker_re(marker=marker, kind=kind)
+
+
 class _DiagnosticArgumentParser(argparse.ArgumentParser):
     def _print_message(self, message: str, file: object | None = None) -> None:
         _ = file
         if message:
             logging_util.diagnostic(message)
-
-
-def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
-    r"""Compile a case-sensitive, line-anchored named-block marker pattern.
-
-    Optional whitespace is horizontal only (``[ \t]``), never ``\s``, so a
-    marker token split across physical lines cannot match. ``re.MULTILINE`` lets
-    callers ``.search()`` a full issue body.
-    """
-    return re.compile(
-        rf"^[ \t]*<!--[ \t]+larch:{re.escape(marker)}:{kind}[ \t]+-->[ \t]*\r?$",
-        re.MULTILINE,
-    )
-
-
-def _line_is_marker(*, line: str, marker: str, kind: str) -> bool:
-    return named_block_marker_re(marker=marker, kind=kind).match(line.rstrip("\r\n")) is not None
-
-
-@dataclass(frozen=True)
-class _BlockSpan:
-    start: int | None
-    end: int | None
-    malformed: str
-
-
-def _classify_named_block_lines(*, lines: Sequence[str], marker: str) -> _BlockSpan:
-    fenced_lines = plan_grammar.balanced_fence_line_indices(list(lines))
-    start_indexes: list[int] = [
-        idx
-        for idx, line in enumerate(lines)
-        if idx not in fenced_lines and _line_is_marker(line=line, marker=marker, kind="start")
-    ]
-    end_indexes: list[int] = [
-        idx
-        for idx, line in enumerate(lines)
-        if idx not in fenced_lines and _line_is_marker(line=line, marker=marker, kind="end")
-    ]
-    if not start_indexes and not end_indexes:
-        return _BlockSpan(None, None, "")
-    if len(start_indexes) > 1:
-        return _BlockSpan(None, None, "multiple-start")
-    if len(end_indexes) > 1:
-        return _BlockSpan(None, None, "multiple-end")
-    if start_indexes and not end_indexes:
-        return _BlockSpan(None, None, "start-without-end")
-    if end_indexes and not start_indexes:
-        return _BlockSpan(None, None, "end-without-start")
-    start = start_indexes[0]
-    end = end_indexes[0]
-    if end < start:
-        return _BlockSpan(None, None, "end-before-start")
-    return _BlockSpan(start, end, "")
-
-
-def parse_named_block(*, body: str, marker: str) -> tuple[str | None, str]:
-    """Return the requested larch named block inner text and malformed token."""
-    lines = body.splitlines(keepends=True)
-    span = _classify_named_block_lines(lines=lines, marker=marker)
-    if span.malformed:
-        return None, span.malformed
-    if span.start is None or span.end is None:
-        return None, ""
-    return "".join(lines[span.start + 1 : span.end]), ""
-
-
-def strip_named_block(*, body: str, marker: str) -> tuple[str, str]:
-    """Remove only the requested named block, preserving unrelated larch blocks."""
-    lines = body.splitlines(keepends=True)
-    span = _classify_named_block_lines(lines=lines, marker=marker)
-    if span.malformed:
-        return "", span.malformed
-    if span.start is None or span.end is None:
-        return body, ""
-    return "".join([*lines[: span.start], *lines[span.end + 1 :]]), ""
 
 
 def compose_named_block(*, marker: str, inner: str) -> str:
@@ -255,7 +185,7 @@ def named_block_write(
             if strip_malformed:
                 return {"malformed": strip_malformed}
             lines = current_body.splitlines(keepends=True)
-            span = _classify_named_block_lines(lines=lines, marker=marker)
+            span = classify_named_block_lines(lines=lines, marker=marker)
             assert span.start is not None
             assert span.end is not None
             composed = "".join([*lines[: span.start], block, *lines[span.end + 1 :]])
