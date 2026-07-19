@@ -8,20 +8,22 @@
 
 ## Force-specific Preflight behavior
 
-When `force_requested=true`, Preflight may downgrade exactly three gates from hard refusal to warn-and-proceed: missing issue-body `larch:plan` (including a title-as-plan fallback when the body is empty), malformed extracted-plan fallback, and the `missing-designed-prefix` admission check.
+When `force_requested=true`, Preflight may downgrade exactly one admission gate from hard refusal to warn-and-proceed: the `missing-designed-prefix` admission check. Force mode may also skip the in-prompt item 4 plan-adequacy audit (semantic review). It must not skip the executable-plan contract: missing, malformed, or facet/path-invalid `larch:plan` blocks still refuse before lifecycle mutation with:
 
-The item 4 audit skip is **not** a downgraded gate and writes **no** bypass-log entry; no `AUDIT=refuse` result exists on the force path, so there is nothing to downgrade.
+`ERROR: --force can skip semantic plan review, but it cannot run without a valid issue-body larch:plan block`
+
+Force mode does **not** materialize raw issue bodies or issue titles as plans.
+
+The item 4 audit skip is **not** a downgraded gate and writes **no** bypass-log entry; no `AUDIT=refuse` result exists on the force path, so there is nothing to downgrade for that skip.
 
 Force mode does **not** bypass explicit zero-review provenance such as `review_status=panel-init-failed`, `review_status=panel-skipped`, or `rounds_completed=0`.
 
-Each triggered bypass MUST print a loud bold warning and append **one line** to `$PREFLIGHT_TMPDIR/force-bypass.log` with the exact grammar `BYPASS kind=<lowercase-token> issue=<number>` (example: `BYPASS kind=missing-plan issue=<N>`).
+Each triggered bypass MUST print a loud bold warning and append **one line** to `$PREFLIGHT_TMPDIR/force-bypass.log` with the exact grammar `BYPASS kind=<lowercase-token> issue=<number>` (example: `BYPASS kind=missing-designed-prefix issue=<N>`).
 
 The log is invalid when it is empty, blank-only, or names an `issue=` value other than the current target issue.
 
-Canonical `kind=` tokens for current `/implement` force bypasses are:
+Canonical `kind=` token for current `/implement` force bypasses:
 
-- `missing-plan` for `BLOCK_PRESENT=false` (including the title-as-plan fallback when the body is empty).
-- `malformed-plan` for malformed extracted-plan fallback.
 - `missing-designed-prefix` for the `ADMISSION_RESULT=missing-designed-prefix` admission carve-out.
 
 Step 0 bootstrap consumes that log into `$IMPLEMENT_TMPDIR/execution-issues.md` only once for the current force run, even after dirty-tree resume.

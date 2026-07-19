@@ -1330,9 +1330,11 @@ root-max-lines = 693
 root-max-tokens = 26340
 root-max-content-tokens = 26286
 # I-Runtime-1 specifies the mechanically enforced Rust entrypoint boundary.
-closure-max-lines = 1667
-closure-max-tokens = 49876
-closure-max-content-tokens = 49751
+# Issue #7780 documents the executable-plan / force-admission contract in
+# docs/issue-anchored-plan.md (always-imported design closure).
+closure-max-lines = 1671
+closure-max-tokens = 50065
+closure-max-content-tokens = 49939
 conditional-max-lines = 661
 conditional-max-tokens = 18524
 conditional-max-content-tokens = 18465
@@ -1359,13 +1361,14 @@ root-max-content-tokens = 35301
 # Git-CLI migration (#7675/#7734/#7735) routes runtime Git callers through `scripts/larch.sh`;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
-# issue #7749 adds the release-planning trust boundary.
-closure-max-lines = 3817
-closure-max-tokens = 144899
-closure-max-content-tokens = 144594
-conditional-max-lines = 589
-conditional-max-tokens = 18764
-conditional-max-content-tokens = 18717
+# issue #7749 adds the release-planning trust boundary;
+# issue #7780 tightens force-mode.md and SECURITY.md force-admission prose.
+closure-max-lines = 3820
+closure-max-tokens = 144944
+closure-max-content-tokens = 144639
+conditional-max-lines = 591
+conditional-max-tokens = 18798
+conditional-max-content-tokens = 18750
 
 [[lint.prompt-source-budgets]]
 name = "review"
@@ -1411,10 +1414,10 @@ roots = [
 ]
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
-# Git-CLI migration #7735 routes mutation callers through the verified entrypoint;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
-# issue #7749 adds the release-planning trust boundary.
-closure-max-lines = 6105
-closure-max-tokens = 170351
-closure-max-content-tokens = 169885
+# issue #7749 adds the release-planning trust boundary;
+# issue #7780 updates SECURITY.md force-admission trust-boundary prose.
+closure-max-lines = 6108
+closure-max-tokens = 170396
+closure-max-content-tokens = 169930

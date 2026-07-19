@@ -1,14 +1,18 @@
 """Normative plan heading and trailer grammar.
 
-This module owns syntax only. Consumers retain policy and authority checks, such
-as deciding whether an operator-authored oversize override is trusted.
+This module owns plan heading and trailer syntax plus the executable-plan
+contract (M1 shape facets and M2 repository-scope path checks). Consumers retain
+policy and authority checks, such as deciding whether an operator-authored
+oversize override is trusted.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final, Literal
 
 HeadingKind = Literal["NEW", "UPDATED", "REWRITTEN", "MAY_UPDATE"]
@@ -299,3 +303,249 @@ def grammar_prompt() -> str:
     kinds = ", ".join(f"`### {kind}:`" for kind in HEADING_KINDS)
     optional = ", ".join(f"`{key}: <value>`" for key in OPTIONAL_SIZE_TRAILER_KEYS)
     return f"Use per-file headings {kinds}. End with `difficulty: <TRIVIAL|MODERATE|HARD>`, optional {optional}, and terminal `diff_lines: <N>`."
+
+
+# --- Executable plan contract (M1 shape + M2 repository scope) ---
+
+M1_DEFECT_TOKENS: Final[tuple[str, ...]] = (
+    "missing-plan-block",
+    "multiple-plan-blocks",
+    "missing-firm-scope",
+    "missing-ordered-implementation",
+    "missing-acceptance",
+    "missing-closed-decisions",
+    "missing-breaking-migration",
+    "missing-diff-lines",
+)
+M2_DEFECT_TOKENS: Final[tuple[str, ...]] = (
+    "empty-plan-glob",
+    "missing-updated-plan-path",
+    "existing-new-plan-path",
+    "unsafe-plan-path",
+)
+PLAN_DEFECT_ORDER: Final[tuple[str, ...]] = (*M1_DEFECT_TOKENS, *M2_DEFECT_TOKENS)
+FORCE_PLAN_CONTRACT_ERROR: Final[str] = (
+    "ERROR: --force can skip semantic plan review, but it cannot run without "
+    "a valid issue-body larch:plan block"
+)
+
+_SECTION_HEADING_RE: Final[re.Pattern[str]] = re.compile(r"^(#{2,3})[ \t]+(.+?)[ \t]*$")
+_NUMBERED_STEP_RE: Final[re.Pattern[str]] = re.compile(r"^[ \t]*\d+\.[ \t]+\S")
+_CLOSED_DECISIONS_RE: Final[re.Pattern[str]] = re.compile(
+    r"^closed[ \t]+decisions(?:[ \t]+and[ \t]+ownership)?$",
+    re.IGNORECASE,
+)
+_ORDERED_IMPLEMENTATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"^ordered[ \t]+implementation$",
+    re.IGNORECASE,
+)
+_ACCEPTANCE_RE: Final[re.Pattern[str]] = re.compile(r"^acceptance$", re.IGNORECASE)
+_BREAKING_MIGRATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"^breaking[ \t]+changes[ \t]+and[ \t]+migration$",
+    re.IGNORECASE,
+)
+_GLOB_META_RE: Final[re.Pattern[str]] = re.compile(r"[*?[]")
+
+
+@dataclass(frozen=True)
+class PlanValidationResult:
+    """Frozen executable-plan validation outcome with ordered defect tokens."""
+
+    defects: tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.defects
+
+
+def _ordered_defects(found: Iterable[str]) -> tuple[str, ...]:
+    present = frozenset(found)
+    return tuple(token for token in PLAN_DEFECT_ORDER if token in present)
+
+
+def _section_title(line: str) -> tuple[int, str] | None:
+    match = _SECTION_HEADING_RE.fullmatch(line.rstrip("\r\n"))
+    if match is None:
+        return None
+    return len(match.group(1)), match.group(2).strip()
+
+
+def _iter_section_bodies(text: str) -> Iterator[tuple[str, tuple[str, ...]]]:
+    """Yield (title, body_lines) for non-fenced ##/### headings."""
+    lines = text.splitlines()
+    fenced = balanced_fence_line_indices(lines)
+    headings: list[tuple[int, int, str]] = []
+    for index, line in enumerate(lines):
+        if index in fenced or is_fence_marker(line):
+            continue
+        parsed = _section_title(line)
+        if parsed is None:
+            continue
+        level, title = parsed
+        headings.append((index, level, title))
+    for position, (index, level, title) in enumerate(headings):
+        end = len(lines)
+        for later_index, later_level, _later_title in headings[position + 1 :]:
+            if later_level <= level:
+                end = later_index
+                break
+        body = tuple(lines[index + 1 : end])
+        yield title, body
+
+
+def _body_nonempty(body: Sequence[str]) -> bool:
+    return any(line.strip() for line in body)
+
+
+def _heading_path_token(raw: str) -> str:
+    stripped = raw.strip()
+    backtick_matches = list(re.finditer(r"`([^`]+)`", stripped))
+    if backtick_matches:
+        return backtick_matches[0].group(1).strip()
+    parts = stripped.split()
+    if not parts:
+        return ""
+    return re.sub(r"\(.*$", "", parts[0]).strip()
+
+
+def _section_has_numbered_step(body: Sequence[str]) -> bool:
+    return any(_NUMBERED_STEP_RE.match(line) for line in body)
+
+
+def _m1_section_flags(plan_text: str) -> tuple[bool, bool, bool, bool]:
+    closed_ok = False
+    ordered_ok = False
+    acceptance_ok = False
+    breaking_ok = False
+    for title, body in _iter_section_bodies(plan_text):
+        if _CLOSED_DECISIONS_RE.fullmatch(title) is not None and _body_nonempty(body):
+            closed_ok = True
+        if _ORDERED_IMPLEMENTATION_RE.fullmatch(title) is not None and _section_has_numbered_step(body):
+            ordered_ok = True
+        if _ACCEPTANCE_RE.fullmatch(title) is not None and _body_nonempty(body):
+            acceptance_ok = True
+        if _BREAKING_MIGRATION_RE.fullmatch(title) is not None and _body_nonempty(body):
+            breaking_ok = True
+    return closed_ok, ordered_ok, acceptance_ok, breaking_ok
+
+
+def _m1_facet_defects(plan_text: str) -> set[str]:
+    defects: set[str] = set()
+    if not list(iter_firm_headings(plan_text)):
+        defects.add("missing-firm-scope")
+
+    closed_ok, ordered_ok, acceptance_ok, breaking_ok = _m1_section_flags(plan_text)
+    if not closed_ok:
+        defects.add("missing-closed-decisions")
+    if not ordered_ok:
+        defects.add("missing-ordered-implementation")
+    if not acceptance_ok:
+        defects.add("missing-acceptance")
+    if not breaking_ok:
+        defects.add("missing-breaking-migration")
+
+    trailers = parse_final_trailers(plan_text, require_diff_lines=True)
+    if trailers.diff_lines is None:
+        defects.add("missing-diff-lines")
+    return defects
+
+
+def _is_glob_path(path: str) -> bool:
+    return _GLOB_META_RE.search(path) is not None
+
+
+def _path_has_unsafe_shape(path: str) -> bool:
+    if not path or path.strip() != path:
+        return True
+    if path.startswith("~"):
+        return True
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return True
+    parts = candidate.parts
+    if not parts or parts[0] == "..":
+        return True
+    return any(part == ".." for part in parts)
+
+
+def _load_tracked_paths(repo_root: Path) -> frozenset[str]:
+    from larch.core import proc  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
+    from larch.git import git  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
+    from larch.errors import ShipError  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
+
+    try:
+        return frozenset(git.ls_files(proc, cwd=str(repo_root)))
+    except (OSError, ShipError):
+        return frozenset()
+
+
+def _repo_resolved(repo_root: Path) -> Path:
+    return repo_root.resolve()
+
+
+def _path_inside_repo(*, repo_root: Path, path: Path) -> bool:
+    root = _repo_resolved(repo_root)
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    return resolved == root or root in resolved.parents
+
+
+def _existing_parents_safe(*, repo_root: Path, rel_path: str) -> bool:
+    """Reject symlink parents that escape the repository without following them as scope."""
+    if not repo_root.is_dir():
+        return False
+    current = repo_root
+    for part in Path(rel_path).parts[:-1]:
+        current = current / part
+        # Symlink parents are never acceptable for NEW confinement.
+        if current.is_symlink() or (current.exists() and not current.is_dir()):
+            return False
+        if not current.exists():
+            return True
+        if not _path_inside_repo(repo_root=repo_root, path=current):
+            return False
+    return True
+
+
+def _glob_matches_tracked(*, pattern: str, tracked: frozenset[str]) -> bool:
+    return any(fnmatch.fnmatchcase(path, pattern) for path in tracked)
+
+
+def _m2_path_defects(*, plan_text: str, repo_root: Path) -> set[str]:
+    defects: set[str] = set()
+    tracked = _load_tracked_paths(repo_root)
+    for heading in iter_plan_headings(plan_text):
+        path = _heading_path_token(heading.path)
+        if not path or _path_has_unsafe_shape(path):
+            defects.add("unsafe-plan-path")
+            continue
+        leaf = repo_root / path
+        if leaf.is_symlink() and not _path_inside_repo(repo_root=repo_root, path=leaf):
+            defects.add("unsafe-plan-path")
+            continue
+        if not _existing_parents_safe(repo_root=repo_root, rel_path=path):
+            defects.add("unsafe-plan-path")
+            continue
+
+        if heading.kind == "NEW":
+            if path in tracked or leaf.exists():
+                defects.add("existing-new-plan-path")
+            continue
+
+        if _is_glob_path(path):
+            if not _glob_matches_tracked(pattern=path, tracked=tracked):
+                defects.add("empty-plan-glob")
+            continue
+        if path not in tracked:
+            defects.add("missing-updated-plan-path")
+    return defects
+
+
+def validate_plan_contract(*, plan_text: str, repo_root: Path) -> PlanValidationResult:
+    """Validate executable-plan facets and repository-scope paths (no marker check)."""
+    found: set[str] = set()
+    found.update(_m1_facet_defects(plan_text))
+    found.update(_m2_path_defects(plan_text=plan_text, repo_root=repo_root))
+    return PlanValidationResult(defects=_ordered_defects(found))

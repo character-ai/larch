@@ -805,7 +805,7 @@ def _append_force_bypass(st: BootstrapState) -> bool:
     except OSError:
         return False
     expected_issue = st.issue_number_resolved or st.opts.issue_number
-    canonical = {"missing-plan", "malformed-plan", "missing-designed-prefix"}
+    canonical = {"missing-designed-prefix"}
     valid = bool(text.strip())
     for line in text.splitlines():
         stripped = line.strip()

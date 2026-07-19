@@ -11,6 +11,7 @@ PREFLIGHT_AUDIT_REF="$REPO_ROOT/skills/implement/references/preflight-plan-audit
 FORCE_MODE_REF="$REPO_ROOT/skills/implement/references/force-mode.md"
 PREFLIGHT_HELPER="$REPO_ROOT/python/larch/implement/preflight.py"
 PREFLIGHT_HELPER_TEST="$REPO_ROOT/python/tests/implement/test_preflight.py"
+PLAN_GRAMMAR="$REPO_ROOT/python/larch/design/plan_grammar.py"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 contains() {
@@ -95,7 +96,7 @@ contains "$SKILL" '`--force` / `-f` and `--merge` are **compatible**' "missing f
 contains "$SKILL" '**⚠ --force and --draft are mutually exclusive. Aborting.**' "missing force/draft mutex"
 contains "$SKILL" '`--force` and `-f` both set `force_requested=true`' "missing -f alias parse rule"
 contains "$SKILL" '`--force` / `-f` and `--draft` together' "missing -f draft mutex wording"
-contains "$PREFLIGHT_HELPER_TEST" 'test_preflight_force_short_flag_missing_plan_uses_raw_body' "helper test missing -f coverage"
+contains "$PREFLIGHT_HELPER_TEST" 'test_preflight_force_short_flag_missing_plan_refuses_without_fallback' "helper test missing -f coverage"
 contains "$PREFLIGHT_AUDIT_REF" '## Clarify-request flow after `AUDIT=refuse`' "missing clarify refusal flow heading"
 contains "$PREFLIGHT_AUDIT_REF" 'STATE=ambiguous' "missing clarify ambiguous-state guard"
 contains "$PREFLIGHT_AUDIT_REF" 'STATE=awaiting-response' "missing clarify awaiting-response guard"
@@ -112,9 +113,10 @@ contains "$FORCE_MODE_REF" '**Contract**: Define the downgraded Preflight gates,
 contains "$FORCE_MODE_REF" '**When to load**: MANDATORY when `force_requested=true`, before applying force-specific Preflight behavior.' "missing force reference load predicate"
 contains "$FORCE_MODE_REF" 'BYPASS kind=<lowercase-token> issue=<number>' "missing structured force bypass log grammar"
 contains "$FORCE_MODE_REF" 'The log is invalid when it is empty, blank-only, or names an `issue=` value other than the current target issue.' "missing invalid force bypass log contract"
-contains "$FORCE_MODE_REF" 'missing-plan' "missing missing-plan force token"
-contains "$FORCE_MODE_REF" 'malformed-plan' "missing malformed-plan force token"
 contains "$FORCE_MODE_REF" 'missing-designed-prefix' "missing missing-designed-prefix force token"
+contains "$FORCE_MODE_REF" 'cannot run without a valid issue-body larch:plan block' "missing force plan-contract refusal error"
+forbid "$FORCE_MODE_REF" 'missing-plan' "force-mode.md must not retain removed missing-plan bypass token"
+forbid "$FORCE_MODE_REF" 'malformed-plan' "force-mode.md must not retain removed malformed-plan bypass token"
 contains "$FORCE_MODE_REF" 'Step 0 bootstrap consumes that log into `$IMPLEMENT_TMPDIR/execution-issues.md` only once for the current force run, even after dirty-tree resume.' "missing no-replay force bypass contract"
 forbid "$SKILL" 'BYPASS kind=<lowercase-token> issue=<number>' "SKILL.md must not retain structured force bypass log grammar"
 contains "$SKILL" 'case "${force_requested:-}" in' "missing conditional force bootstrap argv"
@@ -143,19 +145,18 @@ forbid "$SKILL" 'audit-refuse' "SKILL.md must not retain the removed audit-refus
 forbid "$SKILL" 'bypassing clarify-state' "SKILL.md must not retain the removed clarify-state force bypass prose"
 forbid "$SKILL" 'exactly four gates' "SKILL.md must not retain the stale four-gate force count"
 
-contains "$PREFLIGHT_HELPER" 'missing-plan' "helper missing stable missing-plan token"
-contains "$PREFLIGHT_HELPER" 'malformed-plan' "helper missing stable malformed-plan token"
 contains "$PREFLIGHT_HELPER" 'missing-designed-prefix' "helper missing stable missing-designed-prefix token"
 contains "$PREFLIGHT_HELPER" 'BYPASS kind=' "helper missing stable bypass grammar token"
 contains "$PREFLIGHT_HELPER" 'force-bypass.log' "helper missing stable bypass log path token"
 contains "$PREFLIGHT_HELPER" 'LARCH_QUIET_DISABLE' "helper missing quiet-mode token"
 
-contains "$PREFLIGHT_HELPER" 'has no larch:plan block: run /design' "helper code missing missing-plan refusal"
-contains "$PREFLIGHT_HELPER" 'has a malformed larch:plan block: `MALFORMED=' "helper code missing malformed-plan refusal"
-contains "$PREFLIGHT_HELPER" 'using the raw issue body as the implementation plan' "helper code missing raw-body warning"
-contains "$PREFLIGHT_HELPER" 'using the issue title as the implementation plan' "helper code missing title fallback warning"
+contains "$PREFLIGHT_HELPER" 'failed executable-plan admission' "helper code missing executable-plan refusal"
+contains "$PREFLIGHT_HELPER" 'FORCE_PLAN_CONTRACT_ERROR' "helper code missing force plan-contract error constant use"
+contains "$PLAN_GRAMMAR" 'can skip semantic plan review, but it cannot run without' "plan_grammar missing force plan-contract error text"
+forbid "$PREFLIGHT_HELPER" 'using the raw issue body as the implementation plan' "helper must not retain raw-body fallback warning"
+forbid "$PREFLIGHT_HELPER" 'using the issue title as the implementation plan' "helper must not retain title fallback warning"
 
-contains "$PREFLIGHT_HELPER_TEST" 'raw issue body' "helper test missing runtime warning assertion"
+contains "$PREFLIGHT_HELPER_TEST" 'FORCE_PLAN_CONTRACT_ERROR' "helper test missing force plan-contract assertion"
 contains "$PREFLIGHT_HELPER_TEST" 'rounds_completed=0' "helper test missing provenance refusal assertion"
 
 echo "PASS: test-plan-adequacy-audit.sh"

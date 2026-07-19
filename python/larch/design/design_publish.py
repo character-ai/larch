@@ -464,6 +464,92 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
     _ = _write_result_env(path=result_env, rows=kvs)
 
 
+def _emit_plan_contract_refusal(
+    *,
+    defects: tuple[str, ...],
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> None:
+    tokens = ",".join(defects)
+    print(
+        f"**⚠ 5c: publish refused: executable-plan contract defects `{tokens}`; "
+        "repair plan.txt / composed-plan.md before publish**",
+        flush=True,
+    )
+    _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value=f"plan-contract:{tokens}")
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="defects-found")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value=str(len(defects)))
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
+
+
+def _refuse_pre_write_gates(
+    *,
+    design_tmpdir: Path,
+    repo_root: Path,
+    plan_text: str,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> int | None:
+    """Run Gate C assessment and executable-plan gates before named-block write.
+
+    Returns a publish refusal exit code, or ``None`` when every gate passes.
+    """
+    invariant_completeness = check_invariant_assessment_completeness(
+        design_tmpdir=design_tmpdir,
+        repo_root=repo_root,
+        outcome="approved",
+    )
+    if invariant_completeness.required and not invariant_completeness.present:
+        _emit_missing_invariant_assessment_refusal(
+            design_tmpdir=design_tmpdir,
+            result=invariant_completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
+    if invariant_completeness.required and invariant_completeness.present and not _persisted_note_publishable(
+        path=design_tmpdir / invariant_completeness.artifact,
+        kind=architectural_guidelines.INVARIANTS,
+    ):
+        _emit_invariant_violation_refusal(
+            result=invariant_completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
+
+    completeness = check_guideline_assessment_completeness(
+        design_tmpdir=design_tmpdir,
+        repo_root=repo_root,
+        outcome="approved",
+    )
+    if completeness.required and not completeness.present:
+        _emit_missing_guideline_assessment_refusal(
+            design_tmpdir=design_tmpdir,
+            result=completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
+    if completeness.required and completeness.present and not _persisted_note_publishable(
+        path=design_tmpdir / completeness.artifact,
+        kind=architectural_guidelines.GUIDELINES,
+    ):
+        _emit_invalid_guideline_deviation_refusal(
+            result=completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
+
+    contract = plan_grammar.validate_plan_contract(plan_text=plan_text, repo_root=repo_root)
+    if not contract.ok:
+        _emit_plan_contract_refusal(defects=contract.defects, kvs=kvs, result_env=result_env)
+        return 4
+    return None
+
+
 def check_invariant_assessment_completeness(
     *,
     design_tmpdir: Path,
@@ -1202,53 +1288,15 @@ def publish_core(argv: Sequence[str]) -> int:
         if validate.returncode != 0 or dict(kvs).get("VALIDATE_STATUS") != "ok":
             return 5
 
-    invariant_completeness = check_invariant_assessment_completeness(
+    gate_rc = _refuse_pre_write_gates(
         design_tmpdir=design_tmpdir,
         repo_root=repo_root_arg,
-        outcome="approved",
+        plan_text=plan_text,
+        kvs=kvs,
+        result_env=result_env,
     )
-    if invariant_completeness.required and not invariant_completeness.present:
-        _emit_missing_invariant_assessment_refusal(
-            design_tmpdir=design_tmpdir,
-            result=invariant_completeness,
-            kvs=kvs,
-            result_env=result_env,
-        )
-        return 4
-    if invariant_completeness.required and invariant_completeness.present and not _persisted_note_publishable(
-        path=design_tmpdir / invariant_completeness.artifact,
-        kind=architectural_guidelines.INVARIANTS,
-    ):
-        _emit_invariant_violation_refusal(
-            result=invariant_completeness,
-            kvs=kvs,
-            result_env=result_env,
-        )
-        return 4
-
-    completeness = check_guideline_assessment_completeness(
-        design_tmpdir=design_tmpdir,
-        repo_root=repo_root_arg,
-        outcome="approved",
-    )
-    if completeness.required and not completeness.present:
-        _emit_missing_guideline_assessment_refusal(
-            design_tmpdir=design_tmpdir,
-            result=completeness,
-            kvs=kvs,
-            result_env=result_env,
-        )
-        return 4
-    if completeness.required and completeness.present and not _persisted_note_publishable(
-        path=design_tmpdir / completeness.artifact,
-        kind=architectural_guidelines.GUIDELINES,
-    ):
-        _emit_invalid_guideline_deviation_refusal(
-            result=completeness,
-            kvs=kvs,
-            result_env=result_env,
-        )
-        return 4
+    if gate_rc is not None:
+        return gate_rc
 
     redacted_plan = design_tmpdir / "composed-plan.redacted.md"
     redact = subprocess.run(

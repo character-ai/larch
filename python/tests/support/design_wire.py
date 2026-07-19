@@ -95,25 +95,18 @@ def plan_body(  # noqa: PLR0913 - plan fixture fields map directly to the wire f
     mechanical_churn: bool | None = None,
     oversize_override: str | None = None,
     header: str = "## Plan",
+    executable: bool = False,
 ) -> str:
-    """Build canonical plan text with optional firm headings and trailers."""
-    chunks: list[str] = [header]
-    if sections:
-        chunks.append("\n")
-        for kind, path in sections:
-            if kind not in _PLAN_HEADING_KINDS:
-                msg = f"unsupported plan heading kind: {kind!r}"
-                raise ValueError(msg)
-            _validate_section_path(path)
-            chunks.append(f"### {kind}: {path}\n")
-        if body:
-            chunks.append(body if body.endswith("\n") else f"{body}\n")
-    else:
-        chunks.append("\n\n")
-        if body:
-            chunks.append(body if body.endswith("\n") else f"{body}\n")
+    """Build canonical plan text with optional firm headings and trailers.
 
-    text = "".join(chunks)
+    When ``executable`` is true, emit the M1 facet sections required by the
+    executable-plan contract (closed decisions, ordered implementation,
+    acceptance, breaking/migration) around the caller body and sections.
+    """
+    if executable:
+        text = _executable_plan_body(header=header, sections=sections, body=body)
+    else:
+        text = _ordinary_plan_body(header=header, sections=sections, body=body)
     if diff_lines is None:
         return text
     if text and not text.endswith("\n"):
@@ -126,6 +119,46 @@ def plan_body(  # noqa: PLR0913 - plan fixture fields map directly to the wire f
         mechanical_churn=mechanical_churn,
         oversize_override=oversize_override,
     )
+
+
+def _append_section_headings(chunks: list[str], sections: Sequence[PlanSection]) -> None:
+    for kind, path in sections:
+        if kind not in _PLAN_HEADING_KINDS:
+            msg = f"unsupported plan heading kind: {kind!r}"
+            raise ValueError(msg)
+        _validate_section_path(path)
+        chunks.append(f"### {kind}: {path}\n")
+
+
+def _ordinary_plan_body(*, header: str, sections: Sequence[PlanSection] | None, body: str) -> str:
+    chunks: list[str] = [header]
+    if sections:
+        chunks.append("\n")
+        _append_section_headings(chunks, sections)
+        if body:
+            chunks.append(body if body.endswith("\n") else f"{body}\n")
+    else:
+        chunks.append("\n\n")
+        if body:
+            chunks.append(body if body.endswith("\n") else f"{body}\n")
+    return "".join(chunks)
+
+
+def _executable_plan_body(*, header: str, sections: Sequence[PlanSection] | None, body: str) -> str:
+    chunks: list[str] = [
+        header,
+        "\n\n",
+        "### Closed decisions and ownership\n\n- Fixture owns this plan shape.\n\n",
+        "### Ordered implementation\n\n1. Apply the planned edits.\n\n",
+        "## Files to modify/create\n\n",
+    ]
+    _append_section_headings(chunks, sections or (("UPDATED", "README.md"),))
+    if body:
+        chunks.append("\n")
+        chunks.append(body if body.endswith("\n") else f"{body}\n")
+    chunks.append("\n## Acceptance\n\n- Fixture acceptance holds.\n\n")
+    chunks.append("## Breaking changes and migration\n\nNone.\n")
+    return "".join(chunks)
 
 
 def result_env_lines(rows: ResultEnvRows) -> str:

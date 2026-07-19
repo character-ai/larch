@@ -1723,7 +1723,7 @@
     "file": "larch/design/design_publish.py",
     "code": "C901",
     "qualified_symbol": "publish_core",
-    "metric": 53,
+    "metric": 50,
     "added_at": "legacy",
     "history": []
   },
@@ -1731,7 +1731,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_core",
-    "metric": 25,
+    "metric": 22,
     "added_at": "legacy",
     "history": []
   },
@@ -1739,7 +1739,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0912",
     "qualified_symbol": "publish_core",
-    "metric": 54,
+    "metric": 51,
     "added_at": "legacy",
     "history": []
   },
@@ -1747,7 +1747,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0915",
     "qualified_symbol": "publish_core",
-    "metric": 177,
+    "metric": 169,
     "added_at": "legacy",
     "history": []
   },
@@ -2722,14 +2722,6 @@
   {
     "file": "larch/git/git.py",
     "code": "PLR0911",
-    "qualified_symbol": "check_main_sync",
-    "metric": 10,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/git.py",
-    "code": "PLR0911",
     "qualified_symbol": "force_push_recovery",
     "metric": 8,
     "added_at": "legacy",
@@ -2980,14 +2972,6 @@
     "code": "C901",
     "qualified_symbol": "_checkpoint_rebase_result",
     "metric": 11,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/push.py",
-    "code": "C901",
-    "qualified_symbol": "push_current_branch",
-    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -3355,7 +3339,7 @@
     "file": "larch/implement/preflight.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
-    "metric": 27,
+    "metric": 18,
     "added_at": "legacy",
     "history": []
   },
@@ -3363,7 +3347,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0911",
     "qualified_symbol": "preflight_main",
-    "metric": 17,
+    "metric": 15,
     "added_at": "legacy",
     "history": []
   },
@@ -3371,15 +3355,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0912",
     "qualified_symbol": "preflight_main",
-    "metric": 28,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/implement/preflight.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_write_fallback_plan",
-    "metric": 6,
+    "metric": 18,
     "added_at": "legacy",
     "history": []
   },
@@ -3387,7 +3363,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 95,
+    "metric": 81,
     "added_at": "legacy",
     "history": []
   },
