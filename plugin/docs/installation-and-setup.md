@@ -7,13 +7,14 @@
 ### Authentication
 
 Set up GitHub and Google credentials before starting larch. Installing `gh` is
-separate from supplying the `GH_TOKEN` that larch uses for authenticated GitHub
-requests.
+separate from supplying the `LARCH_GH_TOKEN` that larch uses for authenticated
+GitHub requests.
 
 #### GitHub
 
-Larch requires a non-empty `GH_TOKEN` in its environment. It does not fall
-back to `GITHUB_TOKEN`.
+Larch requires a non-empty `LARCH_GH_TOKEN` in its environment. It does not
+fall back to `GH_TOKEN`, `GITHUB_TOKEN`, GitHub CLI configuration, or keychain
+state.
 
 Choose one source for the token:
 
@@ -21,13 +22,13 @@ Choose one source for the token:
   shell:
 
   ```bash
-  export GH_TOKEN="$(gh auth token)"
+  export LARCH_GH_TOKEN="$(gh auth token)"
   ```
 
   To provide the value for one Claude session only, run:
 
   ```bash
-  GH_TOKEN="$(gh auth token)" claude
+  LARCH_GH_TOKEN="$(gh auth token)" claude
   ```
 
   Larch does not run `gh auth token` during normal service calls.
@@ -38,18 +39,20 @@ Choose one source for the token:
   when its [repository permissions and API coverage](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
   are sufficient. Current larch operations can require a classic PAT when a
   required GitHub API operation is not available to a fine-grained PAT. Export
-  the selected token as `GH_TOKEN`. Keep the value in a password manager or
-  secret manager; never commit it to a repository or a `.env` file.
+  the selected token as `LARCH_GH_TOKEN`. Keep the value in a password manager
+  or secret manager; never commit it to a repository or a `.env` file.
 
 Verify the setup without printing the token:
 
 ```bash
-test -n "$GH_TOKEN"
-gh api user >/dev/null
+test -n "$LARCH_GH_TOKEN"
+GH_TOKEN="$LARCH_GH_TOKEN" gh api user >/dev/null
 ```
 
-The commands succeed silently when `GH_TOKEN` is non-empty and authenticates
-to GitHub.
+The commands succeed silently when `LARCH_GH_TOKEN` is non-empty and
+authenticates to GitHub. The explicit `GH_TOKEN=` assignment is only for this
+manual GitHub CLI verification command. Larch does not make that conversion or
+invoke `gh auth token` during service calls.
 
 #### Google Application Default Credentials
 
