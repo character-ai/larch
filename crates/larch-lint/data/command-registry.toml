@@ -8005,12 +8005,6 @@ python = []
 rust = ["gh remote-repo"]
 
 [[callers]]
-path = "python/larch/release/release_prepare.py"
-kind = "python-runtime"
-python = []
-rust = ["gh remote-repo"]
-
-[[callers]]
 path = "python/larch/rendering/_rendering_generators.py"
 kind = "python-runtime"
 python = ["agent launch-codex-implement", "agent launch-cursor-implement", "generate check", "generate code-reviewer-agent", "generate codex-implementer", "generate cursor-implementer", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-correctness-agent", "generate reviewer-edge-cases-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-agent", "generate reviewer-security-structure-tests-agent", "generate reviewer-structure-agent", "generate reviewer-testing-agent", "generate topology-docs"]
