@@ -66,7 +66,7 @@ impl Rule for LarchRuntimeEntrypointRule {
     }
 }
 
-fn is_production_surface(path: &str) -> bool {
+pub(super) fn is_production_surface(path: &str) -> bool {
     if path.starts_with("python/larch/") {
         return has_extension(path, "py");
     }

@@ -47,6 +47,10 @@ against a hostile same-UID process that can rewrite plugin cache or data files.
 The `larch-runtime-entrypoint` rule rejects production callers that bypass the
 shim and execute `bin/larch` directly. Only the shim and the upgrade owner may
 name the installed binary.
+The `production-cargo-run` rule also rejects production execution through
+Cargo or a repository `target/{debug,release}/larch` binary. Those entrypoints
+are development-only and do not provide the installed plugin's bootstrap and
+binary verification boundary.
 
 ## Google ADC Trust Boundary
 
