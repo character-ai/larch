@@ -48,11 +48,14 @@ Commands:
   branch-info          Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository
   check-phantom-dirty  Classify repository changes against an untracked-path baseline
   check-remote-branch  Probe whether a remote branch exists via typed ls-remote
+  checkout-ours        Check out the current side of conflicted paths
   clean-tree           Report whether the worktree is clean using machine-readable key/value rows
   conflict-files       Print the files and index stages that are currently conflicted
   count-commits        Count commits on `HEAD` since `origin/main` or `main`
   current-branch       Emit `BRANCH` for the current symbolic `HEAD`
   phantom-probe        Classify phantom paths and append advisory warnings to the run ledger
+  rebase-abort         Abort an in-progress rebase, succeeding when no rebase is active
+  rebase-skip          Skip the current commit in an in-progress rebase
   show-stage           Print the blob at an index conflict stage
   snapshot-untracked   Atomically write the sorted untracked-path baseline to an output file
   help                 Print this message or the help of the given subcommand(s)

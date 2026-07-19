@@ -6,13 +6,19 @@
 /// larch commands route scalar KV output through it instead of ad-hoc prints.
 /// Rejects embedded newlines and carriage returns so a value cannot forge
 /// extra contract-stream lines (G-IO-2).
+///
+/// # Panics
+///
+/// Panics when `key` or `value` contains a newline or carriage return.
 pub fn emit_kv(key: &str, value: &str) {
-    if key.contains(['\n', '\r']) {
-        panic!("emit_kv key {key:?} contains newline or carriage-return");
-    }
-    if value.contains(['\n', '\r']) {
-        panic!("emit_kv value for {key:?} contains newline or carriage-return");
-    }
+    assert!(
+        !key.contains(['\n', '\r']),
+        "emit_kv key {key:?} contains newline or carriage-return"
+    );
+    assert!(
+        !value.contains(['\n', '\r']),
+        "emit_kv value for {key:?} contains newline or carriage-return"
+    );
     println!("{key}={value}");
 }
 

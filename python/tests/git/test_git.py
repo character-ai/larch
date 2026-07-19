@@ -1192,5 +1192,3 @@ def test_remote_branch_state_transport_error(monkeypatch: pytest.MonkeyPatch) ->
     assert result.rc == 128
     assert result.error
     assert "\n" not in result.error
-
-
