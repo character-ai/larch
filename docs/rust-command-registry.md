@@ -52,6 +52,13 @@ completion fields `complete`. There is no Rust-owned pending-removal state.
 `python_module` and `python_function` remain in the ledger after deletion so
 the rule can continue proving that the retired entrypoint is absent.
 
+A Rust owner becomes valid only in the PR that completes all of those changes.
+Adapter parity alone does not transfer command ownership. For local Git, the
+`git-ownership` rule also pins the complete #7675 command set and compares
+[`docs/git-operation-inventory.md`](git-operation-inventory.md) with live
+production surfaces. Commands assigned to a later domain stay Python-owned
+until that domain's issue performs the same atomic transition.
+
 The atomic-owner diagnostic is
 `non-atomic-rust-owner <domain> <verb>: python removal is not complete`.
 Retirement evidence uses `python-entrypoint-still-present` for a remaining

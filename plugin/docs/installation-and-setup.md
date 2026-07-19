@@ -152,6 +152,14 @@ repository linters, tests, release automation, and CI support files. Python
 runtime modules remain because larch still executes them during the Rust
 migration.
 
+### Git prerequisite
+
+Keep installed Git available on `PATH`. Typed `gix` reads run in process, but
+exact diff output, repository mutations, hooks, filters, signing, credentials,
+worktrees, recovery, and network porcelain still use the closed installed-Git
+compatibility adapter. Run `git --version` to verify the prerequisite. Larch
+does not expose a caller-selected Git executable or arbitrary Git arguments.
+
 ### Rust executable bootstrap
 
 Every Rust-backed entrypoint must call
