@@ -624,6 +624,14 @@ fn discover_callers(
                 }
             }
         }
+        // Release construction workflows invoke the staged host or matrix binary.
+        for marker in ["target/release/larch", "target/$TARGET/release/larch"] {
+            for selector in filter_selectors(extract_selectors(&content, marker), known) {
+                if !rust.contains(&selector) {
+                    rust.push(selector);
+                }
+            }
+        }
         rust.sort();
         if python.is_empty() && rust.is_empty() {
             continue;

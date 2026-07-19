@@ -18,6 +18,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 mod git_commands;
 mod github_repository_resolution;
 mod push_network;
+mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
 mod release_prepare;
@@ -195,20 +196,88 @@ enum ExampleCommand {
 
 #[derive(Subcommand)]
 enum ReleaseCommand {
+    /// Validate the tagged release identity against plugin and Cargo versions.
+    AssetCandidate(AssetCandidateArguments),
     /// Classify the semantic version bump for the public plugin surface.
     ClassifyBump(ClassifyBumpArguments),
+    /// Collect matrix archives into the final release asset set.
+    CollectAssets(CollectAssetsArguments),
+    /// Package one target archive and metadata fragment.
+    PackageAsset(PackageAssetArguments),
     /// Prepare the release window, PR list, and aggregate bump.
     Prepare(PrepareReleaseArguments),
     /// Generate or validate the runtime-only plugin projection.
     PluginRuntime(PluginRuntimeArguments),
     /// Update every synchronized release version surface.
     SetVersion(SetVersionArguments),
+    /// Validate the final release asset allowlist.
+    ValidateAssets(ValidateAssetsArguments),
 }
 
 #[derive(Subcommand)]
 enum PluginCommand {
     /// Print the active plugin version as a machine-readable row.
     ReadVersion(TrailingArguments),
+}
+
+#[derive(Args)]
+struct AssetCandidateArguments {
+    #[arg(long)]
+    repo_root: PathBuf,
+    #[arg(long)]
+    tag: String,
+    #[arg(long)]
+    source_commit: String,
+}
+
+#[derive(Args)]
+struct PackageAssetArguments {
+    #[arg(long)]
+    version: String,
+    #[arg(long)]
+    tag: String,
+    #[arg(long)]
+    source_commit: String,
+    #[arg(long)]
+    target: String,
+    #[arg(long)]
+    binary: PathBuf,
+    #[arg(long = "license")]
+    license: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
+#[derive(Args)]
+struct CollectAssetsArguments {
+    #[arg(long)]
+    version: String,
+    #[arg(long)]
+    tag: String,
+    #[arg(long)]
+    source_commit: String,
+    #[arg(long)]
+    input_dir: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+    #[arg(long = "license")]
+    license: PathBuf,
+}
+
+#[derive(Args)]
+struct ValidateAssetsArguments {
+    #[arg(long)]
+    version: String,
+    #[arg(long)]
+    tag: String,
+    #[arg(long)]
+    source_commit: String,
+    #[arg(long)]
+    asset_dir: PathBuf,
+    #[arg(long = "license")]
+    license: PathBuf,
+    #[arg(long)]
+    verify_attestations: bool,
 }
 
 #[derive(Args)]
@@ -320,34 +389,7 @@ fn run(
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
         }
-        Domain::Release(command) => match command {
-            ReleaseCommand::ClassifyBump(arguments) => Ok(release_prepare::classify_bump(
-                &release_prepare::ClassifyArguments {
-                    base: arguments.base,
-                    head: arguments.head,
-                },
-            )),
-            ReleaseCommand::Prepare(arguments) => {
-                let bump = arguments.bump.as_deref().map(|value| match value {
-                    "major" => release_prepare::BumpType::Major,
-                    "minor" => release_prepare::BumpType::Minor,
-                    _ => release_prepare::BumpType::Patch,
-                });
-                Ok(release_prepare::prepare(
-                    &release_prepare::PrepareArguments {
-                        repository: arguments.repository,
-                        bump,
-                        out_dir: arguments.out_dir,
-                    },
-                ))
-            }
-            ReleaseCommand::PluginRuntime(arguments) => {
-                release_plugin_runtime::run(arguments.check)
-                    .map(|()| ExitCode::SUCCESS)
-                    .map_err(command_failure)
-            }
-            ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
-        },
+        Domain::Release(command) => run_release(command),
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)
@@ -378,6 +420,75 @@ fn run(
                 Ok(ExitCode::SUCCESS)
             }
         },
+    }
+}
+
+fn run_release(
+    command: ReleaseCommand,
+) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
+    match command {
+        ReleaseCommand::AssetCandidate(arguments) => Ok(release_assets::asset_candidate(
+            &release_assets::CandidateArguments {
+                repo_root: arguments.repo_root,
+                tag: arguments.tag,
+                source_commit: arguments.source_commit,
+            },
+        )),
+        ReleaseCommand::ClassifyBump(arguments) => Ok(release_prepare::classify_bump(
+            &release_prepare::ClassifyArguments {
+                base: arguments.base,
+                head: arguments.head,
+            },
+        )),
+        ReleaseCommand::CollectAssets(arguments) => Ok(release_assets::collect_assets(
+            &release_assets::CollectArguments {
+                version: arguments.version,
+                tag: arguments.tag,
+                source_commit: arguments.source_commit,
+                input_dir: arguments.input_dir,
+                output_dir: arguments.output_dir,
+                license: arguments.license,
+            },
+        )),
+        ReleaseCommand::PackageAsset(arguments) => Ok(release_assets::package_asset(
+            &release_assets::PackageArguments {
+                version: arguments.version,
+                tag: arguments.tag,
+                source_commit: arguments.source_commit,
+                target: arguments.target,
+                binary: arguments.binary,
+                license: arguments.license,
+                output_dir: arguments.output_dir,
+            },
+        )),
+        ReleaseCommand::Prepare(arguments) => {
+            let bump = arguments.bump.as_deref().map(|value| match value {
+                "major" => release_prepare::BumpType::Major,
+                "minor" => release_prepare::BumpType::Minor,
+                _ => release_prepare::BumpType::Patch,
+            });
+            Ok(release_prepare::prepare(
+                &release_prepare::PrepareArguments {
+                    repository: arguments.repository,
+                    bump,
+                    out_dir: arguments.out_dir,
+                },
+            ))
+        }
+        ReleaseCommand::PluginRuntime(arguments) => release_plugin_runtime::run(arguments.check)
+            .map(|()| ExitCode::SUCCESS)
+            .map_err(command_failure),
+        ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
+        ReleaseCommand::ValidateAssets(arguments) => Ok(release_assets::validate_assets(
+            &release_assets::ValidateArguments {
+                version: arguments.version,
+                tag: arguments.tag,
+                source_commit: arguments.source_commit,
+                asset_dir: arguments.asset_dir,
+                license: arguments.license,
+                verify_attestations: arguments.verify_attestations,
+            },
+        )),
     }
 }
 

@@ -2321,6 +2321,7 @@ version = "53.1.24"
 dependencies = [
  "assert_cmd",
  "clap",
+ "flate2",
  "larch-adapters",
  "larch-core",
  "larch-test-support",
@@ -2328,6 +2329,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
  "toml",
