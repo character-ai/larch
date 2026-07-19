@@ -1330,9 +1330,10 @@ conditional-sources = [
 root-max-lines = 693
 root-max-tokens = 26340
 root-max-content-tokens = 26286
-closure-max-lines = 1647
-closure-max-tokens = 49573
-closure-max-content-tokens = 49449
+# I-Runtime-1 specifies the mechanically enforced Rust entrypoint boundary.
+closure-max-lines = 1667
+closure-max-tokens = 49876
+closure-max-content-tokens = 49751
 conditional-max-lines = 661
 conditional-max-tokens = 18524
 conditional-max-content-tokens = 18465
@@ -1355,11 +1356,12 @@ root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
-# issue #7753 moves upgrade-larch guidance to the Rust command surface.
-# Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs.
-closure-max-lines = 3750
-closure-max-tokens = 143450
-closure-max-content-tokens = 143150
+# issue #7753 moves upgrade-larch guidance to the Rust command surface;
+# Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs;
+# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint.
+closure-max-lines = 3773
+closure-max-tokens = 143823
+closure-max-content-tokens = 143521
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1407,7 +1409,8 @@ roots = [
   "skills/shared/voting-protocol.md",
 ]
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
-# issue #7753 moves upgrade-larch guidance to the Rust command surface.
-closure-max-lines = 6038
-closure-max-tokens = 168885
-closure-max-content-tokens = 168421
+# issue #7753 moves upgrade-larch guidance to the Rust command surface;
+# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint.
+closure-max-lines = 6061
+closure-max-tokens = 169258
+closure-max-content-tokens = 168792

@@ -106,6 +106,6 @@ def plugin_root(fallback: Path | str | None = None, *, use_env: bool = True) -> 
     return Path(configured or fallback or default).resolve()
 
 
-def larch_binary(fallback: Path | str | None = None) -> Path:
-    """Return the installed Rust executable for production command cutovers."""
-    return plugin_root(fallback) / "bin" / "larch"
+def larch_entrypoint(fallback: Path | str | None = None) -> Path:
+    """Return the verified bootstrap entrypoint for Rust command cutovers."""
+    return plugin_root(fallback) / "scripts" / "larch.sh"

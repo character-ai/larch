@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from larch.core.proc import CommandResult
 from larch.core.repo_roots import (
     consumer_repo_root,
+    larch_entrypoint,
     plugin_root,
     repo_root_from_probe,
     repo_root_probe,
@@ -94,6 +95,16 @@ def test_plugin_root_uses_fallback_when_environment_is_empty(tmp_path: Path, mon
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
 
     assert plugin_root(fallback / ".") == fallback.resolve()
+
+
+def test_larch_entrypoint_uses_verified_bootstrap_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
+
+    assert larch_entrypoint() == plugin / "scripts" / "larch.sh"
 
 
 def test_repo_root_probe_preserves_runner_diagnostics_and_paths(tmp_path: Path) -> None:

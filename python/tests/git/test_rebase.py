@@ -1468,10 +1468,10 @@ def test_hook_failure_continue_aborts_and_stalls() -> None:
 def test_empty_commit_continue_skips_then_continues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_larch_binary(_fallback: Path | str | None = None) -> Path:
+    def fake_larch_entrypoint(_fallback: Path | str | None = None) -> Path:
         return Path("/larch")
 
-    monkeypatch.setattr(rebase.repo_roots, "larch_binary", fake_larch_binary)
+    monkeypatch.setattr(rebase.repo_roots, "larch_entrypoint", fake_larch_entrypoint)
     continue_calls = {"n": 0}
 
     def continue_handler(_argv: tuple[str, ...]) -> CommandResult:

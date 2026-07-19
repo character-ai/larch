@@ -141,6 +141,37 @@ fn caller_inventory_drift_is_reported() {
 }
 
 #[test]
+fn caller_inventory_recognizes_the_verified_runtime_entrypoint() {
+    let repository = TempRepo::new();
+    prepare(
+        &repository,
+        &command_row("python", "pending", "pending", "pending"),
+    );
+    repository.write(
+        "skills/example/SKILL.md",
+        b"\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" fixture run\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["command-registry", "sync", "--migration-issue", "7661"])
+        .assert()
+        .success()
+        .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=1\n")
+        .stderr("");
+
+    let ledger = fs::read_to_string(
+        repository
+            .path()
+            .join("crates/larch-lint/data/command-registry.toml"),
+    )
+    .expect("read synced registry");
+    assert!(ledger.contains("path = \"skills/example/SKILL.md\""));
+    assert!(ledger.contains("python = []"));
+    assert!(ledger.contains("rust = [\"fixture run\"]"));
+}
+
+#[test]
 fn sync_refreshes_callers_and_preserves_human_migration_state() {
     let repository = TempRepo::new();
     prepare(

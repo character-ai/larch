@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core.proc import Runner
-from larch.core.repo_roots import larch_binary
+from larch.core.repo_roots import larch_entrypoint
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class PhantomProbeOutput:
 def phantom_probe(runner: Runner, *, step: str, cwd: str | None = None) -> PhantomProbeOutput:
     """Invoke the Rust owner and fail closed when its KV envelope is absent."""
     result = runner.run(
-        [str(larch_binary(Path(__file__).resolve().parents[3])), "git", "phantom-probe", "--step", step],
+        [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "git", "phantom-probe", "--step", step],
         cwd=cwd,
     )
     lines = tuple(line for line in result.stdout.splitlines() if line)

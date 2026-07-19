@@ -52,6 +52,26 @@ extend them when the guard-read artifact set grows.
 - Why: Evidence of violation: /design review re-entry rejoined a pre-edit bgjob result env after `plan.txt` changed (#6633); the /implement guideline note was repeatedly consumed after HEAD drift invalidated the diff it assessed (#5337, #5675, #5969, #6059, #6106).
 - Why: Mechanical backing: input fingerprints in persisted result envs plus consumer-side validation, mirroring `DIFF_FINGERPRINT` and `HEAD_SHA` checks in `python/larch/core/architectural_guidelines.py` (`note_consumable`, `_staged_fingerprint_valid`); extend the same pattern to bgjob result envs consumed on re-entry.
 
+## Runtime entrypoints
+
+### I-Runtime-1: Every production Rust command enters through the verified bootstrap script
+
+Every production caller of a Rust-backed larch command executes
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. This includes skills, hooks, agents,
+scripts, and remaining Python runtime callers during migration. No ordinary
+caller executes `${CLAUDE_PLUGIN_ROOT}/bin/larch` directly. Direct binary
+execution is confined to `scripts/larch.sh` after it verifies the active plugin
+version and target, and to bootstrap or upgrade code that verifies the installed
+binary after installation. A Python caller that executes `scripts/larch.sh` is
+a Rust consumer, not a Python fallback: it must not retain the migrated Python
+command, select between implementations, invoke `cargo run`, or reproduce
+command behavior. Evidence of violation: the first Rust Git command cutover
+added `larch_binary()` callers that bypassed the documented first-use installer,
+so a clean plugin cache could reach a missing `bin/larch`. Mechanical backing:
+`larch-lint rule larch-runtime-entrypoint` rejects direct production callers
+outside the bootstrap and upgrade allowlist; the command-registry caller
+inventory recognizes `scripts/larch.sh`; clean-install tests prove first use.
+
 ## Run-log integrity
 
 ### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string

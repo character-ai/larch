@@ -44,6 +44,9 @@ use, reclaims revalidated dead-owner locks, and makes waiters re-check before
 downloading. Cleanup removes only process-owned state. Local `.git` checkouts
 require an explicit matching `LARCH_BINARY`. These controls do not defend
 against a hostile same-UID process that can rewrite plugin cache or data files.
+The `larch-runtime-entrypoint` rule rejects production callers that bypass the
+shim and execute `bin/larch` directly. Only the shim and the upgrade owner may
+name the installed binary.
 
 ## Google ADC Trust Boundary
 
