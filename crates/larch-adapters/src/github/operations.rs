@@ -1115,3 +1115,391 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod service_tests {
+    use super::{
+        DependencyEdge, DependencyMutation, GitHubOperationError, LiveMutationRequest,
+        MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestSpec,
+        PullRequestState, ReviewDecision,
+    };
+    use crate::runtime::Cancellation;
+    use serde_json::json;
+    use std::{
+        io::{Read as _, Write as _},
+        net::TcpListener,
+        thread,
+    };
+
+    fn stub_service(
+        responses: Vec<(u16, String)>,
+    ) -> (OctocrabGitHubService, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub");
+        let base = format!("http://{}/", listener.local_addr().expect("stub address"));
+        let server = thread::spawn(move || {
+            for (status, body) in responses {
+                let (mut socket, _) = listener.accept().expect("accept request");
+                let mut request = [0_u8; 16_384];
+                let bytes_read = socket.read(&mut request).expect("read request");
+                assert!(bytes_read > 0, "request must not be empty");
+                write!(
+                    socket,
+                    "HTTP/1.1 {status} Stub\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .expect("write response");
+            }
+        });
+        let client = octocrab::Octocrab::builder()
+            .personal_token(String::from("test-token"))
+            .base_uri(&base)
+            .expect("base URI")
+            .upload_uri(&base)
+            .expect("upload URI")
+            .build()
+            .expect("stub client");
+        (OctocrabGitHubService::with_test_client(client), server)
+    }
+
+    fn pull_request_json(number: u64, state: &str, head: &str) -> String {
+        json!({
+            "number": number,
+            "state": state,
+            "title": "Typed operations",
+            "head": { "ref": head },
+            "base": { "ref": "main" },
+            "draft": false,
+            "merged": false,
+        })
+        .to_string()
+    }
+
+    fn spec(head: &str) -> PullRequestSpec<'_> {
+        PullRequestSpec {
+            owner: "character-ai",
+            repo: "larch",
+            head,
+            base: "main",
+            title: "Typed operations",
+            body: "Body",
+            draft: false,
+        }
+    }
+
+    fn operator_request() -> LiveMutationRequest<'static> {
+        LiveMutationRequest {
+            context_file: None,
+            operator_mode: true,
+            run_id: "",
+            trusted_root: None,
+            test_deny: false,
+        }
+    }
+
+    fn denied_request() -> LiveMutationRequest<'static> {
+        LiveMutationRequest {
+            context_file: None,
+            operator_mode: false,
+            run_id: "",
+            trusted_root: None,
+            test_deny: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn get_pull_request_reads_the_typed_contract() {
+        let (service, server) = stub_service(vec![(200, pull_request_json(7, "open", "feature"))]);
+        let cancellation = Cancellation::new();
+        let pull_request = service
+            .get_pull_request(&cancellation, "character-ai", "larch", 7)
+            .await
+            .expect("valid pull request");
+        assert_eq!(pull_request.number(), 7);
+        assert_eq!(pull_request.state(), PullRequestState::Open);
+        assert_eq!(pull_request.head_ref(), "feature");
+        assert_eq!(pull_request.base_ref(), "main");
+        assert!(!pull_request.draft());
+        assert!(!pull_request.merged());
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn read_maps_unauthorized_transport_and_cancellation() {
+        let cancellation = Cancellation::new();
+        let (unauthorized, server) =
+            stub_service(vec![(401, json!({ "message": "no" }).to_string())]);
+        assert_eq!(
+            unauthorized
+                .get_pull_request(&cancellation, "o", "r", 1)
+                .await
+                .expect_err("401 maps to Unauthorized"),
+            GitHubOperationError::Unauthorized
+        );
+        server.join().expect("stub completed");
+
+        let (transport, server) =
+            stub_service(vec![(500, json!({ "message": "boom" }).to_string())]);
+        assert!(matches!(
+            transport
+                .get_pull_request(&cancellation, "o", "r", 1)
+                .await
+                .expect_err("500 maps to Transport"),
+            GitHubOperationError::Transport(_)
+        ));
+        server.join().expect("stub completed");
+
+        let (idle, server) = stub_service(vec![]);
+        let cancelled = Cancellation::new();
+        cancelled.cancel();
+        assert_eq!(
+            idle.get_pull_request(&cancelled, "o", "r", 1)
+                .await
+                .expect_err("cancellation short-circuits"),
+            GitHubOperationError::Cancelled
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn list_open_pull_requests_reads_a_bounded_array() {
+        let first = pull_request_json(1, "open", "a");
+        let second = pull_request_json(2, "open", "b");
+        let (service, server) = stub_service(vec![(200, format!("[{first},{second}]"))]);
+        let cancellation = Cancellation::new();
+        let list = service
+            .list_open_pull_requests(&cancellation, "o", "r", "a")
+            .await
+            .expect("valid list");
+        assert_eq!(list.len(), 2);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_creates_when_no_head_branch_exists() {
+        let (service, server) = stub_service(vec![
+            (200, String::from("[]")),
+            (201, pull_request_json(12, "open", "feature")),
+        ]);
+        let cancellation = Cancellation::new();
+        let spec = spec("feature");
+        let created = service
+            .create_pull_request(&cancellation, &spec)
+            .await
+            .expect("created pull request");
+        assert!(created.created());
+        assert_eq!(created.pull_request().number(), 12);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_adopts_an_open_head_branch() {
+        let existing = pull_request_json(9, "open", "feature");
+        let (service, server) = stub_service(vec![
+            (200, format!("[{existing}]")),
+            (200, pull_request_json(9, "open", "feature")),
+        ]);
+        let cancellation = Cancellation::new();
+        let spec = spec("feature");
+        let created = service
+            .create_pull_request(&cancellation, &spec)
+            .await
+            .expect("adopted existing pull request");
+        assert!(!created.created());
+        assert_eq!(created.pull_request().number(), 9);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_reconciles_after_a_create_failure() {
+        let cancellation = Cancellation::new();
+        let spec = spec("feature");
+        let existing = pull_request_json(9, "open", "feature");
+        let (adopts, server) = stub_service(vec![
+            (200, String::from("[]")),
+            (422, json!({ "message": "exists" }).to_string()),
+            (200, format!("[{existing}]")),
+            (200, pull_request_json(9, "open", "feature")),
+        ]);
+        let created = adopts
+            .create_pull_request(&cancellation, &spec)
+            .await
+            .expect("adopted after create failure");
+        assert!(!created.created());
+        assert_eq!(created.pull_request().number(), 9);
+        server.join().expect("stub completed");
+
+        let (fails, server) = stub_service(vec![
+            (200, String::from("[]")),
+            (422, json!({ "message": "exists" }).to_string()),
+            (200, String::from("[]")),
+        ]);
+        assert!(matches!(
+            fails
+                .create_pull_request(&cancellation, &spec)
+                .await
+                .expect_err("original failure surfaces"),
+            GitHubOperationError::Transport(_)
+        ));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn edit_pull_request_patches_and_parses() {
+        let (service, server) =
+            stub_service(vec![(200, pull_request_json(5, "closed", "feature"))]);
+        let cancellation = Cancellation::new();
+        let edit = PullRequestEdit {
+            owner: "character-ai",
+            repo: "larch",
+            number: 5,
+            title: Some("New title"),
+            body: None,
+            state: Some(PullRequestState::Closed),
+            base: None,
+        };
+        let pull_request = service
+            .edit_pull_request(&cancellation, &edit)
+            .await
+            .expect("edited pull request");
+        assert_eq!(pull_request.number(), 5);
+        assert_eq!(pull_request.state(), PullRequestState::Closed);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn pull_request_review_state_reads_graphql_and_fails_closed() {
+        let cancellation = Cancellation::new();
+        let ok = json!({
+            "data": { "repository": { "pullRequest": {
+                "reviewDecision": "APPROVED",
+                "mergeStateStatus": "CLEAN",
+                "mergeable": "MERGEABLE",
+            }}}
+        })
+        .to_string();
+        let (service, server) = stub_service(vec![(200, ok)]);
+        let state = service
+            .pull_request_review_state(&cancellation, "o", "r", 3)
+            .await
+            .expect("valid review state");
+        assert_eq!(state.review_decision(), Some(ReviewDecision::Approved));
+        assert_eq!(state.merge_state_status(), MergeStateStatus::Clean);
+        assert_eq!(state.mergeable(), Mergeable::Mergeable);
+        server.join().expect("stub completed");
+
+        let errors = json!({ "errors": [{ "message": "denied" }] }).to_string();
+        let (failing, server) = stub_service(vec![(200, errors)]);
+        assert_eq!(
+            failing
+                .pull_request_review_state(&cancellation, "o", "r", 3)
+                .await
+                .expect_err("graphql errors fail closed"),
+            GitHubOperationError::GraphqlErrors
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn list_blocked_by_reads_dependency_refs() {
+        let body = json!([{ "number": 10, "id": 111 }, { "number": 12, "id": 222 }]).to_string();
+        let (service, server) = stub_service(vec![(200, body)]);
+        let cancellation = Cancellation::new();
+        let refs = service
+            .list_blocked_by(&cancellation, "o", "r", 5)
+            .await
+            .expect("dependency list");
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].issue_number(), 10);
+        assert_eq!(refs[0].issue_id(), 111);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn add_blocked_by_is_idempotent_and_gated() {
+        let cancellation = Cancellation::new();
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+        };
+
+        let (present, server) = stub_service(vec![(
+            200,
+            json!([{ "number": 12, "id": 222 }]).to_string(),
+        )]);
+        let authorized = operator_request();
+        assert_eq!(
+            present
+                .add_blocked_by(&cancellation, &authorized, edge)
+                .await
+                .expect("idempotent add reconciles without mutating"),
+            DependencyMutation::AlreadyInDesiredState
+        );
+        server.join().expect("stub completed");
+
+        let (refused, server) = stub_service(vec![]);
+        let denied = denied_request();
+        assert_eq!(
+            refused
+                .add_blocked_by(&cancellation, &denied, edge)
+                .await
+                .expect_err("unauthorized request is refused before any read"),
+            GitHubOperationError::MutationRefused("unauthorized-mutation")
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn remove_blocked_by_is_idempotent_when_absent() {
+        let cancellation = Cancellation::new();
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+        };
+        let (service, server) = stub_service(vec![(200, String::from("[]"))]);
+        let authorized = operator_request();
+        assert_eq!(
+            service
+                .remove_blocked_by(&cancellation, &authorized, edge)
+                .await
+                .expect("idempotent remove reconciles without mutating"),
+            DependencyMutation::AlreadyInDesiredState
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[test]
+    fn operation_error_display_covers_every_variant() {
+        let detail = larch_core::RuntimeRedactor::default().safe_text("io failure");
+        let variants = [
+            GitHubOperationError::Cancelled,
+            GitHubOperationError::DeadlineExceeded,
+            GitHubOperationError::Unauthorized,
+            GitHubOperationError::Transport(detail),
+            GitHubOperationError::Malformed("pull request state"),
+            GitHubOperationError::GraphqlErrors,
+            GitHubOperationError::DependencyFeatureUnavailable,
+            GitHubOperationError::MutationRefused("unauthorized-mutation"),
+        ];
+        for variant in &variants {
+            assert!(!variant.to_string().is_empty());
+        }
+        assert_eq!(
+            GitHubOperationError::Cancelled.to_string(),
+            "GitHub operation cancelled"
+        );
+        assert!(
+            GitHubOperationError::Malformed("head ref")
+                .to_string()
+                .contains("head ref")
+        );
+        assert!(
+            GitHubOperationError::MutationRefused("reason-y")
+                .to_string()
+                .contains("reason-y")
+        );
+    }
+}
