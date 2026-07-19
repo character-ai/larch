@@ -67,30 +67,17 @@ def _sync_local_main(
     base_target = f"{base_remote}/{base_ref}"
     branch = git.try_current_branch(runner, cwd=cwd)
 
-    if branch == "main":
-        result, rc = git.sync_local_main(
-            runner,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            cwd=cwd,
-        )
-        if rc != 0 and result == "refusing to update local 'main' while checked out on main":
-            raise Stalled(_redact_outbound(f"cli.py git sync-local-main: {result}"))
-        return
-
     if git.try_rev_parse(runner, "main", cwd=cwd) is not None:
         remote_main = git.try_rev_parse(runner, base_target, cwd=cwd)
-        if remote_main is None:
+        if branch != "main" and remote_main is None:
             return  # rebase-only parity; not widened into git.sync_local_main
-
-    result, rc = git.sync_local_main(
-        runner,
-        base_remote=base_remote,
-        base_ref=base_ref,
+    entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
+    result = runner.run(
+        [str(entrypoint), "git", "sync-local-main", "--base-remote", base_remote, "--base-ref", base_ref],
         cwd=cwd,
     )
-    if rc != 0 and result == "refusing to update local 'main' while checked out on main":
-        raise Stalled(_redact_outbound(f"cli.py git sync-local-main: {result}"))
+    if result.returncode != 0 and "refusing to update local 'main'" in result.stderr:
+        raise Stalled(_redact_outbound("cli.py git sync-local-main: refusing to update local 'main' while checked out on main"))
 
 
 def _is_empty_or_already_applied_rebase_error(text: str) -> bool:

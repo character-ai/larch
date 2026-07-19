@@ -63,6 +63,8 @@ enum GitSubcommand {
     CheckPhantomDirty(CheckPhantomDirtyArguments),
     /// Probe whether a remote branch exists via typed ls-remote.
     CheckRemoteBranch(TrailingArguments),
+    /// Classify or reset a flush-only local main branch ahead of origin/main.
+    CheckMainSync(TrailingArguments),
     /// Check out the current side of conflicted paths.
     CheckoutOurs(CheckoutOursArguments),
     /// Report whether the worktree is clean using machine-readable key/value rows.
@@ -81,6 +83,8 @@ enum GitSubcommand {
     RebaseSkip(RebaseControlArguments),
     /// Print the blob at an index conflict stage.
     ShowStage(TrailingArguments),
+    /// Update a non-checked-out local main branch from its remote-tracking ref.
+    SyncLocalMain(TrailingArguments),
     /// Atomically write the sorted untracked-path baseline to an output file.
     SnapshotUntracked(SnapshotUntrackedArguments),
 }
@@ -346,6 +350,11 @@ fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
                 args: arguments.args,
             }))
         }
+        GitSubcommand::CheckMainSync(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::CheckMainSync {
+                args: arguments.args,
+            }))
+        }
         GitSubcommand::CountCommits(arguments) => {
             Ok(git_commands::run(BranchGitCommand::CountCommits {
                 args: arguments.args,
@@ -359,6 +368,11 @@ fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
         GitSubcommand::ShowStage(arguments) => Ok(git_commands::run(BranchGitCommand::ShowStage {
             args: arguments.args,
         })),
+        GitSubcommand::SyncLocalMain(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::SyncLocalMain {
+                args: arguments.args,
+            }))
+        }
     }
 }
 

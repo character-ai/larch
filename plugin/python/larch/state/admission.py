@@ -259,7 +259,7 @@ def preflight_main(argv: list[str]) -> int:
         logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line("git fetch origin main failed."))
         return 3
     if not args.skip_branch_check:
-        sync = _run([sys.executable, str(_PY_CLI), "git", "check-main-sync"])
+        sync = _run([str(larch_entrypoint(Path(__file__).resolve().parents[3])), "git", "check-main-sync"])
         fields = larch_io.parse_kv(sync.stdout, duplicate_policy="last")
         sync_status = fields.get("SYNC_STATUS", "")
         sync_error = fields.get("ERROR", "")
@@ -269,7 +269,7 @@ def preflight_main(argv: list[str]) -> int:
             return 3
         if not (sync.returncode == _PROBE_ERROR_EXIT and sync_status == "probe-error") and sync.returncode != 0:
             logging_util.emit_kv(key="PREFLIGHT", value=_single_line("fail"))
-            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line(sync_error or f"cli.py git check-main-sync exited unexpectedly (exit {sync.returncode})"))
+            logging_util.emit_kv(key="PREFLIGHT_ERROR", value=_single_line(sync_error or f"git check-main-sync exited unexpectedly (exit {sync.returncode})"))
             return 3
     if not args.skip_branch_check and not args.skip_clean_check:
         rebase = _run(["git", "rebase", "origin/main", "--quiet"])

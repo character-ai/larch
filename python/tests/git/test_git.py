@@ -1127,19 +1127,6 @@ def test_commit_pathspec_file_nul_only_leaves_unrelated_staged(
 
 
 
-def test_check_main_sync_not_main_cli(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "symbolic-ref"), 0, "feature\n", "", 0.01),
-        ],
-    )
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.check_main_sync_main([]) == 0
-    assert "SYNC_STATUS=not-main" in capsys.readouterr().out
-
-
-
-
 def test_remote_branch_state_present() -> None:
     runner = StubRunner(
         {

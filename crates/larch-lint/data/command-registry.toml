@@ -2778,11 +2778,11 @@ verb = "check-main-sync"
 python_module = "larch.git.git"
 python_function = "check_main_sync_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7758
 
 [[commands]]
 domain = "git"
@@ -2958,11 +2958,11 @@ verb = "sync-local-main"
 python_module = "larch.git.git"
 python_function = "sync_local_main_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7758
 
 [[commands]]
 domain = "hook"
