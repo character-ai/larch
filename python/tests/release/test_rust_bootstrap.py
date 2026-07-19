@@ -302,6 +302,20 @@ def test_clean_install_maps_every_supported_target_and_executes(
     )
 
 
+def test_release_preflight_verifies_without_touching_plugin_cache_root(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path)
+    marker = fixture.root / "prior-root-marker"
+    _ = marker.write_text("unchanged", encoding="utf-8")
+
+    result = _run(fixture, "--preflight-release", VERSION)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"LARCH_PREFLIGHT_VERSION={VERSION}\n"
+    assert marker.read_text(encoding="utf-8") == "unchanged"
+    assert not (fixture.root / "bin").exists()
+    assert not list(fixture.data.glob(".larch-bootstrap.*"))
+
+
 def test_unsupported_target_fails_with_retry_guidance(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     environment = _environment(fixture, TEST_UNAME_S="FreeBSD", TEST_UNAME_M="x86_64")

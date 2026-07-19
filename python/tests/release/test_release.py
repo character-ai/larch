@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -376,6 +377,11 @@ def _write_release_version_repo(tmp_path: Path, *, cargo_version: str = "1.2.3")
         json.dumps({"name": "larch", "version": "1.2.3"}) + "\n",
         encoding="utf-8",
     )
+    (root / "plugin/.claude-plugin").mkdir(parents=True)
+    _ = shutil.copy2(
+        root / ".claude-plugin/plugin.json",
+        root / "plugin/.claude-plugin/plugin.json",
+    )
     (root / "Cargo.toml").write_text(
         f"""[workspace]
 members = ["crates/larch-cli", "crates/larch-core"]
@@ -423,6 +429,7 @@ def test_set_version_synchronizes_plugin_workspace_dependencies_and_lock(
     assert version_bump.set_version_main(["1.2.4"]) == 0
 
     assert json.loads((root / ".claude-plugin/plugin.json").read_text())["version"] == "1.2.4"
+    assert json.loads((root / "plugin/.claude-plugin/plugin.json").read_text())["version"] == "1.2.4"
     cargo = (root / "Cargo.toml").read_text(encoding="utf-8")
     assert 'version = "1.2.4"' in cargo
     assert 'larch-core = { version = "=1.2.4"' in cargo

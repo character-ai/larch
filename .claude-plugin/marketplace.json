@@ -7,7 +7,11 @@
   "plugins": [
     {
       "name": "larch",
-      "source": "./",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/character-ai/larch.git",
+        "path": "plugin"
+      },
       "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, PR automation, `/deps` issue dependency audits, and `/bug` issue-report filing with collaborative reviewers (Claude subagents + Codex + Cursor).",
       "category": "development"
     }

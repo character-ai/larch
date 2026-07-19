@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# generate-code-flow-diagram.sh — generate and validate Step 7a code-flow Mermaid.
+# shellcheck disable=SC2016
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+larch_err() { printf '%s\n' "$*" >&2; }
+emit() { printf '%s\n' "$*"; }
+emit_kv() {
+    local key=$1 value=${2-}
+    case "$value" in *$'\n'*|*$'\r'*) larch_err "emit_kv: value for key ${key} must not contain newline or carriage return"; return 2 ;; esac
+    printf '%s=%s\n' "$key" "$value"
+}
+larch_quiet_init() { :; }
+
+usage() {
+    larch_err "Usage: generate-code-flow-diagram.sh --implement-tmpdir PATH [--model claude-sonnet-4-6] [--base-remote NAME] [--base-ref BRANCH]"
+}
+
+fail_usage() {
+    usage
+    emit_kv STATUS failed
+    emit_kv DIAGRAM_FILE ""
+    emit_kv SKIP_REASON "$1"
+    exit 2
+}
+
+IMPLEMENT_TMPDIR=""
+MODEL="claude-sonnet-4-6"
+BASE_REMOTE=origin
+BASE_REF=main
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+        --model) [ $# -ge 2 ] || fail_usage "--model requires a value"; MODEL=$2; shift 2 ;;
+        --base-remote) [ $# -ge 2 ] || fail_usage "--base-remote requires a value"; BASE_REMOTE=$2; shift 2 ;;
+        --base-ref) [ $# -ge 2 ] || fail_usage "--base-ref requires a value"; BASE_REF=$2; shift 2 ;;
+        --help) usage; exit 0 ;;
+        *) fail_usage "unknown option: $1" ;;
+    esac
+done
+
+[ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
+case "$IMPLEMENT_TMPDIR" in /*) ;; *) fail_usage "--implement-tmpdir must be absolute" ;; esac
+[[ "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]] || fail_usage "--base-remote must match ^[A-Za-z0-9._/-]+$"
+[[ "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || fail_usage "--base-ref must match ^[A-Za-z0-9._/-]+$"
+BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
+
+mkdir -p "$IMPLEMENT_TMPDIR" || {
+    emit_kv STATUS failed
+    emit_kv DIAGRAM_FILE ""
+    emit_kv SKIP_REASON "tmpdir-unavailable"
+    exit 1
+}
+
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS:-}" ]]; then
+    DIAGRAM_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
+else
+    DIAGRAM_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-subprocess)
+fi
+prompt="$IMPLEMENT_TMPDIR/code-flow-prompt.md"
+raw="$IMPLEMENT_TMPDIR/code-flow-diagram.raw.md"
+candidate="$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md"
+diagram="$IMPLEMENT_TMPDIR/code-flow-diagram.md"
+sanitize_log="$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log"
+
+{
+    printf '%s\n' 'Generate a concise Mermaid code-flow diagram for the committed implementation diff.'
+    printf '%s\n' 'Return markdown containing exactly one `## Code Flow Diagram` heading and one mermaid fence.'
+    printf '%s\n' 'Focus on runtime calls, data flow, and control flow. Avoid structural architecture duplication.'
+    printf '\nChanged files:\n'
+    git diff --name-only "$(git merge-base HEAD "$BASE_TARGET" 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || printf HEAD)"..HEAD 2>/dev/null || true
+} > "$prompt"
+
+if ! "${DIAGRAM_LAUNCH_CMD[@]}" \
+    --model "$MODEL" \
+    --prompt-file "$prompt" \
+    --output-file "$raw" \
+    --timeout 600 \
+    --allow-root "$(pwd -P)" \
+    --timing-task-kind implement-code-flow >"$IMPLEMENT_TMPDIR/code-flow-launch.out" 2>"$IMPLEMENT_TMPDIR/code-flow-launch.err"; then
+    emit_kv STATUS failed
+    emit_kv DIAGRAM_FILE ""
+    emit_kv SKIP_REASON "generation-failed"
+    exit 1
+fi
+
+if [ ! -s "$raw" ]; then
+    emit_kv STATUS failed
+    emit_kv DIAGRAM_FILE ""
+    emit_kv SKIP_REASON "empty-generation"
+    exit 1
+fi
+
+cp "$raw" "$candidate" || {
+    emit_kv STATUS failed
+    emit_kv DIAGRAM_FILE ""
+    emit_kv SKIP_REASON "candidate-write-failed"
+    exit 1
+}
+
+if python3 "$PLUGIN_ROOT/python/cli.py" mermaid sanitize \
+    --input "$candidate" \
+    --from-md \
+    --warnings-step "7a" >"$sanitize_log" 2>&1; then
+    mv -f "$candidate" "$diagram"
+    emit_kv STATUS ok
+    emit_kv DIAGRAM_FILE "$diagram"
+    emit_kv SKIP_REASON ""
+    exit 0
+fi
+
+rm -f "$candidate"
+emit_kv STATUS skipped
+emit_kv DIAGRAM_FILE ""
+emit_kv SKIP_REASON "$(awk '/^REASON_TOKEN=/{sub(/^REASON_TOKEN=/, ""); sub(/[[:space:]].*$/, ""); print; found=1; exit} END{exit !found}' "$sanitize_log" 2>/dev/null || printf 'sanitizer-rejected')"
+exit 0

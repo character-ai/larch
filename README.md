@@ -197,7 +197,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#upgrade-larch"><code>/upgrade-larch</code></a></td>
       <td><code>[--run-id &lt;ID&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Upgrade the larch plugin to the latest version by refreshing the sparse marketplace checkout in place when possible, repairing legacy clones when needed, then reinstalling the plugin.</td></tr>
+    <tr><td colspan="2">Preflight the latest immutable release, refresh the runtime-only plugin install, bootstrap its matching executable, and verify the new cache root without deleting Claude-managed versions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#voter-calibration"><code>/voter-calibration</code></a></td>

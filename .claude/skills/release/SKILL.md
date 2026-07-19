@@ -162,7 +162,7 @@ NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" release set-version "${NEW_VERSION}"
-git add .claude-plugin/plugin.json Cargo.toml Cargo.lock
+git add .claude-plugin/plugin.json plugin/.claude-plugin/plugin.json Cargo.toml Cargo.lock
 git commit -m "Release v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
 ```
@@ -268,14 +268,14 @@ The recovery command never creates another tag or Release. If publication alread
 
 ## Step 7 — Upgrade local install
 
-Prefer the working-tree upgrade script over the installed Skill implementation so sparse allowlist changes apply in the same release cycle. The working-tree upgrade script applies both the just-released sparse allowlist and post-install dev/test cache cleanup using the canonical cache path, not stable-verification gating. Cleanup includes dropped dev top-level directories left by older caches, including `tests/`. Resolve `RESOLVED_ROOT` for `CLAUDE_PLUGIN_ROOT` in this order and stop at the first match:
+Prefer the working-tree upgrade driver over the installed Skill implementation so marketplace-source and runtime-projection changes apply in the same release cycle. The driver preflights the published immutable assets before refreshing local plugin metadata, then verifies the new root's binary. Resolve `RESOLVED_ROOT` for `CLAUDE_PLUGIN_ROOT` in this order and stop at the first match:
 
-1. Existing active `CLAUDE_PLUGIN_ROOT` when it is cache-shaped (`.../.claude/plugins/cache/larch-local/larch/<version>`) and exists. This is the running session's prune/stamp context, so it wins even when installed metadata names a newer version after a no-restart or retried release.
-2. Installed metadata: parse the installed larch version with the same semantics as `get_installed_larch_version` in `python/cli.py upgrade-larch release-step7-root` (`claude plugin list` first, then `installed_plugins.json`), then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
+1. Existing active `CLAUDE_PLUGIN_ROOT` when it is cache-shaped (`.../.claude/plugins/cache/larch-local/larch/<version>`) and exists. This keeps the running session rooted in its original cache version.
+2. Installed metadata: parse the installed larch version from `claude plugin list --json`, then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
 3. Prepare fallback: use `$HOME/.claude/plugins/cache/larch-local/larch/${CURRENT_VERSION}` only when Step 2's `CURRENT_VERSION` matches the parsed installed version, or when installed metadata is unavailable and `CURRENT_VERSION` is the sole defensible cache target.
 4. Last cache fallback: use a cache root only when exactly one version-shaped directory exists under `$HOME/.claude/plugins/cache/larch-local/larch/` and it matches `CURRENT_VERSION`. If zero or multiple version dirs exist, or the sole version does not match `CURRENT_VERSION`, do not pick arbitrarily.
 
-`CURRENT_VERSION` from Step 2 is not proof of the active install and must not override a valid active session root. `CLAUDE_PLUGIN_ROOT` is used only for cache/stamp/prune context; the allowlist comes from the working-tree script's `SCRIPT_ROOT`.
+`CURRENT_VERSION` from Step 2 is not proof of the active install and must not override a valid active session root. The allowlist and preflight bootstrap come from the working tree.
 
 Run root resolution and the working-tree script with captured stdout and stderr whenever `RESOLVED_ROOT` is non-empty. `release-step7.env` is written only when `PR_LIST_FILE` is available:
 
@@ -289,7 +289,7 @@ else
 PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
 fi
-CONE_RECONCILED=false
+MARKETPLACE_RECONCILED=false
 NEW_VERSION_INSTALLED=false
 RESTART_REQUIRED=false
 RESOLVED_ROOT=""
@@ -301,15 +301,15 @@ case "$ROOT_OUT" in
 esac
 
 if [ -n "$RESOLVED_ROOT" ]; then
-  echo "Applying the just-released larch sparse allowlist through the working-tree upgrade script..."
+  echo "Applying the just-released larch marketplace source through the working-tree upgrade script..."
   upgrade_rc=0
   upgrade_out=$(
     LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" python3 "$PWD/python/cli.py" upgrade-larch run 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
-  if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] || \
-     { [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"Reconciling the marketplace cone and reinstalling"* ]]; }; then
-    CONE_RECONCILED=true
+  if [[ "$upgrade_out" == *"LARCH_MARKETPLACE_RECONCILED=true"* ]] || \
+     { [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"Migrating it to the runtime-only source and reinstalling"* ]]; }; then
+    MARKETPLACE_RECONCILED=true
   fi
   if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
     NEW_VERSION_INSTALLED=true
@@ -317,7 +317,7 @@ if [ -n "$RESOLVED_ROOT" ]; then
   if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
     RESTART_REQUIRED=true
   fi
-  if [ "$CONE_RECONCILED" = true ] || [ "$NEW_VERSION_INSTALLED" = true ]; then
+  if [ "$MARKETPLACE_RECONCILED" = true ] || [ "$NEW_VERSION_INSTALLED" = true ]; then
     RESTART_REQUIRED=true
   fi
   if [ "$upgrade_rc" -ne 0 ]; then
@@ -330,7 +330,7 @@ fi
 if [ -n "$STEP7_STATE" ]; then
   tmp_state="$STEP7_STATE.tmp"
   {
-    printf 'CONE_RECONCILED=%s\n' "$CONE_RECONCILED"
+    printf 'MARKETPLACE_RECONCILED=%s\n' "$MARKETPLACE_RECONCILED"
     printf 'NEW_VERSION_INSTALLED=%s\n' "$NEW_VERSION_INSTALLED"
     printf 'RESTART_REQUIRED=%s\n' "$RESTART_REQUIRED"
     printf 'RESOLVED_ROOT=%s\n' "$RESOLVED_ROOT"
@@ -339,7 +339,7 @@ if [ -n "$STEP7_STATE" ]; then
 fi
 ```
 
-If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8, but still persist any captured machine-readable restart/reconcile state because the local install may already have been mutated. The release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable, record `CONE_RECONCILED=false`, `NEW_VERSION_INSTALLED=false`, and `RESTART_REQUIRED=false`.
+If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1. The driver never deletes either root. If the working-tree invocation fails, warn and continue to Step 8, but still persist any captured machine-readable restart or reconcile state because plugin metadata may already have changed. The release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable, record `MARKETPLACE_RECONCILED=false`, `NEW_VERSION_INSTALLED=false`, and `RESTART_REQUIRED=false`.
 
 ## Step 8 — Local cleanup (post-merge teardown)
 
@@ -376,7 +376,7 @@ On `CLEANUP_SUCCESS=false` or `BRANCH_DELETED=false`, warn without failing the `
 Before the restart message, require `PR_LIST_FILE` from the prepare artifacts, re-derive `PREPARE_DIR`, and read `"$PREPARE_DIR/release-step7.env"` if it exists:
 
 ```bash
-CONE_RECONCILED=false
+MARKETPLACE_RECONCILED=false
 NEW_VERSION_INSTALLED=false
 RESTART_REQUIRED=false
 if [ -z "${PR_LIST_FILE:-}" ]; then
@@ -385,17 +385,17 @@ else
 PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
 if [ -f "$STEP7_STATE" ]; then
-  CONE_RECONCILED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key CONE_RECONCILED --match first)
+  MARKETPLACE_RECONCILED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key MARKETPLACE_RECONCILED --match first)
   NEW_VERSION_INSTALLED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key NEW_VERSION_INSTALLED --match first)
   RESTART_REQUIRED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key RESTART_REQUIRED --match first)
-  CONE_RECONCILED=${CONE_RECONCILED:-false}
+  MARKETPLACE_RECONCILED=${MARKETPLACE_RECONCILED:-false}
   NEW_VERSION_INSTALLED=${NEW_VERSION_INSTALLED:-false}
   RESTART_REQUIRED=${RESTART_REQUIRED:-false}
 fi
 fi
 ```
 
-If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=true`, tell the operator to restart Claude Code after cleanup finishes. A same-version sparse-cone repair still leaves stale in-memory plugin state until restart; do not limit the restart instruction to `NEW_VERSION != CURRENT_VERSION`.
+If `NEW_VERSION_INSTALLED=true`, `MARKETPLACE_RECONCILED=true`, or `RESTART_REQUIRED=true`, tell the operator to restart Claude Code after cleanup finishes. A same-version marketplace migration still leaves stale in-memory plugin state until restart; do not limit the restart instruction to `NEW_VERSION != CURRENT_VERSION`.
 
 ## Script index
 

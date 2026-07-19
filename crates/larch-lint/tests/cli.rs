@@ -986,3 +986,21 @@ fn tracked_symlink_fails_closed() {
         .code(2)
         .stderr("larch-lint: error: link.md: tracked symlinks are not supported\n");
 }
+
+#[test]
+fn runtime_projection_is_outside_repository_lint_input() {
+    let repository = TempRepo::new();
+    repository.write("target.md", b"target\n");
+    repository.write(
+        "plugin/duplicate.md",
+        b"generated \xe2\x80\x94 projection\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "em-dash-output"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
