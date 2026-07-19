@@ -513,9 +513,11 @@ def _glob_matches_tracked(*, pattern: str, tracked: frozenset[str]) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for path in tracked)
 
 
-def _m2_path_defects(*, plan_text: str, repo_root: Path) -> set[str]:
+def _m2_path_defects(
+    *, plan_text: str, repo_root: Path, tracked_paths: frozenset[str] | None = None
+) -> set[str]:
     defects: set[str] = set()
-    tracked = _load_tracked_paths(repo_root)
+    tracked = tracked_paths if tracked_paths is not None else _load_tracked_paths(repo_root)
     for heading in iter_plan_headings(plan_text):
         path = _heading_path_token(heading.path)
         if not path or _path_has_unsafe_shape(path):
@@ -543,9 +545,15 @@ def _m2_path_defects(*, plan_text: str, repo_root: Path) -> set[str]:
     return defects
 
 
-def validate_plan_contract(*, plan_text: str, repo_root: Path) -> PlanValidationResult:
+def validate_plan_contract(
+    *, plan_text: str, repo_root: Path, tracked_paths: frozenset[str] | None = None
+) -> PlanValidationResult:
     """Validate executable-plan facets and repository-scope paths (no marker check)."""
     found: set[str] = set()
     found.update(_m1_facet_defects(plan_text))
-    found.update(_m2_path_defects(plan_text=plan_text, repo_root=repo_root))
+    found.update(
+        _m2_path_defects(
+            plan_text=plan_text, repo_root=repo_root, tracked_paths=tracked_paths
+        )
+    )
     return PlanValidationResult(defects=_ordered_defects(found))

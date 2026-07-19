@@ -3528,6 +3528,18 @@ migration_issue = 7687
 
 [[commands]]
 domain = "issue"
+verb = "migration-audit"
+python_module = "larch.issue.migration_governance"
+python_function = "migration_audit_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7787
+
+[[commands]]
+domain = "issue"
 verb = "parse-input"
 python_module = "larch.issue.issue_create"
 python_function = "parse_input_main"

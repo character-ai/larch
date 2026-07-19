@@ -37,6 +37,23 @@ EXIT_STALLED: Final = 4
 EXIT_TRANSIENT: Final = 6
 EXIT_REAUTHOR_REQUIRED: Final = 7
 EXIT_INTERNAL_ERROR: Final = 1
+# Aggregate migration-governance report contract.
+MIGRATION_AUDIT_SCHEMA_VERSION: Final = 1
+MIGRATION_AUDIT_EXIT_FINDINGS: Final = 1
+MIGRATION_AUDIT_EXIT_UNAVAILABLE: Final = 2
+MIGRATION_AUDIT_TABLE_OUTPUTS: Final[tuple[str, ...]] = ("stderr", "stdout", "none")
+MIGRATION_AUDIT_COUNT_KEYS: Final[tuple[str, ...]] = (
+    "executable_leaves",
+    "valid_plans",
+    "missing_or_stale_blockers",
+    "active_owner_conflicts",
+    "stale_implementation_leases",
+    "registry_state_violations",
+    "missing_caller_surfaces",
+    "python_retirement_violations",
+    "clean_install_coverage_gaps",
+    "production_runtime_escape_hatches",
+)
 # Helper-script parity exits used by the sh-to-py CLI companions.
 EXIT_USAGE_ONE: Final = 1
 EXIT_USAGE_TWO: Final = 2
