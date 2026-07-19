@@ -179,7 +179,7 @@ Write `$RESEARCH_TMPDIR/lane-status.txt` using a quoted-delimiter heredoc (`<<'E
 Record the current branch and commit for inclusion in the final report:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git branch-info
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git branch-info
 ```
 
 Parse the output for `HEAD_SHA` and `CURRENT_BRANCH`. If `CURRENT_BRANCH` is empty (detached HEAD), use `"(detached HEAD)"` in the report.

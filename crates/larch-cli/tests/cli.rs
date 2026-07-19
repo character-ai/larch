@@ -15,7 +15,7 @@ Usage: larch <COMMAND>
 
 Commands:
   example        Non-production commands that exercise dispatcher wiring
-  git            Local repository status and snapshot operations
+  git            Local Git repository read and status commands
   release        Release-maintenance commands
   gh             GitHub workflow helper commands
   upgrade-larch  Upgrade the installed larch plugin and executable
@@ -34,6 +34,31 @@ Usage: larch example <COMMAND>
 Commands:
   echo  Print a message through the core library
   help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+";
+
+const GIT_HELP: &str = "\
+Local Git repository read and status commands
+
+Usage: larch git <COMMAND>
+
+Commands:
+  branch-info          Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository
+  check-phantom-dirty  Classify repository changes against an untracked-path baseline
+  check-remote-branch  Probe whether a remote branch exists via typed ls-remote
+  checkout-ours        Check out the current side of conflicted paths
+  clean-tree           Report whether the worktree is clean using machine-readable key/value rows
+  conflict-files       Print the files and index stages that are currently conflicted
+  count-commits        Count commits on `HEAD` since `origin/main` or `main`
+  current-branch       Emit `BRANCH` for the current symbolic `HEAD`
+  phantom-probe        Classify phantom paths and append advisory warnings to the run ledger
+  rebase-abort         Abort an in-progress rebase, succeeding when no rebase is active
+  rebase-skip          Skip the current commit in an in-progress rebase
+  show-stage           Print the blob at an index conflict stage
+  snapshot-untracked   Atomically write the sorted untracked-path baseline to an output file
+  help                 Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help  Print help
@@ -992,6 +1017,46 @@ fn check_phantom_dirty_preserves_non_utf8_path_bytes() {
         fs::read(paths.join("phantom-paths-raw.z")).expect("raw phantom artifact"),
         b"phantom-\xff\0"
     );
+}
+
+#[test]
+fn git_help_has_pinned_output() {
+    larch()
+        .args(["git", "--help"])
+        .assert()
+        .code(0)
+        .stdout(GIT_HELP)
+        .stderr("");
+}
+
+#[test]
+fn git_current_branch_rejects_unknown_arguments() {
+    larch()
+        .args(["git", "current-branch", "--bogus"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-current-branch.sh: unknown argument: --bogus\n");
+}
+
+#[test]
+fn git_show_stage_rejects_invalid_stage() {
+    larch()
+        .args(["git", "show-stage", "--stage", "4", "--file", "x"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-show-stage.sh: --stage must be 1, 2, or 3 (got: 4)\n");
+}
+
+#[test]
+fn git_check_remote_branch_requires_branch_flag() {
+    larch()
+        .args(["git", "check-remote-branch"])
+        .assert()
+        .code(0)
+        .stdout("STATE=error\nRC=1\nERROR=--branch is required\n")
+        .stderr("");
 }
 
 fn command_at_owned(root: &Path, arguments: &[String]) -> Command {

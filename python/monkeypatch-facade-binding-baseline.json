@@ -2620,37 +2620,10 @@
   },
   {
     "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_branch_info_emits_detached_empty_branch",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
     "qualified_symbol": "test_check_main_sync_not_main_cli",
     "facade_module": "larch.git.git",
     "attribute": "proc",
     "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_check_remote_branch_main_present_absent_error",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_check_remote_branch_main_present_absent_error",
-    "facade_module": "larch.git.git",
-    "attribute": "with_transient_retry",
-    "defining_module": "larch.core.retry",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
@@ -2675,15 +2648,6 @@
   {
     "file": "tests/git/test_git.py",
     "qualified_symbol": "test_commit_pathspec_file_nul_only_leaves_unrelated_staged",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_count_commits_missing_main_status_file",
     "facade_module": "larch.git.git",
     "attribute": "proc",
     "defining_module": "larch.core",

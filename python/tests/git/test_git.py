@@ -1027,33 +1027,6 @@ def test_force_push_recovery_dirty_worktree() -> None:
     assert result.status == "dirty_worktree"
 
 
-# CLI contract tests migrated from test_git_cli.py.
-def _ok(stdout: str = "", stderr: str = "") -> CommandResult:
-    return CommandResult(("cmd",), 0, stdout, stderr, 0.01)
-
-
-def _fail(stderr: str = "") -> CommandResult:
-    return CommandResult(("cmd",), 1, "", stderr, 0.01)
-
-
-def test_count_commits_missing_main_status_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[_fail(), _fail()])
-    monkeypatch.setattr(git, "proc", runner)
-    status_file = tmp_path / "status"
-    monkeypatch.setenv("COUNT_COMMITS_STATUS_FILE", str(status_file))
-    assert git.count_commits_main([]) == 0
-    assert capsys.readouterr().out.strip() == "0"
-    assert status_file.read_text(encoding="utf-8").strip() == "missing_main_ref"
-
-
-def test_branch_info_emits_detached_empty_branch(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[_ok("abc123\n"), _ok("\n")])
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.branch_info_main([]) == 0
-    out = capsys.readouterr().out
-    assert "HEAD_SHA=abc123" in out
-    assert "CURRENT_BRANCH=" in out
-
 
 def test_emit_kv_rejects_multiline_values() -> None:
 
@@ -1153,10 +1126,6 @@ def test_commit_pathspec_file_nul_only_leaves_unrelated_staged(
     assert cached == ["staged.txt"]
 
 
-def test_show_stage_invalid_stage_emits_legacy_error(capsys: pytest.CaptureFixture[str]) -> None:
-    assert git.show_stage_main(["--stage", "4", "--file", "conflict.txt"]) == 1
-    assert "git-show-stage.sh: --stage must be 1, 2, or 3 (got: 4)" in capsys.readouterr().err
-
 
 def test_check_main_sync_not_main_cli(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = RecordingRunner(
@@ -1169,20 +1138,6 @@ def test_check_main_sync_not_main_cli(monkeypatch: pytest.MonkeyPatch, capsys: p
     assert "SYNC_STATUS=not-main" in capsys.readouterr().out
 
 
-def test_check_remote_branch_parse_error_fail_open(capsys: pytest.CaptureFixture[str]) -> None:
-    assert git.check_remote_branch_main([]) == 0
-    out = capsys.readouterr().out
-    assert "STATE=error" in out
-    assert "RC=1" in out
-    assert "ERROR=--branch is required" in out
-
-
-def test_check_remote_branch_unknown_flag_fail_open(capsys: pytest.CaptureFixture[str]) -> None:
-    assert git.check_remote_branch_main(["--bogus"]) == 0
-    out = capsys.readouterr().out
-    assert "STATE=error" in out
-    assert "RC=1" in out
-    assert "ERROR=unknown flag: --bogus" in out
 
 
 def test_remote_branch_state_present() -> None:
@@ -1237,34 +1192,3 @@ def test_remote_branch_state_transport_error(monkeypatch: pytest.MonkeyPatch) ->
     assert result.rc == 128
     assert result.error
     assert "\n" not in result.error
-
-
-def test_check_remote_branch_main_present_absent_error(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(git, "with_transient_retry", _immediate_retry)
-    cases = [
-        (0, "present", 0, ""),
-        (2, "absent", 2, ""),
-        (128, "error", 128, "fatal: network"),
-    ]
-    for rc, state, expected_rc, stderr in cases:
-        runner = RecordingRunner(
-            responses=[
-                CommandResult(
-                    ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"),
-                    rc,
-                    "abc\trefs/heads/feat\n" if rc == 0 else "",
-                    stderr,
-                    0.01,
-                ),
-            ],
-        )
-        monkeypatch.setattr(git, "proc", runner)
-        assert git.check_remote_branch_main(["--branch", "feat"]) == 0
-        out = capsys.readouterr().out
-        assert f"STATE={state}" in out
-        assert f"RC={expected_rc}" in out
-        if state == "error":
-            assert "ERROR=" in out

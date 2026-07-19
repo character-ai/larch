@@ -15,7 +15,10 @@ use std::{
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
+mod git_commands;
 mod release_plugin_runtime;
+
+use git_commands::GitCommand as BranchGitCommand;
 
 #[derive(Parser)]
 #[command(
@@ -37,9 +40,9 @@ enum Domain {
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
-    /// Local repository status and snapshot operations.
+    /// Local Git repository read and status commands.
     #[command(subcommand)]
-    Git(GitCommand),
+    Git(GitSubcommand),
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
@@ -52,23 +55,33 @@ enum Domain {
 }
 
 #[derive(Subcommand)]
-enum GitCommand {
+enum GitSubcommand {
+    /// Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository.
+    BranchInfo(TrailingArguments),
     /// Classify repository changes against an untracked-path baseline.
     CheckPhantomDirty(CheckPhantomDirtyArguments),
+    /// Probe whether a remote branch exists via typed ls-remote.
+    CheckRemoteBranch(TrailingArguments),
     /// Check out the current side of conflicted paths.
     CheckoutOurs(CheckoutOursArguments),
-    /// Print the files and index stages that are currently conflicted.
-    ConflictFiles,
     /// Report whether the worktree is clean using machine-readable key/value rows.
     CleanTree(CleanTreeArguments),
-    /// Atomically write the sorted untracked-path baseline to an output file.
-    SnapshotUntracked(SnapshotUntrackedArguments),
+    /// Print the files and index stages that are currently conflicted.
+    ConflictFiles,
+    /// Count commits on `HEAD` since `origin/main` or `main`.
+    CountCommits(TrailingArguments),
+    /// Emit `BRANCH` for the current symbolic `HEAD`.
+    CurrentBranch(TrailingArguments),
     /// Classify phantom paths and append advisory warnings to the run ledger.
     PhantomProbe(PhantomProbeArguments),
     /// Abort an in-progress rebase, succeeding when no rebase is active.
     RebaseAbort(RebaseControlArguments),
     /// Skip the current commit in an in-progress rebase.
     RebaseSkip(RebaseControlArguments),
+    /// Print the blob at an index conflict stage.
+    ShowStage(TrailingArguments),
+    /// Atomically write the sorted untracked-path baseline to an output file.
+    SnapshotUntracked(SnapshotUntrackedArguments),
 }
 
 #[derive(Args)]
@@ -117,6 +130,12 @@ struct PhantomProbeArguments {
     /// Override the session's untracked-path baseline.
     #[arg(long)]
     baseline_file: Option<PathBuf>,
+}
+
+#[derive(Args)]
+struct TrailingArguments {
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    args: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -280,28 +299,51 @@ fn parse_repository(value: &str) -> Result<larch_core::GitHubRepositoryRef, Stri
     larch_core::GitHubRepositoryRef::new(owner, name).map_err(|error| error.to_string())
 }
 
-fn run_git(command: GitCommand) -> Result<ExitCode, String> {
+fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
     match command {
-        GitCommand::CheckPhantomDirty(arguments) => {
+        GitSubcommand::CheckPhantomDirty(arguments) => {
             check_phantom_dirty_command(&arguments);
             Ok(ExitCode::SUCCESS)
         }
-        GitCommand::CheckoutOurs(arguments) => checkout_ours(arguments),
-        GitCommand::ConflictFiles => {
+        GitSubcommand::CheckoutOurs(arguments) => checkout_ours(arguments),
+        GitSubcommand::ConflictFiles => {
             conflict_files()?;
             Ok(ExitCode::SUCCESS)
         }
-        GitCommand::CleanTree(arguments) => clean_tree(arguments),
-        GitCommand::SnapshotUntracked(arguments) => {
+        GitSubcommand::CleanTree(arguments) => clean_tree(arguments),
+        GitSubcommand::SnapshotUntracked(arguments) => {
             snapshot_untracked(arguments);
             Ok(ExitCode::SUCCESS)
         }
-        GitCommand::PhantomProbe(arguments) => {
+        GitSubcommand::PhantomProbe(arguments) => {
             phantom_probe(&arguments);
             Ok(ExitCode::SUCCESS)
         }
-        GitCommand::RebaseAbort(arguments) => Ok(rebase_abort(&arguments)),
-        GitCommand::RebaseSkip(arguments) => rebase_skip(&arguments),
+        GitSubcommand::RebaseAbort(arguments) => Ok(rebase_abort(&arguments)),
+        GitSubcommand::RebaseSkip(arguments) => rebase_skip(&arguments),
+        GitSubcommand::BranchInfo(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::BranchInfo {
+                args: arguments.args,
+            }))
+        }
+        GitSubcommand::CheckRemoteBranch(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::CheckRemoteBranch {
+                args: arguments.args,
+            }))
+        }
+        GitSubcommand::CountCommits(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::CountCommits {
+                args: arguments.args,
+            }))
+        }
+        GitSubcommand::CurrentBranch(arguments) => {
+            Ok(git_commands::run(BranchGitCommand::CurrentBranch {
+                args: arguments.args,
+            }))
+        }
+        GitSubcommand::ShowStage(arguments) => Ok(git_commands::run(BranchGitCommand::ShowStage {
+            args: arguments.args,
+        })),
     }
 }
 

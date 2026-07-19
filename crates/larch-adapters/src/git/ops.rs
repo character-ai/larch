@@ -835,10 +835,21 @@ git_op!(PushRequest, Push);
 pub struct LsRemoteRequest {
     pub remote: GitRemote,
     pub patterns: Vec<GitRef>,
+    /// Restrict results to `refs/heads/*` (`--heads`).
+    pub heads: bool,
+    /// Exit 2 when no matching refs are found (`--exit-code`).
+    pub exit_code: bool,
 }
 impl LsRemoteRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
-        let mut a = vec![self.remote.as_os_str().into()];
+        let mut a = Vec::new();
+        if self.exit_code {
+            a.push("--exit-code".into());
+        }
+        if self.heads {
+            a.push("--heads".into());
+        }
+        a.push(self.remote.as_os_str().into());
         a.extend(self.patterns.iter().map(|p| p.as_os_str().into()));
         Ok(a)
     }

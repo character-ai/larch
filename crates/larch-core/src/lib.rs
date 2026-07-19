@@ -7,6 +7,7 @@ mod error;
 mod git;
 mod github;
 mod github_actions;
+mod logging_util;
 mod outcome;
 mod process;
 mod redaction;
@@ -47,6 +48,7 @@ pub use github::{
     resolve_tag_object_id, select_release_for_tag,
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
+pub use logging_util::emit_kv;
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, LarchProgram,

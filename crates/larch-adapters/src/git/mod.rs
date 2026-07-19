@@ -561,8 +561,19 @@ mod tests {
             &LsRemoteRequest {
                 remote: GitRemote::new("origin").unwrap(),
                 patterns: vec![GitRef::new("HEAD").unwrap()],
+                heads: false,
+                exit_code: false,
             },
             &["ls-remote", "origin", "HEAD"],
+        );
+        check(
+            &LsRemoteRequest {
+                remote: GitRemote::new("origin").unwrap(),
+                patterns: vec![GitRef::new("feat").unwrap()],
+                heads: true,
+                exit_code: true,
+            },
+            &["ls-remote", "--exit-code", "--heads", "origin", "feat"],
         );
         check(
             &TagMutationRequest::Create {
@@ -1490,6 +1501,8 @@ mod tests {
                     LsRemoteRequest {
                         remote: GitRemote::new("origin").unwrap(),
                         patterns: vec![GitRef::new("HEAD").unwrap()],
+                        heads: false,
+                        exit_code: false,
                     },
                     &NeverCancelled,
                 ))

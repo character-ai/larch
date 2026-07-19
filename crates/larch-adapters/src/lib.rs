@@ -26,9 +26,14 @@ pub use filesystem::{
     SecureTempDir, SecureTempFile, TemporaryRoot, normalize_path,
 };
 pub use git::{
-    GitCli, GitCliError, GitCliInputError, GitCliInputErrorKind, GitCliPolicy, GitCliResult,
-    GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl, GixRepository,
-    classify_process_error,
+    AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,
+    CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchRequest,
+    ForceWithLease, GitCli, GitCliError, GitCliInputError, GitCliInputErrorKind, GitCliPolicy,
+    GitCliResult, GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl,
+    GixRepository, InitRequest, InterpretTrailersRequest, LsRemoteRequest, MergeRequest,
+    PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest, ResetMode, ResetRequest,
+    RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
+    TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error,
 };
 pub use process::{NoopProcessObserver, TokioProcessRunner};
 

@@ -116,8 +116,8 @@ Run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git conflict-files` once and parse each blo
 2. **Unsupported conflict types**: if any required stage is missing, or the file is binary, classify as **uncertain**. Do not auto-resolve.
 3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
 4. **Text conflicts with both sides available**: read both sides through wrappers:
-   - `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git show-stage --stage 2 --file <file>` → **upstream (main)** version. If it fails, classify as uncertain.
-   - `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git show-stage --stage 3 --file <file>` → **feature branch commit** version. If it fails, classify as uncertain.
+   - `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git show-stage --stage 2 --file <file>` → **upstream (main)** version. If it fails, classify as uncertain.
+   - `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git show-stage --stage 3 --file <file>` → **feature branch commit** version. If it fails, classify as uncertain.
    - Also read working-tree conflict markers for context.
 5. **Classify confidence**:
    - **High-confidence**: non-overlapping regions, or conflict markers show only whitespace, import-order, or formatting differences. Both intents are clear and composable.
@@ -149,10 +149,10 @@ Otherwise, run self-review for non-trivial `ship_pr_pre_push` conflict resolutio
 ### <file-path>
 **Conflict type**: <text overlap / import reorder / etc.>
 **Upstream (main) version** (relevant section):
-<Phase 1 upstream (main) excerpt, or `cli.py git show-stage --stage 2 --file <file>` when still available>
+<Phase 1 upstream (main) excerpt, or `larch.sh git show-stage --stage 2 --file <file>` when still available>
 
 **Feature branch commit version** (relevant section):
-<Phase 1 feature branch commit excerpt, or `cli.py git show-stage --stage 3 --file <file>` when still available>
+<Phase 1 feature branch commit excerpt, or `larch.sh git show-stage --stage 3 --file <file>` when still available>
 
 **Proposed resolution**:
 <the resolved content that was staged>

@@ -187,6 +187,64 @@ impl GixRepository {
             unmerged,
         })
     }
+
+    /// Read the blob bytes stored at an index conflict stage for `path`.
+    ///
+    /// `stage` must be 1 (base), 2 (ours), or 3 (theirs), matching `git show :N:path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `RevisionNotFound` when the path/stage is absent, or a stable
+    /// repository error when the index or object store cannot be read.
+    pub fn stage_blob(&self, path: &[u8], stage: u8) -> Result<Vec<u8>, RepositoryError> {
+        let wanted = match stage {
+            1 => gix::index::entry::Stage::Base,
+            2 => gix::index::entry::Stage::Ours,
+            3 => gix::index::entry::Stage::Theirs,
+            _ => return Err(error(RepositoryErrorKind::InvalidInput)),
+        };
+        let repository = self.local()?;
+        let index = repository
+            .index()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let entry = index
+            .entries()
+            .iter()
+            .find(|entry| entry.stage() == wanted && entry.path(&index) == path.as_bstr())
+            .ok_or_else(|| error(RepositoryErrorKind::RevisionNotFound))?;
+        let object = repository
+            .find_object(entry.id)
+            .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+        Ok(object.data.clone())
+    }
+
+    /// Count commits reachable from `include` and not from `exclude` (`exclude..include`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed hash, missing-object, or repository read failure.
+    pub fn commit_count_range(
+        &self,
+        exclude: &ObjectId,
+        include: &ObjectId,
+    ) -> Result<u64, RepositoryError> {
+        let repository = self.local()?;
+        let start = gix_id(include, repository.object_hash())?;
+        let hidden = gix_id(exclude, repository.object_hash())?;
+        let walk = repository
+            .rev_walk([start])
+            .with_hidden([hidden])
+            .all()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let mut count = 0_u64;
+        for info in walk {
+            info.map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+            count = count
+                .checked_add(1)
+                .ok_or_else(|| error(RepositoryErrorKind::CorruptRepository))?;
+        }
+        Ok(count)
+    }
 }
 
 impl RepositoryRead for GixRepository {
