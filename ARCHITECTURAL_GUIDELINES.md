@@ -43,7 +43,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Py-6: Pythonic judgment (PEP 20) is the scope; PEP 8 mechanics are not
 - Why: ruff, pylint, and pyright own the deterministic style layer.
-- Deviate when: n/a; this is what "adhere to official Python guidelines" reduces to once the linters take their half.
+- Deviate when: an uncovered mechanical requirement needs a new lint rule.
 
 ### G-Py-7: Wrap external CLIs (git, gh) as typed functions over the injected Runner; read helpers raise ShipError, mutating helpers return CommandResult
 - Why: call sites get refactor-safe typed results and one uniform failure mode, not ad-hoc returncode checks.
@@ -63,7 +63,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Py-11: Give every lint or type suppression an inline reason and the narrowest scope that works
 - Why: the reason lets a reviewer, and the `/design` and `/implement` assessments, tell a deliberate carve-out from a silenced defect. Use `# noqa: CODE - reason`, `# pylint: disable=check  # reason`, or `# type: ignore[code]  # reason`. This codebase annotates suppressions densely, so a bare one reads as unexplained debt.
-- Deviate when: n/a for having a reason (a ratchet candidate); a file-level suppression is fine when the condition is genuinely file-wide and carries its reason.
+- Deviate when: generated or vendored code cannot carry local suppressions; exclude that bounded surface with a reason.
 
 ### G-Py-12: Break an import cycle at the call site with a documented function-level import, not by collapsing the leaf/domain layering
 - Why: `larch.core` leaf modules must not import domain modules at top level; a local import with a `# lint-layering: ok <reason>` note keeps the graph acyclic without merging modules or hoisting logic to the wrong layer.
@@ -91,7 +91,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Cfg-2: Release-owned version bumps use the release flow
 - Why: plugin version changes carry release automation and a reserved commit-message shape; manually reusing `Bump version to X.Y.Z` makes provenance ambiguous.
-- Deviate when: n/a for release-owned version fields. Use the release flow or leave the version unchanged.
+- Deviate when: repairing version state that prevents the release flow from starting; document the repair.
 
 ### G-Cfg-3: A convention's writer and its selectors share one constant
 - Why: `/analyze-bugs` selected bugs with a hand-written `[BUG]` prefix test while the retitle convention had grown `[DONE]` and case variants, so the audit silently skipped most of its population (#6604); the /design pause snapshot allowlist lagged the sentinel layout its resume guard read, so resume false-refused a complete review (#6548).
@@ -211,7 +211,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Orch-2: Bound agent fan-out with an explicit cap and a fixed panel shape, and pick a deterministic degradation policy per surface, never a silent reviewer substitution
 - Why: unbounded fan-out is a cost and latency risk, and a silent cross-vendor substitution corrupts attribution and independence. larch caps review rounds and panel size, drops missing vendor rows where attribution matters (`--no-fallback`), and uses a shape-preserving Claude fallback only where the panel shape must hold (`/research`).
-- Deviate when: n/a for having a cap; the degradation policy itself is the judgment to state per surface.
+- Deviate when: the surface launches one fixed agent; its explicit failure path is the degradation policy.
 
 ### G-Orch-3: Treat zero findings as a first-class result
 - Why: empty-versus-failed ambiguity silently degraded panels, retried guaranteed-empty ballots, and reported completed reviews as N/A (#3402, #5032, #6026, #4885, #4618).
@@ -275,7 +275,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Skill-2: Keep logic in Python behind `cli.py`; SKILL.md and Bash stay thin
 - Why: the judgment residue is "is this logic that belongs in Python?".
-- Deviate when: n/a; the mechanical parts (no consecutive Bash blocks, the residual-bash allowlist) are lints, not this guideline.
+- Deviate when: a bootstrap, hook, or harness must run or test Bash itself; keep it manifest-listed and bounded.
 
 ### G-Skill-3: Use the correct runtime root for skill paths
 - Why: public skills run from an installed plugin tree, while dev-only skills run from the checkout. Public `skills/*/SKILL.md` should point at `${CLAUDE_PLUGIN_ROOT}/...`; dev-only `.claude/skills/*/SKILL.md` may use `$PWD/...`.
@@ -338,7 +338,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Md-2: A rename of a script, step, flag, or enum value is not done until its prose consumers are swept in the same change
 - Why: stale prose pointing at a renamed entity is the top recurring OOS source, and a green test suite does not catch it. Grep `docs/`, `skills/**/SKILL.md`, `README.md`, `SECURITY.md`, and `.github/workflows/` for the old token.
-- Deviate when: n/a; the sweep is cheap and the failure mode is silent.
+- Deviate when: the old token is an explicitly labeled compatibility alias or migration example.
 
 ### G-Md-3: Track fenced-code-block state when parsing Markdown headings from splitlines
 - Why: a parser that matched heading regular expressions over Markdown splitlines, with no fence state, split items on `###` lines that appeared inside fenced code blocks, because heading-like text inside a fence was indistinguishable from a real heading (#6676).
@@ -361,11 +361,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Enf-1: Prefer mechanical enforcement
 - Why: when a judgment call recurs, promote it to a lint, hook, or structural test. This governs the file itself: entries graduate to lints over time.
-- Deviate when: n/a.
+- Deviate when: the judgment has not recurred, or a mechanical check would create excessive false positives.
 
 ### G-Enf-2: When a recurring defect graduates to a mechanical ratchet, grandfather existing violations in a reason-bearing baseline that only shrinks
 - Why: a ratchet stops new violations while the baseline documents and drains the old ones. Widening the baseline, or suppressing without a reason, silently re-admits the defect and defeats the ratchet.
-- Deviate when: n/a; a first-run baseline is expected, but every row and suppression carries a reason (G-Py-11).
+- Deviate when: the first enforcement run has no violations; use no baseline rows.
 
 ## Fail-closed gates
 

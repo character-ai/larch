@@ -133,49 +133,47 @@ jobs:
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
 
-  # This fast PR gate materializes the base and candidate revisions, then
-  # compares only pairs containing changed Python files. The exhaustive gate
-  # below remains required to catch pre-existing clone families after rebases.
-  duplicate-code:
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: python/requirements-dev.txt
-      - name: Install Python lint dependencies
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r python/requirements-dev.txt
-      - name: Gate diff-introduced duplicate code
-        run: make py-lint-duplicate-code-diff
+  # Python duplicate-code CI is disabled during the Rust migration. Keep the
+  # old jobs visible for reference. The Rust-native duplicate-code rule remains
+  # required through rust-lint.
+  # duplicate-code:
+  #   if: ${{ github.event_name == 'pull_request' }}
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: actions/setup-python@v6
+  #       with:
+  #         python-version: "3.11"
+  #         cache: pip
+  #         cache-dependency-path: python/requirements-dev.txt
+  #     - name: Install Python lint dependencies
+  #       env:
+  #         PIP_RETRIES: "5"
+  #         PIP_DEFAULT_TIMEOUT: "30"
+  #       run: pip install -r python/requirements-dev.txt
+  #     - name: Gate diff-introduced duplicate code
+  #       run: make py-lint-duplicate-code-diff
 
-  # The exhaustive baseline ratchet is the required branch-protection check.
-  # Keep the differential job above for faster feedback on changed pairs.
-  duplicate-code-full:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: python/requirements-dev.txt
-      - name: Install Python lint dependencies
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r python/requirements-dev.txt
-      - name: Run full pylint duplicate-code ratchet
-        run: make py-lint-duplicate-code
+  # duplicate-code-full:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 25
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - uses: actions/setup-python@v6
+  #       with:
+  #         python-version: "3.11"
+  #         cache: pip
+  #         cache-dependency-path: python/requirements-dev.txt
+  #     - name: Install Python lint dependencies
+  #       env:
+  #         PIP_RETRIES: "5"
+  #         PIP_DEFAULT_TIMEOUT: "30"
+  #       run: pip install -r python/requirements-dev.txt
+  #     - name: Run full pylint duplicate-code ratchet
+  #       run: make py-lint-duplicate-code
 
   # Dedicated shellcheck job — installs the pinned shellcheck-py==0.11.0.1
   # binary directly (no pre-commit overhead) and runs shellcheck -x in
@@ -334,11 +332,9 @@ jobs:
       - name: Run agnix
         run: agnix . --strict --target claude-code --config .agnix.toml
 
-  # Rust format, repository-rule, and dependency-policy lane, modeled on
-  # agent-lint's dedicated lint job. Clippy — the dominant Rust lint cost —
-  # runs in the parallel `rust-clippy` job below so the two compile-heavy
-  # checks no longer run back-to-back on one runner. The aggregate rust-gate
-  # below is the stable required check and gates every Rust lane.
+  # Rust format, Clippy, repository-rule, and dependency-policy lane, modeled
+  # on agent-lint's dedicated lint job. The aggregate rust-gate below is the
+  # stable required check and gates every Rust lane.
   rust-lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -347,6 +343,7 @@ jobs:
         with:
           sparse-checkout: |
             /*
+            !/larch-logs/
           sparse-checkout-cone-mode: false
       - name: Install pinned Rust toolchain
         run: |
@@ -360,11 +357,16 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          # GitHub cache entries are immutable. Include Rust sources so a
+          # successful Rust change publishes its updated workspace binaries.
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ github.job }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
       - name: Check Rust formatting
         run: make rust-fmt
+      - name: Run Clippy with warnings denied
+        run: make rust-clippy
       - name: Run larch-lint repository rules
         run: make rust-lint
       # cargo-deny-action v2.1.1. Pin the full SHA so dependency policy cannot
@@ -373,38 +375,6 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
         with:
           arguments: --locked --all-features
-
-  # Clippy is the dominant Rust lint cost: a full workspace, all-targets,
-  # all-features compile in check mode. It runs in its own job, in parallel
-  # with the `rust-lint` (fmt + larch-lint + deny) and `rust-build-test` lanes,
-  # instead of serially after fmt. The aggregate rust-gate below requires this
-  # lane, so splitting it out does not let clippy silently stop being enforced.
-  rust-clippy:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-          sparse-checkout-cone-mode: false
-      - name: Install pinned Rust toolchain
-        run: |
-          rustc --version
-          cargo --version
-          rustup component list --installed
-      - name: Cache Cargo inputs and build outputs
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ github.job }}-
-      - name: Run Clippy with warnings denied
-        run: make rust-clippy
 
   # Native Linux build and test lane, modeled on agent-lint's build-and-test
   # job and kept separate so it runs in parallel with Rust linting.
@@ -430,9 +400,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          # GitHub cache entries are immutable. Include Rust sources so a
+          # successful Rust change publishes its updated workspace binaries.
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ github.job }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
       - name: Build Rust workspace
         run: make rust-build
       - name: Test Rust workspace
@@ -458,9 +431,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'Makefile') }}
+          # Include Rust sources so immutable cache entries advance after a
+          # successful source change instead of freezing old coverage outputs.
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ github.job }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
       - name: Install pinned coverage tools
         run: make rust-coverage-install
       - name: Test Rust workspace with coverage
@@ -476,18 +452,16 @@ jobs:
   # shape changes. `if: always()` prevents a skipped dependency from passing.
   rust-gate:
     name: rust-gate
-    needs: [rust-lint, rust-clippy, rust-build-test, rust-coverage]
+    needs: [rust-lint, rust-build-test, rust-coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every Rust lane to pass
         run: |
           lint_result="${{ needs.rust-lint.result }}"
-          clippy_result="${{ needs.rust-clippy.result }}"
           build_test_result="${{ needs.rust-build-test.result }}"
           coverage_result="${{ needs.rust-coverage.result }}"
           [ "$lint_result" = success ] || { echo "::error::rust-lint result=$lint_result"; exit 1; }
-          [ "$clippy_result" = success ] || { echo "::error::rust-clippy result=$clippy_result"; exit 1; }
           [ "$build_test_result" = success ] || { echo "::error::rust-build-test result=$build_test_result"; exit 1; }
           [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
 

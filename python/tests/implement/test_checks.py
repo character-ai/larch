@@ -3973,6 +3973,7 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     precommit = (repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-build-test:", 1)[0]
 
     assert "id: ruff" in precommit
     assert "ruff check --fix" in precommit
@@ -3985,12 +3986,12 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     assert "agent-lint:" in workflow
     assert "rust-lint:" in workflow
     assert "rust-build-test:" in workflow
-    assert "rust-clippy:" in workflow
+    assert "\n  rust-clippy:" not in workflow
     assert "rust-coverage:" in workflow
     assert "rust-gate:" in workflow
-    assert "needs: [rust-lint, rust-clippy, rust-build-test, rust-coverage]" in workflow
+    assert "needs: [rust-lint, rust-build-test, rust-coverage]" in workflow
     assert "make rust-fmt" in workflow
-    assert "make rust-clippy" in workflow
+    assert "make rust-clippy" in rust_lint
     assert "make rust-build" in workflow
     assert "make rust-test" in workflow
     assert "make rust-coverage" in workflow
