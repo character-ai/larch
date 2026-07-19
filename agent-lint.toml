@@ -1356,9 +1356,9 @@ root-max-tokens = 35383
 root-max-content-tokens = 35301
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface.
-closure-max-lines = 3725
-closure-max-tokens = 143041
-closure-max-content-tokens = 142741
+closure-max-lines = 3750
+closure-max-tokens = 143413
+closure-max-content-tokens = 143111
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1407,6 +1407,6 @@ roots = [
 ]
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface.
-closure-max-lines = 6013
-closure-max-tokens = 168513
-closure-max-content-tokens = 168051
+closure-max-lines = 6038
+closure-max-tokens = 168885
+closure-max-content-tokens = 168421

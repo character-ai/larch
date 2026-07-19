@@ -34,14 +34,17 @@ pub use git::{
     Upstream, Worktree,
 };
 pub use github::{
-    CheckBucket, CheckRun, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
-    GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFailureInput, GitHubFuture,
-    GitHubIssue, GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch,
-    GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubMutationOutcome, GitHubOperationError,
-    GitHubOperationErrorKind, GitHubRateLimitInputs, GitHubRepository, GitHubRepositoryRef,
-    GitHubRequestKind, GitHubResponseLimits, GitHubRetryAction, GitHubService,
-    GitHubTransportPolicy, WorkflowDispatchRequest, WorkflowJob, WorkflowLogArchive, WorkflowRun,
-    WorkflowRunFilters, classify_github_retry,
+    ASSET_MEDIA_TYPE, AssetDigest, AssetStreamGuard, CheckBucket, CheckRun, GitHubActionsError,
+    GitHubActionsErrorKind, GitHubActionsFuture, GitHubActionsService, GitHubCloseReason,
+    GitHubComment, GitHubFailureInput, GitHubFuture, GitHubIssue, GitHubIssueCreate,
+    GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch, GitHubIssueState, GitHubLabel,
+    GitHubLabelCreate, GitHubMutationOutcome, GitHubOperationError, GitHubOperationErrorKind,
+    GitHubRateLimitInputs, GitHubRepository, GitHubRepositoryRef, GitHubRequestKind,
+    GitHubResponseLimits, GitHubRetryAction, GitHubService, GitHubTransportPolicy,
+    ReconciledMutation, ReleaseDataError, ReleaseDataErrorKind, ReleaseState, RemoteAsset,
+    TagObjectId, WorkflowDispatchRequest, WorkflowJob, WorkflowLogArchive, WorkflowRun,
+    WorkflowRunFilters, classify_github_retry, reconcile_mutation, require_asset_content_type,
+    resolve_tag_object_id, select_release_for_tag,
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use outcome::{ExitCode, WorkflowOutcome};
