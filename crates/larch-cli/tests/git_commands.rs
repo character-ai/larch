@@ -137,11 +137,26 @@ fn force_push_reports_a_successful_leased_update() {
         .current_dir(&repo)
         .assert()
         .success();
+    let expected_remote_oid = StdCommand::new("git")
+        .args(["rev-parse", "origin/main"])
+        .current_dir(&repo)
+        .output()
+        .expect("read remote oid");
+    assert!(expected_remote_oid.status.success());
+    let expected_remote_oid = String::from_utf8(expected_remote_oid.stdout)
+        .expect("remote oid is utf-8")
+        .trim()
+        .to_owned();
     fs::write(repo.join("file.txt"), "changed\n").expect("write change");
     git(&repo, &["add", "file.txt"]);
     git(&repo, &["commit", "-m", "changed"]);
     larch()
-        .args(["push", "force"])
+        .args([
+            "push",
+            "force",
+            "--expected-remote-oid",
+            expected_remote_oid.as_str(),
+        ])
         .current_dir(&repo)
         .assert()
         .code(0)
