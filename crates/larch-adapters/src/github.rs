@@ -165,6 +165,15 @@ pub struct OctocrabGitHubService {
 }
 
 impl OctocrabGitHubService {
+    #[cfg(test)]
+    pub(crate) fn with_test_client(client: Octocrab) -> Self {
+        Self {
+            client,
+            policy: GitHubTransportPolicy::github_com(),
+            redactor: RuntimeRedactor::default(),
+        }
+    }
+
     /// Load the sole supported credential and construct one hardened client.
     ///
     /// # Errors

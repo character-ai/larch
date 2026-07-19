@@ -1020,65 +1020,113 @@ fn json_depth(value: &Value) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::Cancellation;
     use serde_json::json;
+    use std::{
+        io::{Read as _, Write as _},
+        net::TcpListener,
+        thread,
+    };
 
-    fn issue_model() -> models::issues::Issue {
-        let author = json!({
-            "login": "octocat", "id": 1, "node_id": "U_1",
-            "avatar_url": "https://github.com/a", "gravatar_id": "",
-            "url": "https://api.github.com/users/octocat",
-            "html_url": "https://github.com/octocat",
-            "followers_url": "https://api.github.com/users/octocat/followers",
-            "following_url": "https://api.github.com/users/octocat/following{/other_user}",
-            "gists_url": "https://api.github.com/users/octocat/gists{/gist_id}",
-            "starred_url": "https://api.github.com/users/octocat/starred{/owner}{/repo}",
-            "subscriptions_url": "https://api.github.com/users/octocat/subscriptions",
-            "organizations_url": "https://api.github.com/users/octocat/orgs",
-            "repos_url": "https://api.github.com/users/octocat/repos",
-            "events_url": "https://api.github.com/users/octocat/events{/privacy}",
-            "received_events_url": "https://api.github.com/users/octocat/received_events",
-            "type": "User", "site_admin": false, "name": null, "patch_url": null
+    fn stub_service(
+        responses: Vec<(u16, String)>,
+    ) -> (OctocrabGitHubService, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub");
+        let base = format!("http://{}/", listener.local_addr().expect("stub address"));
+        let server = thread::spawn(move || {
+            for (status, body) in responses {
+                let (mut socket, _) = listener.accept().expect("accept request");
+                let mut request = [0_u8; 16_384];
+                let bytes_read = socket.read(&mut request).expect("read request");
+                assert!(bytes_read > 0, "request must not be empty");
+                write!(
+                    socket,
+                    "HTTP/1.1 {status} Stub\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .expect("write response");
+            }
         });
-        serde_json::from_value(json!({
-            "id": 7, "node_id": "I_7",
-            "url": "https://api.github.com/repos/o/r/issues/2",
-            "repository_url": "https://api.github.com/repos/o/r",
-            "labels_url": "https://api.github.com/repos/o/r/issues/2/labels{/name}",
-            "comments_url": "https://api.github.com/repos/o/r/issues/2/comments",
-            "events_url": "https://api.github.com/repos/o/r/issues/2/events",
-            "html_url": "https://github.com/o/r/issues/2",
-            "number": 2, "state": "open", "state_reason": null,
-            "title": "Parity title", "body": "Parity body", "user": author,
-            "labels": [{
-                "id": 9, "node_id": "L_9",
-                "url": "https://api.github.com/repos/o/r/labels/bug",
-                "name": "bug", "description": "Defect", "color": "d73a4a", "default": true
-            }],
-            "assignee": null, "assignees": [], "locked": false, "comments": 3,
+        let client = octocrab::Octocrab::builder()
+            .personal_token(String::from("test-token"))
+            .base_uri(&base)
+            .expect("base URI")
+            .upload_uri(&base)
+            .expect("upload URI")
+            .build()
+            .expect("stub client");
+        (OctocrabGitHubService::with_test_client(client), server)
+    }
+
+    fn comment_json() -> Value {
+        let issue = serde_json::to_value(issue_model()).expect("serialize issue fixture");
+        json!({
+            "id": 11, "node_id": "C_11",
+            "url": "https://api.github.com/repos/o/r/issues/comments/11",
+            "html_url": "https://github.com/o/r/issues/2#issuecomment-11",
+            "body": "comment", "user": issue["user"],
             "created_at": "2026-07-18T00:00:00Z",
             "updated_at": "2026-07-18T01:00:00Z"
-        }))
-        .expect("valid parity fixture")
+        })
+    }
+
+    fn response_script(name: &str) -> Vec<(u16, String)> {
+        let scripts: Value =
+            serde_json::from_str(include_str!("../fixtures/github_response_scripts.json"))
+                .expect("valid response scripts");
+        let issue = serde_json::to_value(issue_model()).expect("serialize issue fixture");
+        let comment = comment_json();
+        scripts[name].as_array().expect("named script").iter().map(|row| {
+            let status = u16::try_from(row[0].as_u64().expect("status")).expect("u16 status");
+            let body = match row[1].as_str().expect("response fixture") {
+                "repository" => json!({"id": 1, "name": "r", "full_name": "o/r", "private": true, "html_url": "https://github.com/o/r", "url": "https://api.github.com/repos/o/r", "default_branch": "main"}),
+                "issue" => issue.clone(),
+                "issues" => json!([issue.clone()]),
+                "search" => json!({"total_count": 1, "incomplete_results": false, "items": [issue.clone()]}),
+                "comment" => comment.clone(),
+                "comments" => json!([comment.clone()]),
+                "label" => issue["labels"][0].clone(),
+                "labels" => json!([issue["labels"][0].clone()]),
+                "failure" => json!({"message": "temporary failure"}),
+                "forbidden" => json!({"message": "forbidden"}),
+                "empty_array" => json!([]),
+                "empty" => return (status, String::new()),
+                _ => unreachable!("fixture keys are reviewed"),
+            };
+            (status, body.to_string())
+        }).collect()
+    }
+
+    fn issue_model() -> models::issues::Issue {
+        serde_json::from_str(include_str!("../fixtures/github_issue.json"))
+            .expect("valid parity fixture")
+    }
+
+    fn error_kind<T>(result: Result<T, GitHubOperationError>) -> GitHubOperationErrorKind {
+        result.err().expect("operation must fail").kind()
+    }
+
+    macro_rules! succeeds {
+        ($future:expr) => {
+            assert!($future.await.is_ok());
+        };
+    }
+
+    macro_rules! fails {
+        ($future:expr, $kind:expr) => {
+            assert_eq!(error_kind($future.await), $kind);
+        };
     }
 
     #[test]
-    fn status_mapping_distinguishes_permission_sso_rate_limit_and_malformed() {
-        assert_eq!(
-            classify_status(Some(403), "resource protected by SAML SSO"),
-            GitHubOperationErrorKind::SsoRequired
-        );
-        assert_eq!(
-            classify_status(Some(403), "forbidden"),
-            GitHubOperationErrorKind::Permission
-        );
-        assert_eq!(
-            classify_status(Some(429), "slow down"),
-            GitHubOperationErrorKind::RateLimited
-        );
-        assert_eq!(
-            classify_status(Some(200), "invalid payload"),
-            GitHubOperationErrorKind::MalformedResponse
-        );
+    fn conversion_validation_mapping_and_reconciliation_are_typed() {
+        use GitHubOperationErrorKind::{
+            LimitExceeded, MalformedResponse, Permission, RateLimited, SsoRequired,
+        };
+        assert_eq!(classify_status(Some(403), "SAML SSO"), SsoRequired);
+        assert_eq!(classify_status(Some(403), "forbidden"), Permission);
+        assert_eq!(classify_status(Some(429), "slow down"), RateLimited);
+        assert_eq!(classify_status(Some(200), "invalid"), MalformedResponse);
         let mut limits = models::RateLimit::default();
         limits.resources.core.limit = 5_000;
         limits.resources.core.remaining = 0;
@@ -1087,80 +1135,165 @@ mod tests {
             rate_limit_delay(&limits, RateBucket::Core, 100),
             Some(Duration::from_secs(10))
         );
-    }
-
-    #[test]
-    fn validation_rejects_untrusted_paths_strings_and_caps() {
         let policy = GitHubTransportPolicy::github_com();
+        assert!(GitHubRepositoryRef::new("../owner", "repo").is_err());
         assert_eq!(
-            GitHubRepositoryRef::new("../owner", "repo")
-                .expect_err("bad owner")
-                .kind(),
-            GitHubOperationErrorKind::InvalidInput
+            error_kind(validate_limit(policy.limits().items() + 1, policy)),
+            LimitExceeded
         );
         assert_eq!(
-            validate_limit(policy.limits().items() + 1, policy)
-                .expect_err("over cap")
-                .kind(),
-            GitHubOperationErrorKind::LimitExceeded
-        );
-        assert_eq!(
-            validate_string(&"x".repeat(policy.limits().string_bytes() + 1), policy)
-                .expect_err("over cap")
-                .kind(),
-            GitHubOperationErrorKind::LimitExceeded
+            error_kind(validate_string(
+                &"x".repeat(policy.limits().string_bytes() + 1),
+                policy
+            )),
+            LimitExceeded
         );
         assert!(validate_next("https://evil.example/issues?page=2").is_err());
         let mut nested = Value::Null;
         for _ in 0..=policy.limits().nesting_depth() {
             nested = Value::Array(vec![nested]);
         }
-        assert_eq!(
-            validate_json(&nested, policy)
-                .expect_err("nested response")
-                .kind(),
-            GitHubOperationErrorKind::LimitExceeded
-        );
-    }
-
-    #[test]
-    fn empty_results_and_edit_reconciliation_are_first_class() {
-        let values: Vec<GitHubIssue> = Vec::new();
-        assert!(values.is_empty());
-        let issue = GitHubIssue {
-            id: 1,
-            number: 2,
-            title: String::from("new"),
-            body: String::from("body"),
-            state: GitHubIssueState::Open,
-            url: String::from("https://github.com/o/r/issues/2"),
-            author: String::from("octo"),
-            labels: Vec::new(),
-            comments: 0,
-            created_at: String::new(),
-            updated_at: String::new(),
-            is_pull_request: false,
-        };
+        assert_eq!(error_kind(validate_json(&nested, policy)), LimitExceeded);
+        let issue = issue_from_model(issue_model(), policy).expect("fixture converts");
         let edit = GitHubIssueEdit {
             repo: GitHubRepositoryRef::new("o", "r").expect("valid repo"),
             number: 2,
-            title: Some(String::from("new")),
+            title: Some(issue.title.clone()),
             body: None,
             labels: None,
         };
         assert!(issue_matches_edit(&issue, &edit));
-    }
-
-    #[test]
-    fn issue_fixture_converts_to_transport_free_parity_fields() {
-        let issue = issue_from_model(issue_model(), GitHubTransportPolicy::github_com())
-            .expect("fixture converts");
         assert_eq!(issue.number, 2);
-        assert_eq!(issue.title, "Parity title");
-        assert_eq!(issue.body, "Parity body");
         assert_eq!(issue.author, "octocat");
         assert_eq!(issue.labels[0].name, "bug");
         assert_eq!(issue.comments, 3);
         assert!(!issue.is_pull_request);
+    }
+
+    #[tokio::test]
+    async fn semantic_operations_cover_repository_issue_comment_and_label_parity() {
+        let (service, server) = stub_service(response_script("success"));
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let cancellation = Cancellation::new();
+        let list = GitHubIssueList {
+            repo: repo.clone(),
+            state: GitHubIssueState::All,
+            labels: vec![String::from("bug")],
+            limit: 1,
+        };
+        let search = GitHubIssueSearch {
+            repo: repo.clone(),
+            query: String::from("parity"),
+            limit: 1,
+        };
+        let create = GitHubIssueCreate {
+            repo: repo.clone(),
+            title: String::from("Parity title"),
+            body: String::from("Parity body"),
+            labels: vec![String::from("bug")],
+        };
+        let edit = GitHubIssueEdit {
+            repo: repo.clone(),
+            number: 2,
+            title: Some(String::from("Parity title")),
+            body: None,
+            labels: None,
+        };
+        let label = GitHubLabelCreate {
+            repo: repo.clone(),
+            name: String::from("bug"),
+            color: String::from("d73a4a"),
+            description: String::from("Defect"),
+        };
+        succeeds!(service.repository(&repo, &cancellation));
+        succeeds!(service.issue(&repo, 2, &cancellation));
+        succeeds!(service.list_issues(&list, &cancellation));
+        succeeds!(service.search_issues(&search, &cancellation));
+        succeeds!(service.create_issue(&create, &cancellation));
+        succeeds!(service.edit_issue(&edit, &cancellation));
+        succeeds!(service.close_issue(&repo, 2, GitHubCloseReason::Completed, &cancellation));
+        succeeds!(service.list_comments(&repo, 2, &cancellation));
+        succeeds!(service.create_comment(&repo, 2, "comment", &cancellation));
+        succeeds!(service.edit_comment(&repo, 11, "comment", &cancellation));
+        succeeds!(service.delete_comment(&repo, 11, &cancellation));
+        succeeds!(service.list_labels(&repo, &cancellation));
+        succeeds!(service.create_label(&label, &cancellation));
+        succeeds!(service.add_label(&repo, 2, "bug", &cancellation));
+        succeeds!(service.remove_label(&repo, 2, "bug", &cancellation));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn failures_retry_reconcile_and_validate_without_blind_mutation_retries() {
+        let (service, server) = stub_service(response_script("failures"));
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let cancellation = Cancellation::new();
+
+        succeeds!(service.issue(&repo, 2, &cancellation));
+        let edit = GitHubIssueEdit {
+            repo: repo.clone(),
+            number: 2,
+            title: Some(String::from("Parity title")),
+            body: None,
+            labels: None,
+        };
+        succeeds!(service.edit_issue(&edit, &cancellation));
+        let create = GitHubIssueCreate {
+            repo: repo.clone(),
+            title: String::from("new"),
+            body: String::new(),
+            labels: Vec::new(),
+        };
+        fails!(
+            service.create_issue(&create, &cancellation),
+            GitHubOperationErrorKind::AmbiguousMutation
+        );
+        fails!(
+            service.issue(&repo, 2, &cancellation),
+            GitHubOperationErrorKind::Permission
+        );
+        for state in [GitHubIssueState::Open, GitHubIssueState::Closed] {
+            let list = GitHubIssueList {
+                repo: repo.clone(),
+                state,
+                labels: Vec::new(),
+                limit: 1,
+            };
+            succeeds!(service.list_issues(&list, &cancellation));
+        }
+        succeeds!(service.close_issue(&repo, 2, GitHubCloseReason::NotPlanned, &cancellation));
+
+        let empty_edit = GitHubIssueEdit {
+            repo: repo.clone(),
+            number: 2,
+            title: None,
+            body: None,
+            labels: None,
+        };
+        fails!(
+            service.edit_issue(&empty_edit, &cancellation),
+            GitHubOperationErrorKind::InvalidInput
+        );
+        let bad_label = GitHubLabelCreate {
+            repo: repo.clone(),
+            name: String::from("bad"),
+            color: String::from("xyz"),
+            description: String::new(),
+        };
+        fails!(
+            service.create_label(&bad_label, &cancellation),
+            GitHubOperationErrorKind::InvalidInput
+        );
+        fails!(
+            service.issue(&repo, 0, &cancellation),
+            GitHubOperationErrorKind::InvalidInput
+        );
+        let cancelled = Cancellation::new();
+        cancelled.cancel();
+        fails!(
+            service.repository(&repo, &cancelled),
+            GitHubOperationErrorKind::Cancelled
+        );
+        server.join().expect("stub completed");
     }
 }
