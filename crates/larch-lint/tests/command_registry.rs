@@ -380,7 +380,7 @@ fn completed_python_removal_rejects_registration_definition_imports_and_calls() 
     repository.write("hooks/hooks.json", b"{\"hooks\": {}}\n");
     repository.write(
         "python/larch/fixture.py",
-        b"@staticmethod\ndef retired_main() -> int:\n    return 0\n",
+        b"@staticmethod\ndef retired_main() -> int:\n    return 0\n\nRESULT = retired_main()\n",
     );
     repository.write(
         "python/larch/import_only.py",
@@ -413,6 +413,9 @@ fn completed_python_removal_rejects_registration_definition_imports_and_calls() 
         ))
         .stdout(predicate::str::contains(
             "python-entrypoint-still-present retired run: python/larch/fixture.py",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-called retired run: python/larch/fixture.py",
         ))
         .stdout(predicate::str::contains(
             "python-entrypoint-still-imported retired run: python/larch/import_only.py",

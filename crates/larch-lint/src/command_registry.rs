@@ -12,9 +12,9 @@ use std::{
 
 use regex::Regex;
 use serde::Deserialize;
-use tree_sitter::{Node, Parser, Tree};
+use tree_sitter::{Node, Tree};
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax};
 
 const NAME: &str = "command-registry";
 const DESCRIPTION: &str =
@@ -718,15 +718,8 @@ struct PythonBindings {
 }
 
 fn parse_python(path: &str, source: &str) -> Result<Tree, LintError> {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_python::LANGUAGE.into())
-        .map_err(|error| {
-            LintError::new(format!("{path}: cannot configure Python parser: {error}"))
-        })?;
-    let tree = parser
-        .parse(source, None)
-        .ok_or_else(|| LintError::new(format!("{path}: cannot parse Python source")))?;
+    let tree =
+        syntax::parse_python(source).map_err(|error| LintError::new(format!("{path}: {error}")))?;
     if tree.root_node().has_error() {
         return Err(LintError::new(format!("{path}: invalid Python syntax")));
     }
@@ -843,6 +836,7 @@ fn validate_python_retirement(
             &document.source,
             &bindings,
             &record.python_function,
+            document.module == record.python_module,
         );
         if bindings.imported || referenced {
             findings.push(retirement_finding(
@@ -1000,6 +994,7 @@ fn python_symbol_uses(
     source: &str,
     bindings: &PythonBindings,
     target_function: &str,
+    within_target_module: bool,
 ) -> (bool, bool) {
     let mut referenced = false;
     let mut called = false;
@@ -1019,13 +1014,17 @@ fn python_symbol_uses(
                 }
             }
         } else if node.kind() == "identifier"
-            && node_text(node, source).is_some_and(|name| bindings.direct_symbols.contains(name))
+            && let Some(name) = node_text(node, source)
             && !has_ancestor_kind(node, &["import_statement", "import_from_statement"])
         {
-            referenced = true;
-            if node.parent().is_some_and(|parent| {
+            let direct_import = bindings.direct_symbols.contains(name);
+            let direct_call = node.parent().is_some_and(|parent| {
                 parent.kind() == "call" && parent.child_by_field_name("function") == Some(node)
-            }) {
+            });
+            if direct_import {
+                referenced = true;
+            }
+            if direct_call && (direct_import || within_target_module && name == target_function) {
                 called = true;
             }
         }
