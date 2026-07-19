@@ -17,7 +17,7 @@ from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.core import logging_util
 from larch.core import proc
-from larch.core.rust_runtime import phantom_probe
+from larch.core import rust_runtime
 from larch.git import rebase
 
 
@@ -435,7 +435,7 @@ def checkpoint_probe(
 
 
 def _append_phantom_checkpoint_lines(lines: list[str], *, step_prefix: str) -> None:
-    probe = phantom_probe(proc, step=f"{step_prefix}-post-rebase")
+    probe = rust_runtime.phantom_probe(proc, step=f"{step_prefix}-post-rebase")
     lines.extend(probe.lines)
 
 

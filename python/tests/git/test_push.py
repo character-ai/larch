@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from larch.core import config
+from larch.core import rust_runtime
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
 from larch.git import git
@@ -174,7 +175,7 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
     def _probe_output(*_args: object, **_kwargs: object) -> _ProbeOutput:
         return _ProbeOutput()
 
-    monkeypatch.setattr(push, "phantom_probe", _probe_output)
+    monkeypatch.setattr(rust_runtime, "phantom_probe", _probe_output)
     assert push.checkpoint_probe_main(["1.r", "plan"]) == 0
     out = capsys.readouterr().out
     assert "REBASE_OUTCOME=skipped" in out
@@ -195,7 +196,7 @@ def _stub_clean_phantom(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None
             calls.append("phantom")
         return _ProbeOutput()
 
-    monkeypatch.setattr(push, "phantom_probe", _stub_probe)
+    monkeypatch.setattr(rust_runtime, "phantom_probe", _stub_probe)
 
 
 def _cr(argv: tuple[str, ...] = ("git",), rc: int = 0) -> CommandResult:
