@@ -106,16 +106,18 @@ impl Git for GitCli {
     }
 
     fn tracked_paths(&self, root: &Path) -> Result<Vec<u8>, LintError> {
-        command_output(
+        let tagged = command_output(
             Command::new("git").arg("-C").arg(root).args([
                 "ls-files",
+                "-t",
                 "--cached",
                 "--others",
                 "--exclude-standard",
                 "-z",
             ]),
             "discover tracked files",
-        )
+        )?;
+        materialized_tracked_paths(&tagged)
     }
 
     fn committed_paths(&self, root: &Path) -> Result<Vec<u8>, LintError> {
@@ -145,6 +147,31 @@ fn command_output(command: &mut Command, operation: &str) -> Result<Vec<u8>, Lin
         )));
     }
     Ok(output.stdout)
+}
+
+fn materialized_tracked_paths(tagged: &[u8]) -> Result<Vec<u8>, LintError> {
+    if !tagged.is_empty() && !tagged.ends_with(&[0]) {
+        return Err(LintError::new(
+            "tagged tracked-file response is not NUL-terminated",
+        ));
+    }
+    let mut paths = Vec::new();
+    for record in tagged
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
+        if record.len() < 3 || record[1] != b' ' {
+            return Err(LintError::new(
+                "tagged tracked-file response has a malformed record",
+            ));
+        }
+        if record[0] == b'S' {
+            continue;
+        }
+        paths.extend_from_slice(&record[2..]);
+        paths.push(0);
+    }
+    Ok(paths)
 }
 
 /// A repository snapshot whose files are current non-ignored regular files.
@@ -193,14 +220,10 @@ impl Repository {
             }
             paths.push(path);
         }
-        let committed_paths = committed
-            .into_iter()
-            .filter(|path| paths.binary_search(path).is_ok())
-            .collect();
         Ok(Self {
             root,
             paths,
-            committed_paths,
+            committed_paths: committed,
         })
     }
 
@@ -214,6 +237,14 @@ impl Repository {
     #[must_use]
     pub fn paths(&self) -> &[RepoPath] {
         &self.paths
+    }
+
+    /// Return sorted repository-relative paths recorded in Git's index.
+    ///
+    /// Unlike [`Self::paths`], this includes files omitted by sparse checkout.
+    #[must_use]
+    pub fn committed_paths(&self) -> &[RepoPath] {
+        &self.committed_paths
     }
 
     /// Return whether a repository-relative path is recorded in Git's index.
@@ -350,7 +381,10 @@ fn compile_globs(patterns: &[&str]) -> Result<GlobSet, LintError> {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{Git, LintError, PathSelector, RepoPath, Repository, parse_tracked_paths};
+    use super::{
+        Git, LintError, PathSelector, RepoPath, Repository, materialized_tracked_paths,
+        parse_tracked_paths,
+    };
     use crate::{Finding, Rule, RuleOutput, run};
 
     #[derive(Debug)]
@@ -408,6 +442,17 @@ mod tests {
     }
 
     #[test]
+    fn materialized_paths_drop_sparse_index_entries() {
+        assert_eq!(
+            materialized_tracked_paths(b"H present.txt\0S sparse.txt\0? new.txt\0")
+                .expect("valid tagged paths"),
+            b"present.txt\0new.txt\0"
+        );
+        assert!(materialized_tracked_paths(b"H missing-null").is_err());
+        assert!(materialized_tracked_paths(b"malformed\0").is_err());
+    }
+
+    #[test]
     fn source_read_rejects_non_utf8_contents() {
         let temporary = tempfile::tempdir().expect("tempdir");
         std::fs::write(temporary.path().join("invalid.txt"), [0xff]).expect("write fixture");
@@ -424,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn current_snapshot_ignores_deleted_index_paths() {
+    fn current_snapshot_separates_missing_index_paths() {
         let temporary = tempfile::tempdir().expect("tempdir");
         std::fs::write(temporary.path().join("present.txt"), "present").expect("write fixture");
         let repository = Repository::discover(
@@ -436,6 +481,13 @@ mod tests {
         )
         .expect("discover fixture repository");
         assert_eq!(repository.paths(), [RepoPath("present.txt".to_owned())]);
+        assert_eq!(
+            repository.committed_paths(),
+            [
+                RepoPath("deleted.txt".to_owned()),
+                RepoPath("present.txt".to_owned())
+            ]
+        );
     }
 
     #[test]

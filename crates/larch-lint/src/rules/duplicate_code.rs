@@ -6,7 +6,7 @@
 //! clone families at or above the token threshold. There is no baseline: any
 //! reported family fails the gate.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
@@ -86,6 +86,9 @@ struct CloneMember {
     line: u32,
     token_count: usize,
 }
+
+type SequencePair = (usize, usize);
+type CloneSpan = (usize, usize, usize);
 
 fn production_token_sequences(
     path: &str,
@@ -268,22 +271,64 @@ fn find_cross_module_clones(sequences: &[FileSequence], min_tokens: usize) -> Ve
         return Vec::new();
     }
 
+    // Hash every minimum window once. Rebuilding a window index for every
+    // sequence pair made the rule's cost grow with both token and pair counts.
+    let mut windows: HashMap<u64, Vec<(usize, usize)>> = HashMap::new();
+    for (sequence_index, sequence) in sequences.iter().enumerate() {
+        for (start, digest) in sequence_window_digests(sequence, min_tokens)
+            .into_iter()
+            .enumerate()
+        {
+            windows
+                .entry(digest)
+                .or_default()
+                .push((sequence_index, start));
+        }
+    }
+    let mut matches_by_pair: BTreeMap<SequencePair, BTreeSet<CloneSpan>> = BTreeMap::new();
+    for occurrences in windows.into_values() {
+        for left_position in 0..occurrences.len() {
+            for right_position in (left_position + 1)..occurrences.len() {
+                let (left_index, left_start) = occurrences[left_position];
+                let (right_index, right_start) = occurrences[right_position];
+                if left_index == right_index
+                    || sequences[left_index].path == sequences[right_index].path
+                    || !windows_match(
+                        &sequences[left_index],
+                        &sequences[right_index],
+                        left_start,
+                        right_start,
+                        min_tokens,
+                    )
+                {
+                    continue;
+                }
+                let (left_origin, right_origin, length) = expand_match(
+                    &sequences[left_index],
+                    &sequences[right_index],
+                    left_start,
+                    right_start,
+                    min_tokens,
+                );
+                matches_by_pair
+                    .entry((left_index, right_index))
+                    .or_default()
+                    .insert((left_origin, right_origin, length));
+            }
+        }
+    }
+
     let mut families: BTreeMap<u64, BTreeSet<CloneMember>> = BTreeMap::new();
-    for left_index in 0..sequences.len() {
-        for right_index in (left_index + 1)..sequences.len() {
-            let left = &sequences[left_index];
-            let right = &sequences[right_index];
-            if left.path == right.path {
-                continue;
-            }
-            for (content, left_member, right_member) in
-                exact_clones_between(left, right, min_tokens)
-            {
-                let digest = content_digest(&content);
-                let members = families.entry(digest).or_default();
-                members.insert(left_member);
-                members.insert(right_member);
-            }
+    for ((left_index, right_index), matches) in matches_by_pair {
+        for (content, left_member, right_member) in retain_exact_clones(
+            &sequences[left_index],
+            &sequences[right_index],
+            matches.into_iter().collect(),
+        ) {
+            let digest = content_digest(&content);
+            let members = families.entry(digest).or_default();
+            members.insert(left_member);
+            members.insert(right_member);
         }
     }
 
@@ -313,38 +358,24 @@ fn find_cross_module_clones(sequences: &[FileSequence], min_tokens: usize) -> Ve
     findings
 }
 
-fn exact_clones_between(
+fn windows_match(
     left: &FileSequence,
     right: &FileSequence,
-    min_tokens: usize,
+    left_start: usize,
+    right_start: usize,
+    length: usize,
+) -> bool {
+    left.tokens[left_start..left_start + length]
+        .iter()
+        .zip(&right.tokens[right_start..right_start + length])
+        .all(|(left_token, right_token)| left_token.token == right_token.token)
+}
+
+fn retain_exact_clones(
+    left: &FileSequence,
+    right: &FileSequence,
+    mut matches: Vec<CloneSpan>,
 ) -> Vec<(Vec<NormToken>, CloneMember, CloneMember)> {
-    if left.tokens.len() < min_tokens || right.tokens.len() < min_tokens {
-        return Vec::new();
-    }
-
-    let mut index: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
-    for start in 0..=left.tokens.len() - min_tokens {
-        let digest = window_digest(&left.tokens[start..start + min_tokens]);
-        index.entry(digest).or_default().push(start);
-    }
-
-    let mut matches = Vec::new();
-    let mut seen: BTreeSet<(usize, usize, usize)> = BTreeSet::new();
-    for right_start in 0..=right.tokens.len() - min_tokens {
-        let digest = window_digest(&right.tokens[right_start..right_start + min_tokens]);
-        let Some(left_starts) = index.get(&digest) else {
-            continue;
-        };
-        for &left_start in left_starts {
-            let (left_origin, right_origin, length) =
-                expand_match(left, right, left_start, right_start, min_tokens);
-            if !seen.insert((left_origin, right_origin, length)) {
-                continue;
-            }
-            matches.push((left_origin, right_origin, length));
-        }
-    }
-
     matches.sort_by_key(|&(left_origin, right_origin, length)| {
         (std::cmp::Reverse(length), left_origin, right_origin)
     });
@@ -370,6 +401,17 @@ fn exact_clones_between(
         ));
     }
     retained
+}
+
+fn sequence_window_digests(sequence: &FileSequence, min_tokens: usize) -> Vec<u64> {
+    if min_tokens == 0 || sequence.tokens.len() < min_tokens {
+        return Vec::new();
+    }
+    sequence
+        .tokens
+        .windows(min_tokens)
+        .map(window_digest)
+        .collect()
 }
 
 fn expand_match(
@@ -556,6 +598,7 @@ mod tests {
         let sequences = [
             sequence("crates/a/src/lib.rs", &tokens),
             sequence("crates/b/src/lib.rs", &tokens),
+            sequence("crates/c/src/lib.rs", &tokens),
         ];
         let findings = find_cross_module_clones(&sequences, MIN_TOKENS);
         assert_eq!(findings.len(), 1);
@@ -566,6 +609,7 @@ mod tests {
                 .starts_with("crates/a/src/lib.rs:1: duplicate production block")
         );
         assert!(findings[0].to_string().contains("crates/b/src/lib.rs:1"));
+        assert!(findings[0].to_string().contains("crates/c/src/lib.rs:1"));
     }
 
     #[test]

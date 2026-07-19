@@ -43,9 +43,9 @@ impl Rule for RunLogRunIdRule {
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
         let findings = repository
-            .paths()
+            .committed_paths()
             .iter()
-            .filter(|path| repository.is_committed(path) && PLACEHOLDER_PATH.is_match(path.as_str()))
+            .filter(|path| PLACEHOLDER_PATH.is_match(path.as_str()))
             .map(|path| {
                 Finding::new(
                     path.as_str(),
