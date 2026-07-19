@@ -315,7 +315,7 @@ def test_checkpoint_probe_resolves_larch_log_only_conflict(
     ])
     calls: list[str] = []
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: calls.append("add") or _cr())  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch, calls)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
@@ -336,7 +336,7 @@ def test_checkpoint_probe_resolves_consecutive_larch_log_conflicts(
     ])
     calls: list[str] = []
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: calls.append("add") or _cr())  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch, calls)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
@@ -357,7 +357,7 @@ def test_checkpoint_probe_mixed_conflict_resolves_only_larch_logs(
             conflict_files="larch-logs/a.md,src/app.py",
         ),
     )
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: ["src/app.py"])  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch, phantom_calls)
@@ -377,7 +377,7 @@ def test_checkpoint_probe_trivial_then_nontrivial_continue_conflict(
         rebase.RebasePushResult(exit_code=1, conflict_files="src/app.py"),
     ])
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch, [])
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
@@ -393,7 +393,7 @@ def test_checkpoint_probe_trivial_continue_failure_routes_bail(
         rebase.RebasePushResult(exit_code=3, rebase_error="continue failed"),
     ])
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 3
@@ -412,7 +412,7 @@ def test_checkpoint_probe_resolve_failure_rederives_conflicts(
         "rebase_push",
         lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/a.md"),  # type: ignore[arg-type]
     )
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr(rc=1))  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: _cr(rc=1))  # type: ignore[arg-type]
     monkeypatch.setattr(
         git,
         "try_conflict_files",
@@ -434,7 +434,7 @@ def test_checkpoint_probe_empty_conflict_files_skips_trivial_loop(
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=1))  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: [])  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_conflict_files", lambda *_args, **_kwargs: ())  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
     out = capsys.readouterr().out
@@ -539,12 +539,12 @@ def test_checkpoint_probe_partial_resolve_rederives_remaining_conflict(
         ),
     )
 
-    def checkout_ours(_runner: object, path: str, **_kwargs: object) -> CommandResult:
+    def checkout_ours(path: str) -> CommandResult:
         if path == "larch-logs/implement/run-1/two.json":
             return _cr(rc=42)
         return _cr()
 
-    monkeypatch.setattr(git, "checkout_ours", checkout_ours)  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", checkout_ours)  # type: ignore[arg-type]
     monkeypatch.setattr(git, "rm", lambda *_args, **_kwargs: _cr(rc=42))  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
@@ -575,6 +575,23 @@ def test_checkpoint_probe_mixed_conflict_real_git_index(
         )
 
     monkeypatch.setattr(rebase, "rebase_push", stub_rebase_push)
+
+    def checkout_ours(path: str) -> CommandResult:
+        completed = subprocess.run(
+            ["git", "checkout", "--ours", "--", path],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return CommandResult(
+            ("git", "checkout", "--ours", "--", path),
+            completed.returncode,
+            completed.stdout,
+            completed.stderr,
+            0.01,
+        )
+
+    monkeypatch.setattr(push, "_checkout_ours", checkout_ours)
     phantom_calls: list[str] = []
     _stub_clean_phantom(monkeypatch, phantom_calls)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
@@ -635,11 +652,11 @@ def test_checkpoint_probe_empty_continue_after_larch_log_uses_skip(
     ])
     calls: list[str] = []
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: [])  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_conflict_files", lambda *_args, **_kwargs: ())  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "rebase_skip", lambda *_args, **_kwargs: calls.append("skip") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_rebase_skip", lambda *_args, **_kwargs: calls.append("skip") or _cr())  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch, calls)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
     assert "ROUTE=continue" in capsys.readouterr().out
@@ -656,11 +673,11 @@ def test_checkpoint_probe_skip_after_completed_rebase_returns_continue(
     ])
     calls: list[str] = []
     monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: [])  # type: ignore[arg-type]
     monkeypatch.setattr(git, "try_conflict_files", lambda *_args, **_kwargs: ())  # type: ignore[arg-type]
-    monkeypatch.setattr(git, "rebase_skip", lambda *_args, **_kwargs: calls.append("skip") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(push, "_rebase_skip", lambda *_args, **_kwargs: calls.append("skip") or _cr())  # type: ignore[arg-type]
     monkeypatch.setattr(git, "rebase_in_progress", lambda *_args, **_kwargs: False)  # type: ignore[arg-type]
     _stub_clean_phantom(monkeypatch, calls)
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 0

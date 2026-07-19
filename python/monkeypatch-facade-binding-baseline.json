@@ -2692,15 +2692,6 @@
   },
   {
     "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_rebase_abort_main_idempotent_on_failed_abort",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
     "qualified_symbol": "test_remote_branch_state_transport_error",
     "facade_module": "larch.git.git",
     "attribute": "with_transient_retry",

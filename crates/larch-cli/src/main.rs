@@ -55,6 +55,8 @@ enum Domain {
 enum GitCommand {
     /// Classify repository changes against an untracked-path baseline.
     CheckPhantomDirty(CheckPhantomDirtyArguments),
+    /// Check out the current side of conflicted paths.
+    CheckoutOurs(CheckoutOursArguments),
     /// Print the files and index stages that are currently conflicted.
     ConflictFiles,
     /// Report whether the worktree is clean using machine-readable key/value rows.
@@ -63,6 +65,10 @@ enum GitCommand {
     SnapshotUntracked(SnapshotUntrackedArguments),
     /// Classify phantom paths and append advisory warnings to the run ledger.
     PhantomProbe(PhantomProbeArguments),
+    /// Abort an in-progress rebase, succeeding when no rebase is active.
+    RebaseAbort(RebaseControlArguments),
+    /// Skip the current commit in an in-progress rebase.
+    RebaseSkip(RebaseControlArguments),
 }
 
 #[derive(Args)]
@@ -71,6 +77,19 @@ struct CheckPhantomDirtyArguments {
     /// Raw compatibility arguments; parse errors are advisory command results.
     #[arg(allow_hyphen_values = true)]
     arguments: Vec<OsString>,
+}
+
+#[derive(Args)]
+struct CheckoutOursArguments {
+    /// Conflicted paths to replace with the current side.
+    #[arg(allow_hyphen_values = true)]
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Args)]
+struct RebaseControlArguments {
+    #[arg(allow_hyphen_values = true)]
+    extra: Vec<OsString>,
 }
 
 #[derive(Args, Clone, Copy)]
@@ -267,6 +286,7 @@ fn run_git(command: GitCommand) -> Result<ExitCode, String> {
             check_phantom_dirty_command(&arguments);
             Ok(ExitCode::SUCCESS)
         }
+        GitCommand::CheckoutOurs(arguments) => checkout_ours(arguments),
         GitCommand::ConflictFiles => {
             conflict_files()?;
             Ok(ExitCode::SUCCESS)
@@ -280,6 +300,8 @@ fn run_git(command: GitCommand) -> Result<ExitCode, String> {
             phantom_probe(&arguments);
             Ok(ExitCode::SUCCESS)
         }
+        GitCommand::RebaseAbort(arguments) => Ok(rebase_abort(&arguments)),
+        GitCommand::RebaseSkip(arguments) => rebase_skip(&arguments),
     }
 }
 
@@ -660,6 +682,109 @@ fn valid_meta_path(path: &OsStr) -> bool {
         && bytes
             .iter()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'/' | b'_' | b'-'))
+}
+
+enum GitControl {
+    CheckoutOurs(Vec<larch_adapters::git::GitPath>),
+    RebaseAbort,
+    RebaseSkip,
+}
+
+fn checkout_ours(arguments: CheckoutOursArguments) -> Result<ExitCode, String> {
+    if arguments.paths.is_empty() {
+        eprintln!("git-checkout-ours.sh: at least one file argument is required");
+        eprintln!("usage: git-checkout-ours.sh <file> [<file> ...]");
+        return Ok(ExitCode::from(1));
+    }
+    let paths = arguments
+        .paths
+        .into_iter()
+        .map(|path| larch_adapters::git::GitPath::new(path.into_os_string()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    run_git_control(GitControl::CheckoutOurs(paths))
+}
+
+fn rebase_abort(arguments: &RebaseControlArguments) -> ExitCode {
+    if let Some(argument) = arguments.extra.first() {
+        eprintln!(
+            "git-rebase-abort.sh: unknown argument: {}",
+            argument.to_string_lossy()
+        );
+        return ExitCode::SUCCESS;
+    }
+    let _ = run_git_control(GitControl::RebaseAbort);
+    ExitCode::SUCCESS
+}
+
+fn rebase_skip(arguments: &RebaseControlArguments) -> Result<ExitCode, String> {
+    if let Some(argument) = arguments.extra.first() {
+        eprintln!(
+            "git-rebase-skip.sh: unknown argument: {}",
+            argument.to_string_lossy()
+        );
+        return Ok(ExitCode::from(1));
+    }
+    run_git_control(GitControl::RebaseSkip)
+}
+
+fn run_git_control(control: GitControl) -> Result<ExitCode, String> {
+    use larch_adapters::git::{CheckoutRequest, GitCli, GitCliError, GitCliPolicy, RebaseRequest};
+
+    let idempotent_abort = matches!(control, GitControl::RebaseAbort);
+    let working_directory = std::env::current_dir()
+        .map_err(|error| format!("cannot resolve Git working directory: {error}"))?;
+    let policy = GitCliPolicy::new(working_directory).map_err(|error| error.to_string())?;
+    let runner = larch_adapters::TokioProcessRunner::default();
+    let runtime = larch_adapters::runtime::LarchRuntime::new()
+        .map_err(|error| format!("cannot initialize larch runtime: {error}"))?;
+    let cancellation = larch_adapters::runtime::Cancellation::new();
+    let git = GitCli::new(&runner, policy);
+    let result = runtime.block_on(async {
+        match control {
+            GitControl::CheckoutOurs(paths) => {
+                git.checkout(
+                    CheckoutRequest::Paths {
+                        ours: true,
+                        theirs: false,
+                        paths,
+                    },
+                    &cancellation,
+                )
+                .await
+            }
+            GitControl::RebaseAbort => git.rebase(RebaseRequest::Abort, &cancellation).await,
+            GitControl::RebaseSkip => git.rebase(RebaseRequest::Skip, &cancellation).await,
+        }
+    });
+    if idempotent_abort {
+        return Ok(ExitCode::SUCCESS);
+    }
+    match result {
+        Ok(result) | Err(GitCliError::Failed(result)) => emit_git_result(result.output()),
+        Err(GitCliError::Process(error)) => {
+            if let Some(output) = error.output() {
+                let _ = emit_git_result(output)?;
+            }
+            Err(error.to_string())
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn emit_git_result(output: &larch_core::ProcessOutput) -> Result<ExitCode, String> {
+    std::io::stdout()
+        .write_all(output.stdout())
+        .map_err(|error| format!("cannot write Git stdout: {error}"))?;
+    std::io::stderr()
+        .write_all(output.stderr())
+        .map_err(|error| format!("cannot write Git stderr: {error}"))?;
+    let code = output
+        .status()
+        .code()
+        .and_then(|code| u8::try_from(code).ok())
+        .unwrap_or(1);
+    Ok(ExitCode::from(code))
 }
 
 fn repository_status() -> Result<RepositoryStatus, larch_core::RepositoryError> {

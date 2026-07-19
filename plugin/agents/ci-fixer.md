@@ -104,7 +104,7 @@ Always use **upstream (main)** and **feature branch commit** labels when describ
 
 ### Bail invariant
 
-Any hard bail from any phase below must call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git rebase-abort` before returning `FIXER_RESULT=bail`, because the rebase stays in progress throughout. Do not push. Do not apply the CI-mode dirty-tree salvage-commit rule mid-rebase.
+Any hard bail from any phase below must call `"$CLAUDE_PLUGIN_ROOT/bin/larch" git rebase-abort` before returning `FIXER_RESULT=bail`, because the rebase stays in progress throughout. Do not push. Do not apply the CI-mode dirty-tree salvage-commit rule mid-rebase.
 
 ### Phase 1 - Conflict Classification and Resolution
 
@@ -114,7 +114,7 @@ Run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git conflict-files` once and parse each blo
 
 1. Look up that path in the conflict-files inventory from the single call above.
 2. **Unsupported conflict types**: if any required stage is missing, or the file is binary, classify as **uncertain**. Do not auto-resolve.
-3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
+3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
 4. **Text conflicts with both sides available**: read both sides through wrappers:
    - `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git show-stage --stage 2 --file <file>` → **upstream (main)** version. If it fails, classify as uncertain.
    - `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git show-stage --stage 3 --file <file>` → **feature branch commit** version. If it fails, classify as uncertain.
@@ -129,7 +129,7 @@ Run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git conflict-files` once and parse each blo
 
 If there are uncertain conflicts and no operator guidance is present in your prompt: do **not** call AskUserQuestion (you have no operator channel). Abort nothing yet; leave staged resolutions as-is when safe, keep the rebase in progress, and return `FIXER_RESULT=needs-operator` with a `FIXER_SUMMARY` that names every uncertain file. Include enough per-file context in the message body (upstream vs feature excerpts and a proposed resolution) for the main agent to escalate.
 
-When operator guidance is present (SendMessage / fresh-spawn resume): incorporate it, write each resolved file, stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`, then continue. If the operator says to abort, or the conflict still cannot be resolved, run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git rebase-abort` and return `FIXER_RESULT=bail`.
+When operator guidance is present (SendMessage / fresh-spawn resume): incorporate it, write each resolved file, stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`, then continue. If the operator says to abort, or the conflict still cannot be resolved, run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git rebase-abort` and return `FIXER_RESULT=bail`.
 
 If there are no uncertain conflicts: for `caller_kind=early_rebase`, skip to Phase 4; for `caller_kind=ship_pr_pre_push`, continue to Phase 3 so the trivial-all gate can skip or self-review can run.
 
@@ -160,7 +160,7 @@ Otherwise, run self-review for non-trivial `ship_pr_pre_push` conflict resolutio
 **Intent**: <one-line description of what each side was trying to do>
 ```
 
-**3d. Self-review loop**: review the staged resolutions against the context blocks and staged files. If you find a defect, re-resolve the affected file, stage it with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`, and repeat Phase 3 from the context block preparation. If no defect remains, proceed to Phase 4. Allow up to **2 total resolution-review rounds**. After 2 rounds with unresolved defects, run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git rebase-abort` and return `FIXER_RESULT=bail`.
+**3d. Self-review loop**: review the staged resolutions against the context blocks and staged files. If you find a defect, re-resolve the affected file, stage it with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`, and repeat Phase 3 from the context block preparation. If no defect remains, proceed to Phase 4. Allow up to **2 total resolution-review rounds**. After 2 rounds with unresolved defects, run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git rebase-abort` and return `FIXER_RESULT=bail`.
 
 **3e. Cleanup**: remove `$IMPLEMENT_TMPDIR/conflict-review/` after Phase 3 completes, on success and bail paths, before proceeding.
 
@@ -170,7 +170,7 @@ Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push rebase --continue --no-pus
 
 - **Exit 0**: local-only rebase succeeded. Do NOT push. Return `FIXER_RESULT=resolved`. The main agent relaunches Step 8 (`ship_pr_pre_push`) or returns to the Rebase Checkpoint Macro (`early_rebase`).
 - **Exit 1**: a later commit conflicted. Loop to Phase 1 with a fresh `CONFLICT_FILES` from this invocation's stdout.
-- **Exit 3**: inspect `REBASE_ERROR`. If it indicates an empty or already-applied commit, run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git rebase-skip`; if skip fails, abort and return `FIXER_RESULT=bail`. Then run the same `push rebase --continue --no-push --keep-on-conflict` again and handle the same exit codes. Otherwise abort and return `FIXER_RESULT=bail`.
+- **Exit 3**: inspect `REBASE_ERROR`. If it indicates an empty or already-applied commit, run `"$CLAUDE_PLUGIN_ROOT/bin/larch" git rebase-skip`; if skip fails, abort and return `FIXER_RESULT=bail`. Then run the same `push rebase --continue --no-push --keep-on-conflict` again and handle the same exit codes. Otherwise abort and return `FIXER_RESULT=bail`.
 
 For `caller_kind=ship_pr_pre_push` exit 0: do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. The next `step-8-ship.sh` relaunch owns compose-time reassessment.
 

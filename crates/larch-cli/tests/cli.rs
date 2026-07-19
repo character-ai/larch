@@ -1,8 +1,8 @@
 use std::{
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     path::{Path, PathBuf},
-    process::Command as ProcessCommand,
+    process::{Command as ProcessCommand, Output},
 };
 
 use assert_cmd::Command;
@@ -43,17 +43,31 @@ fn larch() -> Command {
     Command::cargo_bin("larch").expect("larch binary should build")
 }
 
-fn git(root: &Path, arguments: &[&str]) {
-    let output = ProcessCommand::new("git")
+fn git_output<I, S>(root: &Path, arguments: I) -> Output
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    ProcessCommand::new("git")
         .args(arguments)
         .current_dir(root)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_EDITOR", "true")
+        .env("GIT_SEQUENCE_EDITOR", "true")
         .output()
-        .expect("Git should launch");
+        .expect("Git should launch")
+}
+
+fn git<I, S>(root: &Path, arguments: I)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let output = git_output(root, arguments);
     assert!(
         output.status.success(),
-        "git {arguments:?} failed: {}",
+        "Git fixture command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 }
@@ -62,16 +76,16 @@ fn repository() -> tempfile::TempDir {
     let directory = tempfile::tempdir().expect("temporary repository");
     git(
         directory.path(),
-        &["init", "--quiet", "--initial-branch=main"],
+        ["init", "--quiet", "--initial-branch=main"],
     );
-    git(directory.path(), &["config", "user.name", "Larch Test"]);
+    git(directory.path(), ["config", "user.name", "Larch Test"]);
     git(
         directory.path(),
-        &["config", "user.email", "larch-test@example.invalid"],
+        ["config", "user.email", "larch-test@example.invalid"],
     );
     fs::write(directory.path().join("tracked.txt"), "base\n").expect("seed tracked file");
-    git(directory.path(), &["add", "tracked.txt"]);
-    git(directory.path(), &["commit", "--quiet", "-m", "base"]);
+    git(directory.path(), ["add", "tracked.txt"]);
+    git(directory.path(), ["commit", "--quiet", "-m", "base"]);
     directory
 }
 
@@ -79,6 +93,87 @@ fn command_at(root: &Path, arguments: &[&str]) -> Command {
     let mut command = larch();
     command.current_dir(root).args(arguments);
     command
+}
+
+fn merge_conflict_repository(path: &Path) -> tempfile::TempDir {
+    let directory = repository();
+    fs::write(directory.path().join(path), b"base\n").expect("seed conflict path");
+    git(
+        directory.path(),
+        [OsStr::new("add"), OsStr::new("--"), path.as_os_str()],
+    );
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-m", "seed conflict path"],
+    );
+    git(directory.path(), ["branch", "other"]);
+    fs::write(directory.path().join(path), b"main\n").expect("main conflict change");
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-am", "main change"],
+    );
+    git(directory.path(), ["checkout", "--quiet", "other"]);
+    fs::write(directory.path().join(path), b"other\n").expect("other conflict change");
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-am", "other change"],
+    );
+    git(directory.path(), ["checkout", "--quiet", "main"]);
+    let merge = git_output(directory.path(), ["merge", "--no-edit", "other"]);
+    assert!(!merge.status.success(), "fixture must conflict");
+    directory
+}
+
+fn rebase_conflict_repository() -> tempfile::TempDir {
+    let directory = repository();
+    git(directory.path(), ["branch", "topic"]);
+    fs::write(directory.path().join("tracked.txt"), b"main\n").expect("main change");
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-am", "main change"],
+    );
+    git(directory.path(), ["checkout", "--quiet", "topic"]);
+    fs::write(directory.path().join("tracked.txt"), b"topic\n").expect("topic change");
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-am", "topic change"],
+    );
+    let rebase = git_output(directory.path(), ["rebase", "main"]);
+    assert!(!rebase.status.success(), "fixture rebase must conflict");
+    directory
+}
+
+fn delete_modify_conflict_repository() -> tempfile::TempDir {
+    let directory = repository();
+    git(directory.path(), ["branch", "other"]);
+    git(directory.path(), ["rm", "--quiet", "--", "tracked.txt"]);
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-m", "delete on main"],
+    );
+    git(directory.path(), ["checkout", "--quiet", "other"]);
+    fs::write(directory.path().join("tracked.txt"), b"other\n").expect("other change");
+    git(
+        directory.path(),
+        ["commit", "--quiet", "-am", "modify on other"],
+    );
+    git(directory.path(), ["checkout", "--quiet", "main"]);
+    let merge = git_output(directory.path(), ["merge", "--no-edit", "other"]);
+    assert!(!merge.status.success(), "fixture must have a missing stage");
+    directory
+}
+
+fn configure_failing_smudge_filter(root: &Path, path: &OsStr) {
+    let mut attributes = path.as_encoded_bytes().to_vec();
+    attributes.extend_from_slice(b" filter=larch-test\n");
+    fs::write(root.join(".gitattributes"), attributes).expect("write filter attributes");
+    git(root, ["config", "filter.larch-test.clean", "cat"]);
+    git(root, ["config", "filter.larch-test.smudge", "false"]);
+    git(root, ["config", "filter.larch-test.required", "true"]);
+}
+
+fn assert_fsck(root: &Path) {
+    git(root, ["fsck", "--full", "--no-dangling"]);
 }
 
 #[test]
@@ -238,7 +333,7 @@ fn clean_tree_reports_clean_and_tracked_or_untracked_dirty_state() {
         .stderr("");
 
     fs::remove_file(repository.path().join("tracked.txt")).expect("remove dirty fixture");
-    git(repository.path(), &["checkout", "--", "tracked.txt"]);
+    git(repository.path(), ["checkout", "--", "tracked.txt"]);
     fs::write(repository.path().join("untracked.txt"), "new\n").expect("untracked file");
     command_at(repository.path(), &["git", "clean-tree"])
         .assert()
@@ -250,13 +345,13 @@ fn clean_tree_reports_clean_and_tracked_or_untracked_dirty_state() {
 #[test]
 fn conflict_files_reports_each_present_index_stage() {
     let repository = repository();
-    git(repository.path(), &["branch", "other"]);
+    git(repository.path(), ["branch", "other"]);
     fs::write(repository.path().join("tracked.txt"), "main\n").expect("main change");
-    git(repository.path(), &["commit", "--quiet", "-am", "main"]);
-    git(repository.path(), &["checkout", "--quiet", "other"]);
+    git(repository.path(), ["commit", "--quiet", "-am", "main"]);
+    git(repository.path(), ["checkout", "--quiet", "other"]);
     fs::write(repository.path().join("tracked.txt"), "other\n").expect("other change");
-    git(repository.path(), &["commit", "--quiet", "-am", "other"]);
-    git(repository.path(), &["checkout", "--quiet", "main"]);
+    git(repository.path(), ["commit", "--quiet", "-am", "other"]);
+    git(repository.path(), ["checkout", "--quiet", "main"]);
     let merge = ProcessCommand::new("git")
         .args(["merge", "--no-edit", "other"])
         .current_dir(repository.path())
@@ -269,6 +364,211 @@ fn conflict_files_reports_each_present_index_stage() {
         .success()
         .stdout("FILE=tracked.txt\nSTAGE_1=true\nSTAGE_2=true\nSTAGE_3=true\n\n")
         .stderr("");
+}
+
+#[test]
+fn checkout_ours_preserves_conflict_stages_and_accepts_spaced_paths() {
+    let path = Path::new("path with spaces.txt");
+    let repository = merge_conflict_repository(path);
+    let before = git_output(repository.path(), ["ls-files", "--stage"]);
+
+    command_at(
+        repository.path(),
+        &["git", "checkout-ours", path.to_str().unwrap()],
+    )
+    .assert()
+    .success()
+    .stdout("")
+    .stderr("");
+
+    assert_eq!(
+        fs::read(repository.path().join(path)).expect("checked out conflict path"),
+        b"main\n"
+    );
+    let after = git_output(repository.path(), ["ls-files", "--stage"]);
+    assert_eq!(
+        before.stdout, after.stdout,
+        "checkout must retain index stages"
+    );
+    assert_fsck(repository.path());
+}
+
+#[test]
+fn checkout_ours_preserves_missing_stages_on_failure() {
+    let repository = delete_modify_conflict_repository();
+    let before = git_output(repository.path(), ["ls-files", "--stage"]);
+    assert!(!String::from_utf8_lossy(&before.stdout).contains(" 2\ttracked.txt"));
+
+    command_at(repository.path(), &["git", "checkout-ours", "tracked.txt"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicate::str::contains(
+            "path 'tracked.txt' does not have our version",
+        ));
+
+    let after = git_output(repository.path(), ["ls-files", "--stage"]);
+    assert_eq!(
+        before.stdout, after.stdout,
+        "failure must retain index stages"
+    );
+    assert_fsck(repository.path());
+}
+
+#[test]
+fn checkout_ours_preserves_state_when_a_required_filter_fails() {
+    let repository = merge_conflict_repository(Path::new("filtered.txt"));
+    configure_failing_smudge_filter(repository.path(), OsStr::new("filtered.txt"));
+    let before = git_output(repository.path(), ["ls-files", "--stage"]);
+
+    command_at(repository.path(), &["git", "checkout-ours", "filtered.txt"])
+        .assert()
+        .code(128)
+        .stdout("")
+        .stderr(predicate::str::contains("smudge filter larch-test failed"));
+
+    let after = git_output(repository.path(), ["ls-files", "--stage"]);
+    assert_eq!(
+        before.stdout, after.stdout,
+        "filter failure must retain stages"
+    );
+    assert_fsck(repository.path());
+}
+
+#[test]
+fn checkout_ours_rejects_missing_arguments_and_leaves_non_conflicted_paths_unchanged() {
+    let repository = repository();
+    command_at(repository.path(), &["git", "checkout-ours"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(
+            "git-checkout-ours.sh: at least one file argument is required\n\
+             usage: git-checkout-ours.sh <file> [<file> ...]\n",
+        );
+
+    let original = fs::read(repository.path().join("tracked.txt")).expect("tracked contents");
+    command_at(repository.path(), &["git", "checkout-ours", "tracked.txt"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+    assert_eq!(
+        fs::read(repository.path().join("tracked.txt")).expect("tracked contents"),
+        original
+    );
+    assert_fsck(repository.path());
+}
+
+#[test]
+fn rebase_abort_is_idempotent_and_restores_pre_rebase_state() {
+    let clean = repository();
+    command_at(clean.path(), &["git", "rebase-abort"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+    assert_fsck(clean.path());
+
+    let repository = rebase_conflict_repository();
+    assert!(repository.path().join(".git/rebase-merge").is_dir());
+    command_at(repository.path(), &["git", "rebase-abort"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+    assert!(!repository.path().join(".git/rebase-merge").exists());
+    assert_eq!(
+        fs::read(repository.path().join("tracked.txt")).expect("restored topic contents"),
+        b"topic\n"
+    );
+    let branch = git_output(repository.path(), ["branch", "--show-current"]);
+    assert_eq!(branch.stdout, b"topic\n");
+    assert_fsck(repository.path());
+}
+
+#[test]
+fn rebase_controls_preserve_legacy_unknown_argument_contracts() {
+    let repository = repository();
+    command_at(repository.path(), &["git", "rebase-abort", "--unexpected"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("git-rebase-abort.sh: unknown argument: --unexpected\n");
+    command_at(repository.path(), &["git", "rebase-skip", "--unexpected"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-rebase-skip.sh: unknown argument: --unexpected\n");
+}
+
+#[test]
+fn rebase_skip_preserves_git_diagnostics_and_completes_the_rebase() {
+    let clean = repository();
+    command_at(clean.path(), &["git", "rebase-skip"])
+        .assert()
+        .failure()
+        .stdout("")
+        .stderr(
+            predicate::str::contains("no rebase in progress")
+                .or(predicate::str::contains("No rebase in progress")),
+        );
+    assert_fsck(clean.path());
+
+    let repository = rebase_conflict_repository();
+    command_at(repository.path(), &["git", "rebase-skip"])
+        .assert()
+        .success();
+    assert!(!repository.path().join(".git/rebase-merge").exists());
+    assert_eq!(
+        fs::read(repository.path().join("tracked.txt")).expect("rebased worktree contents"),
+        b"main\n"
+    );
+    let head = git_output(repository.path(), ["rev-parse", "HEAD"]);
+    let main = git_output(repository.path(), ["rev-parse", "main"]);
+    assert_eq!(
+        head.stdout, main.stdout,
+        "skip must omit the conflicting commit"
+    );
+    assert_fsck(repository.path());
+}
+
+#[test]
+fn interrupted_rebase_controls_retain_state_and_allow_recovery() {
+    for verb in ["rebase-abort", "rebase-skip"] {
+        let repository = rebase_conflict_repository();
+        configure_failing_smudge_filter(repository.path(), OsStr::new("tracked.txt"));
+        let before = git_output(repository.path(), ["ls-files", "--stage"]);
+
+        let mut command = command_at(repository.path(), &["git", verb]);
+        if verb == "rebase-abort" {
+            command.assert().success().stdout("").stderr("");
+        } else {
+            command
+                .assert()
+                .code(128)
+                .stderr(predicate::str::contains("smudge filter larch-test failed"));
+        }
+        assert!(repository.path().join(".git/rebase-merge").is_dir());
+        let after = git_output(repository.path(), ["ls-files", "--stage"]);
+        assert_eq!(
+            before.stdout, after.stdout,
+            "interruption must retain stages"
+        );
+        assert_fsck(repository.path());
+
+        git(
+            repository.path(),
+            ["config", "filter.larch-test.smudge", "cat"],
+        );
+        command_at(repository.path(), &["git", "rebase-abort"])
+            .assert()
+            .success()
+            .stdout("")
+            .stderr("");
+        assert!(!repository.path().join(".git/rebase-merge").exists());
+        assert_fsck(repository.path());
+    }
 }
 
 #[test]
@@ -404,7 +704,7 @@ fn check_phantom_dirty_classifies_clean_tracked_phantom_and_mixed_states() {
         .stdout("STATUS=tracked-only\n")
         .stderr("");
 
-    git(repository.path(), &["checkout", "--", "tracked.txt"]);
+    git(repository.path(), ["checkout", "--", "tracked.txt"]);
     fs::write(repository.path().join("new path.txt"), "new\n").expect("new untracked path");
     command_at_owned(repository.path(), &arguments())
         .assert()
@@ -698,4 +998,29 @@ fn command_at_owned(root: &Path, arguments: &[String]) -> Command {
     let mut command = larch();
     command.current_dir(root).args(arguments);
     command
+}
+
+#[cfg(unix)]
+#[test]
+fn checkout_ours_preserves_non_utf8_path_bytes() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let path = PathBuf::from(OsString::from_vec(b"conflict-\xff.txt".to_vec()));
+    let capability_probe = repository();
+    if let Err(error) = fs::write(capability_probe.path().join(&path), b"probe\n") {
+        eprintln!("fixture skipped: raw byte paths are unsupported: {error}");
+        return;
+    }
+    let repository = merge_conflict_repository(&path);
+    let mut command = larch();
+    command
+        .current_dir(repository.path())
+        .args([OsString::from("git"), OsString::from("checkout-ours")])
+        .arg(path.as_os_str());
+    command.assert().success().stdout("").stderr("");
+    assert_eq!(
+        fs::read(repository.path().join(&path)).expect("raw path contents"),
+        b"main\n"
+    );
+    assert_fsck(repository.path());
 }

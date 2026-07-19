@@ -1436,7 +1436,7 @@ def test_continue_with_unmerged_reloops_without_skip() -> None:
         cwd=None,
     )
     assert len(launch_calls) == 2
-    assert not any(c[:3] == ("git", "rebase", "--skip") for c in runner.calls)
+    assert not any(c[-2:] == ("git", "rebase-skip") for c in runner.calls)
 
 
 def test_hook_failure_continue_aborts_and_stalls() -> None:
@@ -1462,10 +1462,16 @@ def test_hook_failure_continue_aborts_and_stalls() -> None:
             cwd=None,
         )
     assert ("git", "rebase", "--abort") in runner.calls
-    assert not any(c[:3] == ("git", "rebase", "--skip") for c in runner.calls)
+    assert not any(c[-2:] == ("git", "rebase-skip") for c in runner.calls)
 
 
-def test_empty_commit_continue_skips_then_continues() -> None:
+def test_empty_commit_continue_skips_then_continues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_larch_binary(_fallback: Path | str | None = None) -> Path:
+        return Path("/larch")
+
+    monkeypatch.setattr(rebase.repo_roots, "larch_binary", fake_larch_binary)
     continue_calls = {"n": 0}
 
     def continue_handler(_argv: tuple[str, ...]) -> CommandResult:
@@ -1481,7 +1487,7 @@ def test_empty_commit_continue_skips_then_continues() -> None:
                 "",
             )),
             (("git", "rebase", "--continue"), continue_handler),
-            (("git", "rebase", "--skip"), _ok(("git", "rebase", "--skip"))),
+            (("/larch", "git", "rebase-skip"), _ok(("/larch", "git", "rebase-skip"))),
         ],
     )
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
@@ -1491,7 +1497,7 @@ def test_empty_commit_continue_skips_then_continues() -> None:
         run_id="run",
         cwd=None,
     )
-    assert ("git", "rebase", "--skip") in runner.calls
+    assert ("/larch", "git", "rebase-skip") in runner.calls
 
 
 def test_force_push_plain_lease_single_retry(tmp_path: Path) -> None:
