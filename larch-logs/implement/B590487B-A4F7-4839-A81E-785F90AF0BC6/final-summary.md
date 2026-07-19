@@ -24,7 +24,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: 5/7 accepted
-- **Lines (PR diff)**: code +2376/-8, larch-logs +259/-0
+- **Lines (PR diff)**: code +2393/-8, larch-logs +270/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7745
 - **Exec issues**: 0
 - **Warnings**: 0
