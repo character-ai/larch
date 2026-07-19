@@ -1271,6 +1271,7 @@ mod release_tests {
 mod transport_tests {
     use super::*;
     use crate::runtime::Cancellation;
+    use octocrab::Octocrab;
     use serde_json::json;
     use std::fmt::Write as _;
     use std::io::{Read as _, Write as _};
