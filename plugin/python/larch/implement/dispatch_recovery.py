@@ -13,6 +13,7 @@ from pathlib import Path
 
 from larch.core import config
 from larch.core import logging_util
+from larch.core.repo_roots import larch_entrypoint
 from larch.implement.dispatch_helpers import (
     RecoveryParse,
     _capture_postlaunch_porcelain,
@@ -207,7 +208,7 @@ def _mark_commit_timing() -> None:
 
 
 def _build_commit_args(args: argparse.Namespace) -> list[str]:
-    commit_args = [sys.executable, str(_current_cli_path()), "git", "commit", "-m", args.message]
+    commit_args = [str(larch_entrypoint(_current_cli_path().parents[1])), "git", "commit", "-m", args.message]
     if args.pathspec_from_file:
         commit_args.extend(["--only", "--pathspec-from-file", args.pathspec_from_file])
         if args.pathspec_file_nul:

@@ -2568,7 +2568,7 @@ def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
     assert outcome.delta_paths == ("fixed.py",)
     assert outcome.commit_sha == commit
     flat = " ".join(arg for call, _kw in runner.calls for arg in call)
-    assert "git commit --file" in flat
+    assert "scripts/larch.sh git commit --no-trailer" in flat
 
 
 def test_run_lint_fix_forbidden_reset_failure_is_structural(tmp_path: Path) -> None:

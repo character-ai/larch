@@ -5,19 +5,23 @@ use crate::runtime::{Cancellation, ChildProcess, ChildWait, shutdown_child};
 #[cfg(test)]
 use larch_core::env as larch_env;
 use larch_core::{
-    BusinessClock, ChildEnvironment, ExternalProcessRunner, JournalRecord, ProcessCancellation,
-    ProcessError, ProcessErrorKind, ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver,
-    ProcessOutput, ProcessRequest, ProcessStatus, RunId,
+    BusinessClock, ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
+    JournalRecord, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
+    ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest, ProcessStatus,
+    RunId,
 };
 use std::{
     env,
     ffi::OsString,
     io::{self, Write},
+    num::NonZeroUsize,
+    path::Path,
     process::{ExitStatus, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
@@ -247,6 +251,69 @@ impl TokioProcessRunner {
 impl Default for TokioProcessRunner {
     fn default() -> Self {
         Self::new(Arc::new(NoopProcessObserver))
+    }
+}
+
+/// Result of the bounded host open-file probe used by Git index-lock recovery.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OpenFileHolderStatus {
+    Held,
+    Absent,
+    Unverifiable,
+}
+
+/// Determine whether another process has one absolute file path open.
+pub async fn probe_open_file_holder<R: ExternalProcessRunner>(
+    runner: &R,
+    path: &Path,
+    working_directory: &Path,
+    cancellation: &dyn ProcessCancellation,
+) -> OpenFileHolderStatus {
+    if !path.is_absolute() || path.as_os_str().as_encoded_bytes().contains(&0) {
+        return OpenFileHolderStatus::Unverifiable;
+    }
+    let request = ProcessRequest::new(
+        ExternalProgram::HostUtility(HostUtilityProgram::Lsof),
+        [OsString::from("-t"), OsString::from("--"), path.into()],
+        working_directory.to_path_buf(),
+        Duration::from_secs(3),
+        Duration::from_secs(1),
+        NonZeroUsize::new(16 * 1024).unwrap_or(NonZeroUsize::MIN),
+    );
+    let Ok(request) = request else {
+        return OpenFileHolderStatus::Unverifiable;
+    };
+    let Ok(output) = runner.run(request, cancellation).await else {
+        return OpenFileHolderStatus::Unverifiable;
+    };
+    if !output.status().success() {
+        return if output.stdout().is_empty() && output.stderr().is_empty() {
+            OpenFileHolderStatus::Absent
+        } else {
+            OpenFileHolderStatus::Unverifiable
+        };
+    }
+    let current = std::process::id();
+    let mut saw_pid = false;
+    for line in output.stdout().split(|byte| *byte == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(text) = std::str::from_utf8(line) else {
+            return OpenFileHolderStatus::Unverifiable;
+        };
+        let Ok(pid) = text.parse::<u32>() else {
+            return OpenFileHolderStatus::Unverifiable;
+        };
+        saw_pid = true;
+        if pid != current {
+            return OpenFileHolderStatus::Held;
+        }
+    }
+    if saw_pid {
+        OpenFileHolderStatus::Absent
+    } else {
+        OpenFileHolderStatus::Unverifiable
     }
 }
 
@@ -538,9 +605,10 @@ mod tests {
     use super::*;
     use crate::runtime::LarchRuntime;
     use larch_core::{
-        ExternalProgram, GitCliOperation, ProcessRequest, ProcessRequestError, VendorProgram,
+        ExternalProgram, GitCliOperation, HostUtilityProgram, ProcessRequest, ProcessRequestError,
+        VendorProgram,
     };
-    use larch_test_support::TestClock;
+    use larch_test_support::{FakeProcessRunner, NeverCancelled, ProcessOutputBuilder, TestClock};
     use std::{
         num::NonZeroUsize,
         sync::Mutex,
@@ -624,8 +692,9 @@ mod tests {
             ExternalProgram::Vendor(VendorProgram::Codex),
             ExternalProgram::Vendor(VendorProgram::Cursor),
             ExternalProgram::Git(GitCliOperation::Version),
+            ExternalProgram::HostUtility(HostUtilityProgram::Lsof),
         ];
-        assert_eq!(allowed.len(), 4);
+        assert_eq!(allowed.len(), 5);
         assert!(allowed.iter().all(|program| !program.reason().is_empty()));
         assert!(
             !allowed
@@ -640,6 +709,49 @@ mod tests {
         assert!(!inherited.contains(&larch_env::GITHUB_TOKEN));
         assert!(!inherited.contains(&"GOOGLE_APPLICATION_CREDENTIALS"));
         assert!(!inherited.contains(&"OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn open_file_probe_is_typed_and_fails_closed() {
+        let runtime = LarchRuntime::new().expect("runtime");
+        let cwd = std::env::current_dir().expect("cwd");
+        let path = cwd.join("index.lock");
+        let other_pid = std::process::id().saturating_add(1);
+        let runner = FakeProcessRunner::new([
+            Ok(ProcessOutputBuilder::success()
+                .stdout(format!("{other_pid}\n").into_bytes())
+                .build()),
+            Ok(ProcessOutputBuilder::failure(1).build()),
+            Ok(ProcessOutputBuilder::failure(1)
+                .stderr(b"probe warning".to_vec())
+                .build()),
+        ]);
+
+        let held = runtime.block_on(probe_open_file_holder(
+            &runner,
+            &path,
+            &cwd,
+            &NeverCancelled,
+        ));
+        let absent = runtime.block_on(probe_open_file_holder(
+            &runner,
+            &path,
+            &cwd,
+            &NeverCancelled,
+        ));
+        let unverifiable = runtime.block_on(probe_open_file_holder(
+            &runner,
+            &path,
+            &cwd,
+            &NeverCancelled,
+        ));
+
+        assert_eq!(held, OpenFileHolderStatus::Held);
+        assert_eq!(absent, OpenFileHolderStatus::Absent);
+        assert_eq!(unverifiable, OpenFileHolderStatus::Unverifiable);
+        let requests = runner.requests();
+        assert_eq!(requests[0].program().operation(), "host.open-file-probe");
+        assert_eq!(requests[0].arguments()[..2], ["-t", "--"]);
     }
 
     #[test]

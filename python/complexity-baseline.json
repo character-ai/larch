@@ -2746,14 +2746,6 @@
   {
     "file": "larch/git/git.py",
     "code": "PLR0913",
-    "qualified_symbol": "commit_with_trailer",
-    "metric": 8,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/git.py",
-    "code": "PLR0913",
     "qualified_symbol": "diff_name_status",
     "metric": 6,
     "added_at": "legacy",

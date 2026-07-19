@@ -23,6 +23,37 @@ pub enum VendorProgram {
     Cursor,
 }
 
+/// Closed host-utility allowlist for compatibility probes unavailable in-process.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostUtilityProgram {
+    /// Inspect processes holding one validated file path open.
+    Lsof,
+}
+
+impl HostUtilityProgram {
+    /// Return the fixed executable name.
+    #[must_use]
+    pub const fn executable(self) -> &'static str {
+        match self {
+            Self::Lsof => "lsof",
+        }
+    }
+
+    /// Return the stable operation label.
+    #[must_use]
+    pub const fn operation(self) -> &'static str {
+        match self {
+            Self::Lsof => "host.open-file-probe",
+        }
+    }
+
+    /// Return the allowlist rationale.
+    #[must_use]
+    pub const fn reason(self) -> &'static str {
+        "bounded open-file holder probe required for safe stale Git index-lock recovery"
+    }
+}
+
 impl VendorProgram {
     /// Return the fixed executable name.
     #[must_use]
@@ -120,6 +151,7 @@ impl GitCliOperation {
 pub enum ExternalProgram {
     Vendor(VendorProgram),
     Git(GitCliOperation),
+    HostUtility(HostUtilityProgram),
     /// A fixed larch program derived from a validated plugin root.
     Larch(LarchProgram),
 }
@@ -202,6 +234,7 @@ impl ExternalProgram {
         match self {
             Self::Vendor(program) => OsStr::new(program.executable()),
             Self::Git(_) => OsStr::new("git"),
+            Self::HostUtility(program) => OsStr::new(program.executable()),
             Self::Larch(program) => program.executable(),
         }
     }
@@ -214,6 +247,7 @@ impl ExternalProgram {
             Self::Vendor(VendorProgram::Codex) => "vendor.codex",
             Self::Vendor(VendorProgram::Cursor) => "vendor.cursor",
             Self::Git(operation) => operation.subcommand(),
+            Self::HostUtility(program) => program.operation(),
             Self::Larch(program) => program.operation(),
         }
     }
@@ -224,6 +258,7 @@ impl ExternalProgram {
         match self {
             Self::Vendor(program) => program.reason(),
             Self::Git(operation) => operation.reason(),
+            Self::HostUtility(program) => program.reason(),
             Self::Larch(program) => program.reason(),
         }
     }

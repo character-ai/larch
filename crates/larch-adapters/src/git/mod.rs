@@ -31,7 +31,9 @@ pub use ops::{
     TagMutationRequest, VersionRequest, WorktreeRequest,
 };
 pub use repository::GixRepository;
-pub use validate::{GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl};
+pub use validate::{
+    GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl,
+};
 
 use ops::GitOperation;
 
@@ -250,6 +252,11 @@ where
         Self { runner, policy }
     }
 
+    #[must_use]
+    pub fn working_directory(&self) -> &Path {
+        self.policy.working_directory()
+    }
+
     /// Run `git --version`.
     ///
     /// # Errors
@@ -416,6 +423,7 @@ mod tests {
                 all: false,
                 force: false,
                 pathspec_from_file: None,
+                pathspec_file_nul: false,
                 paths: vec![GitPath::new("tracked.txt").unwrap()],
             },
             &["add", "--", "tracked.txt"],
@@ -472,6 +480,9 @@ mod tests {
                 amend: false,
                 no_edit: false,
                 allow_empty: true,
+                only: false,
+                pathspec_from_file: None,
+                pathspec_file_nul: false,
                 paths: Vec::new(),
             },
             &["commit", "--allow-empty", "-m", "msg"],
@@ -480,6 +491,8 @@ mod tests {
             &InterpretTrailersRequest {
                 trailers: vec!["Signed-off-by: A <a@b>".into()],
                 in_place: None,
+                add_if_different: false,
+                add_if_missing: false,
                 stdin: b"subject\n".to_vec(),
             },
             &["interpret-trailers", "--trailer", "Signed-off-by: A <a@b>"],
@@ -613,6 +626,7 @@ mod tests {
                     all: false,
                     force: false,
                     pathspec_from_file: None,
+                    pathspec_file_nul: false,
                     paths: Vec::new(),
                 },
                 &NeverCancelled,
@@ -627,6 +641,7 @@ mod tests {
                 all: true,
                 force: false,
                 pathspec_from_file: None,
+                pathspec_file_nul: false,
                 paths: vec![GitPath::new("a").unwrap()],
             }
             .arguments()
@@ -659,7 +674,9 @@ mod tests {
         assert!(
             InterpretTrailersRequest {
                 trailers: vec!["Signed-off-by: A <a@b>".into()],
-                in_place: Some(GitPath::new("MSG").unwrap()),
+                in_place: Some(GitFilePath::new("MSG").unwrap()),
+                add_if_different: false,
+                add_if_missing: false,
                 stdin: b"body\n".to_vec(),
             }
             .arguments()
@@ -784,16 +801,23 @@ mod tests {
             &AddRequest {
                 all: false,
                 force: true,
-                pathspec_from_file: Some(GitPath::new("specs.txt").unwrap()),
+                pathspec_from_file: Some(GitFilePath::new("specs.txt").unwrap()),
+                pathspec_file_nul: true,
                 paths: Vec::new(),
             },
-            &["add", "--force", "--pathspec-from-file=specs.txt"],
+            &[
+                "add",
+                "--force",
+                "--pathspec-from-file=specs.txt",
+                "--pathspec-file-nul",
+            ],
         );
         assert_argv(
             &AddRequest {
                 all: true,
                 force: false,
                 pathspec_from_file: None,
+                pathspec_file_nul: false,
                 paths: Vec::new(),
             },
             &["add", "--all"],
@@ -802,7 +826,8 @@ mod tests {
             AddRequest {
                 all: false,
                 force: false,
-                pathspec_from_file: Some(GitPath::new("specs.txt").unwrap()),
+                pathspec_from_file: Some(GitFilePath::new("specs.txt").unwrap()),
+                pathspec_file_nul: false,
                 paths: vec![GitPath::new("a").unwrap()],
             }
             .arguments()
@@ -894,13 +919,24 @@ mod tests {
     fn uncovered_commit_and_trailer_argv_branches() {
         assert_argv(
             &CommitRequest {
-                message: Some(CommitMessage::File(GitPath::new("MSG").unwrap())),
+                message: Some(CommitMessage::File(GitFilePath::new("MSG").unwrap())),
                 amend: true,
                 no_edit: false,
                 allow_empty: false,
-                paths: vec![GitPath::new("tracked.txt").unwrap()],
+                only: true,
+                pathspec_from_file: Some(GitFilePath::new("specs.nul").unwrap()),
+                pathspec_file_nul: true,
+                paths: Vec::new(),
             },
-            &["commit", "--amend", "--file", "MSG", "--", "tracked.txt"],
+            &[
+                "commit",
+                "--amend",
+                "--only",
+                "--file",
+                "MSG",
+                "--pathspec-from-file=specs.nul",
+                "--pathspec-file-nul",
+            ],
         );
         assert_argv(
             &CommitRequest {
@@ -908,6 +944,9 @@ mod tests {
                 amend: true,
                 no_edit: true,
                 allow_empty: false,
+                only: false,
+                pathspec_from_file: None,
+                pathspec_file_nul: false,
                 paths: Vec::new(),
             },
             &["commit", "--amend", "--no-edit"],
@@ -918,6 +957,9 @@ mod tests {
                 amend: false,
                 no_edit: false,
                 allow_empty: false,
+                only: false,
+                pathspec_from_file: None,
+                pathspec_file_nul: false,
                 paths: Vec::new(),
             }
             .arguments()
@@ -927,6 +969,8 @@ mod tests {
             InterpretTrailersRequest {
                 trailers: Vec::new(),
                 in_place: None,
+                add_if_different: false,
+                add_if_missing: false,
                 stdin: Vec::new(),
             }
             .arguments()
@@ -935,11 +979,17 @@ mod tests {
         assert_argv(
             &InterpretTrailersRequest {
                 trailers: vec!["Reviewed-by: A <a@b>".into()],
-                in_place: Some(GitPath::new("MSG").unwrap()),
+                in_place: Some(GitFilePath::new("MSG").unwrap()),
+                add_if_different: true,
+                add_if_missing: true,
                 stdin: Vec::new(),
             },
             &[
                 "interpret-trailers",
+                "--if-exists",
+                "addIfDifferent",
+                "--if-missing",
+                "add",
                 "--trailer",
                 "Reviewed-by: A <a@b>",
                 "--in-place",
@@ -949,7 +999,9 @@ mod tests {
         assert!(
             InterpretTrailersRequest {
                 trailers: vec!["Reviewed-by: A <a@b>".into()],
-                in_place: Some(GitPath::new("MSG").unwrap()),
+                in_place: Some(GitFilePath::new("MSG").unwrap()),
+                add_if_different: false,
+                add_if_missing: false,
                 stdin: Vec::new(),
             }
             .stdin()
@@ -1223,6 +1275,7 @@ mod tests {
                         all: false,
                         force: false,
                         pathspec_from_file: None,
+                        pathspec_file_nul: false,
                         paths: vec![GitPath::new("extra.txt").unwrap()],
                     },
                     &NeverCancelled,
@@ -1270,6 +1323,9 @@ mod tests {
                         amend: false,
                         no_edit: false,
                         allow_empty: true,
+                        only: false,
+                        pathspec_from_file: None,
+                        pathspec_file_nul: false,
                         paths: Vec::new(),
                     },
                     &NeverCancelled,
@@ -1294,7 +1350,9 @@ mod tests {
                     GitCli::new(runner, policy(repository.root())).interpret_trailers(
                         InterpretTrailersRequest {
                             trailers: vec!["Reviewed-by: Larch <fixture@example.invalid>".into()],
-                            in_place: Some(GitPath::new("missing-message").unwrap()),
+                            in_place: Some(GitFilePath::new("missing-message").unwrap()),
+                            add_if_different: false,
+                            add_if_missing: false,
                             stdin: Vec::new(),
                         },
                         &NeverCancelled,

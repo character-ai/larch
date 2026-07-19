@@ -809,7 +809,7 @@ test-codex-implementer:
 
 
 test-git-commit-only:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_git.py -q -k 'commit_pathspec_file_nul_only'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content
 
 test-refresh-run-logs:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k refresh_run_logs

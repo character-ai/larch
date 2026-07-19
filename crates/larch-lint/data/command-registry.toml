@@ -2754,11 +2754,11 @@ verb = "amend-add"
 python_module = "larch.git.git"
 python_function = "amend_add_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7735
 
 [[commands]]
 domain = "git"
@@ -2838,11 +2838,11 @@ verb = "commit"
 python_module = "larch.git.git"
 python_function = "commit_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7735
 
 [[commands]]
 domain = "git"
@@ -2946,11 +2946,11 @@ verb = "stage"
 python_module = "larch.git.git"
 python_function = "stage_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7735
 
 [[commands]]
 domain = "git"
@@ -8140,7 +8140,7 @@ rust = []
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
 python = ["bgjob wait", "dirty-tree scope-check", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "run-log flush", "token check-budget"]
-rust = []
+rust = ["git commit"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"

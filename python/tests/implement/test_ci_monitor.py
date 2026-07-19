@@ -25,6 +25,7 @@ from larch.report import run_log_manifest
 from test_support import make_run_context, ok
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+_RUST_GIT = str(ci_monitor.larch_entrypoint(ci_monitor._REPO_ROOT))
 
 
 def _new_response_map() -> dict[tuple[str, ...], CommandResult]:
@@ -70,11 +71,16 @@ class RecordingRunner:
     ) -> CommandResult:
         key = tuple(argv)
         self.calls.append(key)
-        queued = self.sequential.get(key)
+        lookup = key
+        if key[:3] == (_RUST_GIT, "git", "stage"):
+            lookup = ("git", "add", "--", *key[3:])
+        elif key[:3] == (_RUST_GIT, "git", "commit"):
+            lookup = ("cli.py git commit", *key[3:])
+        queued = self.sequential.get(lookup)
         if queued:
             return queued.pop(0)
-        if key in self.responses:
-            return self.responses[key]
+        if lookup in self.responses:
+            return self.responses[lookup]
         for prefix, result in self.prefix_responses:
             if key[: len(prefix)] == prefix:
                 return result
@@ -1749,7 +1755,7 @@ def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> No
     commit_script = "cli.py git commit"
     responses = {
         ("git", "add", "--", "fixed.py"): ok(("git", "add")),
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): ok((commit_script,)),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): ok((commit_script,)),
         ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
         ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "1\n"),

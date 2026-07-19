@@ -1356,13 +1356,13 @@ root-max-tokens = 35383
 root-max-content-tokens = 35301
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
-# Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs;
+# Git-CLI migration (#7675/#7734/#7735) routes runtime Git callers through `scripts/larch.sh`;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary.
-closure-max-lines = 3782
-closure-max-tokens = 144378
-closure-max-content-tokens = 144073
+closure-max-lines = 3817
+closure-max-tokens = 144914
+closure-max-content-tokens = 144611
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1411,9 +1411,10 @@ roots = [
 ]
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
+# Git-CLI migration #7735 routes mutation callers through the verified entrypoint;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary.
-closure-max-lines = 6070
-closure-max-tokens = 169827
-closure-max-content-tokens = 169360
+closure-max-lines = 6105
+closure-max-tokens = 170352
+closure-max-content-tokens = 169886

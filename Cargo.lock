@@ -2328,6 +2328,7 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
+ "tokio",
  "wait-timeout",
 ]
 

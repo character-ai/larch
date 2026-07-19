@@ -25,7 +25,7 @@ from larch.calibration import difficulty
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
-from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
 from larch.report import progress_report
 from larch.report import progress_file
 from larch.core import redact
@@ -226,8 +226,7 @@ def _commit_fixes_stage_all(message: str) -> int:
         _rr = repo_root_probe(run=_run)
         repo_root = _rr.stdout.strip() if _rr.returncode == 0 else ""
     result = _run([
-        sys.executable,
-        str(_PY_CLI),
+        str(larch_entrypoint(_plugin_root())),
         "git",
         "commit",
         "--only",
@@ -1277,7 +1276,7 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
     if args.stage_all:
         return _commit_fixes_stage_all(args.message)
-    result = _run([sys.executable, str(_PY_CLI), "git", "commit", "-m", args.message, *args.files])
+    result = _run([str(larch_entrypoint(_plugin_root())), "git", "commit", "-m", args.message, *args.files])
     if result.returncode == 0:
         sha = _git_head()
         _emit_commit_fixes_kvs(committed=True, sha=sha, error="", outcome="ok")

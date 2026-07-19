@@ -1,8 +1,11 @@
 //! Shared Git branch and ref-read commands migrated from Python.
 
 use std::{
-    env, fs,
+    env,
+    ffi::OsString,
+    fs,
     io::{self, Write},
+    path::{Path, PathBuf},
     process::ExitCode,
     sync::Arc,
     thread,
@@ -10,12 +13,15 @@ use std::{
 };
 
 use larch_adapters::{
-    BranchMutationRequest, ExactDiffRequest, GitCli, GitCliError, GitCliPolicy, GitCliResult,
-    GitRef, GitRemote, GixRepository, LsRemoteRequest, NoopProcessObserver, ResetMode,
-    ResetRequest, TokioProcessRunner, runtime::Cancellation, runtime::LarchRuntime,
+    AddRequest, BranchMutationRequest, CommitMessage, CommitRequest, ExactDiffRequest, GitCli,
+    GitCliError, GitCliPolicy, GitCliResult, GitFilePath, GitPath, GitRef, GitRemote,
+    GixRepository, InterpretTrailersRequest, LsRemoteRequest, NoopProcessObserver,
+    OpenFileHolderStatus, ResetMode, ResetRequest, TokioProcessRunner, probe_open_file_holder,
+    runtime::Cancellation, runtime::LarchRuntime,
 };
 use larch_core::{
-    Head, ObjectId, RefName, RepositoryRead, Revision, SafeText, StatusOptions, emit_kv,
+    GIT_COMMIT_CO_AUTHORED_BY_TRAILER, Head, ObjectId, ProcessErrorKind, RefName, RepositoryRead,
+    Revision, SafeText, StatusOptions, emit_kv,
 };
 
 const CURRENT_BRANCH_DETACHED: &str =
@@ -27,23 +33,68 @@ const FLUSH_COMMIT_SUBJECT_PREFIX: &[u8] = b"chore(larch-logs): flush ";
 
 #[derive(Debug)]
 pub enum GitCommand {
-    BranchInfo { args: Vec<String> },
-    CheckRemoteBranch { args: Vec<String> },
-    CountCommits { args: Vec<String> },
-    CurrentBranch { args: Vec<String> },
-    CheckMainSync { args: Vec<String> },
-    ShowStage { args: Vec<String> },
-    SyncLocalMain { args: Vec<String> },
+    AmendAdd {
+        paths: Vec<PathBuf>,
+    },
+    BranchInfo {
+        args: Vec<String>,
+    },
+    CheckMainSync {
+        args: Vec<String>,
+    },
+    CheckRemoteBranch {
+        args: Vec<String>,
+    },
+    CountCommits {
+        args: Vec<String>,
+    },
+    CurrentBranch {
+        args: Vec<String>,
+    },
+    Commit {
+        message: String,
+        no_trailer: bool,
+        only: bool,
+        pathspec_from_file: Option<PathBuf>,
+        pathspec_file_nul: bool,
+        paths: Vec<PathBuf>,
+    },
+    ShowStage {
+        args: Vec<String>,
+    },
+    Stage {
+        paths: Vec<PathBuf>,
+    },
+    SyncLocalMain {
+        args: Vec<String>,
+    },
 }
 
 pub fn run(command: GitCommand) -> ExitCode {
     let code = match command {
+        GitCommand::AmendAdd { paths } => amend_add(&paths),
         GitCommand::BranchInfo { args } => branch_info(&args),
         GitCommand::CheckRemoteBranch { args } => check_remote_branch(&args),
         GitCommand::CountCommits { args } => count_commits(&args),
         GitCommand::CurrentBranch { args } => current_branch(&args),
         GitCommand::CheckMainSync { args } => check_main_sync(&args),
+        GitCommand::Commit {
+            message,
+            no_trailer,
+            only,
+            pathspec_from_file,
+            pathspec_file_nul,
+            paths,
+        } => commit(
+            &message,
+            no_trailer,
+            only,
+            pathspec_from_file.as_deref(),
+            pathspec_file_nul,
+            &paths,
+        ),
         GitCommand::ShowStage { args } => show_stage(&args),
+        GitCommand::Stage { paths } => stage(&paths),
         GitCommand::SyncLocalMain { args } => sync_local_main(&args),
     };
     ExitCode::from(code)
@@ -320,6 +371,607 @@ fn force_branch_main(target: &str) -> Result<(), ()> {
         ))
         .map_err(|_| ())?;
     Ok(())
+}
+
+fn stage(paths: &[PathBuf]) -> u8 {
+    if paths.is_empty() {
+        let _ = writeln!(
+            io::stderr(),
+            "git-stage.sh: at least one file argument is required"
+        );
+        let _ = writeln!(io::stderr(), "usage: git-stage.sh <file> [<file> ...]");
+        return 1;
+    }
+    let Some(context) = MutationContext::new() else {
+        return 128;
+    };
+    if !branch_write_allowed(&context.cwd) {
+        return 1;
+    }
+    let Ok(paths) = typed_paths(paths) else {
+        return 1;
+    };
+    let request = AddRequest {
+        all: false,
+        force: false,
+        pathspec_from_file: None,
+        pathspec_file_nul: false,
+        paths,
+    };
+    let git = context.git();
+    let (result, note) = context.runtime.block_on(run_add_with_retry(
+        &git,
+        request,
+        &context.runner,
+        &context.cancellation,
+    ));
+    render_git_result(result, note.as_deref())
+}
+
+fn amend_add(paths: &[PathBuf]) -> u8 {
+    if paths.is_empty() {
+        let _ = writeln!(
+            io::stderr(),
+            "git-amend-add.sh: at least one file argument is required"
+        );
+        let _ = writeln!(io::stderr(), "usage: git-amend-add.sh <file> [<file> ...]");
+        return 1;
+    }
+    let Some(context) = MutationContext::new() else {
+        return 128;
+    };
+    if !branch_write_allowed(&context.cwd) {
+        return 1;
+    }
+    let Ok(paths) = typed_paths(paths) else {
+        return 1;
+    };
+    let add_request = AddRequest {
+        all: false,
+        force: false,
+        pathspec_from_file: None,
+        pathspec_file_nul: false,
+        paths,
+    };
+    let git = context.git();
+    let (staged, note) = context.runtime.block_on(run_add_with_retry(
+        &git,
+        add_request,
+        &context.runner,
+        &context.cancellation,
+    ));
+    if staged.is_err() {
+        return render_git_result(staged, note.as_deref());
+    }
+    let request = CommitRequest {
+        message: None,
+        amend: true,
+        no_edit: true,
+        allow_empty: false,
+        only: false,
+        pathspec_from_file: None,
+        pathspec_file_nul: false,
+        paths: Vec::new(),
+    };
+    let result = context
+        .runtime
+        .block_on(git.commit(request, &context.cancellation));
+    render_git_result(result, None)
+}
+
+fn commit(
+    message: &str,
+    no_trailer: bool,
+    only: bool,
+    pathspec_from_file: Option<&Path>,
+    pathspec_file_nul: bool,
+    paths: &[PathBuf],
+) -> u8 {
+    if message.trim().is_empty() {
+        let _ = writeln!(
+            io::stderr(),
+            "git-commit.sh: commit message must be non-empty"
+        );
+        return 1;
+    }
+    let Some(context) = MutationContext::new() else {
+        return 128;
+    };
+    if !branch_write_allowed(&context.cwd) {
+        return 1;
+    }
+    if let LockRemoval::Removed(diagnostic) = context.runtime.block_on(try_remove_stale_index_lock(
+        &context.runner,
+        &context.cancellation,
+        &context.cwd,
+    )) {
+        let _ = writeln!(io::stderr(), "{diagnostic}");
+    }
+    let Ok((pathspec, typed)) = commit_paths(pathspec_from_file, paths) else {
+        return 1;
+    };
+    let pathspec_file_nul = pathspec.is_some() && pathspec_file_nul;
+    if let Err(code) =
+        stage_commit_paths(&context, pathspec.clone(), pathspec_file_nul, typed.clone())
+    {
+        return code;
+    }
+    let message_file = match prepare_commit_message(&context, message, no_trailer) {
+        Ok(file) => file,
+        Err(code) => return code,
+    };
+    let message_path = match GitFilePath::new(message_file.path().as_os_str().to_owned()) {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = writeln!(io::stderr(), "{error}");
+            return 1;
+        }
+    };
+    let request = CommitRequest {
+        message: Some(CommitMessage::File(message_path)),
+        amend: false,
+        no_edit: false,
+        allow_empty: false,
+        only,
+        pathspec_from_file: pathspec,
+        pathspec_file_nul,
+        paths: typed,
+    };
+    let git = context.git();
+    let (result, note) = context.runtime.block_on(run_commit_with_retry(
+        &git,
+        request,
+        &context.runner,
+        &context.cancellation,
+    ));
+    render_git_result(result, note.as_deref())
+}
+
+fn commit_paths(
+    pathspec_from_file: Option<&Path>,
+    paths: &[PathBuf],
+) -> Result<(Option<GitFilePath>, Vec<GitPath>), ()> {
+    let pathspec = pathspec_from_file
+        .map(|path| GitFilePath::new(path.as_os_str().to_owned()))
+        .transpose()
+        .map_err(|error| {
+            let _ = writeln!(io::stderr(), "{error}");
+        })?;
+    let paths = if pathspec.is_some() {
+        Vec::new()
+    } else {
+        typed_paths(paths)?
+    };
+    Ok((pathspec, paths))
+}
+
+fn stage_commit_paths(
+    context: &MutationContext,
+    pathspec: Option<GitFilePath>,
+    pathspec_file_nul: bool,
+    paths: Vec<GitPath>,
+) -> Result<(), u8> {
+    if pathspec.is_none() && paths.is_empty() {
+        return Ok(());
+    }
+    let request = AddRequest {
+        all: false,
+        force: false,
+        pathspec_from_file: pathspec,
+        pathspec_file_nul,
+        paths,
+    };
+    let git = context.git();
+    let (result, note) = context.runtime.block_on(run_add_with_retry(
+        &git,
+        request,
+        &context.runner,
+        &context.cancellation,
+    ));
+    if result.is_err() {
+        return Err(render_git_result(result, note.as_deref()));
+    }
+    Ok(())
+}
+
+fn prepare_commit_message(
+    context: &MutationContext,
+    message: &str,
+    no_trailer: bool,
+) -> Result<tempfile::NamedTempFile, u8> {
+    let mut file = tempfile::Builder::new()
+        .prefix("larch-commit-")
+        .suffix(".txt")
+        .tempfile()
+        .map_err(|error| {
+            let _ = writeln!(
+                io::stderr(),
+                "git-commit.sh: temporary message file failed: {error}"
+            );
+            1
+        })?;
+    writeln!(file, "{message}").map_err(|error| {
+        let _ = writeln!(
+            io::stderr(),
+            "git-commit.sh: temporary message write failed: {error}"
+        );
+        1
+    })?;
+    if no_trailer {
+        return Ok(file);
+    }
+    let path = GitFilePath::new(file.path().as_os_str().to_owned()).map_err(|error| {
+        let _ = writeln!(io::stderr(), "{error}");
+        1
+    })?;
+    let request = InterpretTrailersRequest {
+        trailers: vec![OsString::from(GIT_COMMIT_CO_AUTHORED_BY_TRAILER)],
+        in_place: Some(path),
+        add_if_different: true,
+        add_if_missing: true,
+        stdin: Vec::new(),
+    };
+    let git = context.git();
+    let result = context
+        .runtime
+        .block_on(git.interpret_trailers(request, &context.cancellation));
+    if result.is_err() {
+        return Err(render_git_result(result, None));
+    }
+    Ok(file)
+}
+
+struct MutationContext {
+    runtime: LarchRuntime,
+    runner: TokioProcessRunner,
+    cancellation: Cancellation,
+    cwd: PathBuf,
+}
+
+impl MutationContext {
+    fn new() -> Option<Self> {
+        let cwd = env::current_dir().ok()?;
+        let _ = GitCliPolicy::new(cwd.clone()).ok()?;
+        let runtime = LarchRuntime::current_thread().ok()?;
+        let context = Self {
+            runtime,
+            runner: TokioProcessRunner::new(Arc::new(NoopProcessObserver)),
+            cancellation: Cancellation::new(),
+            cwd,
+        };
+        let cancellation = context.cancellation.clone();
+        context.runtime.block_on(async move {
+            let signal_task = tokio::spawn(async move {
+                let _result =
+                    larch_adapters::runtime::cancel_on_shutdown_signal(&cancellation).await;
+            });
+            drop(signal_task);
+        });
+        Some(context)
+    }
+
+    fn git(&self) -> GitCli<'_, TokioProcessRunner> {
+        GitCli::new(
+            &self.runner,
+            GitCliPolicy::new(self.cwd.clone()).expect("absolute current directory"),
+        )
+    }
+}
+
+fn typed_paths(paths: &[PathBuf]) -> Result<Vec<GitPath>, ()> {
+    paths
+        .iter()
+        .map(|path| {
+            GitPath::new(path.as_os_str().to_owned()).map_err(|error| {
+                let _ = writeln!(io::stderr(), "{error}");
+            })
+        })
+        .collect()
+}
+
+async fn run_add_with_retry(
+    git: &GitCli<'_, TokioProcessRunner>,
+    request: AddRequest,
+    runner: &TokioProcessRunner,
+    cancellation: &Cancellation,
+) -> (Result<GitCliResult, GitCliError>, Option<String>) {
+    let first = git.add(request.clone(), cancellation).await;
+    if !retryable_index_lock_failure(&first, git) {
+        return (first, None);
+    }
+    match try_remove_stale_index_lock(runner, cancellation, git.working_directory()).await {
+        LockRemoval::Removed(diagnostic) => (
+            git.add(request, cancellation).await,
+            Some(format!("{diagnostic}; retrying git command once")),
+        ),
+        LockRemoval::NotRemoved(diagnostic) => (first, Some(diagnostic)),
+    }
+}
+
+async fn run_commit_with_retry(
+    git: &GitCli<'_, TokioProcessRunner>,
+    request: CommitRequest,
+    runner: &TokioProcessRunner,
+    cancellation: &Cancellation,
+) -> (Result<GitCliResult, GitCliError>, Option<String>) {
+    let first = git.commit(request.clone(), cancellation).await;
+    if !retryable_index_lock_failure(&first, git) {
+        return (first, None);
+    }
+    match try_remove_stale_index_lock(runner, cancellation, git.working_directory()).await {
+        LockRemoval::Removed(diagnostic) => (
+            git.commit(request, cancellation).await,
+            Some(format!("{diagnostic}; retrying git command once")),
+        ),
+        LockRemoval::NotRemoved(diagnostic) => (first, Some(diagnostic)),
+    }
+}
+
+fn retryable_index_lock_failure(
+    result: &Result<GitCliResult, GitCliError>,
+    git: &GitCli<'_, TokioProcessRunner>,
+) -> bool {
+    let Err(GitCliError::Failed(failed)) = result else {
+        return false;
+    };
+    output_mentions_index_lock(failed)
+        || index_lock_path(git.working_directory()).is_some_and(|path| path.exists())
+}
+
+fn output_mentions_index_lock(result: &GitCliResult) -> bool {
+    let mut content = String::from_utf8_lossy(result.output().stdout()).to_lowercase();
+    content.push_str(&String::from_utf8_lossy(result.output().stderr()).to_lowercase());
+    content.contains("index.lock")
+        || (content.contains("unable to create") && content.contains("lock"))
+}
+
+fn render_git_result(result: Result<GitCliResult, GitCliError>, note: Option<&str>) -> u8 {
+    match result {
+        Ok(result) => {
+            let _ = io::stdout().write_all(result.output().stdout());
+            let _ = io::stderr().write_all(result.output().stderr());
+            if let Some(note) = note {
+                let _ = writeln!(io::stderr(), "{note}");
+            }
+            0
+        }
+        Err(GitCliError::Failed(result)) => {
+            let _ = io::stdout().write_all(result.output().stdout());
+            let _ = io::stderr().write_all(result.output().stderr());
+            if let Some(note) = note {
+                let _ = writeln!(io::stderr(), "{note}");
+            }
+            result
+                .output()
+                .status()
+                .code()
+                .and_then(|code| u8::try_from(code).ok())
+                .unwrap_or(1)
+        }
+        Err(GitCliError::Process(error)) => {
+            if let Some(output) = error.output() {
+                let _ = io::stdout().write_all(output.stdout());
+                let _ = io::stderr().write_all(output.stderr());
+            }
+            let _ = writeln!(io::stderr(), "fatal: {error}");
+            if let Some(note) = note {
+                let _ = writeln!(io::stderr(), "{note}");
+            }
+            match error.kind() {
+                ProcessErrorKind::Spawn => 127,
+                ProcessErrorKind::Cancelled => 130,
+                ProcessErrorKind::TimedOut => 124,
+                _ => 128,
+            }
+        }
+        Err(error) => {
+            let _ = writeln!(io::stderr(), "fatal: {error}");
+            if let Some(note) = note {
+                let _ = writeln!(io::stderr(), "{note}");
+            }
+            128
+        }
+    }
+}
+
+enum LockRemoval {
+    Removed(String),
+    NotRemoved(String),
+}
+
+async fn try_remove_stale_index_lock(
+    runner: &TokioProcessRunner,
+    cancellation: &Cancellation,
+    cwd: &Path,
+) -> LockRemoval {
+    let Some(lock_path) = index_lock_path(cwd) else {
+        return LockRemoval::NotRemoved(
+            "larch: stale .git/index.lock not removed: git-dir probe failed".to_owned(),
+        );
+    };
+    let label = format!("lock={}", lock_path.display());
+    let metadata = match fs::symlink_metadata(&lock_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return LockRemoval::NotRemoved(format!(
+                "larch: stale .git/index.lock not removed: lock absent; {label}"
+            ));
+        }
+        Err(error) => {
+            return LockRemoval::NotRemoved(format!(
+                "larch: stale .git/index.lock not removed: stat failed: {error}; {label}"
+            ));
+        }
+    };
+    if !metadata.file_type().is_file() {
+        return LockRemoval::NotRemoved(format!(
+            "larch: stale .git/index.lock not removed: unsafe lock file type; {label}"
+        ));
+    }
+    if metadata.len() != 0 {
+        return LockRemoval::NotRemoved(format!(
+            "larch: stale .git/index.lock not removed: non-empty lock; {label}"
+        ));
+    }
+    match index_lock_holder_state(runner, cancellation, &lock_path, cwd).await {
+        HolderState::Held => {
+            return LockRemoval::NotRemoved(format!(
+                "larch: stale .git/index.lock not removed: lock held by process; {label}"
+            ));
+        }
+        HolderState::Unverifiable => {
+            return LockRemoval::NotRemoved(format!(
+                "larch: stale .git/index.lock not removed: holder probe failed; {label}"
+            ));
+        }
+        HolderState::Absent => {}
+    }
+    if let Err(error) = fs::remove_file(&lock_path) {
+        return LockRemoval::NotRemoved(format!(
+            "larch: stale .git/index.lock not removed: unlink failed: {error}; {label}"
+        ));
+    }
+    if lock_path.exists() {
+        return LockRemoval::NotRemoved(format!(
+            "larch: stale .git/index.lock not removed: unlink verification failed; {label}"
+        ));
+    }
+    LockRemoval::Removed(format!("larch: removed stale .git/index.lock; {label}"))
+}
+
+fn index_lock_path(cwd: &Path) -> Option<PathBuf> {
+    let repo = GixRepository::discover(cwd).ok()?;
+    let location = repo.location();
+    let git_dir = native_path(location.git_dir.as_bytes());
+    Some(git_dir.join("index.lock"))
+}
+
+#[cfg(unix)]
+fn native_path(bytes: &[u8]) -> PathBuf {
+    use std::os::unix::ffi::OsStringExt as _;
+    PathBuf::from(OsString::from_vec(bytes.to_vec()))
+}
+
+#[cfg(not(unix))]
+fn native_path(bytes: &[u8]) -> PathBuf {
+    PathBuf::from(String::from_utf8_lossy(bytes).into_owned())
+}
+
+fn lock_held_by_procfs(lock_path: &Path) -> Option<bool> {
+    let proc_root = Path::new("/proc");
+    if !proc_root.is_dir() {
+        return None;
+    }
+    let wanted = lock_path
+        .canonicalize()
+        .unwrap_or_else(|_| lock_path.to_path_buf());
+    let current = std::process::id().to_string();
+    let entries = fs::read_dir(proc_root).ok()?;
+    let mut uncertain = false;
+    for entry in entries {
+        let Ok(entry) = entry else {
+            uncertain = true;
+            continue;
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == current || !name.chars().all(|value| value.is_ascii_digit()) {
+            continue;
+        }
+        let descriptors = match fs::read_dir(entry.path().join("fd")) {
+            Ok(descriptors) => descriptors,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                uncertain = true;
+                continue;
+            }
+        };
+        for descriptor in descriptors {
+            let Ok(descriptor) = descriptor else {
+                uncertain = true;
+                continue;
+            };
+            match descriptor.path().canonicalize() {
+                Ok(path) if path == wanted => return Some(true),
+                Ok(_) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(_) => uncertain = true,
+            }
+        }
+    }
+    if uncertain { None } else { Some(false) }
+}
+
+enum HolderState {
+    Held,
+    Absent,
+    Unverifiable,
+}
+
+async fn index_lock_holder_state(
+    runner: &TokioProcessRunner,
+    cancellation: &Cancellation,
+    lock_path: &Path,
+    cwd: &Path,
+) -> HolderState {
+    match lock_held_by_procfs(lock_path) {
+        Some(true) => HolderState::Held,
+        Some(false) => HolderState::Absent,
+        None => match probe_open_file_holder(runner, lock_path, cwd, cancellation).await {
+            OpenFileHolderStatus::Held => HolderState::Held,
+            OpenFileHolderStatus::Absent => HolderState::Absent,
+            OpenFileHolderStatus::Unverifiable => HolderState::Unverifiable,
+        },
+    }
+}
+
+fn branch_write_allowed(cwd: &Path) -> bool {
+    let state_file = env::var_os("SHIP_PR_STATE_FILE")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("IMPLEMENT_TMPDIR")
+                .filter(|value| !value.is_empty())
+                .map(|value| PathBuf::from(value).join("ship-pr-state.sh"))
+        });
+    let Some(state_file) = state_file else {
+        return true;
+    };
+    let Ok(metadata) = fs::symlink_metadata(&state_file) else {
+        return true;
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return true;
+    }
+    let Some(repo) = GixRepository::discover(cwd).ok() else {
+        return true;
+    };
+    let Ok(Head::Symbolic { name, .. }) = repo.head() else {
+        return true;
+    };
+    let Some(branch) = short_branch_name(&name) else {
+        return true;
+    };
+    let Ok(content) = fs::read_to_string(state_file) else {
+        return true;
+    };
+    let mut forbidden = false;
+    let mut original = "";
+    for line in content.lines() {
+        if let Some(value) = line.strip_prefix("ORIGINAL_BRANCH_FORBIDDEN=") {
+            forbidden = value.trim().eq_ignore_ascii_case("true");
+        } else if let Some(value) = line.strip_prefix("BRANCH_NAME=") {
+            original = value;
+        }
+    }
+    if forbidden && original == branch {
+        let _ = writeln!(
+            io::stderr(),
+            "refusing commit or push on forbidden original branch: {branch}"
+        );
+        return false;
+    }
+    true
 }
 
 fn current_branch(args: &[String]) -> u8 {

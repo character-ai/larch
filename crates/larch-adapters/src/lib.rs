@@ -29,13 +29,15 @@ pub use git::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,
     CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchRequest,
     ForceWithLease, GitCli, GitCliError, GitCliInputError, GitCliInputErrorKind, GitCliPolicy,
-    GitCliResult, GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl,
-    GixRepository, InitRequest, InterpretTrailersRequest, LsRemoteRequest, MergeRequest,
+    GitCliResult, GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec, GitRemote, GitToken,
+    GitUrl, GixRepository, InitRequest, InterpretTrailersRequest, LsRemoteRequest, MergeRequest,
     PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest, ResetMode, ResetRequest,
     RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
     TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error,
 };
-pub use process::{NoopProcessObserver, TokioProcessRunner};
+pub use process::{
+    NoopProcessObserver, OpenFileHolderStatus, TokioProcessRunner, probe_open_file_holder,
+};
 
 /// Return metadata compiled into the adapter layer.
 #[must_use]

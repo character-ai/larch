@@ -2592,69 +2592,6 @@
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
-    "file": "tests/git/test_check_main_sync.py",
-    "qualified_symbol": "test_check_main_sync_cli_blocked_exit_one",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_check_main_sync.py",
-    "qualified_symbol": "test_check_main_sync_cli_flush_reset",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_check_main_sync.py",
-    "qualified_symbol": "test_check_main_sync_cli_mixed_ahead_blocked",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_check_main_sync_not_main_cli",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_commit_main_pathspec_from_file_removes_zero_byte_index_lock_and_retries",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_commit_pathspec_file_nul_only_cli_argv",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_commit_pathspec_file_nul_only_leaves_unrelated_staged",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
     "file": "tests/git/test_git.py",
     "qualified_symbol": "test_remote_branch_state_transport_error",
     "facade_module": "larch.git.git",
@@ -2716,33 +2653,6 @@
     "defining_module": "larch.core",
     "occurrence": 1,
     "reason": "create_main uses module-level proc directly; patching consuming module binding is the correct injection point for scope-disposition guard tests"
-  },
-  {
-    "file": "tests/git/test_push.py",
-    "qualified_symbol": "test_branch_push_dedupes_stderr",
-    "facade_module": "larch.git.push",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_push.py",
-    "qualified_symbol": "test_branch_push_propagates_final_exit_code",
-    "facade_module": "larch.git.push",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_push.py",
-    "qualified_symbol": "test_force_status_map_dirty_worktree",
-    "facade_module": "larch.git.push",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
     "file": "tests/implement/test_checks.py",
