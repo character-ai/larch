@@ -315,6 +315,11 @@ where
             self.policy.output_limit,
         )?
         .with_environment(ChildEnvironment::GitTerminalPrompt, OsString::from("0"))
+        // Force a non-interactive editor: `git rebase --continue` after conflict
+        // resolution creates a commit and otherwise opens core.editor, which hangs
+        // (interactive) or fails (dumb terminal) in this headless runtime. Matches
+        // the Python `GIT_EDITOR=true` posture; no larch git op wants an editor.
+        .with_environment(ChildEnvironment::GitEditor, OsString::from("true"))
         .with_stdin(operation.stdin());
         let label = request.program().operation();
         let output = self.runner.run(request, cancellation).await?;
@@ -1122,6 +1127,22 @@ mod tests {
                 "push",
                 "--set-upstream",
                 "--force-with-lease=refs/heads/main:abc",
+                "origin",
+                "HEAD:main",
+            ],
+        );
+        assert_argv(
+            &PushRequest {
+                remote: GitRemote::new("origin").unwrap(),
+                refspec: GitRefspec::new("HEAD:main").unwrap(),
+                force_with_lease: Some(ForceWithLease::ExpectingAbsent {
+                    reference: GitRef::new("refs/heads/main").unwrap(),
+                }),
+                set_upstream: false,
+            },
+            &[
+                "push",
+                "--force-with-lease=refs/heads/main:",
                 "origin",
                 "HEAD:main",
             ],

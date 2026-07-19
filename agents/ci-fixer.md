@@ -166,7 +166,7 @@ Otherwise, run self-review for non-trivial `ship_pr_pre_push` conflict resolutio
 
 ### Phase 4 - Continue rebase (local-only, no push)
 
-Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push rebase --continue --no-push --keep-on-conflict`:
+Run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" push rebase --continue --no-push --keep-on-conflict`:
 
 - **Exit 0**: local-only rebase succeeded. Do NOT push. Return `FIXER_RESULT=resolved`. The main agent relaunches Step 8 (`ship_pr_pre_push`) or returns to the Rebase Checkpoint Macro (`early_rebase`).
 - **Exit 1**: a later commit conflicted. Loop to Phase 1 with a fresh `CONFLICT_FILES` from this invocation's stdout.

@@ -1330,7 +1330,7 @@ fn one_line_summary(text: &str) -> String {
         .collect()
 }
 
-fn is_transient_net(content: &str) -> bool {
+pub fn is_transient_net(content: &str) -> bool {
     let lower = content.to_ascii_lowercase();
     // Keep the Python is_transient_net_signature exclusions for permanent DNS misses.
     if lower.contains("no such hosted") || lower.contains("no such hostname") {

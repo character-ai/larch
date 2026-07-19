@@ -22,6 +22,7 @@ from larch.core.repo_roots import plugin_root
 from larch.issue import execution_issues
 from larch.implement.dispatch_helpers import result_env_capture_rows
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.report import run_log_batch, run_log_flush, run_log_manifest
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
@@ -404,15 +405,12 @@ def _run_step7a_inner(
                 comment_url = m.group(1)
 
     rebase_out = implement_tmpdir / "rebase-checkpoint-probe.stdout"
-    probe = _run_cli(
-        "push",
-        "checkpoint-probe",
-        "7a.r",
-        "diagrams",
-        "--base-remote",
-        base_remote,
-        "--base-ref",
-        base_ref,
+    probe = rust_runtime.checkpoint_probe(
+        proc,
+        step_prefix="7a.r",
+        short_name="diagrams",
+        base_remote=base_remote,
+        base_ref=base_ref,
     )
     rebase_out.write_text(probe.stdout, encoding="utf-8")
     for line in probe.stdout.splitlines():
@@ -423,17 +421,17 @@ def _run_step7a_inner(
         run_id=run_id,
         no_logs_commit=no_logs_commit,
         claude_source_file=claude_source,
-        defer_git_commit=probe.returncode != 0,
+        defer_git_commit=probe.exit_code != 0,
     )
-    if probe.returncode != 0:
+    if probe.exit_code != 0:
         emit(key="DIAGRAM_STATUS", value=diagram_status)
         emit(key="DIAGRAM_REASON", value=diagram_reason)
         emit(key="DIAGRAM_PATH", value=diagram_path)
         emit(key="COMMENT_URL", value=comment_url)
         emit(key="LOG_FLUSH_STATUS", value=log_flush_status)
         emit(key="STEP_7A_BAIL_REASON", value=bail)
-        emit(key="REBASE_OUTCOME", value="conflict" if probe.returncode == 1 else "failed")
-        return probe.returncode
+        emit(key="REBASE_OUTCOME", value="conflict" if probe.exit_code == 1 else "failed")
+        return probe.exit_code
 
     rebase_outcome = "skipped"
     for line in probe.stdout.splitlines():

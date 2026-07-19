@@ -4855,19 +4855,20 @@ def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    calls: list[list[str]] = []
+    calls: list[dict[str, str]] = []
 
-    def fake_invoke(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(list(args))
-        return subprocess.CompletedProcess(
-            list(args),
-            1,
-            "\nCHECKPOINT_NEXT=load-routing\n\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n",
-            "probe warning\n",
+    def fake_checkpoint(_runner: object, *, step_prefix: str, short_name: str, forked_target: str = "false", base_remote: str | None = None, base_ref: str | None = None, cwd: str | None = None) -> dispatch_commit_route.rust_runtime.CheckpointProbeOutput:
+        _ = (base_remote, base_ref, cwd)
+        calls.append({"step_prefix": step_prefix, "short_name": short_name, "forked_target": forked_target})
+        return dispatch_commit_route.rust_runtime.CheckpointProbeOutput(
+            exit_code=1,
+            stdout="\nCHECKPOINT_NEXT=load-routing\n\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n",
+            stderr="probe warning\n",
+            routing={},
+            advisory_lines=(),
         )
 
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
-    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_commit_route.rust_runtime, "checkpoint_probe", fake_checkpoint)
 
     rc = implement_dispatch._run_7r_rebase_checkpoint("true")
 
@@ -4875,7 +4876,7 @@ def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
     assert rc == 1
     assert captured.out == "CHECKPOINT_NEXT=load-routing\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n"
     assert captured.err == "probe warning\n"
-    assert calls == [["push", "checkpoint-probe", "7.r", "commit (review)", "--forked-target", "true"]]
+    assert calls == [{"step_prefix": "7.r", "short_name": "commit (review)", "forked_target": "true"}]
 
 
 @pytest.mark.parametrize(

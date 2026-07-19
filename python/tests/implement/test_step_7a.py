@@ -43,9 +43,18 @@ def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", fake_is_small_non_runtime_change)
     monkeypatch.setattr(step_7a, "_run_log_flush", fake_run_log_flush)
-    with patch.object(step_7a, "subprocess") as mock_subprocess:
+    with patch.object(step_7a, "subprocess") as mock_subprocess, patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0,
+            stdout="CHECKPOINT_NEXT=continue\nREBASE_OUTCOME=skipped\n",
+            stderr="",
+            routing={},
+            advisory_lines=(),
+        ),
+    ):
         mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "CHECKPOINT_NEXT=continue\nREBASE_OUTCOME=skipped\n"
         rc = step_7a.main(["--implement-tmpdir", str(tmp_path), "--bgjob-merge-result-env", str(merge_env)])
 
     assert rc == 0
@@ -131,11 +140,15 @@ def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture
     ) as mock_flush, patch.object(
         step_7a,
         "subprocess",
-    ) as mock_subprocess:
+    ), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         mock_flush.return_value.skipped = True
         mock_flush.return_value.reason = "no-repo-cwd"
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 0
@@ -241,9 +254,13 @@ def test_step7a_skips_diagram_for_small_non_runtime_change(tmp_path: Path, capsy
         return True
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", fake_is_small_non_runtime_change)
-    with patch.object(step_7a, "_run_log_flush", return_value="skip"), patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+    with patch.object(step_7a, "_run_log_flush", return_value="skip"), patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
     assert rc == 0
     out = capsys.readouterr().out
@@ -261,9 +278,13 @@ def test_step7a_honors_issue_number_and_run_id(tmp_path: Path, capsys: pytest.Ca
         step_7a,
         "_run_log_flush",
         return_value="skip",
-    ), patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+    ), patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path, issue_number="42", run_id="run-42")
 
     assert rc == 0
@@ -277,9 +298,13 @@ def test_step7a_reads_run_id_from_session_env_when_session_id_absent(tmp_path: P
         step_7a,
         "_run_log_flush",
         return_value="skip",
-    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 0
@@ -303,9 +328,13 @@ def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: 
         step_7a.pr_body,
         "generate_code_flow_diagram",
         side_effect=fake_generate_code_flow_diagram,
-    ), patch.object(step_7a, "_run_log_flush", return_value="ok"), patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+    ), patch.object(step_7a, "_run_log_flush", return_value="ok"), patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 0
@@ -329,9 +358,13 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
         step_7a.pr_body,
         "generate_code_flow_diagram",
         return_value=step_7a.pr_body.CodeFlowDiagramResult(1, "failed", "", reason),
-    ), patch.object(step_7a, "_run_log_flush", return_value="ok") as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 1
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=conflict\n"
+    ), patch.object(step_7a, "_run_log_flush", return_value="ok") as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=1, stdout="REBASE_OUTCOME=conflict\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 1
@@ -349,9 +382,13 @@ def test_step7a_rebase_failure_defers_git_commit_flush(tmp_path: Path) -> None:
         step_7a,
         "_run_log_flush",
         return_value="ok",
-    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 1
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=conflict\n"
+    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=1, stdout="REBASE_OUTCOME=conflict\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 1
@@ -365,9 +402,13 @@ def test_step7a_rebase_failure_flushes_and_preserves_probe_rc(tmp_path: Path, ca
         step_7a,
         "_run_log_flush",
         return_value="degraded",
-    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 3
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=failed\n"
+    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=3, stdout="REBASE_OUTCOME=failed\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
 
     out = capsys.readouterr().out
@@ -384,9 +425,13 @@ def test_step7a_rebase_failure_no_logs_commit_emits_skipped_status(tmp_path: Pat
         step_7a,
         "_run_log_flush",
         return_value="skipped-no-logs-commit",
-    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 3
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=failed\n"
+    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=3, stdout="REBASE_OUTCOME=failed\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path, no_logs_commit=True)
 
     out = capsys.readouterr().out
@@ -402,9 +447,13 @@ def test_step7a_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pyte
         step_7a,
         "_run_log_flush",
         return_value="skipped-no-logs-commit",
-    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path, no_logs_commit=True)
 
     assert rc == 0
@@ -431,9 +480,13 @@ def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.
     ), patch.object(
         step_7a.run_log_flush,
         "_stage_vendor_failure_diagnostics",
-    ), patch.object(step_7a, "subprocess") as mock_subprocess:
-        mock_subprocess.run.return_value.returncode = 0
-        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+    ), patch.object(step_7a, "subprocess"), patch.object(
+        step_7a.rust_runtime,
+        "checkpoint_probe",
+        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+        ),
+    ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 0
@@ -459,17 +512,23 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
         _ = diagram.write_text("## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n", encoding="utf-8")
         return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
+    checkpoint_calls: list[tuple[str, str, str | None, str | None]] = []
+
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         calls.append(args)
         if args[:2] == ("diagrams", "upsert"):
             return subprocess.CompletedProcess(args, 0, "UPSERT_STATUS=ok\nCOMMENT_URL=https://example.test/comment/1\n", "")
-        if args[:2] == ("push", "checkpoint-probe"):
-            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\nROUTE=continue\nCHECKPOINT_NEXT=continue\n", "")
         return subprocess.CompletedProcess(args, 0, "", "")
+
+    def fake_checkpoint(_runner: object, *, step_prefix: str, short_name: str, base_remote: str | None = None, base_ref: str | None = None, forked_target: str = "false", cwd: str | None = None) -> step_7a.rust_runtime.CheckpointProbeOutput:
+        _ = (forked_target, cwd)
+        checkpoint_calls.append((step_prefix, short_name, base_remote, base_ref))
+        return step_7a.rust_runtime.CheckpointProbeOutput(exit_code=0, stdout="REBASE_OUTCOME=ok\nROUTE=continue\nCHECKPOINT_NEXT=continue\n", stderr="", routing={}, advisory_lines=())
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
     monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
@@ -488,7 +547,7 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
         "--repo",
         "owner/repo",
     )
-    assert calls[2] == ("push", "checkpoint-probe", "7a.r", "diagrams", "--base-remote", "origin", "--base-ref", "main")
+    assert checkpoint_calls == [("7a.r", "diagrams", "origin", "main")]
     assert (tmp_path / "code-flow-section.md").read_text(encoding="utf-8") == (
         "## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n"
     )
@@ -518,24 +577,30 @@ def test_step7a_rehydrates_fork_target_for_generation_and_checkpoint(
         _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
         return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
+    checkpoint_calls: list[tuple[str, str, str | None, str | None]] = []
+
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         calls.append(args)
         if args[:2] == ("diagrams", "upsert"):
             return subprocess.CompletedProcess(args, 0, "UPSERT_STATUS=ok\nCOMMENT_URL=https://example.test/comment/1\n", "")
-        if args[:2] == ("push", "checkpoint-probe"):
-            return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
         return subprocess.CompletedProcess(args, 0, "", "")
+
+    def fake_checkpoint(_runner: object, *, step_prefix: str, short_name: str, base_remote: str | None = None, base_ref: str | None = None, forked_target: str = "false", cwd: str | None = None) -> step_7a.rust_runtime.CheckpointProbeOutput:
+        _ = (forked_target, cwd)
+        checkpoint_calls.append((step_prefix, short_name, base_remote, base_ref))
+        return step_7a.rust_runtime.CheckpointProbeOutput(exit_code=0, stdout="REBASE_OUTCOME=ok\n", stderr="", routing={}, advisory_lines=())
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
     monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
     assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
     assert generation_target == [("upstream", "main")]
     assert ("diagrams", "upsert", "--issue", "42", "--code-flow-file", str(tmp_path / "code-flow-section.md"), "--repo", "upstream/repo") in calls
-    assert ("push", "checkpoint-probe", "7a.r", "diagrams", "--base-remote", "upstream", "--base-ref", "main") in calls
+    assert checkpoint_calls == [("7a.r", "diagrams", "upstream", "main")]
 
 
 @pytest.mark.parametrize(("status", "reason"), [("skipped", "br-in-participant-alias"), ("skipped", "dollar-in-participant-alias"), ("skipped", "unclosed-frontmatter")])
@@ -597,9 +662,15 @@ def test_step7a_upsert_failure_keeps_checkpoint_and_exit_success(
             return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
+    def fake_checkpoint(_runner: object, *, step_prefix: str, short_name: str, base_remote: str | None = None, base_ref: str | None = None, forked_target: str = "false", cwd: str | None = None) -> step_7a.rust_runtime.CheckpointProbeOutput:
+        _ = (base_remote, base_ref, forked_target, cwd)
+        calls.append(("push", "checkpoint-probe", step_prefix, short_name))
+        return step_7a.rust_runtime.CheckpointProbeOutput(exit_code=0, stdout="REBASE_OUTCOME=ok\n", stderr="", routing={}, advisory_lines=())
+
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
     monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
@@ -628,9 +699,15 @@ def test_step7a_empty_issue_number_skips_upsert_but_runs_checkpoint(
             return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
+    def fake_checkpoint(_runner: object, *, step_prefix: str, short_name: str, base_remote: str | None = None, base_ref: str | None = None, forked_target: str = "false", cwd: str | None = None) -> step_7a.rust_runtime.CheckpointProbeOutput:
+        _ = (base_remote, base_ref, forked_target, cwd)
+        calls.append(("push", "checkpoint-probe", step_prefix, short_name))
+        return step_7a.rust_runtime.CheckpointProbeOutput(exit_code=0, stdout="REBASE_OUTCOME=ok\n", stderr="", routing={}, advisory_lines=())
+
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
     monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 

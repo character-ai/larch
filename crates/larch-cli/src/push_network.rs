@@ -282,7 +282,7 @@ fn remote_matches_head(branch: &str) -> bool {
     remote == local
 }
 
-fn current_branch() -> Option<String> {
+pub fn current_branch() -> Option<String> {
     let cwd = env::current_dir().ok()?;
     let repo = GixRepository::discover(cwd).ok()?;
     match repo.head().ok()? {
