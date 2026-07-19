@@ -5,8 +5,9 @@ use std::os::unix::ffi::OsStringExt;
 
 use larch_adapters::git::GixRepository;
 use larch_core::{
-    ConfigKey, ConfigScope, Head, ObjectHash, ObjectId, ObjectKind, RefFormat, RefName,
-    ReferenceTarget, RepositoryErrorKind, RepositoryRead, Revision,
+    ChangeKind, ConfigKey, ConfigScope, GitPath, Head, IgnoreKind, ObjectHash, ObjectId,
+    ObjectKind, RefFormat, RefName, ReferenceTarget, RepositoryErrorKind, RepositoryRead, Revision,
+    StatusOptions,
 };
 use larch_test_support::{
     ExecutionSnapshot, GitFixture, GitFixtureError, GitObjectFormat, GitRepository,
@@ -360,6 +361,384 @@ fn head_worktrees_sha256_and_errors_have_typed_results() {
     );
 }
 
+#[test]
+fn configured_status_matches_git_for_clean_and_dirty_worktrees() {
+    let Some(clean) = fixture(GitFixture::Refs, GitObjectFormat::Sha1) else {
+        return;
+    };
+    let clean_status = GixRepository::open(clean.root())
+        .unwrap()
+        .status(&StatusOptions::default())
+        .unwrap();
+    assert!(!clean_status.is_dirty());
+
+    let Some(changes) = fixture(GitFixture::Changes, GitObjectFormat::Sha1) else {
+        return;
+    };
+    let reader = GixRepository::open(changes.root()).unwrap();
+    let status = reader
+        .status(&StatusOptions {
+            include_ignored: true,
+            ..StatusOptions::default()
+        })
+        .unwrap();
+    assert!(status.is_dirty(), "untracked files must count as dirty");
+    assert_eq!(
+        status
+            .tree_to_index
+            .paths()
+            .map(|path| path.as_bytes().to_vec())
+            .collect::<Vec<_>>(),
+        git_nul_paths(&changes, ["diff", "--cached", "--name-only", "-z"])
+    );
+    assert_eq!(status.tree_to_index.entries()[0].kind, ChangeKind::Added);
+    assert_eq!(
+        status
+            .index_to_worktree
+            .paths()
+            .map(|path| path.as_bytes().to_vec())
+            .collect::<Vec<_>>(),
+        git_nul_paths(&changes, ["diff", "--name-only", "-z"])
+    );
+    assert_eq!(
+        status
+            .untracked
+            .iter()
+            .map(|path| path.as_bytes().to_vec())
+            .collect::<Vec<_>>(),
+        git_nul_paths(
+            &changes,
+            ["ls-files", "--others", "--exclude-standard", "-z"]
+        )
+    );
+    assert_eq!(status.ignored[0].path, GitPath::new("ignored.txt"));
+    assert_eq!(status.ignored[0].kind, IgnoreKind::Expendable);
+
+    let scoped = reader
+        .status(&StatusOptions {
+            pathspecs: vec![GitPath::new("tracked.txt")],
+            ..StatusOptions::default()
+        })
+        .unwrap();
+    assert_eq!(
+        scoped.index_to_worktree.paths().collect::<Vec<_>>(),
+        vec![&GitPath::new("tracked.txt")]
+    );
+    assert!(scoped.tree_to_index.is_empty());
+    assert!(scoped.untracked.is_empty());
+    assert_eq!(scoped.tracked.len(), 1);
+    assert_eq!(scoped.tracked[0].path, GitPath::new("tracked.txt"));
+
+    git_ok(&changes, ["reset", "--hard", "--quiet"]);
+    std::fs::remove_file(changes.root().join("untracked.txt")).unwrap();
+    git_ok(&changes, ["add", ".gitignore"]);
+    git_ok(&changes, ["commit", "--quiet", "-m", "track ignores"]);
+    let ignored_only = reader
+        .status(&StatusOptions {
+            include_ignored: true,
+            ..StatusOptions::default()
+        })
+        .unwrap();
+    assert_eq!(ignored_only.ignored[0].path, GitPath::new("ignored.txt"));
+    assert!(!ignored_only.is_dirty());
+    let ignored_without_untracked = reader
+        .status(&StatusOptions {
+            include_untracked: false,
+            include_ignored: true,
+            ..StatusOptions::default()
+        })
+        .unwrap();
+    assert!(ignored_without_untracked.untracked.is_empty());
+    assert_eq!(
+        ignored_without_untracked.ignored[0].path,
+        GitPath::new("ignored.txt")
+    );
+    changes.write("only-untracked.txt", b"dirty\n").unwrap();
+    let untracked_only = reader.status(&StatusOptions::default()).unwrap();
+    assert_eq!(
+        untracked_only.untracked,
+        vec![GitPath::new("only-untracked.txt")]
+    );
+    assert!(untracked_only.is_dirty());
+}
+
+#[test]
+fn conflicts_are_only_unmerged_and_preserve_all_index_stages() {
+    let Some(conflict) = fixture(GitFixture::Conflict, GitObjectFormat::Sha1) else {
+        return;
+    };
+    let status = GixRepository::open(conflict.root())
+        .unwrap()
+        .status(&StatusOptions::default())
+        .unwrap();
+    assert!(status.is_dirty());
+    assert_eq!(status.unmerged.len(), 1);
+    let entry = &status.unmerged[0];
+    assert_eq!(entry.path.as_bytes(), b"tracked.txt");
+    assert_eq!(
+        entry
+            .stages
+            .iter()
+            .map(|stage| stage.stage)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
+    assert!(
+        entry
+            .stages
+            .iter()
+            .all(|stage| stage.mode.raw() == 0o100_644)
+    );
+    assert!(status.tree_to_index.is_empty());
+    assert!(status.index_to_worktree.is_empty());
+}
+
+#[test]
+fn tree_changes_report_names_statuses_modes_and_configured_rewrites() {
+    let Some(repository) = fixture(GitFixture::Refs, GitObjectFormat::Sha1) else {
+        return;
+    };
+    repository
+        .write("rename.txt", b"rename me\nsame line\n")
+        .unwrap();
+    repository.write("copy.txt", b"copy me\n").unwrap();
+    git_ok(&repository, ["add", "--all"]);
+    git_ok(&repository, ["commit", "--quiet", "-m", "sources"]);
+    git_ok(&repository, ["config", "diff.renames", "copies"]);
+    let old_tree = git_id(&repository, ["rev-parse", "HEAD^{tree}"]);
+    git_ok(&repository, ["mv", "rename.txt", "renamed.txt"]);
+    let staged = GixRepository::open(repository.root())
+        .unwrap()
+        .status(&StatusOptions::default())
+        .unwrap();
+    assert!(staged.tree_to_index.entries().iter().any(|change| {
+        change.kind == ChangeKind::Renamed
+            && change.source_path.as_ref().unwrap().as_bytes() == b"rename.txt"
+            && change.path.as_bytes() == b"renamed.txt"
+    }));
+    repository
+        .write("renamed.txt", b"rename me\nsame line\nchanged\n")
+        .unwrap();
+    repository.write("copy.txt", b"copy changed\n").unwrap();
+    repository.write("copy-2.txt", b"copy changed\n").unwrap();
+    git_ok(&repository, ["add", "--all"]);
+    git_ok(&repository, ["commit", "--quiet", "-m", "rewrites"]);
+    let new_tree = git_id(&repository, ["rev-parse", "HEAD^{tree}"]);
+
+    let changes = GixRepository::open(repository.root())
+        .unwrap()
+        .tree_changes(&old_tree, &new_tree)
+        .unwrap();
+    assert_eq!(changes.entries().len(), 3);
+    assert!(changes.entries().iter().any(|change| {
+        change.kind == ChangeKind::Renamed
+            && change.source_path.as_ref().unwrap().as_bytes() == b"rename.txt"
+            && change.path.as_bytes() == b"renamed.txt"
+    }));
+    assert!(changes.entries().iter().any(|change| {
+        change.kind == ChangeKind::Copied
+            && change.source_path.as_ref().unwrap().as_bytes() == b"copy.txt"
+            && change.path.as_bytes() == b"copy-2.txt"
+    }));
+    assert!(changes.entries().iter().any(|change| {
+        change.kind == ChangeKind::Modified && change.path.as_bytes() == b"copy.txt"
+    }));
+    assert!(changes.entries().iter().all(|change| {
+        change.old_mode.unwrap().raw() == 0o100_644
+            && change.new_mode.unwrap().raw() == 0o100_644
+            && change.old_id.is_some()
+            && change.new_id.is_some()
+    }));
+}
+
+#[cfg(unix)]
+#[test]
+fn status_preserves_non_utf8_paths_and_file_type_changes() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let Some(repository) = fixture(GitFixture::SpecialFiles, GitObjectFormat::Sha1) else {
+        return;
+    };
+    let old_tree = git_id(&repository, ["rev-parse", "HEAD^{tree}"]);
+    fs::remove_file(repository.root().join("link")).unwrap();
+    repository.write("link", b"regular now\n").unwrap();
+    fs::set_permissions(
+        repository.root().join("executable.sh"),
+        fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    let status = GixRepository::open(repository.root())
+        .unwrap()
+        .status(&StatusOptions::default())
+        .unwrap();
+    assert!(status.index_to_worktree.entries().iter().any(|change| {
+        change.path.as_bytes() == b"link" && change.kind == ChangeKind::TypeChanged
+    }));
+    assert!(status.index_to_worktree.entries().iter().any(|change| {
+        change.path.as_bytes() == b"executable.sh"
+            && change.old_mode.unwrap().raw() == 0o100_755
+            && change.new_mode.unwrap().raw() == 0o100_644
+    }));
+    git_ok(&repository, ["add", "link"]);
+    git_ok(&repository, ["commit", "--quiet", "-m", "replace symlink"]);
+    let new_tree = git_id(&repository, ["rev-parse", "HEAD^{tree}"]);
+    let tree_changes = GixRepository::open(repository.root())
+        .unwrap()
+        .tree_changes(&old_tree, &new_tree)
+        .unwrap();
+    assert_eq!(tree_changes.entries()[0].kind, ChangeKind::TypeChanged);
+    assert_eq!(tree_changes.entries()[0].old_mode.unwrap().raw(), 0o120_000);
+    assert_eq!(tree_changes.entries()[0].new_mode.unwrap().raw(), 0o100_644);
+
+    let raw_name = OsString::from_vec(b"untracked-\xff".to_vec());
+    if let Err(error) = repository.write(std::path::Path::new(&raw_name), b"raw\n") {
+        eprintln!("fixture skipped: raw byte path is unsupported: {error}");
+        return;
+    }
+    let status = GixRepository::open(repository.root())
+        .unwrap()
+        .status(&StatusOptions::default())
+        .unwrap();
+    assert!(
+        status
+            .untracked
+            .iter()
+            .any(|path| path.as_bytes() == b"untracked-\xff")
+    );
+}
+
+#[test]
+fn status_respects_case_configuration_and_reports_submodule_changes() {
+    let Some(changes) = fixture(GitFixture::Changes, GitObjectFormat::Sha1) else {
+        return;
+    };
+    git_ok(&changes, ["config", "core.ignoreCase", "true"]);
+    let scoped = GixRepository::open(changes.root())
+        .unwrap()
+        .status(&StatusOptions {
+            pathspecs: vec![GitPath::new("TRACKED.TXT")],
+            ..StatusOptions::default()
+        })
+        .unwrap();
+    assert_eq!(scoped.index_to_worktree.entries().len(), 1);
+
+    let Some(submodule) = fixture(GitFixture::Submodule, GitObjectFormat::Sha1) else {
+        return;
+    };
+    submodule
+        .write("submodule/child.txt", b"child changed\n")
+        .unwrap();
+    let status = GixRepository::open(submodule.root())
+        .unwrap()
+        .status(&StatusOptions::default())
+        .unwrap();
+    assert!(status.index_to_worktree.entries().iter().any(|change| {
+        change.path.as_bytes() == b"submodule" && change.kind == ChangeKind::SubmoduleModified
+    }));
+}
+
+#[test]
+fn external_filters_and_sparse_indexes_fail_explicitly() {
+    if let Some(filtered) = fixture(GitFixture::AttributesAndFilters, GitObjectFormat::Sha1) {
+        assert_eq!(
+            GixRepository::open(filtered.root())
+                .unwrap()
+                .status(&StatusOptions::default())
+                .unwrap_err()
+                .kind(),
+            RepositoryErrorKind::UnsupportedSemantics
+        );
+    }
+
+    if let Some(sparse) = fixture(GitFixture::SparseCheckout, GitObjectFormat::Sha1) {
+        let converted = sparse.git(["sparse-checkout", "reapply", "--sparse-index"]);
+        if converted.is_ok_and(|output| output.success()) {
+            let result = GixRepository::open(sparse.root())
+                .unwrap()
+                .status(&StatusOptions::default());
+            match result {
+                Ok(status) => assert!(!status.is_dirty()),
+                Err(error) => {
+                    assert_eq!(error.kind(), RepositoryErrorKind::UnsupportedSemantics);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn crlf_status_difference_routes_to_exact_compatibility() {
+    let Some(repository) = fixture(GitFixture::Unborn, GitObjectFormat::Sha1) else {
+        return;
+    };
+    repository
+        .write(".gitattributes", b"crlf.txt text eol=crlf\n")
+        .unwrap();
+    repository.write("crlf.txt", b"one\r\ntwo\r\n").unwrap();
+    git_ok(&repository, ["add", "--all"]);
+    git_ok(&repository, ["commit", "--quiet", "-m", "crlf"]);
+    repository.write("crlf.txt", b"one\ntwo\n").unwrap();
+    let reader = GixRepository::open(repository.root()).unwrap();
+    assert!(repository.git(["diff", "--quiet"]).unwrap().success());
+    assert_eq!(
+        reader.status(&StatusOptions::default()).unwrap_err().kind(),
+        RepositoryErrorKind::UnsupportedSemantics
+    );
+}
+
+#[test]
+fn tracked_entries_preserve_flags_and_precious_ignore_kind() {
+    let Some(repository) = fixture(GitFixture::Refs, GitObjectFormat::Sha1) else {
+        return;
+    };
+    repository.write("skip.txt", b"skip\n").unwrap();
+    git_ok(&repository, ["add", "skip.txt"]);
+    git_ok(&repository, ["commit", "--quiet", "-m", "add skip entry"]);
+    git_ok(
+        &repository,
+        ["update-index", "--assume-unchanged", "tracked.txt"],
+    );
+    git_ok(&repository, ["update-index", "--skip-worktree", "skip.txt"]);
+    repository.write("intent.txt", b"intent\n").unwrap();
+    git_ok(&repository, ["add", "--intent-to-add", "intent.txt"]);
+    repository.write(".gitignore", b"$precious.txt\n").unwrap();
+    repository.write("precious.txt", b"keep\n").unwrap();
+    git_ok(&repository, ["config", "gitoxide.parsePrecious", "true"]);
+
+    let status = GixRepository::open(repository.root())
+        .unwrap()
+        .status(&StatusOptions {
+            include_ignored: true,
+            ..StatusOptions::default()
+        })
+        .unwrap();
+    let tracked = status
+        .tracked
+        .iter()
+        .find(|entry| entry.path.as_bytes() == b"tracked.txt")
+        .unwrap();
+    assert!(tracked.flags.assume_valid);
+    let skipped = status
+        .tracked
+        .iter()
+        .find(|entry| entry.path.as_bytes() == b"skip.txt")
+        .unwrap();
+    assert!(skipped.flags.skip_worktree);
+    let intent = status
+        .tracked
+        .iter()
+        .find(|entry| entry.path.as_bytes() == b"intent.txt")
+        .unwrap();
+    assert!(intent.flags.intent_to_add);
+    assert!(status.index_to_worktree.entries().iter().any(|change| {
+        change.path.as_bytes() == b"intent.txt" && change.index_flags.unwrap().intent_to_add
+    }));
+    assert!(status.ignored.iter().any(|entry| {
+        entry.path.as_bytes() == b"precious.txt" && entry.kind == IgnoreKind::Precious
+    }));
+}
+
 fn fixture(kind: GitFixture, format: GitObjectFormat) -> Option<GitRepository> {
     match GitRepository::builder(kind).object_format(format).build() {
         Ok(repository) => Some(repository),
@@ -414,6 +793,20 @@ where
         .filter(|line| !line.is_empty())
         .map(<[u8]>::to_vec)
         .collect()
+}
+
+fn git_nul_paths<I, S>(repository: &GitRepository, arguments: I) -> Vec<Vec<u8>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut paths = git_bytes(repository, arguments)
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(<[u8]>::to_vec)
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
 }
 
 fn git_id<I, S>(repository: &GitRepository, arguments: I) -> ObjectId

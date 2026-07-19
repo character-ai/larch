@@ -250,6 +250,227 @@ pub struct Worktree {
     pub locked: bool,
 }
 
+/// A raw Git tree or index mode.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct GitMode(u32);
+
+impl GitMode {
+    /// Preserve a mode without interpreting adapter-specific bitflags.
+    #[must_use]
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Return the raw mode bits.
+    #[must_use]
+    pub const fn raw(self) -> u32 {
+        self.0
+    }
+}
+
+/// The semantic kind of a typed repository change.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ChangeKind {
+    /// A path exists only in the destination.
+    Added,
+    /// A path exists only in the source.
+    Deleted,
+    /// Content or executable permission changed.
+    Modified,
+    /// The tree entry or filesystem kind changed.
+    TypeChanged,
+    /// A source path moved to a destination path.
+    Renamed,
+    /// A destination was copied from a source path.
+    Copied,
+    /// A gitlink target or submodule worktree changed.
+    SubmoduleModified,
+}
+
+/// One byte-oriented tree, index, or worktree change.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Change {
+    /// The semantic name-status kind.
+    pub kind: ChangeKind,
+    /// The destination path, or affected path for non-rewrites.
+    pub path: GitPath,
+    /// The source path for a rename or copy.
+    pub source_path: Option<GitPath>,
+    /// The source mode when available.
+    pub old_mode: Option<GitMode>,
+    /// The destination mode when available.
+    pub new_mode: Option<GitMode>,
+    /// The source object ID when available.
+    pub old_id: Option<ObjectId>,
+    /// The destination object ID when available.
+    pub new_id: Option<ObjectId>,
+    /// Flags from the relevant index entry, when this change crosses the index.
+    pub index_flags: Option<IndexFlags>,
+}
+
+/// A deterministic name-status change set. `paths()` is its name-only view.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ChangeSet(Vec<Change>);
+
+impl ChangeSet {
+    /// Build a change set whose entries are already in deterministic order.
+    #[must_use]
+    pub const fn new(entries: Vec<Change>) -> Self {
+        Self(entries)
+    }
+
+    /// Return typed name-status entries.
+    #[must_use]
+    pub fn entries(&self) -> &[Change] {
+        &self.0
+    }
+
+    /// Return the destination paths used by name-only callers.
+    pub fn paths(&self) -> impl Iterator<Item = &GitPath> {
+        self.0.iter().map(|entry| &entry.path)
+    }
+
+    /// Report whether the set has no changes.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// Persistent index flags callers need to interpret status safely.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct IndexFlags {
+    /// Git may skip stat checks and assume the worktree matches.
+    pub assume_valid: bool,
+    /// The entry promises a future addition without an indexed blob.
+    pub intent_to_add: bool,
+    /// Sparse checkout omits the entry from the worktree.
+    pub skip_worktree: bool,
+}
+
+/// One unconflicted entry currently recorded in the index.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrackedEntry {
+    /// The repository-relative byte path.
+    pub path: GitPath,
+    /// The raw index mode.
+    pub mode: GitMode,
+    /// The indexed object ID.
+    pub id: ObjectId,
+    /// Persistent caller-relevant index flags.
+    pub flags: IndexFlags,
+}
+
+/// The safety class of one excluded worktree path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IgnoreKind {
+    /// The ignored path may be replaced by checkout-like operations.
+    Expendable,
+    /// The ignored path is marked for preservation by gitoxide semantics.
+    Precious,
+}
+
+/// One ignored worktree entry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IgnoredEntry {
+    /// The repository-relative byte path.
+    pub path: GitPath,
+    /// Whether the ignored entry is expendable or precious.
+    pub kind: IgnoreKind,
+}
+
+/// One conflict-stage entry from the index.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConflictStage {
+    /// Index stage 1 (base), 2 (ours), or 3 (theirs).
+    pub stage: u8,
+    /// The stage's raw index mode.
+    pub mode: GitMode,
+    /// The stage's object ID.
+    pub id: ObjectId,
+    /// The stage's persistent caller-relevant flags.
+    pub flags: IndexFlags,
+}
+
+/// Git's stable conflict classification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConflictKind {
+    /// Both sides deleted distinct versions.
+    BothDeleted,
+    /// Our side added while their side modified.
+    AddedByUs,
+    /// Their side deleted while our side modified.
+    DeletedByThem,
+    /// Their side added while our side modified.
+    AddedByThem,
+    /// Our side deleted while their side modified.
+    DeletedByUs,
+    /// Both sides added distinct versions.
+    BothAdded,
+    /// Both sides modified the entry differently.
+    BothModified,
+}
+
+/// An unmerged path with every present base, ours, and theirs stage.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnmergedEntry {
+    /// The conflicted byte path.
+    pub path: GitPath,
+    /// The conflict classification.
+    pub kind: ConflictKind,
+    /// Every present base, ours, and theirs stage.
+    pub stages: Vec<ConflictStage>,
+}
+
+/// Policy for one configured status iteration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StatusOptions {
+    /// Git pathspec patterns, interpreted from repository-relative byte paths.
+    pub pathspecs: Vec<GitPath>,
+    /// Include individual untracked files.
+    pub include_untracked: bool,
+    /// Include individual ignored files.
+    pub include_ignored: bool,
+}
+
+impl Default for StatusOptions {
+    fn default() -> Self {
+        Self {
+            pathspecs: Vec::new(),
+            include_untracked: true,
+            include_ignored: false,
+        }
+    }
+}
+
+/// Typed changes across `HEAD`, the index, and the worktree.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RepositoryStatus {
+    /// Unconflicted tracked entries selected by the pathspec.
+    pub tracked: Vec<TrackedEntry>,
+    /// Changes from `HEAD`'s tree to the index.
+    pub tree_to_index: ChangeSet,
+    /// Changes from the index to the worktree.
+    pub index_to_worktree: ChangeSet,
+    /// Untracked paths selected by policy and pathspec.
+    pub untracked: Vec<GitPath>,
+    /// Ignored entries selected by policy and pathspec.
+    pub ignored: Vec<IgnoredEntry>,
+    /// Conflicted paths, kept separate from ordinary change sets.
+    pub unmerged: Vec<UnmergedEntry>,
+}
+
+impl RepositoryStatus {
+    /// Match larch's dirty policy. Ignored paths alone do not make a repository dirty.
+    #[must_use]
+    pub const fn is_dirty(&self) -> bool {
+        !self.tree_to_index.is_empty()
+            || !self.index_to_worktree.is_empty()
+            || !self.untracked.is_empty()
+            || !self.unmerged.is_empty()
+    }
+}
+
 /// Validation mode for a candidate ref name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RefFormat {
@@ -270,6 +491,7 @@ pub enum RepositoryErrorKind {
     RevisionNotFound,
     AmbiguousRevision,
     UnsupportedRevision,
+    UnsupportedSemantics,
     MissingObject,
     ObjectType,
     CorruptRepository,
@@ -308,6 +530,9 @@ impl fmt::Display for RepositoryError {
             RepositoryErrorKind::RevisionNotFound => "revision was not found",
             RepositoryErrorKind::AmbiguousRevision => "revision is ambiguous",
             RepositoryErrorKind::UnsupportedRevision => "revision syntax is unsupported",
+            RepositoryErrorKind::UnsupportedSemantics => {
+                "repository operation requires exact Git compatibility"
+            }
             RepositoryErrorKind::MissingObject => "required object is missing",
             RepositoryErrorKind::ObjectType => "object has an unexpected type",
             RepositoryErrorKind::CorruptRepository => "repository data is corrupt",
@@ -386,6 +611,20 @@ pub trait RepositoryRead: Send + Sync {
     /// # Errors
     /// Returns a typed I/O or repository read failure.
     fn worktrees(&self) -> Result<Vec<Worktree>, RepositoryError>;
+    /// Return typed staged, unstaged, untracked, ignored, and unmerged state.
+    ///
+    /// # Errors
+    /// Returns a typed failure for corrupt state or semantics that require the exact-diff adapter.
+    fn status(&self, options: &StatusOptions) -> Result<RepositoryStatus, RepositoryError>;
+    /// Compare two tree object IDs with configured rename and copy behavior.
+    ///
+    /// # Errors
+    /// Returns a typed missing-object, object-type, or unsupported-semantics failure.
+    fn tree_changes(
+        &self,
+        old_tree: &ObjectId,
+        new_tree: &ObjectId,
+    ) -> Result<ChangeSet, RepositoryError>;
     /// Validate a name under the requested Git ref format.
     ///
     /// # Errors
