@@ -711,7 +711,7 @@ test-implement-rebase-macro:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
 
 test-phantom-probe-with-warn:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_phantom.py -q -k 'probe'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli phantom_probe
 
 test-implement-step2-routing:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
@@ -1083,7 +1083,7 @@ test-check-mid-run-dirty-tree:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_dirty_tree.py -x -q -k 'not (scope_check or scope_marker)'
 
 test-check-phantom-dirty:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/implement/test_phantom.py python/tests/git/test_git.py -q -k 'check_phantom_dirty'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli check_phantom_dirty
 
 test-check-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/agents/test_agents.py -q -k 'check_reviewers or health_gate'

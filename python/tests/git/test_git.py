@@ -14,7 +14,6 @@ from larch.core import logging_util
 from larch.core import retry
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, ProcRunner
-from larch.implement import phantom
 from test_support import RecordingRunner
 from tests.support.foundation import make_adverse_push_repo
 
@@ -1082,54 +1081,10 @@ def test_branch_info_emits_detached_empty_branch(monkeypatch: pytest.MonkeyPatch
     assert "CURRENT_BRANCH=" in out
 
 
-def test_check_phantom_dirty_clean_omits_optional_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner()
-    monkeypatch.setattr(git, "proc", runner)
-
-    def _clean_probe(*_args: object, **_kwargs: object) -> phantom.PhantomDirtyResult:
-        return phantom.PhantomDirtyResult(status="clean")
-
-    monkeypatch.setattr(phantom, "check_phantom_dirty", _clean_probe)
-    assert (
-        git.check_phantom_dirty_main(
-            ["--baseline", "/tmp/base.z", "--step", "s1", "--phantom-paths-dir", "/tmp/p"],
-        )
-        == 0
-    )
-    out = capsys.readouterr().out
-    assert "STATUS=clean" in out
-    assert "REASON=" not in out
-    assert "PHANTOM_COUNT=" not in out
-    assert "PHANTOM_PATHS_FILE=" not in out
-
-
-def test_check_phantom_dirty_parse_error_emits_unknown(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner()
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.check_phantom_dirty_main(["--unknown"]) == 0
-    out = capsys.readouterr().out
-    assert "STATUS=unknown" in out
-    assert "REASON=unknown-flag" in out
-
-
 def test_emit_kv_rejects_multiline_values() -> None:
 
     with pytest.raises(ValueError, match="newline"):
         logging_util.emit_kv(key="ERROR", value="line1\nline2")
-
-
-def test_phantom_probe_clean_omits_optional_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def _clean_probe(*_args: object, **_kwargs: object) -> phantom.PhantomProbeResult:
-        return phantom.PhantomProbeResult(
-            dirty=phantom.PhantomDirtyResult(status="clean"),
-        )
-
-    monkeypatch.setattr(phantom, "probe_with_warn", _clean_probe)
-    assert git.phantom_probe_main(["--step", "s1"]) == 0
-    out = capsys.readouterr().out
-    assert "PHANTOM_STATUS=clean" in out
-    assert "PHANTOM_COUNT=" not in out
-    assert "PHANTOM_PATHS_FILE=" not in out
 
 
 def test_commit_pathspec_file_nul_only_cli_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

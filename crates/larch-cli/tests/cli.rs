@@ -369,3 +369,332 @@ fn snapshot_untracked_preserves_non_utf8_path_bytes() {
         b"non-utf8-\xff\0"
     );
 }
+
+#[test]
+fn check_phantom_dirty_classifies_clean_tracked_phantom_and_mixed_states() {
+    let repository = repository();
+    let artifacts = tempfile::tempdir().expect("phantom artifacts directory");
+    let baseline = artifacts.path().join("baseline.z");
+    let paths = artifacts.path().join("phantom");
+    fs::write(&baseline, []).expect("empty baseline");
+    let arguments = || {
+        vec![
+            "git".to_owned(),
+            "check-phantom-dirty".to_owned(),
+            "--baseline".to_owned(),
+            baseline.to_string_lossy().into_owned(),
+            "--step".to_owned(),
+            "step-1".to_owned(),
+            "--phantom-paths-dir".to_owned(),
+            paths.to_string_lossy().into_owned(),
+        ]
+    };
+
+    command_at_owned(repository.path(), &arguments())
+        .assert()
+        .success()
+        .stdout("STATUS=clean\n")
+        .stderr("");
+
+    fs::write(repository.path().join("tracked.txt"), "changed\n").expect("tracked change");
+    command_at_owned(repository.path(), &arguments())
+        .assert()
+        .success()
+        .stdout("STATUS=tracked-only\n")
+        .stderr("");
+
+    git(repository.path(), &["checkout", "--", "tracked.txt"]);
+    fs::write(repository.path().join("new path.txt"), "new\n").expect("new untracked path");
+    command_at_owned(repository.path(), &arguments())
+        .assert()
+        .success()
+        .stdout(format!(
+            "STATUS=phantom\nPHANTOM_COUNT=1\nPHANTOM_PATHS_FILE={}\n",
+            paths.join("phantom-paths-step-1.z").display()
+        ))
+        .stderr("");
+    assert_eq!(
+        fs::read(paths.join("phantom-paths-step-1.z")).expect("phantom path artifact"),
+        b"new path.txt\0"
+    );
+
+    fs::write(repository.path().join("tracked.txt"), "mixed\n").expect("mixed tracked change");
+    command_at_owned(repository.path(), &arguments())
+        .assert()
+        .success()
+        .stdout(format!(
+            "STATUS=phantom\nPHANTOM_COUNT=1\nPHANTOM_PATHS_FILE={}\n",
+            paths.join("phantom-paths-step-1.z").display()
+        ))
+        .stderr("");
+}
+
+#[test]
+fn check_phantom_dirty_preserves_advisory_parse_and_baseline_failures() {
+    let repository = repository();
+    let paths = repository.path().join("phantom");
+    fs::write(repository.path().join("new.txt"), "new\n").expect("new untracked path");
+    let missing = repository.path().join("missing.z");
+    let common = [
+        "--step".to_owned(),
+        "s1".to_owned(),
+        "--phantom-paths-dir".to_owned(),
+        paths.to_string_lossy().into_owned(),
+    ];
+    let mut missing_arguments = vec![
+        "git".to_owned(),
+        "check-phantom-dirty".to_owned(),
+        "--baseline".to_owned(),
+        missing.to_string_lossy().into_owned(),
+    ];
+    missing_arguments.extend(common.clone());
+    command_at_owned(repository.path(), &missing_arguments)
+        .assert()
+        .success()
+        .stdout("STATUS=unknown\nREASON=baseline-missing-untracked-ambiguous\n")
+        .stderr("");
+
+    let malformed = repository.path().join("bad baseline.z");
+    fs::write(&malformed, b"new.txt").expect("malformed baseline fixture");
+    let mut malformed_arguments = vec![
+        "git".to_owned(),
+        "check-phantom-dirty".to_owned(),
+        "--baseline".to_owned(),
+        malformed.to_string_lossy().into_owned(),
+    ];
+    malformed_arguments.extend(common);
+    command_at_owned(repository.path(), &malformed_arguments)
+        .assert()
+        .success()
+        .stdout("STATUS=unknown\nREASON=bad-baseline-path\n")
+        .stderr("");
+
+    command_at(
+        repository.path(),
+        &["git", "check-phantom-dirty", "--unknown"],
+    )
+    .assert()
+    .success()
+    .stdout("STATUS=unknown\nREASON=unknown-flag\n")
+    .stderr("");
+    command_at(repository.path(), &["git", "check-phantom-dirty", "--help"])
+        .assert()
+        .success()
+        .stdout("STATUS=unknown\nREASON=unknown-flag\n")
+        .stderr("");
+
+    let valid = repository.path().join("valid.z");
+    let blocked_paths = repository.path().join("blocked-paths");
+    fs::write(&valid, b"valid.z\0").expect("valid baseline");
+    fs::write(&blocked_paths, b"not a directory").expect("blocked output fixture");
+    let output_failure_arguments = [
+        "git".to_owned(),
+        "check-phantom-dirty".to_owned(),
+        "--baseline".to_owned(),
+        valid.to_string_lossy().into_owned(),
+        "--step".to_owned(),
+        "output".to_owned(),
+        "--phantom-paths-dir".to_owned(),
+        blocked_paths.to_string_lossy().into_owned(),
+    ];
+    command_at_owned(repository.path(), &output_failure_arguments)
+        .assert()
+        .success()
+        .stdout("STATUS=unknown\nREASON=phantom-paths-dir-create-failed\n")
+        .stderr("");
+
+    fs::remove_file(repository.path().join(".git/index")).expect("remove repository index");
+    fs::create_dir(repository.path().join(".git/index")).expect("unreadable repository index");
+    command_at_owned(repository.path(), &output_failure_arguments)
+        .assert()
+        .success()
+        .stdout("STATUS=unknown\nREASON=git-status-failed\n")
+        .stderr("");
+}
+
+#[test]
+fn phantom_probe_appends_warning_and_keeps_append_failure_advisory() {
+    let repository = repository();
+    let artifacts = tempfile::tempdir().expect("phantom artifacts directory");
+    let implement_tmpdir = fs::canonicalize(artifacts.path())
+        .expect("canonical phantom artifacts directory")
+        .join("implement");
+    fs::create_dir(&implement_tmpdir).expect("implement tmpdir");
+    fs::write(implement_tmpdir.join("untracked-baseline.z"), []).expect("empty baseline");
+    fs::write(repository.path().join("new.txt"), "new\n").expect("new untracked path");
+
+    let mut command = command_at(
+        repository.path(),
+        &["git", "phantom-probe", "--step", "8-pre-ship"],
+    );
+    command.env("IMPLEMENT_TMPDIR", &implement_tmpdir);
+    command
+        .assert()
+        .success()
+        .stdout(format!(
+            "PHANTOM_STATUS=phantom\nPHANTOM_COUNT=1\nPHANTOM_PATHS_FILE={}\n",
+            implement_tmpdir
+                .join("phantom-paths-8-pre-ship.z")
+                .display()
+        ))
+        .stderr("→ phantom-probe: 8-pre-ship\n");
+    assert_eq!(
+        fs::read_to_string(implement_tmpdir.join("execution-issues.md")).expect("warning ledger"),
+        format!(
+            "### Warnings\n\n- **Step 8-pre-ship — phantom untracked files:** 1 file(s) appeared since session baseline (inspect {}/phantom-paths-8-pre-ship.z locally)\n",
+            implement_tmpdir.display()
+        )
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        assert_eq!(
+            fs::metadata(implement_tmpdir.join("execution-issues.md"))
+                .expect("warning ledger metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    fs::remove_file(implement_tmpdir.join("execution-issues.md")).expect("remove warning ledger");
+    fs::create_dir(implement_tmpdir.join("execution-issues.md")).expect("append failure fixture");
+    let mut failed = command_at(
+        repository.path(),
+        &["git", "phantom-probe", "--step", "append-fail"],
+    );
+    failed.env("IMPLEMENT_TMPDIR", &implement_tmpdir);
+    failed
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("PHANTOM_STATUS=phantom\n")
+                .and(predicate::str::contains("PHANTOM_APPEND_WARN_ERROR=")),
+        )
+        .stderr("→ phantom-probe: append-fail\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn phantom_probe_refuses_a_symlinked_warning_ledger() {
+    use std::os::unix::fs::symlink;
+
+    let repository = repository();
+    let artifacts = tempfile::tempdir().expect("phantom artifacts directory");
+    let artifacts_root =
+        fs::canonicalize(artifacts.path()).expect("canonical phantom artifacts directory");
+    let implement_tmpdir = artifacts_root.join("implement");
+    fs::create_dir(&implement_tmpdir).expect("implement tmpdir");
+    fs::write(implement_tmpdir.join("untracked-baseline.z"), []).expect("empty baseline");
+    fs::write(repository.path().join("new.txt"), "new\n").expect("new untracked path");
+    let target = artifacts_root.join("warning-target.md");
+    fs::write(&target, "unchanged\n").expect("warning target");
+    let ledger = implement_tmpdir.join("execution-issues.md");
+    symlink(&target, &ledger).expect("symlinked warning ledger");
+
+    let mut command = command_at(
+        repository.path(),
+        &["git", "phantom-probe", "--step", "symlink"],
+    );
+    command.env("IMPLEMENT_TMPDIR", &implement_tmpdir);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "PHANTOM_APPEND_WARN_ERROR=refusing symlinked path or ancestor: {}\n",
+            ledger.display()
+        )))
+        .stderr("→ phantom-probe: symlink\n");
+    assert_eq!(
+        fs::read_to_string(target).expect("warning target remains readable"),
+        "unchanged\n"
+    );
+}
+
+#[test]
+fn phantom_commands_fail_closed_for_invalid_step_and_missing_repository() {
+    let directory = tempfile::tempdir().expect("non-repository directory");
+    let canonical_directory =
+        fs::canonicalize(directory.path()).expect("canonical non-repository directory");
+    let baseline = directory.path().join("baseline.z");
+    fs::write(&baseline, []).expect("baseline");
+    let check_arguments = [
+        "git".to_owned(),
+        "check-phantom-dirty".to_owned(),
+        "--baseline".to_owned(),
+        baseline.to_string_lossy().into_owned(),
+        "--step".to_owned(),
+        "s1".to_owned(),
+        "--phantom-paths-dir".to_owned(),
+        directory.path().to_string_lossy().into_owned(),
+    ];
+    command_at_owned(directory.path(), &check_arguments)
+        .assert()
+        .success()
+        .stdout("STATUS=unknown\nREASON=git-status-failed\n")
+        .stderr("");
+
+    let mut no_repository = command_at(
+        directory.path(),
+        &["git", "phantom-probe", "--step", "no-repository"],
+    );
+    no_repository.env("IMPLEMENT_TMPDIR", &canonical_directory);
+    no_repository
+        .assert()
+        .success()
+        .stdout("PHANTOM_STATUS=unknown\nPHANTOM_REASON=git-status-failed\n")
+        .stderr("→ phantom-probe: no-repository\n");
+
+    let mut probe = command_at(
+        directory.path(),
+        &["git", "phantom-probe", "--step", "bad!step"],
+    );
+    probe.env("IMPLEMENT_TMPDIR", &canonical_directory);
+    probe
+        .assert()
+        .success()
+        .stdout("PHANTOM_STATUS=unknown\nPHANTOM_REASON=bad-step\n")
+        .stderr("→ phantom-probe: bad!step\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_phantom_dirty_preserves_non_utf8_path_bytes() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let repository = repository();
+    let artifacts = tempfile::tempdir().expect("phantom artifacts directory");
+    let baseline = artifacts.path().join("baseline.z");
+    let paths = artifacts.path().join("phantom");
+    fs::write(&baseline, []).expect("baseline");
+    let raw_path = PathBuf::from(OsString::from_vec(b"phantom-\xff".to_vec()));
+    if let Err(error) = fs::write(repository.path().join(&raw_path), b"raw\n") {
+        eprintln!("fixture skipped: raw byte paths are unsupported: {error}");
+        return;
+    }
+    let arguments = [
+        "git".to_owned(),
+        "check-phantom-dirty".to_owned(),
+        "--baseline".to_owned(),
+        baseline.to_string_lossy().into_owned(),
+        "--step".to_owned(),
+        "raw".to_owned(),
+        "--phantom-paths-dir".to_owned(),
+        paths.to_string_lossy().into_owned(),
+    ];
+    command_at_owned(repository.path(), &arguments)
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read(paths.join("phantom-paths-raw.z")).expect("raw phantom artifact"),
+        b"phantom-\xff\0"
+    );
+}
+
+fn command_at_owned(root: &Path, arguments: &[String]) -> Command {
+    let mut command = larch();
+    command.current_dir(root).args(arguments);
+    command
+}
