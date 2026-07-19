@@ -16,8 +16,8 @@ from larch.errors import ShipError
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.core import logging_util
-from larch.implement import phantom
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.git import rebase
 
 
@@ -435,16 +435,8 @@ def checkpoint_probe(
 
 
 def _append_phantom_checkpoint_lines(lines: list[str], *, step_prefix: str) -> None:
-    probe = phantom.probe_with_warn(proc, step=f"{step_prefix}-post-rebase")
-    lines.append(f"PHANTOM_STATUS={probe.dirty.status}")
-    if probe.dirty.reason:
-        lines.append(f"PHANTOM_REASON={probe.dirty.reason}")
-    if probe.dirty.status == "phantom":
-        lines.append(f"PHANTOM_COUNT={probe.dirty.count}")
-        if probe.dirty.paths_file:
-            lines.append(f"PHANTOM_PATHS_FILE={probe.dirty.paths_file}")
-    if probe.append_warn_error:
-        lines.append(f"PHANTOM_APPEND_WARN_ERROR={probe.append_warn_error}")
+    probe = rust_runtime.phantom_probe(proc, step=f"{step_prefix}-post-rebase")
+    lines.extend(probe.lines)
 
 
 def _render_checkpoint_probe_output(result: CheckpointProbeResult) -> str:

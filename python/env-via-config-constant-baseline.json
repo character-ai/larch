@@ -972,42 +972,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/implement/phantom.py",
-    "qualified_symbol": "_append_execution_warn",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/implement/phantom.py",
-    "qualified_symbol": "check_phantom_dirty",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/implement/phantom.py",
-    "qualified_symbol": "probe_with_warn",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/implement/phantom.py",
-    "qualified_symbol": "probe_with_warn",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "larch/implement/preflight.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",

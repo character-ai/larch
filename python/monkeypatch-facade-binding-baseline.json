@@ -2638,24 +2638,6 @@
   },
   {
     "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_check_phantom_dirty_clean_omits_optional_keys",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_check_phantom_dirty_parse_error_emits_unknown",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
     "qualified_symbol": "test_check_remote_branch_main_present_absent_error",
     "facade_module": "larch.git.git",
     "attribute": "proc",
@@ -2669,60 +2651,6 @@
     "facade_module": "larch.git.git",
     "attribute": "with_transient_retry",
     "defining_module": "larch.core.retry",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_clean_tree_clean_repo",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_clean_tree_dirty_default",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_clean_tree_dirty_fail_closed",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_clean_tree_fail_closed_probe_error",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_clean_tree_probe_failure_default_fail_open",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/git/test_git.py",
-    "qualified_symbol": "test_clean_tree_probe_failure_fail_closed_sanitizes_summary",
-    "facade_module": "larch.git.git",
-    "attribute": "proc",
-    "defining_module": "larch.core",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },

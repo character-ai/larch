@@ -20,7 +20,6 @@ from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.retry import with_transient_retry
 from larch.core import logging_util
-from larch.implement import phantom
 from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
@@ -1533,97 +1532,4 @@ def check_remote_branch_main(argv: list[str]) -> int:
     logging_util.emit_kv(key="RC", value=str(result.rc))
     if result.error:
         logging_util.emit_kv(key="ERROR", value=result.error)
-    return 0
-
-
-def _emit_phantom_dirty_result(result: phantom.PhantomDirtyResult) -> None:
-    logging_util.emit_kv(key="STATUS", value=result.status)
-    if result.reason:
-        logging_util.emit_kv(key="REASON", value=result.reason)
-    if result.status == "phantom":
-        logging_util.emit_kv(key="PHANTOM_COUNT", value=str(result.count))
-        logging_util.emit_kv(key="PHANTOM_PATHS_FILE", value=result.paths_file)
-
-
-def check_phantom_dirty_main(argv: list[str]) -> int:
-    baseline = ""
-    step = ""
-    phantom_paths_dir = ""
-    parse_error = ""
-    index = 0
-    while index < len(argv):
-        arg = argv[index]
-        if arg == "--baseline":
-            if index + 1 >= len(argv):
-                parse_error = "baseline-missing-value"
-                break
-            baseline = argv[index + 1]
-            index += 2
-            continue
-        if arg == "--step":
-            if index + 1 >= len(argv):
-                parse_error = "step-missing-value"
-                break
-            step = argv[index + 1]
-            index += 2
-            continue
-        if arg == "--phantom-paths-dir":
-            if index + 1 >= len(argv):
-                parse_error = "phantom-paths-dir-missing-value"
-                break
-            phantom_paths_dir = argv[index + 1]
-            index += 2
-            continue
-        parse_error = "unknown-flag"
-        break
-
-    if not parse_error:
-        if not baseline:
-            parse_error = "baseline-required"
-        elif not step:
-            parse_error = "step-required"
-        elif not phantom_paths_dir:
-            parse_error = "phantom-paths-dir-required"
-
-    if parse_error:
-        logging_util.emit_kv(key="STATUS", value="unknown")
-        logging_util.emit_kv(key="REASON", value=parse_error)
-        return 0
-
-    if not re.fullmatch(r"^[A-Za-z0-9_.-]+$", step):
-        logging_util.emit_kv(key="STATUS", value="unknown")
-        logging_util.emit_kv(key="REASON", value="bad-step")
-        return 0
-
-    result = phantom.check_phantom_dirty(
-        proc,
-        step=step,
-        baseline_file=baseline,
-        phantom_paths_dir=phantom_paths_dir,
-    )
-    _emit_phantom_dirty_result(result)
-    return 0
-
-
-def phantom_probe_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git phantom-probe")
-    parser.add_argument("--step", required=True)
-    parser.add_argument("--baseline-file", default=None)
-    args = _parse(parser=parser, argv=argv)
-    if args is None:
-        return 2
-    print(f"→ phantom-probe: {args.step}", file=sys.stderr)
-    result = phantom.probe_with_warn(
-        proc,
-        step=args.step,
-        baseline_file=args.baseline_file,
-    )
-    logging_util.emit_kv(key="PHANTOM_STATUS", value=result.dirty.status)
-    if result.dirty.reason:
-        logging_util.emit_kv(key="PHANTOM_REASON", value=result.dirty.reason)
-    if result.dirty.status == "phantom":
-        logging_util.emit_kv(key="PHANTOM_COUNT", value=str(result.dirty.count))
-        logging_util.emit_kv(key="PHANTOM_PATHS_FILE", value=result.dirty.paths_file)
-    if result.append_warn_error:
-        logging_util.emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=result.append_warn_error)
     return 0

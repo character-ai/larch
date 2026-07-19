@@ -2790,11 +2790,11 @@ verb = "check-phantom-dirty"
 python_module = "larch.git.git"
 python_function = "check_phantom_dirty_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7757
 
 [[commands]]
 domain = "git"
@@ -2886,11 +2886,11 @@ verb = "phantom-probe"
 python_module = "larch.git.git"
 python_function = "phantom_probe_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7757
 
 [[commands]]
 domain = "git"
@@ -8091,8 +8091,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/phantom-probe.md"
 kind = "skill"
-python = ["git check-phantom-dirty", "git phantom-probe", "push checkpoint-probe", "run-log append-entry"]
-rust = []
+python = ["push checkpoint-probe"]
+rust = ["git phantom-probe"]
 
 [[callers]]
 path = "skills/implement/references/preflight-plan-audit.md"

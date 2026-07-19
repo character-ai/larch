@@ -19,9 +19,9 @@ from typing import Any, cast
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
-from larch.implement import phantom
 from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
+from larch.core.rust_runtime import phantom_probe
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _SAFE_CODERS = {"claude", "codex", "cursor"}
@@ -454,12 +454,6 @@ def _env_value(*, name: str, default: str = "") -> str:
 
 
 def _emit_phantom_probe_with_warn(step: str) -> None:
-    result = phantom.probe_with_warn(proc, step=step)
-    _emit_kv(key="PHANTOM_STATUS", value=result.dirty.status)
-    if result.dirty.reason:
-        _emit_kv(key="PHANTOM_REASON", value=result.dirty.reason)
-    if result.dirty.status == "phantom":
-        _emit_kv(key="PHANTOM_COUNT", value=result.dirty.count)
-        _emit_kv(key="PHANTOM_PATHS_FILE", value=result.dirty.paths_file)
-    if result.append_warn_error:
-        _emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=result.append_warn_error)
+    result = phantom_probe(proc, step=step)
+    for line in result.lines:
+        logging_util.emit(line)

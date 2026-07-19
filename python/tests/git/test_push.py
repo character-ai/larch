@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from larch.core import config
+from larch.core import rust_runtime
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
 from larch.git import git
 from larch.git import push
 from larch.git import rebase
-from larch.implement import phantom
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
@@ -164,30 +164,18 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
         conflict_files: str = ""
         rebase_error: str = ""
 
-    @dataclass
-    class _ProbeResult:
-        dirty: object
-        append_warn_error: str = ""
-
-    @dataclass
-    class _Dirty:
-        status: str = "clean"
-        reason: str = ""
-        count: int = 0
-        paths_file: str = ""
-
     def _stub_rebase_push(*_args: object, **_kwargs: object) -> _RebaseResult:
         return _RebaseResult()
 
     monkeypatch.setattr(rebase, "rebase_push", _stub_rebase_push)
-    def _stub_probe_with_warn(*_args: object, **_kwargs: object) -> _ProbeResult:
-        return _ProbeResult(dirty=_Dirty())
+    @dataclass(frozen=True)
+    class _ProbeOutput:
+        lines: tuple[str, ...] = ("PHANTOM_STATUS=clean",)
 
-    monkeypatch.setattr(
-        phantom,
-        "probe_with_warn",
-        _stub_probe_with_warn,
-    )
+    def _probe_output(*_args: object, **_kwargs: object) -> _ProbeOutput:
+        return _ProbeOutput()
+
+    monkeypatch.setattr(rust_runtime, "phantom_probe", _probe_output)
     assert push.checkpoint_probe_main(["1.r", "plan"]) == 0
     out = capsys.readouterr().out
     assert "REBASE_OUTCOME=skipped" in out
@@ -199,24 +187,16 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
 
 
 def _stub_clean_phantom(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = None) -> None:
-    @dataclass
-    class _ProbeResult:
-        dirty: object
-        append_warn_error: str = ""
+    @dataclass(frozen=True)
+    class _ProbeOutput:
+        lines: tuple[str, ...] = ("PHANTOM_STATUS=clean",)
 
-    @dataclass
-    class _Dirty:
-        status: str = "clean"
-        reason: str = ""
-        count: int = 0
-        paths_file: str = ""
-
-    def _stub_probe_with_warn(*_args: object, **_kwargs: object) -> _ProbeResult:
+    def _stub_probe(*_args: object, **_kwargs: object) -> _ProbeOutput:
         if calls is not None:
             calls.append("phantom")
-        return _ProbeResult(dirty=_Dirty())
+        return _ProbeOutput()
 
-    monkeypatch.setattr(phantom, "probe_with_warn", _stub_probe_with_warn)
+    monkeypatch.setattr(rust_runtime, "phantom_probe", _stub_probe)
 
 
 def _cr(argv: tuple[str, ...] = ("git",), rc: int = 0) -> CommandResult:

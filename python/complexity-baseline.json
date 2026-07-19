@@ -2698,14 +2698,6 @@
   {
     "file": "larch/git/git.py",
     "code": "C901",
-    "qualified_symbol": "check_phantom_dirty_main",
-    "metric": 14,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/git.py",
-    "code": "C901",
     "qualified_symbol": "force_push_recovery",
     "metric": 11,
     "added_at": "legacy",
@@ -2740,14 +2732,6 @@
     "code": "PLR0911",
     "qualified_symbol": "force_push_recovery",
     "metric": 8,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/git.py",
-    "code": "PLR0912",
-    "qualified_symbol": "check_phantom_dirty_main",
-    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -3372,14 +3356,6 @@
     "code": "PLR0913",
     "qualified_symbol": "_maybe_mark_step2_telemetry",
     "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/implement/phantom.py",
-    "code": "PLR0911",
-    "qualified_symbol": "check_phantom_dirty",
-    "metric": 10,
     "added_at": "legacy",
     "history": []
   },
