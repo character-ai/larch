@@ -46,6 +46,12 @@ require an explicit matching `LARCH_BINARY`. These controls do not defend
 against a hostile same-UID process that can rewrite plugin cache or data files.
 Runtime lints reject production Cargo, `bin/larch`, and
 `target/{debug,release}/larch`; only verified bootstrap owners may execute them.
+The command registry also requires each live Rust-owned selector to name a
+unique shared clean-install fixture. Those fixtures start without `bin/larch`,
+verify version and target before dispatch, and invoke the selector only through
+`scripts/larch.sh`. Issue-registry audit input is typed JSON derived from the
+canonical owner and plan parsers. It is validation evidence, not executable
+input.
 The `service-ownership` rule also rejects runtime `gcloud` execution and keeps
 this clean-install `gh` in `scripts/larch.sh` separate from runtime service
 access: bootstrap use of `gh` does not authorize a runtime adapter to shell out.

@@ -2711,6 +2711,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7764
+clean_install_test = "clean-install-gh-remote-repo"
 
 [[commands]]
 domain = "gh"
@@ -2723,6 +2724,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7764
+clean_install_test = "clean-install-gh-resolve-repo"
 
 [[commands]]
 domain = "gh"
@@ -2735,6 +2737,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7765
+clean_install_test = "clean-install-gh-run-logs"
 
 [[commands]]
 domain = "gh"
@@ -2747,6 +2750,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7765
+clean_install_test = "clean-install-gh-workflow-path"
 
 [[commands]]
 domain = "git"
@@ -2759,6 +2763,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7735
+clean_install_test = "clean-install-git-amend-add"
 
 [[commands]]
 domain = "git"
@@ -2771,6 +2776,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7734
+clean_install_test = "clean-install-git-branch-info"
 
 [[commands]]
 domain = "git"
@@ -2783,6 +2789,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7758
+clean_install_test = "clean-install-git-check-main-sync"
 
 [[commands]]
 domain = "git"
@@ -2795,6 +2802,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7757
+clean_install_test = "clean-install-git-check-phantom-dirty"
 
 [[commands]]
 domain = "git"
@@ -2807,6 +2815,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7734
+clean_install_test = "clean-install-git-check-remote-branch"
 
 [[commands]]
 domain = "git"
@@ -2819,6 +2828,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7759
+clean_install_test = "clean-install-git-checkout-ours"
 
 [[commands]]
 domain = "git"
@@ -2831,6 +2841,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7756
+clean_install_test = "clean-install-git-clean-tree"
 
 [[commands]]
 domain = "git"
@@ -2843,6 +2854,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7735
+clean_install_test = "clean-install-git-commit"
 
 [[commands]]
 domain = "git"
@@ -2855,6 +2867,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7756
+clean_install_test = "clean-install-git-conflict-files"
 
 [[commands]]
 domain = "git"
@@ -2867,6 +2880,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7734
+clean_install_test = "clean-install-git-count-commits"
 
 [[commands]]
 domain = "git"
@@ -2879,6 +2893,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7734
+clean_install_test = "clean-install-git-current-branch"
 
 [[commands]]
 domain = "git"
@@ -2891,6 +2906,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7757
+clean_install_test = "clean-install-git-phantom-probe"
 
 [[commands]]
 domain = "git"
@@ -2903,6 +2919,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7759
+clean_install_test = "clean-install-git-rebase-abort"
 
 [[commands]]
 domain = "git"
@@ -2915,6 +2932,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7759
+clean_install_test = "clean-install-git-rebase-skip"
 
 [[commands]]
 domain = "git"
@@ -2927,6 +2945,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7734
+clean_install_test = "clean-install-git-show-stage"
 
 [[commands]]
 domain = "git"
@@ -2939,6 +2958,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7756
+clean_install_test = "clean-install-git-snapshot-untracked"
 
 [[commands]]
 domain = "git"
@@ -2951,6 +2971,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7735
+clean_install_test = "clean-install-git-stage"
 
 [[commands]]
 domain = "git"
@@ -2963,6 +2984,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7758
+clean_install_test = "clean-install-git-sync-local-main"
 
 [[commands]]
 domain = "hook"
@@ -4847,6 +4869,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7749
+clean_install_test = "clean-install-plugin-read-version"
 
 [[commands]]
 domain = "pr"
@@ -5051,6 +5074,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7760
+clean_install_test = "clean-install-push-branch"
 
 [[commands]]
 domain = "push"
@@ -5063,6 +5087,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7762
+clean_install_test = "clean-install-push-checkpoint-probe"
 
 [[commands]]
 domain = "push"
@@ -5075,6 +5100,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7760
+clean_install_test = "clean-install-push-force"
 
 [[commands]]
 domain = "push"
@@ -5087,6 +5113,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7762
+clean_install_test = "clean-install-push-rebase"
 
 [[commands]]
 domain = "redact"
@@ -5195,6 +5222,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7747
+clean_install_test = "clean-install-release-asset-candidate"
 
 [[commands]]
 domain = "release"
@@ -5219,6 +5247,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7749
+clean_install_test = "clean-install-release-classify-bump"
 
 [[commands]]
 domain = "release"
@@ -5231,6 +5260,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7747
+clean_install_test = "clean-install-release-collect-assets"
 
 [[commands]]
 domain = "release"
@@ -5267,6 +5297,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7747
+clean_install_test = "clean-install-release-package-asset"
 
 [[commands]]
 domain = "release"
@@ -5279,6 +5310,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7748
+clean_install_test = "clean-install-release-plugin-runtime"
 
 [[commands]]
 domain = "release"
@@ -5291,6 +5323,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7749
+clean_install_test = "clean-install-release-prepare"
 
 [[commands]]
 domain = "release"
@@ -5327,6 +5360,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7750
+clean_install_test = "clean-install-release-set-version"
 
 [[commands]]
 domain = "release"
@@ -5351,6 +5385,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7747
+clean_install_test = "clean-install-release-validate-assets"
 
 [[commands]]
 domain = "release"
@@ -7259,6 +7294,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7753
+clean_install_test = "clean-install-upgrade-larch-release-step7-root"
 
 [[commands]]
 domain = "upgrade-larch"
@@ -7271,6 +7307,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7753
+clean_install_test = "clean-install-upgrade-larch-run"
 
 [[commands]]
 domain = "upgrade-larch"
@@ -7283,6 +7320,7 @@ implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7753
+clean_install_test = "clean-install-upgrade-larch-sparse-dirs"
 
 [[commands]]
 domain = "validate-merged"

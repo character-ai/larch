@@ -432,3 +432,209 @@ fn completed_python_removal_rejects_registration_definition_imports_and_calls() 
         .stdout(predicate::str::contains("false_positive.py").not())
         .stderr("");
 }
+
+#[test]
+fn live_rust_command_requires_a_matching_clean_install_fixture() {
+    let repository = TempRepo::new();
+    prepare(
+        &repository,
+        &command_row("rust", "complete", "complete", "complete"),
+    );
+    repository.write(
+        "skills/example/SKILL.md",
+        b"\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" fixture run\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "clean-install-coverage-missing fixture run",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn clean_install_fixture_references_reject_unknown_duplicate_and_malformed_ids() {
+    let unknown = TempRepo::new();
+    prepare(
+        &unknown,
+        &format!(
+            "{}clean_install_test = \"missing-fixture\"\n",
+            command_row("python", "pending", "pending", "pending")
+        ),
+    );
+    unknown.commit_all();
+    TempRepo::command_from(unknown.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "references unknown clean_install_test \"missing-fixture\"",
+        ));
+
+    let malformed = TempRepo::new();
+    prepare(
+        &malformed,
+        &format!(
+            "{}clean_install_test = \"Bad Fixture\"\n",
+            command_row("python", "pending", "pending", "pending")
+        ),
+    );
+    malformed.commit_all();
+    TempRepo::command_from(malformed.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("invalid clean_install_test token"));
+
+    let duplicate = TempRepo::new();
+    let mut duplicate_ledger = format!(
+        "{}clean_install_test = \"clean-install-fixture-run\"\n",
+        command_row("python", "pending", "pending", "pending")
+    );
+    let second = format!(
+        "{}clean_install_test = \"clean-install-fixture-run\"\n",
+        command_row_for(
+            "fixture", "other", "fixture", "other", "python", "pending", "pending", "pending",
+        )
+    );
+    append_command(&mut duplicate_ledger, &second);
+    prepare(&duplicate, &duplicate_ledger);
+    duplicate.commit_all();
+    TempRepo::command_from(duplicate.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "duplicate clean_install_test \"clean-install-fixture-run\"",
+        ));
+}
+
+#[test]
+fn clean_install_fixture_table_rejects_duplicate_selectors_and_malformed_rows() {
+    let duplicate = TempRepo::new();
+    duplicate.write(
+        "crates/larch-cli/tests/parity.rs",
+        b"const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[\nCleanInstallCase::new(\"first\", \"fixture\", \"run\"),\nCleanInstallCase::new(\"second\", \"fixture\", \"run\"),\n];\n",
+    );
+    duplicate.commit_all();
+    TempRepo::command_from(duplicate.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "duplicate clean-install selector fixture run",
+        ));
+
+    let malformed = TempRepo::new();
+    malformed.write(
+        "crates/larch-cli/tests/parity.rs",
+        b"const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[CleanInstallCase::new(\"Bad Fixture\", \"fixture\", \"run\")];\n",
+    );
+    malformed.commit_all();
+    TempRepo::command_from(malformed.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "parsed 0 of 1 clean-install fixture rows",
+        ));
+}
+
+#[test]
+fn migration_issue_audit_checks_both_directions_and_plan_mentions() {
+    let repository = TempRepo::new();
+    repository.commit_all();
+    let input = repository.path().join("audit.json");
+    fs::write(
+        &input,
+        r#"{"schema_version":1,"rollout_enabled":true,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":{"domain":"fixture","verb":"run"},"plan_commands":[{"domain":"fixture","verb":"run"}]}]}"#,
+    )
+    .expect("write audit input");
+    TempRepo::command_from(repository.path())
+        .args([
+            "command-registry",
+            "audit",
+            "--input",
+            input.to_str().expect("UTF-8 input path"),
+        ])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+
+    fs::write(
+        &input,
+        r#"{"schema_version":1,"rollout_enabled":true,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":{"domain":"fixture","verb":"run"},"plan_commands":[]}]}"#,
+    )
+    .expect("write missing-plan audit input");
+    TempRepo::command_from(repository.path())
+        .args([
+            "command-registry",
+            "audit",
+            "--input",
+            input.to_str().expect("UTF-8 input path"),
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "migration-issue-command-drift issue=#7661 command=fixture run",
+        ));
+
+    fs::write(
+        &input,
+        r#"{"schema_version":1,"rollout_enabled":true,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":null,"plan_commands":[]}]}"#,
+    )
+    .expect("write stale-registry audit input");
+    TempRepo::command_from(repository.path())
+        .args([
+            "command-registry",
+            "audit",
+            "--input",
+            input.to_str().expect("UTF-8 input path"),
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "migration-issue-command-drift issue=#7661 command=fixture run",
+        ));
+
+    fs::write(
+        &input,
+        r#"{"schema_version":1,"rollout_enabled":false,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":{"domain":"fixture","verb":"missing"},"plan_commands":[{"domain":"fixture","verb":"missing"}]}]}"#,
+    )
+    .expect("write missing-selector audit input");
+    TempRepo::command_from(repository.path())
+        .args([
+            "command-registry",
+            "audit",
+            "--input",
+            input.to_str().expect("UTF-8 input path"),
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "migration-issue-command-drift issue=#7661 command=fixture missing",
+        ));
+
+    fs::write(
+        &input,
+        r#"{"schema_version":1,"rollout_enabled":false,"issues":[{"number":9999,"state":"open","executable_leaf":true,"command":{"domain":"fixture","verb":"run"},"plan_commands":[{"domain":"fixture","verb":"run"}]}]}"#,
+    )
+    .expect("write wrong-issue audit input");
+    TempRepo::command_from(repository.path())
+        .args([
+            "command-registry",
+            "audit",
+            "--input",
+            input.to_str().expect("UTF-8 input path"),
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "migration-issue-command-drift issue=#9999 command=fixture run",
+        ));
+}

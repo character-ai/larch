@@ -1333,9 +1333,10 @@ root-max-content-tokens = 26286
 # Issue #7780 documents the executable-plan / force-admission contract in
 # docs/issue-anchored-plan.md (always-imported design closure).
 # Issue #7783 adds the shared-owner implementation-lease invariant.
-closure-max-lines = 1675
-closure-max-tokens = 50235
-closure-max-content-tokens = 50109
+# Issue #7785 adds the atomic command-cutover invariant.
+closure-max-lines = 1679
+closure-max-tokens = 50403
+closure-max-content-tokens = 50276
 conditional-max-lines = 661
 conditional-max-tokens = 18524
 conditional-max-content-tokens = 18465
@@ -1369,9 +1370,10 @@ root-max-content-tokens = 35301
 # issue #7728 adds the service-ownership CLI-independence trust boundary;
 # issue #7783 adds shared-owner implementation-lease enforcement.
 # issue #7736 adds the final Git ownership boundary.
-closure-max-lines = 3844
-closure-max-tokens = 145879
-closure-max-content-tokens = 145572
+# issue #7785 adds clean-install and issue-registry audit boundaries.
+closure-max-lines = 3854
+closure-max-tokens = 146145
+closure-max-content-tokens = 145838
 conditional-max-lines = 591
 conditional-max-tokens = 18803
 conditional-max-content-tokens = 18756
@@ -1429,6 +1431,7 @@ roots = [
 # issue #7728 adds the service-ownership CLI-independence trust boundary;
 # issue #7783 adds shared-owner implementation-lease enforcement.
 # issue #7736 adds the final Git ownership boundary.
-closure-max-lines = 6132
-closure-max-tokens = 171330
-closure-max-content-tokens = 170861
+# issue #7785 adds clean-install and issue-registry audit boundaries.
+closure-max-lines = 6142
+closure-max-tokens = 171595
+closure-max-content-tokens = 171125

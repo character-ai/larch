@@ -3,7 +3,8 @@
 `crates/larch-lint/data/command-registry.toml` is the migration source of
 truth for larch commands and production callers. Each command pair appears
 once. Its row records the current owner, machine-stdout contract, responsible
-migration issue, implementation parity, consumer cutover, and Python removal.
+migration issue, implementation parity, consumer cutover, Python removal, and
+an optional `clean_install_test` fixture ID.
 
 ## Update workflow
 
@@ -28,6 +29,14 @@ Use one workflow for registry or caller changes:
    cargo run --quiet --locked --package larch-lint -- command-registry report
    ```
 
+5. For issue-registry parity audits, build schema-v1 JSON with
+   `migration_governance.build_command_audit_issue` and
+   `render_command_audit_input`, then run:
+
+   ```bash
+   cargo run --quiet --locked --package larch-lint -- command-registry audit --input INPUT.json
+   ```
+
 The caller ledger inventories `skill`, `hook`, `script`, `ci`, `agent`, and
 `python-runtime` paths. Python modules that build a command with the shared
 `larch.core.repo_roots.larch_entrypoint` resolver are Rust callers because the
@@ -37,7 +46,19 @@ unexecuted string literals.
 
 The rule fails for missing or duplicate command rows, stale Python target or
 machine-stdout metadata, invalid status combinations, caller drift, unknown
-caller selectors, and incomplete Python retirement evidence.
+caller selectors, incomplete Python retirement evidence, and missing
+clean-install coverage. Every Rust-owned command with a production caller must
+name one unique fixture from `CLEAN_INSTALL_CASES` in
+`crates/larch-cli/tests/parity.rs`. The shared matrix starts without
+`bin/larch`, validates the local binary version and target through
+`scripts/larch.sh`, and reaches the named Rust selector.
+
+The clean-install diagnostic is
+`clean-install-coverage-missing <domain> <verb>`. The issue audit reports
+`migration-issue-command-drift issue=#N command=<domain> <verb>` when a
+canonical issue `COMMAND` row, its plan mention, or the registry's
+`migration_issue` disagrees. Registry-to-issue checks apply only to open
+executable leaves after the audit input enables rollout.
 
 ## State transitions
 
