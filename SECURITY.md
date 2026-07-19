@@ -45,6 +45,33 @@ downloading. Cleanup removes only process-owned state. Local `.git` checkouts
 require an explicit matching `LARCH_BINARY`. These controls do not defend
 against a hostile same-UID process that can rewrite plugin cache or data files.
 
+## Google ADC Trust Boundary
+
+Google credential configuration is trusted operator input. Larch accepts it
+only through the standard Application Default Credentials search order:
+`GOOGLE_APPLICATION_CREDENTIALS`, the well-known local ADC file, then the
+attached-service-account metadata service. Repository content, issue text,
+workflow data, API responses, and agent output cannot supply credential JSON,
+paths, quota projects, scopes, endpoints, or universe domains.
+
+Before the official Google authentication builder reads a selected ADC file,
+larch bounds and parses it. External-account token exchange must use
+`https://sts.googleapis.com/v1/token`. Impersonation must use the documented
+`iamcredentials.googleapis.com` access-token path. AWS and Azure subject-token
+URLs must match their documented metadata endpoints. Executable subject-token
+sources and custom universe domains fail closed. Production rejects the
+test-only `GCE_METADATA_HOST` override, so an inherited emulator setting cannot
+redirect attached-service-account authentication.
+
+`google-cloud-auth` owns access-token exchange, caching, and refresh. Larch does
+not shell out to `gcloud`, copy ADC files, expose authorization headers, persist
+tokens, or create a credential store. Errors retain only a stable failure class,
+not credential values or credential paths. Concrete Google service clients are
+added only for operations recorded in `docs/google-service-inventory.md`, with
+explicit least-privilege scopes and IAM permissions. Offline tests use local
+fixtures. Live ADC tests are ignored by default, require explicit opt-in, and do
+not render credential headers.
+
 ## Scoped Live-Mutation Authorization Boundary
 
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.
