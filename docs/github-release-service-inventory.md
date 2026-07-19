@@ -19,8 +19,9 @@ GitHub through `gh api` and `gh release` subprocesses:
 - `python/larch/release/promote_release.py` edits a release to clear the
   pre-release flag and mark it latest.
 
-The release state machine, asset packaging, attestation verification, and
-installation workflow stay with #7674 and are not ported by this leaf.
+The release state machine, asset packaging, and installation workflow stay
+with #7674. Issue #7755 adds attestation adapter parity without switching these
+production callers.
 
 ## Operation ledger
 
@@ -29,6 +30,7 @@ installation workflow stay with #7674 and are not ported by this leaf.
 | Release reads | List releases, tag-reference resolution, immutable-release policy | `release_finish.py` | Landed (#7738) | Pending #7674 | Pending |
 | Release mutations | Create draft, publish or edit release | `release_finish.py`, `promote_release.py` | Landed (#7738) | Pending #7674 | Pending |
 | Asset operations | Asset metadata, upload, bounded download | `release_finish.py` | Landed (#7738) | Pending #7674 | Pending |
+| Attestation verification | Artifact provenance and immutable-release tag, commit, and asset-set verification | `release_finish.py`, `scripts/larch.sh` | Landed (#7755) | Pending #7674 | Pending |
 
 The Rust adapter now owns the typed release and asset operations behind the
 hardened Octocrab client from #7724: `larch-core` carries the effect-free
@@ -39,6 +41,15 @@ transport. Offline fixtures exercise drafts, immutable releases, missing and
 duplicate assets, digest and size validation, redirects, partial streams, rate
 limits, permissions, cancellation, and timeout through a fake transport. No
 operation shells out to `gh` or exposes an arbitrary API path.
+
+The attestation adapter builds on that transport. `larch-core` owns validated
+tag, commit, asset-subject, request, and verified-result types.
+`larch-adapters` owns the fixed GitHub attestation routes, bounded compressed
+bundle retrieval, Sigstore verification, certificate-extension policy, hosted
+provenance checks, and immutable-release asset-set binding. Real larch
+`v53.1.24` bundles provide offline cryptographic fixtures for both trust
+domains. The adapter does not accept caller-supplied repositories, workflows,
+issuers, signer identities, trust roots, or URLs.
 
 Consumer cutover is deferred: #7674 continues to own the release state machine
 and its `gh`-backed callers until it repoints them at this boundary. Python
