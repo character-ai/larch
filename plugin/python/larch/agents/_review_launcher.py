@@ -21,12 +21,12 @@ from pathlib import Path
 
 from larch.state import dirty_tree
 from larch.review import findings_ledger
-from larch.git import git
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.core.repo_roots import larch_binary
 from larch.report.tokens import (
     append_panel_prompt_size,
     panel_prompt_size_artifact_for_output,
@@ -574,7 +574,7 @@ def _review_capture_cursor_dirty_baseline(output: Path, *, workdir: str = "") ->
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
     baseline_workdir = workdir or _resolve_review_codex_workdir(str(Path.cwd()))
-    git.snapshot_untracked(proc, str(baseline), nul=True, cwd=baseline_workdir)
+    _ = proc.run([str(larch_binary(Path(__file__).resolve().parents[3])), "git", "snapshot-untracked", "--output", str(baseline), "--nul"], cwd=baseline_workdir)
     return baseline
 
 

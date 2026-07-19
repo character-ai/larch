@@ -15,7 +15,6 @@ import json
 import os
 import re
 import shutil
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Mapping
@@ -28,7 +27,6 @@ from larch.review import review_core_body
 from larch.review import review_tally
 from larch.review import voting
 from larch.review._raf_util import (
-    _PY_CLI,
     _capture_emit_to,
     _core_round_state,
     _count_findings,

@@ -23,6 +23,7 @@ from larch.state import dirty_tree, session_env
 from larch.core import config, external_defaults, proc
 from larch import io as larch_io
 from larch.core import logging_util, redact
+from larch.core.repo_roots import larch_binary
 from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
 from larch.git import gh, git, pr, pr_body, push
@@ -910,7 +911,7 @@ def _phase_plan(st: BootstrapState) -> None:
 def _materialize_initial_plan(st: BootstrapState, *, feature_file: Path) -> bool:
     snapshot = Path(st.implement_tmpdir) / "untracked-baseline.z"
     if not snapshot.exists():
-        _ = git.snapshot_untracked(proc, str(snapshot), nul=True)
+        _ = proc.run([str(larch_binary(_REPO_ROOT)), "git", "snapshot-untracked", "--output", str(snapshot), "--nul"])
     if not _append_force_bypass(st):
         st.emit_tmp_step_failed("force-bypass-log")
     plan_src = Path(st.opts.preflight_tmpdir) / "plan-from-issue.txt"

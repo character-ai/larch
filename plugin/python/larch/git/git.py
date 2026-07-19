@@ -1059,14 +1059,6 @@ class ConflictFile:
 
 
 @dataclass(frozen=True)
-class CleanTreeResult:
-    clean: str
-    dirty_out: str = ""
-    probe_error: str = ""
-    exit_code: int = 0
-
-
-@dataclass(frozen=True)
 class CountCommitsResult:
     count: int
     status: str
@@ -1200,63 +1192,6 @@ def sync_local_main(
 
 def _one_line_summary(text: str) -> str:
     return text.replace("\n", " ").replace("\r", " ").replace("\t", " ")[:256]
-
-
-def clean_tree(
-    runner: Runner,
-    *,
-    fail_closed: bool = False,
-    cwd: str | None = None,
-) -> CleanTreeResult:
-    result = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
-    if result.returncode != 0:
-        summary = _one_line_summary(result.stdout + result.stderr)
-        if fail_closed:
-            return CleanTreeResult(
-                clean="unknown",
-                probe_error=f"git exited {result.returncode} ({summary})",
-                exit_code=1,
-            )
-        return CleanTreeResult(clean="true")
-    if result.stdout:
-        return CleanTreeResult(clean="false", dirty_out=_one_line_summary(result.stdout))
-    return CleanTreeResult(clean="true")
-
-
-def snapshot_untracked(
-    runner: Runner,
-    output: str,
-    *,
-    nul: bool = False,
-    cwd: str | None = None,
-) -> int:
-    argv = ["git", "ls-files", "--others", "--exclude-standard"]
-    if nul:
-        argv.append("-z")
-    result = _run(runner, argv, cwd=cwd)
-    output_path = Path(output)
-    tmp_path = Path(f"{output}.tmp")
-    try:
-        if result.returncode != 0:
-            output_path.unlink(missing_ok=True)
-            tmp_path.unlink(missing_ok=True)
-            return 0
-        if nul:
-            parts = [p for p in result.stdout.split("\x00") if p]
-            data = "\x00".join(sorted(parts))
-            if data:
-                data += "\x00"
-        else:
-            parts = [p for p in result.stdout.splitlines() if p]
-            data = "\n".join(sorted(parts))
-            if data:
-                data += "\n"
-        _ = tmp_path.write_text(data, encoding="utf-8")
-        _ = tmp_path.replace(output_path)
-    except OSError:
-        output_path.unlink(missing_ok=True)
-        tmp_path.unlink(missing_ok=True)
-    return 0
 
 
 def count_commits(runner: Runner, *, cwd: str | None = None) -> CountCommitsResult:
@@ -1461,23 +1396,6 @@ def branch_info_main(argv: list[str]) -> int:
     return 0
 
 
-def conflict_files_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git-conflict-files.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    result = _run(proc, ["git", "ls-files", "-u"])
-    if result.returncode != 0:
-        sys.stderr.write(result.stderr)
-        return result.returncode
-    for item in _parse_conflict_file_rows(result.stdout):
-        logging_util.emit_kv(key="FILE", value=item.path)
-        logging_util.emit_kv(key="STAGE_1", value=str(item.stage_1).lower())
-        logging_util.emit_kv(key="STAGE_2", value=str(item.stage_2).lower())
-        logging_util.emit_kv(key="STAGE_3", value=str(item.stage_3).lower())
-        print()
-    return 0
-
-
 def rebase_abort_main(argv: list[str]) -> int:
     if argv:
         print(f"git-rebase-abort.sh: unknown argument: {argv[0]}", file=sys.stderr)
@@ -1554,46 +1472,6 @@ def sync_local_main_main(argv: list[str]) -> int:
     else:
         print(f"cli.py git sync-local-main: {result}", file=sys.stderr)
     return rc
-
-
-def clean_tree_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git clean-tree")
-    parser.add_argument("--fail-closed", action="store_true")
-    args = _parse(parser=parser, argv=argv)
-    if args is None:
-        return 2
-    result = clean_tree(proc, fail_closed=args.fail_closed)
-    logging_util.emit_kv(key="CLEAN", value=result.clean)
-    if result.dirty_out:
-        logging_util.emit_kv(key="DIRTY_OUT", value=result.dirty_out)
-    if result.probe_error:
-        logging_util.emit_kv(key="PROBE_ERROR", value=result.probe_error)
-    return result.exit_code
-
-
-def snapshot_untracked_main(argv: list[str]) -> int:
-    output = ""
-    nul = False
-    index = 0
-    while index < len(argv):
-        arg = argv[index]
-        if arg == "--output":
-            if index + 1 >= len(argv) or not argv[index + 1]:
-                print("snapshot-untracked.sh: --output requires a value", file=sys.stderr)
-                return 0
-            output = argv[index + 1]
-            index += 2
-            continue
-        if arg == "--nul":
-            nul = True
-            index += 1
-            continue
-        print(f"snapshot-untracked.sh: unknown flag: {arg}", file=sys.stderr)
-        return 0
-    if not output:
-        print("snapshot-untracked.sh: --output is required", file=sys.stderr)
-        return 0
-    return snapshot_untracked(proc, output, nul=nul)
 
 
 def count_commits_main(argv: list[str]) -> int:
