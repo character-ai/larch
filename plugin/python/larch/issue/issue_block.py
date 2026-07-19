@@ -62,6 +62,84 @@ class BlockIssueError(Exception):
         self.exit_code = exit_code
 
 
+class DependencyReadError(Exception):
+    """Fail-closed dependency read failure for migration admission."""
+
+
+@dataclass(frozen=True)
+class BlockedByDependency:
+    """Native blocked-by edge with freshness fields."""
+
+    number: int
+    state: str
+    updated_at: str
+
+
+def read_blocked_by_dependencies(
+    runner: proc.Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> tuple[BlockedByDependency, ...]:
+    """Read native blocked-by edges with state and ``updatedAt``.
+
+    Fail closed: transport errors, malformed JSON, or missing freshness fields
+    raise ``DependencyReadError``. Never treat a read failure as an empty set.
+    """
+    result = gh.issue_blocked_by_read(runner, str(issue), repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        raise DependencyReadError(
+            f"blocked-by read failed: {result.stderr or result.stdout}"
+        )
+    try:
+        rows = gh.loads_json_paginated_list(result.stdout)
+    except Exception as exc:
+        raise DependencyReadError("blocked-by read returned malformed JSON") from exc
+    numbers: list[int] = []
+    for row_obj in rows:
+        if not isinstance(row_obj, dict):
+            raise DependencyReadError("blocked-by row is not an object")
+        row = cast("dict[str, object]", row_obj)
+        number = row.get("number")
+        if isinstance(number, int) and number >= 1:
+            numbers.append(number)
+        elif isinstance(number, str) and number.isdigit() and int(number) >= 1:
+            numbers.append(int(number))
+        else:
+            raise DependencyReadError("blocked-by row missing issue number")
+    resolved: list[BlockedByDependency] = []
+    for number in sorted(set(numbers)):
+        view = gh.issue_view_field_read(
+            runner, str(number), "number,state,updatedAt", repo=repo, cwd=cwd
+        )
+        if view.returncode != 0:
+            raise DependencyReadError(
+                f"blocked-by freshness read failed for #{number}"
+            )
+        try:
+            payload: object = json.loads(view.stdout or "null")
+        except json.JSONDecodeError as exc:
+            raise DependencyReadError(
+                f"blocked-by freshness JSON invalid for #{number}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise DependencyReadError(
+                f"blocked-by freshness JSON invalid for #{number}"
+            )
+        data = cast("dict[str, object]", payload)
+        state = str(data.get("state", "")).strip().lower()
+        updated_at = data.get("updatedAt")
+        if not state or not isinstance(updated_at, str) or not updated_at:
+            raise DependencyReadError(
+                f"blocked-by freshness fields missing for #{number}"
+            )
+        resolved.append(
+            BlockedByDependency(number=number, state=state, updated_at=updated_at)
+        )
+    return tuple(resolved)
+
+
 def _flat(text: str) -> str:
     redacted = redact.redact_outbound(text)
     return redacted.replace("\r", " ").replace("\n", " ").strip()[:1000]

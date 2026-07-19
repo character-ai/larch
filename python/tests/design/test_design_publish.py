@@ -83,6 +83,13 @@ def _stub_plan_contract_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright:
 
 
 @pytest.fixture(autouse=True)
+def _stub_plan_receipt_persist(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Publish success paths stub receipt persistence; dedicated tests cover the owner."""
+
+    monkeypatch.setattr(design_publish, "_persist_published_plan_receipt", lambda **_k: None)
+
+
+@pytest.fixture(autouse=True)
 def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     """Isolate cwd, but keep a tiny git repo so M2 path checks can resolve tracked files."""
     readme = tmp_path / "README.md"

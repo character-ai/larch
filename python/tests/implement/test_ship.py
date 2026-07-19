@@ -24,6 +24,7 @@ from larch.implement import ship_merge
 from larch.implement import ship_pr
 from larch.implement import ship_resume
 from larch.implement import ship_result
+from larch.issue import migration_governance
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
@@ -44,6 +45,20 @@ def _default_try_rev_parse(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "").
     """
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
+
+
+@pytest.fixture(autouse=True)
+def _stub_migration_governance_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default ship tests past M4/M5 unless they exercise the gate explicitly."""
+
+    def _ok(*_args: object, **_kwargs: object) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=()),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", _ok)
+    monkeypatch.setattr(migration_governance, "read_issue_body", lambda *_a, **_k: "body")
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -398,6 +413,87 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
     assert result.rebase_count == 5
     assert not pin_calls
     assert _read_state(state)["PHASE"] == "rebase"
+
+
+def test_ship_rebase_phase_stops_on_stale_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state),
+        pr_number=7,
+        pr_url="https://example.com/pr/7",
+        merge=True,
+        repo="o/r",
+        issue="9",
+        issue_number="9",
+    )
+
+    def fake_flush_logs_pre(**_kw: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(**_kw: object) -> object:
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    def stale(*_a: object, **_k: object) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(
+                reasons=(migration_governance.REASON_STALE_PLAN_BASE_SCOPE,)
+            ),
+        )
+
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", stale)
+    result = ship._ship_rebase_phase(
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+    assert result.terminal is not None
+    assert result.terminal.outcome == Outcome.STALLED
+    assert "stale-plan-base-scope" in (result.terminal.detail or "")
+
+
+def test_governance_gate_result_blocks_pre_pr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path, repo="o/r", issue="3", issue_number="3")
+
+    def stale(*_a: object, **_k: object) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(
+                reasons=(migration_governance.REASON_STALE_BLOCKER_SNAPSHOT,)
+            ),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", stale)
+    blocked = ship._governance_gate_result(
+        runner=RecordingRunner(),
+        ctx=ctx,
+        cwd=str(tmp_path),
+        site="pre-pr",
+    )
+    assert blocked is not None
+    assert blocked.outcome == Outcome.STALLED
+    assert "stale-blocker-snapshot" in (blocked.detail or "")
 
 
 def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

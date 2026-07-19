@@ -15,7 +15,7 @@ import pytest
 from larch.core.proc import CommandResult
 from larch.implement import preflight
 from larch.design import plan_grammar
-from larch.issue import issue_wire
+from larch.issue import issue_wire, migration_governance
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +32,20 @@ def _stub_tracked_paths_for_plan_contract(monkeypatch: pytest.MonkeyPatch) -> No
         )
 
     monkeypatch.setattr(plan_grammar, "_load_tracked_paths", _tracked)
+
+
+@pytest.fixture(autouse=True)
+def _stub_migration_governance_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Default: governance gate passes so legacy preflight fixtures stay focused."""
+
+    def _ok(*_args: Any, **_kwargs: Any) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=()),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", _ok)
+    monkeypatch.setattr(preflight.gh, "resolve_repo", lambda _runner: "o/r")
 
 
 def _write(handle: object, text: str) -> None:
@@ -702,3 +716,81 @@ def test_preflight_issue_view_failure_preserves_artifacts(
     assert (tmp_path / "issue.json").read_text(encoding="utf-8") == '{"message":"not found"}'
     assert (tmp_path / "gh-issue-view.stderr").read_text(encoding="utf-8") == "gh issue view failed\n"
     assert "gh issue view failed for issue #42" in capsys.readouterr().out
+
+
+def test_preflight_blocker_read_failure_before_success_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan_inner = _executable_plan_inner()
+    title_mutations: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
+        elif "plan-block" in argv:
+            out_path = Path(argv[argv.index("--output") + 1])
+            out_path.write_text(plan_inner, encoding="utf-8")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
+        elif "issue" in argv and "edit" in argv:
+            title_mutations.append("edit")
+        return _fake_completed(argv)
+
+    def blocked(*_a: Any, **_k: Any) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(
+                reasons=(migration_governance.REASON_BLOCKER_READ_UNAVAILABLE,)
+            ),
+            freshness=migration_governance.FreshnessVerdict(reasons=()),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", blocked)
+    _stub_issue_view(monkeypatch, payload={"title": "[DESIGNED] Title", "body": _body_with_plan(plan_inner)})
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(
+        ["--issue", "5", "--repo", "o/r", "--preflight-tmpdir", str(tmp_path)]
+    )
+    assert rc == 2
+    assert title_mutations == []
+    assert "blocker-read-unavailable" in capsys.readouterr().out
+
+
+def test_preflight_receipt_failure_before_title_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan_inner = _executable_plan_inner()
+    title_mutations: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
+        elif "plan-block" in argv:
+            out_path = Path(argv[argv.index("--output") + 1])
+            out_path.write_text(plan_inner, encoding="utf-8")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
+        elif "issue" in argv and "edit" in argv:
+            title_mutations.append("edit")
+        return _fake_completed(argv)
+
+    def stale(*_a: Any, **_k: Any) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(
+                reasons=(migration_governance.REASON_STALE_PLAN_BODY,)
+            ),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", stale)
+    _stub_issue_view(monkeypatch, payload={"title": "[DESIGNED] Title", "body": _body_with_plan(plan_inner)})
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(
+        ["--issue", "5", "--repo", "o/r", "--preflight-tmpdir", str(tmp_path)]
+    )
+    assert rc == 2
+    assert title_mutations == []
+    assert "stale-plan-body" in capsys.readouterr().out

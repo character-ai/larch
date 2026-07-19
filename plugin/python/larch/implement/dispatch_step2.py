@@ -26,6 +26,8 @@ from larch.core.repo_roots import repo_root_probe
 from larch.calibration import difficulty
 from larch.core import redact
 from larch.issue import issue_wire
+from larch.issue import migration_governance
+from larch.core import proc
 from larch.implement.dispatch_helpers import (
     _binary_available,
     _child_stdout_is_claude_fallback,
@@ -815,6 +817,29 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         with contextlib.suppress(OSError):
             path.unlink()
     _clear_external_scout_state(tmpdir)
+    issue_number = _session_get(file=session_env, key="ISSUE_NUMBER", default="") if session_env.is_file() else ""
+    if not issue_number:
+        issue_number = issue_from_parent
+    repo_slug = _session_get(file=session_env, key="REPO", default="") if session_env.is_file() else ""
+    if issue_number and repo_slug:
+        try:
+            body = migration_governance.read_issue_body(
+                proc, issue=issue_number, repo=repo_slug, cwd=str(repo_root)
+            )
+            gate = migration_governance.evaluate_governance_gate(
+                proc,
+                issue=issue_number,
+                repo=repo_slug,
+                body=body,
+                repo_root=repo_root,
+                cwd=str(repo_root),
+            )
+        except ShipError as exc:
+            _err(f"implement step2-dispatch: migration governance read failed: {exc}")
+            return st.emit_bailed("migration-governance-read-failed")
+        if not gate.ok:
+            _err(migration_governance.format_gate_refusal(site="implement step2-dispatch", verdict=gate))
+            return st.emit_bailed("migration-governance-stale")
     _write_prelaunch_baseline(st)
 
     wrapper_rc, kv, launcher_capture = _run_launcher(st)

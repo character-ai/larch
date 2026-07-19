@@ -21,7 +21,7 @@ from larch.core import config, proc
 from larch.git import gh
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, plugin_root as resolve_plugin_root
 from larch.implement import main_health
-from larch.issue import issue_wire
+from larch.issue import issue_wire, migration_governance
 
 SUCCESS_ENVELOPE_KEYS = (
     "ADMISSION_RESULT",
@@ -468,6 +468,11 @@ def _refuse_unreviewed_plan(*, plan_path: Path, issue: str) -> None:
             raise SystemExit(2)
 
 
+def _refuse_governance_gate(*, site: str, verdict: migration_governance.GovernanceGateVerdict) -> int:
+    print(migration_governance.format_gate_refusal(site=site, verdict=verdict))
+    return 2
+
+
 def preflight_main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv=argv)
     issue = str(args.issue)
@@ -568,6 +573,20 @@ def preflight_main(argv: list[str] | None = None) -> int:
     except OSError:
         return _preflight_write_failure("cannot write extracted plan.")
     block_present = "true"
+
+    gate_repo = repo or (gh.resolve_repo(proc) or "")
+    if not gate_repo:
+        print("**❌ /implement preflight: repository slug required for migration governance.**")
+        return 2
+    gate = migration_governance.evaluate_governance_gate(
+        proc,
+        issue=issue,
+        repo=gate_repo,
+        body=issue_body,
+        repo_root=repo_root,
+    )
+    if not gate.ok:
+        return _refuse_governance_gate(site="/implement preflight", verdict=gate)
 
     design_difficulty = ""
     try:

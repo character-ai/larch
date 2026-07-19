@@ -217,6 +217,40 @@ def _ship_rebase_phase(
         raise
     rebase_count += 1
     _ = result.rebased
+    from larch.issue import migration_governance  # noqa: PLC0415 - post-rebase freshness gate
+
+    issue = (working.issue_number or working.issue or "").strip()
+    repo = (working.repo or "").strip()
+    if issue and repo and not working.repo_unavailable:
+        try:
+            body = migration_governance.read_issue_body(
+                runner, issue=issue, repo=repo, cwd=cwd
+            )
+            verdict = migration_governance.evaluate_governance_gate(
+                runner,
+                issue=issue,
+                repo=repo,
+                body=body,
+                repo_root=Path(cwd),
+                cwd=cwd,
+            )
+        except ShipError as exc:
+            return ShipRebasePhaseResult(
+                rebase_count,
+                ShipResult(
+                    Outcome.STALLED,
+                    detail=f"post-rebase: migration governance read failed: {exc}",
+                ),
+            )
+        if not verdict.ok:
+            tokens = ",".join(verdict.blocking_reasons) or "unknown"
+            return ShipRebasePhaseResult(
+                rebase_count,
+                ShipResult(
+                    Outcome.STALLED,
+                    detail=f"post-rebase: migration governance blocked: {tokens}",
+                ),
+            )
     return ShipRebasePhaseResult(rebase_count)
 
 

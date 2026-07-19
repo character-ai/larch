@@ -94,6 +94,40 @@ class InvariantAssessmentCompleteness:
     reason: str
 
 
+def _persist_published_plan_receipt(
+    *,
+    issue: str,
+    repo: str,
+    repo_root: Path,
+) -> None:
+    """Write and read-verify the plan receipt after a successful plan write."""
+    # Offline unit tests set mutation deny and cannot perform live receipt writes.
+    if os.environ.get("LARCH_ISSUE_MUTATION_DENY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return
+    from larch.issue import migration_governance  # noqa: PLC0415 - publish-only receipt seam
+
+    repo_slug = repo
+    if not repo_slug:
+        from larch.git import gh as gh_api  # noqa: PLC0415
+
+        repo_slug = gh_api.resolve_repo(proc) or ""
+    if not repo_slug:
+        from larch.errors import ShipError  # noqa: PLC0415
+
+        raise ShipError("repository slug required to persist plan receipt")
+    _ = migration_governance.persist_plan_receipt(
+        proc,
+        issue=issue,
+        repo=repo_slug,
+        repo_root=repo_root,
+    )
+
+
 def _emit_rows(rows: list[tuple[str, str]]) -> None:
     for key, value in rows:
         print(f"{key}={value}")
@@ -1349,6 +1383,37 @@ def publish_core(argv: Sequence[str]) -> int:
         )
     _replace_kv(rows=kvs, key="PLAN_WRITE_OK", value="true")
     _checkpoint_result_env(path=result_env, rows=kvs, phase="plan-write")
+    try:
+        from larch.errors import ShipError  # noqa: PLC0415
+        from larch.issue.issue_mutation import ProtectedIssueMutation  # noqa: PLC0415
+
+        _persist_published_plan_receipt(
+            issue=parsed["--issue"],
+            repo=parsed["--repo"],
+            repo_root=Path(repo_root_arg) if repo_root_arg else Path.cwd(),
+        )
+    except (ShipError, ProtectedIssueMutation, OSError, ValueError) as exc:
+        _replace_kv(rows=kvs, key="PLAN_WRITE_OK", value="false")
+        _checkpoint_result_env(path=result_env, rows=kvs, phase="plan-receipt")
+        print(f"**❌ 5c: plan receipt persistence failed: {exc}**")
+        return _finalize_failed_plan_write(
+            design_tmpdir=design_tmpdir,
+            transcript_capture=(
+                TranscriptCaptureContext(
+                    design_tmpdir=design_tmpdir,
+                    plugin_root=plugin_root,
+                    session_id=parsed["--session-id"],
+                    issue=parsed["--issue"],
+                    repo=parsed["--repo"],
+                    claude_pid=parsed["--claude-pid"],
+                    warning_step_label="5c",
+                )
+                if parsed["--session-id"]
+                else None
+            ),
+            kvs=kvs,
+            result_env=result_env,
+        )
     if design_rating is not None:
         design_tier = design_rating.adjusted_tier
         sync_args = [
