@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-import sys
 from larch.core import config
 from larch.core import redact
 from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
@@ -32,7 +31,6 @@ from larch.core.retry import (
     is_transient_net_signature,
     with_transient_retry,
 )
-from larch.core import proc
 
 _RUN_LIST_WORKFLOW_ARGC_MIN: Final = 5
 
@@ -2230,31 +2228,3 @@ def extract_closes_issue_from_current_pr(
     if result.returncode != 0:
         return ""
     return extract_closes_issue(result.stdout)
-
-
-# CLI entrypoints migrated from gh_cli.py.
-def resolve_repo_main(argv: list[str]) -> int:
-    if argv:
-        print(f"resolve-repo.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    repo = resolve_repo(proc)
-    if not repo:
-        print(
-            "ERROR=could not resolve repo (gh repo view + git remote both failed)",
-            file=sys.stderr,
-        )
-        return 1
-    print(repo)
-    return 0
-
-
-def remote_repo_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print("Usage: github-remote-repo.sh <remote-name-or-url>", file=sys.stderr)
-        return 2
-    repo = remote_repo(proc, argv[0])
-    if not repo:
-        print("github-remote-repo.sh: cannot parse remote", file=sys.stderr)
-        return 2
-    print(repo)
-    return 0

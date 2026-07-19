@@ -36,8 +36,8 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ -z "${ISSUE_NUMBER:-}" ]; then
 fi
 
 REPO="${REPO:-}"
-if [ -z "$REPO" ] && [ -x "${CLAUDE_PLUGIN_ROOT:-}/python/cli.py" ]; then
-  REPO=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh resolve-repo 2>/dev/null || true)
+if [ -z "$REPO" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  REPO=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh resolve-repo 2>/dev/null || true)
 fi
 
 printf '%s\n' "🛑 /larch:pause: saving state for issue #${ISSUE_NUMBER}..."

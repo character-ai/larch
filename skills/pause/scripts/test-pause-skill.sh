@@ -64,12 +64,20 @@ HOME3="$TMP/home-live"
 PLUGIN3="$TMP/plugin-live"
 DESIGN3="$TMP/design-live"
 mkdir -p "$HOME3/.cache/larch/sessions" "$PLUGIN3/scripts" "$PLUGIN3/python" "$DESIGN3"
+cat >"$PLUGIN3/scripts/larch.sh" <<'EOF_LARCH3'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "gh" && "${2:-}" == "resolve-repo" ]]; then
+  printf '%s\n' "owner/repo"
+  exit 0
+fi
+printf 'unexpected larch args: %s\n' "$*" >&2
+exit 1
+EOF_LARCH3
+chmod +x "$PLUGIN3/scripts/larch.sh"
 cat >"$PLUGIN3/python/cli.py" <<'EOF_SAVE3'
 #!/usr/bin/env python3
 import sys
-if sys.argv[1:3] == ["gh", "resolve-repo"]:
-    print("owner/repo")
-    raise SystemExit(0)
 if sys.argv[1:3] == ["kv", "get"]:
     key = sys.argv[sys.argv.index("--key") + 1]
     matches = [line.split("=", 1)[1] for line in sys.stdin.read().splitlines() if line.startswith(f"{key}=")]
@@ -98,12 +106,20 @@ HOME4="$TMP/home-fail"
 PLUGIN4="$TMP/plugin-fail"
 DESIGN4="$TMP/design-fail"
 mkdir -p "$HOME4/.cache/larch/sessions" "$PLUGIN4/scripts" "$PLUGIN4/python" "$DESIGN4"
+cat >"$PLUGIN4/scripts/larch.sh" <<'EOF_LARCH4'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "gh" && "${2:-}" == "resolve-repo" ]]; then
+  printf '%s\n' "owner/repo"
+  exit 0
+fi
+printf 'unexpected larch args: %s\n' "$*" >&2
+exit 1
+EOF_LARCH4
+chmod +x "$PLUGIN4/scripts/larch.sh"
 cat >"$PLUGIN4/python/cli.py" <<'EOF_SAVE4'
 #!/usr/bin/env python3
 import sys
-if sys.argv[1:3] == ["gh", "resolve-repo"]:
-    print("owner/repo")
-    raise SystemExit(0)
 if sys.argv[1:3] == ["kv", "get"]:
     key = sys.argv[sys.argv.index("--key") + 1]
     matches = [line.split("=", 1)[1] for line in sys.stdin.read().splitlines() if line.startswith(f"{key}=")]

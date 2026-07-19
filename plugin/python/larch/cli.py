@@ -752,8 +752,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("pr", "checks"): ("larch.git.pr", "checks_main", False),
     ("pr", "closes-issue"): ("larch.git.pr", "closes_issue_main", False),
     ("merge", "pr"): ("larch.git.merge", "pr_main", False),
-    ("gh", "resolve-repo"): ("larch.git.gh", "resolve_repo_main", False),
-    ("gh", "remote-repo"): ("larch.git.gh", "remote_repo_main", False),
     ("ci", "wait"): ("larch.implement.ci", "wait_main", False),
     ("ci", "status"): ("larch.implement.ci", "status_main", False),
     ("ci", "decide"): ("larch.implement.ci", "decide_main", False),

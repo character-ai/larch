@@ -16,6 +16,7 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
 mod git_commands;
+mod github_repository_resolution;
 mod release_plugin_runtime;
 
 use git_commands::GitCommand as BranchGitCommand;
@@ -185,6 +186,10 @@ struct PluginRuntimeArguments {
 
 #[derive(Subcommand)]
 enum GhCommand {
+    /// Parse a remote name or URL into OWNER/REPO.
+    RemoteRepo(TrailingArguments),
+    /// Resolve the ambient GitHub repository slug for the cwd.
+    ResolveRepo(TrailingArguments),
     /// Print the complete log archive for a workflow run.
     RunLogs(RunLogsArguments),
     /// Print the retained workflow-path placeholder.
@@ -230,6 +235,8 @@ fn run(
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)
         }
+        Domain::Gh(GhCommand::RemoteRepo(arguments)) => Ok(run_remote_repo(&arguments)),
+        Domain::Gh(GhCommand::ResolveRepo(arguments)) => Ok(run_resolve_repo(&arguments)),
         Domain::Gh(GhCommand::RunLogs(arguments)) => Ok(run_logs(&arguments)),
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {
@@ -253,6 +260,14 @@ fn run(
 
 const fn command_failure(message: String) -> larch_adapters::upgrade_larch::Failure {
     larch_adapters::upgrade_larch::Failure { code: 1, message }
+}
+
+fn run_remote_repo(arguments: &TrailingArguments) -> ExitCode {
+    github_repository_resolution::run_remote_repo(&arguments.args)
+}
+
+fn run_resolve_repo(arguments: &TrailingArguments) -> ExitCode {
+    github_repository_resolution::run_resolve_repo(&arguments.args)
 }
 
 fn run_logs(arguments: &RunLogsArguments) -> ExitCode {
