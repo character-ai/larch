@@ -85,7 +85,6 @@ def _stub_plan_contract_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright:
 @pytest.fixture(autouse=True)
 def _stub_plan_receipt_persist(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     """Publish success paths stub receipt persistence; dedicated tests cover the owner."""
-
     monkeypatch.setattr(design_publish, "_persist_published_plan_receipt", lambda **_k: None)
 
 

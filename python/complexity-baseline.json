@@ -1731,7 +1731,11 @@
         "metric": 51
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1745,7 +1749,11 @@
         "metric": 23
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1759,7 +1767,11 @@
         "metric": 52
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1773,7 +1785,11 @@
         "metric": 177
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/design/design_router.py",
@@ -3371,7 +3387,11 @@
         "metric": 20
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/preflight.py",
@@ -3385,7 +3405,11 @@
         "metric": 17
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/preflight.py",
@@ -3399,7 +3423,11 @@
         "metric": 20
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/preflight.py",
@@ -3413,7 +3441,11 @@
         "metric": 86
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/ship.py",
@@ -3443,7 +3475,11 @@
         "metric": 60
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/ship.py",
@@ -3481,7 +3517,11 @@
         "metric": 30
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/ship.py",
@@ -3503,7 +3543,11 @@
         "metric": 65
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/ship.py",
@@ -3549,7 +3593,11 @@
         "metric": 204
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -4611,7 +4659,11 @@
         "metric": 12
       }
     ],
-    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main"
+    "reason": "M4/M5 plan receipt gates in publish_core and preflight_main",
+    "operator_override": {
+      "reason": "Issue #7782 adds shared plan-receipt and blocker-parity gates to /design publish and /implement preflight; same-day multi-metric growth is required to wire all four validation sites without splitting those existing orchestrators mid-leaf.",
+      "issue": 7782
+    }
   },
   {
     "file": "larch/issue/issue_block.py",
