@@ -338,6 +338,8 @@ mod tests {
     };
     use std::sync::Arc;
 
+    type DifferentialFamily = fn(&LarchRuntime, &TokioProcessRunner);
+
     fn policy(root: &Path) -> GitCliPolicy {
         GitCliPolicy::new(root.to_path_buf())
             .expect("absolute policy")
@@ -1105,85 +1107,534 @@ mod tests {
     fn differential_success_and_failure_families() {
         let runtime = LarchRuntime::current_thread().expect("runtime");
         let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+        let families: [(&str, DifferentialFamily); 8] = [
+            ("config/remote mutation", differential_config_and_remote),
+            ("index/worktree mutation", differential_index_and_worktree),
+            ("commit/trailers", differential_commit_and_trailers),
+            (
+                "checkout/worktree/init/clone/sparse-checkout",
+                differential_checkout,
+            ),
+            (
+                "rebase/merge/pull/stash",
+                differential_rebase_merge_pull_and_stash,
+            ),
+            (
+                "fetch/push/ls-remote",
+                differential_fetch_push_and_ls_remote,
+            ),
+            ("tag", differential_tag),
+            ("submodule", differential_submodule),
+        ];
 
-        let repository = GitRepository::builder(GitFixture::Changes)
-            .build()
-            .expect("fixture");
-        let git = GitCli::new(&runner, policy(repository.root()));
-        let oracle_version = repository.git(["--version"]).expect("oracle version");
-        let adapter_version = runtime
-            .block_on(git.version(&NeverCancelled))
-            .expect("adapter version");
-        assert_eq!(oracle_version.stdout, adapter_version.output().stdout());
+        for (_, run) in families {
+            run(&runtime, &runner);
+        }
+    }
 
-        let oracle = GitRepository::builder(GitFixture::Changes)
-            .build()
-            .expect("oracle");
-        let adapter_repo = GitRepository::builder(GitFixture::Changes)
-            .build()
-            .expect("adapter");
-        oracle.write("extra.txt", b"extra\n").unwrap();
-        adapter_repo.write("extra.txt", b"extra\n").unwrap();
-        let oracle_add = oracle.git(["add", "--", "extra.txt"]).unwrap();
-        assert!(oracle_add.success());
-        let oracle_snapshot =
-            SemanticSnapshot::capture(&oracle, ExecutionSnapshot::from_git(&oracle, &oracle_add))
-                .unwrap();
-        let adapter = GitCli::new(&runner, policy(adapter_repo.root()));
-        runtime
-            .block_on(adapter.add(
-                AddRequest {
-                    all: false,
-                    force: false,
-                    pathspec_from_file: None,
-                    paths: vec![GitPath::new("extra.txt").unwrap()],
-                },
-                &NeverCancelled,
-            ))
-            .unwrap();
-        let adapter_snapshot =
-            SemanticSnapshot::capture(&adapter_repo, ExecutionSnapshot::success()).unwrap();
-        assert_eq!(oracle_snapshot.index, adapter_snapshot.index);
+    fn differential_config_and_remote(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_differential_case(
+            "config set succeeds",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["config", "--local", "larch.fixture", "value"],
+            |repository, runner, runtime| {
+                runtime.block_on(
+                    GitCli::new(runner, policy(repository.root())).config_mutation(
+                        ConfigMutationRequest::Set {
+                            key: GitConfigKey::new("larch.fixture").unwrap(),
+                            value: "value".into(),
+                        },
+                        &NeverCancelled,
+                    ),
+                )
+            },
+        );
+        assert_differential_case(
+            "remote remove fails for an unknown remote",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["remote", "remove", "missing"],
+            |repository, runner, runtime| {
+                runtime.block_on(
+                    GitCli::new(runner, policy(repository.root())).remote_mutation(
+                        RemoteMutationRequest::Remove {
+                            name: GitRemote::new("missing").unwrap(),
+                        },
+                        &NeverCancelled,
+                    ),
+                )
+            },
+        );
+    }
 
-        let branch_repo = GitRepository::builder(GitFixture::Refs)
-            .build()
-            .expect("branch");
-        runtime
-            .block_on(
-                GitCli::new(&runner, policy(branch_repo.root())).branch_mutation(
-                    BranchMutationRequest::Create {
+    fn differential_index_and_worktree(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_differential_case(
+            "add succeeds",
+            runtime,
+            runner,
+            GitFixture::Changes,
+            |repository| {
+                repository
+                    .write("extra.txt", b"extra\n")
+                    .expect("write fixture");
+            },
+            ["add", "--", "extra.txt"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).add(
+                    AddRequest {
+                        all: false,
                         force: false,
-                        name: GitRef::new("adapter-topic").unwrap(),
+                        pathspec_from_file: None,
+                        paths: vec![GitPath::new("extra.txt").unwrap()],
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "rm fails for a missing path",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["rm", "--", "missing.txt"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).rm(
+                    RmRequest {
+                        force: false,
+                        paths: vec![GitPath::new("missing.txt").unwrap()],
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    fn differential_commit_and_trailers(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_status_differential_case(
+            "commit succeeds",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["commit", "--allow-empty", "-m", "fixture commit"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).commit(
+                    CommitRequest {
+                        message: Some(CommitMessage::Literal("fixture commit".into())),
+                        amend: false,
+                        no_edit: false,
+                        allow_empty: true,
+                        paths: Vec::new(),
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "interpret-trailers fails for a missing message file",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            [
+                "interpret-trailers",
+                "--trailer",
+                "Reviewed-by: Larch <fixture@example.invalid>",
+                "--in-place",
+                "missing-message",
+            ],
+            |repository, runner, runtime| {
+                runtime.block_on(
+                    GitCli::new(runner, policy(repository.root())).interpret_trailers(
+                        InterpretTrailersRequest {
+                            trailers: vec!["Reviewed-by: Larch <fixture@example.invalid>".into()],
+                            in_place: Some(GitPath::new("missing-message").unwrap()),
+                            stdin: Vec::new(),
+                        },
+                        &NeverCancelled,
+                    ),
+                )
+            },
+        );
+    }
+
+    fn differential_checkout(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_differential_case(
+            "checkout succeeds",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["checkout", "topic"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).checkout(
+                    CheckoutRequest::Branch {
+                        create: false,
+                        force: false,
+                        name: GitRef::new("topic").unwrap(),
                         start_point: None,
                     },
                     &NeverCancelled,
-                ),
-            )
-            .unwrap();
-        let branch_snapshot =
-            SemanticSnapshot::capture(&branch_repo, ExecutionSnapshot::success()).unwrap();
-        assert!(
-            branch_snapshot
-                .refs
-                .stdout
-                .bytes
-                .windows(b"refs/heads/adapter-topic".len())
-                .any(|window| window == b"refs/heads/adapter-topic")
+                ))
+            },
         );
+        assert_differential_case(
+            "checkout fails for a missing branch",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["checkout", "missing-branch"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).checkout(
+                    CheckoutRequest::Branch {
+                        create: false,
+                        force: false,
+                        name: GitRef::new("missing-branch").unwrap(),
+                        start_point: None,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
 
-        let failure_repo = GitRepository::builder(GitFixture::Unborn)
+    fn differential_rebase_merge_pull_and_stash(
+        runtime: &LarchRuntime,
+        runner: &TokioProcessRunner,
+    ) {
+        assert_status_differential_case(
+            "stash succeeds",
+            runtime,
+            runner,
+            GitFixture::Changes,
+            |_| {},
+            ["stash", "push", "-m", "fixture stash"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).stash(
+                    StashRequest::Push {
+                        message: Some("fixture stash".into()),
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "merge fails for a missing branch",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["merge", "--no-edit", "missing-branch"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).merge(
+                    MergeRequest::Commit {
+                        theirs: GitRef::new("missing-branch").unwrap(),
+                        no_edit: true,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    fn differential_fetch_push_and_ls_remote(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_differential_case(
+            "ls-remote succeeds",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |repository| {
+                repository
+                    .git(["remote", "add", "origin", "."])
+                    .expect("configure fixture remote");
+            },
+            ["ls-remote", "origin", "HEAD"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).ls_remote(
+                    LsRemoteRequest {
+                        remote: GitRemote::new("origin").unwrap(),
+                        patterns: vec![GitRef::new("HEAD").unwrap()],
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "fetch fails for an unknown remote",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["fetch", "missing"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).fetch(
+                    FetchRequest {
+                        remote: GitRemote::new("missing").unwrap(),
+                        refspec: None,
+                        quiet: false,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    fn differential_tag(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_differential_case(
+            "tag create succeeds",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["tag", "fixture-v2"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).tag_mutation(
+                    TagMutationRequest::Create {
+                        force: false,
+                        name: GitRef::new("fixture-v2").unwrap(),
+                        target: None,
+                        message: None,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "tag delete fails for a missing tag",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["tag", "--delete", "missing-tag"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).tag_mutation(
+                    TagMutationRequest::Delete {
+                        name: GitRef::new("missing-tag").unwrap(),
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    fn differential_submodule(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
+        assert_status_differential_case(
+            "submodule update succeeds",
+            runtime,
+            runner,
+            GitFixture::Submodule,
+            |_| {},
+            ["submodule", "update", "--init", "--recursive"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).submodule(
+                    SubmoduleRequest::Update {
+                        init: true,
+                        recursive: true,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_status_differential_case(
+            "submodule foreach propagates command failure",
+            runtime,
+            runner,
+            GitFixture::Submodule,
+            |_| {},
+            ["submodule", "foreach", "false"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).submodule(
+                    SubmoduleRequest::Foreach {
+                        recursive: false,
+                        command: vec![GitToken::new("false").unwrap()],
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    fn assert_differential_case<Setup, Run>(
+        name: &str,
+        runtime: &LarchRuntime,
+        runner: &TokioProcessRunner,
+        fixture: GitFixture,
+        setup: Setup,
+        oracle_arguments: impl IntoIterator<Item = &'static str>,
+        run_adapter: Run,
+    ) where
+        Setup: Fn(&GitRepository),
+        Run: Fn(
+            &GitRepository,
+            &TokioProcessRunner,
+            &LarchRuntime,
+        ) -> Result<GitCliResult, GitCliError>,
+    {
+        assert_differential_case_inner(
+            name,
+            (runtime, runner),
+            fixture,
+            setup,
+            oracle_arguments,
+            run_adapter,
+            true,
+        );
+    }
+
+    fn assert_status_differential_case<Setup, Run>(
+        name: &str,
+        runtime: &LarchRuntime,
+        runner: &TokioProcessRunner,
+        fixture: GitFixture,
+        setup: Setup,
+        oracle_arguments: impl IntoIterator<Item = &'static str>,
+        run_adapter: Run,
+    ) where
+        Setup: Fn(&GitRepository),
+        Run: Fn(
+            &GitRepository,
+            &TokioProcessRunner,
+            &LarchRuntime,
+        ) -> Result<GitCliResult, GitCliError>,
+    {
+        // Independently initialized fixtures produce time-dependent commit IDs.
+        assert_differential_case_inner(
+            name,
+            (runtime, runner),
+            fixture,
+            setup,
+            oracle_arguments,
+            run_adapter,
+            false,
+        );
+    }
+
+    fn assert_differential_case_inner<Setup, Run>(
+        name: &str,
+        context: (&LarchRuntime, &TokioProcessRunner),
+        fixture: GitFixture,
+        setup: Setup,
+        oracle_arguments: impl IntoIterator<Item = &'static str>,
+        run_adapter: Run,
+        require_exact_state: bool,
+    ) where
+        Setup: Fn(&GitRepository),
+        Run: Fn(
+            &GitRepository,
+            &TokioProcessRunner,
+            &LarchRuntime,
+        ) -> Result<GitCliResult, GitCliError>,
+    {
+        let (runtime, runner) = context;
+        let oracle = GitRepository::builder(fixture)
             .build()
-            .expect("unborn");
-        assert!(matches!(
-            runtime.block_on(GitCli::new(&runner, policy(failure_repo.root())).reset(
-                ResetRequest {
-                    mode: ResetMode::Hard,
-                    target: GitRef::new("missing-ref").unwrap(),
-                    paths: Vec::new(),
-                },
-                &NeverCancelled,
-            )),
-            Err(GitCliError::Failed(_))
-        ));
+            .expect("oracle fixture");
+        let adapter = GitRepository::builder(fixture)
+            .build()
+            .expect("adapter fixture");
+        setup(&oracle);
+        setup(&adapter);
+
+        let oracle_output = oracle.git(oracle_arguments).expect("run installed Git");
+        let adapter_result = run_adapter(&adapter, runner, runtime);
+        let adapter_output = match adapter_result {
+            Ok(result) => {
+                assert!(
+                    oracle_output.success(),
+                    "{name}: adapter succeeded but oracle failed"
+                );
+                result.output().clone()
+            }
+            Err(GitCliError::Failed(result)) => {
+                assert!(
+                    !oracle_output.success(),
+                    "{name}: adapter failed but oracle succeeded"
+                );
+                result.output().clone()
+            }
+            Err(error) => panic!("{name}: adapter did not execute Git: {error}"),
+        };
+        assert_eq!(
+            oracle_output.code,
+            adapter_output.status().code(),
+            "{name}: exit code"
+        );
+        if require_exact_state {
+            assert_eq!(
+                oracle_output.stdout,
+                adapter_output.stdout(),
+                "{name}: stdout"
+            );
+            assert_eq!(
+                oracle_output.stderr,
+                adapter_output.stderr(),
+                "{name}: stderr"
+            );
+        }
+
+        if require_exact_state {
+            let oracle_snapshot = SemanticSnapshot::capture(
+                &oracle,
+                ExecutionSnapshot::from_git(&oracle, &oracle_output),
+            )
+            .expect("capture oracle semantics");
+            let adapter_snapshot =
+                SemanticSnapshot::capture(&adapter, ExecutionSnapshot::success())
+                    .expect("capture adapter semantics");
+            assert_semantic_state_eq(name, &oracle_snapshot, &adapter_snapshot);
+        }
+    }
+
+    fn assert_semantic_state_eq(name: &str, oracle: &SemanticSnapshot, adapter: &SemanticSnapshot) {
+        assert_eq!(oracle.schema, adapter.schema, "{name}: schema");
+        assert_eq!(
+            oracle.head_symbolic, adapter.head_symbolic,
+            "{name}: symbolic HEAD"
+        );
+        assert_eq!(
+            oracle.head_object, adapter.head_object,
+            "{name}: HEAD object"
+        );
+        assert_eq!(oracle.objects, adapter.objects, "{name}: object database");
+        assert_eq!(oracle.refs, adapter.refs, "{name}: refs");
+        assert_eq!(oracle.index, adapter.index, "{name}: index");
+        assert_eq!(
+            oracle.index_flags, adapter.index_flags,
+            "{name}: index flags"
+        );
+        assert_eq!(
+            oracle.untracked, adapter.untracked,
+            "{name}: untracked files"
+        );
+        assert_eq!(oracle.ignored, adapter.ignored, "{name}: ignored files");
+        assert_eq!(
+            oracle.linked_worktrees, adapter.linked_worktrees,
+            "{name}: worktrees"
+        );
+        assert_eq!(oracle.config, adapter.config, "{name}: config");
+        assert_eq!(
+            oracle.worktree, adapter.worktree,
+            "{name}: worktree contents"
+        );
+        assert_eq!(
+            oracle.operation_state, adapter.operation_state,
+            "{name}: operation state"
+        );
+        assert_eq!(
+            oracle.transcripts, adapter.transcripts,
+            "{name}: fixture transcripts"
+        );
+        assert_eq!(oracle.fsck, adapter.fsck, "{name}: fsck");
+        assert_eq!(
+            oracle.entries_truncated, adapter.entries_truncated,
+            "{name}: snapshot bounds"
+        );
     }
 }
