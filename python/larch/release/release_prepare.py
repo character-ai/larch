@@ -14,7 +14,7 @@ from typing import Any
 
 from larch.core import config
 from larch.core import proc
-from larch.core.repo_roots import larch_binary
+from larch.core.repo_roots import larch_entrypoint
 from larch.git import gh
 from larch.release import version_bump
 from larch.errors import ShipError
@@ -96,7 +96,7 @@ def _origin_repo(repo_root: Path) -> str | None:
     if override:
         return override
     res = proc.run(
-        [str(larch_binary(repo_root)), "gh", "remote-repo", "origin"],
+        [str(larch_entrypoint(repo_root)), "gh", "remote-repo", "origin"],
         cwd=str(repo_root),
     )
     return res.stdout.strip() if res.returncode == 0 else None

@@ -991,14 +991,14 @@ exclude = [
   "scripts/test-cache-key-discipline.md",
   "scripts/test-cache-key-runtime-audit.sh",
   "scripts/test-cache-key-runtime-audit.md",
-  # bin/larch gh remote-repo is the one-URL/one-remote-name parser used
+  # scripts/larch.sh gh remote-repo is the one-URL/one-remote-name parser used
   # by python/cli.py admission fork-env (forked-target-only pre-Step-0 helper)
-  # via shell variable indirection through larch_binary().
+  # via shell variable indirection through larch_entrypoint().
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
   # indirection (same exclusion shape as python/cli.py agent launch-codex-implement
   # above). Sibling contract: crates/larch-cli/src/github_repository_resolution.rs.
-  "bin/larch gh remote-repo",
+  "scripts/larch.sh gh remote-repo",
   # python/test_admission.py is the offline regression harness for
   # python/cli.py admission fork-env (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile
@@ -1358,10 +1358,11 @@ root-max-content-tokens = 35301
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
 # Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs;
-# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint.
-closure-max-lines = 3773
-closure-max-tokens = 143823
-closure-max-content-tokens = 143521
+# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
+# issue #7764 adds the repository-resolution SECURITY.md boundary.
+closure-max-lines = 3775
+closure-max-tokens = 143936
+closure-max-content-tokens = 143632
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1410,7 +1411,8 @@ roots = [
 ]
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
-# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint.
-closure-max-lines = 6061
-closure-max-tokens = 169258
-closure-max-content-tokens = 168792
+# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
+# issue #7764 adds the repository-resolution SECURITY.md boundary.
+closure-max-lines = 6063
+closure-max-tokens = 169385
+closure-max-content-tokens = 168919

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from larch.core.proc import CommandResult
-from larch.core.repo_roots import larch_binary
+from larch.core.repo_roots import larch_entrypoint
 from larch.state import admission
 
 
@@ -455,7 +455,7 @@ def test_fork_env_success(tmp_path, monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     assert admission.fork_env_main(["--tmpdir", str(tmp_path)]) == 0
-    expected_argv = [str(larch_binary(Path(__file__).resolve().parents[3])), "gh", "remote-repo"]
+    expected_argv = [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "gh", "remote-repo"]
     assert gh_calls == [
         [*expected_argv, "origin"],
         [*expected_argv, "upstream"],

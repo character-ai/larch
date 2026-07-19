@@ -19,7 +19,7 @@ from larch.calibration import difficulty
 from larch.design import plan_grammar
 from larch.core import config, proc
 from larch.git import gh
-from larch.core.repo_roots import larch_binary, plugin_root as resolve_plugin_root
+from larch.core.repo_roots import larch_entrypoint, plugin_root as resolve_plugin_root
 from larch.implement import main_health
 from larch.issue.title_match import strip_lifecycle_prefix
 SUCCESS_ENVELOPE_KEYS = (
@@ -290,7 +290,7 @@ def _resolve_repo_for_main_health(*, cli_path: Path, env: dict[str, str], repo: 
     stdout_path = preflight_tmpdir / "resolve-repo.stdout"
     stderr_path = preflight_tmpdir / "resolve-repo.stderr"
     rc = _run_capture(
-        argv=[str(larch_binary(Path(__file__).resolve().parents[3])), "gh", "resolve-repo"],
+        argv=[str(larch_entrypoint(Path(__file__).resolve().parents[3])), "gh", "resolve-repo"],
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         env=env,

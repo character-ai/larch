@@ -292,7 +292,7 @@ def preflight_main(argv: list[str]) -> int:
 def _github_remote_repo(remote: str) -> tuple[int, str, str]:
     result = _run(
         [
-            str(larch_binary(Path(__file__).resolve().parents[3])),
+            str(larch_entrypoint(Path(__file__).resolve().parents[3])),
             "gh",
             "remote-repo",
             remote,

@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-import sys
 from larch.core import config
 from larch.core import redact
 from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
@@ -32,7 +31,6 @@ from larch.core.retry import (
     is_transient_net_signature,
     with_transient_retry,
 )
-from larch.core import proc
 
 _RUN_LIST_WORKFLOW_ARGC_MIN: Final = 5
 
