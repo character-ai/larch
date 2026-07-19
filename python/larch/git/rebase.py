@@ -107,8 +107,8 @@ def _abort_rebase(runner: Runner, *, cwd: str | None) -> None:
 
 
 def _rebase_skip(runner: Runner, *, cwd: str | None) -> CommandResult:
-    binary = repo_roots.larch_binary(Path(__file__).resolve().parents[3])
-    return runner.run([str(binary), "git", "rebase-skip"], cwd=cwd)
+    entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
+    return runner.run([str(entrypoint), "git", "rebase-skip"], cwd=cwd)
 
 
 def _write_handoff_flag(tmpdir: str | None) -> None:

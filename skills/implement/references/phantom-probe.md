@@ -6,10 +6,10 @@
 
 At selected `/implement` boundaries, detect non-ignored untracked files that appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms are logged to Execution Issues, never cleaned automatically.
 
-**Thin implementation** — shared logic lives in `bin/larch git phantom-probe`; Python checkpoint and implement dispatch commands are consumers that relay its advisory KV envelope. Runtime entrypoints:
+**Thin implementation**: shared logic lives in the Rust `git phantom-probe` command; Python checkpoint and implement dispatch commands are consumers that relay its advisory KV envelope. Runtime entrypoints:
 
-- **Combined (4 sites)** — post-rebase probe is bundled into `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push checkpoint-probe` for Steps **1.r**, **4.r**, **7.r**, and **7a.r** (uniform `<step-prefix>-post-rebase` tokens such as `1.r-post-rebase`; see `skills/implement/references/rebase-checkpoint-routing.md`). The wrapper consumes `"${CLAUDE_PLUGIN_ROOT}/bin/larch" git phantom-probe`; do not duplicate direct `git check-phantom-dirty` or warning-append calls after those checkpoints.
-- **Bundled standalone tokens (2 sites)** — Step 2 post-dispatch uses `skills/implement/scripts/step-2-post-dispatch.sh`, which bundles the probe token `2-post-dispatch` with branch and optional SHA reads. Step 8+ pre-ship uses `skills/implement/scripts/step-8-ship.sh`, which bundles `"${CLAUDE_PLUGIN_ROOT}/bin/larch" git phantom-probe --step 8-pre-ship` before the ship driver and redirects probe stdout away from driver JSON stdout.
+- **Combined (4 sites)**: post-rebase probe is bundled into `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push checkpoint-probe` for Steps **1.r**, **4.r**, **7.r**, and **7a.r** (uniform `<step-prefix>-post-rebase` tokens such as `1.r-post-rebase`; see `skills/implement/references/rebase-checkpoint-routing.md`). The wrapper consumes `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git phantom-probe`; do not duplicate direct `git check-phantom-dirty` or warning-append calls after those checkpoints.
+- **Bundled standalone tokens (2 sites)**: Step 2 post-dispatch uses `skills/implement/scripts/step-2-post-dispatch.sh`, which bundles the probe token `2-post-dispatch` with branch and optional SHA reads. Step 8+ pre-ship uses `skills/implement/scripts/step-8-ship.sh`, which bundles `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git phantom-probe --step 8-pre-ship` before the ship driver and redirects probe stdout away from driver JSON stdout.
 
 **6 sites total** per run: four combined post-rebase probes (including the uniform `1.r-post-rebase` site) plus the two bundled standalone tokens above.
 

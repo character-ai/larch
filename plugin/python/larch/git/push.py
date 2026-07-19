@@ -15,7 +15,7 @@ from larch.core import config
 from larch.git import git
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
-from larch.core.repo_roots import larch_binary
+from larch.core.repo_roots import larch_entrypoint
 from larch.core.run_context import RunContext
 from larch.core import logging_util
 from larch.core import proc
@@ -34,13 +34,13 @@ class PushResult:
 
 
 def _checkout_ours(path: str) -> CommandResult:
-    binary = larch_binary(Path(__file__).resolve().parents[3])
-    return proc.run([str(binary), "git", "checkout-ours", path])
+    entrypoint = larch_entrypoint(Path(__file__).resolve().parents[3])
+    return proc.run([str(entrypoint), "git", "checkout-ours", path])
 
 
 def _rebase_skip() -> CommandResult:
-    binary = larch_binary(Path(__file__).resolve().parents[3])
-    return proc.run([str(binary), "git", "rebase-skip"])
+    entrypoint = larch_entrypoint(Path(__file__).resolve().parents[3])
+    return proc.run([str(entrypoint), "git", "rebase-skip"])
 
 
 def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:

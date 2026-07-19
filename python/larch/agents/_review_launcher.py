@@ -26,7 +26,7 @@ from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
-from larch.core.repo_roots import larch_binary
+from larch.core.repo_roots import larch_entrypoint
 from larch.report.tokens import (
     append_panel_prompt_size,
     panel_prompt_size_artifact_for_output,
@@ -574,7 +574,7 @@ def _review_capture_cursor_dirty_baseline(output: Path, *, workdir: str = "") ->
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
     baseline_workdir = workdir or _resolve_review_codex_workdir(str(Path.cwd()))
-    _ = proc.run([str(larch_binary(Path(__file__).resolve().parents[3])), "git", "snapshot-untracked", "--output", str(baseline), "--nul"], cwd=baseline_workdir)
+    _ = proc.run([str(larch_entrypoint(Path(__file__).resolve().parents[3])), "git", "snapshot-untracked", "--output", str(baseline), "--nul"], cwd=baseline_workdir)
     return baseline
 
 

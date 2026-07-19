@@ -15,7 +15,7 @@ When `python/cli.py push rebase` exits 1, conflicts paused the rebase. Route res
 - `caller_kind=early_rebase`: spawn the conflict-mode subagent with this caller kind. On `FIXER_RESULT=resolved`, return to the Rebase Checkpoint Macro success path (M3). Bail paths abort the rebase (idempotent verify), set `STALL_TRACKING=true`, and skip to Step 18. No panel and no push occur; Step 5 normal review covers correctness later, and no version bump exists yet.
 - `caller_kind=ship_pr_pre_push`: spawn the conflict-mode subagent with this caller kind. On `FIXER_RESULT=resolved`, local-only rebase succeeded. Do NOT push from this file. **Re-invoke the active Step 8+ selector**: launch `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` through the Step 8 bgjob start/wait pair. The Python driver continues `run_rebase_rebump` post-rebase verification and CI-fix force-push. **Bail** matches `early_rebase`: abort, set `STALL_TRACKING=true`, skip to Step 18.
 
-**Bail invariant**: Any hard bail from this procedure must call `"${CLAUDE_PLUGIN_ROOT}/bin/larch" git rebase-abort` before the caller-family bail destination (idempotent; safe when already aborted), because the rebase stays in progress until abort or Phase 4 exit 0.
+**Bail invariant**: Any hard bail from this procedure must call `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git rebase-abort` before the caller-family bail destination (idempotent; safe when already aborted), because the rebase stays in progress until abort or Phase 4 exit 0.
 
 ## Inputs
 
@@ -59,15 +59,15 @@ Route exactly as today's Phase 4 exit 0:
 The subagent kept the rebase in progress. Run the existing escalation prompt via `AskUserQuestion` once with the upstream (main) version, feature branch commit version, and proposed resolution for each uncertain file (use the per-file context from the subagent message body; do not Read conflicted hunks yourself). Use explicit labels — never "ours"/"theirs".
 
 - On operator guidance: continue the same subagent via `SendMessage` with the guidance text (and the same `MODE=conflict` / caller kind / paths). When `SendMessage` is unavailable, spawn a fresh `larch:ci-fixer` with `MODE=conflict` and the operator-guidance text (same gating pattern as the CI-fixer round loop / `/review --subagent`).
-- If the operator says to abort, or guidance cannot resolve the conflict: run `"${CLAUDE_PLUGIN_ROOT}/bin/larch" git rebase-abort`, set `STALL_TRACKING=true`, and bail to Step 18.
+- If the operator says to abort, or guidance cannot resolve the conflict: run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git rebase-abort`, set `STALL_TRACKING=true`, and bail to Step 18.
 
 ### `FIXER_RESULT=bail` or an unparseable final message
 
-Verify the rebase was aborted: run `"${CLAUDE_PLUGIN_ROOT}/bin/larch" git rebase-abort` idempotently. Then route today's bail path: set `STALL_TRACKING=true` and skip to Step 18. Give the subagent one fresh respawn only when the message was unparseable and a rebase is still in progress with no evidence of a hard failure class; if that also fails, bail as above.
+Verify the rebase was aborted: run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git rebase-abort` idempotently. Then route today's bail path: set `STALL_TRACKING=true` and skip to Step 18. Give the subagent one fresh respawn only when the message was unparseable and a rebase is still in progress with no evidence of a hard failure class; if that also fails, bail as above.
 
 ## Dead-subagent salvage
 
-If the subagent dies or returns no usable trailer while a rebase is still in progress: run `"${CLAUDE_PLUGIN_ROOT}/bin/larch" git rebase-abort`, set `STALL_TRACKING=true`, and skip to Step 18. The CI-fixer dirty-tree salvage-commit rule (`CI fix round <N> salvage`) does **not** apply mid-rebase; abort is the deterministic safe action and matches the bail invariant.
+If the subagent dies or returns no usable trailer while a rebase is still in progress: run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git rebase-abort`, set `STALL_TRACKING=true`, and skip to Step 18. The CI-fixer dirty-tree salvage-commit rule (`CI fix round <N> salvage`) does **not** apply mid-rebase; abort is the deterministic safe action and matches the bail invariant.
 
 ## Phase ownership (reference)
 
