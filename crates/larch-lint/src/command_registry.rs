@@ -587,7 +587,13 @@ fn discover_callers(
         };
         let content = repository.read_utf8(path)?;
         let python = filter_selectors(extract_selectors(&content, "python/cli.py"), known);
-        let rust = filter_selectors(extract_selectors(&content, "bin/larch"), known);
+        let mut rust = filter_selectors(extract_selectors(&content, "bin/larch"), known);
+        for selector in filter_selectors(extract_selectors(&content, "scripts/larch.sh"), known) {
+            if !rust.contains(&selector) {
+                rust.push(selector);
+            }
+        }
+        rust.sort();
         if python.is_empty() && rust.is_empty() {
             continue;
         }

@@ -2766,11 +2766,11 @@ verb = "branch-info"
 python_module = "larch.git.git"
 python_function = "branch_info_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7734
 
 [[commands]]
 domain = "git"
@@ -2802,11 +2802,11 @@ verb = "check-remote-branch"
 python_module = "larch.git.git"
 python_function = "check_remote_branch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7734
 
 [[commands]]
 domain = "git"
@@ -2862,11 +2862,11 @@ verb = "count-commits"
 python_module = "larch.git.git"
 python_function = "count_commits_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7734
 
 [[commands]]
 domain = "git"
@@ -2874,11 +2874,11 @@ verb = "current-branch"
 python_module = "larch.git.git"
 python_function = "current_branch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7734
 
 [[commands]]
 domain = "git"
@@ -2922,11 +2922,11 @@ verb = "show-stage"
 python_module = "larch.git.git"
 python_function = "show_stage_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7734
 
 [[commands]]
 domain = "git"
@@ -8031,8 +8031,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "git current-branch", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-finalize", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = []
+python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-finalize", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["git current-branch"]
 
 [[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
@@ -8469,8 +8469,8 @@ rust = []
 [[callers]]
 path = "skills/research/SKILL.md"
 kind = "skill"
-python = ["agent degraded-tools-gate", "git branch-info", "render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
-rust = []
+python = ["agent degraded-tools-gate", "render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
+rust = ["git branch-info"]
 
 [[callers]]
 path = "skills/research/references/citation-validation-phase.md"

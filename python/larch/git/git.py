@@ -32,7 +32,6 @@ _LSOF_MIN_COLUMNS = 2
 _PS_LINE_FIELDS = 2
 _PATH_LOG_FIELDS = 2
 
-
 def validate_base_remote_ref(*, base_remote: str, base_ref: str) -> str | None:
     """Return an error message when base labels are unsafe for git argv."""
     if not _GIT_REF_LABEL_RE.fullmatch(base_remote):
@@ -41,22 +40,18 @@ def validate_base_remote_ref(*, base_remote: str, base_ref: str) -> str | None:
         return "base_ref contains unsupported characters"
     return None
 
-
 @dataclass(frozen=True)
 class GitStatus:
     porcelain: str
-
 
 @dataclass(frozen=True)
 class LogSubjects:
     subjects: tuple[str, ...]
 
-
 @dataclass(frozen=True)
 class PathCommit:
     sha: str
     subject: str
-
 
 def assert_original_branch_write_allowed(*, branch: str) -> None:
     state_file = os.environ.get("SHIP_PR_STATE_FILE", "")
@@ -81,14 +76,12 @@ def assert_original_branch_write_allowed(*, branch: str) -> None:
     if values.get("ORIGINAL_BRANCH_FORBIDDEN", "").strip().lower() == "true" and values.get("BRANCH_NAME", "") == branch:
         raise ShipError(f"refusing commit or push on forbidden original branch: {branch}")
 
-
 def _assert_branch_write_allowed(runner: Runner, *, cwd: str | None = None) -> None:
     if not os.environ.get("SHIP_PR_STATE_FILE", "") and not os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""):
         return
     branch = try_current_branch(runner, cwd=cwd)
     if branch:
         assert_original_branch_write_allowed(branch=branch)
-
 
 def _run(
     runner: Runner,
@@ -102,23 +95,19 @@ def _run(
         env = _git_subprocess_env()
     return runner.run(list(argv), cwd=cwd, env=env, timeout=timeout)
 
-
 def _ensure_success(result: CommandResult) -> CommandResult:
     if result.returncode != 0:
         msg = f"git command failed ({result.returncode}): {' '.join(result.argv)}"
         raise ShipError(msg)
     return result
 
-
 def rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str:
     result = _ensure_success(_run(runner, ["git", "rev-parse", ref], cwd=cwd))
     return result.stdout.strip()
 
-
 def rev_parse_verify(runner: Runner, ref: str, *, cwd: str | None = None) -> str:
     result = _ensure_success(_run(runner, ["git", "rev-parse", "--verify", ref], cwd=cwd))
     return result.stdout.strip()
-
 
 def current_branch(runner: Runner, *, cwd: str | None = None) -> str:
     result = _ensure_success(_run(
@@ -128,10 +117,8 @@ def current_branch(runner: Runner, *, cwd: str | None = None) -> str:
     ))
     return result.stdout.strip()
 
-
 def branch(runner: Runner, name: str, *, cwd: str | None = None) -> CommandResult:
     return _run(runner, ["git", "branch", name], cwd=cwd)
-
 
 def branch_force(
     runner: Runner,
@@ -141,7 +128,6 @@ def branch_force(
     cwd: str | None = None,
 ) -> CommandResult:
     return _run(runner, ["git", "branch", "-f", name, start_point], cwd=cwd)
-
 
 def rev_count(
     runner: Runner,
@@ -162,7 +148,6 @@ def rev_count(
         msg = f"git rev-list --count returned non-integer stdout: {text!r}"
         raise ShipError(msg) from exc
 
-
 def merge_base(
     runner: Runner,
     left: str,
@@ -173,7 +158,6 @@ def merge_base(
     result = _ensure_success(_run(runner, ["git", "merge-base", left, right], cwd=cwd))
     return result.stdout.strip()
 
-
 def rebase(
     runner: Runner,
     onto: str,
@@ -181,7 +165,6 @@ def rebase(
     cwd: str | None = None,
 ) -> CommandResult:
     return _run(runner, ["git", "rebase", onto], cwd=cwd)
-
 
 def push(
     runner: Runner,
@@ -191,7 +174,6 @@ def push(
     cwd: str | None = None,
 ) -> CommandResult:
     return _run(runner, ["git", "push", remote, refspec], cwd=cwd)
-
 
 def force_push_with_lease(
     runner: Runner,
@@ -206,7 +188,6 @@ def force_push_with_lease(
         cwd=cwd,
     )
 
-
 def reset(
     runner: Runner,
     mode: str,
@@ -216,11 +197,9 @@ def reset(
 ) -> CommandResult:
     return _run(runner, ["git", "reset", mode, ref], cwd=cwd)
 
-
 def status(runner: Runner, *, cwd: str | None = None) -> GitStatus:
     result = _ensure_success(_run(runner, ["git", "status", "--porcelain"], cwd=cwd))
     return GitStatus(porcelain=result.stdout)
-
 
 def log_subjects(
     runner: Runner,
@@ -235,7 +214,6 @@ def log_subjects(
     ))
     lines = tuple(line for line in result.stdout.splitlines() if line)
     return LogSubjects(subjects=lines)
-
 
 def log_path_commits(
     runner: Runner,
@@ -260,7 +238,6 @@ def log_path_commits(
         commits.append(PathCommit(sha=parts[0], subject=parts[1]))
     return tuple(commits)
 
-
 def try_log_subjects(
     runner: Runner,
     rev_range: str,
@@ -274,7 +251,6 @@ def try_log_subjects(
     lines = tuple(line for line in result.stdout.splitlines() if line)
     return LogSubjects(subjects=lines)
 
-
 def status_porcelain_paths(
     runner: Runner,
     path: str,
@@ -282,7 +258,6 @@ def status_porcelain_paths(
     cwd: str | None = None,
 ) -> CommandResult:
     return _run(runner, ["git", "status", "--porcelain", "--", path], cwd=cwd)
-
 
 def ls_files(
     runner: Runner,
@@ -292,7 +267,6 @@ def ls_files(
     argv = ["git", "ls-files", *paths]
     result = _ensure_success(_run(runner, argv, cwd=cwd))
     return tuple(line for line in result.stdout.splitlines() if line)
-
 
 def fetch(
     runner: Runner,
@@ -309,7 +283,6 @@ def fetch(
         timeout=timeout,
     )
 
-
 def show_file(
     runner: Runner,
     spec: str,
@@ -318,11 +291,9 @@ def show_file(
 ) -> CommandResult:
     return _run(runner, ["git", "show", spec], cwd=cwd)
 
-
 def _output_mentions_index_lock(result: CommandResult) -> bool:
     output = f"{result.stdout}\n{result.stderr}".lower()
     return "index.lock" in output or ("unable to create" in output and "lock" in output)
-
 
 def _git_index_lock_path(*, runner: Runner, cwd: str | None = None) -> Path | None:
     result = _run(runner, ["git", "rev-parse", "--absolute-git-dir"], cwd=cwd)
@@ -333,13 +304,11 @@ def _git_index_lock_path(*, runner: Runner, cwd: str | None = None) -> Path | No
         return None
     return Path(git_dir) / "index.lock"
 
-
 def _paths_same(*, left: Path, right: Path) -> bool:
     try:
         return left.resolve() == right.resolve()
     except OSError:
         return left.absolute() == right.absolute()
-
 
 def _lock_held_by_procfs(lock_path: Path) -> bool | None:
     proc_root = Path("/proc")
@@ -372,7 +341,6 @@ def _lock_held_by_procfs(lock_path: Path) -> bool | None:
                 probe_error = True
     return None if probe_error else False
 
-
 def _lock_held_by_lsof(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool | None:
     result = runner.run(["lsof", str(lock_path)], cwd=cwd)
     if result.returncode == _COMMAND_NOT_FOUND_EXIT:
@@ -396,11 +364,9 @@ def _lock_held_by_lsof(runner: Runner, lock_path: Path, *, cwd: str | None = Non
         return False
     return None
 
-
 def _argv0_is_git(argv0: str) -> bool:
     name = Path(argv0).name
     return name == "git" or name.startswith("git-")
-
 
 def _proc_git_process_matches_repo(*, pid: int, git_dir: Path, repo_root: Path | None) -> bool:
     proc_dir = Path("/proc") / str(pid)
@@ -434,7 +400,6 @@ def _proc_git_process_matches_repo(*, pid: int, git_dir: Path, repo_root: Path |
                 return True
     return False
 
-
 def _ps_git_process_matches_repo(*, line: str, git_dir: Path, repo_root: Path | None) -> bool:
     parts = line.strip().split(maxsplit=1)
     if len(parts) != _PS_LINE_FIELDS or not parts[0].isdigit():
@@ -447,7 +412,6 @@ def _ps_git_process_matches_repo(*, line: str, git_dir: Path, repo_root: Path | 
     if resolved_git_dir in args:
         return True
     return repo_root is not None and str(repo_root.resolve()) in args
-
 
 def _repo_scoped_git_process_detected(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool | None:
     git_dir = lock_path.parent
@@ -478,7 +442,6 @@ def _repo_scoped_git_process_detected(runner: Runner, lock_path: Path, *, cwd: s
             return True
     return False
 
-
 def _index_lock_is_held(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool:
     if not lock_path.exists():
         return False
@@ -491,7 +454,6 @@ def _index_lock_is_held(runner: Runner, lock_path: Path, *, cwd: str | None = No
     if repo_scoped is not None:
         return repo_scoped
     return True
-
 
 def _try_remove_stale_index_lock(runner: Runner, *, cwd: str | None = None) -> tuple[bool, str]:
     lock_path = _git_index_lock_path(runner=runner, cwd=cwd)
@@ -514,14 +476,12 @@ def _try_remove_stale_index_lock(runner: Runner, *, cwd: str | None = None) -> t
         return False, f"larch: stale .git/index.lock not removed: unlink failed: {exc}; {lock_label}"
     return True, f"larch: removed stale .git/index.lock; {lock_label}"
 
-
 def _append_stderr(*, result: CommandResult, note: str) -> CommandResult:
     suffix = note if note.endswith("\n") else f"{note}\n"
     stderr = result.stderr
     if stderr and not stderr.endswith("\n"):
         stderr += "\n"
     return CommandResult(result.argv, result.returncode, result.stdout, stderr + suffix, result.duration)
-
 
 def _run_with_stale_index_lock_retry(
     runner: Runner,
@@ -540,7 +500,6 @@ def _run_with_stale_index_lock_retry(
         return _append_stderr(result=result, note=diagnostic)
     retry = _run(runner, argv, cwd=cwd)
     return _append_stderr(result=retry, note=f"{diagnostic}; retrying git command once")
-
 
 def commit(
     runner: Runner,
@@ -563,7 +522,6 @@ def commit(
     elif paths:
         argv.extend(["--", *paths])
     return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
-
 
 def commit_with_trailer(
     runner: Runner,
@@ -620,14 +578,12 @@ def commit_with_trailer(
     finally:
         Path(tmp_path).unlink()
 
-
 def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
     _assert_branch_write_allowed(runner, cwd=cwd)
     argv = ["git", "add"]
     if paths:
         argv.extend(["--", *paths])
     return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
-
 
 def rm(runner: Runner, *paths: str, force: bool = False, cwd: str | None = None) -> CommandResult:
     argv = ["git", "rm"]
@@ -636,7 +592,6 @@ def rm(runner: Runner, *paths: str, force: bool = False, cwd: str | None = None)
     if paths:
         argv.extend(["--", *paths])
     return _run(runner, argv, cwd=cwd)
-
 
 def add_pathspec_file(
     runner: Runner,
@@ -651,7 +606,6 @@ def add_pathspec_file(
         argv.append("--pathspec-file-nul")
     return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
 
-
 def amend_add(
     runner: Runner,
     paths: Sequence[str],
@@ -664,7 +618,6 @@ def amend_add(
     if staged.returncode != 0:
         return staged
     return _run(runner, ["git", "commit", "--amend", "--no-edit"], cwd=cwd)
-
 
 def diff_name_status(
     runner: Runner,
@@ -681,7 +634,6 @@ def diff_name_status(
     argv.extend(["--name-status", base, head, "--", *paths])
     return _run(runner, argv, cwd=cwd)
 
-
 def diff_name_only(
     runner: Runner,
     base: str,
@@ -695,7 +647,6 @@ def diff_name_only(
         argv.extend(["--", *paths])
     return _run(runner, argv, cwd=cwd)
 
-
 def diff_tree_name_only(
     runner: Runner,
     ref: str,
@@ -708,7 +659,6 @@ def diff_tree_name_only(
         cwd=cwd,
     )
 
-
 def _git_subprocess_env() -> dict[str, str]:
     """Minimal env for git helpers; drop GIT_DIR/GIT_WORK_TREE overrides."""
     env = {
@@ -719,7 +669,6 @@ def _git_subprocess_env() -> dict[str, str]:
     env["GIT_SEQUENCE_EDITOR"] = "true"
     env["GIT_EDITOR"] = "true"
     return env
-
 
 def try_current_branch(runner: Runner, *, cwd: str | None = None) -> str | None:
     result = _run(
@@ -732,7 +681,6 @@ def try_current_branch(runner: Runner, *, cwd: str | None = None) -> str | None:
     text = result.stdout.strip()
     return text or None
 
-
 def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
     result = _ensure_success(_run(
         runner,
@@ -740,7 +688,6 @@ def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
         cwd=cwd,
     ))
     return [line for line in result.stdout.splitlines() if line]
-
 
 def try_unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
     """Non-raising unmerged-path probe (push rebase / conflict CLI parity)."""
@@ -768,7 +715,6 @@ def is_ancestor(
     )
     return result.returncode == 0
 
-
 def rebase_continue(runner: Runner, *, cwd: str | None = None) -> CommandResult:
     return _run(runner, ["git", "rebase", "--continue"], cwd=cwd)
 
@@ -789,7 +735,6 @@ def force_push_with_lease_expecting(
         cwd=cwd,
     )
 
-
 def rebase_onto(
     runner: Runner,
     newbase: str,
@@ -803,7 +748,6 @@ def rebase_onto(
         cwd=cwd,
     )
 
-
 def rev_list_count(
     runner: Runner,
     rev_range: str,
@@ -811,7 +755,6 @@ def rev_list_count(
     cwd: str | None = None,
 ) -> CommandResult:
     return _run(runner, ["git", "rev-list", "--count", rev_range], cwd=cwd)
-
 
 def status_porcelain(
     runner: Runner,
@@ -825,13 +768,11 @@ def status_porcelain(
         cwd=cwd,
     )
 
-
 def try_rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str | None:
     result = _run(runner, ["git", "rev-parse", ref], cwd=cwd)
     if result.returncode != 0:
         return None
     return result.stdout.strip()
-
 
 def local_branch_exists(runner: Runner, branch: str, *, cwd: str | None = None) -> bool:
     """True when ``refs/heads/<branch>`` exists (tags/remotes do not match)."""
@@ -841,7 +782,6 @@ def local_branch_exists(runner: Runner, branch: str, *, cwd: str | None = None) 
         cwd=cwd,
     )
     return result.returncode == 0
-
 
 def try_merge_base(
     runner: Runner,
@@ -856,7 +796,6 @@ def try_merge_base(
     text = result.stdout.strip()
     return text or None
 
-
 def log_subject(
     runner: Runner,
     ref: str,
@@ -868,10 +807,8 @@ def log_subject(
         return ""
     return result.stdout.strip()
 
-
 def unstage(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
     return _run(runner, ["git", "reset", "HEAD", path], cwd=cwd)
-
 
 def diff_quiet(
     runner: Runner,
@@ -887,12 +824,10 @@ def diff_quiet(
     result = _run(runner, argv, cwd=cwd)
     return result.returncode == 0
 
-
 def tracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
     """Paths with tracked worktree/index changes vs HEAD (``git diff --name-only HEAD``)."""
     result = _run(runner, ["git", "diff", "--name-only", "HEAD"], cwd=cwd)
     return frozenset(line for line in result.stdout.splitlines() if line)
-
 
 def untracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
     """Untracked paths not ignored (``git ls-files --others --exclude-standard``)."""
@@ -903,14 +838,11 @@ def untracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozense
     )
     return frozenset(line for line in result.stdout.splitlines() if line)
 
-
 def restore_staged(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
     return _run(runner, ["git", "restore", "--staged", "--", path], cwd=cwd)
 
-
 def checkout_paths(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
     return _run(runner, ["git", "checkout", "--", path], cwd=cwd)
-
 
 def paths_delta_revert(
     runner: Runner,
@@ -940,13 +872,11 @@ def paths_delta_revert(
         if target.exists() or target.is_symlink():
             target.unlink(missing_ok=True)
 
-
 @dataclass(frozen=True)
 class ForcePushResult:
     pushed: bool
     status: str
     branch: str = ""
-
 
 def push_set_upstream(
     runner: Runner,
@@ -956,7 +886,6 @@ def push_set_upstream(
     cwd: str | None = None,
 ) -> CommandResult:
     return _run(runner, ["git", "push", "-u", remote, refspec], cwd=cwd)
-
 
 def force_push_recovery(
     runner: Runner,
@@ -1029,12 +958,10 @@ def force_push_recovery(
         branch=resolved_branch,
     )
 
-
 @dataclass(frozen=True)
 class BranchInfo:
     head_sha: str
     current_branch: str
-
 
 @dataclass(frozen=True)
 class ConflictFile:
@@ -1043,12 +970,10 @@ class ConflictFile:
     stage_2: bool
     stage_3: bool
 
-
 @dataclass(frozen=True)
 class CountCommitsResult:
     count: int
     status: str
-
 
 @dataclass(frozen=True)
 class MainSyncResult:
@@ -1057,13 +982,11 @@ class MainSyncResult:
     error: str = ""
     exit_code: int = 0
 
-
 @dataclass(frozen=True)
 class RemoteBranchState:
     state: str
     rc: int
     error: str = ""
-
 
 def branch_info(runner: Runner, *, cwd: str | None = None) -> BranchInfo | None:
     head = _run(runner, ["git", "rev-parse", "--short", "HEAD"], cwd=cwd)
@@ -1072,7 +995,6 @@ def branch_info(runner: Runner, *, cwd: str | None = None) -> BranchInfo | None:
     branch_res = _run(runner, ["git", "branch", "--show-current"], cwd=cwd)
     branch_name = branch_res.stdout.strip() if branch_res.returncode == 0 else ""
     return BranchInfo(head_sha=head.stdout.strip(), current_branch=branch_name)
-
 
 def _parse_conflict_file_rows(stdout: str) -> tuple[ConflictFile, ...]:
     order: list[str] = []
@@ -1102,11 +1024,9 @@ def _parse_conflict_file_rows(stdout: str) -> tuple[ConflictFile, ...]:
         for path in order
     )
 
-
 def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
     result = _ensure_success(_run(runner, ["git", "ls-files", "-u"], cwd=cwd))
     return _parse_conflict_file_rows(result.stdout)
-
 
 def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
     """Non-raising conflict-file probe for best-effort internal callers."""
@@ -1114,7 +1034,6 @@ def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[Confl
     if result.returncode != 0:
         return ()
     return _parse_conflict_file_rows(result.stdout)
-
 
 def resolve_branch_push_remote(
     runner: Runner,
@@ -1130,7 +1049,6 @@ def resolve_branch_push_remote(
             if candidate and _GIT_REF_LABEL_RE.fullmatch(candidate):
                 return candidate
     return "origin"
-
 
 def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
     """True when git reports an active rebase (push rebase --continue guard)."""
@@ -1168,10 +1086,8 @@ def sync_local_main(
         return "failed", 1
     return "updated", 0
 
-
 def _one_line_summary(text: str) -> str:
     return text.replace("\n", " ").replace("\r", " ").replace("\t", " ")[:256]
-
 
 def count_commits(runner: Runner, *, cwd: str | None = None) -> CountCommitsResult:
     base_ref = ""
@@ -1191,7 +1107,6 @@ def count_commits(runner: Runner, *, cwd: str | None = None) -> CountCommitsResu
     if not text.isdigit():
         return CountCommitsResult(count=0, status="git_error")
     return CountCommitsResult(count=int(text), status="ok")
-
 
 def check_main_sync(runner: Runner, *, cwd: str | None = None) -> MainSyncResult:
     current = try_current_branch(runner, cwd=cwd) or ""
@@ -1245,7 +1160,6 @@ def check_main_sync(runner: Runner, *, cwd: str | None = None) -> MainSyncResult
         exit_code=1,
     )
 
-
 def remote_branch_state(
     runner: Runner,
     branch: str,
@@ -1275,14 +1189,12 @@ def remote_branch_state(
     err = redact.redact_outbound(err_raw)
     return RemoteBranchState(state="error", rc=result.returncode, error=err)
 
-
 # CLI entrypoints migrated from git_cli.py.
 def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
         return parser.parse_args(argv)
     except SystemExit:
         return None
-
 
 def commit_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py git commit", add_help=True)
@@ -1328,7 +1240,6 @@ def commit_main(argv: list[str]) -> int:
     sys.stderr.write(result.stderr)
     return result.returncode
 
-
 def stage_main(argv: list[str]) -> int:
     if not argv:
         print("git-stage.sh: at least one file argument is required", file=sys.stderr)
@@ -1338,7 +1249,6 @@ def stage_main(argv: list[str]) -> int:
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.returncode
-
 
 def amend_add_main(argv: list[str]) -> int:
     if not argv:
@@ -1351,62 +1261,6 @@ def amend_add_main(argv: list[str]) -> int:
     return result.returncode
 
 
-def current_branch_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git-current-branch.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    branch = try_current_branch(proc)
-    if not branch:
-        print("git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)", file=sys.stderr)
-        return 1
-    logging_util.emit_kv(key="BRANCH", value=branch)
-    return 0
-
-
-def branch_info_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git-branch-info.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    info = branch_info(proc)
-    if info is None:
-        return 1
-    logging_util.emit_kv(key="HEAD_SHA", value=info.head_sha)
-    logging_util.emit_kv(key="CURRENT_BRANCH", value=info.current_branch)
-    return 0
-
-
-def show_stage_main(argv: list[str]) -> int:
-    stage = ""
-    file = ""
-    index = 0
-    while index < len(argv):
-        arg = argv[index]
-        if arg == "--stage":
-            if index + 1 >= len(argv):
-                print("git-show-stage.sh: --stage requires a value", file=sys.stderr)
-                return 1
-            stage = argv[index + 1]
-            index += 2
-            continue
-        if arg == "--file":
-            if index + 1 >= len(argv):
-                print("git-show-stage.sh: --file requires a value", file=sys.stderr)
-                return 1
-            file = argv[index + 1]
-            index += 2
-            continue
-        print(f"git-show-stage.sh: unknown argument: {arg}", file=sys.stderr)
-        return 1
-    if not stage or not file:
-        print("git-show-stage.sh: --stage and --file are required", file=sys.stderr)
-        return 1
-    if stage not in {"1", "2", "3"}:
-        print(f"git-show-stage.sh: --stage must be 1, 2, or 3 (got: {stage})", file=sys.stderr)
-        return 1
-    result = show_file(proc, f":{stage}:{file}")
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
 
 
 def sync_local_main_main(argv: list[str]) -> int:
@@ -1423,25 +1277,6 @@ def sync_local_main_main(argv: list[str]) -> int:
         print(f"cli.py git sync-local-main: {result}", file=sys.stderr)
     return rc
 
-
-def count_commits_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git count-commits: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    result = count_commits(proc)
-    status_file = os.environ.get("COUNT_COMMITS_STATUS_FILE", "")
-    if status_file:
-        try:
-            with Path(status_file).open("w", encoding="utf-8") as handle:
-                handle.write(result.status + "\n")
-        except OSError:
-            pass
-    if result.status == "missing_main_ref":
-        print("WARN: lib-count-commits.sh: neither local 'main' nor 'origin/main' exists; cannot determine commit base. Returning 0.", file=sys.stderr)
-    print(result.count)
-    return 0
-
-
 def check_main_sync_main(argv: list[str]) -> int:
     if argv:
         print(f"check-main-sync.sh: unknown flag: {argv[0]}", file=sys.stderr)
@@ -1453,34 +1288,3 @@ def check_main_sync_main(argv: list[str]) -> int:
     if result.error:
         logging_util.emit_kv(key="ERROR", value=result.error)
     return result.exit_code
-
-
-def check_remote_branch_main(argv: list[str]) -> int:
-    branch = ""
-    remote = "origin"
-    index = 0
-    while index < len(argv):
-        arg = argv[index]
-        if arg == "--branch":
-            branch = argv[index + 1] if index + 1 < len(argv) else ""
-            index += 2
-            continue
-        if arg == "--remote":
-            remote = argv[index + 1] if index + 1 < len(argv) else ""
-            index += 2
-            continue
-        logging_util.emit_kv(key="STATE", value="error")
-        logging_util.emit_kv(key="RC", value=str(1))
-        logging_util.emit_kv(key="ERROR", value=f"unknown flag: {arg}")
-        return 0
-    if not branch:
-        logging_util.emit_kv(key="STATE", value="error")
-        logging_util.emit_kv(key="RC", value=str(1))
-        logging_util.emit_kv(key="ERROR", value="--branch is required")
-        return 0
-    result = remote_branch_state(proc, branch, remote=remote)
-    logging_util.emit_kv(key="STATE", value=result.state)
-    logging_util.emit_kv(key="RC", value=str(result.rc))
-    if result.error:
-        logging_util.emit_kv(key="ERROR", value=result.error)
-    return 0

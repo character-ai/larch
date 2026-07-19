@@ -1356,6 +1356,7 @@ root-max-tokens = 35383
 root-max-content-tokens = 35301
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface.
+# Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs.
 closure-max-lines = 3750
 closure-max-tokens = 143413
 closure-max-content-tokens = 143111
