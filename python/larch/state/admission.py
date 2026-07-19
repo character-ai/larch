@@ -290,7 +290,14 @@ def preflight_main(argv: list[str]) -> int:
 
 
 def _github_remote_repo(remote: str) -> tuple[int, str, str]:
-    result = _run([sys.executable, str(_PY_CLI), "gh", "remote-repo", remote])
+    result = _run(
+        [
+            str(larch_binary(Path(__file__).resolve().parents[3])),
+            "gh",
+            "remote-repo",
+            remote,
+        ]
+    )
     return result.returncode, result.stdout.strip(), result.stderr
 
 

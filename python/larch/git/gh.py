@@ -2231,30 +2231,3 @@ def extract_closes_issue_from_current_pr(
         return ""
     return extract_closes_issue(result.stdout)
 
-
-# CLI entrypoints migrated from gh_cli.py.
-def resolve_repo_main(argv: list[str]) -> int:
-    if argv:
-        print(f"resolve-repo.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    repo = resolve_repo(proc)
-    if not repo:
-        print(
-            "ERROR=could not resolve repo (gh repo view + git remote both failed)",
-            file=sys.stderr,
-        )
-        return 1
-    print(repo)
-    return 0
-
-
-def remote_repo_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print("Usage: github-remote-repo.sh <remote-name-or-url>", file=sys.stderr)
-        return 2
-    repo = remote_repo(proc, argv[0])
-    if not repo:
-        print("github-remote-repo.sh: cannot parse remote", file=sys.stderr)
-        return 2
-    print(repo)
-    return 0

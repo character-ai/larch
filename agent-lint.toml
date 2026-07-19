@@ -991,14 +991,14 @@ exclude = [
   "scripts/test-cache-key-discipline.md",
   "scripts/test-cache-key-runtime-audit.sh",
   "scripts/test-cache-key-runtime-audit.md",
-  # python/cli.py gh remote-repo is the one-URL/one-remote-name parser used
+  # bin/larch gh remote-repo is the one-URL/one-remote-name parser used
   # by python/cli.py admission fork-env (forked-target-only pre-Step-0 helper)
-  # via shell variable indirection: `"$HELPER_ROOT/python/cli.py gh remote-repo"`.
+  # via shell variable indirection through larch_binary().
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
   # indirection (same exclusion shape as python/cli.py agent launch-codex-implement
-  # above). Sibling contract: python/gh.py.
-  "python/cli.py gh remote-repo",
+  # above). Sibling contract: crates/larch-cli/src/github_repository_resolution.rs.
+  "bin/larch gh remote-repo",
   # python/test_admission.py is the offline regression harness for
   # python/cli.py admission fork-env (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile

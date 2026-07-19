@@ -86,7 +86,7 @@ Resolve the target repository once before OOS commands that require `--repo`:
 
 ```bash
 # lint-consecutive-bash: ok repo resolution and tempdir setup are separate documented setup steps
-REPO=$(python3 "$PWD/python/cli.py" gh resolve-repo 2>/dev/null || true)
+REPO=$("${CLAUDE_PLUGIN_ROOT:-$PWD}/scripts/larch.sh" gh resolve-repo 2>/dev/null || true)
 if [ -z "$REPO" ]; then
   REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
 fi

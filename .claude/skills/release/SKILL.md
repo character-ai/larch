@@ -21,14 +21,14 @@ Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default t
 | `--dry-run` | Compute and preview only; exit before any write (no branch, PR, merge, tag, Release, promote, or `/upgrade-larch`) |
 | `--skip-approve`, `-s` | Skip Step 4 approval only when `PR_COUNT>0`, acting as Confirm |
 | `--bump major\|minor\|patch` | Override the aggregate bump type from `release prepare` |
-| `--repo OWNER/REPO` | Hub repo for `gh` (default: `python/cli.py gh resolve-repo`, falling back to `character-ai/larch`) |
+| `--repo OWNER/REPO` | Hub repo for `gh` (default: `scripts/larch.sh gh resolve-repo`, falling back to `character-ai/larch`) |
 
 ## Step 1 — Parse flags and guard
 
 Resolve `REPO` when `--repo` is omitted:
 
 ```bash
-REPO=$(python3 "$PWD/python/cli.py" gh resolve-repo 2>/dev/null || echo "character-ai/larch")
+REPO=$("${CLAUDE_PLUGIN_ROOT:-$PWD}/scripts/larch.sh" gh resolve-repo 2>/dev/null || echo "character-ai/larch")
 ```
 
 Guard (abort before prepare):
@@ -414,7 +414,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `python/cli.py gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge`, and `python/cli.py bgjob {start,wait}`
+- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge`, and `python/cli.py bgjob {start,wait}`
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

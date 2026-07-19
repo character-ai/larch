@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Final, cast
 
 from larch.core import proc, redact
+from larch.core.repo_roots import larch_binary
 from larch.git import gh
 from larch.release import assets
 
@@ -96,7 +97,7 @@ def _origin_repo(root: Path, runner: proc.Runner) -> str:
     if override:
         return override
     result = runner.run(
-        ["python3", str(root / "python" / "cli.py"), "gh", "remote-repo", "origin"],
+        [str(larch_binary(root)), "gh", "remote-repo", "origin"],
         cwd=str(root),
     )
     if result.returncode != 0 or not _REPO_RE.fullmatch(result.stdout.strip()):
