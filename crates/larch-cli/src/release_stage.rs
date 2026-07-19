@@ -778,6 +778,74 @@ mod tests {
         file
     }
 
+    fn complete_assets() -> (Vec<RemoteAsset>, BTreeMap<u64, Vec<u8>>) {
+        const TARGETS: [&str; 4] = [
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-unknown-linux-gnu",
+        ];
+        let root = tempfile::tempdir().expect("asset root");
+        let binary = root.path().join("larch");
+        fs::write(
+            &binary,
+            "#!/bin/sh\n[ \"$1\" = --version ] || exit 2\nprintf 'larch 1.2.3\\n'\n",
+        )
+        .expect("binary");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mut permissions = fs::metadata(&binary).expect("metadata").permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&binary, permissions).expect("permissions");
+        }
+        let license = root.path().join("LICENSE");
+        fs::write(&license, b"license").expect("license");
+        let incoming = root.path().join("incoming");
+        for target in TARGETS {
+            assert_eq!(
+                release_assets::package_asset(&release_assets::PackageArguments {
+                    version: "1.2.3".to_owned(),
+                    tag: "v1.2.3".to_owned(),
+                    source_commit: SOURCE.to_owned(),
+                    target: target.to_owned(),
+                    binary: binary.clone(),
+                    license: license.clone(),
+                    output_dir: incoming.join(target),
+                }),
+                ExitCode::SUCCESS
+            );
+        }
+        let output = root.path().join("release");
+        assert_eq!(
+            release_assets::collect_assets(&release_assets::CollectArguments {
+                version: "1.2.3".to_owned(),
+                tag: "v1.2.3".to_owned(),
+                source_commit: SOURCE.to_owned(),
+                input_dir: incoming,
+                output_dir: output.clone(),
+                license,
+            }),
+            ExitCode::SUCCESS
+        );
+        let names = release_assets::release_asset_names("1.2.3", "v1.2.3", SOURCE).expect("names");
+        let mut downloads = BTreeMap::new();
+        let assets = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let bytes = fs::read(output.join(name)).expect("asset bytes");
+                let digest = format!("sha256:{}", release_assets::sha256_bytes(&bytes));
+                let id = index as u64 + 1;
+                let asset = RemoteAsset::new(id, name, bytes.len() as u64, &digest, "uploaded")
+                    .expect("asset metadata");
+                downloads.insert(id, bytes);
+                asset
+            })
+            .collect();
+        (assets, downloads)
+    }
+
     #[test]
     fn stage_creates_a_missing_draft_and_resumes_a_mutable_one() {
         let notes = notes();
@@ -896,6 +964,14 @@ mod tests {
                 .unwrap_err()
                 .contains("digest mismatch")
         );
+
+        let (assets, downloads) = complete_assets();
+        let complete = FakeServices {
+            releases: RefCell::new(vec![Some(draft(assets))]),
+            downloads,
+            ..FakeServices::default()
+        };
+        assert!(validate_draft_with(&complete, "1.2.3", "character-ai/larch", "7", SOURCE).is_ok());
     }
 
     #[test]
