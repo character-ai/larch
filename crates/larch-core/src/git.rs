@@ -1,6 +1,6 @@
 //! Byte-oriented repository metadata types and the sole read port for Git state.
 
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, fmt::Write as _};
 
 /// The object hash algorithm used by a repository.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -52,6 +52,18 @@ impl ObjectId {
     #[must_use]
     pub fn digest(&self) -> &[u8] {
         &self.digest
+    }
+
+    /// Render the complete lowercase hexadecimal object identifier.
+    #[must_use]
+    pub fn to_hex(&self) -> String {
+        self.digest.iter().fold(
+            String::with_capacity(self.digest.len() * 2),
+            |mut output, byte| {
+                let _ = write!(output, "{byte:02x}");
+                output
+            },
+        )
     }
 }
 
@@ -239,6 +251,8 @@ pub struct Object {
 pub struct Commit {
     pub id: ObjectId,
     pub parents: Vec<ObjectId>,
+    pub tree: ObjectId,
+    pub subject: Vec<u8>,
 }
 
 /// One linked or main worktree.
@@ -587,6 +601,16 @@ pub trait RepositoryRead: Send + Sync {
     /// # Errors
     /// Returns a typed hash, missing-object, or repository read failure.
     fn walk_commits(&self, start: &ObjectId, limit: usize) -> Result<Vec<Commit>, RepositoryError>;
+    /// Walk commits reachable from `include` but not from `exclude`.
+    ///
+    /// # Errors
+    /// Returns a typed hash, missing-object, or repository read failure.
+    fn walk_commits_range(
+        &self,
+        exclude: &ObjectId,
+        include: &ObjectId,
+        limit: usize,
+    ) -> Result<Vec<Commit>, RepositoryError>;
     /// Count every commit reachable from `start`.
     ///
     /// # Errors
@@ -625,6 +649,15 @@ pub trait RepositoryRead: Send + Sync {
         old_tree: &ObjectId,
         new_tree: &ObjectId,
     ) -> Result<ChangeSet, RepositoryError>;
+    /// Read one blob from a commit tree by repository-relative byte path.
+    ///
+    /// # Errors
+    /// Returns a typed hash, path, object-type, or repository read failure.
+    fn blob_at_commit(
+        &self,
+        commit: &ObjectId,
+        path: &GitPath,
+    ) -> Result<Option<Vec<u8>>, RepositoryError>;
     /// Validate a name under the requested Git ref format.
     ///
     /// # Errors
@@ -638,7 +671,8 @@ mod tests {
 
     #[test]
     fn object_ids_require_the_algorithm_digest_length() {
-        assert!(ObjectId::new(ObjectHash::Sha1, [0; 20]).is_ok());
+        let sha1 = ObjectId::new(ObjectHash::Sha1, [0xab; 20]).unwrap();
+        assert_eq!(sha1.to_hex(), "abababababababababababababababababababab");
         assert!(ObjectId::new(ObjectHash::Sha256, [0; 32]).is_ok());
         assert_eq!(
             ObjectId::new(ObjectHash::Sha1, [0; 32]).unwrap_err().kind(),

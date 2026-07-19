@@ -399,7 +399,6 @@ exclude = [
   # prose and is covered by the test-launch-claude-subprocess target.
   "python/test_agents.py",
   "python/test_agents.py",
-  "python/cli.py plugin read-version",
   # python/test_implement_dispatch.py is the offline regression
   # harness for python/cli.py implement step2-dispatch (the /implement
   # Step 2 dispatcher). Referenced only from Makefile (test-step2-dispatch,
@@ -1359,10 +1358,11 @@ root-max-content-tokens = 35301
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
 # Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
-# issues #7764/#7755 add repository-resolution and attestation boundaries.
-closure-max-lines = 3777
-closure-max-tokens = 144306
-closure-max-content-tokens = 144002
+# issues #7764/#7755 add repository-resolution and attestation boundaries;
+# issue #7749 adds the release-planning trust boundary.
+closure-max-lines = 3782
+closure-max-tokens = 144378
+closure-max-content-tokens = 144073
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1412,7 +1412,8 @@ roots = [
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
-# issues #7764/#7755 add repository-resolution and attestation boundaries.
-closure-max-lines = 6065
-closure-max-tokens = 169755
-closure-max-content-tokens = 169289
+# issues #7764/#7755 add repository-resolution and attestation boundaries;
+# issue #7749 adds the release-planning trust boundary.
+closure-max-lines = 6070
+closure-max-tokens = 169827
+closure-max-content-tokens = 169360

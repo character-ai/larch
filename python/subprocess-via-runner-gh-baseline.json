@@ -312,18 +312,6 @@
     "reason": "Legacy direct gh calls pending wrapper migration."
   },
   {
-    "file": "larch/release/release_prepare.py",
-    "qualified_symbol": "_gh_json",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/release_prepare.py",
-    "qualified_symbol": "main",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
     "file": "larch/report/tokens.py",
     "qualified_symbol": "compute_pr_line_counts",
     "occurrence": 1,

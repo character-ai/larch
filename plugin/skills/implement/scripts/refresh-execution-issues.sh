@@ -36,7 +36,7 @@ read_kv() {
 }
 
 read_plugin_version() {
-    python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null
 }
 
 IMPLEMENT_TMPDIR=""

@@ -16,6 +16,7 @@ Usage: larch <COMMAND>
 Commands:
   example        Non-production commands that exercise dispatcher wiring
   git            Local Git repository read and status commands
+  plugin         Plugin metadata commands
   release        Release-maintenance commands
   gh             GitHub workflow helper commands
   push           Push commands with typed Git network operations

@@ -95,7 +95,7 @@ On **`--dry-run`**: do not invoke `python/cli.py push rebase`; continue to Step 
 
 ```bash
 PREPARE_DIR="$(mktemp -d)"
-prepare_out=$(python3 "$PWD/python/cli.py" release prepare \
+prepare_out=$("$PWD/scripts/larch.sh" release prepare \
   --repo "$REPO" \
   ${BUMP_OVERRIDE:+--bump "$BUMP_OVERRIDE"} \
   --out-dir "$PREPARE_DIR")
@@ -401,7 +401,7 @@ If `NEW_VERSION_INSTALLED=true`, `MARKETPLACE_RECONCILED=true`, or `RESTART_REQU
 
 Runtime helpers:
 
-- `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
+- `"$PWD/scripts/larch.sh" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `python3 "$PWD/python/cli.py" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `python3 "$PWD/python/cli.py" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
 - `python3 "$PWD/python/cli.py" release stage`: tag the candidate and create or verify its draft Release
@@ -419,10 +419,10 @@ Repo-root helpers referenced from steps above:
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 
-- `.claude/skills/release/scripts/classify-bump.md`: semver bump classifier prompt reference used by `python/larch/release/release_prepare.py` through `python/larch/release/version_bump.py`
+- `.claude/skills/release/scripts/classify-bump.md`: semver bump classifier reference implemented by `larch release classify-bump`
 
 Offline harnesses:
 
-- `python/tests/release/test_release.py`: release prepare, set-version, candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
-- `python/test_version_bump.py`: bump classification and plugin version helper coverage
+- `crates/larch-cli/tests/release_prepare.rs`: release preparation and bump-classification parity coverage
+- `python/tests/release/test_release.py`: set-version, candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
 - Makefile targets: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`

@@ -5,17 +5,13 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 from larch.release import promote_release
 from larch.release import release_finish
-from larch.release import release_prepare
 from larch.core import verify_main
 from larch.release import version_bump
 from larch.core.proc import CommandResult
@@ -344,32 +340,6 @@ def test_release_finish_rejects_candidate_not_in_main(
         )
 
 
-def test_read_plugin_version_best_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    root = tmp_path / "plugin"
-    (root / ".claude-plugin").mkdir(parents=True)
-    (root / ".claude-plugin/plugin.json").write_text('{"version":"9.8.7"}\n', encoding="utf-8")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(root))
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
-    assert version_bump.read_plugin_version_main([]) == 0
-    assert capsys.readouterr().out == "LARCH_PLUGIN_VERSION=9.8.7\n"
-
-
-def test_plugin_read_version_cli_captures_stdout_with_inherited_quiet(tmp_path: Path) -> None:
-    root = tmp_path / "plugin"
-    (root / ".claude-plugin").mkdir(parents=True)
-    (root / ".claude-plugin/plugin.json").write_text('{"version":"9.8.7"}\n', encoding="utf-8")
-    env = os.environ.copy()
-    env.update({
-        "CLAUDE_PLUGIN_ROOT": str(root),
-        "LARCH_QUIET_ACTIVE": "1",
-        "LARCH_QUIET_PID": "999999",
-        "LARCH_QUIET_LOG_FILE": str(tmp_path / "quiet.log"),
-    })
-    res = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "plugin", "read-version"], capture_output=True, text=True, env=env, check=False)
-    assert res.returncode == 0
-    assert res.stdout == "LARCH_PLUGIN_VERSION=9.8.7\n"
-
-
 def _write_release_version_repo(tmp_path: Path, *, cargo_version: str = "1.2.3") -> Path:
     root = tmp_path / "repo"
     (root / ".claude-plugin").mkdir(parents=True)
@@ -573,10 +543,6 @@ def test_promote_latest_failure_ignores_inherited_quiet(monkeypatch: pytest.Monk
     assert not quiet_log.exists()
 
 
-def test_release_prepare_override_recomputes_from_current() -> None:
-    assert release_prepare._apply_override(current="1.2.3", override="minor") == ("MINOR", "1.3.0")
-
-
 def test_verify_main_direct_title_and_suffix(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(verify_main.proc, "run", lambda argv: cr(tuple(argv), stdout="abc123 Feature title (#42)\n"))
     assert verify_main.main(["--expected-title", "Different title (#42)"]) == 0
@@ -628,256 +594,3 @@ def test_verify_main_rejects_numbered_expected_stripped_prefix(
     assert verify_main.main(["--expected-title", "Title (#7)"]) == 0
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
     assert out["VERIFIED"] == "false"
-
-
-class ReleasePrepareRunner:
-    def __init__(self, repo_root: Path, *, log_subjects: str = "Feature (#12)\n", log_hash_subjects: str = "abc Feature (#12)\n", api_stdout: str = "[]\n", api_rc: int = 0):
-        self.repo_root = repo_root
-        self.calls: list[tuple[list[str], str | None]] = []
-        self.log_subjects = log_subjects
-        self.log_hash_subjects = log_hash_subjects
-        self.api_stdout = api_stdout
-        self.api_rc = api_rc
-
-    def run(self, argv, **kwargs):
-        cwd = kwargs.get("cwd")
-        self.calls.append((list(argv), cwd))
-        if argv[0] == "git":
-            assert cwd == str(self.repo_root)
-            if argv[:2] == ["git", "fetch"]:
-                return cr(tuple(argv))
-            if argv[:2] == ["git", "rev-parse"]:
-                return cr(tuple(argv), stdout="same-sha\n")
-            if argv[:2] == ["git", "merge-base"]:
-                return cr(tuple(argv))
-            if argv[:2] == ["git", "show"]:
-                return cr(tuple(argv), stdout='{"version":"1.2.3"}\n')
-            if argv[:2] == ["git", "log"] and "--format=%H %s" in argv:
-                return cr(tuple(argv), stdout=self.log_hash_subjects)
-            if argv[:2] == ["git", "log"]:
-                return cr(tuple(argv), stdout=self.log_subjects)
-        if argv[:2] == ["gh", "api"]:  # lint-gh-argv-literal: ok fixture assertion
-            return cr(tuple(argv), stdout=self.api_stdout, rc=self.api_rc)
-        return cr(tuple(argv))
-
-
-class Classification:
-    current_version = "1.2.3"
-    new_version = "1.2.4"
-    bump_type = "PATCH"
-
-
-def _prepare_common(
-    monkeypatch: pytest.MonkeyPatch,
-    runner: ReleasePrepareRunner,
-    *,
-    repo: str = "o/r",
-    pr_view: object | None = None,
-    issue_view: object | None = None,
-) -> None:
-    monkeypatch.setattr(release_prepare.proc, "run", runner.run)
-    monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: repo)
-    def gh_json(argv):
-        if argv[:2] == ["release", "list"]:
-            return [{"tagName": "v1.2.3", "isLatest": True}]
-        if argv[:2] == ["pr", "list"]:
-            return []
-        if argv[:2] == ["pr", "view"]:
-            return pr_view
-        if argv[:2] == ["issue", "view"]:
-            return issue_view
-        raise AssertionError(f"unexpected gh json argv: {argv}")
-    monkeypatch.setattr(release_prepare, "_gh_json", gh_json)
-    monkeypatch.setattr(release_prepare.version_bump, "classify_bump", lambda *_args, **_kwargs: Classification())
-
-
-def test_release_prepare_git_commands_run_in_repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(repo_root)
-    _prepare_common(monkeypatch, runner, pr_view={"number": 12, "title": "Feature", "labels": [], "author": {"login": "me"}, "url": "u"})
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    assert any(call[0][:2] == ["git", "log"] and call[1] == str(repo_root) for call in runner.calls)
-
-
-def test_release_prepare_origin_repo_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: "other/repo")
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
-    assert "ERROR=origin-repo-mismatch" in capsys.readouterr().out
-
-
-def test_release_prepare_pr_metadata_incomplete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    # A gh pr view miss now routes the commit to the commits-to-pulls fallback; the
-    # pr-metadata-incomplete error survives only when that API lookup itself fails.
-    runner = ReleasePrepareRunner(repo_root, api_rc=1)
-    _prepare_common(monkeypatch, runner, pr_view=None)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
-    assert "ERROR=pr-metadata-incomplete" in capsys.readouterr().out
-
-
-def test_release_prepare_recovers_when_suffix_is_issue_number(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    # The squash-merge subject ends in the closed issue number (#7217), not the merged PR
-    # number, so gh pr view 7217 misses. The commit must still resolve to the real PR
-    # (#7221) via the commits-to-pulls fallback rather than aborting the whole prepare step.
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    pulls = json.dumps([{"number": 7221, "title": "Re-point ci-fix to the fix ladder (#7217)", "labels": [], "user": {"login": "me"}, "html_url": "u7221"}])
-    runner = ReleasePrepareRunner(
-        repo_root,
-        log_subjects="Re-point ci-fix to the fix ladder (#7217)\n",
-        log_hash_subjects="da0d9c Re-point ci-fix to the fix ladder (#7217)\n",
-        api_stdout=pulls,
-    )
-    _prepare_common(monkeypatch, runner, pr_view=None)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    captured = capsys.readouterr()
-    assert "NOTE: commit da0d9c resolved to PR #7221 via GitHub API" in captured.err
-    out = dict(line.split("=", 1) for line in captured.out.splitlines())
-    assert out["PR_COUNT"] == "1"
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
-        "7221\tRe-point ci-fix to the fix ladder (#7217)\t\tme\tu7221"
-    ]
-
-
-def test_release_prepare_commit_to_pulls_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    pulls = json.dumps([{"number": 13, "title": "Orphan PR", "labels": [], "user": {"login": "me"}, "html_url": "u"}])
-    runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="def Orphan subject\n", api_stdout=pulls)
-    _prepare_common(monkeypatch, runner)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    assert "NOTE: commit def resolved to PR #13" in capsys.readouterr().err
-
-
-def test_release_prepare_unmatched_commit_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="def Orphan subject\n", api_stdout="[]\n")
-    _prepare_common(monkeypatch, runner)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
-    out = capsys.readouterr().out
-    assert "UNMATCHED_COMMITS=def" in out
-    assert "ERROR=unmatched-commits" in out
-
-
-def test_release_prepare_no_unique_latest_emits_latest_count(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: "o/r")
-    monkeypatch.setattr(release_prepare, "_gh_json", lambda _argv: [{"tagName": "v1.2.3", "isLatest": True}, {"tagName": "v1.2.4", "isLatest": True}])
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
-    out = capsys.readouterr().out.splitlines()
-    assert out == ["ERROR=no-unique-latest-release", "LATEST_COUNT=2"]
-
-
-def test_release_prepare_pr_list_tsv_column_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(repo_root)
-    pr_view = {
-        "number": 12,
-        "title": "Feature title",
-        "labels": [{"name": "enhancement"}, {"name": "release-note"}],
-        "author": {"login": "alice"},
-        "url": "https://github.com/o/r/pull/12",
-    }
-    _prepare_common(monkeypatch, runner, pr_view=pr_view)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
-        "12\tFeature title\tenhancement,release-note\talice\thttps://github.com/o/r/pull/12"
-    ]
-
-
-def test_release_prepare_pr_list_uses_companion_issue_title(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(
-        repo_root,
-        log_subjects="Fixes #34: Implement issue #34 (#12)\n",
-        log_hash_subjects="abc Fixes #34: Implement issue #34 (#12)\n",
-    )
-    pr_view = {
-        "number": 12,
-        "title": "Fixes #34: Implement issue #34",
-        "labels": [],
-        "author": {"login": "alice"},
-        "url": "u12",
-    }
-    _prepare_common(monkeypatch, runner, pr_view=pr_view, issue_view={"title": "Add release approve bypass"})
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
-        "12\tAdd release approve bypass\t\talice\tu12"
-    ]
-
-
-@pytest.mark.parametrize("issue_view", [None, [], {"title": ""}, {"title": 34}])
-def test_release_prepare_pr_list_falls_back_when_companion_issue_title_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    issue_view: object | None,
-) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(
-        repo_root,
-        log_subjects="Fixes #34: Implement issue #34 (#12)\n",
-        log_hash_subjects="abc Fixes #34: Implement issue #34 (#12)\n",
-    )
-    pr_view = {
-        "number": 12,
-        "title": "Fixes #34: Implement issue #34",
-        "labels": [],
-        "author": {"login": "alice"},
-        "url": "u12",
-    }
-    _prepare_common(monkeypatch, runner, pr_view=pr_view, issue_view=issue_view)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
-        "12\tFixes #34: Implement issue #34\t\talice\tu12"
-    ]
-
-
-def test_release_prepare_commit_to_pulls_uses_companion_issue_title(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    pulls = json.dumps([{"number": 13, "title": "Fixes #34: Implement issue #34", "labels": [], "user": {"login": "me"}, "html_url": "u13"}])
-    runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="def Orphan subject\n", api_stdout=pulls)
-    _prepare_common(monkeypatch, runner, issue_view={"title": "Resolve orphan behavior"})
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
-        "13\tResolve orphan behavior\t\tme\tu13"
-    ]
-
-
-def test_release_prepare_ignores_larch_logs_prs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(
-        repo_root,
-        log_subjects="Feature (#12)\nchore(larch-logs): flush abc (#13)\nchore(larch-logs): design run def (#14)\n",
-        log_hash_subjects="h1 Feature (#12)\nh2 chore(larch-logs): flush abc (#13)\nh3 chore(larch-logs): design run def (#14)\n",
-    )
-    pr_views = {
-        12: {"number": 12, "title": "Feature", "labels": [], "author": {"login": "alice"}, "url": "u12"},
-        13: {"number": 13, "title": "chore(larch-logs): flush abc", "labels": [], "author": {"login": "bot"}, "url": "u13"},
-        14: {"number": 14, "title": "chore(larch-logs): design run def", "labels": [], "author": {"login": "bot"}, "url": "u14"},
-    }
-    monkeypatch.setattr(release_prepare.proc, "run", runner.run)
-    monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: "o/r")
-    def gh_json(argv: list[str]) -> object:
-        if argv[:2] == ["release", "list"]:
-            return [{"tagName": "v1.2.3", "isLatest": True}]
-        if argv[:2] == ["pr", "list"]:
-            return []
-        if argv[:2] == ["pr", "view"]:
-            return pr_views[int(argv[2])]
-        raise AssertionError(f"unexpected gh json argv: {argv}")
-    monkeypatch.setattr(release_prepare, "_gh_json", gh_json)
-    monkeypatch.setattr(release_prepare.version_bump, "classify_bump", lambda *_args, **_kwargs: Classification())
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
-    assert out["PR_COUNT"] == "1"
-    assert out["IGNORED_LARCHLOG_PR_COUNT"] == "2"
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == ["12\tFeature\t\talice\tu12"]
-
-
-def test_release_prepare_ignores_larch_logs_pr_via_commit_to_pulls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    pulls = json.dumps([{"number": 13, "title": "chore(larch-logs): flush abc", "labels": [], "user": {"login": "bot"}, "html_url": "u13"}])
-    runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="h2 chore(larch-logs): flush abc\n", api_stdout=pulls)
-    _prepare_common(monkeypatch, runner)
-    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
-    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
-    assert out["PR_COUNT"] == "0"
-    assert out["IGNORED_LARCHLOG_PR_COUNT"] == "1"
-    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8") == ""

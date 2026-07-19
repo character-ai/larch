@@ -5038,50 +5038,10 @@
     "history": []
   },
   {
-    "file": "larch/release/release_prepare.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 33,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/release_prepare.py",
-    "code": "PLR0911",
-    "qualified_symbol": "main",
-    "metric": 19,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/release_prepare.py",
-    "code": "PLR0912",
-    "qualified_symbol": "main",
-    "metric": 33,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/release_prepare.py",
-    "code": "PLR0915",
-    "qualified_symbol": "main",
-    "metric": 101,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/release/version_bump.py",
     "code": "C901",
     "qualified_symbol": "apply_bump",
     "metric": 21,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
-    "code": "C901",
-    "qualified_symbol": "classify_bump",
-    "metric": 22,
     "added_at": "legacy",
     "history": []
   },
@@ -5095,41 +5055,9 @@
   },
   {
     "file": "larch/release/version_bump.py",
-    "code": "PLR0911",
-    "qualified_symbol": "set_version_main",
-    "metric": 9,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
-    "code": "PLR0912",
-    "qualified_symbol": "classify_bump",
-    "metric": 24,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_build_reasoning",
-    "metric": 6,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
     "code": "PLR0915",
     "qualified_symbol": "apply_bump",
     "metric": 60,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
-    "code": "PLR0915",
-    "qualified_symbol": "classify_bump",
-    "metric": 80,
     "added_at": "legacy",
     "history": []
   },
@@ -8549,7 +8477,7 @@
     "file": "tests/skills/_structure_design_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 61,
+    "metric": 60,
     "added_at": "legacy",
     "history": []
   },
@@ -8557,7 +8485,7 @@
     "file": "tests/skills/_structure_design_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 50,
+    "metric": 49,
     "added_at": "legacy",
     "history": []
   },
@@ -8565,7 +8493,7 @@
     "file": "tests/skills/_structure_design_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 136,
+    "metric": 133,
     "added_at": "legacy",
     "history": []
   },
@@ -8647,7 +8575,7 @@
     "file": "tests/skills/_structure_research_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 45,
+    "metric": 43,
     "added_at": "legacy",
     "history": []
   },
@@ -8655,7 +8583,7 @@
     "file": "tests/skills/_structure_research_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 38,
+    "metric": 36,
     "added_at": "legacy",
     "history": []
   },
@@ -8663,7 +8591,7 @@
     "file": "tests/skills/_structure_research_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 90,
+    "metric": 87,
     "added_at": "legacy",
     "history": []
   },
@@ -8671,7 +8599,7 @@
     "file": "tests/skills/_structure_review_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 55,
+    "metric": 53,
     "added_at": "legacy",
     "history": []
   },
@@ -8679,7 +8607,7 @@
     "file": "tests/skills/_structure_review_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 48,
+    "metric": 46,
     "added_at": "legacy",
     "history": []
   },
@@ -8687,7 +8615,7 @@
     "file": "tests/skills/_structure_review_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 120,
+    "metric": 117,
     "added_at": "legacy",
     "history": []
   },

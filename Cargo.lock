@@ -2323,6 +2323,7 @@ dependencies = [
  "clap",
  "larch-adapters",
  "larch-core",
+ "larch-test-support",
  "predicates",
  "regex",
  "serde_json",

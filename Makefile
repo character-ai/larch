@@ -524,14 +524,17 @@ test-hook-deny-run-in-background:
 test-bgjob:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-bgjob.sh
 
+# These Rust integration-test entry points are standalone aliases, not
+# test-harnesses prerequisites; see CARVE_OUTS in
+# scripts/test-harness-shards-coverage.sh.
 test-classify-bump:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_version_bump.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_prepare
 
 test-release-prepare:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k release_prepare
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_prepare
 
 test-release-set-version:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k 'set_version or read_plugin_version or plugin_read_version'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k set_version
 
 test-release-finish:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k 'release_finish or verify_main'

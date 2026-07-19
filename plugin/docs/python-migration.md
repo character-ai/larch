@@ -127,7 +127,7 @@ Override them per-run with environment variables documented in
 
 ## P4 dev-only skills migration
 
-Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfaces now live behind `python/cli.py`. `classify-bump.md` remains the release classification authority. Runtime hooks and runtime OOS gates remain bash. `.claude/skills/combine-issues/scripts/search-implementing-issue.sh` remains bash and out of scope. Audit scan OOS disposition lives in `python/oos_disposition.py`; git-log inline-triage fallback remains runtime-gate-only.
+Most release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfaces remain behind `python/cli.py`. `plugin read-version`, `release classify-bump`, and `release prepare` are Rust-owned through `scripts/larch.sh`; `classify-bump.md` remains the classification contract. Runtime hooks and runtime OOS gates remain bash. `.claude/skills/combine-issues/scripts/search-implementing-issue.sh` remains bash and out of scope. Audit scan OOS disposition lives in `python/oos_disposition.py`; git-log inline-triage fallback remains runtime-gate-only.
 
 ## Decision log — G13 ci/pr/merge/push/gh hard cutover
 
