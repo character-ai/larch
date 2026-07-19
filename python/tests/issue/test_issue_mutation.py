@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from larch.core.proc import CommandResult
-from larch.issue import issue_mutation
+from larch.issue import issue_mutation, issue_wire
 
 
 def _empty_labels() -> set[str]:
@@ -208,3 +208,70 @@ def test_named_block_rejects_foreign_text_and_redaction_failure(monkeypatch: pyt
     monkeypatch.setattr(issue_mutation.redact, "redact_secrets_only", truncated_redaction)
     with pytest.raises(issue_mutation.ProtectedIssueMutation, match="redaction-failed"):
         _ = issue_mutation.apply(runner, request)
+
+
+def test_implementation_lease_mutation_is_run_scoped_and_terminal_atomic() -> None:
+    old = issue_wire.ImplementationLeaseMarker(
+        run_id="run-7",
+        branch="feature/owner",
+        base="a" * 40,
+        plan="b" * 64,
+        updated_at="2026-07-19T00:00:00Z",
+    )
+    new = issue_wire.ImplementationLeaseMarker(
+        run_id=old.run_id,
+        branch=old.branch,
+        base=old.base,
+        plan=old.plan,
+        updated_at="2026-07-19T01:00:00Z",
+    )
+    runner = MutationRunner(
+        title="[IMPLEMENTING] Protected",
+        body=issue_wire.upsert_implementation_lease(body="Body\n", lease=old),
+    )
+    body = issue_wire.upsert_implementation_lease(body=runner.body, lease=new)
+    result = issue_mutation.update_implementation_lease(
+        runner,
+        repository="owner/repo",
+        issue="7",
+        body=body,
+        run_id="run-7",
+        title="[DONE] Protected",
+    )
+    assert result.after.title == "[DONE] Protected"
+    assert issue_wire.parse_implementation_lease(body=result.after.body) == new
+    assert sum(1 for call in runner.calls if tuple(call[:4]) == ("gh", "issue", "edit", "7")) == 1
+
+    runner = MutationRunner(
+        title="[IMPLEMENTING] Protected",
+        body=issue_wire.upsert_implementation_lease(body="Body\n", lease=old),
+    )
+    with pytest.raises(issue_mutation.ProtectedIssueMutation, match="lease-run-mismatch"):
+        _ = issue_mutation.update_implementation_lease(
+            runner,
+            repository="owner/repo",
+            issue="7",
+            body=body,
+            run_id="other-run",
+        )
+
+    runner = MutationRunner(
+        title="[IMPLEMENTING] Protected",
+        body=issue_wire.upsert_implementation_lease(body="Body\n", lease=old),
+    )
+    expected = issue_mutation.read_snapshot(
+        runner, repository="owner/repo", issue="7"
+    )
+    runner.title = "[IMPLEMENTING] Concurrent edit"
+    runner.second += 1
+    with pytest.raises(issue_mutation.ProtectedIssueMutation, match="stale-identity"):
+        _ = issue_mutation.update_implementation_lease(
+            runner,
+            repository="owner/repo",
+            issue="7",
+            body=body,
+            run_id="run-7",
+            title="[DONE] Protected",
+            expected_snapshot=expected,
+        )
+    assert runner.title == "[IMPLEMENTING] Concurrent edit"

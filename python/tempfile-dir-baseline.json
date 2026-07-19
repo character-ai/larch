@@ -56,13 +56,6 @@
     "reason": "gh body-file staging, deleted in finally"
   },
   {
-    "file": "larch/issue/deps_audit.py",
-    "qualified_symbol": "_apply_rewrite",
-    "callee": "NamedTemporaryFile",
-    "occurrence": 1,
-    "reason": "editor rewrite staging, deleted in finally"
-  },
-  {
     "file": "larch/rendering/_rendering_generators.py",
     "qualified_symbol": "generate_pre_rendered_reviewer_prompts_main",
     "callee": "mkdtemp",

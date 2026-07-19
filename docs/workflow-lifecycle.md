@@ -111,6 +111,12 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 Repository tests or lints that fail and then pass without an authored fix are nondeterminism defects, not harmless transients. They route as `flaky-defect-unfixed` to CI-fix. After merge, the push workflow must be watched for the merged commit SHA; a failure enters `postmerge-repair` and the `postmerge-emergency-repair.md` state machine instead of finalizing success.
 
+## Shared-owner admission and implementation leases
+
+Migration plans that create or reuse a shared launcher, adapter, registry, resolver, client, or state machine include one canonical `larch:owners` block. Preflight validates its sorted rows, safe targets, `REUSE` source receipts, and native blocker edges. It scans open `[IMPLEMENTING]` issues and blocks a duplicate `CREATE` with `active-owner-conflict owner=<key> issue=#N` before lifecycle adoption.
+
+Step 0 creates and reads back the run's `larch:implementation-lease` after the branch exists and before it adds `[IMPLEMENTING]`. Existing marker-keyed tracking-summary boundaries refresh only that run's lease. Terminal cleanup updates the lease and title together, which clears active ownership on done and stalled routes. A report-only watchdog emits `stale-implementation-lease issue=#N age_hours=<N>` after 12 hours only when the recorded branch has no open PR. It prints one cleanup command and never edits GitHub state.
+
 ## CI-fix push sequencing
 
 When a required CI run fails, the active Step 8+ driver (`python/cli.py ship pr` delegating to `python/larch/implement/ship.py`) distills the failure to `$IMPLEMENT_TMPDIR/ci-errors-<run-id>.md` and bails to `NEXT_ACTION=ci-fix` without committing a fix. The `/implement` Step 8 ci-fixer subagent (`agents/ci-fixer.md`) reads the digest, commits the repair as `CI fix round <N>: <summary>`, and pushes via `python/cli.py push branch`. The pre-fix rebase gate runs before the round loop, so the subagent pushes onto a current branch and the next `ci-wait` poll should see `BEHIND_COUNT=0`. A compose-time architectural-invariant violation (`NEXT_ACTION=invariants-assessment`) does not use the ci-fixer loop; it re-enters the Step 8 fix ladder (materialize, tier-1 coder fix, fresh-assessor re-judge, tier-2 main agent), and the coder/main-agent fixes commit and push via `python/cli.py push branch`.

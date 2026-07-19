@@ -36,6 +36,7 @@ class MutationField(StrEnum):
     BODY = "body"
     LABELS = "labels"
     NAMED_BLOCK = "named-block"
+    IMPLEMENTATION_LEASE = "implementation-lease"
 
 
 class ProtectedIssueMutation(ShipError):
@@ -171,27 +172,33 @@ def request_for_snapshot(  # noqa: PLR0913 - mutation request mirrors the fixed 
     )
 
 
-def _validate_request(request: IssueMutationRequest) -> None:  # noqa: C901 - each branch rejects one invalid request shape.
+def _validate_request(request: IssueMutationRequest) -> None:  # noqa: C901,PLR0912 - each branch rejects one invalid request shape.
     if not gh.validate_repo_slug(request.repository) or not request.issue.isdecimal() or request.issue == "0":
         raise _failure("invalid-identity")
     if not _UPDATED_AT_RE.fullmatch(request.expected_updated_at) or not request.expected_state:
         raise _failure("invalid-expected-identity")
     if not request.fields:
         raise _failure("missing-allowed-field")
+    lease_field = MutationField.IMPLEMENTATION_LEASE in request.fields
     if MutationField.NAMED_BLOCK in request.fields:
         if request.fields != frozenset({MutationField.NAMED_BLOCK}) or not request.marker or request.body is None:
             raise _failure("invalid-named-block-request")
+    elif lease_field:
+        if request.body is None or request.lease is None or request.marker != "implementation-lease":
+            raise _failure("invalid-implementation-lease-request")
+        if request.fields - {MutationField.IMPLEMENTATION_LEASE, MutationField.TITLE}:
+            raise _failure("invalid-implementation-lease-request")
     elif request.marker is not None or request.lease is not None:
         raise _failure("unexpected-marker-or-lease")
     if (MutationField.TITLE in request.fields) != (request.title is not None):
         raise _failure("invalid-title-request")
-    if MutationField.NAMED_BLOCK not in request.fields and (
+    if MutationField.NAMED_BLOCK not in request.fields and not lease_field and (
         (MutationField.BODY in request.fields) != (request.body is not None)
     ):
         raise _failure("invalid-body-request")
     if (MutationField.LABELS in request.fields) != (request.labels is not None):
         raise _failure("invalid-label-request")
-    if MutationField.NAMED_BLOCK not in request.fields and request.body is not None and MutationField.BODY not in request.fields:
+    if MutationField.NAMED_BLOCK not in request.fields and not lease_field and request.body is not None and MutationField.BODY not in request.fields:
         raise _failure("invalid-body-request")
     if request.lease is not None and (not request.lease.run_id or request.lease.marker != request.marker):
         raise _failure("invalid-lease")
@@ -234,11 +241,30 @@ def _redact_title(title: str) -> str:
     return _redact_body(title).rstrip("\r\n")
 
 
-def _verify_authorized_body_change(request: IssueMutationRequest, before: IssueSnapshot) -> str | None:
+def _verify_authorized_body_change(  # noqa: C901 - authorization branches mirror distinct mutation fields.
+    request: IssueMutationRequest, before: IssueSnapshot
+) -> str | None:
     body = request.body
     if body is None:
         return None
     redacted_body = _redact_body(body)
+    if MutationField.IMPLEMENTATION_LEASE in request.fields:
+        from larch.issue import issue_wire  # noqa: PLC0415 - avoids issue-wire mutation-owner cycle
+
+        assert request.lease is not None
+        old_lease = issue_wire.parse_implementation_lease(body=before.body)
+        new_lease = issue_wire.parse_implementation_lease(body=redacted_body)
+        if new_lease is None or new_lease.run_id != request.lease.run_id:
+            raise _failure("lease-run-mismatch")
+        if old_lease is not None and old_lease.run_id != request.lease.run_id:
+            raise _failure("lease-run-mismatch")
+        old_without = issue_wire.strip_implementation_lease(body=before.body)
+        new_without = issue_wire.strip_implementation_lease(body=redacted_body)
+        if old_without.rstrip() != new_without.rstrip():
+            raise _failure("foreign-lease-body-change")
+        if _is_protected(before) and old_lease is None:
+            raise _failure("missing-lease")
+        return redacted_body
     if MutationField.NAMED_BLOCK not in request.fields:
         if _is_protected(before):
             raise _failure("protected-body")
@@ -285,7 +311,11 @@ def _perform_write(
 def _postcondition(after: IssueSnapshot, request: IssueMutationRequest, body: str | None) -> bool:
     if MutationField.TITLE in request.fields and after.title != request.title:
         return False
-    if (MutationField.BODY in request.fields or MutationField.NAMED_BLOCK in request.fields) and after.body != body:
+    if (
+        MutationField.BODY in request.fields
+        or MutationField.NAMED_BLOCK in request.fields
+        or MutationField.IMPLEMENTATION_LEASE in request.fields
+    ) and after.body != body:
         return False
     return not (MutationField.LABELS in request.fields and after.labels != request.labels)
 
@@ -294,7 +324,11 @@ def _would_change(before: IssueSnapshot, request: IssueMutationRequest, body: st
     return any(
         (
             MutationField.TITLE in request.fields and before.title != request.title,
-            (MutationField.BODY in request.fields or MutationField.NAMED_BLOCK in request.fields)
+            (
+                MutationField.BODY in request.fields
+                or MutationField.NAMED_BLOCK in request.fields
+                or MutationField.IMPLEMENTATION_LEASE in request.fields
+            )
             and before.body != body,
             MutationField.LABELS in request.fields and before.labels != request.labels,
         )
@@ -395,6 +429,40 @@ def update_named_block(  # noqa: PLR0913 - named-block identity and lease are de
             body=body,
             marker=marker,
             lease=lease,
+        ),
+        cwd=cwd,
+    )
+
+
+def update_implementation_lease(  # noqa: PLR0913 - lease identity and optional terminal title stay explicit.
+    runner: Runner,
+    *,
+    repository: str,
+    issue: str,
+    body: str,
+    run_id: str,
+    title: str | None = None,
+    expected_snapshot: IssueSnapshot | None = None,
+    cwd: str | None = None,
+) -> VerifiedIssueMutation:
+    """Write only the run-owned lease, optionally with one terminal title."""
+    snapshot = expected_snapshot or read_snapshot(
+        runner, repository=repository, issue=issue, cwd=cwd
+    )
+    if snapshot.repository != repository or snapshot.issue != issue:
+        raise _failure("invalid-expected-identity")
+    fields = {MutationField.IMPLEMENTATION_LEASE}
+    if title is not None:
+        fields.add(MutationField.TITLE)
+    return apply(
+        runner,
+        request_for_snapshot(
+            snapshot,
+            fields=frozenset(fields),
+            title=title,
+            body=body,
+            marker="implementation-lease",
+            lease=ImplementationLease(run_id=run_id, marker="implementation-lease"),
         ),
         cwd=cwd,
     )

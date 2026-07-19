@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from larch.core.proc import CommandResult
 from larch.issue import issue_block, migration_governance as mg
+from larch.issue.open_rows import OpenIssueRow
 from larch.issue.issue_wire import compose_named_block
+
+from test_support import RecordingRunner
 
 
 def _sha(text: str) -> str:
@@ -49,14 +54,15 @@ def test_parse_owner_rows_exact_block() -> None:
     body = (
         "prologue\n"
         "<!-- larch:owners:start -->\n"
+        "COMMAND\tissue\tmigration-audit\n"
         "CREATE\tfoo\tpython/larch/issue/migration_governance.py\n"
         "REUSE\tbar\t#12\tpython/larch/issue/issue_block.py\n"
-        "CREATE\tfoo\tpython/larch/issue/migration_governance.py\n"
         "<!-- larch:owners:end -->\n"
         "```\n<!-- larch:owners:start -->\nCREATE\thidden\tx.py\n<!-- larch:owners:end -->\n```\n"
     )
     rows = mg.parse_owner_rows(body=body)
     assert rows == (
+        "COMMAND\tissue\tmigration-audit",
         "CREATE\tfoo\tpython/larch/issue/migration_governance.py",
         "REUSE\tbar\t#12\tpython/larch/issue/issue_block.py",
     )
@@ -312,3 +318,164 @@ def test_read_blocked_by_dependencies_fail_closed(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("larch.git.gh.issue_blocked_by_read", fail_read)
     with pytest.raises(issue_block.DependencyReadError):
         _ = issue_block.read_blocked_by_dependencies(object(), "1", repo="o/r")  # type: ignore[arg-type]
+
+
+def _owner_block(*rows: str) -> str:
+    return "\n".join(("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->")) + "\n"
+
+
+def test_migration_shared_owner_requires_block() -> None:
+    plan = _plan_inner().replace(
+        "None.\n\n", "Creates a new shared adapter for migration.\n\n"
+    )
+    body = compose_named_block(marker="plan", inner=plan)
+    verdict = mg.evaluate_owner_admission(
+        RecordingRunner(responses=[]), issue="7", repo="o/r", body=body
+    )
+    assert verdict.reasons == (mg.REASON_MISSING_OWNER_BLOCK,)
+
+
+@pytest.mark.parametrize("active_title", ["[IMPLEMENTING] other", "[DESIGNED] pending"])
+def test_active_create_conflicts_with_active_or_pending_reuse(
+    active_title: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _plan_inner()
+    body = compose_named_block(marker="plan", inner=plan) + _owner_block(
+        "COMMAND\tissue\tmigration-audit",
+        "CREATE\tshared-owner\tpython/larch/issue/migration_governance.py",
+    )
+    active_body = _owner_block(
+        "COMMAND\tissue\tother-command",
+        "REUSE\tshared-owner\t#6\tpython/larch/issue/migration_governance.py",
+    )
+    active_body = mg.issue_wire.upsert_implementation_lease(
+        body=active_body,
+        lease=mg.issue_wire.ImplementationLeaseMarker(
+            run_id="run-8",
+            branch="feature/pending",
+            base="a" * 40,
+            plan="b" * 64,
+            updated_at="2026-07-19T00:00:00Z",
+        ),
+    )
+    active = OpenIssueRow(
+        number=8,
+        title=active_title,
+        state="open",
+        labels=(),
+        body=active_body,
+    )
+    def read_open(*_args: object, **_kwargs: object) -> tuple[OpenIssueRow, ...]:
+        return (active,)
+
+    def no_stale(*_args: object, **_kwargs: object) -> tuple[()]:
+        return ()
+
+    monkeypatch.setattr(mg.open_rows, "open_issue_rows_read", read_open)
+    monkeypatch.setattr(mg, "audit_stale_implementation_leases", no_stale)
+    verdict = mg.evaluate_owner_admission(
+        RecordingRunner(responses=[]), issue="7", repo="o/r", body=body
+    )
+    assert verdict.reasons == (
+        "active-owner-conflict owner=shared-owner issue=#8",
+    )
+
+
+def test_reuse_source_requires_native_edge_and_owner_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_owners = _owner_block(
+        "COMMAND\tissue\tmigration-audit",
+        "CREATE\tshared-owner\tpython/larch/issue/migration_governance.py",
+    )
+    source_plan = _plan_inner()
+    source_body = compose_named_block(marker="plan", inner=source_plan) + source_owners
+    source_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=source_plan),
+        base_sha="a" * 40,
+        blockers_sha256=mg.hash_blocker_rows(rows=()),
+        owners_sha256=mg.hash_owner_rows(rows=mg.parse_owner_rows(body=source_body)),
+    )
+    source_body = mg.upsert_receipt(body=source_body, receipt=source_receipt)
+
+    def fake_view(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(
+            ("gh", "issue", "view"),
+            0,
+            json.dumps({"body": source_body, "state": "OPEN"}),
+            "",
+            0.01,
+        )
+
+    monkeypatch.setattr(mg.gh, "issue_view_field_read", fake_view)
+    parsed = mg.issue_wire.parse_owner_block(
+        body=_owner_block(
+            "COMMAND\tissue\tconsumer",
+            "REUSE\tshared-owner\t#6\tpython/larch/issue/migration_governance.py",
+        )
+    )
+    assert parsed.block is not None
+    reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(responses=[]), block=parsed.block, body="", repo="o/r", cwd=None
+    )
+    assert reasons == (
+        "reuse-missing-native-blocker owner=shared-owner issue=#6",
+    )
+    source_body = compose_named_block(marker="plan", inner=source_plan) + source_owners
+    reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(responses=[]), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None
+    )
+    assert reasons == (
+        "reuse-owner-snapshot-invalid owner=shared-owner issue=#6",
+    )
+
+
+def test_stale_lease_watchdog_is_report_only_and_checks_open_pr() -> None:
+    lease = mg.issue_wire.ImplementationLeaseMarker(
+        run_id="run-1",
+        branch="feature/shared-owner",
+        base="a" * 40,
+        plan="b" * 64,
+        updated_at="2026-07-19T00:00:00Z",
+    )
+    active = OpenIssueRow(
+        number=8,
+        title="[IMPLEMENTING] other",
+        state="open",
+        labels=(),
+        body=mg.issue_wire.upsert_implementation_lease(body="body\n", lease=lease),
+    )
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01)]
+    )
+    findings = mg.audit_stale_implementation_leases(
+        runner,
+        repo="o/r",
+        active_rows=(active,),
+        now=datetime(2026, 7, 19, 13, tzinfo=UTC),
+    )
+    assert len(findings) == 1
+    assert findings[0].token == "stale-implementation-lease issue=#8 age_hours=13"
+    assert findings[0].cleanup_command == (
+        "python3 python/cli.py tracking-issue rename --issue 8 "
+        "--state stalled --repo o/r --run-id run-1"
+    )
+    assert not any(call[1:3] == ["issue", "edit"] for call in runner.calls)
+
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                json.dumps([{"headRefName": "feature/shared-owner"}]),
+                "",
+                0.01,
+            )
+        ]
+    )
+    assert not mg.audit_stale_implementation_leases(
+        runner,
+        repo="o/r",
+        active_rows=(active,),
+        now=datetime(2026, 7, 19, 13, tzinfo=UTC),
+    )

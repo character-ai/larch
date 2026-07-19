@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn, cast
 
@@ -65,6 +67,16 @@ class CreateIssueOutput:
 class RenameOutput:
     renamed: bool
     new_title: str
+
+
+@dataclass(frozen=True)
+class ImplementationLeaseRun:
+    """Repository identity for one implementation-lease mutation."""
+
+    issue: str
+    repo: str
+    run_id: str
+    cwd: str | None = None
 
 
 @dataclass(frozen=True)
@@ -378,6 +390,161 @@ def rename_with_details(
     except ShipError as exc:
         raise CliFailure(_redact_gh_error(str(exc)), 2) from exc
     return RenameOutput(renamed=True, new_title=new_title)
+
+
+def _lease_timestamp() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def initialize_implementation_lease(
+    runner: Runner,
+    *,
+    run: ImplementationLeaseRun,
+    branch: str,
+) -> issue_wire.ImplementationLeaseMarker:
+    """Create and read-verify the lease before lifecycle adoption."""
+    from larch.issue import migration_governance  # noqa: PLC0415 - receipt parser imports tracking mutation only lazily
+
+    snapshot = issue_mutation.read_snapshot(
+        runner, repository=run.repo, issue=run.issue, cwd=run.cwd
+    )
+    verdict = migration_governance.evaluate_governance_gate(
+        runner,
+        issue=run.issue,
+        repo=run.repo,
+        body=snapshot.body,
+        repo_root=Path(run.cwd).resolve() if run.cwd else Path.cwd(),
+        cwd=run.cwd,
+    )
+    if not verdict.ok:
+        reasons = ",".join(verdict.blocking_reasons) or "unknown"
+        raise ShipError(f"implementation-lease-admission-refused:{reasons}")
+    receipt = migration_governance.parse_receipt(body=snapshot.body)
+    if receipt is None:
+        raise ShipError("implementation-lease-plan-receipt-missing")
+    existing = issue_wire.parse_implementation_lease(body=snapshot.body)
+    if existing is not None and existing.run_id != run.run_id:
+        raise ShipError("implementation-lease-run-mismatch")
+    lease = issue_wire.ImplementationLeaseMarker(
+        run_id=run.run_id,
+        branch=branch,
+        base=receipt.base_sha,
+        plan=receipt.plan_sha256,
+        updated_at=_lease_timestamp(),
+    )
+    body = issue_wire.upsert_implementation_lease(body=snapshot.body, lease=lease)
+    mutation = issue_mutation.update_implementation_lease(
+        runner,
+        repository=run.repo,
+        issue=run.issue,
+        body=body,
+        run_id=run.run_id,
+        expected_snapshot=snapshot,
+        cwd=run.cwd,
+    )
+    verified = issue_wire.parse_implementation_lease(body=mutation.after.body)
+    if verified != lease:
+        raise ShipError("implementation-lease-readback-mismatch")
+    post_verdict = migration_governance.evaluate_governance_gate(
+        runner,
+        issue=run.issue,
+        repo=run.repo,
+        body=mutation.after.body,
+        repo_root=Path(run.cwd).resolve() if run.cwd else Path.cwd(),
+        cwd=run.cwd,
+    )
+    if not post_verdict.ok:
+        reasons = ",".join(post_verdict.blocking_reasons) or "unknown"
+        terminal_error = ""
+        try:
+            _ = rename_terminal_with_lease(runner, "stalled", run=run)
+        except ShipError as exc:
+            terminal_error = f":terminal-update-failed:{exc}"
+        raise ShipError(
+            f"implementation-lease-post-admission-refused:{reasons}{terminal_error}"
+        )
+    return lease
+
+
+def refresh_implementation_lease(
+    runner: Runner,
+    *,
+    issue: str,
+    repo: str,
+    run_id: str,
+    cwd: str | None = None,
+) -> issue_wire.ImplementationLeaseMarker:
+    """Refresh only the exact run-owned lease through the mutation owner."""
+    snapshot = issue_mutation.read_snapshot(
+        runner, repository=repo, issue=issue, cwd=cwd
+    )
+    existing = issue_wire.parse_implementation_lease(body=snapshot.body)
+    if existing is None or existing.run_id != run_id:
+        raise ShipError("implementation-lease-run-mismatch")
+    lease = issue_wire.ImplementationLeaseMarker(
+        run_id=existing.run_id,
+        branch=existing.branch,
+        base=existing.base,
+        plan=existing.plan,
+        updated_at=_lease_timestamp(),
+    )
+    body = issue_wire.upsert_implementation_lease(body=snapshot.body, lease=lease)
+    mutation = issue_mutation.update_implementation_lease(
+        runner,
+        repository=repo,
+        issue=issue,
+        body=body,
+        run_id=run_id,
+        expected_snapshot=snapshot,
+        cwd=cwd,
+    )
+    verified = issue_wire.parse_implementation_lease(body=mutation.after.body)
+    if verified != lease:
+        raise ShipError("implementation-lease-readback-mismatch")
+    return lease
+
+
+def rename_terminal_with_lease(
+    runner: Runner,
+    state: str,
+    *,
+    run: ImplementationLeaseRun,
+) -> RenameOutput:
+    """Atomically clear active title state and refresh the same run's lease."""
+    _require_numeric_issue(run.issue)
+    _validate_tracking_state(state)
+    snapshot = issue_mutation.read_snapshot(
+        runner, repository=run.repo, issue=run.issue, cwd=run.cwd
+    )
+    existing = issue_wire.parse_implementation_lease(body=snapshot.body)
+    if existing is None or existing.run_id != run.run_id:
+        raise ShipError("implementation-lease-run-mismatch")
+    target_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
+    tail = _redact_compose(
+        strip_lifecycle_prefix(snapshot.title), context="tracking-issue title"
+    )
+    new_title = _truncate_with_prefix(prefix=target_prefix, tail=tail)
+    lease = issue_wire.ImplementationLeaseMarker(
+        run_id=existing.run_id,
+        branch=existing.branch,
+        base=existing.base,
+        plan=existing.plan,
+        updated_at=_lease_timestamp(),
+    )
+    body = issue_wire.upsert_implementation_lease(body=snapshot.body, lease=lease)
+    mutation = issue_mutation.update_implementation_lease(
+        runner,
+        repository=run.repo,
+        issue=run.issue,
+        body=body,
+        run_id=run.run_id,
+        title=new_title,
+        expected_snapshot=snapshot,
+        cwd=run.cwd,
+    )
+    if issue_wire.parse_implementation_lease(body=mutation.after.body) != lease:
+        raise ShipError("implementation-lease-readback-mismatch")
+    return RenameOutput(renamed=new_title != snapshot.title, new_title=new_title)
 
 
 def rename(
@@ -964,6 +1131,7 @@ def rename_main(argv: list[str]) -> int:
     parser.add_argument("--issue", required=True)
     parser.add_argument("--state", required=True)
     parser.add_argument("--repo")
+    parser.add_argument("--run-id", default="")
     args = _parse_with(parser=parser, argv=argv)
     if args is None:
         return 1
@@ -971,8 +1139,17 @@ def rename_main(argv: list[str]) -> int:
         _require_numeric_issue(args.issue)
         _validate_tracking_state(args.state)
         repo = _resolve_repo_or_fail(proc, args.repo)
-        current_title = _fetch_issue_title(proc, args.issue, repo=repo)
-        result = rename_with_details(proc, args.issue, args.state, repo=repo, current_title=current_title)
+        if args.run_id:
+            result = rename_terminal_with_lease(
+                proc,
+                args.state,
+                run=ImplementationLeaseRun(issue=args.issue, repo=repo, run_id=args.run_id),
+            )
+        else:
+            current_title = _fetch_issue_title(proc, args.issue, repo=repo)
+            result = rename_with_details(
+                proc, args.issue, args.state, repo=repo, current_title=current_title
+            )
         _emit_kv(key="RENAMED", value="true" if result.renamed else "false")
         _emit_kv(key="NEW_TITLE", value=result.new_title)
         return 0
@@ -1119,6 +1296,21 @@ def upsert_summary_main(argv: list[str]) -> int:
             repo=args.repo,
             comment_id=args.comment_id,
         )
+        run_match = re.search(r"\brunid=([A-Za-z0-9][A-Za-z0-9._-]{0,127})\b", args.marker)
+        if run_match is not None and os.environ.get("RUN_ID", "") == run_match.group(1):
+            repo = _resolve_repo_or_fail(proc, args.repo)
+            snapshot = issue_mutation.read_snapshot(
+                proc, repository=repo, issue=args.issue
+            )
+            if snapshot.title.startswith(
+                config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
+            ):
+                _ = refresh_implementation_lease(
+                    proc,
+                    issue=args.issue,
+                    repo=repo,
+                    run_id=run_match.group(1),
+                )
         _emit_kv(key="COMMENT_ID", value=result.comment_id)
         _emit_kv(key="COMMENT_URL", value=result.comment_url)
         _emit_kv(key="UPDATED", value="true" if result.updated else "false")

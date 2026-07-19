@@ -798,3 +798,46 @@ def test_preflight_receipt_failure_before_title_mutation(
     assert rc == 2
     assert not title_mutations
     assert "stale-plan-body" in capsys.readouterr().out
+
+
+def test_preflight_owner_conflict_refuses_before_title_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan_inner = _executable_plan_inner()
+    title_mutations: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
+        elif "plan-block" in argv:
+            out_path = Path(argv[argv.index("--output") + 1])
+            out_path.write_text(plan_inner, encoding="utf-8")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
+        elif "issue" in argv and "edit" in argv:
+            title_mutations.append("edit")
+        return _fake_completed(argv)
+
+    def conflict(*_a: Any, **_k: Any) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=()),
+            owners=migration_governance.OwnerAdmissionVerdict(
+                reasons=("active-owner-conflict owner=shared issue=#8",)
+            ),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", conflict)
+    _stub_issue_view(
+        monkeypatch,
+        payload={"title": "[DESIGNED] Title", "body": _body_with_plan(plan_inner)},
+    )
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(
+        ["--issue", "5", "--repo", "o/r", "--preflight-tmpdir", str(tmp_path)]
+    )
+    assert rc == 2
+    assert not title_mutations
+    assert "active-owner-conflict owner=shared issue=#8" in capsys.readouterr().out

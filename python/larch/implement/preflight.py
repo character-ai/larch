@@ -473,6 +473,21 @@ def _refuse_governance_gate(*, site: str, verdict: migration_governance.Governan
     return 2
 
 
+def _migration_governance_status(*, issue: str, repo: str, issue_body: str, repo_root: Path) -> int | None:
+    gate_repo = repo or (gh.resolve_repo(proc) or "")
+    if not gate_repo:
+        print("**❌ /implement preflight: repository slug required for migration governance.**")
+        return 2
+    gate = migration_governance.evaluate_governance_gate(
+        proc, issue=issue, repo=gate_repo, body=issue_body, repo_root=repo_root,
+    )
+    if not gate.ok:
+        return _refuse_governance_gate(site="/implement preflight", verdict=gate)
+    for token, command in zip(gate.owners.report_only, gate.owners.cleanup_commands, strict=True):
+        print(f"**⚠ /implement preflight: `{token}`. Cleanup: `{command}`.**")
+    return None
+
+
 def preflight_main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv=argv)
     issue = str(args.issue)
@@ -574,19 +589,11 @@ def preflight_main(argv: list[str] | None = None) -> int:
         return _preflight_write_failure("cannot write extracted plan.")
     block_present = "true"
 
-    gate_repo = repo or (gh.resolve_repo(proc) or "")
-    if not gate_repo:
-        print("**❌ /implement preflight: repository slug required for migration governance.**")
-        return 2
-    gate = migration_governance.evaluate_governance_gate(
-        proc,
-        issue=issue,
-        repo=gate_repo,
-        body=issue_body,
-        repo_root=repo_root,
+    governance_status = _migration_governance_status(
+        issue=issue, repo=repo, issue_body=issue_body, repo_root=repo_root
     )
-    if not gate.ok:
-        return _refuse_governance_gate(site="/implement preflight", verdict=gate)
+    if governance_status is not None:
+        return governance_status
 
     design_difficulty = ""
     try:
