@@ -45,6 +45,7 @@ jobs:
           sparse-checkout: |
             /*
             !/larch-logs/
+            !/plugin/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
