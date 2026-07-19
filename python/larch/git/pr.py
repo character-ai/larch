@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from larch.git import gh
 from larch.git import git
 from larch.git import pr_body
+from larch.core import rust_runtime
 from larch.git import push
 from larch.issue import tracking_issue
 from larch.implement import scope_disposition
@@ -132,7 +133,7 @@ def ensure_pr(
             url=existing.url,
             status="existing",
         )
-    push_result = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
+    push_result = rust_runtime.push_branch(runner, cwd=cwd)
     if push_result.status != "pushed":
         msg = "branch push failed before PR create"
         raise ShipError(msg)
@@ -167,7 +168,7 @@ def _push_existing_pr(
     cwd: str | None = None,
 ) -> None:
     _require_scope_disposition(ctx=ctx, cwd=cwd, runner=runner)
-    remote = push.select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
+    remote = "origin"
 
     def attempt() -> tuple[object, int, str]:
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)

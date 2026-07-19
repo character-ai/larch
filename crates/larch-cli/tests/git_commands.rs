@@ -34,6 +34,178 @@ fn init_repo(root: &Path) -> PathBuf {
     repo
 }
 
+fn add_bare_origin(root: &Path, repo: &Path) -> PathBuf {
+    let bare = root.join("origin.git");
+    git(root, &["init", "--bare", bare.to_str().expect("bare path")]);
+    git(
+        repo,
+        &["remote", "add", "origin", bare.to_str().expect("bare path")],
+    );
+    bare
+}
+
+#[test]
+fn push_branch_uses_an_explicit_destination_and_sets_upstream() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    let bare = add_bare_origin(temp.path(), &repo);
+    git(&repo, &["checkout", "-b", "feature/push"]);
+
+    larch()
+        .args(["push", "branch"])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("BRANCH=feature/push\n")
+        .stderr("");
+
+    let remote = StdCommand::new("git")
+        .args([
+            "--git-dir",
+            bare.to_str().expect("bare path"),
+            "rev-parse",
+            "refs/heads/feature/push",
+        ])
+        .output()
+        .expect("read remote ref");
+    assert!(remote.status.success());
+}
+
+#[test]
+fn push_branch_refuses_dirty_and_detached_worktrees() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    add_bare_origin(temp.path(), &repo);
+    fs::write(repo.join("dirty.txt"), "dirty\n").expect("dirty write");
+    larch()
+        .args(["push", "branch"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr("uncommitted working-tree changes detected before push\n");
+    fs::remove_file(repo.join("dirty.txt")).expect("remove dirty file");
+    git(&repo, &["checkout", "--detach", "HEAD"]);
+    larch()
+        .args(["push", "branch"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr("git-push.sh: not on a named branch\n");
+}
+
+#[test]
+fn push_commands_preserve_the_original_branch_guard_and_force_failure_envelopes() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    add_bare_origin(temp.path(), &repo);
+    let state = temp.path().join("ship-pr-state.sh");
+    fs::write(&state, "BRANCH_NAME=main\nORIGINAL_BRANCH_FORBIDDEN=true\n").expect("write state");
+
+    larch()
+        .args(["push", "branch"])
+        .env("SHIP_PR_STATE_FILE", &state)
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr("refusing commit or push on forbidden original branch: main\n");
+    larch()
+        .args(["push", "force"])
+        .env("SHIP_PR_STATE_FILE", &state)
+        .current_dir(&repo)
+        .assert()
+        .code(2)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=branch_mismatch\n")
+        .stderr("");
+
+    git(&repo, &["checkout", "--detach", "HEAD"]);
+    larch()
+        .args(["push", "force"])
+        .current_dir(&repo)
+        .assert()
+        .code(2)
+        .stdout("PUSHED=false\nSTATUS=detached_head\n")
+        .stderr("git-force-push.sh: not on a named branch\n");
+}
+
+#[test]
+fn force_push_reports_a_successful_leased_update() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    add_bare_origin(temp.path(), &repo);
+    larch()
+        .args(["push", "branch"])
+        .current_dir(&repo)
+        .assert()
+        .success();
+    let expected_remote_oid = StdCommand::new("git")
+        .args(["rev-parse", "origin/main"])
+        .current_dir(&repo)
+        .output()
+        .expect("read remote oid");
+    assert!(expected_remote_oid.status.success());
+    let expected_remote_oid = String::from_utf8(expected_remote_oid.stdout)
+        .expect("remote oid is utf-8")
+        .trim()
+        .to_owned();
+    fs::write(repo.join("file.txt"), "changed\n").expect("write change");
+    git(&repo, &["add", "file.txt"]);
+    git(&repo, &["commit", "-m", "changed"]);
+    larch()
+        .args([
+            "push",
+            "force",
+            "--expected-remote-oid",
+            expected_remote_oid.as_str(),
+        ])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("BRANCH=main\nPUSHED=true\nSTATUS=pushed\n")
+        .stderr("");
+}
+
+#[test]
+fn push_network_failures_preserve_the_command_contracts() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+
+    larch()
+        .args(["push", "branch", "--unexpected"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr("git-push.sh: unknown argument: --unexpected\n");
+    larch()
+        .args(["push", "force", "--expected-remote-oid", "bad oid"])
+        .current_dir(&repo)
+        .assert()
+        .code(2)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=invalid_expected_remote_oid\n");
+
+    fs::write(repo.join("dirty.txt"), "dirty\n").expect("dirty write");
+    larch()
+        .args(["push", "force"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=dirty_worktree\n")
+        .stderr("");
+    fs::remove_file(repo.join("dirty.txt")).expect("remove dirty file");
+
+    larch()
+        .args(["push", "branch"])
+        .current_dir(&repo)
+        .assert()
+        .code(128)
+        .stdout("BRANCH=main\n");
+    larch()
+        .args(["push", "force"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=diverged_retry_failed\n");
+}
+
 #[test]
 fn current_branch_emits_branch_on_named_head() {
     let temp = TempDir::new().expect("tempdir");

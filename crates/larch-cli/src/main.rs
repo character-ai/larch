@@ -17,6 +17,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
 mod git_commands;
 mod github_repository_resolution;
+mod push_network;
 mod release_plugin_runtime;
 
 use git_commands::GitCommand as BranchGitCommand;
@@ -50,6 +51,9 @@ enum Domain {
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
+    /// Push commands with typed Git network operations.
+    #[command(subcommand)]
+    Push(PushSubcommand),
     /// Upgrade the installed larch plugin and executable.
     #[command(subcommand)]
     UpgradeLarch(UpgradeLarchCommand),
@@ -200,6 +204,20 @@ enum GhCommand {
     WorkflowPath,
 }
 
+#[derive(Subcommand)]
+enum PushSubcommand {
+    /// Push the current branch to its explicit origin branch ref.
+    Branch(TrailingArguments),
+    /// Force-push the current branch with a lease.
+    Force(PushForceArguments),
+}
+
+#[derive(Args)]
+struct PushForceArguments {
+    #[arg(long)]
+    expected_remote_oid: Option<String>,
+}
+
 #[derive(Args)]
 struct RunLogsArguments {
     /// Numeric GitHub Actions workflow run identifier.
@@ -242,6 +260,12 @@ fn run(
         Domain::Gh(GhCommand::RemoteRepo(arguments)) => Ok(run_remote_repo(&arguments)),
         Domain::Gh(GhCommand::ResolveRepo(arguments)) => Ok(run_resolve_repo(&arguments)),
         Domain::Gh(GhCommand::RunLogs(arguments)) => Ok(run_logs(&arguments)),
+        Domain::Push(PushSubcommand::Branch(arguments)) => {
+            Ok(push_network::branch(&arguments.args))
+        }
+        Domain::Push(PushSubcommand::Force(arguments)) => Ok(push_network::force(
+            arguments.expected_remote_oid.as_deref(),
+        )),
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {
                 let version = arguments

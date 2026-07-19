@@ -3,34 +3,19 @@
 
 from __future__ import annotations
 
-import random
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import argparse
 import sys
 from pathlib import Path
-from larch.core import config
 from larch.git import git
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.repo_roots import larch_entrypoint
-from larch.core.run_context import RunContext
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import rust_runtime
 from larch.git import rebase
-
-
-@dataclass(frozen=True)
-class PushResult:
-    remote: str
-    attempts: int
-    status: str
-    branch: str = ""
-    stderr: str = ""
-    exit_code: int = 0
 
 
 def _checkout_ours(path: str) -> CommandResult:
@@ -52,116 +37,6 @@ def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
     if result.stdout.strip():
         msg = "uncommitted working-tree changes detected before push"
         raise ShipError(msg)
-
-
-def select_push_remote(*, _runner: Runner, _ctx: RunContext, cwd: str | None = None) -> str:
-    """Fork-aware push always targets origin for ``cli.py push branch``."""
-    _ = cwd
-    return "origin"
-
-
-def push_branch(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str | None = None,
-    sleeper: Callable[[float], None] | None = None,
-) -> PushResult:
-    """Push current branch with retries and fork-aware remote selection."""
-    if sleeper is None:
-        sleeper = time.sleep
-    assert_clean_worktree(runner, cwd=cwd)
-    branch = git.try_current_branch(runner, cwd=cwd)
-    if not branch:
-        msg = "refusing push on detached HEAD"
-        raise ShipError(msg)
-    if branch != ctx.branch:
-        msg = (
-            f"checked-out branch {branch!r} does not match "
-            f"RunContext.branch {ctx.branch!r}"
-        )
-        raise ShipError(msg)
-    git.assert_original_branch_write_allowed(branch=branch)
-    remote = select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
-    for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
-        result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
-        if result.returncode == 0:
-            return PushResult(remote=remote, attempts=attempt, status="pushed")
-        if attempt < config.PUSH_MAX_ATTEMPTS:
-            backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[
-                min(attempt - 1, len(config.TRANSIENT_RETRY_BACKOFF_SEC) - 1)
-            ]
-            jitter = random.uniform(0.0, 0.5)
-            sleeper(float(backoff) + jitter)
-    return PushResult(remote=remote, attempts=config.PUSH_MAX_ATTEMPTS, status="failed")
-
-
-def push_current_branch(
-    runner: Runner,
-    *,
-    cwd: str | None = None,
-    sleeper: Callable[[float], None] | None = None,
-) -> PushResult:
-    """No-arg push parity: named-branch guard, retries, deduped stderr."""
-    if sleeper is None:
-        sleeper = time.sleep
-    branch = git.try_current_branch(runner, cwd=cwd)
-    if not branch:
-        return PushResult(remote="origin", attempts=0, status="detached_head", exit_code=1)
-    git.assert_original_branch_write_allowed(branch=branch)
-    stderr_blocks: list[str] = []
-    last_exit = 0
-    for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
-        if not git.try_current_branch(runner, cwd=cwd):
-            return PushResult(
-                remote="origin",
-                attempts=attempt,
-                status="detached_head",
-                branch=branch,
-                stderr=f"git-push.sh: not on a named branch before attempt {attempt}\n",
-                exit_code=1,
-            )
-        # Explicit refspec so git ignores push.default and never targets the
-        # tracked upstream when a feature branch tracks origin/main (#7405).
-        # -u repairs the tracking so later pushes also resolve to this branch.
-        result = git.push_set_upstream(runner, "origin", "HEAD", cwd=cwd)
-        if result.returncode == 0:
-            return PushResult(
-                remote="origin",
-                attempts=attempt,
-                status="pushed",
-                branch=branch,
-                exit_code=0,
-            )
-        last_exit = result.returncode
-        stderr_blocks.append(result.stderr)
-        if attempt < config.PUSH_MAX_ATTEMPTS:
-            sleeper(float(max(1, 2 ** (attempt - 1))))
-    rendered: list[str] = []
-    previous: str | None = None
-    repeat = 0
-    for block in stderr_blocks:
-        if previous is not None and block == previous:
-            repeat += 1
-            continue
-        if previous is not None:
-            rendered.append(previous)
-            if repeat:
-                rendered.append(f"(repeated {repeat + 1} times)\n")
-        previous = block
-        repeat = 0
-    if previous is not None:
-        rendered.append(previous)
-        if repeat:
-            rendered.append(f"(repeated {repeat + 1} times)\n")
-    return PushResult(
-        remote="origin",
-        attempts=config.PUSH_MAX_ATTEMPTS,
-        status="failed",
-        branch=branch,
-        stderr="".join(rendered),
-        exit_code=last_exit or 1,
-    )
 
 
 # CLI entrypoints migrated from push_cli.py.
@@ -333,41 +208,6 @@ def _checkpoint_rebase_result(
         file=sys.stderr,
     )
     return rebase.RebasePushResult(exit_code=1, conflict_files=_current_unmerged_conflict_files())
-
-
-def branch_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git-push.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    result = push_current_branch(proc)
-    if result.branch:
-        logging_util.emit_kv(key="BRANCH", value=result.branch)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
-    return result.exit_code
-
-
-def force_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py push force")
-    parser.add_argument("--expected-remote-oid", default=None)
-    args = _parse(parser=parser, argv=argv)
-    if args is None:
-        return 2
-    result = git.force_push_recovery(
-        proc,
-        expected_remote_oid=args.expected_remote_oid,
-    )
-    if result.branch:
-        logging_util.emit_kv(key="BRANCH", value=result.branch)
-    elif result.status == "detached_head":
-        print("git-force-push.sh: not on a named branch", file=sys.stderr)
-    logging_util.emit_kv(key="PUSHED", value=str(result.pushed).lower())
-    logging_util.emit_kv(key="STATUS", value=result.status)
-    if result.pushed:
-        return 0
-    if result.status in {"detached_head", "branch_mismatch", "status_failed"}:
-        return 2
-    return 1
 
 
 def rebase_main(argv: list[str]) -> int:

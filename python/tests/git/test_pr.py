@@ -12,6 +12,7 @@ from larch.git import gh
 import pytest
 
 from larch.core import config
+from larch.core import rust_runtime
 from larch.git import pr as pr_module
 from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
@@ -41,6 +42,11 @@ _HEAD_FEAT = CommandResult(
 def _ctx(**kwargs: object) -> RunContext:
     base = make_run_context(issue="9", tmpdir="", manifest_path="")
     return base.with_(**kwargs)
+
+
+def _pushed_branch(_runner: Runner, *, cwd: str | None = None) -> rust_runtime.PushOutput:
+    _ = cwd
+    return rust_runtime.PushOutput(status="pushed", branch="feat")
 
 
 def test_ensure_pr_invalid_issue_raises() -> None:
@@ -197,18 +203,20 @@ def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(gh, "pr_for_branch", fake_pr_none)
     monkeypatch.setattr(gh, "pr_create", fake_create)
+    monkeypatch.setattr(
+        rust_runtime,
+        "push_branch",
+        _pushed_branch,
+    )
     _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(draft=True), body="body", title="t")
     assert drafts == [True]
 
 
-def test_ensure_pr_recovers_create_conflict() -> None:
+def test_ensure_pr_recovers_create_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner(
         responses=[
             _PORCELAIN_CLEAN,
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            _PORCELAIN_CLEAN,
-            _HEAD_FEAT,
-            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
             CommandResult(
                 ("gh", "pr", "create"),
@@ -225,6 +233,11 @@ def test_ensure_pr_recovers_create_conflict() -> None:
                 0.01,
             ),
         ],
+    )
+    monkeypatch.setattr(
+        rust_runtime,
+        "push_branch",
+        _pushed_branch,
     )
     result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
     assert result.number == 11
@@ -281,14 +294,11 @@ def test_ensure_pr_refuses_dirty_tree() -> None:
         _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
 
 
-def test_ensure_pr_threads_base_to_create() -> None:
+def test_ensure_pr_threads_base_to_create(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner(
         responses=[
             _PORCELAIN_CLEAN,
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            _PORCELAIN_CLEAN,
-            _HEAD_FEAT,
-            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
             CommandResult(
                 ("gh", "pr", "create"), 0, "https://github.com/o/r/pull/10\n", "", 0.01
@@ -301,6 +311,11 @@ def test_ensure_pr_threads_base_to_create() -> None:
                 0.01,
             ),
         ],
+    )
+    monkeypatch.setattr(
+        rust_runtime,
+        "push_branch",
+        _pushed_branch,
     )
     result = pr_module.ensure_pr(
         runner=runner, ctx=_ctx(), body="body", title="t", base="main"

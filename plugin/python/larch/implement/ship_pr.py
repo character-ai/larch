@@ -10,12 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from larch.core import config
+from larch.core import config, rust_runtime
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.git import git
-from larch.git import push
 from larch.report import final_report
 from larch.outcomes import Outcome
 from larch.report import run_log_flush, run_log_manifest
@@ -181,7 +180,7 @@ def reconcile_committed_stalled_summary_if_recovered(
             detail=f"run-log reconciliation flush skipped: {refresh.reason}",
         )
     try:
-        pushed = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
+        pushed = rust_runtime.push_branch(runner, cwd=cwd)
     except ShipError as exc:
         _write_terminal_state(
             ctx=ctx,
@@ -305,8 +304,7 @@ def _publish_post_pr_terminal_snapshot(
             strict_final_report=True,
         )
         if not refresh.skipped:
-            with suppress(ShipError):
-                _ = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
+            _ = rust_runtime.push_branch(runner, cwd=cwd)
 
 
 def run_postmerge_phase(
