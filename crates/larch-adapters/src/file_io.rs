@@ -94,7 +94,25 @@ pub fn read_utf8(path: &ConfinedPath) -> Result<String, FileIoError> {
 ///
 /// Returns [`FileIoError`] for unsafe paths or any failed filesystem operation.
 pub fn atomic_write_utf8(path: &ConfinedPath, text: &str, mode: u32) -> Result<(), FileIoError> {
-    atomic_write_with(path, mode, |file| file.write_all(text.as_bytes()))
+    atomic_write_bytes(path, text.as_bytes(), mode)
+}
+
+/// Atomically publish exact bytes to a path confined with [`PathIntent::Write`].
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for unsafe paths or any failed filesystem operation.
+pub fn atomic_write_bytes(path: &ConfinedPath, data: &[u8], mode: u32) -> Result<(), FileIoError> {
+    atomic_write_with(path, mode, |file| file.write_all(data))?;
+    let written = fs::read(path.path()).map_err(|error| io_error(path.path(), &error))?;
+    if written != data {
+        return Err(FileIoError::new(
+            FileIoErrorKind::Io,
+            path.path(),
+            "post-write verification failed",
+        ));
+    }
+    Ok(())
 }
 
 /// Rename a regular file over a same-directory destination.

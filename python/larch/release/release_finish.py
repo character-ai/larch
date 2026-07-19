@@ -658,8 +658,27 @@ def validate_release_assets(
         )
         license_path = Path(temporary) / "LICENSE"
         _ = license_path.write_text(license_result.stdout, encoding="utf-8")
-        assets.validate_assets(
-            output_dir=asset_dir, license_path=license_path, identity=identity
+        _ = _require_success(
+            runner.run(
+                [
+                    str(larch_entrypoint()),
+                    "release",
+                    "validate-assets",
+                    "--version",
+                    candidate.version,
+                    "--tag",
+                    candidate.tag,
+                    "--source-commit",
+                    candidate.source_commit,
+                    "--asset-dir",
+                    str(asset_dir),
+                    "--license",
+                    str(license_path),
+                ],
+                cwd=str(candidate.cwd),
+                timeout=120,
+            ),
+            "release validate-assets",
         )
         _verify_artifact_attestations(
             runner,

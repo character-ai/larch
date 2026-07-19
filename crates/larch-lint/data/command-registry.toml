@@ -5190,11 +5190,11 @@ verb = "asset-candidate"
 python_module = "larch.release.assets"
 python_function = "candidate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7747
 
 [[commands]]
 domain = "release"
@@ -5226,11 +5226,11 @@ verb = "collect-assets"
 python_module = "larch.release.assets"
 python_function = "collect_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7747
 
 [[commands]]
 domain = "release"
@@ -5262,11 +5262,11 @@ verb = "package-asset"
 python_module = "larch.release.assets"
 python_function = "package_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7747
 
 [[commands]]
 domain = "release"
@@ -5346,11 +5346,11 @@ verb = "validate-assets"
 python_module = "larch.release.assets"
 python_function = "validate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7747
 
 [[commands]]
 domain = "release"
@@ -7665,8 +7665,8 @@ rust = []
 [[callers]]
 path = ".github/workflows/rust-release-assets.yaml"
 kind = "ci"
-python = ["release asset-candidate", "release collect-assets", "release package-asset", "release validate-assets"]
-rust = []
+python = []
+rust = ["release asset-candidate", "release collect-assets", "release package-asset", "release validate-assets"]
 
 [[callers]]
 path = ".pre-commit-config.yaml"
