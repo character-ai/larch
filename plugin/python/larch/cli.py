@@ -103,7 +103,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("release", "finish"): ("larch.release.release_finish", "main", False),
     ("release", "promote"): ("larch.release.promote_release", "promote_main", False),
     ("release", "promote-latest"): ("larch.release.promote_release", "promote_latest_main", False),
-    ("release", "plugin-runtime"): ("larch.release.plugin_runtime", "main", False),
     ("plugin", "read-version"): ("larch.release.version_bump", "read_plugin_version_main", False),
     ("verify", "main"): ("larch.core.verify_main", "main", False),
     ("audit-runs", "preflight"): ("larch.issue.audit_runs", "preflight_main", False),

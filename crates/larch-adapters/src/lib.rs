@@ -26,7 +26,8 @@ pub use filesystem::{
 };
 pub use git::{
     GitCli, GitCliError, GitCliInputError, GitCliInputErrorKind, GitCliPolicy, GitCliResult,
-    GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl, classify_process_error,
+    GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl, GixRepository,
+    classify_process_error,
 };
 pub use process::{NoopProcessObserver, TokioProcessRunner};
 

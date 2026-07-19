@@ -412,6 +412,12 @@ jobs:
         run: make rust-build
       - name: Test Rust workspace
         run: make rust-test
+      - name: Generate and validate the runtime-only plugin projection
+        run: |
+          set -euo pipefail
+          cargo run --quiet --locked --package larch-cli -- release plugin-runtime
+          cargo run --quiet --locked --package larch-cli -- release plugin-runtime --check
+          git diff --exit-code -- plugin
 
   # Whole-workspace coverage stays separate from test sharding so its measured
   # baseline and exclusions remain stable.
