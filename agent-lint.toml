@@ -1365,8 +1365,8 @@ root-max-content-tokens = 35301
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose;
 # issue #7747 documents typed release-asset attestation verification.
 closure-max-lines = 3822
-closure-max-tokens = 145085
-closure-max-content-tokens = 144779
+closure-max-tokens = 145092
+closure-max-content-tokens = 144786
 conditional-max-lines = 591
 conditional-max-tokens = 18798
 conditional-max-content-tokens = 18750
@@ -1421,5 +1421,5 @@ roots = [
 # issue #7780 updates SECURITY.md force-admission trust-boundary prose;
 # issue #7747 documents typed release-asset attestation verification.
 closure-max-lines = 6110
-closure-max-tokens = 170537
-closure-max-content-tokens = 170070
+closure-max-tokens = 170544
+closure-max-content-tokens = 170077
