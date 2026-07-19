@@ -1358,17 +1358,17 @@ root-max-tokens = 35383
 root-max-content-tokens = 35301
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
-# Git-CLI migration (#7675/#7734) reroutes ci-fixer.md show-stage and Step 0 current-branch to the Rust `larch.sh git` verbs;
+# Git-CLI migration (#7675/#7734/#7735) routes runtime Git callers through `scripts/larch.sh`;
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose.
-closure-max-lines = 99999
-closure-max-tokens = 9999999
-closure-max-content-tokens = 9999999
-conditional-max-lines = 99999
-conditional-max-tokens = 9999999
-conditional-max-content-tokens = 9999999
+closure-max-lines = 3820
+closure-max-tokens = 144944
+closure-max-content-tokens = 144639
+conditional-max-lines = 591
+conditional-max-tokens = 18798
+conditional-max-content-tokens = 18750
 
 [[lint.prompt-source-budgets]]
 name = "review"
@@ -1418,6 +1418,6 @@ roots = [
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 updates SECURITY.md force-admission trust-boundary prose.
-closure-max-lines = 99999
-closure-max-tokens = 9999999
-closure-max-content-tokens = 9999999
+closure-max-lines = 6108
+closure-max-tokens = 170396
+closure-max-content-tokens = 169930
