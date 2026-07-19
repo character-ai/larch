@@ -587,6 +587,10 @@ def preflight_main(argv: list[str] | None = None) -> int:
     )
     if not gate.ok:
         return _refuse_governance_gate(site="/implement preflight", verdict=gate)
+    for token, command in zip(
+        gate.owners.report_only, gate.owners.cleanup_commands, strict=True
+    ):
+        print(f"**⚠ /implement preflight: `{token}`. Cleanup: `{command}`.**")
 
     design_difficulty = ""
     try:

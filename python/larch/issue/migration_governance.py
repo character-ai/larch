@@ -14,6 +14,7 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, cast
 
@@ -21,7 +22,7 @@ from larch.core.proc import CommandResult, Runner
 from larch.design import plan_grammar
 from larch.errors import ShipError
 from larch.git import gh, git
-from larch.issue import issue_block, issue_blocks
+from larch.issue import issue_block, issue_blocks, issue_wire, open_rows
 from larch.issue.issue_blocks import parse_named_block
 
 _CODE_FENCE_RE: Final = re.compile(r"^\s*(?:```|~~~)")
@@ -29,12 +30,6 @@ _NATIVE_BLOCKER_LINE_RE: Final = re.compile(
     r"^[ \t]*Native blockers?:[ \t]+(.+?)[ \t]*$"
 )
 _ISSUE_REF_RE: Final = re.compile(r"#([1-9][0-9]*)")
-_OWNERS_START_RE: Final = re.compile(
-    r"^[ \t]*<!--[ \t]+larch:owners:start[ \t]+-->[ \t]*\r?$"
-)
-_OWNERS_END_RE: Final = re.compile(
-    r"^[ \t]*<!--[ \t]+larch:owners:end[ \t]+-->[ \t]*\r?$"
-)
 _RECEIPT_RE: Final = re.compile(
     r"^[ \t]*<!--[ \t]+larch:plan-receipt[ \t]+v1[ \t]+"
     r"plan_sha256=([0-9a-f]{64})[ \t]+"
@@ -42,9 +37,14 @@ _RECEIPT_RE: Final = re.compile(
     r"blockers_sha256=([0-9a-f]{64})[ \t]+"
     r"owners_sha256=([0-9a-f]{64})[ \t]+-->[ \t]*\r?$"
 )
-_OWNER_KEY_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SHA256_HEX_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SHA1_HEX_RE: Final = re.compile(r"^[0-9a-f]{40}$")
+_SHARED_OWNER_RE: Final = re.compile(
+    r"\b(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)\b",
+    re.IGNORECASE,
+)
+_IMPLEMENTING_PREFIX: Final = "[IMPLEMENTING] "
+_LEASE_STALE_HOURS: Final = 12
 
 REASON_MISSING_NATIVE: Final = "missing-native-blocker-edge"
 REASON_UNDOCUMENTED_NATIVE: Final = "undocumented-native-blocker-edge"
@@ -54,6 +54,9 @@ REASON_STALE_PLAN_BODY: Final = "stale-plan-body"
 REASON_STALE_PLAN_BASE_SCOPE: Final = "stale-plan-base-scope"
 REASON_STALE_BLOCKER_SNAPSHOT: Final = "stale-blocker-snapshot"
 REASON_STALE_OWNER_SNAPSHOT: Final = "stale-owner-snapshot"
+REASON_MISSING_OWNER_BLOCK: Final = "missing-owner-block"
+REASON_OWNER_SCAN_UNAVAILABLE: Final = "owner-scan-unavailable"
+REASON_REUSE_SOURCE_UNAVAILABLE: Final = "reuse-source-unavailable"
 
 BLOCKING_PARITY_REASONS: Final = frozenset(
     {
@@ -138,16 +141,38 @@ class FreshnessVerdict:
 
 
 @dataclass(frozen=True)
+class OwnerAdmissionVerdict:
+    """Owner grammar, reuse-source, conflict, and report-only lease results."""
+
+    reasons: tuple[str, ...] = ()
+    report_only: tuple[str, ...] = ()
+    cleanup_commands: tuple[str, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return not self.reasons
+
+
+@dataclass(frozen=True)
+class LeaseAuditFinding:
+    """One report-only stale implementation lease."""
+
+    token: str
+    cleanup_command: str
+
+
+@dataclass(frozen=True)
 class GovernanceGateVerdict:
     """Combined blocker-parity and receipt-freshness gate used at all four sites."""
 
     parity: ParityVerdict
     freshness: FreshnessVerdict
+    owners: OwnerAdmissionVerdict = OwnerAdmissionVerdict()
 
     @property
     def ok(self) -> bool:
         """True when parity is non-blocking and the receipt is fresh."""
-        return (not self.parity.blocking) and self.freshness.ok
+        return (not self.parity.blocking) and self.freshness.ok and self.owners.ok
 
     @property
     def blocking_reasons(self) -> tuple[str, ...]:
@@ -156,6 +181,7 @@ class GovernanceGateVerdict:
             reason for reason in self.parity.reasons if _is_blocking_parity_reason(reason)
         ]
         blocking.extend(self.freshness.reasons)
+        blocking.extend(self.owners.reasons)
         return tuple(blocking)
 
 
@@ -186,33 +212,8 @@ def parse_native_blocker_refs(*, body: str) -> tuple[int, ...]:
 
 
 def parse_owner_rows(*, body: str) -> tuple[str, ...]:
-    """Return exact owner-block rows (sorted unique), ignoring fenced lookalikes."""
-    lines = (body or "").splitlines()
-    fenced = plan_grammar.balanced_fence_line_indices(list(lines))
-    start_indexes = [
-        idx
-        for idx, line in enumerate(lines)
-        if idx not in fenced and _OWNERS_START_RE.match(line) is not None
-    ]
-    end_indexes = [
-        idx
-        for idx, line in enumerate(lines)
-        if idx not in fenced and _OWNERS_END_RE.match(line) is not None
-    ]
-    if not start_indexes and not end_indexes:
-        return ()
-    if len(start_indexes) != 1 or len(end_indexes) != 1:
-        return ()
-    start = start_indexes[0]
-    end = end_indexes[0]
-    if end <= start:
-        return ()
-    rows: set[str] = set()
-    for line in lines[start + 1 : end]:
-        stripped = line.rstrip("\r\n")
-        if stripped.strip():
-            rows.add(stripped)
-    return tuple(sorted(rows))
+    """Return exact owner rows through the canonical wire parser."""
+    return issue_wire.parse_owner_block(body=body).raw_rows
 
 
 def owner_keys_from_rows(*, rows: Sequence[str]) -> tuple[str, ...]:
@@ -226,7 +227,7 @@ def owner_keys_from_rows(*, rows: Sequence[str]) -> tuple[str, ...]:
         if kind not in {"CREATE", "REUSE"}:
             continue
         key = parts[1]
-        if _OWNER_KEY_RE.fullmatch(key) is not None:
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", key) is not None:
             keys.add(key)
     return tuple(sorted(keys))
 
@@ -629,6 +630,229 @@ def validate_receipt_freshness(
     return FreshnessVerdict(reasons=tuple(reasons))
 
 
+def migration_requires_owner_block(*, plan_inner: str) -> bool:
+    """Return whether migration prose declares a new shared runtime owner."""
+    events = list(plan_grammar.iter_heading_events(plan_inner))
+    in_migration = False
+    migration_lines: list[str] = []
+    for event in events:
+        if event.generic_level_two:
+            in_migration = event.text.strip().casefold() == "## breaking changes and migration"
+            continue
+        if in_migration:
+            if any(
+                event.text.strip().startswith(f"{key}:")
+                for key in plan_grammar.TRAILER_KEYS
+            ):
+                break
+            migration_lines.append(event.text)
+    migration_text = "\n".join(migration_lines).strip()
+    if not migration_text or migration_text.casefold().rstrip(".") in {"none", "no migration"}:
+        return False
+    return _SHARED_OWNER_RE.search(plan_inner) is not None
+
+
+def _reuse_source_snapshot(
+    runner: Runner, *, issue: int, repo: str, cwd: str | None
+) -> tuple[str, str] | None:
+    result = gh.issue_view_field_read(
+        runner, str(issue), "body,state", repo=repo, cwd=cwd
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        loaded: object = json.loads(result.stdout or "null")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    payload = cast("dict[str, object]", loaded)
+    body = payload.get("body")
+    state = payload.get("state")
+    if not isinstance(body, str) or not isinstance(state, str):
+        return None
+    return body, state.casefold()
+
+
+def _validate_reuse_sources(
+    runner: Runner,
+    *,
+    block: issue_wire.OwnerBlock,
+    body: str,
+    repo: str,
+    cwd: str | None,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    native_refs = frozenset(parse_native_blocker_refs(body=body))
+    for owner in block.owners:
+        if owner.kind != "REUSE" or owner.source_issue is None:
+            continue
+        source = _reuse_source_snapshot(
+            runner, issue=owner.source_issue, repo=repo, cwd=cwd
+        )
+        if source is None:
+            reasons.append(
+                f"{REASON_REUSE_SOURCE_UNAVAILABLE} owner={owner.owner_key} issue=#{owner.source_issue}"
+            )
+            continue
+        source_body, source_state = source
+        parsed = issue_wire.parse_owner_block(body=source_body)
+        receipt = parse_receipt(body=source_body)
+        creates = {
+            row.owner_key
+            for row in parsed.block.owners
+            if parsed.block is not None and row.kind == "CREATE"
+        } if parsed.block is not None else set()
+        snapshot_ok = (
+            receipt is not None
+            and receipt.owners_sha256 == hash_owner_rows(rows=parsed.raw_rows)
+            and owner.owner_key in creates
+        )
+        if not snapshot_ok:
+            reasons.append(
+                f"reuse-owner-snapshot-invalid owner={owner.owner_key} issue=#{owner.source_issue}"
+            )
+        if source_state == "open" and owner.source_issue not in native_refs:
+            reasons.append(
+                f"reuse-missing-native-blocker owner={owner.owner_key} issue=#{owner.source_issue}"
+            )
+    return tuple(reasons)
+
+
+def _active_owner_conflicts(
+    *, issue: int, block: issue_wire.OwnerBlock, active_rows: Sequence[open_rows.OpenIssueRow]
+) -> tuple[str, ...]:
+    creates = {row.owner_key for row in block.owners if row.kind == "CREATE"}
+    conflicts: set[tuple[str, int]] = set()
+    for active in active_rows:
+        lease = issue_wire.parse_implementation_lease(body=active.body)
+        terminal = active.title.startswith(("[DONE] ", "[STALLED] "))
+        active_or_pending = active.title.startswith(_IMPLEMENTING_PREFIX) or (
+            lease is not None and not terminal
+        )
+        if active.number == issue or not active_or_pending:
+            continue
+        parsed = issue_wire.parse_owner_block(body=active.body)
+        active_keys = (
+            {row.owner_key for row in parsed.block.owners}
+            if parsed.block is not None
+            else set(owner_keys_from_rows(rows=parsed.raw_rows))
+        )
+        for key in creates & active_keys:
+            conflicts.add((key, active.number))
+    return tuple(
+        f"active-owner-conflict owner={key} issue=#{number}"
+        for key, number in sorted(conflicts)
+    )
+
+
+def _open_pr_branches(
+    runner: Runner, *, repo: str, cwd: str | None
+) -> frozenset[str] | None:
+    result = gh.pr_list_open_read(runner, repo=repo, cwd=cwd, limit=10000)
+    if result.returncode != 0:
+        return None
+    try:
+        payload: object = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, list):
+        return None
+    branches: set[str] = set()
+    for item in cast("list[object]", payload):
+        if isinstance(item, dict):
+            branch = cast("dict[str, object]", item).get("headRefName")
+            if isinstance(branch, str) and branch:
+                branches.add(branch)
+    return frozenset(branches)
+
+
+def audit_stale_implementation_leases(
+    runner: Runner,
+    *,
+    repo: str,
+    active_rows: Sequence[open_rows.OpenIssueRow],
+    now: datetime | None = None,
+    cwd: str | None = None,
+) -> tuple[LeaseAuditFinding, ...]:
+    """Report stale leases with no matching open PR. Never mutates GitHub."""
+    open_branches = _open_pr_branches(runner, repo=repo, cwd=cwd)
+    if open_branches is None:
+        return ()
+    current = now or datetime.now(UTC)
+    findings: list[LeaseAuditFinding] = []
+    for row in active_rows:
+        if not row.title.startswith(_IMPLEMENTING_PREFIX):
+            continue
+        lease = issue_wire.parse_implementation_lease(body=row.body)
+        if lease is None or lease.branch in open_branches:
+            continue
+        try:
+            updated = datetime.strptime(
+                lease.updated_at, "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        age_hours = int((current - updated).total_seconds() // 3600)
+        if age_hours < _LEASE_STALE_HOURS:
+            continue
+        findings.append(
+            LeaseAuditFinding(
+                token=f"stale-implementation-lease issue=#{row.number} age_hours={age_hours}",
+                cleanup_command=(
+                    "python3 python/cli.py tracking-issue rename "
+                    f"--issue {row.number} --state stalled --repo {repo} --run-id {lease.run_id}"
+                ),
+            )
+        )
+    return tuple(findings)
+
+
+def evaluate_owner_admission(
+    runner: Runner,
+    *,
+    issue: str,
+    repo: str,
+    body: str,
+    cwd: str | None = None,
+) -> OwnerAdmissionVerdict:
+    """Validate owner bytes, REUSE sources, and active CREATE conflicts."""
+    plan_inner, malformed = parse_named_block(body=body, marker="plan")
+    if malformed or plan_inner is None:
+        return OwnerAdmissionVerdict()
+    parsed = issue_wire.parse_owner_block(body=body)
+    reasons: list[str] = []
+    if parsed.defects:
+        reasons.extend(f"owner-block-invalid defect={defect}" for defect in parsed.defects)
+    if migration_requires_owner_block(plan_inner=plan_inner) and parsed.block is None:
+        reasons.append(REASON_MISSING_OWNER_BLOCK)
+    if parsed.block is None:
+        return OwnerAdmissionVerdict(reasons=tuple(reasons))
+    reasons.extend(
+        _validate_reuse_sources(
+            runner, block=parsed.block, body=body, repo=repo, cwd=cwd
+        )
+    )
+    try:
+        active_rows = open_rows.open_issue_rows_read(runner, repo=repo)
+    except ShipError:
+        reasons.append(REASON_OWNER_SCAN_UNAVAILABLE)
+        return OwnerAdmissionVerdict(reasons=tuple(reasons))
+    reasons.extend(
+        _active_owner_conflicts(
+            issue=int(issue), block=parsed.block, active_rows=active_rows
+        )
+    )
+    findings = audit_stale_implementation_leases(
+        runner, repo=repo, active_rows=active_rows, cwd=cwd
+    )
+    return OwnerAdmissionVerdict(
+        reasons=tuple(dict.fromkeys(reasons)),
+        report_only=tuple(finding.token for finding in findings),
+        cleanup_commands=tuple(finding.cleanup_command for finding in findings),
+    )
+
+
 def evaluate_governance_gate(  # noqa: PLR0913 - shared gate identity is deliberately explicit across four call sites
     runner: Runner,
     *,
@@ -655,7 +879,10 @@ def evaluate_governance_gate(  # noqa: PLR0913 - shared gate identity is deliber
         blocker_rows=rows,
         head_sha=head_sha,
     )
-    return GovernanceGateVerdict(parity=parity, freshness=freshness)
+    owners = evaluate_owner_admission(
+        runner, issue=issue, repo=repo, body=body, cwd=cwd
+    )
+    return GovernanceGateVerdict(parity=parity, freshness=freshness, owners=owners)
 
 
 def build_receipt_for_body(  # noqa: PLR0913 - receipt identity inputs are deliberately explicit
@@ -782,6 +1009,9 @@ __all__ = [
     "REASON_BLOCKER_READ_UNAVAILABLE",
     "REASON_CLOSED_RETAINED",
     "REASON_MISSING_NATIVE",
+    "REASON_MISSING_OWNER_BLOCK",
+    "REASON_OWNER_SCAN_UNAVAILABLE",
+    "REASON_REUSE_SOURCE_UNAVAILABLE",
     "REASON_STALE_BLOCKER_SNAPSHOT",
     "REASON_STALE_OWNER_SNAPSHOT",
     "REASON_STALE_PLAN_BASE_SCOPE",
@@ -792,18 +1022,23 @@ __all__ = [
     "CommandResult",
     "FreshnessVerdict",
     "GovernanceGateVerdict",
+    "LeaseAuditFinding",
+    "OwnerAdmissionVerdict",
     "ParityVerdict",
     "PlanReceipt",
+    "audit_stale_implementation_leases",
     "build_receipt_for_body",
     "compare_blocker_parity",
     "compute_base_scope_fingerprint",
     "declared_scope_paths",
     "evaluate_governance_gate",
+    "evaluate_owner_admission",
     "format_gate_refusal",
     "hash_blocker_rows",
     "hash_owner_rows",
     "hash_plan_block",
     "load_blocker_snapshot",
+    "migration_requires_owner_block",
     "owner_keys_from_rows",
     "parse_native_blocker_refs",
     "parse_owner_rows",

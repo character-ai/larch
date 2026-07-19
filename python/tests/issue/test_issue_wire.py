@@ -21,6 +21,65 @@ from larch.errors import ShipError
 from larch.core.proc import CommandResult
 
 
+def test_owner_block_roundtrip_and_fenced_lookalike() -> None:
+    block = issue_wire.OwnerBlock(
+        domain="issue",
+        verb="migration-audit",
+        owners=(
+            issue_wire.OwnerRow("CREATE", "migration-owner", "python/larch/issue/issue_wire.py::OwnerBlock"),
+            issue_wire.OwnerRow("REUSE", "typed-mutation", "python/larch/issue/issue_mutation.py", 7781),
+        ),
+    )
+    rendered = issue_wire.render_owner_block(block=block)
+    body = f"```text\n{rendered}```\n{rendered}"
+    parsed = issue_wire.parse_owner_block(body=body)
+    assert parsed.block == block
+    assert parsed.defects == ()
+    assert parsed.block is not None
+    assert issue_wire.render_owner_block(block=parsed.block) == rendered
+
+
+@pytest.mark.parametrize(
+    ("rows", "defect"),
+    [
+        (("COMMAND\tissue\tmigration-audit", "CREATE\tbad_key\tx.py"), "invalid-owner-key"),
+        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\t../x.py"), "unsafe-owner-target"),
+        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py::bad symbol"), "unsafe-owner-target"),
+        (("CREATE\tkey\tx.py", "COMMAND\tissue\tmigration-audit"), "unsorted-owner-rows"),
+        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py", "CREATE\tkey\tx.py"), "duplicate-owner-row"),
+        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py", "REUSE\tkey\t#7\ty.py"), "duplicate-owner-key"),
+    ],
+)
+def test_owner_block_rejects_adversarial_rows(rows: tuple[str, ...], defect: str) -> None:
+    body = "\n".join(("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->"))
+    assert defect in issue_wire.parse_owner_block(body=body).defects
+
+
+def test_implementation_lease_roundtrip_and_malformed_refusal() -> None:
+    lease = issue_wire.ImplementationLeaseMarker(
+        run_id="0199f1e2-2238-403d-89f3-aaaaaaaaaaaa",
+        branch="feature/owner-7783",
+        base="a" * 40,
+        plan="b" * 64,
+        updated_at="2026-07-19T20:30:00Z",
+    )
+    rendered = issue_wire.render_implementation_lease(lease=lease)
+    body = issue_wire.upsert_implementation_lease(body="body\n", lease=lease)
+    assert body == f"body\n{rendered}\n"
+    assert issue_wire.parse_implementation_lease(body=body) == lease
+    assert issue_wire.strip_implementation_lease(body=body) == "body\n"
+    with pytest.raises(ShipError, match="invalid-implementation-lease"):
+        _ = issue_wire.render_implementation_lease(
+            lease=issue_wire.ImplementationLeaseMarker(
+                **{**lease.__dict__, "branch": "bad branch"}
+            )
+        )
+    with pytest.raises(ShipError, match="malformed-implementation-lease"):
+        _ = issue_wire.upsert_implementation_lease(
+            body="<!-- larch:implementation-lease v1 broken -->\n", lease=lease
+        )
+
+
 def test_emit_untrusted_content_block_matches_file_block_redaction(tmp_path: Path) -> None:
     raw = "<tag> sk-" + "A" * 24 + " & text"
     file_path = tmp_path / "raw.txt"

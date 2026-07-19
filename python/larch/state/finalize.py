@@ -520,14 +520,24 @@ def _rename_issue(
     if state == "stalled" and issue_state.upper() != "OPEN":
         return "skipped"
     try:
-        _ = tracking_issue.rename(
-            runner,
-            issue,
-            state,
-            repo=ctx.repo,
-            current_title=current,
-            cwd=cwd,
-        )
+        if ctx.run_id and current.startswith("[IMPLEMENTING] "):
+            _ = tracking_issue.rename_terminal_with_lease(
+                runner,
+                issue,
+                state,
+                repo=ctx.repo,
+                run_id=ctx.run_id,
+                cwd=cwd,
+            )
+        else:
+            _ = tracking_issue.rename(
+                runner,
+                issue,
+                state,
+                repo=ctx.repo,
+                current_title=current,
+                cwd=cwd,
+            )
     except ShipError:
         return "failed"
     return "ok"

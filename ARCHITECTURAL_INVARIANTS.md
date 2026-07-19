@@ -181,3 +181,7 @@ PR.
 ### I-Plan-1: Force can waive review, never the execution plan
 
 Every `/implement` run consumes exactly one well-formed issue-body `larch:plan` block with concrete file or glob scope, ordered implementation steps, closed ownership decisions, verifiable acceptance, and explicit breaking-change or migration treatment. `--force` may waive semantic plan review and approval metadata. It must not materialize raw issue prose as a plan, infer an execution sequence from requirements, or bypass the mechanical plan contract. Evidence of violation: #7735 entered `/implement --force` with requirements-only prose and stalled on a false missing-runtime-seam premise. Mechanical backing: `issue-plan-contract`, `plan-scope-paths`, and force admission validation.
+
+### I-Owner-1: A shared runtime owner is created once, then reused
+
+When two issues need the same new runtime owner, exactly one issue creates it. Every other issue names that owner, is natively blocked by its creating issue while the owner is in flight, and consumes or extends it only after freshness validation. Parallel leaves must not create competing launchers, adapters, registries, resolvers, or state machines for the same behavior. Evidence of violation: #7735 and active #7734 could both have created the Python-to-Rust runtime invocation seam. Mechanical backing: the structured owner map, native blocker parity, dependency snapshots, and active-owner lease admission.

@@ -706,24 +706,6 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         return False
     _write_base_session_env(st)
     try:
-        current_title = gh.issue_view_template_read(
-            proc, st.issue_number_resolved, "title", "{{.title}}", repo=st.repo or None
-        )
-        if current_title.returncode != 0:
-            raise OSError(current_title.stderr)
-        repo = st.repo or gh.resolve_repo(proc)
-        if not repo:
-            raise OSError("repository unavailable for tracking issue rename")
-        _ = tracking_issue.rename_with_details(
-            proc, st.issue_number_resolved, "implementing", repo=repo,
-            current_title=current_title.stdout.strip(),
-        )
-    except Exception as exc:
-        with contextlib.suppress(OSError):
-            (Path(st.implement_tmpdir) / "tracking-rename-warning.stderr.log").write_text(
-                f"tracking rename failed\n{exc}", encoding="utf-8"
-            )
-    try:
         _ = run_logs.log_init(
             log_root=Path(st.implement_tmpdir) / "larch-logs", skill="implement",
             run_id=st.run_id, issue=st.issue_number_resolved,
@@ -749,6 +731,56 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         return False
     if not post.posted:
         st.deferred = "true"
+    return True
+
+
+def _activate_tracking_lease(st: BootstrapState) -> bool:
+    """Create the verified lease, then set the active title prefix."""
+    lease_initialized = False
+    repo = ""
+    try:
+        repo = st.repo or gh.resolve_repo(proc) or ""
+        if not repo:
+            raise OSError("repository unavailable for implementation lease")
+        _ = tracking_issue.initialize_implementation_lease(
+            proc,
+            issue=st.issue_number_resolved,
+            repo=repo,
+            run_id=st.run_id,
+            branch=st.branch_name,
+        )
+        lease_initialized = True
+        current_title = gh.issue_view_template_read(
+            proc, st.issue_number_resolved, "title", "{{.title}}", repo=repo
+        )
+        if current_title.returncode != 0:
+            raise OSError(current_title.stderr)
+        _ = tracking_issue.rename_with_details(
+            proc,
+            st.issue_number_resolved,
+            "implementing",
+            repo=repo,
+            current_title=current_title.stdout.strip(),
+        )
+    except Exception as exc:
+        terminal_detail = ""
+        if lease_initialized and repo:
+            try:
+                _ = tracking_issue.rename_terminal_with_lease(
+                    proc,
+                    st.issue_number_resolved,
+                    "stalled",
+                    repo=repo,
+                    run_id=st.run_id,
+                )
+            except Exception as terminal_exc:
+                terminal_detail = f"; terminal lease update failed: {terminal_exc}"
+        _tracking_bail(
+            st=st,
+            detail=f"implementation lease activation failed{terminal_detail}",
+            result=exc,
+        )
+        return False
     return True
 
 
@@ -890,6 +922,8 @@ def _phase_plan(st: BootstrapState) -> None:
     if not st.branch_name:
         st.stall_tracking = "true"
         st.implement_bail_reason = "branch-create-failed"
+        return
+    if st.opts.forked_target != "true" and not _activate_tracking_lease(st):
         return
     issue = st.issue_number_resolved or st.opts.issue_number
     title = feature_file.read_text(encoding="utf-8", errors="replace").splitlines()[0] if feature_file.is_file() else "planned change"

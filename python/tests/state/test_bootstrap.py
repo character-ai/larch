@@ -1236,7 +1236,7 @@ def test_invoke_error_redaction_failure_uses_fixed_diagnostic(tmp_path, monkeypa
     assert str(impl) not in err
 
 
-def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> None:
+def test_tracking_side_effects_defer_rename_until_lease_activation(tmp_path, monkeypatch) -> None:
     calls: list[str] = []
 
     def fail_rename(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
@@ -1271,8 +1271,73 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
     assert bootstrap._perform_tracking_side_effects(st, write_sentinel=True)  # pyright: ignore[reportPrivateUsage]
     assert st.stall_tracking == "false"
     assert st.implement_bail_reason == ""
-    assert calls == ["rename", "init", "post"]
-    assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")
+    assert calls == ["init", "post"]
+    assert not (tmp_path / "tracking-rename-warning.stderr.log").exists()
+
+
+def test_tracking_lease_verifies_before_implementing_title(tmp_path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    def initialize(*_args: object, **_kwargs: object) -> object:
+        calls.append("lease")
+        return object()
+
+    def title(*_args: object, **_kwargs: object) -> CommandResult:
+        calls.append("title-read")
+        return CommandResult(("gh",), 0, "[DESIGNED] Title", "", 0.01)
+
+    def rename(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
+        calls.append("rename")
+        return bootstrap.tracking_issue.RenameOutput(
+            renamed=True, new_title="[IMPLEMENTING] Title"
+        )
+
+    monkeypatch.setattr(bootstrap.tracking_issue, "initialize_implementation_lease", initialize)
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", title)
+    monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", rename)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7"),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        issue_number_resolved="7",
+        run_id="run-7",
+        branch_name="feature/owner",
+    )
+    assert bootstrap._activate_tracking_lease(st)  # pyright: ignore[reportPrivateUsage]
+    assert calls == ["lease", "title-read", "rename"]
+
+
+def test_tracking_activation_failure_terminalizes_created_lease(tmp_path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    def initialize(*_args: object, **_kwargs: object) -> object:
+        calls.append("lease")
+        return object()
+
+    def title(*_args: object, **_kwargs: object) -> CommandResult:
+        calls.append("title-read")
+        return CommandResult(("gh",), 1, "", "unavailable", 0.01)
+
+    def terminal(*_args: object, **_kwargs: object) -> bootstrap.tracking_issue.RenameOutput:
+        calls.append("terminal")
+        return bootstrap.tracking_issue.RenameOutput(
+            renamed=True, new_title="[STALLED] Title"
+        )
+
+    monkeypatch.setattr(bootstrap.tracking_issue, "initialize_implementation_lease", initialize)
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", title)
+    monkeypatch.setattr(bootstrap.tracking_issue, "rename_terminal_with_lease", terminal)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7"),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        issue_number_resolved="7",
+        run_id="run-7",
+        branch_name="feature/owner",
+    )
+    assert not bootstrap._activate_tracking_lease(st)  # pyright: ignore[reportPrivateUsage]
+    assert calls == ["lease", "title-read", "terminal"]
+    assert st.stall_tracking == "true"
 
 
 def _run_phase_infra_for_progress(
