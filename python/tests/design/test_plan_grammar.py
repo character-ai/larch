@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from larch.design import plan_grammar
+from larch.issue import issue_wire
 
 
 @pytest.mark.parametrize("level", ["##", "###"])
@@ -132,23 +133,21 @@ def _valid_plan(*, path: str = "python/larch/design/plan_grammar.py") -> str:
 def test_valid_plan_contract_has_no_defects(repo_root: Path) -> None:
     result = plan_grammar.validate_plan_contract(plan_text=_valid_plan(), repo_root=repo_root)
     assert result.ok
-    assert result.defects == ()
+    assert not result.defects
 
 
 def test_missing_plan_block_and_multiple_blocks(repo_root: Path) -> None:
-    from larch.issue import issue_wire
-
-    assert plan_grammar.validate_issue_plan(issue_body="requirements only", repo_root=repo_root).defects == (
+    assert issue_wire.validate_issue_plan(issue_body="requirements only", repo_root=repo_root).defects == (
         "missing-plan-block",
     )
     inner = _valid_plan()
     one = issue_wire.compose_named_block(marker="plan", inner=inner)
     two = one + "\n" + issue_wire.compose_named_block(marker="plan", inner=inner)
-    assert plan_grammar.validate_issue_plan(issue_body=two, repo_root=repo_root).defects == (
+    assert issue_wire.validate_issue_plan(issue_body=two, repo_root=repo_root).defects == (
         "multiple-plan-blocks",
     )
     malformed = "<!-- larch:plan:start -->\nonly start\n"
-    assert plan_grammar.validate_issue_plan(issue_body=malformed, repo_root=repo_root).defects == (
+    assert issue_wire.validate_issue_plan(issue_body=malformed, repo_root=repo_root).defects == (
         "missing-plan-block",
     )
 

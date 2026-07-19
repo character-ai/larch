@@ -75,11 +75,11 @@ def _executable_plan(*, body: str = "body", diff_lines: int = 1, difficulty: str
 @pytest.fixture(autouse=True)
 def _stub_plan_contract_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     """Publish unit tests chdir outside a git repo; keep path checks in dedicated coverage."""
-    monkeypatch.setattr(
-        plan_grammar,
-        "validate_plan_contract",
-        lambda **_kwargs: plan_grammar.PlanValidationResult(defects=()),
-    )
+
+    def _ok(**_kwargs: object) -> plan_grammar.PlanValidationResult:
+        return plan_grammar.PlanValidationResult(defects=())
+
+    monkeypatch.setattr(plan_grammar, "validate_plan_contract", _ok)
 
 
 @pytest.fixture(autouse=True)

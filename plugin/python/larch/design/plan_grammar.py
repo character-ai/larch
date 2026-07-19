@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import fnmatch
 import re
-import subprocess
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -409,24 +408,11 @@ def _heading_path_token(raw: str) -> str:
     return re.sub(r"\(.*$", "", parts[0]).strip()
 
 
-def issue_plan_marker_defect(issue_body: str) -> str | None:
-    """Return the M1 marker defect for an issue body, or None when exactly one block exists."""
-    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok plan contract uses issue_wire marker owner without a module-level design↔issue cycle
-
-    _inner, malformed = issue_wire.parse_named_block(body=issue_body, marker="plan")
-    if malformed in {"multiple-start", "multiple-end"}:
-        return "multiple-plan-blocks"
-    if malformed or _inner is None:
-        return "missing-plan-block"
-    return None
+def _section_has_numbered_step(body: Sequence[str]) -> bool:
+    return any(_NUMBERED_STEP_RE.match(line) for line in body)
 
 
-def _m1_facet_defects(plan_text: str) -> set[str]:
-    defects: set[str] = set()
-    firm = list(iter_firm_headings(plan_text))
-    if not firm:
-        defects.add("missing-firm-scope")
-
+def _m1_section_flags(plan_text: str) -> tuple[bool, bool, bool, bool]:
     closed_ok = False
     ordered_ok = False
     acceptance_ok = False
@@ -434,13 +420,21 @@ def _m1_facet_defects(plan_text: str) -> set[str]:
     for title, body in _iter_section_bodies(plan_text):
         if _CLOSED_DECISIONS_RE.fullmatch(title) is not None and _body_nonempty(body):
             closed_ok = True
-        if _ORDERED_IMPLEMENTATION_RE.fullmatch(title) is not None:
-            if any(_NUMBERED_STEP_RE.match(line) for line in body):
-                ordered_ok = True
+        if _ORDERED_IMPLEMENTATION_RE.fullmatch(title) is not None and _section_has_numbered_step(body):
+            ordered_ok = True
         if _ACCEPTANCE_RE.fullmatch(title) is not None and _body_nonempty(body):
             acceptance_ok = True
         if _BREAKING_MIGRATION_RE.fullmatch(title) is not None and _body_nonempty(body):
             breaking_ok = True
+    return closed_ok, ordered_ok, acceptance_ok, breaking_ok
+
+
+def _m1_facet_defects(plan_text: str) -> set[str]:
+    defects: set[str] = set()
+    if not list(iter_firm_headings(plan_text)):
+        defects.add("missing-firm-scope")
+
+    closed_ok, ordered_ok, acceptance_ok, breaking_ok = _m1_section_flags(plan_text)
     if not closed_ok:
         defects.add("missing-closed-decisions")
     if not ordered_ok:
@@ -475,23 +469,14 @@ def _path_has_unsafe_shape(path: str) -> bool:
 
 
 def _load_tracked_paths(repo_root: Path) -> frozenset[str]:
-    completed = subprocess.run(
-        ["git", "-C", str(repo_root), "ls-files", "-z"],
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
+    from larch.core import proc  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
+    from larch.git import git  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
+    from larch.errors import ShipError  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
+
+    try:
+        return frozenset(git.ls_files(proc, cwd=str(repo_root)))
+    except (OSError, ShipError):
         return frozenset()
-    raw: bytes | str = completed.stdout or b""
-    if isinstance(raw, str):
-        raw_bytes = raw.encode("utf-8", errors="surrogateescape")
-    else:
-        raw_bytes = raw
-    return frozenset(
-        chunk.decode("utf-8", errors="surrogateescape")
-        for chunk in raw_bytes.split(b"\0")
-        if chunk
-    )
 
 
 def _repo_resolved(repo_root: Path) -> Path:
@@ -509,22 +494,16 @@ def _path_inside_repo(*, repo_root: Path, path: Path) -> bool:
 
 def _existing_parents_safe(*, repo_root: Path, rel_path: str) -> bool:
     """Reject symlink parents that escape the repository without following them as scope."""
-    root = repo_root
-    if not root.is_dir():
+    if not repo_root.is_dir():
         return False
-    current = root
-    parts = Path(rel_path).parts
-    for part in parts[:-1]:
+    current = repo_root
+    for part in Path(rel_path).parts[:-1]:
         current = current / part
-        if current.is_symlink():
-            if not _path_inside_repo(repo_root=repo_root, path=current):
-                return False
-            # Symlink parents are never acceptable for NEW confinement.
+        # Symlink parents are never acceptable for NEW confinement.
+        if current.is_symlink() or (current.exists() and not current.is_dir()):
             return False
         if not current.exists():
             return True
-        if not current.is_dir():
-            return False
         if not _path_inside_repo(repo_root=repo_root, path=current):
             return False
     return True
@@ -570,16 +549,3 @@ def validate_plan_contract(*, plan_text: str, repo_root: Path) -> PlanValidation
     found.update(_m1_facet_defects(plan_text))
     found.update(_m2_path_defects(plan_text=plan_text, repo_root=repo_root))
     return PlanValidationResult(defects=_ordered_defects(found))
-
-
-def validate_issue_plan(*, issue_body: str, repo_root: Path) -> PlanValidationResult:
-    """Validate issue-body markers plus the extracted executable plan contract."""
-    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok plan contract uses issue_wire marker owner without a module-level design↔issue cycle
-
-    marker_defect = issue_plan_marker_defect(issue_body)
-    if marker_defect is not None:
-        return PlanValidationResult(defects=(marker_defect,))
-    inner, _malformed = issue_wire.parse_named_block(body=issue_body, marker="plan")
-    if inner is None:
-        return PlanValidationResult(defects=("missing-plan-block",))
-    return validate_plan_contract(plan_text=inner, repo_root=repo_root)

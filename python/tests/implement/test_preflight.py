@@ -19,19 +19,19 @@ from larch.issue import issue_wire
 
 
 @pytest.fixture(autouse=True)
-def _stub_tracked_paths_for_plan_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+def _stub_tracked_paths_for_plan_contract(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     """Preflight tests stub subprocess.run; keep M2 off the patched git seam."""
-    monkeypatch.setattr(
-        plan_grammar,
-        "_load_tracked_paths",
-        lambda _repo_root: frozenset(
+
+    def _tracked(_repo_root: Path) -> frozenset[str]:
+        return frozenset(
             {
                 "python/larch/implement/preflight.py",
                 "python/larch/design/plan_grammar.py",
                 "README.md",
             }
-        ),
-    )
+        )
+
+    monkeypatch.setattr(plan_grammar, "_load_tracked_paths", _tracked)
 
 
 def _write(handle: object, text: str) -> None:

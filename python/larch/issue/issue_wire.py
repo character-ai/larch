@@ -135,6 +135,27 @@ def compose_named_block(*, marker: str, inner: str) -> str:
     return block + f"<!-- larch:{marker}:end -->\n"
 
 
+def issue_plan_marker_defect(issue_body: str) -> str | None:
+    """Return the M1 marker defect for an issue body, or None when exactly one block exists."""
+    _inner, malformed = parse_named_block(body=issue_body, marker="plan")
+    if malformed in {"multiple-start", "multiple-end"}:
+        return "multiple-plan-blocks"
+    if malformed or _inner is None:
+        return "missing-plan-block"
+    return None
+
+
+def validate_issue_plan(*, issue_body: str, repo_root: Path) -> plan_grammar.PlanValidationResult:
+    """Validate issue-body markers plus the extracted executable plan contract."""
+    marker_defect = issue_plan_marker_defect(issue_body)
+    if marker_defect is not None:
+        return plan_grammar.PlanValidationResult(defects=(marker_defect,))
+    inner, _malformed = parse_named_block(body=issue_body, marker="plan")
+    if inner is None:
+        return plan_grammar.PlanValidationResult(defects=("missing-plan-block",))
+    return plan_grammar.validate_plan_contract(plan_text=inner, repo_root=repo_root)
+
+
 def neutralize_named_block_markers(*, text: str, marker: str) -> str:
     """Render named-block marker examples inert before embedding them in prose."""
     if marker not in _ALLOWED_MARKERS:

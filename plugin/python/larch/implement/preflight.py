@@ -556,7 +556,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         return 2
 
     repo_root = consumer_repo_root() or Path.cwd()
-    contract = plan_grammar.validate_issue_plan(issue_body=issue_body, repo_root=repo_root)
+    contract = issue_wire.validate_issue_plan(issue_body=issue_body, repo_root=repo_root)
     if not contract.ok:
         return _refuse_plan_contract(issue=issue, defects=contract.defects, force=args.force)
 

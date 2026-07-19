@@ -130,7 +130,7 @@ Rules:
 - The `## Plan` and `## Acceptance` sub-sections, plus closed-decisions,
   ordered-implementation, and breaking-changes/migration headings, are part of
   the executable-plan contract enforced by `plan_grammar.validate_plan_contract`
-  / `validate_issue_plan` before `/design` publish and `/implement` Preflight.
+  / `issue_wire.validate_issue_plan` before `/design` publish and `/implement` Preflight.
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
   `start` without `end`, or `end` without `start`.
 
