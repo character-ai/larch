@@ -11,6 +11,7 @@ Usage: larch <COMMAND>
 Commands:
   example  Non-production commands that exercise dispatcher wiring
   release  Release-maintenance commands
+  gh       GitHub workflow helper commands
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -101,6 +102,30 @@ fn example_echo_dispatches_through_the_core_library() {
         .assert()
         .success()
         .stdout("library wiring\n")
+        .stderr("");
+}
+
+#[test]
+fn workflow_path_preserves_its_legacy_stdout_contract() {
+    larch()
+        .args(["gh", "workflow-path"])
+        .assert()
+        .success()
+        .stdout("unknown\n")
+        .stderr("");
+}
+
+#[test]
+fn run_logs_reports_missing_rust_credential_without_fallback() {
+    larch()
+        .env_remove("LARCH_GH_TOKEN")
+        .args(["gh", "run-logs", "--run-id", "7", "--repo", "owner/repo"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "--- CI log (run 7, repo owner/repo): failed-job log shown.",
+        ))
+        .stdout(predicate::str::contains("LARCH_GH_TOKEN is required"))
         .stderr("");
 }
 

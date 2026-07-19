@@ -20,7 +20,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::{Url, form_urlencoded};
 
 const PAGE_SIZE: usize = 100;
-const LOG_BYTES: usize = 64 * 1024 * 1024;
 const LOG_TIMEOUT: Duration = Duration::from_secs(60);
 const LOG_REDIRECTS: usize = 3;
 const READ_ATTEMPTS: u32 = 3;
@@ -509,7 +508,7 @@ impl OctocrabGitHubService {
                     &["application/zip", "application/octet-stream"],
                 )?;
                 let expected_length = content_length(response.headers())?;
-                if expected_length.is_some_and(|length| length > LOG_BYTES) {
+                if expected_length.is_some_and(|length| length > WorkflowLogArchive::MAX_BYTES) {
                     return Err(self.error(
                         GitHubActionsErrorKind::LogLimit,
                         "GitHub workflow log archive exceeds its byte limit",
@@ -517,7 +516,7 @@ impl OctocrabGitHubService {
                 }
                 let bytes = collect_bounded(
                     response.into_body(),
-                    LOG_BYTES,
+                    WorkflowLogArchive::MAX_BYTES,
                     GitHubActionsErrorKind::LogLimit,
                 )
                 .await?;
