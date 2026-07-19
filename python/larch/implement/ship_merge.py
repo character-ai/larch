@@ -8,12 +8,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from larch.core import config
+from larch.core import config, rust_runtime
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError
 from larch.git import gh
-from larch.git import push
 from larch.git import rebase
 from larch.outcomes import Outcome
 from larch.report import run_log_flush, run_log_manifest
@@ -311,7 +310,7 @@ def _post_ensure_flush_and_push(
     """
     _breadcrumb(step="post-ensure-pr", detail="Push")
     try:
-        post_ensure_push = push.push_branch(runner=runner, ctx=working, cwd=repo_root)
+        post_ensure_push = rust_runtime.push_branch(runner, cwd=repo_root)
     except ShipError as exc:
         _write_terminal_state(
             ctx=working,

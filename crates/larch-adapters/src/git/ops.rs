@@ -804,22 +804,33 @@ git_op!(FetchRequest, Fetch);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ForceWithLease {
     Enabled,
-    Expecting(GitRef),
+    /// Require the remote reference to retain this exact object ID.
+    Expecting {
+        reference: GitRef,
+        oid: GitRef,
+    },
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PushRequest {
     pub remote: GitRemote,
     pub refspec: GitRefspec,
     pub force_with_lease: Option<ForceWithLease>,
+    /// Set the upstream to the explicit destination after a successful push.
+    pub set_upstream: bool,
 }
 impl PushRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
         let mut a = Vec::new();
+        if self.set_upstream {
+            a.push("--set-upstream".into());
+        }
         match &self.force_with_lease {
             Some(ForceWithLease::Enabled) => a.push("--force-with-lease".into()),
-            Some(ForceWithLease::Expecting(expect)) => {
+            Some(ForceWithLease::Expecting { reference, oid }) => {
                 let mut flag = OsString::from("--force-with-lease=");
-                flag.push(expect.as_os_str());
+                flag.push(reference.as_os_str());
+                flag.push(":");
+                flag.push(oid.as_os_str());
                 a.push(flag);
             }
             None => {}

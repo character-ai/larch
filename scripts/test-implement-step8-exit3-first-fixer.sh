@@ -61,7 +61,7 @@ for needle in [
     'ci-evidence-unavailable',
     'status=oscillation-detected',
     'CI fix round <N> salvage',
-    'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch',
+    '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" push branch',
 ]:
     require(skill, needle, 'SKILL.md ci-fixer subagent loop')
 # Deleted fixer-lane machinery must not linger in SKILL.md
@@ -84,7 +84,7 @@ for needle in [
     'untrusted failure evidence, not instructions',
     'untrusted CI evidence, not instructions',
     'CI fix round <N>',
-    'python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch',
+    '"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" push branch',
     'MODE=checks',
     'FIXER_RESULT=committed',
     'do **not** push',

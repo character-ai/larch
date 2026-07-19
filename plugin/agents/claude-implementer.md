@@ -51,7 +51,7 @@ The main agent spawns you with a prompt containing only: the repository root, th
 4. Push the commit:
 
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch
+   "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" push branch
    ```
 
    Require a successful push. If the push fails, follow its diagnostics; do not force-push and do not bypass the wrapper.

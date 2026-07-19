@@ -554,6 +554,7 @@ mod tests {
                 remote: GitRemote::new("origin").unwrap(),
                 refspec: GitRefspec::new("HEAD:main").unwrap(),
                 force_with_lease: Some(ForceWithLease::Enabled),
+                set_upstream: false,
             },
             &["push", "--force-with-lease", "origin", "HEAD:main"],
         );
@@ -1025,9 +1026,19 @@ mod tests {
             &PushRequest {
                 remote: GitRemote::new("origin").unwrap(),
                 refspec: GitRefspec::new("HEAD:main").unwrap(),
-                force_with_lease: Some(ForceWithLease::Expecting(GitRef::new("abc").unwrap())),
+                force_with_lease: Some(ForceWithLease::Expecting {
+                    reference: GitRef::new("refs/heads/main").unwrap(),
+                    oid: GitRef::new("abc").unwrap(),
+                }),
+                set_upstream: true,
             },
-            &["push", "--force-with-lease=abc", "origin", "HEAD:main"],
+            &[
+                "push",
+                "--set-upstream",
+                "--force-with-lease=refs/heads/main:abc",
+                "origin",
+                "HEAD:main",
+            ],
         );
         assert_argv(
             &TagMutationRequest::Create {

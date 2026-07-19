@@ -49,7 +49,7 @@ Treat absent `MODE=` and legacy `MODE=ci-fix` as `MODE=ci`.
 4. When `MODE=ci`, push the commit:
 
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch
+   "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" push branch
    ```
 
    Require a successful push. If the push fails, follow its diagnostics; do not force-push and do not bypass the wrapper. When `MODE=checks`, do **not** push. The later checks re-entry owns validation and the later ship step owns push.
@@ -191,7 +191,7 @@ FIXER_SUMMARY=<one line>
 ### Constraints (conflict)
 
 - Never read or edit files outside the repository root given in your prompt.
-- Never push (`python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch` is forbidden in this mode).
+- Never push (`"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" push branch` is forbidden in this mode).
 - Never merge the PR, never open issues, never edit the tracking issue, and never touch `/design` or assessment surfaces.
 - Never modify `.ship-route-exit-handoff.env`, `session-env.sh`, `finalize-state.sh`, or any state file under `$IMPLEMENT_TMPDIR` except `$IMPLEMENT_TMPDIR/conflict-review/` as Phase 3 requires.
 - Never apply the CI-mode dirty-tree salvage-commit rule while a rebase is in progress; abort is the deterministic safe action on hard bail.
