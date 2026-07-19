@@ -150,6 +150,48 @@ fn force_push_reports_a_successful_leased_update() {
 }
 
 #[test]
+fn push_network_failures_preserve_the_command_contracts() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+
+    larch()
+        .args(["push", "branch", "--unexpected"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr("git-push.sh: unknown argument: --unexpected\n");
+    larch()
+        .args(["push", "force", "--expected-remote-oid", "bad oid"])
+        .current_dir(&repo)
+        .assert()
+        .code(2)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=invalid_expected_remote_oid\n");
+
+    fs::write(repo.join("dirty.txt"), "dirty\n").expect("dirty write");
+    larch()
+        .args(["push", "force"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=dirty_worktree\n")
+        .stderr("");
+    fs::remove_file(repo.join("dirty.txt")).expect("remove dirty file");
+
+    larch()
+        .args(["push", "branch"])
+        .current_dir(&repo)
+        .assert()
+        .code(128)
+        .stdout("BRANCH=main\n");
+    larch()
+        .args(["push", "force"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("BRANCH=main\nPUSHED=false\nSTATUS=diverged_retry_failed\n");
+}
+
+#[test]
 fn current_branch_emits_branch_on_named_head() {
     let temp = TempDir::new().expect("tempdir");
     let repo = init_repo(temp.path());
