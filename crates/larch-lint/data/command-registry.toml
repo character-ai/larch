@@ -5043,6 +5043,8 @@ migration_issue = 7687
 [[commands]]
 domain = "push"
 verb = "branch"
+python_module = "larch.git.push"
+python_function = "branch_main"
 machine_stdout = false
 owner = "rust"
 implementation_parity = "complete"
@@ -5065,6 +5067,8 @@ migration_issue = 7687
 [[commands]]
 domain = "push"
 verb = "force"
+python_module = "larch.git.push"
+python_function = "force_main"
 machine_stdout = false
 owner = "rust"
 implementation_parity = "complete"

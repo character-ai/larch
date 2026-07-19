@@ -18,6 +18,7 @@ Commands:
   git            Local Git repository read and status commands
   release        Release-maintenance commands
   gh             GitHub workflow helper commands
+  push           Push commands with typed Git network operations
   upgrade-larch  Upgrade the installed larch plugin and executable
   help           Print this message or the help of the given subcommand(s)
 
