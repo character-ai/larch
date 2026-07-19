@@ -245,6 +245,48 @@ impl GixRepository {
         }
         Ok(count)
     }
+
+    /// Return the raw first line of every commit reachable from `include` and
+    /// not from `exclude` (`exclude..include`).
+    ///
+    /// # Errors
+    /// Returns a typed hash, missing-object, object-type, or repository read
+    /// failure.
+    pub fn commit_subjects_range(
+        &self,
+        exclude: &ObjectId,
+        include: &ObjectId,
+    ) -> Result<Vec<Vec<u8>>, RepositoryError> {
+        let repository = self.local()?;
+        let start = gix_id(include, repository.object_hash())?;
+        let hidden = gix_id(exclude, repository.object_hash())?;
+        let walk = repository
+            .rev_walk([start])
+            .with_hidden([hidden])
+            .all()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let mut subjects = Vec::new();
+        for info in walk {
+            let info = info.map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+            let object = repository
+                .find_object(info.id)
+                .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+            if object.kind != gix::objs::Kind::Commit {
+                return Err(error(RepositoryErrorKind::ObjectType));
+            }
+            let body_start = object
+                .data
+                .windows(2)
+                .position(|window| window == b"\n\n")
+                .map_or(object.data.len(), |index| index + 2);
+            let subject_end = object.data[body_start..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(object.data.len(), |index| body_start + index);
+            subjects.push(object.data[body_start..subject_end].to_vec());
+        }
+        Ok(subjects)
+    }
 }
 
 impl RepositoryRead for GixRepository {

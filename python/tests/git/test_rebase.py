@@ -24,6 +24,10 @@ def _empty_argv_log() -> list[tuple[str, ...]]:
     return []
 
 
+def _larch_entrypoint(_fallback: Path | str | None = None) -> Path:
+    return Path("/larch")
+
+
 @dataclass
 class ScriptRunner:
     """Runner that matches argv by prefix; defaults to success when permissive."""
@@ -1570,12 +1574,17 @@ def test_rebase_uses_custom_base_remote(tmp_path: Path) -> None:
     )
 
 
-def test_sync_local_main_on_main_stalls() -> None:
+def test_sync_local_main_on_main_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rebase.repo_roots, "larch_entrypoint", _larch_entrypoint)
     runner = ScriptRunner(
         [
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(
                 ("git", "symbolic-ref", "--short", "HEAD"),
                 "main\n",
+            )),
+            (("/larch", "git", "sync-local-main"), _fail(
+                ("/larch", "git", "sync-local-main"),
+                "cli.py git sync-local-main: refusing to update local 'main' while checked out on main",
             )),
         ],
     )
@@ -1608,7 +1617,8 @@ def test_retired_prepass_version_go_and_go_sum() -> None:
         assert not remaining
         assert ("git", "checkout", "--ours", "--", name) in runner.calls
 
-def test_sync_local_main_missing_remote_non_main_noops() -> None:
+def test_sync_local_main_missing_remote_non_main_noops(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rebase.repo_roots, "larch_entrypoint", _larch_entrypoint)
     runner = ScriptRunner(
         [
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(
@@ -1625,10 +1635,11 @@ def test_sync_local_main_missing_remote_non_main_noops() -> None:
         base_ref="main",
         cwd=None,
     )
-    assert not any(call[:3] == ("git", "branch", "-f") for call in runner.calls)
+    assert not any(call[:3] == ("/larch", "git", "sync-local-main") for call in runner.calls)
 
 
-def test_sync_local_main_missing_remote_on_main_stalls() -> None:
+def test_sync_local_main_missing_remote_on_main_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rebase.repo_roots, "larch_entrypoint", _larch_entrypoint)
     runner = ScriptRunner(
         [
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(
@@ -1636,9 +1647,9 @@ def test_sync_local_main_missing_remote_on_main_stalls() -> None:
                 "main\n",
             )),
             (("git", "rev-parse", "main"), _ok(("git", "rev-parse", "main"), "local\n")),
-            (("git", "branch", "-f", "main", "origin/main"), _fail(
-                ("git", "branch", "-f", "main", "origin/main"),
-                "fatal: cannot force update the branch 'main' checked out",
+            (("/larch", "git", "sync-local-main"), _fail(
+                ("/larch", "git", "sync-local-main"),
+                "cli.py git sync-local-main: refusing to update local 'main' while checked out on main",
             )),
         ],
     )

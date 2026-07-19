@@ -48,6 +48,7 @@ Commands:
   branch-info          Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository
   check-phantom-dirty  Classify repository changes against an untracked-path baseline
   check-remote-branch  Probe whether a remote branch exists via typed ls-remote
+  check-main-sync      Classify or reset a flush-only local main branch ahead of origin/main
   checkout-ours        Check out the current side of conflicted paths
   clean-tree           Report whether the worktree is clean using machine-readable key/value rows
   conflict-files       Print the files and index stages that are currently conflicted
@@ -57,6 +58,7 @@ Commands:
   rebase-abort         Abort an in-progress rebase, succeeding when no rebase is active
   rebase-skip          Skip the current commit in an in-progress rebase
   show-stage           Print the blob at an index conflict stage
+  sync-local-main      Update a non-checked-out local main branch from its remote-tracking ref
   snapshot-untracked   Atomically write the sorted untracked-path baseline to an output file
   help                 Print this message or the help of the given subcommand(s)
 

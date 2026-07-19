@@ -279,3 +279,194 @@ fn check_remote_branch_reports_present_for_local_path_remote() {
         .stdout("STATE=absent\nRC=2\n")
         .stderr("");
 }
+
+fn attach_origin(repo: &Path, bare: &Path) {
+    git(
+        repo,
+        &["remote", "add", "origin", bare.to_str().expect("bare path")],
+    );
+    git(repo, &["push", "-u", "origin", "main"]);
+    git(bare, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+}
+
+#[test]
+fn check_main_sync_covers_in_sync_non_main_and_missing_remote_ref() {
+    let temp = TempDir::new().expect("tempdir");
+    let bare = temp.path().join("origin.git");
+    let repo = init_repo(temp.path());
+    git(
+        temp.path(),
+        &["init", "--bare", bare.to_str().expect("bare path")],
+    );
+    attach_origin(&repo, &bare);
+
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("SYNC_STATUS=ok\nAHEAD_COUNT=0\n")
+        .stderr("");
+
+    larch()
+        .args(["git", "sync-local-main"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("cli.py git sync-local-main: refusing to update local 'main' while checked out on main\n");
+
+    git(&repo, &["checkout", "-b", "feature"]);
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("SYNC_STATUS=not-main\n")
+        .stderr("");
+
+    let linked = temp.path().join("linked");
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "linked-feature",
+            linked.to_str().expect("linked path"),
+        ],
+    );
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&linked)
+        .assert()
+        .code(0)
+        .stdout("SYNC_STATUS=not-main\n")
+        .stderr("");
+
+    let no_remote = init_repo(temp.path().join("no-remote").as_path());
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&no_remote)
+        .assert()
+        .code(2)
+        .stdout("SYNC_STATUS=probe-error\nERROR=git rev-list failed or produced empty output (exit 128)\n")
+        .stderr("");
+}
+
+#[test]
+fn check_main_sync_blocks_non_log_commits_and_resets_flush_only_commits() {
+    let temp = TempDir::new().expect("tempdir");
+    let bare = temp.path().join("origin.git");
+    let repo = init_repo(temp.path());
+    git(
+        temp.path(),
+        &["init", "--bare", bare.to_str().expect("bare path")],
+    );
+    attach_origin(&repo, &bare);
+    fs::write(repo.join("file.txt"), "real change\n").expect("write change");
+    git(&repo, &["add", "file.txt"]);
+    git(&repo, &["commit", "-m", "feat: real change"]);
+
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout(predicates::str::contains(
+            "SYNC_STATUS=blocked\nAHEAD_COUNT=1\n",
+        ))
+        .stderr("");
+
+    git(&repo, &["reset", "--hard", "origin/main"]);
+    fs::create_dir_all(repo.join("larch-logs")).expect("logs directory");
+    fs::write(repo.join("larch-logs/run.md"), "flush\n").expect("write flush log");
+    git(&repo, &["add", "larch-logs/run.md"]);
+    git(&repo, &["commit", "-m", "chore(larch-logs): flush run"]);
+
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("SYNC_STATUS=reset\nAHEAD_COUNT=1\n")
+        .stderr("");
+    git(&repo, &["fsck", "--full", "--no-dangling"]);
+    assert_eq!(
+        StdCommand::new("git")
+            .args(["rev-list", "--count", "origin/main..HEAD"])
+            .current_dir(&repo)
+            .output()
+            .expect("count ahead")
+            .stdout,
+        b"0\n"
+    );
+}
+
+#[test]
+fn check_main_sync_refuses_a_dirty_flush_reset_and_sync_local_main_updates_a_feature_checkout() {
+    let temp = TempDir::new().expect("tempdir");
+    let bare = temp.path().join("origin.git");
+    let repo = init_repo(temp.path());
+    git(
+        temp.path(),
+        &["init", "--bare", bare.to_str().expect("bare path")],
+    );
+    attach_origin(&repo, &bare);
+    fs::create_dir_all(repo.join("larch-logs")).expect("logs directory");
+    fs::write(repo.join("larch-logs/run.md"), "flush\n").expect("write flush log");
+    git(&repo, &["add", "larch-logs/run.md"]);
+    git(&repo, &["commit", "-m", "chore(larch-logs): flush run"]);
+    fs::write(repo.join("untracked.txt"), "dirty\n").expect("write untracked");
+
+    larch()
+        .args(["git", "check-main-sync"])
+        .current_dir(&repo)
+        .assert()
+        .code(2)
+        .stdout(predicates::str::contains("SYNC_STATUS=probe-error\nAHEAD_COUNT=1\nERROR=refusing reset: working tree is not clean"))
+        .stderr("");
+    fs::remove_file(repo.join("untracked.txt")).expect("remove untracked");
+    git(&repo, &["reset", "--hard", "origin/main"]);
+
+    let updater = temp.path().join("updater");
+    git(
+        temp.path(),
+        &[
+            "clone",
+            bare.to_str().expect("bare path"),
+            updater.to_str().expect("updater path"),
+        ],
+    );
+    git(&updater, &["config", "user.email", "test@example.com"]);
+    git(&updater, &["config", "user.name", "Test"]);
+    fs::write(updater.join("file.txt"), "advanced\n").expect("advance main");
+    git(&updater, &["add", "file.txt"]);
+    git(&updater, &["commit", "-m", "advance main"]);
+    git(&updater, &["push", "origin", "main"]);
+    git(&repo, &["fetch", "origin", "main"]);
+    git(&repo, &["checkout", "-b", "feature"]);
+
+    larch()
+        .args(["git", "sync-local-main"])
+        .current_dir(&repo)
+        .assert()
+        .code(0)
+        .stdout("RESULT=updated\n")
+        .stderr("");
+    assert_eq!(
+        StdCommand::new("git")
+            .args(["rev-parse", "main"])
+            .current_dir(&repo)
+            .output()
+            .expect("local main")
+            .stdout,
+        StdCommand::new("git")
+            .args(["rev-parse", "origin/main"])
+            .current_dir(&repo)
+            .output()
+            .expect("remote main")
+            .stdout
+    );
+    git(&repo, &["fsck", "--full", "--no-dangling"]);
+}

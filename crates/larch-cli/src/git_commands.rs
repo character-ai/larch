@@ -10,17 +10,20 @@ use std::{
 };
 
 use larch_adapters::{
-    GitCli, GitCliError, GitCliPolicy, GitCliResult, GitRef, GitRemote, GixRepository,
-    LsRemoteRequest, NoopProcessObserver, TokioProcessRunner, runtime::Cancellation,
-    runtime::LarchRuntime,
+    BranchMutationRequest, ExactDiffRequest, GitCli, GitCliError, GitCliPolicy, GitCliResult,
+    GitRef, GitRemote, GixRepository, LsRemoteRequest, NoopProcessObserver, ResetMode,
+    ResetRequest, TokioProcessRunner, runtime::Cancellation, runtime::LarchRuntime,
 };
-use larch_core::{Head, ObjectId, RefName, RepositoryRead, Revision, SafeText, emit_kv};
+use larch_core::{
+    Head, ObjectId, RefName, RepositoryRead, Revision, SafeText, StatusOptions, emit_kv,
+};
 
 const CURRENT_BRANCH_DETACHED: &str =
     "git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)";
 const COUNT_MISSING_MAIN: &str = "WARN: lib-count-commits.sh: neither local 'main' nor 'origin/main' exists; cannot determine commit base. Returning 0.";
 const TRANSIENT_ATTEMPTS: u32 = 3;
 const TRANSIENT_BACKOFF_SECS: [u64; 2] = [2, 4];
+const FLUSH_COMMIT_SUBJECT_PREFIX: &[u8] = b"chore(larch-logs): flush ";
 
 #[derive(Debug)]
 pub enum GitCommand {
@@ -28,7 +31,9 @@ pub enum GitCommand {
     CheckRemoteBranch { args: Vec<String> },
     CountCommits { args: Vec<String> },
     CurrentBranch { args: Vec<String> },
+    CheckMainSync { args: Vec<String> },
     ShowStage { args: Vec<String> },
+    SyncLocalMain { args: Vec<String> },
 }
 
 pub fn run(command: GitCommand) -> ExitCode {
@@ -37,9 +42,284 @@ pub fn run(command: GitCommand) -> ExitCode {
         GitCommand::CheckRemoteBranch { args } => check_remote_branch(&args),
         GitCommand::CountCommits { args } => count_commits(&args),
         GitCommand::CurrentBranch { args } => current_branch(&args),
+        GitCommand::CheckMainSync { args } => check_main_sync(&args),
         GitCommand::ShowStage { args } => show_stage(&args),
+        GitCommand::SyncLocalMain { args } => sync_local_main(&args),
     };
     ExitCode::from(code)
+}
+
+fn check_main_sync(args: &[String]) -> u8 {
+    if let Some(arg) = args.first() {
+        let _ = writeln!(io::stderr(), "check-main-sync.sh: unknown flag: {arg}");
+        return 2;
+    }
+    let Some(repo) = open_cwd_repository() else {
+        emit_main_sync(
+            "probe-error",
+            None,
+            Some("git rev-list failed or produced empty output (exit 128)"),
+        );
+        return 2;
+    };
+    let Ok(head) = repo.head() else {
+        emit_main_sync(
+            "probe-error",
+            None,
+            Some("git rev-list failed or produced empty output (exit 128)"),
+        );
+        return 2;
+    };
+    let Head::Symbolic { name, .. } = head else {
+        emit_main_sync("not-main", None, None);
+        return 0;
+    };
+    if short_branch_name(&name).as_deref() != Some("main") {
+        emit_main_sync("not-main", None, None);
+        return 0;
+    }
+    let Some(origin_main) = resolve_optional(&repo, "origin/main") else {
+        emit_main_sync(
+            "probe-error",
+            None,
+            Some("git rev-list failed or produced empty output (exit 128)"),
+        );
+        return 2;
+    };
+    let Some(current) = resolve_optional(&repo, "HEAD") else {
+        emit_main_sync(
+            "probe-error",
+            None,
+            Some("git rev-list failed or produced empty output (exit 128)"),
+        );
+        return 2;
+    };
+    let Ok(ahead) = repo.commit_count_range(&origin_main, &current) else {
+        emit_main_sync(
+            "probe-error",
+            None,
+            Some("git rev-list failed or produced empty output (exit 128)"),
+        );
+        return 2;
+    };
+    if ahead == 0 {
+        emit_main_sync("ok", Some(ahead), None);
+        return 0;
+    }
+    check_main_sync_ahead(&repo, &origin_main, &current, ahead)
+}
+
+fn check_main_sync_ahead(
+    repo: &GixRepository,
+    origin_main: &ObjectId,
+    current: &ObjectId,
+    ahead: u64,
+) -> u8 {
+    let Ok(subjects) = repo.commit_subjects_range(origin_main, current) else {
+        emit_main_sync(
+            "probe-error",
+            Some(ahead),
+            Some("git log failed (exit 128)"),
+        );
+        return 2;
+    };
+    if subjects.len() as u64 != ahead {
+        emit_main_sync(
+            "probe-error",
+            Some(ahead),
+            Some(&format!(
+                "git log subject line count ({}) does not match AHEAD ({ahead})",
+                subjects.len()
+            )),
+        );
+        return 2;
+    }
+    let Ok(paths) = exact_diff_paths("origin/main", "HEAD") else {
+        emit_main_sync(
+            "probe-error",
+            Some(ahead),
+            Some("git diff --name-only failed (exit 128)"),
+        );
+        return 2;
+    };
+    let all_flushes = subjects
+        .iter()
+        .all(|subject| subject.starts_with(FLUSH_COMMIT_SUBJECT_PREFIX));
+    let logs_only = paths.is_empty() || paths.iter().all(|path| path.starts_with(b"larch-logs/"));
+    if all_flushes && logs_only {
+        if repo
+            .local_status(&StatusOptions::default())
+            .map_or(true, |status| status.is_dirty())
+        {
+            emit_main_sync(
+                "probe-error",
+                Some(ahead),
+                Some(
+                    "refusing reset: working tree is not clean (tracked or untracked changes present)",
+                ),
+            );
+            return 2;
+        }
+        if reset_hard("origin/main").is_err() {
+            emit_main_sync(
+                "probe-error",
+                Some(ahead),
+                Some("git reset --hard origin/main failed (exit 128)"),
+            );
+            return 2;
+        }
+        emit_main_sync("reset", Some(ahead), None);
+        return 0;
+    }
+    emit_main_sync(
+        "blocked",
+        Some(ahead),
+        Some(&format!(
+            "local main is {ahead} commit(s) ahead of origin/main with non-log changes; push or reconcile before re-running"
+        )),
+    );
+    1
+}
+
+fn emit_main_sync(status: &str, ahead: Option<u64>, error: Option<&str>) {
+    emit_kv("SYNC_STATUS", status);
+    if let Some(ahead) = ahead {
+        emit_kv("AHEAD_COUNT", &ahead.to_string());
+    }
+    if let Some(error) = error {
+        emit_kv("ERROR", error);
+    }
+}
+
+fn sync_local_main(args: &[String]) -> u8 {
+    let (base_remote, base_ref) = match parse_sync_local_main_args(args) {
+        Ok(values) => values,
+        Err(message) => {
+            let _ = writeln!(io::stderr(), "cli.py git sync-local-main: {message}");
+            return 1;
+        }
+    };
+    let Some(repo) = open_cwd_repository() else {
+        emit_kv("RESULT", "absent");
+        return 0;
+    };
+    if matches!(repo.head(), Ok(Head::Symbolic { name, .. }) if short_branch_name(&name).as_deref() == Some("main"))
+    {
+        let _ = writeln!(
+            io::stderr(),
+            "cli.py git sync-local-main: refusing to update local 'main' while checked out on main"
+        );
+        return 1;
+    }
+    let Some(local_main) = resolve_optional(&repo, "main") else {
+        emit_kv("RESULT", "absent");
+        return 0;
+    };
+    let target = format!("{base_remote}/{base_ref}");
+    if resolve_optional(&repo, &target).is_some_and(|remote_main| remote_main == local_main) {
+        emit_kv("RESULT", "already_current");
+        return 0;
+    }
+    if force_branch_main(&target).is_err() {
+        let _ = writeln!(io::stderr(), "cli.py git sync-local-main: failed");
+        return 1;
+    }
+    emit_kv("RESULT", "updated");
+    0
+}
+
+fn parse_sync_local_main_args(args: &[String]) -> Result<(String, String), &'static str> {
+    let mut remote = "origin".to_owned();
+    let mut reference = "main".to_owned();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-remote" => {
+                remote = args
+                    .get(index + 1)
+                    .cloned()
+                    .ok_or("--base-remote requires a value")?;
+                index += 2;
+            }
+            "--base-ref" => {
+                reference = args
+                    .get(index + 1)
+                    .cloned()
+                    .ok_or("--base-ref requires a value")?;
+                index += 2;
+            }
+            _ => return Err("unknown argument"),
+        }
+    }
+    GitRemote::new(&remote).map_err(|_| "invalid --base-remote")?;
+    GitRef::new(&reference).map_err(|_| "invalid --base-ref")?;
+    Ok((remote, reference))
+}
+
+fn exact_diff_paths(base: &str, head: &str) -> Result<Vec<Vec<u8>>, ()> {
+    let cwd = env::current_dir().map_err(|_| ())?;
+    let policy = GitCliPolicy::new(cwd).map_err(|_| ())?;
+    let runtime = LarchRuntime::current_thread().map_err(|_| ())?;
+    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+    let git = GitCli::new(&runner, policy);
+    let request = ExactDiffRequest {
+        cached: false,
+        name_only: true,
+        name_status: false,
+        quiet: false,
+        exit_code: false,
+        base: Some(GitRef::new(base).map_err(|_| ())?),
+        head: Some(GitRef::new(head).map_err(|_| ())?),
+        paths: Vec::new(),
+    };
+    let output = runtime
+        .block_on(git.exact_diff(request, &Cancellation::new()))
+        .map_err(|_| ())?;
+    Ok(output
+        .output()
+        .stdout()
+        .split(|byte| *byte == b'\n')
+        .filter(|path| !path.is_empty())
+        .map(<[u8]>::to_vec)
+        .collect())
+}
+
+fn reset_hard(target: &str) -> Result<(), ()> {
+    let cwd = env::current_dir().map_err(|_| ())?;
+    let policy = GitCliPolicy::new(cwd).map_err(|_| ())?;
+    let runtime = LarchRuntime::current_thread().map_err(|_| ())?;
+    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+    let git = GitCli::new(&runner, policy);
+    runtime
+        .block_on(git.reset(
+            ResetRequest {
+                mode: ResetMode::Hard,
+                target: GitRef::new(target).map_err(|_| ())?,
+                paths: Vec::new(),
+            },
+            &Cancellation::new(),
+        ))
+        .map_err(|_| ())?;
+    Ok(())
+}
+
+fn force_branch_main(target: &str) -> Result<(), ()> {
+    let cwd = env::current_dir().map_err(|_| ())?;
+    let policy = GitCliPolicy::new(cwd).map_err(|_| ())?;
+    let runtime = LarchRuntime::current_thread().map_err(|_| ())?;
+    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+    let git = GitCli::new(&runner, policy);
+    runtime
+        .block_on(git.branch_mutation(
+            BranchMutationRequest::Create {
+                force: true,
+                name: GitRef::new("main").map_err(|_| ())?,
+                start_point: Some(GitRef::new(target).map_err(|_| ())?),
+            },
+            &Cancellation::new(),
+        ))
+        .map_err(|_| ())?;
+    Ok(())
 }
 
 fn current_branch(args: &[String]) -> u8 {

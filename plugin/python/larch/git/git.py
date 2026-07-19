@@ -19,7 +19,6 @@ from larch.core import redact
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.retry import with_transient_retry
-from larch.core import logging_util
 from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
@@ -976,13 +975,6 @@ class CountCommitsResult:
     status: str
 
 @dataclass(frozen=True)
-class MainSyncResult:
-    status: str
-    ahead_count: int | None = None
-    error: str = ""
-    exit_code: int = 0
-
-@dataclass(frozen=True)
 class RemoteBranchState:
     state: str
     rc: int
@@ -1064,28 +1056,6 @@ def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
     return (base / "rebase-merge").is_dir() or (base / "rebase-apply").is_dir()
 
 
-def sync_local_main(
-    runner: Runner,
-    *,
-    base_remote: str = "origin",
-    base_ref: str = "main",
-    cwd: str | None = None,
-) -> tuple[str, int]:
-    current = try_current_branch(runner, cwd=cwd) or ""
-    if current == "main":
-        return "refusing to update local 'main' while checked out on main", 1
-    if try_rev_parse(runner, "main", cwd=cwd) is None:
-        return "absent", 0
-    base_target = f"{base_remote}/{base_ref}"
-    local_main = try_rev_parse(runner, "main", cwd=cwd)
-    remote_main = try_rev_parse(runner, base_target, cwd=cwd)
-    if local_main and remote_main and local_main == remote_main:
-        return "already_current", 0
-    updated = branch_force(runner, "main", base_target, cwd=cwd)
-    if updated.returncode != 0:
-        return "failed", 1
-    return "updated", 0
-
 def _one_line_summary(text: str) -> str:
     return text.replace("\n", " ").replace("\r", " ").replace("\t", " ")[:256]
 
@@ -1107,58 +1077,6 @@ def count_commits(runner: Runner, *, cwd: str | None = None) -> CountCommitsResu
     if not text.isdigit():
         return CountCommitsResult(count=0, status="git_error")
     return CountCommitsResult(count=int(text), status="ok")
-
-def check_main_sync(runner: Runner, *, cwd: str | None = None) -> MainSyncResult:
-    current = try_current_branch(runner, cwd=cwd) or ""
-    if current != "main":
-        return MainSyncResult(status="not-main")
-    ahead_result = _run(runner, ["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd)
-    if ahead_result.returncode != 0 or not ahead_result.stdout.strip():
-        return MainSyncResult(
-            status="probe-error",
-            error=f"git rev-list failed or produced empty output (exit {ahead_result.returncode})",
-            exit_code=2,
-        )
-    ahead_text = ahead_result.stdout.strip()
-    ahead = int(ahead_text) if ahead_text.isdigit() else 0
-    if ahead == 0:
-        return MainSyncResult(status="ok", ahead_count=0)
-    log = _run(runner, ["git", "log", "origin/main..HEAD", "--format=%s"], cwd=cwd)
-    if log.returncode != 0:
-        return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git log failed (exit {log.returncode})", exit_code=2)
-    subjects = [line for line in log.stdout.splitlines() if line]
-    if len(subjects) != ahead:
-        return MainSyncResult(
-            status="probe-error",
-            ahead_count=ahead,
-            error=f"git log subject line count ({len(subjects)}) does not match AHEAD ({ahead})",
-            exit_code=2,
-        )
-    all_flushes = all(subject.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for subject in subjects)
-    diff = _run(runner, ["git", "diff", "--name-only", "origin/main", "HEAD"], cwd=cwd)
-    if diff.returncode != 0:
-        return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git diff --name-only failed (exit {diff.returncode})", exit_code=2)
-    paths = [line for line in diff.stdout.splitlines() if line]
-    logs_only = not paths or all(path.startswith("larch-logs/") for path in paths)
-    if all_flushes and logs_only:
-        clean = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
-        if clean.returncode != 0 or clean.stdout.strip():
-            return MainSyncResult(
-                status="probe-error",
-                ahead_count=ahead,
-                error="refusing reset: working tree is not clean (tracked or untracked changes present)",
-                exit_code=2,
-            )
-        reset_result = _run(runner, ["git", "reset", "--hard", "origin/main"], cwd=cwd)
-        if reset_result.returncode != 0:
-            return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git reset --hard origin/main failed (exit {reset_result.returncode})", exit_code=2)
-        return MainSyncResult(status="reset", ahead_count=ahead)
-    return MainSyncResult(
-        status="blocked",
-        ahead_count=ahead,
-        error=f"local main is {ahead} commit(s) ahead of origin/main with non-log changes; push or reconcile before re-running",
-        exit_code=1,
-    )
 
 def remote_branch_state(
     runner: Runner,
@@ -1259,32 +1177,3 @@ def amend_add_main(argv: list[str]) -> int:
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.returncode
-
-
-
-
-def sync_local_main_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git sync-local-main")
-    parser.add_argument("--base-remote", default="origin")
-    parser.add_argument("--base-ref", default="main")
-    args = _parse(parser=parser, argv=argv)
-    if args is None:
-        return 1
-    result, rc = sync_local_main(proc, base_remote=args.base_remote, base_ref=args.base_ref)
-    if rc == 0:
-        logging_util.emit_kv(key="RESULT", value=str(result))
-    else:
-        print(f"cli.py git sync-local-main: {result}", file=sys.stderr)
-    return rc
-
-def check_main_sync_main(argv: list[str]) -> int:
-    if argv:
-        print(f"check-main-sync.sh: unknown flag: {argv[0]}", file=sys.stderr)
-        return 2
-    result = check_main_sync(proc)
-    logging_util.emit_kv(key="SYNC_STATUS", value=result.status)
-    if result.ahead_count is not None:
-        logging_util.emit_kv(key="AHEAD_COUNT", value=str(result.ahead_count))
-    if result.error:
-        logging_util.emit_kv(key="ERROR", value=result.error)
-    return result.exit_code
