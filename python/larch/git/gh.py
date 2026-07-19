@@ -2228,4 +2228,3 @@ def extract_closes_issue_from_current_pr(
     if result.returncode != 0:
         return ""
     return extract_closes_issue(result.stdout)
-
