@@ -43,7 +43,7 @@ append_section() {
 # The carve-out list is consumed by every awk program in this script via the
 # CARVE_OUTS environment variable; do NOT hardcode names in additional awk
 # blocks.
-CARVE_OUTS="test-eval-set-structure test-eval-research-baseline-flag test-review-and-fix test-stall-recovery-report test-lib-design-tmpdir test-classify-bump test-release-prepare"
+CARVE_OUTS="test-eval-set-structure test-eval-research-baseline-flag test-review-and-fix test-stall-recovery-report test-lib-design-tmpdir test-classify-bump test-release-prepare test-release-set-version"
 
 # Awk snippet (used as -v CARVE=... -v COVERAGE=... and a BEGIN block) that
 # returns 1 from is_carve_out(name) for any name matching the aggregate, the

@@ -534,7 +534,7 @@ test-release-prepare:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_prepare
 
 test-release-set-version:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k set_version
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_version
 
 test-release-finish:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k 'release_finish or verify_main'

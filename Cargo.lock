@@ -2326,9 +2326,11 @@ dependencies = [
  "larch-test-support",
  "predicates",
  "regex",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
+ "toml",
  "wait-timeout",
 ]
 

@@ -161,7 +161,7 @@ The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a pre
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
-python3 "$PWD/python/cli.py" release set-version "${NEW_VERSION}"
+"$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
 git add .claude-plugin/plugin.json plugin/.claude-plugin/plugin.json Cargo.toml Cargo.lock
 git commit -m "Release v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
@@ -402,7 +402,7 @@ If `NEW_VERSION_INSTALLED=true`, `MARKETPLACE_RECONCILED=true`, or `RESTART_REQU
 Runtime helpers:
 
 - `"$PWD/scripts/larch.sh" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
-- `python3 "$PWD/python/cli.py" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
+- `"$PWD/scripts/larch.sh" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `python3 "$PWD/python/cli.py" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
 - `python3 "$PWD/python/cli.py" release stage`: tag the candidate and create or verify its draft Release
 - `python3 "$PWD/python/cli.py" release asset-run`: resolve the exact tag-triggered asset workflow run
@@ -424,5 +424,6 @@ Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 Offline harnesses:
 
 - `crates/larch-cli/tests/release_prepare.rs`: release preparation and bump-classification parity coverage
-- `python/tests/release/test_release.py`: set-version, candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
+- `crates/larch-cli/tests/release_version.rs`: synchronized version validation, mutation, rollback, and replay coverage
+- `python/tests/release/test_release.py`: candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
 - Makefile targets: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`
