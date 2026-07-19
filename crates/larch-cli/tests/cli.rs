@@ -704,7 +704,7 @@ fn check_phantom_dirty_classifies_clean_tracked_phantom_and_mixed_states() {
         .stdout("STATUS=tracked-only\n")
         .stderr("");
 
-    git(repository.path(), &["checkout", "--", "tracked.txt"]);
+    git(repository.path(), ["checkout", "--", "tracked.txt"]);
     fs::write(repository.path().join("new path.txt"), "new\n").expect("new untracked path");
     command_at_owned(repository.path(), &arguments())
         .assert()
