@@ -7681,6 +7681,420 @@ python = ["eval research", "generate check", "lint codex-exec-auth", "lint compl
 rust = []
 
 [[callers]]
+path = "agents/_implementer-base.md"
+kind = "agent"
+python = ["checks run-relevant", "redact secrets"]
+rust = []
+
+[[callers]]
+path = "agents/ci-fixer.md"
+kind = "agent"
+python = ["ci distill-log", "push rebase"]
+rust = ["git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "git stage", "push branch"]
+
+[[callers]]
+path = "agents/claude-implementer.md"
+kind = "agent"
+python = []
+rust = ["push branch"]
+
+[[callers]]
+path = "agents/claude-self-reviewer.md"
+kind = "agent"
+python = ["review-and-fix write-pre-self-review-snapshot"]
+rust = []
+
+[[callers]]
+path = "agents/code-reviewer.md"
+kind = "agent"
+python = ["generate code-reviewer-agent"]
+rust = []
+
+[[callers]]
+path = "agents/codex-implementer.md"
+kind = "agent"
+python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
+rust = []
+
+[[callers]]
+path = "agents/cursor-implementer.md"
+kind = "agent"
+python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-code-robustness.md"
+kind = "agent"
+python = ["generate reviewer-code-robustness-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-correctness.md"
+kind = "agent"
+python = ["generate reviewer-correctness-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-edge-cases.md"
+kind = "agent"
+python = ["generate reviewer-edge-cases-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-plan-fidelity.md"
+kind = "agent"
+python = ["generate reviewer-plan-fidelity-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-security-structure-tests.md"
+kind = "agent"
+python = ["generate reviewer-security-structure-tests-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-security.md"
+kind = "agent"
+python = ["generate reviewer-security-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-structure.md"
+kind = "agent"
+python = ["generate reviewer-structure-agent"]
+rust = []
+
+[[callers]]
+path = "agents/reviewer-testing.md"
+kind = "agent"
+python = ["generate reviewer-testing-agent"]
+rust = []
+
+[[callers]]
+path = "python/larch/agents/_ci_launcher.py"
+kind = "python-runtime"
+python = ["lint *"]
+rust = []
+
+[[callers]]
+path = "python/larch/agents/_review_launcher.py"
+kind = "python-runtime"
+python = []
+rust = ["git snapshot-untracked"]
+
+[[callers]]
+path = "python/larch/agents/agent_voters.py"
+kind = "python-runtime"
+python = ["render voter"]
+rust = []
+
+[[callers]]
+path = "python/larch/core/config.py"
+kind = "python-runtime"
+python = ["stall-recovery lint"]
+rust = []
+
+[[callers]]
+path = "python/larch/core/redact.py"
+kind = "python-runtime"
+python = ["redact scrub-log-secrets", "redact secrets"]
+rust = []
+
+[[callers]]
+path = "python/larch/core/rust_runtime.py"
+kind = "python-runtime"
+python = []
+rust = ["git phantom-probe", "push branch"]
+
+[[callers]]
+path = "python/larch/core/verify_skill.py"
+kind = "python-runtime"
+python = ["verify skill-called"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/clarify.py"
+kind = "python-runtime"
+python = ["tracking-issue rename"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_oos.py"
+kind = "python-runtime"
+python = ["design file-oos-annotate", "design file-oos-prepare", "oos file-conflict-deps", "oos issue-cap"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_postplan.py"
+kind = "python-runtime"
+python = ["plan check-size"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_publish.py"
+kind = "python-runtime"
+python = ["diagrams upsert"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_router.py"
+kind = "python-runtime"
+python = ["tracking-issue rename"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_step0.py"
+kind = "python-runtime"
+python = ["plan check-size"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_step_log.py"
+kind = "python-runtime"
+python = ["run-log write"]
+rust = []
+
+[[callers]]
+path = "python/larch/design/design_summary.py"
+kind = "python-runtime"
+python = ["render run-summary"]
+rust = []
+
+[[callers]]
+path = "python/larch/git/push.py"
+kind = "python-runtime"
+python = []
+rust = ["git checkout-ours", "git rebase-skip"]
+
+[[callers]]
+path = "python/larch/git/rebase.py"
+kind = "python-runtime"
+python = []
+rust = ["git rebase-skip", "git sync-local-main"]
+
+[[callers]]
+path = "python/larch/implement/checks.py"
+kind = "python-runtime"
+python = ["checks lint-fix"]
+rust = []
+
+[[callers]]
+path = "python/larch/implement/checks_lint_fix.py"
+kind = "python-runtime"
+python = ["checks lint-fix", "checks run-relevant"]
+rust = ["git commit", "git stage"]
+
+[[callers]]
+path = "python/larch/implement/checks_run_relevant.py"
+kind = "python-runtime"
+python = ["checks run-relevant"]
+rust = []
+
+[[callers]]
+path = "python/larch/implement/ci_monitor.py"
+kind = "python-runtime"
+python = []
+rust = ["git commit", "git stage"]
+
+[[callers]]
+path = "python/larch/implement/dispatch_commit_route.py"
+kind = "python-runtime"
+python = ["implement commit", "review-and-fix commit-fixes"]
+rust = []
+
+[[callers]]
+path = "python/larch/implement/dispatch_recovery.py"
+kind = "python-runtime"
+python = []
+rust = ["git commit"]
+
+[[callers]]
+path = "python/larch/implement/dispatch_ship.py"
+kind = "python-runtime"
+python = ["oos disposition-checkpoint"]
+rust = []
+
+[[callers]]
+path = "python/larch/implement/dispatch_step18.py"
+kind = "python-runtime"
+python = ["final-report step18b"]
+rust = []
+
+[[callers]]
+path = "python/larch/implement/preflight.py"
+kind = "python-runtime"
+python = []
+rust = ["gh resolve-repo"]
+
+[[callers]]
+path = "python/larch/issue/analyze_bugs.py"
+kind = "python-runtime"
+python = ["analyze-bugs ledger", "analyze-bugs prefetch", "analyze-bugs report", "analyze-bugs runtime"]
+rust = []
+
+[[callers]]
+path = "python/larch/issue/validate_merged.py"
+kind = "python-runtime"
+python = ["validate-merged ingest-finder", "validate-merged ingest-refuter", "validate-merged prepare", "validate-merged report", "validate-merged write-state"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_codex_exec_auth.py"
+kind = "python-runtime"
+python = ["agent launch-codex-exec"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_engine_adoption.py"
+kind = "python-runtime"
+python = ["lint engine-adoption"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_env_via_config_constant.py"
+kind = "python-runtime"
+python = ["lint env-via-config-constant"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_lifecycle_prefix_literal.py"
+kind = "python-runtime"
+python = ["lint lifecycle-prefix-literal"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_markdown_heading_fence_state.py"
+kind = "python-runtime"
+python = ["lint markdown-heading-fence-state"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_monkeypatch_facade_binding.py"
+kind = "python-runtime"
+python = ["lint monkeypatch-facade-binding"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_pylint_skip_file.py"
+kind = "python-runtime"
+python = ["lint pylint-skip-file"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_status_routing_truthiness.py"
+kind = "python-runtime"
+python = ["lint status-routing-truthiness"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_subprocess_via_runner.py"
+kind = "python-runtime"
+python = ["lint subprocess-via-runner"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_suppression_reason.py"
+kind = "python-runtime"
+python = ["lint suppression-reason"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_tmpdir_arg_env_fallback.py"
+kind = "python-runtime"
+python = ["lint tmpdir-arg-env-fallback"]
+rust = []
+
+[[callers]]
+path = "python/larch/lint/lint_unreachable_branch.py"
+kind = "python-runtime"
+python = ["lint unreachable-branch"]
+rust = []
+
+[[callers]]
+path = "python/larch/release/release_finish.py"
+kind = "python-runtime"
+python = []
+rust = ["gh remote-repo"]
+
+[[callers]]
+path = "python/larch/rendering/_rendering_generators.py"
+kind = "python-runtime"
+python = ["agent launch-codex-implement", "agent launch-cursor-implement", "generate check", "generate code-reviewer-agent", "generate codex-implementer", "generate cursor-implementer", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-correctness-agent", "generate reviewer-edge-cases-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-agent", "generate reviewer-security-structure-tests-agent", "generate reviewer-structure-agent", "generate reviewer-testing-agent", "generate topology-docs"]
+rust = []
+
+[[callers]]
+path = "python/larch/report/cleanup_implement_logs.py"
+kind = "python-runtime"
+python = ["run-log cleanup-implement-logs"]
+rust = []
+
+[[callers]]
+path = "python/larch/report/run_log_commit.py"
+kind = "python-runtime"
+python = ["redact scrub-log-secrets", "run-log commit"]
+rust = []
+
+[[callers]]
+path = "python/larch/report/run_log_flush.py"
+kind = "python-runtime"
+python = ["run-log flush", "run-log refresh"]
+rust = []
+
+[[callers]]
+path = "python/larch/report/run_logs.py"
+kind = "python-runtime"
+python = ["run-log append-failure"]
+rust = []
+
+[[callers]]
+path = "python/larch/review/coder_runner.py"
+kind = "python-runtime"
+python = []
+rust = ["git commit"]
+
+[[callers]]
+path = "python/larch/review/review_and_fix.py"
+kind = "python-runtime"
+python = ["stall-recovery record-escalation"]
+rust = ["git commit"]
+
+[[callers]]
+path = "python/larch/review/round_runner.py"
+kind = "python-runtime"
+python = []
+rust = ["git snapshot-untracked"]
+
+[[callers]]
+path = "python/larch/state/_escalation.py"
+kind = "python-runtime"
+python = ["stall-recovery record-escalation"]
+rust = []
+
+[[callers]]
+path = "python/larch/state/admission.py"
+kind = "python-runtime"
+python = []
+rust = ["gh remote-repo", "git check-main-sync", "git clean-tree"]
+
+[[callers]]
+path = "python/larch/state/bootstrap.py"
+kind = "python-runtime"
+python = ["implement kill-active-leg"]
+rust = ["git snapshot-untracked"]
+
+[[callers]]
+path = "python/larch/state/closeout.py"
+kind = "python-runtime"
+python = ["final-report write", "slack issue-announce"]
+rust = []
+
+[[callers]]
+path = "python/larch/state/session_env.py"
+kind = "python-runtime"
+python = ["design *", "design failure-report", "design stage-terminal-state", "design step-final-summary", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step35-settle", "design step3b-entry", "design step6", "design step6-cleanup", "design step6-prelude", "plan validator-autofix"]
+rust = []
+
+[[callers]]
 path = "scripts/cleanup-sessionstart.sh"
 kind = "hook"
 python = ["bgjob reap", "cleanup run"]
