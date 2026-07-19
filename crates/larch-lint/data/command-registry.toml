@@ -2814,11 +2814,11 @@ verb = "checkout-ours"
 python_module = "larch.git.git"
 python_function = "checkout_ours_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7759
 
 [[commands]]
 domain = "git"
@@ -2898,11 +2898,11 @@ verb = "rebase-abort"
 python_module = "larch.git.git"
 python_function = "rebase_abort_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7759
 
 [[commands]]
 domain = "git"
@@ -2910,11 +2910,11 @@ verb = "rebase-skip"
 python_module = "larch.git.git"
 python_function = "rebase_skip_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7759
 
 [[commands]]
 domain = "git"
@@ -8067,8 +8067,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/conflict-resolution.md"
 kind = "skill"
-python = ["git rebase-abort", "push rebase"]
-rust = []
+python = ["push rebase"]
+rust = ["git rebase-abort"]
 
 [[callers]]
 path = "skills/implement/references/execution-issues-tracking.md"
@@ -8103,8 +8103,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/rebase-checkpoint-routing.md"
 kind = "skill"
-python = ["git rebase-abort", "implement step-7a", "push checkpoint-probe", "push rebase"]
-rust = []
+python = ["implement step-7a", "push checkpoint-probe", "push rebase"]
+rust = ["git rebase-abort"]
 
 [[callers]]
 path = "skills/implement/references/self-review.md"

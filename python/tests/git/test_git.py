@@ -699,21 +699,6 @@ def test_unmerged_paths_nonzero_diff_raises() -> None:
         _ = git.unmerged_paths(runner)
 
 
-def test_checkout_ours_argv() -> None:
-    runner = StubRunner(
-        {
-            ("git", "checkout", "--ours", "--", "f.txt"): CommandResult(
-                ("git", "checkout", "--ours", "--", "f.txt"),
-                0,
-                "",
-                "",
-                0.01,
-            ),
-        },
-    )
-    assert git.checkout_ours(runner, "f.txt").returncode == 0
-
-
 def test_is_ancestor_mapping() -> None:
     runner = StubRunner(
         {
@@ -745,17 +730,6 @@ def test_rebase_continue_sets_editors(monkeypatch: pytest.MonkeyPatch) -> None:
     env = dict(runner.records[-1].env or {})
     assert env.get("GIT_SEQUENCE_EDITOR") == "true"
     assert env.get("GIT_EDITOR") == "true"
-
-
-def test_rebase_skip_argv() -> None:
-    runner = StubRunner(
-        {
-            ("git", "rebase", "--skip"): CommandResult(
-                ("git", "rebase", "--skip"), 0, "", "", 0.01
-            ),
-        },
-    )
-    assert git.rebase_skip(runner).returncode == 0
 
 
 def test_force_push_with_lease_expecting_argv() -> None:
@@ -1209,24 +1183,6 @@ def test_check_remote_branch_unknown_flag_fail_open(capsys: pytest.CaptureFixtur
     assert "STATE=error" in out
     assert "RC=1" in out
     assert "ERROR=unknown flag: --bogus" in out
-
-
-def test_rebase_abort_main_idempotent_on_failed_abort(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("git", "rebase", "--abort"),
-                128,
-                "",
-                "fatal: no rebase in progress\n",
-                0.01,
-            ),
-        ],
-    )
-    monkeypatch.setattr(git, "proc", runner)
-    assert git.rebase_abort_main([]) == 0
 
 
 def test_remote_branch_state_present() -> None:

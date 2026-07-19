@@ -340,6 +340,13 @@ mod tests {
 
     type DifferentialFamily = fn(&LarchRuntime, &TokioProcessRunner);
 
+    #[derive(Clone, Copy)]
+    enum DifferentialComparison {
+        Exact,
+        Semantic,
+        StatusOnly,
+    }
+
     fn policy(root: &Path) -> GitCliPolicy {
         GitCliPolicy::new(root.to_path_buf())
             .expect("absolute policy")
@@ -1273,6 +1280,42 @@ mod tests {
 
     fn differential_checkout(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
         assert_differential_case(
+            "checkout ours preserves conflict stages",
+            runtime,
+            runner,
+            GitFixture::Conflict,
+            |_| {},
+            ["checkout", "--ours", "--", "tracked.txt"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).checkout(
+                    CheckoutRequest::Paths {
+                        ours: true,
+                        theirs: false,
+                        paths: vec![GitPath::new("tracked.txt").unwrap()],
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
+            "checkout ours fails outside a conflict",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["checkout", "--ours", "--", "tracked.txt"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).checkout(
+                    CheckoutRequest::Paths {
+                        ours: true,
+                        theirs: false,
+                        paths: vec![GitPath::new("tracked.txt").unwrap()],
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+        assert_differential_case(
             "checkout succeeds",
             runtime,
             runner,
@@ -1316,6 +1359,48 @@ mod tests {
         runtime: &LarchRuntime,
         runner: &TokioProcessRunner,
     ) {
+        assert_differential_case(
+            "rebase abort restores pre-rebase state",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            setup_rebase_conflict,
+            ["rebase", "--abort"],
+            |repository, runner, runtime| {
+                runtime.block_on(
+                    GitCli::new(runner, policy(repository.root()))
+                        .rebase(RebaseRequest::Abort, &NeverCancelled),
+                )
+            },
+        );
+        assert_semantic_differential_case(
+            "rebase skip advances past the conflicted commit",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            setup_rebase_conflict,
+            ["rebase", "--skip"],
+            |repository, runner, runtime| {
+                runtime.block_on(
+                    GitCli::new(runner, policy(repository.root()))
+                        .rebase(RebaseRequest::Skip, &NeverCancelled),
+                )
+            },
+        );
+        assert_differential_case(
+            "rebase skip fails without active sequencer state",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            |_| {},
+            ["rebase", "--skip"],
+            |repository, runner, runtime| {
+                runtime.block_on(
+                    GitCli::new(runner, policy(repository.root()))
+                        .rebase(RebaseRequest::Skip, &NeverCancelled),
+                )
+            },
+        );
         assert_status_differential_case(
             "stash succeeds",
             runtime,
@@ -1349,6 +1434,43 @@ mod tests {
                 ))
             },
         );
+    }
+
+    fn setup_rebase_conflict(repository: &GitRepository) {
+        let main = repository
+            .git(["rev-parse", "main"])
+            .expect("resolve main fixture ref");
+        assert!(main.success());
+        let topic = repository
+            .git(["checkout", "--quiet", "topic"])
+            .expect("checkout topic fixture branch");
+        assert!(topic.success());
+        repository
+            .write("tracked.txt", b"topic\n")
+            .expect("write topic change");
+        let topic_commit = repository
+            .git(["commit", "--quiet", "-am", "topic change"])
+            .expect("commit topic change");
+        assert!(topic_commit.success());
+        let main_checkout = repository
+            .git(["checkout", "--quiet", "main"])
+            .expect("checkout main fixture branch");
+        assert!(main_checkout.success());
+        repository
+            .write("tracked.txt", b"main\n")
+            .expect("write main change");
+        let main_commit = repository
+            .git(["commit", "--quiet", "-am", "main change"])
+            .expect("commit main change");
+        assert!(main_commit.success());
+        let topic_checkout = repository
+            .git(["checkout", "--quiet", "topic"])
+            .expect("restore topic fixture branch");
+        assert!(topic_checkout.success());
+        let rebase = repository
+            .git(["rebase", "main"])
+            .expect("start conflicting rebase");
+        assert!(!rebase.success(), "fixture rebase must conflict");
     }
 
     fn differential_fetch_push_and_ls_remote(runtime: &LarchRuntime, runner: &TokioProcessRunner) {
@@ -1491,7 +1613,7 @@ mod tests {
             setup,
             oracle_arguments,
             run_adapter,
-            true,
+            DifferentialComparison::Exact,
         );
     }
 
@@ -1519,7 +1641,35 @@ mod tests {
             setup,
             oracle_arguments,
             run_adapter,
-            false,
+            DifferentialComparison::StatusOnly,
+        );
+    }
+
+    fn assert_semantic_differential_case<Setup, Run>(
+        name: &str,
+        runtime: &LarchRuntime,
+        runner: &TokioProcessRunner,
+        fixture: GitFixture,
+        setup: Setup,
+        oracle_arguments: impl IntoIterator<Item = &'static str>,
+        run_adapter: Run,
+    ) where
+        Setup: Fn(&GitRepository),
+        Run: Fn(
+            &GitRepository,
+            &TokioProcessRunner,
+            &LarchRuntime,
+        ) -> Result<GitCliResult, GitCliError>,
+    {
+        // Git renders progress according to the inherited terminal environment.
+        assert_differential_case_inner(
+            name,
+            (runtime, runner),
+            fixture,
+            setup,
+            oracle_arguments,
+            run_adapter,
+            DifferentialComparison::Semantic,
         );
     }
 
@@ -1530,7 +1680,7 @@ mod tests {
         setup: Setup,
         oracle_arguments: impl IntoIterator<Item = &'static str>,
         run_adapter: Run,
-        require_exact_state: bool,
+        comparison: DifferentialComparison,
     ) where
         Setup: Fn(&GitRepository),
         Run: Fn(
@@ -1573,7 +1723,7 @@ mod tests {
             adapter_output.status().code(),
             "{name}: exit code"
         );
-        if require_exact_state {
+        if matches!(comparison, DifferentialComparison::Exact) {
             assert_eq!(
                 oracle_output.stdout,
                 adapter_output.stdout(),
@@ -1586,7 +1736,10 @@ mod tests {
             );
         }
 
-        if require_exact_state {
+        if matches!(
+            comparison,
+            DifferentialComparison::Exact | DifferentialComparison::Semantic
+        ) {
             let oracle_snapshot = SemanticSnapshot::capture(
                 &oracle,
                 ExecutionSnapshot::from_git(&oracle, &oracle_output),

@@ -754,15 +754,6 @@ def try_unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
-def checkout_ours(
-    runner: Runner,
-    *paths: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    argv = ["git", "checkout", "--ours", "--", *paths]
-    return _run(runner, argv, cwd=cwd)
-
-
 def is_ancestor(
     runner: Runner,
     ancestor: str,
@@ -780,10 +771,6 @@ def is_ancestor(
 
 def rebase_continue(runner: Runner, *, cwd: str | None = None) -> CommandResult:
     return _run(runner, ["git", "rebase", "--continue"], cwd=cwd)
-
-
-def rebase_skip(runner: Runner, *, cwd: str | None = None) -> CommandResult:
-    return _run(runner, ["git", "rebase", "--skip"], cwd=cwd)
 
 
 def force_push_with_lease_expecting(
@@ -1159,13 +1146,6 @@ def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
     return (base / "rebase-merge").is_dir() or (base / "rebase-apply").is_dir()
 
 
-def rebase_abort(runner: Runner, *, cwd: str | None = None) -> CommandResult:
-    result = _run(runner, ["git", "rebase", "--abort"], cwd=cwd)
-    if result.returncode == 0:
-        return result
-    return CommandResult(tuple(result.argv), 0, result.stdout, result.stderr, result.duration)
-
-
 def sync_local_main(
     runner: Runner,
     *,
@@ -1393,35 +1373,6 @@ def branch_info_main(argv: list[str]) -> int:
     logging_util.emit_kv(key="HEAD_SHA", value=info.head_sha)
     logging_util.emit_kv(key="CURRENT_BRANCH", value=info.current_branch)
     return 0
-
-
-def rebase_abort_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git-rebase-abort.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 0
-    _ = rebase_abort(proc)
-    return 0
-
-
-def rebase_skip_main(argv: list[str]) -> int:
-    if argv:
-        print(f"git-rebase-skip.sh: unknown argument: {argv[0]}", file=sys.stderr)
-        return 1
-    result = rebase_skip(proc)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
-
-
-def checkout_ours_main(argv: list[str]) -> int:
-    if not argv:
-        print("git-checkout-ours.sh: at least one file argument is required", file=sys.stderr)
-        print("usage: git-checkout-ours.sh <file> [<file> ...]", file=sys.stderr)
-        return 1
-    result = checkout_ours(proc, *argv)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
 
 
 def show_stage_main(argv: list[str]) -> int:

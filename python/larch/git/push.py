@@ -10,10 +10,12 @@ from dataclasses import dataclass
 
 import argparse
 import sys
+from pathlib import Path
 from larch.core import config
 from larch.git import git
 from larch.errors import ShipError
-from larch.core.proc import Runner
+from larch.core.proc import CommandResult, Runner
+from larch.core.repo_roots import larch_binary
 from larch.core.run_context import RunContext
 from larch.core import logging_util
 from larch.core import proc
@@ -29,6 +31,16 @@ class PushResult:
     branch: str = ""
     stderr: str = ""
     exit_code: int = 0
+
+
+def _checkout_ours(path: str) -> CommandResult:
+    binary = larch_binary(Path(__file__).resolve().parents[3])
+    return proc.run([str(binary), "git", "checkout-ours", path])
+
+
+def _rebase_skip() -> CommandResult:
+    binary = larch_binary(Path(__file__).resolve().parents[3])
+    return proc.run([str(binary), "git", "rebase-skip"])
 
 
 def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
@@ -218,7 +230,7 @@ def _conflict_upstream_deleted(path: str) -> bool:
 
 
 def _resolve_trivial_conflict_file(path: str) -> bool:
-    checkout = git.checkout_ours(proc, path)
+    checkout = _checkout_ours(path)
     if checkout.returncode != 0:
         if not _conflict_upstream_deleted(path):
             print(f"WARN rebase-probe: failed to resolve trivial conflict {path}", file=sys.stderr)
@@ -264,7 +276,7 @@ def _handle_empty_continue_rc3(result: rebase.RebasePushResult) -> rebase.Rebase
             return rebase.RebasePushResult(exit_code=1, conflict_files=unmerged)
         if not _empty_continue_result(result):
             return None
-        skipped = git.rebase_skip(proc)
+        skipped = _rebase_skip()
         if skipped.returncode != 0:
             print("WARN rebase-probe: git rebase --skip failed after empty continue", file=sys.stderr)
             return None

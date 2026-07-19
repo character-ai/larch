@@ -14,6 +14,7 @@ from larch.agents import agents
 from larch.core import coder_delta_guards
 from larch.core import config
 from larch.core import external_defaults
+from larch.core.repo_roots import larch_binary
 from larch.git import git
 from larch.core import redact
 from larch.core import retry
@@ -103,6 +104,11 @@ def _is_empty_or_already_applied_rebase_error(text: str) -> bool:
 
 def _abort_rebase(runner: Runner, *, cwd: str | None) -> None:
     _ = git.rebase(runner, "--abort", cwd=cwd)
+
+
+def _rebase_skip(runner: Runner, *, cwd: str | None) -> CommandResult:
+    binary = larch_binary(Path(__file__).resolve().parents[3])
+    return runner.run([str(binary), "git", "rebase-skip"], cwd=cwd)
 
 
 def _write_handoff_flag(tmpdir: str | None) -> None:
@@ -334,7 +340,7 @@ def _resolve_conflicts(
         if unmerged_after:
             continue
         if _is_empty_or_already_applied_rebase_error(combined):
-            skip_result = git.rebase_skip(runner, cwd=cwd)
+            skip_result = _rebase_skip(runner, cwd=cwd)
             if skip_result.returncode != 0:
                 if enable_pre_push_handoff and last_conflict_paths:
                     _handoff_or_stall(last_conflict_paths, "git rebase --skip failed")
