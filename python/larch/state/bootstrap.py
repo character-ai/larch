@@ -744,9 +744,9 @@ def _activate_tracking_lease(st: BootstrapState) -> bool:
             raise OSError("repository unavailable for implementation lease")
         _ = tracking_issue.initialize_implementation_lease(
             proc,
-            issue=st.issue_number_resolved,
-            repo=repo,
-            run_id=st.run_id,
+            run=tracking_issue.ImplementationLeaseRun(
+                issue=st.issue_number_resolved, repo=repo, run_id=st.run_id
+            ),
             branch=st.branch_name,
         )
         lease_initialized = True
@@ -768,10 +768,10 @@ def _activate_tracking_lease(st: BootstrapState) -> bool:
             try:
                 _ = tracking_issue.rename_terminal_with_lease(
                     proc,
-                    st.issue_number_resolved,
                     "stalled",
-                    repo=repo,
-                    run_id=st.run_id,
+                    run=tracking_issue.ImplementationLeaseRun(
+                        issue=st.issue_number_resolved, repo=repo, run_id=st.run_id
+                    ),
                 )
             except Exception as terminal_exc:
                 terminal_detail = f"; terminal lease update failed: {terminal_exc}"
@@ -891,6 +891,24 @@ def _strip_plan_provenance_headers(text: str) -> str:
     return "".join(line for idx, line in enumerate(lines) if idx not in remove)
 
 
+def _create_feature_branch(st: BootstrapState, *, feature_file: Path) -> bool:
+    if st.opts.forked_target == "true" or st.is_user_branch == "true" or not feature_file.is_file():
+        return True
+    title = feature_file.read_text(encoding="utf-8", errors="replace").splitlines()[0:1]
+    raw = title[0] if title else "issue"
+    slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", raw.lower())).strip("-")[:40].rstrip("-") or "issue"
+    branch_name = f"{st.user_prefix}/{slug}-{st.issue_number_resolved}" if st.user_prefix and st.issue_number_resolved else ""
+    if not branch_name:
+        return True
+    created = pr.create_branch(proc, branch=branch_name)
+    if created.exit_code != 0:
+        st.stall_tracking = "true"
+        st.implement_bail_reason = "branch-create-failed"
+        return False
+    st.branch_action = created.action
+    return True
+
+
 def _phase_plan(st: BootstrapState) -> None:
     st.plan_file = str(Path(st.implement_tmpdir) / "plan.txt")
     feature_file = Path(st.implement_tmpdir) / "feature-description.txt"
@@ -905,18 +923,8 @@ def _phase_plan(st: BootstrapState) -> None:
     if _checkpoint_status(dirty_lines) in {"dirty", "unknown"}:
         st.implement_bail_reason = "dirty-tree"
         return
-    if st.opts.forked_target != "true" and st.is_user_branch != "true" and feature_file.is_file():
-        title = feature_file.read_text(encoding="utf-8", errors="replace").splitlines()[0:1]
-        raw = title[0] if title else "issue"
-        slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", raw.lower())).strip("-")[:40].rstrip("-") or "issue"
-        branch_name = f"{st.user_prefix}/{slug}-{st.issue_number_resolved}" if st.user_prefix and st.issue_number_resolved else ""
-        if branch_name:
-            created = pr.create_branch(proc, branch=branch_name)
-            if created.exit_code != 0:
-                st.stall_tracking = "true"
-                st.implement_bail_reason = "branch-create-failed"
-                return
-            st.branch_action = created.action
+    if not _create_feature_branch(st, feature_file=feature_file):
+        return
     with contextlib.suppress(Exception):
         st.branch_name = git.current_branch(proc)
     if not st.branch_name:

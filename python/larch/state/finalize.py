@@ -520,14 +520,15 @@ def _rename_issue(
     if state == "stalled" and issue_state.upper() != "OPEN":
         return "skipped"
     try:
-        if ctx.run_id and current.startswith("[IMPLEMENTING] "):
+        if ctx.run_id and current.startswith(
+            config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
+        ):
             _ = tracking_issue.rename_terminal_with_lease(
                 runner,
-                issue,
                 state,
-                repo=ctx.repo,
-                run_id=ctx.run_id,
-                cwd=cwd,
+                run=tracking_issue.ImplementationLeaseRun(
+                    issue=issue, repo=ctx.repo, run_id=ctx.run_id, cwd=cwd
+                ),
             )
         else:
             _ = tracking_issue.rename(

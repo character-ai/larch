@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, cast
 
+from larch.core import config
 from larch.core.proc import CommandResult, Runner
 from larch.design import plan_grammar
 from larch.errors import ShipError
@@ -43,7 +44,7 @@ _SHARED_OWNER_RE: Final = re.compile(
     r"\b(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)\b",
     re.IGNORECASE,
 )
-_IMPLEMENTING_PREFIX: Final = "[IMPLEMENTING] "
+_IMPLEMENTING_PREFIX: Final = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
 _LEASE_STALE_HOURS: Final = 12
 
 REASON_MISSING_NATIVE: Final = "missing-native-blocker-edge"
@@ -698,11 +699,9 @@ def _validate_reuse_sources(
         source_body, source_state = source
         parsed = issue_wire.parse_owner_block(body=source_body)
         receipt = parse_receipt(body=source_body)
-        creates = {
-            row.owner_key
-            for row in parsed.block.owners
-            if parsed.block is not None and row.kind == "CREATE"
-        } if parsed.block is not None else set()
+        creates: set[str] = set()
+        if parsed.block is not None:
+            creates = {row.owner_key for row in parsed.block.owners if row.kind == "CREATE"}
         snapshot_ok = (
             receipt is not None
             and receipt.owners_sha256 == hash_owner_rows(rows=parsed.raw_rows)
@@ -726,7 +725,12 @@ def _active_owner_conflicts(
     conflicts: set[tuple[str, int]] = set()
     for active in active_rows:
         lease = issue_wire.parse_implementation_lease(body=active.body)
-        terminal = active.title.startswith(("[DONE] ", "[STALLED] "))
+        terminal = active.title.startswith(
+            (
+                config.TRACKING_ISSUE_PREFIX_BY_STATE["done"],
+                config.TRACKING_ISSUE_PREFIX_BY_STATE["stalled"],
+            )
+        )
         active_or_pending = active.title.startswith(_IMPLEMENTING_PREFIX) or (
             lease is not None and not terminal
         )

@@ -240,7 +240,7 @@ def test_implementation_lease_mutation_is_run_scoped_and_terminal_atomic() -> No
     )
     assert result.after.title == "[DONE] Protected"
     assert issue_wire.parse_implementation_lease(body=result.after.body) == new
-    assert sum(1 for call in runner.calls if call[:4] == ["gh", "issue", "edit", "7"]) == 1
+    assert sum(1 for call in runner.calls if tuple(call[:4]) == ("gh", "issue", "edit", "7")) == 1
 
     runner = MutationRunner(
         title="[IMPLEMENTING] Protected",

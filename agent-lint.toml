@@ -1332,9 +1332,10 @@ root-max-content-tokens = 26286
 # I-Runtime-1 specifies the mechanically enforced Rust entrypoint boundary.
 # Issue #7780 documents the executable-plan / force-admission contract in
 # docs/issue-anchored-plan.md (always-imported design closure).
-closure-max-lines = 1671
-closure-max-tokens = 50065
-closure-max-content-tokens = 49939
+# Issue #7783 adds the shared-owner implementation-lease invariant.
+closure-max-lines = 1675
+closure-max-tokens = 50235
+closure-max-content-tokens = 50109
 conditional-max-lines = 661
 conditional-max-tokens = 18524
 conditional-max-content-tokens = 18465
@@ -1365,10 +1366,11 @@ root-max-content-tokens = 35301
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose;
 # issue #7747 documents typed release-asset attestation verification;
 # issue #7750 adds the release-version transaction boundary;
-# issue #7728 adds the service-ownership CLI-independence trust boundary.
-closure-max-lines = 3830
-closure-max-tokens = 145390
-closure-max-content-tokens = 145084
+# issue #7728 adds the service-ownership CLI-independence trust boundary;
+# issue #7783 adds shared-owner implementation-lease enforcement.
+closure-max-lines = 3836
+closure-max-tokens = 145746
+closure-max-content-tokens = 145439
 conditional-max-lines = 591
 conditional-max-tokens = 18798
 conditional-max-content-tokens = 18750
@@ -1423,7 +1425,8 @@ roots = [
 # issue #7780 updates SECURITY.md force-admission trust-boundary prose;
 # issue #7747 documents typed release-asset attestation verification;
 # issue #7750 adds the release-version transaction boundary;
-# issue #7728 adds the service-ownership CLI-independence trust boundary.
-closure-max-lines = 6118
-closure-max-tokens = 170842
-closure-max-content-tokens = 170375
+# issue #7728 adds the service-ownership CLI-independence trust boundary;
+# issue #7783 adds shared-owner implementation-lease enforcement.
+closure-max-lines = 6124
+closure-max-tokens = 171198
+closure-max-content-tokens = 170730

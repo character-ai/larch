@@ -330,7 +330,7 @@ def test_migration_shared_owner_requires_block() -> None:
     )
     body = compose_named_block(marker="plan", inner=plan)
     verdict = mg.evaluate_owner_admission(
-        object(), issue="7", repo="o/r", body=body  # type: ignore[arg-type]
+        RecordingRunner(responses=[]), issue="7", repo="o/r", body=body
     )
     assert verdict.reasons == (mg.REASON_MISSING_OWNER_BLOCK,)
 
@@ -365,10 +365,16 @@ def test_active_create_conflicts_with_active_or_pending_reuse(
         labels=(),
         body=active_body,
     )
-    monkeypatch.setattr(mg.open_rows, "open_issue_rows_read", lambda *_a, **_k: (active,))
-    monkeypatch.setattr(mg, "audit_stale_implementation_leases", lambda *_a, **_k: ())
+    def read_open(*_args: object, **_kwargs: object) -> tuple[OpenIssueRow, ...]:
+        return (active,)
+
+    def no_stale(*_args: object, **_kwargs: object) -> tuple[()]:
+        return ()
+
+    monkeypatch.setattr(mg.open_rows, "open_issue_rows_read", read_open)
+    monkeypatch.setattr(mg, "audit_stale_implementation_leases", no_stale)
     verdict = mg.evaluate_owner_admission(
-        object(), issue="7", repo="o/r", body=body  # type: ignore[arg-type]
+        RecordingRunner(responses=[]), issue="7", repo="o/r", body=body
     )
     assert verdict.reasons == (
         "active-owner-conflict owner=shared-owner issue=#8",
@@ -410,14 +416,14 @@ def test_reuse_source_requires_native_edge_and_owner_snapshot(
     )
     assert parsed.block is not None
     reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
-        object(), block=parsed.block, body="", repo="o/r", cwd=None  # type: ignore[arg-type]
+        RecordingRunner(responses=[]), block=parsed.block, body="", repo="o/r", cwd=None
     )
     assert reasons == (
         "reuse-missing-native-blocker owner=shared-owner issue=#6",
     )
     source_body = compose_named_block(marker="plan", inner=source_plan) + source_owners
     reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
-        object(), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None  # type: ignore[arg-type]
+        RecordingRunner(responses=[]), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None
     )
     assert reasons == (
         "reuse-owner-snapshot-invalid owner=shared-owner issue=#6",

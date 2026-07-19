@@ -136,17 +136,66 @@ def _safe_repo_target(value: str) -> bool:
     return not separator or _SYMBOL_RE.fullmatch(symbol) is not None
 
 
-def parse_owner_block(*, body: str) -> OwnerBlockParse:  # noqa: PLR0915 - one pass reports every exact row defect.
-    """Parse and validate the sole unfenced canonical owner block."""
-    lines = (body or "").splitlines()
+def _parse_owner_row(*, row: str, defects: list[str]) -> OwnerRow | None:
+    parts = row.split("\t")
+    if parts[0] == "COMMAND":
+        return None
+    if len(parts) == _CREATE_PARTS and parts[0] == "CREATE":
+        _, key, target = parts
+        source_issue = None
+    elif len(parts) == _REUSE_PARTS and parts[0] == "REUSE" and re.fullmatch(r"#[1-9][0-9]*", parts[2]):
+        _, key, source, target = parts
+        source_issue = int(source[1:])
+    else:
+        defects.append("invalid-owner-row")
+        return None
+    if _OWNER_KEY_RE.fullmatch(key) is None:
+        defects.append("invalid-owner-key")
+    if not _safe_repo_target(target):
+        defects.append("unsafe-owner-target")
+    return OwnerRow(parts[0], key, target, source_issue)
+
+
+def _owner_block_rows(*, lines: list[str]) -> tuple[tuple[str, ...] | None, str]:
     unfenced = _unfenced_line_indexes(lines)
     starts = [index for index, line in enumerate(lines) if index in unfenced and line == _OWNERS_START]
     ends = [index for index, line in enumerate(lines) if index in unfenced and line == _OWNERS_END]
     if not starts and not ends:
-        return OwnerBlockParse(block=None, defects=(), raw_rows=())
+        return None, "absent"
     if len(starts) != 1 or len(ends) != 1 or ends[0] <= starts[0]:
-        return OwnerBlockParse(block=None, defects=("malformed-owner-block",), raw_rows=())
-    raw_rows = tuple(lines[starts[0] + 1 : ends[0]])
+        return None, "malformed-owner-block"
+    return tuple(lines[starts[0] + 1 : ends[0]]), ""
+
+
+def _parse_owner_command(*, raw_rows: tuple[str, ...], defects: list[str]) -> tuple[str, str]:
+    command_rows = [row for row in raw_rows if row.startswith("COMMAND\t")]
+    if len(command_rows) != 1 or not raw_rows or raw_rows[0] not in command_rows:
+        defects.append("invalid-owner-command")
+        return "", ""
+    command_parts = command_rows[0].split("\t")
+    if len(command_parts) != _COMMAND_PARTS or _COMMAND_PART_RE.fullmatch(command_parts[1]) is None or _COMMAND_PART_RE.fullmatch(command_parts[2]) is None:
+        defects.append("invalid-owner-command")
+        return "", ""
+    return command_parts[1], command_parts[2]
+
+
+def _parse_owner_rows(*, raw_rows: tuple[str, ...], defects: list[str]) -> tuple[OwnerRow, ...]:
+    owners = tuple(owner for row in raw_rows if (owner := _parse_owner_row(row=row, defects=defects)) is not None)
+    if not owners:
+        defects.append("missing-owner-row")
+    if len({owner.owner_key for owner in owners}) != len(owners):
+        defects.append("duplicate-owner-key")
+    return owners
+
+
+def parse_owner_block(*, body: str) -> OwnerBlockParse:
+    """Parse and validate the sole unfenced canonical owner block."""
+    lines = (body or "").splitlines()
+    raw_rows, block_defect = _owner_block_rows(lines=lines)
+    if block_defect == "absent":
+        return OwnerBlockParse(block=None, defects=(), raw_rows=())
+    if raw_rows is None:
+        return OwnerBlockParse(block=None, defects=(block_defect,), raw_rows=())
     defects: list[str] = []
     if not raw_rows or any(not row for row in raw_rows):
         defects.append("invalid-owner-row")
@@ -154,55 +203,13 @@ def parse_owner_block(*, body: str) -> OwnerBlockParse:  # noqa: PLR0915 - one p
         defects.append("duplicate-owner-row")
     if tuple(sorted(raw_rows)) != raw_rows:
         defects.append("unsorted-owner-rows")
-    command_rows = [row for row in raw_rows if row.startswith("COMMAND\t")]
-    if len(command_rows) != 1 or not raw_rows or raw_rows[0] not in command_rows:
-        defects.append("invalid-owner-command")
-        domain = ""
-        verb = ""
-    else:
-        command_parts = command_rows[0].split("\t")
-        if (
-            len(command_parts) != _COMMAND_PARTS
-            or _COMMAND_PART_RE.fullmatch(command_parts[1]) is None
-            or _COMMAND_PART_RE.fullmatch(command_parts[2]) is None
-        ):
-            defects.append("invalid-owner-command")
-            domain = ""
-            verb = ""
-        else:
-            _, domain, verb = command_parts
-    owners: list[OwnerRow] = []
-    for row in raw_rows:
-        parts = row.split("\t")
-        if parts[0] == "COMMAND":
-            continue
-        if len(parts) == _CREATE_PARTS and parts[0] == "CREATE":
-            _, key, target = parts
-            source_issue = None
-        elif (
-            len(parts) == _REUSE_PARTS
-            and parts[0] == "REUSE"
-            and re.fullmatch(r"#[1-9][0-9]*", parts[2])
-        ):
-            _, key, source, target = parts
-            source_issue = int(source[1:])
-        else:
-            defects.append("invalid-owner-row")
-            continue
-        if _OWNER_KEY_RE.fullmatch(key) is None:
-            defects.append("invalid-owner-key")
-        if not _safe_repo_target(target):
-            defects.append("unsafe-owner-target")
-        owners.append(OwnerRow(parts[0], key, target, source_issue))
-    if not owners:
-        defects.append("missing-owner-row")
-    if len({owner.owner_key for owner in owners}) != len(owners):
-        defects.append("duplicate-owner-key")
+    domain, verb = _parse_owner_command(raw_rows=raw_rows, defects=defects)
+    owners = _parse_owner_rows(raw_rows=raw_rows, defects=defects)
     unique_defects = tuple(dict.fromkeys(defects))
     if unique_defects:
         return OwnerBlockParse(block=None, defects=unique_defects, raw_rows=raw_rows)
     return OwnerBlockParse(
-        block=OwnerBlock(domain=domain, verb=verb, owners=tuple(owners)),
+        block=OwnerBlock(domain=domain, verb=verb, owners=owners),
         defects=(),
         raw_rows=raw_rows,
     )

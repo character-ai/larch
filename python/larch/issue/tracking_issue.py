@@ -70,6 +70,16 @@ class RenameOutput:
 
 
 @dataclass(frozen=True)
+class ImplementationLeaseRun:
+    """Repository identity for one implementation-lease mutation."""
+
+    issue: str
+    repo: str
+    run_id: str
+    cwd: str | None = None
+
+
+@dataclass(frozen=True)
 class MarkFalsePositiveOutput:
     marked: bool
     new_title: str
@@ -389,25 +399,22 @@ def _lease_timestamp() -> str:
 def initialize_implementation_lease(
     runner: Runner,
     *,
-    issue: str,
-    repo: str,
-    run_id: str,
+    run: ImplementationLeaseRun,
     branch: str,
-    cwd: str | None = None,
 ) -> issue_wire.ImplementationLeaseMarker:
     """Create and read-verify the lease before lifecycle adoption."""
     from larch.issue import migration_governance  # noqa: PLC0415 - receipt parser imports tracking mutation only lazily
 
     snapshot = issue_mutation.read_snapshot(
-        runner, repository=repo, issue=issue, cwd=cwd
+        runner, repository=run.repo, issue=run.issue, cwd=run.cwd
     )
     verdict = migration_governance.evaluate_governance_gate(
         runner,
-        issue=issue,
-        repo=repo,
+        issue=run.issue,
+        repo=run.repo,
         body=snapshot.body,
-        repo_root=Path(cwd).resolve() if cwd else Path.cwd(),
-        cwd=cwd,
+        repo_root=Path(run.cwd).resolve() if run.cwd else Path.cwd(),
+        cwd=run.cwd,
     )
     if not verdict.ok:
         reasons = ",".join(verdict.blocking_reasons) or "unknown"
@@ -416,10 +423,10 @@ def initialize_implementation_lease(
     if receipt is None:
         raise ShipError("implementation-lease-plan-receipt-missing")
     existing = issue_wire.parse_implementation_lease(body=snapshot.body)
-    if existing is not None and existing.run_id != run_id:
+    if existing is not None and existing.run_id != run.run_id:
         raise ShipError("implementation-lease-run-mismatch")
     lease = issue_wire.ImplementationLeaseMarker(
-        run_id=run_id,
+        run_id=run.run_id,
         branch=branch,
         base=receipt.base_sha,
         plan=receipt.plan_sha256,
@@ -428,31 +435,29 @@ def initialize_implementation_lease(
     body = issue_wire.upsert_implementation_lease(body=snapshot.body, lease=lease)
     mutation = issue_mutation.update_implementation_lease(
         runner,
-        repository=repo,
-        issue=issue,
+        repository=run.repo,
+        issue=run.issue,
         body=body,
-        run_id=run_id,
+        run_id=run.run_id,
         expected_snapshot=snapshot,
-        cwd=cwd,
+        cwd=run.cwd,
     )
     verified = issue_wire.parse_implementation_lease(body=mutation.after.body)
     if verified != lease:
         raise ShipError("implementation-lease-readback-mismatch")
     post_verdict = migration_governance.evaluate_governance_gate(
         runner,
-        issue=issue,
-        repo=repo,
+        issue=run.issue,
+        repo=run.repo,
         body=mutation.after.body,
-        repo_root=Path(cwd).resolve() if cwd else Path.cwd(),
-        cwd=cwd,
+        repo_root=Path(run.cwd).resolve() if run.cwd else Path.cwd(),
+        cwd=run.cwd,
     )
     if not post_verdict.ok:
         reasons = ",".join(post_verdict.blocking_reasons) or "unknown"
         terminal_error = ""
         try:
-            _ = rename_terminal_with_lease(
-                runner, issue, "stalled", repo=repo, run_id=run_id, cwd=cwd
-            )
+            _ = rename_terminal_with_lease(runner, "stalled", run=run)
         except ShipError as exc:
             terminal_error = f":terminal-update-failed:{exc}"
         raise ShipError(
@@ -501,21 +506,18 @@ def refresh_implementation_lease(
 
 def rename_terminal_with_lease(
     runner: Runner,
-    issue: str,
     state: str,
     *,
-    repo: str,
-    run_id: str,
-    cwd: str | None = None,
+    run: ImplementationLeaseRun,
 ) -> RenameOutput:
     """Atomically clear active title state and refresh the same run's lease."""
-    _require_numeric_issue(issue)
+    _require_numeric_issue(run.issue)
     _validate_tracking_state(state)
     snapshot = issue_mutation.read_snapshot(
-        runner, repository=repo, issue=issue, cwd=cwd
+        runner, repository=run.repo, issue=run.issue, cwd=run.cwd
     )
     existing = issue_wire.parse_implementation_lease(body=snapshot.body)
-    if existing is None or existing.run_id != run_id:
+    if existing is None or existing.run_id != run.run_id:
         raise ShipError("implementation-lease-run-mismatch")
     target_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
     tail = _redact_compose(
@@ -532,13 +534,13 @@ def rename_terminal_with_lease(
     body = issue_wire.upsert_implementation_lease(body=snapshot.body, lease=lease)
     mutation = issue_mutation.update_implementation_lease(
         runner,
-        repository=repo,
-        issue=issue,
+        repository=run.repo,
+        issue=run.issue,
         body=body,
-        run_id=run_id,
+        run_id=run.run_id,
         title=new_title,
         expected_snapshot=snapshot,
-        cwd=cwd,
+        cwd=run.cwd,
     )
     if issue_wire.parse_implementation_lease(body=mutation.after.body) != lease:
         raise ShipError("implementation-lease-readback-mismatch")
@@ -1140,10 +1142,8 @@ def rename_main(argv: list[str]) -> int:
         if args.run_id:
             result = rename_terminal_with_lease(
                 proc,
-                args.issue,
                 args.state,
-                repo=repo,
-                run_id=args.run_id,
+                run=ImplementationLeaseRun(issue=args.issue, repo=repo, run_id=args.run_id),
             )
         else:
             current_title = _fetch_issue_title(proc, args.issue, repo=repo)
@@ -1302,7 +1302,9 @@ def upsert_summary_main(argv: list[str]) -> int:
             snapshot = issue_mutation.read_snapshot(
                 proc, repository=repo, issue=args.issue
             )
-            if snapshot.title.startswith("[IMPLEMENTING] "):
+            if snapshot.title.startswith(
+                config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
+            ):
                 _ = refresh_implementation_lease(
                     proc,
                     issue=args.issue,
