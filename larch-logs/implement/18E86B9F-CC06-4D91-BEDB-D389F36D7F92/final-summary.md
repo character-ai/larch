@@ -15,7 +15,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 - **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 02:37:01
-- **Cost**: 💰 TOTAL ~$62.49: Claude $56.27, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $6.22  |  Tokens: 64504k
+- **Cost**: 💰 TOTAL ~$67.08: Claude $60.86, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $6.22  |  Tokens: 70635k
 - **Issue**: #7737: https://github.com/character-ai/larch/issues/7737
 - **PR**: #7773: https://github.com/character-ai/larch/pull/7773
 - **Plan review**: N/A
@@ -23,7 +23,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: 0/3 accepted
-- **Lines (PR diff)**: code +1922/-19, larch-logs +232/-0
+- **Lines (PR diff)**: code +1922/-19, larch-logs +252/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
