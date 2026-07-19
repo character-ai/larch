@@ -1362,9 +1362,10 @@ conditional-sources = [
 root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
-closure-max-lines = 3627
-closure-max-tokens = 141210
-closure-max-content-tokens = 140913
+# Issue #7731 adds the repository-read trust boundary to imported SECURITY.md.
+closure-max-lines = 3643
+closure-max-tokens = 141423
+closure-max-content-tokens = 141126
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1411,6 +1412,7 @@ roots = [
   "skills/shared/reviewer-templates.md",
   "skills/shared/voting-protocol.md",
 ]
-closure-max-lines = 5915
-closure-max-tokens = 166682
-closure-max-content-tokens = 166223
+# Issue #7731 adds the repository-read trust boundary to imported SECURITY.md.
+closure-max-lines = 5931
+closure-max-tokens = 166895
+closure-max-content-tokens = 166436

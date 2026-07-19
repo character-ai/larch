@@ -4,6 +4,7 @@ mod config;
 mod context;
 mod env_file;
 mod error;
+mod git;
 mod github;
 mod outcome;
 mod process;
@@ -21,6 +22,12 @@ pub use env_file::{
 };
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
+};
+pub use git::{
+    Commit, ConfigKey, ConfigScope, ConfigValue, GitPath, Head, Object, ObjectHash, ObjectId,
+    ObjectKind, RefFormat, RefName, Reference, ReferenceKind, ReferenceTarget, Remote,
+    RepositoryError, RepositoryErrorKind, RepositoryLocation, RepositoryRead, Revision, Upstream,
+    Worktree,
 };
 pub use github::{
     GitHubFailureInput, GitHubRateLimitInputs, GitHubRequestKind, GitHubResponseLimits,

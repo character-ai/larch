@@ -106,6 +106,22 @@ The core service port exposes policy and typed transport classifications, not
 raw URLs, arbitrary GraphQL documents, or the concrete client. Operation
 leaves must add typed paths and DTOs behind this same adapter.
 
+## Rust Repository Metadata Read Boundary
+
+`larch_adapters::git::GixRepository` is the sole production implementation of
+the core `RepositoryRead` port. It opens and discovers repositories with `gix`
+ownership checks enabled, rejects reduced-trust ownership, and parses config in
+strict mode. Each mutable-state query reopens through the same checks so later
+ownership or config changes cannot reuse an earlier trusted handle. The
+location method returns the immutable repository identity captured by the
+trusted constructor.
+
+The adapter performs local reads only. It exposes no mutation, network,
+credential, or arbitrary Git command surface. Results preserve object IDs,
+paths, config values, and remote URLs as bytes. Errors use fixed classes and do
+not include repository paths, config values, remote credentials, or upstream
+library diagnostics.
+
 ## Scoped Live-Mutation Authorization Boundary
 
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.
