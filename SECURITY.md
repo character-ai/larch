@@ -46,6 +46,9 @@ require an explicit matching `LARCH_BINARY`. These controls do not defend
 against a hostile same-UID process that can rewrite plugin cache or data files.
 Runtime lints reject production Cargo, `bin/larch`, and
 `target/{debug,release}/larch`; only verified bootstrap owners may execute them.
+The `service-ownership` rule also rejects runtime `gcloud` execution and keeps
+this clean-install `gh` in `scripts/larch.sh` separate from runtime service
+access: bootstrap use of `gh` does not authorize a runtime adapter to shell out.
 
 ## Google ADC Trust Boundary
 
@@ -106,7 +109,10 @@ only reviewed transient failures from idempotent reads are retry inputs.
 Uncertain mutations route to typed reconciliation instead of automatic retry.
 The core service port exposes policy and typed transport classifications, not
 raw URLs, arbitrary GraphQL documents, or the concrete client. Operation
-leaves must add typed paths and DTOs behind this same adapter.
+leaves must add typed paths and DTOs behind this same adapter. The
+`service-ownership` repository rule mechanically confines the Octocrab client,
+GitHub request hosts, and GraphQL documents to the adapter crate and requires
+`docs/github-service-inventory.md` to name the concrete client owner.
 
 Repository, issue, comment, label, and search responses are untrusted data.
 The Rust operation adapter converts Octocrab models immediately into

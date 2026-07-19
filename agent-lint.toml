@@ -1364,10 +1364,11 @@ root-max-content-tokens = 35301
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose;
 # issue #7747 documents typed release-asset attestation verification;
-# issue #7750 adds the release-version transaction boundary.
-closure-max-lines = 3824
-closure-max-tokens = 145273
-closure-max-content-tokens = 144967
+# issue #7750 adds the release-version transaction boundary;
+# issue #7728 adds the service-ownership CLI-independence trust boundary.
+closure-max-lines = 3830
+closure-max-tokens = 145390
+closure-max-content-tokens = 145084
 conditional-max-lines = 591
 conditional-max-tokens = 18798
 conditional-max-content-tokens = 18750
@@ -1421,7 +1422,8 @@ roots = [
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 updates SECURITY.md force-admission trust-boundary prose;
 # issue #7747 documents typed release-asset attestation verification;
-# issue #7750 adds the release-version transaction boundary.
-closure-max-lines = 6112
-closure-max-tokens = 170725
-closure-max-content-tokens = 170258
+# issue #7750 adds the release-version transaction boundary;
+# issue #7728 adds the service-ownership CLI-independence trust boundary.
+closure-max-lines = 6118
+closure-max-tokens = 170842
+closure-max-content-tokens = 170375

@@ -203,6 +203,13 @@ registered exactly with the runtime redactor, and is excluded from child
 process environments. The initial transport supports only GitHub.com over
 HTTPS; GitHub Enterprise needs a separate reviewed host policy.
 
+Larch never executes the `gh` or `gcloud` service CLI at runtime. The Rust
+process allowlist permits only the vendor agents, Git, and the larch bootstrap
+self-exec, and the `service-ownership` repository rule rejects `gcloud` and
+service-credential child environments in production surfaces. The clean-install
+`gh` in `scripts/larch.sh` runs before any runtime and is a separate installer
+surface.
+
 ### `LARCH_BINARY`
 
 `LARCH_BINARY` selects an explicit local Rust executable for `scripts/larch.sh`.

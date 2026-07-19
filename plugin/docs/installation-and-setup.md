@@ -81,7 +81,11 @@ gcloud auth application-default print-access-token >/dev/null
 
 Both commands succeed silently when the expected local file is readable and
 ADC can obtain an access token. The second command is an optional operator
-setup check. Larch does not run `gcloud` during service calls.
+setup check. Larch does not run `gcloud` during service calls; the converted
+shared GitHub commands likewise run without `gh` on a clean machine because Rust
+reaches GitHub through the authenticated adapter. The clean-install `gh` in
+`scripts/larch.sh` only downloads and verifies the release binary and is
+separate from runtime service access.
 
 The Rust credential boundary follows the standard ADC order: the file named by
 `GOOGLE_APPLICATION_CREDENTIALS`, the well-known local ADC file, then the

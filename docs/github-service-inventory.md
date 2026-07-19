@@ -2,26 +2,72 @@
 
 This inventory separates Rust implementation parity, production consumer
 cutover, and Python removal. A Rust adapter does not transfer command ownership
-or authorize deletion of the Python path.
+or authorize deletion of the Python path. It records every GitHub service
+operation, the adapter method that owns it, the command that owns it today, and
+the exact issue that will perform any later atomic cutover.
 
-| Operation group | Rust implementation | Consumer cutover | Python removal |
+## Checked scope
+
+The scan covered production Rust, Python, skills, agents, hooks, scripts, and CI
+configuration. It excluded documentation, fixtures, historical run logs, and the
+generated `plugin/` projection. `service-ownership` in `crates/larch-lint`
+mechanically holds the boundary this inventory records: concrete clients,
+service request surfaces, and `gcloud` stay inside `crates/larch-adapters`.
+
+## Concrete client owner
+
+`crates/larch-adapters/src/github/mod.rs` is the single concrete GitHub client
+owner. `OctocrabGitHubService::from_environment` builds the one private Octocrab
+client, reads exactly `LARCH_GH_TOKEN`, and pins the `api.github.com` and
+`github.com` host allowlist. Every other adapter module layers typed operations
+over that one client and exposes no raw REST URL, GraphQL document, or concrete
+client to domain callers. No production code outside `crates/larch-adapters`
+imports Octocrab, names a GitHub service host, or embeds a GraphQL document.
+
+## Adapter operation ownership
+
+| Operation group | Adapter owner | Current command owner | Later atomic cutover |
 |---|---|---|---|
-| Repository metadata | Implemented behind `GitHubService` | Not started | Not started |
-| Issue get, list, search, create, edit, close | Implemented behind `GitHubService` | Not started | Not started |
-| Comment list, create, edit, delete | Implemented behind `GitHubService` | Not started | Not started |
-| Label list, create, add, remove | Implemented behind `GitHubService` | Not started | Not started |
-| Artifact and immutable-release attestation verification | Implemented behind closed attestation types | Pending #7674 | Not started |
-| `gh run-logs`, `gh workflow-path` | Complete | Complete | Complete |
-| `gh remote-repo`, `gh resolve-repo` | Complete | Complete | Complete |
+| Repository metadata | `github/mod.rs` (`OctocrabGitHubService`) | Rust `gh remote-repo`, `gh resolve-repo` | Complete (#7764) |
+| Actions run status, cancel, logs, workflow path | `github_actions.rs` (`GitHubActionsService`) | Rust `gh run-logs`, `gh workflow-path` | Complete (#7765) |
+| Issue get, list, search, create, edit, close | `github_rest.rs` (`GitHubService`) | Python issue, deps, triage, audit-runs, combine-issues commands | #7687 chief umbrella (per-domain leaf) |
+| Comment list, create, edit, delete | `github_rest.rs` (`GitHubService`) | Python issue, clarify, tracking-issue commands | #7687 chief umbrella (per-domain leaf) |
+| Label list, create, add, remove | `github_rest.rs` (`GitHubService`) | Python issue, block-issue commands | #7687 chief umbrella (per-domain leaf) |
+| Pull request, review, merge state | `github/operations.rs` (fixed GraphQL document) | Python ci, design, release commands | #7687 chief umbrella (per-domain leaf) |
+| Issue-dependency add, remove | `github/operations.rs`, `github/mutation_auth.rs` gate | Python `block-issue`, `deps` commands | #7687 chief umbrella (per-domain leaf) |
+| Release listing, draft, publish, asset upload, asset download | `github/release.rs` (`OctocrabReleaseTransport`) | Python release, gc-run-logs commands | #7687 chief umbrella (per-domain leaf) |
+| Artifact and immutable-release attestation verification | `github/attestation.rs` (`OctocrabAttestationTransport`) | Rust bootstrap and release attestation | Pending #7674 |
 
-The implementation uses the authenticated Octocrab adapter from issue #7724.
-It does not invoke `gh`, Python, an arbitrary REST path, or another HTTP client.
-Repository-resolution commands compose that metadata port with local remotes from
-the gix read port (#7734) and own ambient discovery for `OWNER/REPO` slugs.
-The existing Python callers and command registry remain authoritative until a
-later cutover issue adds black-box parity evidence and changes their ownership.
-Attestation verification uses the release and asset service from #7738 and the
-authenticated client from #7724. It fixes the repository, workflow, issuer,
-identity, endpoints, and trust roots in the adapter. Offline fixtures cover the
-real larch artifact and immutable-release trust domains. No command ownership
-changes in this implementation.
+`crates/larch-lint/data/command-registry.toml` is the authoritative per-command
+ledger. Each later-domain command stays Python-owned until its named leaf
+implements Rust parity, switches every consumer, and removes the Python command
+in one PR. The `command-registry` rule rejects a Rust owner whose Python removal
+is incomplete, so a partial cutover cannot land.
+
+## Completed shared cutovers
+
+`gh remote-repo`, `gh resolve-repo` (#7764) and `gh run-logs`, `gh workflow-path`
+(#7765) have Rust parity, consumer cutover, and Python removal complete. No
+Python registration or superseded command implementation remains for them. Their
+callers now invoke the larch `gh` subcommand through `scripts/larch.sh`; that
+larch subcommand is native repository and run-log resolution, not a GitHub CLI
+shell-out.
+
+## CLI independence and the bootstrap exception
+
+No production runtime path shells out to `gh` from Rust. Rust reaches GitHub only
+through the authenticated Octocrab adapter. Residual `gh` CLI callers in Python,
+scripts, skills, and CI belong to commands still owned by Python and migrate with
+their own leaves; the `gh-argv-literal` rule keeps raw `gh` construction inside
+the Rust GitHub wrapper. The clean-install `gh` usage in `scripts/larch.sh`
+downloads and verifies the release binary before any runtime; it is a separate
+installer surface and does not authorize a runtime service adapter to shell out
+to `gh`.
+
+## Redaction and diagnostics
+
+The credential is held by a non-`Debug` wrapper and omitted from the typed child
+environment allowlist. Authorization diagnostics pass through an
+invocation-owned redactor, and errors retain only stable failure classes.
+Diagnostics, session files, committed logs, and snapshots contain no tokens,
+authorization headers, or access tokens.
