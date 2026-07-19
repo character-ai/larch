@@ -18,6 +18,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 mod git_commands;
 mod github_repository_resolution;
 mod push_network;
+mod release_common;
 mod release_plugin_runtime;
 mod release_prepare;
 mod release_version;

@@ -11,6 +11,8 @@ use std::{
 };
 
 use larch_adapters::{ConfinedPath, PathIntent, RepositoryRoot, atomic_write_utf8, read_utf8};
+
+use crate::release_common::semver;
 use serde::{
     Deserialize, Deserializer,
     de::{MapAccess, SeqAccess, Visitor},
@@ -427,18 +429,6 @@ fn ascii_json_string(value: &str) -> String {
         }
     }
     output
-}
-
-fn semver(value: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = value.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next()?.parse().ok()?;
-    (parts.next().is_none()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || byte == b'.'))
-    .then_some((major, minor, patch))
 }
 
 fn toml_data(text: &str, path: &str) -> Result<TomlValue, String> {
