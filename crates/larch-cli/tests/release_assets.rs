@@ -33,9 +33,15 @@ fn package_matches_golden_bytes_and_is_deterministic() {
     }
     let archive = first.join(format!("larch-v{VERSION}-{}.tar.gz", TARGETS[0]));
     let fragment = first.join(format!("larch-v{VERSION}-{}.asset.json", TARGETS[0]));
-    assert_eq!(fs::read(&archive).expect("archive"), fs::read(fixture("release-asset-golden.tar.gz")).expect("golden"));
-    assert_eq!(fs::read(&fragment).expect("fragment"), fs::read(fixture("release-asset-golden.asset.json")).expect("golden"));
-    assert_eq!(fs::read(&archive).expect("first"), fs::read(second.join(format!("larch-v{VERSION}-{}.tar.gz", TARGETS[0]))).expect("second"));
+    assert_eq!(fs::read(&archive).expect("archive"), golden_archive_bytes());
+    assert_eq!(
+        fs::read(&fragment).expect("fragment"),
+        fs::read(fixture("release-asset-golden.asset.json")).expect("golden")
+    );
+    assert_eq!(
+        fs::read(&archive).expect("first"),
+        fs::read(second.join(format!("larch-v{VERSION}-{}.tar.gz", TARGETS[0]))).expect("second")
+    );
 }
 
 #[test]
@@ -94,7 +100,11 @@ fn collect_emits_exact_validated_set_and_rejects_failures() {
     )
     .expect("remove fragment");
     larch()
-        .args(collect_args(&missing, &root.path().join("missing-out"), &license))
+        .args(collect_args(
+            &missing,
+            &root.path().join("missing-out"),
+            &license,
+        ))
         .assert()
         .failure()
         .stderr(predicates::str::contains("input asset set mismatch"));
@@ -161,15 +171,19 @@ fn collect_rejects_digest_and_gzip_mismatches() {
     fragment["asset"]["sha256"] = serde_json::Value::String(hex_sha256(&data));
     fs::write(
         &fragment_path,
-        format!("{}\n", serde_json::to_string_pretty(&fragment).expect("write")),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&fragment).expect("write")
+        ),
     )
     .expect("rewrite fragment");
     larch()
         .args(collect_args(&gzip, &root.path().join("gzip-out"), &license))
         .assert()
         .failure()
-        .stderr(predicates::str::contains("gzip metadata is not deterministic"));
-
+        .stderr(predicates::str::contains(
+            "gzip metadata is not deterministic",
+        ));
 }
 
 #[test]
@@ -189,7 +203,10 @@ fn validate_rejects_manifest_checksum_and_extra_assets() {
     manifest["tag"] = serde_json::Value::String("v9.9.9".into());
     fs::write(
         output.join(format!("larch-v{VERSION}-manifest.json")),
-        format!("{}\n", serde_json::to_string_pretty(&manifest).expect("write")),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&manifest).expect("write")
+        ),
     )
     .expect("rewrite");
     larch()
@@ -254,7 +271,9 @@ fn asset_candidate_requires_matching_versions() {
         ])
         .assert()
         .success()
-        .stdout(format!("VERSION={VERSION}\nSOURCE_COMMIT={SOURCE_COMMIT}\n"));
+        .stdout(format!(
+            "VERSION={VERSION}\nSOURCE_COMMIT={SOURCE_COMMIT}\n"
+        ));
 
     fs::write(
         root.path().join("Cargo.toml"),
@@ -419,7 +438,15 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn golden_archive_bytes() -> Vec<u8> {
+    let hex = fs::read_to_string(fixture("release-asset-golden.tar.gz.hex")).expect("golden hex");
+    let hex = hex.trim();
+    (0..hex.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).expect("hex"))
+        .collect()
+}
+
 fn larch() -> AssertCommand {
     AssertCommand::cargo_bin("larch").expect("larch binary")
 }
-

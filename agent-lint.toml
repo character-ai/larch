@@ -1364,7 +1364,7 @@ root-max-content-tokens = 35301
 # issue #7749 adds the release-planning trust boundary;
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose.
 closure-max-lines = 3820
-closure-max-tokens = 144944
+closure-max-tokens = 144945
 closure-max-content-tokens = 144639
 conditional-max-lines = 591
 conditional-max-tokens = 18798
@@ -1417,7 +1417,8 @@ roots = [
 # I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary;
-# issue #7780 updates SECURITY.md force-admission trust-boundary prose.
+# issue #7780 updates SECURITY.md force-admission trust-boundary prose;
+# issue #7747 documents typed release-asset attestation verification.
 closure-max-lines = 6108
-closure-max-tokens = 170396
-closure-max-content-tokens = 169930
+closure-max-tokens = 170397
+closure-max-content-tokens = 169931

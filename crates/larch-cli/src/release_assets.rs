@@ -13,9 +13,7 @@ use std::{
 use flate2::{Compression, GzBuilder, read::GzDecoder};
 use larch_adapters::{
     PathIntent, TemporaryRoot, atomic_write_bytes, atomic_write_utf8,
-    github::{
-        AttestationOperations, OctocrabAttestationTransport, OctocrabGitHubService,
-    },
+    github::{AttestationOperations, OctocrabAttestationTransport, OctocrabGitHubService},
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
@@ -145,7 +143,11 @@ pub struct ValidateArguments {
 }
 
 pub fn asset_candidate(arguments: &CandidateArguments) -> ExitCode {
-    match validate_candidate(&arguments.repo_root, &arguments.tag, &arguments.source_commit) {
+    match validate_candidate(
+        &arguments.repo_root,
+        &arguments.tag,
+        &arguments.source_commit,
+    ) {
         Ok(identity) => {
             emit_kv("VERSION", &identity.version);
             emit_kv("SOURCE_COMMIT", &identity.source_commit);
@@ -183,7 +185,9 @@ fn fail(error: &AssetError) -> ExitCode {
 
 fn identity(version: &str, tag: &str, source_commit: &str) -> Result<ReleaseIdentity, AssetError> {
     if !is_semver(version) {
-        return Err(AssetError::new(format!("invalid plugin version: {version}")));
+        return Err(AssetError::new(format!(
+            "invalid plugin version: {version}"
+        )));
     }
     let expected_tag = format!("v{version}");
     if tag != expected_tag {
@@ -211,13 +215,20 @@ fn validate_candidate(
     let root = repo_root
         .canonicalize()
         .map_err(|error| AssetError::new(format!("repo root is not readable: {error}")))?;
-    let plugin = object(load_json(&root.join(".claude-plugin/plugin.json"))?, "plugin manifest")?;
+    let plugin = object(
+        load_json(&root.join(".claude-plugin/plugin.json"))?,
+        "plugin manifest",
+    )?;
     let plugin_version = string_field(&plugin, "version", "plugin manifest")?;
     let cargo_text = fs::read_to_string(root.join("Cargo.toml")).map_err(|error| {
-        AssetError::new(format!("Cargo.toml has no valid workspace package version: {error}"))
+        AssetError::new(format!(
+            "Cargo.toml has no valid workspace package version: {error}"
+        ))
     })?;
     let cargo: Value = toml::from_str(&cargo_text).map_err(|error| {
-        AssetError::new(format!("Cargo.toml has no valid workspace package version: {error}"))
+        AssetError::new(format!(
+            "Cargo.toml has no valid workspace package version: {error}"
+        ))
     })?;
     let cargo_version = cargo
         .get("workspace")
@@ -246,9 +257,8 @@ fn package_asset_inner(arguments: &PackageArguments) -> Result<(), AssetError> {
         .map_err(|error| AssetError::new(format!("license is not readable: {error}")))?;
     check_binary_version(&binary, &identity.version)?;
     let _ = require_regular(&license, "license", true)?;
-    let binary_data = fs::read(&binary).map_err(|error| {
-        AssetError::new(format!("release executable is not readable: {error}"))
-    })?;
+    let binary_data = fs::read(&binary)
+        .map_err(|error| AssetError::new(format!("release executable is not readable: {error}")))?;
     let license_text = fs::read(&license)
         .map_err(|error| AssetError::new(format!("license is not readable: {error}")))?;
     let archive_data = deterministic_archive(&binary_data, &license_text)?;
@@ -288,13 +298,21 @@ fn collect_assets_inner(arguments: &CollectArguments) -> Result<(), AssetError> 
     let output_names = expected_output_names(&identity);
     if arguments.output_dir.exists() {
         let metadata = fs::symlink_metadata(&arguments.output_dir).map_err(|error| {
-            AssetError::new(format!("asset output root must be a real directory: {error}"))
+            AssetError::new(format!(
+                "asset output root must be a real directory: {error}"
+            ))
         })?;
         if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err(AssetError::new("asset output root must be a real directory"));
+            return Err(AssetError::new(
+                "asset output root must be a real directory",
+            ));
         }
         let stale: BTreeSet<String> = fs::read_dir(&arguments.output_dir)
-            .map_err(|error| AssetError::new(format!("asset output root must be a real directory: {error}")))?
+            .map_err(|error| {
+                AssetError::new(format!(
+                    "asset output root must be a real directory: {error}"
+                ))
+            })?
             .filter_map(Result::ok)
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .filter(|name| !output_names.contains(name))
@@ -306,8 +324,11 @@ fn collect_assets_inner(arguments: &CollectArguments) -> Result<(), AssetError> 
             )));
         }
     }
-    fs::create_dir_all(&arguments.output_dir)
-        .map_err(|error| AssetError::new(format!("asset output root must be a real directory: {error}")))?;
+    fs::create_dir_all(&arguments.output_dir).map_err(|error| {
+        AssetError::new(format!(
+            "asset output root must be a real directory: {error}"
+        ))
+    })?;
     let output = ensure_output_root(&arguments.output_dir)?;
     let mut records = Vec::with_capacity(TARGETS.len());
     for target in TARGETS {
@@ -367,8 +388,10 @@ fn validate_assets_at(
         verify_record_file(record, &discovered[&record.archive], &license_text)?;
     }
     let expected_checksums = checksum_text(identity, output_dir)?;
-    let actual_checksums = fs::read_to_string(&discovered[&checksums_name(identity)])
-        .map_err(|error| AssetError::new(format!("checksum file must be readable ASCII: {error}")))?;
+    let actual_checksums =
+        fs::read_to_string(&discovered[&checksums_name(identity)]).map_err(|error| {
+            AssetError::new(format!("checksum file must be readable ASCII: {error}"))
+        })?;
     if !actual_checksums.is_ascii() {
         return Err(AssetError::new("checksum file must be readable ASCII"));
     }
@@ -390,8 +413,8 @@ fn verify_artifact_attestations(
         let cancellation = Cancellation::new();
         let transport = OctocrabAttestationTransport::new(&service, &cancellation);
         let operations = AttestationOperations::new(&transport);
-        let tag = ReleaseTag::parse(&identity.tag)
-            .map_err(|error| AssetError::new(error.to_string()))?;
+        let tag =
+            ReleaseTag::parse(&identity.tag).map_err(|error| AssetError::new(error.to_string()))?;
         let source_commit = ReleaseSourceCommit::parse(&identity.source_commit)
             .map_err(|error| AssetError::new(error.to_string()))?;
         for name in expected_asset_names(identity) {
@@ -399,7 +422,8 @@ fn verify_artifact_attestations(
             let digest = format!("sha256:{}", sha256_file(&path)?);
             let subject = ReleaseAssetSubject::new(&name, &digest)
                 .map_err(|error| AssetError::new(error.to_string()))?;
-            let request = ArtifactAttestationRequest::new(subject, tag.clone(), source_commit.clone());
+            let request =
+                ArtifactAttestationRequest::new(subject, tag.clone(), source_commit.clone());
             operations
                 .verify_artifact(&request)
                 .await
@@ -465,7 +489,9 @@ fn deterministic_archive(binary: &[u8], license_text: &[u8]) -> Result<Vec<u8>, 
     if remainder != 0 {
         tar.extend(std::iter::repeat_n(0_u8, RECORD_SIZE - remainder));
     }
-    let mut encoder = GzBuilder::new().mtime(0).write(Vec::new(), Compression::best());
+    let mut encoder = GzBuilder::new()
+        .mtime(0)
+        .write(Vec::new(), Compression::best());
     encoder
         .write_all(&tar)
         .map_err(|error| AssetError::new(format!("archive gzip failed: {error}")))?;
@@ -487,7 +513,9 @@ fn write_ustar_file(
     mode: u32,
 ) -> Result<(), AssetError> {
     if name.len() >= 100 || name.contains('/') || name.contains('\\') {
-        return Err(AssetError::new(format!("archive member name is invalid: {name}")));
+        return Err(AssetError::new(format!(
+            "archive member name is invalid: {name}"
+        )));
     }
     let mut header = [0_u8; TAR_BLOCK];
     header[..name.len()].copy_from_slice(name.as_bytes());
@@ -523,7 +551,8 @@ fn write_octal(slot: &mut [u8], value: u64) -> Result<(), AssetError> {
 
 fn validate_archive(path: &Path, license_text: &[u8]) -> Result<(), AssetError> {
     let _ = require_regular(path, "archive", true)?;
-    let data = fs::read(path).map_err(|error| AssetError::new(format!("archive is not readable: {error}")))?;
+    let data = fs::read(path)
+        .map_err(|error| AssetError::new(format!("archive is not readable: {error}")))?;
     if data.len() as u64 > MAX_ARCHIVE_BYTES {
         return Err(AssetError::new(format!(
             "archive exceeds size limit: {}",
@@ -579,9 +608,8 @@ fn decompress_archive(data: &[u8], path: &Path) -> Result<Vec<u8>, AssetError> {
     }
     let mut decoder = GzDecoder::new(data);
     let mut tar_data = Vec::new();
-    std::io::copy(&mut decoder, &mut tar_data).map_err(|error| {
-        AssetError::new(format!("invalid archive {name}: {error}"))
-    })?;
+    std::io::copy(&mut decoder, &mut tar_data)
+        .map_err(|error| AssetError::new(format!("invalid archive {name}: {error}")))?;
     Ok(tar_data)
 }
 
@@ -602,7 +630,9 @@ fn parse_ustar_members(tar_data: &[u8], path: &Path) -> Result<Vec<TarMember>, A
         .and_then(|value| value.to_str())
         .unwrap_or("archive");
     if tar_data.len() < TAR_BLOCK * 2 {
-        return Err(AssetError::new(format!("invalid archive {name}: truncated")));
+        return Err(AssetError::new(format!(
+            "invalid archive {name}: truncated"
+        )));
     }
     let mut offset = 0_usize;
     let mut members = Vec::new();
@@ -638,11 +668,13 @@ fn parse_ustar_members(tar_data: &[u8], path: &Path) -> Result<Vec<TarMember>, A
         let size = usize::try_from(parse_octal_field(&header[124..136], name, "bad size")?)
             .map_err(|_| AssetError::new(format!("invalid archive {name}: size overflow")))?;
         let data_start = offset + TAR_BLOCK;
-        let data_end = data_start.checked_add(size).ok_or_else(|| {
-            AssetError::new(format!("invalid archive {name}: size overflow"))
-        })?;
+        let data_end = data_start
+            .checked_add(size)
+            .ok_or_else(|| AssetError::new(format!("invalid archive {name}: size overflow")))?;
         if data_end > tar_data.len() {
-            return Err(AssetError::new(format!("invalid archive {name}: truncated member")));
+            return Err(AssetError::new(format!(
+                "invalid archive {name}: truncated member"
+            )));
         }
         members.push(TarMember {
             name: read_c_string(&header[..100]),
@@ -679,7 +711,10 @@ fn parse_octal(bytes: &[u8]) -> Result<u64, ()> {
 }
 
 fn read_c_string(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|byte| *byte == 0).unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
@@ -688,14 +723,16 @@ fn check_binary_version(binary: &Path, version: &str) -> Result<(), AssetError> 
     if metadata.mode() & 0o111 == 0 {
         return Err(AssetError::new("release executable is not executable"));
     }
-    let output = Command::new(binary)
+    let output = Command::new(binary) // lint-subprocess-via-runner: ok release packaging smokes the staged target binary --version contract
         .arg("--version")
         .output()
-        .map_err(|error| AssetError::new(format!("release executable did not report the requested version: {error}")))?;
+        .map_err(|error| {
+            AssetError::new(format!(
+                "release executable did not report the requested version: {error}"
+            ))
+        })?;
     let expected = format!("larch {version}\n");
-    if !output.status.success()
-        || output.stdout != expected.as_bytes()
-        || !output.stderr.is_empty()
+    if !output.status.success() || output.stdout != expected.as_bytes() || !output.stderr.is_empty()
     {
         return Err(AssetError::new(
             "release executable did not report the requested version",
@@ -710,7 +747,8 @@ fn verify_record_file(
     license_text: &[u8],
 ) -> Result<(), AssetError> {
     let metadata = require_regular(path, "archive", true)?;
-    let data = fs::read(path).map_err(|error| AssetError::new(format!("archive is not readable: {error}")))?;
+    let data = fs::read(path)
+        .map_err(|error| AssetError::new(format!("archive is not readable: {error}")))?;
     if metadata.len() != record.byte_size {
         return Err(AssetError::new(format!(
             "archive size mismatch: {}",
@@ -734,10 +772,19 @@ fn fragment_record(
     let fragment = object(load_json(path)?, "asset fragment")?;
     exact_keys(
         &fragment,
-        &["fragment_schema_version", "plugin_version", "tag", "source_commit", "asset"],
+        &[
+            "fragment_schema_version",
+            "plugin_version",
+            "tag",
+            "source_commit",
+            "asset",
+        ],
         "asset fragment",
     )?;
-    if fragment.get("fragment_schema_version").and_then(Value::as_u64) != Some(FRAGMENT_SCHEMA_VERSION)
+    if fragment
+        .get("fragment_schema_version")
+        .and_then(Value::as_u64)
+        != Some(FRAGMENT_SCHEMA_VERSION)
     {
         return Err(AssetError::new(format!(
             "fragment schema version mismatch: {}",
@@ -752,17 +799,18 @@ fn fragment_record(
             basename(path)
         )));
     }
-    if fragment.get("source_commit").and_then(Value::as_str) != Some(identity.source_commit.as_str())
+    if fragment.get("source_commit").and_then(Value::as_str)
+        != Some(identity.source_commit.as_str())
     {
         return Err(AssetError::new(format!(
             "fragment source commit mismatch: {}",
             basename(path)
         )));
     }
-    let record = parse_record(fragment.get("asset").cloned().unwrap_or(Value::Null), &format!(
-        "asset fragment {}",
-        basename(path)
-    ))?;
+    let record = parse_record(
+        fragment.get("asset").cloned().unwrap_or(Value::Null),
+        &format!("asset fragment {}", basename(path)),
+    )?;
     if record.target != target {
         return Err(AssetError::new(format!(
             "fragment target mismatch: {}",
@@ -788,7 +836,13 @@ fn parse_manifest(path: &Path, identity: &ReleaseIdentity) -> Result<Vec<AssetRe
     let manifest = object(load_json(path)?, "release manifest")?;
     exact_keys(
         &manifest,
-        &["schema_version", "plugin_version", "tag", "source_commit", "assets"],
+        &[
+            "schema_version",
+            "plugin_version",
+            "tag",
+            "source_commit",
+            "assets",
+        ],
         "release manifest",
     )?;
     if manifest.get("schema_version").and_then(Value::as_u64) != Some(SCHEMA_VERSION) {
@@ -799,7 +853,8 @@ fn parse_manifest(path: &Path, identity: &ReleaseIdentity) -> Result<Vec<AssetRe
     {
         return Err(AssetError::new("release manifest identity mismatch"));
     }
-    if manifest.get("source_commit").and_then(Value::as_str) != Some(identity.source_commit.as_str())
+    if manifest.get("source_commit").and_then(Value::as_str)
+        != Some(identity.source_commit.as_str())
     {
         return Err(AssetError::new("release manifest source commit mismatch"));
     }
@@ -810,9 +865,14 @@ fn parse_manifest(path: &Path, identity: &ReleaseIdentity) -> Result<Vec<AssetRe
     let records = assets
         .iter()
         .enumerate()
-        .map(|(index, value)| parse_record(value.clone(), &format!("release manifest asset {index}")))
+        .map(|(index, value)| {
+            parse_record(value.clone(), &format!("release manifest asset {index}"))
+        })
         .collect::<Result<Vec<_>, _>>()?;
-    let targets: Vec<&str> = records.iter().map(|record| record.target.as_str()).collect();
+    let targets: Vec<&str> = records
+        .iter()
+        .map(|record| record.target.as_str())
+        .collect();
     if targets != TARGETS {
         return Err(AssetError::new(
             "release manifest targets are missing, duplicated, unexpected, or out of order",
@@ -836,12 +896,17 @@ fn parse_record(value: Value, label: &str) -> Result<AssetRecord, AssetError> {
         label,
     )?;
     let target = string_field(&record, "target", label)?.to_owned();
-    let _ = target_contract(&target).map_err(|_| {
-        AssetError::new(format!("{label} has an unsupported target"))
-    })?;
+    let _ = target_contract(&target)
+        .map_err(|_| AssetError::new(format!("{label} has an unsupported target")))?;
     let archive = string_field(&record, "archive", label)?.to_owned();
-    if Path::new(&archive).file_name().and_then(|value| value.to_str()) != Some(archive.as_str()) {
-        return Err(AssetError::new(format!("{label} archive must be a basename")));
+    if Path::new(&archive)
+        .file_name()
+        .and_then(|value| value.to_str())
+        != Some(archive.as_str())
+    {
+        return Err(AssetError::new(format!(
+            "{label} archive must be a basename"
+        )));
     }
     let byte_size = record
         .get("byte_size")
@@ -944,7 +1009,9 @@ fn checksum_text(identity: &ReleaseIdentity, output_dir: &Path) -> Result<String
 
 fn discover_recursive(root: &Path) -> Result<BTreeMap<String, PathBuf>, AssetError> {
     let metadata = fs::symlink_metadata(root).map_err(|error| {
-        AssetError::new(format!("asset input root must be a real directory: {error}"))
+        AssetError::new(format!(
+            "asset input root must be a real directory: {error}"
+        ))
     })?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(AssetError::new("asset input root must be a real directory"));
@@ -953,10 +1020,14 @@ fn discover_recursive(root: &Path) -> Result<BTreeMap<String, PathBuf>, AssetErr
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).map_err(|error| {
-            AssetError::new(format!("asset input root must be a real directory: {error}"))
+            AssetError::new(format!(
+                "asset input root must be a real directory: {error}"
+            ))
         })? {
             let entry = entry.map_err(|error| {
-                AssetError::new(format!("asset input root must be a real directory: {error}"))
+                AssetError::new(format!(
+                    "asset input root must be a real directory: {error}"
+                ))
             })?;
             let path = entry.path();
             let metadata = fs::symlink_metadata(&path).map_err(|error| {
@@ -991,24 +1062,33 @@ fn discover_output(
     expected: &BTreeSet<String>,
 ) -> Result<BTreeMap<String, PathBuf>, AssetError> {
     let metadata = fs::symlink_metadata(root).map_err(|error| {
-        AssetError::new(format!("asset output root must be a real directory: {error}"))
+        AssetError::new(format!(
+            "asset output root must be a real directory: {error}"
+        ))
     })?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(AssetError::new("asset output root must be a real directory"));
+        return Err(AssetError::new(
+            "asset output root must be a real directory",
+        ));
     }
     let mut discovered = BTreeMap::new();
     for entry in fs::read_dir(root).map_err(|error| {
-        AssetError::new(format!("asset output root must be a real directory: {error}"))
+        AssetError::new(format!(
+            "asset output root must be a real directory: {error}"
+        ))
     })? {
         let entry = entry.map_err(|error| {
-            AssetError::new(format!("asset output root must be a real directory: {error}"))
+            AssetError::new(format!(
+                "asset output root must be a real directory: {error}"
+            ))
         })?;
         let path = entry.path();
-        let metadata = fs::symlink_metadata(&path).map_err(|error| {
-            AssetError::new(format!("final asset is not readable: {error}"))
-        })?;
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| AssetError::new(format!("final asset is not readable: {error}")))?;
         if metadata.is_dir() {
-            return Err(AssetError::new("final asset set must not contain directories"));
+            return Err(AssetError::new(
+                "final asset set must not contain directories",
+            ));
         }
         let _ = require_regular(&path, "final asset", true)?;
         let name = path
@@ -1030,8 +1110,11 @@ fn discover_output(
 }
 
 fn ensure_output_root(path: &Path) -> Result<TemporaryRoot, AssetError> {
-    fs::create_dir_all(path)
-        .map_err(|error| AssetError::new(format!("asset output root must be a real directory: {error}")))?;
+    fs::create_dir_all(path).map_err(|error| {
+        AssetError::new(format!(
+            "asset output root must be a real directory: {error}"
+        ))
+    })?;
     TemporaryRoot::resolve(Some(path)).map_err(|error| AssetError::new(error.to_string()))
 }
 
@@ -1049,38 +1132,40 @@ fn write_utf8(root: &TemporaryRoot, name: &str, text: &str) -> Result<(), AssetE
     atomic_write_utf8(&path, text, 0o644).map_err(|error| AssetError::new(error.to_string()))
 }
 
-fn require_regular(
-    path: &Path,
-    label: &str,
-    nonempty: bool,
-) -> Result<fs::Metadata, AssetError> {
+fn require_regular(path: &Path, label: &str, nonempty: bool) -> Result<fs::Metadata, AssetError> {
     let name = basename(path);
     let metadata = fs::symlink_metadata(path)
         .map_err(|_| AssetError::new(format!("{label} is not readable: {name}")))?;
     if metadata.file_type().is_symlink() {
-        return Err(AssetError::new(format!("{label} must not be a symlink: {name}")));
+        return Err(AssetError::new(format!(
+            "{label} must not be a symlink: {name}"
+        )));
     }
     if !metadata.is_file() {
-        return Err(AssetError::new(format!("{label} must be a regular file: {name}")));
+        return Err(AssetError::new(format!(
+            "{label} must be a regular file: {name}"
+        )));
     }
     if nonempty && metadata.len() == 0 {
-        return Err(AssetError::new(format!("{label} must not be empty: {name}")));
+        return Err(AssetError::new(format!(
+            "{label} must not be empty: {name}"
+        )));
     }
     Ok(metadata)
 }
 
 fn basename(path: &Path) -> &str {
-    path.file_name().and_then(|value| value.to_str()).unwrap_or("path")
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("path")
 }
 
 fn load_json(path: &Path) -> Result<Value, AssetError> {
     let _ = require_regular(path, "JSON file", true)?;
-    let text = fs::read_to_string(path).map_err(|error| {
-        AssetError::new(format!("invalid JSON in {}: {error}", basename(path)))
-    })?;
-    serde_json::from_str(&text).map_err(|error| {
-        AssetError::new(format!("invalid JSON in {}: {error}", basename(path)))
-    })
+    let text = fs::read_to_string(path)
+        .map_err(|error| AssetError::new(format!("invalid JSON in {}: {error}", basename(path))))?;
+    serde_json::from_str(&text)
+        .map_err(|error| AssetError::new(format!("invalid JSON in {}: {error}", basename(path))))
 }
 
 fn object(value: Value, label: &str) -> Result<Map<String, Value>, AssetError> {
@@ -1090,7 +1175,11 @@ fn object(value: Value, label: &str) -> Result<Map<String, Value>, AssetError> {
     }
 }
 
-fn exact_keys(value: &Map<String, Value>, expected: &[&str], label: &str) -> Result<(), AssetError> {
+fn exact_keys(
+    value: &Map<String, Value>,
+    expected: &[&str],
+    label: &str,
+) -> Result<(), AssetError> {
     let actual: BTreeSet<&str> = value.keys().map(String::as_str).collect();
     let expected: BTreeSet<&str> = expected.iter().copied().collect();
     if actual == expected {
@@ -1124,9 +1213,8 @@ fn sha256_hex(data: &[u8]) -> String {
 
 fn sha256_file(path: &Path) -> Result<String, AssetError> {
     let _ = require_regular(path, "release asset", true)?;
-    let data = fs::read(path).map_err(|error| {
-        AssetError::new(format!("release asset is not readable: {error}"))
-    })?;
+    let data = fs::read(path)
+        .map_err(|error| AssetError::new(format!("release asset is not readable: {error}")))?;
     Ok(sha256_hex(&data))
 }
 
@@ -1178,5 +1266,7 @@ fn sorted_diff(left: &BTreeSet<String>, right: &BTreeSet<String>) -> Vec<String>
 }
 
 fn sorted_diff_str(left: &BTreeSet<&str>, right: &BTreeSet<&str>) -> Vec<String> {
-    left.difference(right).map(|value| (*value).to_owned()).collect()
+    left.difference(right)
+        .map(|value| (*value).to_owned())
+        .collect()
 }
