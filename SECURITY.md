@@ -85,7 +85,7 @@ the Octocrab build excludes its tracing feature.
 
 The adapter constructs one private Octocrab client inside the larch Tokio
 runtime. Octocrab is pinned with default features disabled and only its
-rustls-ring client, timeout, and required JWT support enabled. Octocrab 0.54
+rustls AWS-LC client, timeout, and required JWT support enabled. Octocrab 0.54
 requires a JWT backend even though this adapter exposes token authentication
 only; larch selects AWS-LC because the alternative RustCrypto RSA graph carries
 an unpatched advisory. `aws-lc-sys` builds its bundled C and assembly with CMake
