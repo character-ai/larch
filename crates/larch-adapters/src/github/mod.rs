@@ -333,6 +333,13 @@ fn validate_approved_url(url: &Url) -> Result<(), GitHubHostError> {
     }
 }
 
+pub(crate) fn octocrab_status(error: &octocrab::Error) -> Option<u16> {
+    match error {
+        octocrab::Error::GitHub { source, .. } => Some(source.status_code.as_u16()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

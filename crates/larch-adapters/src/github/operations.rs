@@ -9,7 +9,7 @@
 
 use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
-    check_live_mutation_auth,
+    check_live_mutation_auth, octocrab_status,
 };
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
 use serde_json::{Map, Value, json};
@@ -602,13 +602,6 @@ const fn completion_error(error: GitHubCompletionError) -> GitHubOperationError 
     match error {
         GitHubCompletionError::Cancelled => GitHubOperationError::Cancelled,
         GitHubCompletionError::DeadlineExceeded => GitHubOperationError::DeadlineExceeded,
-    }
-}
-
-fn octocrab_status(error: &octocrab::Error) -> Option<u16> {
-    match error {
-        octocrab::Error::GitHub { source, .. } => Some(source.status_code.as_u16()),
-        _ => None,
     }
 }
 
