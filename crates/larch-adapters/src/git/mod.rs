@@ -1,9 +1,11 @@
-//! Closed typed Git CLI compatibility adapter for #7671 exceptions.
+//! Git adapters: trusted `gix` repository reads and closed typed Git CLI mutations.
 //!
-//! Production callers use operation-specific methods and typed requests. There
-//! is no public arbitrary-argv Git escape hatch.
+//! Read-only repository metadata stays on [`GixRepository`]. Installed-Git
+//! compatibility exceptions use [`GitCli`] operation-specific methods — there is
+//! no public arbitrary-argv Git escape hatch.
 
 mod ops;
+mod repository;
 mod validate;
 
 use std::{
@@ -28,6 +30,7 @@ pub use ops::{
     RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
     TagMutationRequest, VersionRequest, WorktreeRequest,
 };
+pub use repository::GixRepository;
 pub use validate::{GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl};
 
 use ops::GitOperation;
@@ -304,7 +307,8 @@ where
             self.policy.shutdown_grace,
             self.policy.output_limit,
         )?
-        .with_environment(ChildEnvironment::GitTerminalPrompt, OsString::from("0"));
+        .with_environment(ChildEnvironment::GitTerminalPrompt, OsString::from("0"))
+        .with_stdin(operation.stdin());
         let label = request.program().operation();
         let output = self.runner.run(request, cancellation).await?;
         let result = GitCliResult {
@@ -467,6 +471,7 @@ mod tests {
             &InterpretTrailersRequest {
                 trailers: vec!["Signed-off-by: A <a@b>".into()],
                 in_place: None,
+                stdin: b"subject\n".to_vec(),
             },
             &["interpret-trailers", "--trailer", "Signed-off-by: A <a@b>"],
         );
@@ -533,7 +538,7 @@ mod tests {
                 refspec: Some(GitRefspec::new("main").unwrap()),
                 quiet: true,
             },
-            &["fetch", "origin", "main", "--quiet"],
+            &["fetch", "--quiet", "origin", "main"],
         );
         check(
             &PushRequest {
@@ -602,6 +607,39 @@ mod tests {
                 force: false,
                 pathspec_from_file: None,
                 paths: vec![GitPath::new("a").unwrap()],
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            ExactDiffRequest {
+                cached: false,
+                name_only: true,
+                name_status: true,
+                quiet: false,
+                exit_code: false,
+                base: None,
+                head: None,
+                paths: Vec::new(),
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            CheckoutRequest::Branch {
+                create: false,
+                force: false,
+                name: GitRef::new("topic").unwrap(),
+                start_point: Some(GitRef::new("HEAD").unwrap()),
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            InterpretTrailersRequest {
+                trailers: vec!["Signed-off-by: A <a@b>".into()],
+                in_place: Some(GitPath::new("MSG").unwrap()),
+                stdin: b"body\n".to_vec(),
             }
             .arguments()
             .is_err()

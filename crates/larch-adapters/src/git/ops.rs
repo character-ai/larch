@@ -15,6 +15,9 @@ use super::{
 pub(super) trait GitOperation {
     fn operation(&self) -> GitCliOperation;
     fn arguments(&self) -> Result<Vec<OsString>, GitCliInputError>;
+    fn stdin(&self) -> Vec<u8> {
+        Vec::new()
+    }
 }
 
 fn err(kind: GitCliInputErrorKind, message: &str) -> GitCliInputError {
@@ -86,6 +89,12 @@ pub struct ExactDiffRequest {
 }
 impl ExactDiffRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
+        if self.name_only && self.name_status {
+            return Err(err(
+                GitCliInputErrorKind::UnsupportedCombination,
+                "diff cannot request both --name-only and --name-status",
+            ));
+        }
         let mut a = Vec::new();
         if self.cached {
             a.push("--cached".into());
@@ -350,6 +359,11 @@ impl CheckoutRequest {
                         GitCliInputErrorKind::UnsupportedCombination,
                         "force branch checkout requires create",
                     ));
+                } else if start_point.is_some() {
+                    return Err(err(
+                        GitCliInputErrorKind::UnsupportedCombination,
+                        "checkout start_point requires create (-b/-B)",
+                    ));
                 }
                 a.push(name.as_os_str().into());
                 if let Some(start) = start_point {
@@ -462,6 +476,8 @@ git_op!(CommitRequest, Commit);
 pub struct InterpretTrailersRequest {
     pub trailers: Vec<OsString>,
     pub in_place: Option<GitPath>,
+    /// Commit-message body fed on stdin when `in_place` is unset.
+    pub stdin: Vec<u8>,
 }
 impl InterpretTrailersRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
@@ -469,6 +485,12 @@ impl InterpretTrailersRequest {
             return Err(err(
                 GitCliInputErrorKind::Empty,
                 "at least one trailer is required",
+            ));
+        }
+        if self.in_place.is_some() && !self.stdin.is_empty() {
+            return Err(err(
+                GitCliInputErrorKind::UnsupportedCombination,
+                "interpret-trailers cannot combine --in-place with stdin",
             ));
         }
         let mut a = Vec::new();
@@ -484,7 +506,17 @@ impl InterpretTrailersRequest {
         Ok(a)
     }
 }
-git_op!(InterpretTrailersRequest, InterpretTrailers);
+impl GitOperation for InterpretTrailersRequest {
+    fn operation(&self) -> GitCliOperation {
+        GitCliOperation::InterpretTrailers
+    }
+    fn arguments(&self) -> Result<Vec<OsString>, GitCliInputError> {
+        self.argv()
+    }
+    fn stdin(&self) -> Vec<u8> {
+        self.stdin.clone()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BranchMutationRequest {
@@ -756,12 +788,13 @@ pub struct FetchRequest {
 }
 impl FetchRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
-        let mut a = vec![self.remote.as_os_str().into()];
-        if let Some(refspec) = &self.refspec {
-            a.push(refspec.as_os_str().into());
-        }
+        let mut a = Vec::new();
         if self.quiet {
             a.push("--quiet".into());
+        }
+        a.push(self.remote.as_os_str().into());
+        if let Some(refspec) = &self.refspec {
+            a.push(refspec.as_os_str().into());
         }
         Ok(a)
     }
