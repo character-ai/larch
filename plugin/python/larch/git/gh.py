@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-import argparse
 import sys
 from larch.core import config
 from larch.core import redact
@@ -1383,6 +1382,21 @@ def run_log_read(
     )
 
 
+def run_log_failed_read(
+    runner: Runner,
+    run_id: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _gh(
+        runner,
+        ["run", "view", run_id, "--repo", repo, "--log-failed"],
+        cwd=cwd,
+        timeout=_effective_read_timeout(None),
+    )
+
+
 def run_list_successful_read(
     runner: Runner,
     *,
@@ -2197,49 +2211,6 @@ def pr_edit_body_file(
     )
 
 
-def run_log_failed_read(
-    runner: Runner,
-    run_id: str,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    return _gh(
-        runner,
-        ["run", "view", run_id, "--repo", repo, "--log-failed"],
-        cwd=cwd,
-        timeout=_effective_read_timeout(None),
-    )
-
-
-def run_logs_failed(
-    runner: Runner,
-    run_id: str,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> tuple[str, int]:
-    pointer = (
-        f"--- CI log (run {run_id}, repo {repo}): failed-job log shown. "
-        f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
-    )
-    result = run_log_failed_read(runner, run_id, repo=repo, cwd=cwd)
-    combined = result.stdout + result.stderr
-    text = f"{pointer}\n"
-    if combined:
-        text += combined
-        if not combined.endswith("\n"):
-            text += "\n"
-    if (
-        result.returncode != 0
-        and "is still in progress; logs will be available" in combined
-    ):
-        return text, 3
-    if result.returncode != 0:
-        return text, 1
-    return text, 0
-
-
 def extract_closes_issue(body: str) -> str:
     match = re.search(r"Closes #([0-9]+)", body)
     return match.group(1) if match else ""
@@ -2286,22 +2257,4 @@ def remote_repo_main(argv: list[str]) -> int:
         print("github-remote-repo.sh: cannot parse remote", file=sys.stderr)
         return 2
     print(repo)
-    return 0
-
-
-def run_logs_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py gh run-logs")
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--repo", required=True)
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        return 1
-    text, rc = run_logs_failed(proc, args.run_id, repo=args.repo)
-    sys.stdout.write(text)
-    return rc
-
-
-def workflow_path_main(_argv: list[str]) -> int:
-    print("unknown")
     return 0

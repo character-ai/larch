@@ -474,6 +474,10 @@ pub struct WorkflowLogArchive {
 }
 
 impl WorkflowLogArchive {
+    /// Maximum bytes accepted from a workflow log download and rendered from
+    /// its archive entries.
+    pub const MAX_BYTES: usize = 64 * 1024 * 1024;
+
     #[must_use]
     pub const fn new(bytes: Vec<u8>) -> Self {
         Self { bytes }

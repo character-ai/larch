@@ -6,6 +6,7 @@ mod env_file;
 mod error;
 mod git;
 mod github;
+mod github_actions;
 mod outcome;
 mod process;
 mod redaction;
@@ -41,6 +42,7 @@ pub use github::{
     GitHubTransportPolicy, WorkflowDispatchRequest, WorkflowJob, WorkflowLogArchive, WorkflowRun,
     WorkflowRunFilters, classify_github_retry,
 };
+pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, ProcessCancellation,

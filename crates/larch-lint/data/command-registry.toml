@@ -2730,11 +2730,11 @@ verb = "run-logs"
 python_module = "larch.git.gh"
 python_function = "run_logs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7765
 
 [[commands]]
 domain = "gh"
@@ -2742,11 +2742,11 @@ verb = "workflow-path"
 python_module = "larch.git.gh"
 python_function = "workflow_path_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7765
 
 [[commands]]
 domain = "git"

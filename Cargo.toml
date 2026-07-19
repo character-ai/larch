@@ -52,6 +52,7 @@ tree-sitter-bash = { version = "0.25.1", default-features = false }
 url = { version = "2.5.8", default-features = false, features = ["std"] }
 uuid = { version = "1.24.0", default-features = false, features = ["std"] }
 wait-timeout = { version = "0.2.1", default-features = false }
+zip = { version = "=7.2.0", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

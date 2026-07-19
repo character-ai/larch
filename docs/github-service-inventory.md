@@ -10,6 +10,7 @@ or authorize deletion of the Python path.
 | Issue get, list, search, create, edit, close | Implemented behind `GitHubService` | Not started | Not started |
 | Comment list, create, edit, delete | Implemented behind `GitHubService` | Not started | Not started |
 | Label list, create, add, remove | Implemented behind `GitHubService` | Not started | Not started |
+| `gh run-logs`, `gh workflow-path` | Complete | Complete | Complete |
 
 The implementation uses the authenticated Octocrab adapter from issue #7724.
 It does not invoke `gh`, Python, an arbitrary REST path, or another HTTP client.

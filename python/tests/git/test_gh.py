@@ -100,16 +100,14 @@ def test_read_helpers_that_bypass_retry_are_bounded() -> None:
         responses=[
             CommandResult(("gh", "pr", "view", "1"), 0, '{"body":"body"}', "", 0.01),
             CommandResult(("gh", "run", "view", "7"), 0, "log", "", 0.01),
-            CommandResult(("gh", "run", "view", "7"), 0, "failed", "", 0.01),
             CommandResult(("gh", "pr", "view"), 0, "Closes #1", "", 0.01),
         ],
     )
 
     assert gh.pr_view_body(runner, 1, repo="o/r") == "body"
     assert gh.run_log_read(runner, 7, repo="o/r").returncode == 0
-    assert gh.run_logs_failed(runner, "7", repo="o/r")[1] == 0
     assert gh.extract_closes_issue_from_current_pr(runner, repo="o/r") == "1"
-    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 4
+    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 3
 
 
 def test_pr_create_deduplicates_existing() -> None:
@@ -1436,56 +1434,6 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert result.returncode == 1
     assert "--repo" in runner.calls[0]
     assert "o/r" in runner.calls[0]
-
-
-def test_run_logs_main_in_progress_exit_three(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("gh", "run", "view", "7"),
-                1,
-                "",
-                "run is still in progress; logs will be available when it is complete",
-                0.01,
-            ),
-        ],
-    )
-    monkeypatch.setattr(gh, "proc", runner)
-    assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 3
-    assert "Full log: https://github.com/o/r/actions/runs/7" in capsys.readouterr().out
-
-
-def test_run_logs_main_failure_exit_one(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("gh", "run", "view", "7"), 1, "", "boom", 0.01)]
-    )
-    monkeypatch.setattr(gh, "proc", runner)
-    assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 1
-    assert "boom" in capsys.readouterr().out
-
-
-def test_run_logs_main_keeps_full_failed_log(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    raw_lines = ["job-early-marker"] + [f"line-{idx}" for idx in range(60)]
-    raw_lines += ["job-middle-marker"] + [f"line-{idx}" for idx in range(60, 120)]
-    raw_lines += ["job-end-marker"]
-    raw = "\n".join(raw_lines)
-    runner = RecordingRunner(
-        responses=[CommandResult(("gh", "run", "view", "7"), 0, raw, "", 0.01)]
-    )
-    monkeypatch.setattr(gh, "proc", runner)
-    assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 0
-    out = capsys.readouterr().out
-    lines = out.splitlines()
-    assert "job-early-marker" in lines
-    assert "job-middle-marker" in lines
-    assert "job-end-marker" in lines
-    assert "last 100 lines shown" not in out
 
 
 _JOBS_DURATIONS_PAYLOAD = (
