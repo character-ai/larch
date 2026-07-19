@@ -813,7 +813,6 @@
   "tests/issue/test_rejected_analysis.py::test_record_derives_launch_failures_from_ingest_status": 5,
   "tests/issue/test_rejected_analysis.py::test_record_partial_issue_failure_still_files_resolved_clusters": 16,
   "tests/issue/test_rejected_analysis.py::test_record_reuses_work_dir_pending_precedence_over_dismissed": 11,
-  "tests/release/test_release.py::test_plugin_read_version_cli_captures_stdout_with_inherited_quiet": 12,
   "tests/rendering/test_rendering.py::test_generate_check_accepts_verb_registry": 18,
   "tests/rendering/test_rendering.py::test_render_lane_status_emits_on_stdout_under_inherited_quiet": 12,
   "tests/rendering/test_rendering.py::test_render_plan_review_body_file_substitutes_role_line": 10,

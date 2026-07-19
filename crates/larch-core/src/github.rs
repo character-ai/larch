@@ -973,6 +973,8 @@ pub struct ReleaseState {
     tag: String,
     draft: bool,
     immutable: bool,
+    prerelease: bool,
+    published_at: Option<String>,
     assets: Vec<RemoteAsset>,
 }
 
@@ -998,8 +1000,18 @@ impl ReleaseState {
             tag: tag.to_owned(),
             draft,
             immutable,
+            prerelease: false,
+            published_at: None,
             assets,
         })
+    }
+
+    /// Attach the publication fields returned by GitHub's release API.
+    #[must_use]
+    pub fn with_publication(mut self, prerelease: bool, published_at: Option<String>) -> Self {
+        self.prerelease = prerelease;
+        self.published_at = published_at;
+        self
     }
 
     /// Return the release database id.
@@ -1024,6 +1036,18 @@ impl ReleaseState {
     #[must_use]
     pub const fn is_immutable(&self) -> bool {
         self.immutable
+    }
+
+    /// Return whether GitHub marks the release as a prerelease.
+    #[must_use]
+    pub const fn is_prerelease(&self) -> bool {
+        self.prerelease
+    }
+
+    /// Borrow the publication timestamp used to order non-draft releases.
+    #[must_use]
+    pub fn published_at(&self) -> Option<&str> {
+        self.published_at.as_deref()
     }
 
     /// Borrow the uploaded assets.

@@ -3,28 +3,28 @@
 use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode};
 
 use larch_adapters::{
-    GitCli, GitCliPolicy, GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest,
-    PushRequest, SecureTempDir, TagMutationRequest, TemporaryRoot, TokioProcessRunner,
+    GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest, PushRequest, SecureTempDir,
+    TagMutationRequest, TemporaryRoot,
     github::{
         AttestationOperations, DraftReleaseInput, OctocrabAttestationTransport,
-        OctocrabGitHubService, OctocrabReleaseTransport, ReleaseCandidatePullRequest,
-        ReleaseCandidatePullRequestState, ReleaseOperations, RepoSlug,
+        OctocrabReleaseTransport, ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState,
+        ReleaseOperations, RepoSlug,
     },
-    runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    ArtifactAttestationRequest, GitHubActionsService, GitHubRepositoryRef, GitPath, ObjectId,
+    ArtifactAttestationRequest, GitHubActionsService, GitHubRepositoryRef, GitPath,
     ReleaseAssetSubject, ReleaseSourceCommit, ReleaseState, ReleaseTag, RepositoryErrorKind,
     RepositoryRead, Revision, SafeText, WorkflowRun, WorkflowRunFilters, emit_kv,
     resolve_tag_object_id,
 };
 
-use crate::{github_repository_resolution, release_assets};
+use crate::{release_assets, release_common};
 
 const ASSET_WORKFLOW: &str = "rust-release-assets.yaml";
 
 pub fn ensure_policy(repo: &str) -> ExitCode {
-    command(
+    release_common::command(
+        ProductionServices::new(),
         |services| ensure_policy_with(services, repo),
         |()| {
             emit_kv("MERGE_COMMITS_ENABLED", "true");
@@ -34,7 +34,8 @@ pub fn ensure_policy(repo: &str) -> ExitCode {
 }
 
 pub fn stage(version: &str, notes_file: &Path, repo: &str, pr: &str) -> ExitCode {
-    command(
+    release_common::command(
+        ProductionServices::new(),
         |services| stage_with(services, version, notes_file, repo, pr),
         |source_commit| {
             emit_kv("TAG", &format!("v{version}"));
@@ -45,7 +46,8 @@ pub fn stage(version: &str, notes_file: &Path, repo: &str, pr: &str) -> ExitCode
 }
 
 pub fn asset_run(repo: &str, tag: &str, source_commit: &str) -> ExitCode {
-    command(
+    release_common::command(
+        ProductionServices::new(),
         |services| asset_run_with(services, repo, tag, source_commit),
         |run| {
             emit_kv("ASSET_RUN_ID", &run.database_id.to_string());
@@ -58,9 +60,10 @@ pub fn asset_run(repo: &str, tag: &str, source_commit: &str) -> ExitCode {
 }
 
 pub fn validate_draft(version: &str, repo: &str, pr: &str, source_commit: &str) -> ExitCode {
-    command(
-        |services| validate_draft_with(services, version, repo, pr, source_commit),
-        |()| {
+    release_common::command(
+        ProductionServices::new(),
+        |services| validate_candidate_with(services, version, repo, pr, source_commit, true),
+        |_| {
             emit_kv("TAG", &format!("v{version}"));
             emit_kv("SOURCE_COMMIT", source_commit);
             emit_kv("DRAFT_ASSETS_VALID", "true");
@@ -68,20 +71,16 @@ pub fn validate_draft(version: &str, repo: &str, pr: &str, source_commit: &str) 
     )
 }
 
-fn command<T>(
-    run: impl FnOnce(&ProductionServices) -> Result<T, String>,
-    success: impl FnOnce(T),
-) -> ExitCode {
-    match ProductionServices::new().and_then(|services| run(&services)) {
-        Ok(value) => {
-            success(value);
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("ERROR={}", SafeText::from_untrusted(error));
-            ExitCode::FAILURE
-        }
-    }
+pub fn validate_candidate_assets(
+    version: &str,
+    repo: &str,
+    pr: &str,
+    source_commit: &str,
+    require_draft: bool,
+) -> Result<ReleaseState, String> {
+    ProductionServices::new().and_then(|services| {
+        validate_candidate_with(&services, version, repo, pr, source_commit, require_draft)
+    })
 }
 
 trait Services {
@@ -120,51 +119,11 @@ trait Services {
     fn verify_artifact(&self, request: &ArtifactAttestationRequest) -> Result<(), String>;
 }
 
-struct ProductionServices {
-    runtime: LarchRuntime,
-    cancellation: Cancellation,
-    github: OctocrabGitHubService,
-    repository: GixRepository,
-    git_policy: GitCliPolicy,
-    runner: TokioProcessRunner,
-}
-
-impl ProductionServices {
-    fn new() -> Result<Self, String> {
-        let cwd = env::current_dir().map_err(|error| error.to_string())?;
-        let repository = GixRepository::discover(&cwd).map_err(|error| error.to_string())?;
-        let git_policy = GitCliPolicy::new(cwd).map_err(|error| error.to_string())?;
-        let runtime = LarchRuntime::new().map_err(|error| error.to_string())?;
-        let github = runtime
-            .block_on(async { OctocrabGitHubService::from_environment() })
-            .map_err(|error| error.to_string())?;
-        Ok(Self {
-            runtime,
-            cancellation: Cancellation::new(),
-            github,
-            repository,
-            git_policy,
-            runner: TokioProcessRunner::default(),
-        })
-    }
-
-    fn object_id(&self, oid: &str) -> Result<ObjectId, String> {
-        self.repository
-            .resolve_revision(&Revision::new(oid.as_bytes()))
-            .map_err(|error| error.to_string())
-    }
-
-    fn git_cli(&self) -> GitCli<'_, TokioProcessRunner> {
-        GitCli::new(&self.runner, self.git_policy.clone())
-    }
-}
+type ProductionServices = release_common::ProductionReleaseServices;
 
 impl Services for ProductionServices {
     fn origin_repo(&self) -> Result<String, String> {
-        match github_repository_resolution::resolve_remote_repo("origin", Some(&self.repository)) {
-            github_repository_resolution::RemoteRepoResult::Ok { repo } => Ok(repo),
-            _ => Err("origin repository could not be resolved".to_owned()),
-        }
+        self.origin_repo()
     }
 
     fn ensure_policy(&self, repo: &RepoSlug) -> Result<(), String> {
@@ -194,30 +153,11 @@ impl Services for ProductionServices {
         repo: &RepoSlug,
         number: u64,
     ) -> Result<ReleaseCandidatePullRequest, String> {
-        self.runtime
-            .block_on(self.github.release_candidate_pull_request(
-                &self.cancellation,
-                repo.owner(),
-                repo.repo(),
-                number,
-            ))
-            .map_err(|error| error.to_string())
+        self.pull_request(repo, number)
     }
 
     fn plugin_version_at(&self, oid: &str) -> Result<String, String> {
-        let id = self.object_id(oid)?;
-        let bytes = self
-            .repository
-            .blob_at_commit(&id, &GitPath::new(b".claude-plugin/plugin.json".to_vec()))
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| format!("plugin.json read at {oid} failed: file is missing"))?;
-        let value: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|_| format!("plugin.json at {oid} is invalid JSON"))?;
-        value
-            .get("version")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| format!("plugin.json at {oid} has no version"))
+        plugin_version_at(&self.repository, oid)
     }
 
     fn candidate_license(&self, oid: &str) -> Result<Vec<u8>, String> {
@@ -364,6 +304,23 @@ impl Services for ProductionServices {
     }
 }
 
+pub fn plugin_version_at(repository: &GixRepository, oid: &str) -> Result<String, String> {
+    let id = repository
+        .resolve_revision(&Revision::new(oid.as_bytes()))
+        .map_err(|error| error.to_string())?;
+    let bytes = repository
+        .blob_at_commit(&id, &GitPath::new(b".claude-plugin/plugin.json".to_vec()))
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("plugin.json read at {oid} failed: file is missing"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|_| format!("plugin.json at {oid} is invalid JSON"))?;
+    value
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| format!("plugin.json at {oid} has no version"))
+}
+
 fn ensure_policy_with(services: &dyn Services, repo: &str) -> Result<(), String> {
     let (repository, slug) = repositories(repo)?;
     require_origin(services, &repository)?;
@@ -476,13 +433,14 @@ fn asset_run_with(
         .ok_or_else(|| "tag-triggered asset workflow run is not registered".to_owned())
 }
 
-fn validate_draft_with(
+fn validate_candidate_with(
     services: &dyn Services,
     version: &str,
     repo: &str,
     pr: &str,
     source_commit: &str,
-) -> Result<(), String> {
+    require_draft: bool,
+) -> Result<ReleaseState, String> {
     let tag = release_tag(version)?;
     let pr = parse_pr(pr)?;
     if !release_assets::is_commit(source_commit) {
@@ -500,10 +458,14 @@ fn validate_draft_with(
     let release = services
         .release(&slug, &tag)?
         .ok_or_else(|| format!("release {tag} was not found"))?;
-    if !release.is_mutable_draft() {
+    if require_draft && !release.is_mutable_draft() {
         return Err("release must remain a mutable draft before merge".to_owned());
     }
-    validate_assets(services, &slug, version, &tag, source_commit, &release)
+    if !require_draft && (release.is_draft() || !release.is_immutable()) {
+        return Err("published release must be immutable".to_owned());
+    }
+    validate_assets(services, &slug, version, &tag, source_commit, &release)?;
+    Ok(release)
 }
 
 fn validate_assets(
@@ -590,31 +552,19 @@ fn require_origin(services: &dyn Services, repository: &GitHubRepositoryRef) -> 
 }
 
 fn repositories(repo: &str) -> Result<(GitHubRepositoryRef, RepoSlug), String> {
-    let Some((owner, name)) = repo.split_once('/') else {
-        return Err(format!("invalid repository: {repo}"));
-    };
-    if name.contains('/') {
-        return Err(format!("invalid repository: {repo}"));
-    }
-    let repository =
-        GitHubRepositoryRef::new(owner, name).map_err(|_| format!("invalid repository: {repo}"))?;
-    let slug = RepoSlug::parse(owner, name).map_err(|_| format!("invalid repository: {repo}"))?;
+    let slug =
+        release_common::repo_slug(repo).ok_or_else(|| format!("invalid repository: {repo}"))?;
+    let repository = GitHubRepositoryRef::new(slug.owner(), slug.repo())
+        .map_err(|_| format!("invalid repository: {repo}"))?;
     Ok((repository, slug))
 }
 
 fn release_tag(version: &str) -> Result<String, String> {
-    let tag = format!("v{version}");
-    ReleaseTag::parse(&tag)
-        .map(|_| tag)
-        .map_err(|_| format!("invalid semver: {version}"))
+    release_common::release_tag(version).ok_or_else(|| format!("invalid semver: {version}"))
 }
 
 fn parse_pr(value: &str) -> Result<u64, String> {
-    value
-        .parse::<u64>()
-        .ok()
-        .filter(|number| *number != 0 && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .ok_or_else(|| format!("invalid PR number: {value}"))
+    release_common::parse_pr(value).ok_or_else(|| format!("invalid PR number: {value}"))
 }
 
 fn valid_tag(value: &str) -> bool {
@@ -926,7 +876,7 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            validate_draft_with(&drift, "1.2.3", "character-ai/larch", "7", SOURCE)
+            validate_candidate_with(&drift, "1.2.3", "character-ai/larch", "7", SOURCE, true)
                 .unwrap_err()
                 .contains("PR head changed")
         );
@@ -936,9 +886,16 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            validate_draft_with(&incomplete, "1.2.3", "character-ai/larch", "7", SOURCE)
-                .unwrap_err()
-                .contains("allowlist mismatch")
+            validate_candidate_with(
+                &incomplete,
+                "1.2.3",
+                "character-ai/larch",
+                "7",
+                SOURCE,
+                true,
+            )
+            .unwrap_err()
+            .contains("allowlist mismatch")
         );
 
         let names =
@@ -960,7 +917,7 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            validate_draft_with(&digest, "1.2.3", "character-ai/larch", "7", SOURCE)
+            validate_candidate_with(&digest, "1.2.3", "character-ai/larch", "7", SOURCE, true,)
                 .unwrap_err()
                 .contains("digest mismatch")
         );
@@ -971,7 +928,10 @@ mod tests {
             downloads,
             ..FakeServices::default()
         };
-        assert!(validate_draft_with(&complete, "1.2.3", "character-ai/larch", "7", SOURCE).is_ok());
+        assert!(
+            validate_candidate_with(&complete, "1.2.3", "character-ai/larch", "7", SOURCE, true,)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1061,22 +1021,24 @@ mod tests {
             Err("invalid release identity".to_owned())
         );
         assert_eq!(
-            validate_draft_with(
+            validate_candidate_with(
                 &FakeServices::default(),
                 "1.2.3",
                 "character-ai/larch",
                 "7",
-                "bad"
+                "bad",
+                true,
             ),
             Err("invalid source commit".to_owned())
         );
         assert_eq!(
-            validate_draft_with(
+            validate_candidate_with(
                 &FakeServices::default(),
                 "1.2.3",
                 "character-ai/larch",
                 "7",
-                SOURCE
+                SOURCE,
+                true,
             ),
             Err("release v1.2.3 was not found".to_owned())
         );

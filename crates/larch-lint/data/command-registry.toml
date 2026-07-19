@@ -5280,11 +5280,11 @@ verb = "finish"
 python_module = "larch.release.release_finish"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7752
 
 [[commands]]
 domain = "release"
@@ -5331,11 +5331,11 @@ verb = "promote"
 python_module = "larch.release.promote_release"
 python_function = "promote_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7752
 
 [[commands]]
 domain = "release"
@@ -5343,11 +5343,11 @@ verb = "promote-latest"
 python_module = "larch.release.promote_release"
 python_function = "promote_latest_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7752
 
 [[commands]]
 domain = "release"
@@ -8047,12 +8047,6 @@ path = "python/larch/lint/lint_unreachable_branch.py"
 kind = "python-runtime"
 python = ["lint unreachable-branch"]
 rust = []
-
-[[callers]]
-path = "python/larch/release/release_finish.py"
-kind = "python-runtime"
-python = []
-rust = ["gh remote-repo", "release validate-assets"]
 
 [[callers]]
 path = "python/larch/rendering/_rendering_generators.py"

@@ -133,6 +133,27 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
 ];
 
 #[test]
+fn release_publication_commands_are_exposed_by_the_rust_binary() {
+    for command in ["finish", "promote", "promote-latest"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+            .args(["release", command, "--help"])
+            .output()
+            .unwrap_or_else(|error| panic!("launch release {command}: {error}"));
+
+        assert!(
+            output.status.success(),
+            "release {command} --help failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout)
+                .contains(&format!("Usage: larch release {command}")),
+            "release {command} did not enter the Rust CLI"
+        );
+    }
+}
+
+#[test]
 fn representative_python_and_rust_commands_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
     let python = find_executable("python3");

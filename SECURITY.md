@@ -147,9 +147,12 @@ Tags use the closed typed Git adapter. Callers use `scripts/larch.sh`; none use
 Python, `gh`, raw Git, arbitrary HTTP, or a fallback. Publication and
 installation stay with their owning callers.
 
-Ambiguous create, upload, edit, and publish outcomes read back the owning
-resource. A landed effect succeeds without another write; only proven absence
-permits an idempotent retry. Policy and draft edits always read back their state.
+Ambiguous create, upload, edit, publish, and Latest-promotion outcomes read back
+the owning resource. A landed effect succeeds without another write; only
+proven absence permits an idempotent retry. Publication explicitly preserves
+the prior Latest release. Promotion occurs only after immutable asset and
+attestation verification, and verifies the final Latest postcondition. Policy
+and draft edits always read back their state.
 
 Asset download uses an operation-specific host policy that differs from the
 same-origin API continuation policy: a download may leave the API origin for a
@@ -177,9 +180,12 @@ opening a second. On an ambiguous create outcome it re-reads the head branch and
 adopts any pull request that now exists rather than retrying blindly.
 
 Release preparation uses typed, bounded reads for the Latest release, PRs, and
-companion issue titles. It redacts release-note fields before TSV output and
-uses `RepositoryRead` for repository identity and commit selection. It exposes
-no raw Git, `gh`, URL, GraphQL, or Python fallback.
+companion issue titles. Publication fetches through the typed Git CLI adapter,
+checks ancestry through gix, and uses typed release and attestation services.
+It publishes without changing Latest, verifies the immutable release, and only
+then promotes it. Ambiguous promotion reads back Latest before a retry, and the
+final Latest state is verified. The release commands expose no raw Git, `gh`,
+URL, GraphQL, or Python fallback.
 
 Issue-dependency add and remove stay behind the live-mutation authorization gate
 ported from the Python boundary: operator mode, or a regular, non-symlink session
@@ -670,7 +676,7 @@ The Python driver's `ship-pr-state.sh` merge path fails closed before reading or
 
 **`/upgrade-larch` cache ownership and release verification**: `/upgrade-larch` never writes install stamps or recursively deletes, prunes, or edits Claude-managed plugin version directories. Claude Code owns orphan retention so active sessions keep their original roots. The installed Rust driver invokes only Claude, validated larch executables, and the bounded `scripts/larch.sh` bootstrap exception from #7670. It never invokes Python. Only bootstrap children inherit the GitHub CLI auth/config allowlist; Claude and self-check children do not. Before any marketplace mutation, the current root's bootstrap verifies the exact immutable stable release, complete asset allowlist, attestations, manifest, checksums, archive, target, and staged binary identity in confined `${CLAUDE_PLUGIN_DATA}` staging. The driver then uses supported Claude plugin commands and resolves exactly one new cache root through `claude plugin list --json`. Success requires the new root's manifest and executable to report the expected version. A failure leaves the prior cache root untouched and prints retry commands. Bootstrap cleanup removes only its own current staging directory and lock under `${CLAUDE_PLUGIN_DATA}` or its current same-filesystem binary stage.
 
-**Rust GitHub attestation trust boundary**: The additive Rust service verifies only `character-ai/larch` artifact provenance and immutable-release attestations. Domain callers cannot set a repository, workflow, issuer, signer identity, trust root, API path, or absolute URL. Artifact verification requires a valid Sigstore chain, SCT and Rekor evidence, GitHub Actions OIDC issuer, exact release-workflow identity, repository, tag ref, source commit, `github-hosted` runner evidence, and one matching named SHA-256 subject. Immutable-release verification uses GitHub's separate embedded trust root and release identity, verifies the signed timestamp and signature, and requires the release tag, source commit, repository, and complete unique asset name and digest set. Missing fields fail closed. API bodies, bundle counts, compressed and decompressed bundle bytes, redirects, and deadlines are bounded. A response-supplied bundle URL is accepted only on the exact HTTPS `tmaproduction.blob.core.windows.net/attestations/` path family; cross-host redirects, URL credentials, fragments, loops, and hop overruns fail. Authorization stays on `api.github.com` and is not attached to the bundle-store request. Errors retain only a fixed class and optional HTTP status, so tokens, authorization headers, signed query strings, certificate paths, and bundle content do not enter diagnostics. This leaf adds no command and leaves the current Python and `gh` consumers in place for #7674.
+**Rust GitHub attestation trust boundary**: The additive Rust service verifies only `character-ai/larch` artifact provenance and immutable-release attestations. Domain callers cannot set a repository, workflow, issuer, signer identity, trust root, API path, or absolute URL. Artifact verification requires a valid Sigstore chain, SCT and Rekor evidence, GitHub Actions OIDC issuer, exact release-workflow identity, repository, tag ref, source commit, `github-hosted` runner evidence, and one matching named SHA-256 subject. Immutable-release verification uses GitHub's separate embedded trust root and release identity, verifies the signed timestamp and signature, and requires the release tag, source commit, repository, and complete unique asset name and digest set. Missing fields fail closed. API bodies, bundle counts, compressed and decompressed bundle bytes, redirects, and deadlines are bounded. A response-supplied bundle URL is accepted only on the exact HTTPS `tmaproduction.blob.core.windows.net/attestations/` path family; cross-host redirects, URL credentials, fragments, loops, and hop overruns fail. Authorization stays on `api.github.com` and is not attached to the bundle-store request. Errors retain only a fixed class and optional HTTP status, so tokens, authorization headers, signed query strings, certificate paths, and bundle content do not enter diagnostics. Release publication consumes this service directly in Rust. It has no Python or `gh` fallback.
 
 **Runtime-only plugin projection**: `.claude-plugin/marketplace.json` uses a `git-subdir` source that fetches only `plugin/`, a generated byte-for-byte runtime projection. The projection includes public skills, agents, hooks, required scripts, runtime Python modules, and required data files. It excludes Rust sources and manifests, `larch-lint`, all custom Python repository linters, tests, release automation, and CI support. `larch release plugin-runtime --check` fails on missing, unexpected, changed, or symlinked projection files. The recommended raw-URL marketplace registration avoids retaining a repository checkout on the client. `/upgrade-larch` migrates legacy sparse GitHub registrations to that source before reinstalling.
 
