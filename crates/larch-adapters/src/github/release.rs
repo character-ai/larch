@@ -1196,4 +1196,343 @@ mod release_tests {
 
         assert!(validate_download_redirect(&api, "https://user:pass@cdn.example/x", 1024).is_err());
     }
+
+    #[test]
+    fn operations_pass_through_immediate_success_tag_and_immutability() {
+        let transport = FakeTransport {
+            create: Mutex::new([Ok(release(7, "v1", true, false, Vec::new()))].into()),
+            publish: Mutex::new([Ok(release(7, "v1", false, false, Vec::new()))].into()),
+            upload: Mutex::new([Ok(asset("larch"))].into()),
+            tag: Some(TagObjectId::parse("0123456789abcdef0123456789abcdef01234567").expect("oid")),
+            immutable: true,
+            ..FakeTransport::default()
+        };
+        let operations = ReleaseOperations::new(&transport);
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "commit".to_owned(),
+            body: "notes".to_owned(),
+        };
+        let draft = release(7, "v1", true, false, Vec::new());
+        let upload = AssetUpload {
+            name: "larch".to_owned(),
+            content: vec![1, 2, 3, 4],
+        };
+
+        let staged =
+            run(operations.stage_draft_release(&repo(), &input)).expect("immediate create");
+        assert_eq!(staged.database_id(), 7);
+        assert!(
+            !run(operations.publish_release(&repo(), &draft))
+                .expect("publish")
+                .is_draft()
+        );
+        assert_eq!(
+            run(operations.upload_asset(&repo(), &draft, &upload))
+                .expect("upload")
+                .name(),
+            "larch"
+        );
+        assert!(
+            run(operations.tag_object_id(&repo(), "v1"))
+                .expect("tag")
+                .is_some()
+        );
+        assert!(run(operations.immutable_releases_enabled(&repo())).expect("immutable"));
+        assert_eq!(*transport.list_calls.lock().expect("counter"), 0);
+    }
+
+    #[test]
+    fn service_errors_render_fixed_secret_free_messages() {
+        for error in [
+            ReleaseServiceError::Host(GitHubHostError::CrossOriginContinuation),
+            ReleaseServiceError::Completion(GitHubCompletionError::DeadlineExceeded),
+            ReleaseServiceError::RedirectLoop,
+            ReleaseServiceError::TooManyRedirects,
+            ReleaseServiceError::UnexpectedStatus(503),
+            ReleaseServiceError::AssetTooLarge,
+            ReleaseServiceError::AmbiguousMutation,
+            ReleaseServiceError::MutationLost,
+        ] {
+            assert!(!error.to_string().is_empty());
+        }
+        assert_eq!(
+            GitHubHostError::CrossOriginContinuation.to_string(),
+            "GitHub continuation changed origin"
+        );
+        assert_eq!(
+            GitHubCompletionError::Cancelled.to_string(),
+            "GitHub operation cancelled"
+        );
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+    use crate::runtime::Cancellation;
+    use serde_json::json;
+    use std::fmt::Write as _;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+    use std::thread;
+
+    const DIGEST: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+    /// One scripted loopback reply: status line, extra headers, and body bytes.
+    struct Reply {
+        status: u16,
+        headers: Vec<(&'static str, String)>,
+        body: Vec<u8>,
+    }
+
+    fn json_reply(status: u16, value: &serde_json::Value) -> Reply {
+        Reply {
+            status,
+            headers: vec![("Content-Type", "application/json".to_owned())],
+            body: value.to_string().into_bytes(),
+        }
+    }
+
+    fn redirect_reply(location: &str) -> Reply {
+        Reply {
+            status: 302,
+            headers: vec![("Location", location.to_owned())],
+            body: Vec::new(),
+        }
+    }
+
+    fn octet_reply(bytes: Vec<u8>) -> Reply {
+        Reply {
+            status: 200,
+            headers: vec![("Content-Type", ASSET_MEDIA_TYPE.to_owned())],
+            body: bytes,
+        }
+    }
+
+    // A loopback HTTP stub that serves scripted replies in order, mirroring the
+    // hardened client against a local socket the same way `github_rest` does.
+    fn stub(replies: Vec<Reply>) -> (OctocrabGitHubService, String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub");
+        let base = format!("http://{}/", listener.local_addr().expect("stub address"));
+        let server = thread::spawn(move || {
+            for reply in replies {
+                let (mut socket, _) = listener.accept().expect("accept request");
+                let mut request = [0_u8; 16_384];
+                let read = socket.read(&mut request).expect("read request");
+                assert!(read > 0, "request must not be empty");
+                let mut head = format!("HTTP/1.1 {} Stub\r\n", reply.status);
+                for (name, value) in &reply.headers {
+                    head.push_str(name);
+                    head.push_str(": ");
+                    head.push_str(value);
+                    head.push_str("\r\n");
+                }
+                write!(
+                    head,
+                    "Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    reply.body.len()
+                )
+                .expect("format head");
+                socket.write_all(head.as_bytes()).expect("write head");
+                socket.write_all(&reply.body).expect("write body");
+            }
+        });
+        let client = Octocrab::builder()
+            .personal_token(String::from("test-token"))
+            .base_uri(&base)
+            .expect("base URI")
+            .upload_uri(&base)
+            .expect("upload URI")
+            .build()
+            .expect("stub client");
+        (
+            OctocrabGitHubService::with_test_client(client),
+            base,
+            server,
+        )
+    }
+
+    fn asset_json(name: &str) -> serde_json::Value {
+        json!({
+            "url": "https://api.github.com/repos/o/r/releases/assets/42",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/larch",
+            "id": 42,
+            "node_id": "A_42",
+            "name": name,
+            "state": "uploaded",
+            "content_type": ASSET_MEDIA_TYPE,
+            "size": 4,
+            "digest": DIGEST,
+            "download_count": 0,
+            "created_at": "2026-07-18T00:00:00Z",
+            "updated_at": "2026-07-18T00:00:00Z"
+        })
+    }
+
+    fn release_json(id: u64, tag: &str, draft: bool) -> serde_json::Value {
+        json!({
+            "url": "https://api.github.com/repos/o/r/releases/1",
+            "html_url": "https://github.com/o/r/releases/tag/v1",
+            "assets_url": "https://api.github.com/repos/o/r/releases/1/assets",
+            // Relative so the hardened client resolves the upload POST back to the
+            // loopback stub instead of the public uploads host.
+            "upload_url": "/repos/o/r/releases/1/assets{?name,label}",
+            "id": id,
+            "node_id": "R_1",
+            "tag_name": tag,
+            "target_commitish": "main",
+            "draft": draft,
+            "prerelease": false,
+            "immutable": true,
+            "assets": [asset_json("larch")]
+        })
+    }
+
+    fn repo() -> RepoSlug {
+        RepoSlug::parse("o", "r").expect("valid slug")
+    }
+
+    #[tokio::test]
+    async fn transport_maps_release_list_create_publish_and_upload() {
+        // `upload_asset` first GETs the release to read its `upload_url`, then
+        // POSTs the asset there, so it consumes two scripted replies.
+        let (service, _base, server) = stub(vec![
+            json_reply(200, &json!([release_json(1, "v1", true)])),
+            json_reply(201, &release_json(2, "v1", true)),
+            json_reply(200, &release_json(2, "v1", false)),
+            json_reply(200, &release_json(2, "v1", false)),
+            json_reply(201, &asset_json("larch")),
+        ]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        let repo = repo();
+
+        let releases = transport.list_releases(&repo).await.expect("list releases");
+        assert_eq!(releases.len(), 1);
+        assert_eq!(releases[0].tag(), "v1");
+        assert_eq!(releases[0].assets().len(), 1);
+
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "main".to_owned(),
+            body: "notes".to_owned(),
+        };
+        let created = transport
+            .create_draft_release(&repo, &input)
+            .await
+            .expect("create draft");
+        assert!(created.is_draft());
+        assert_eq!(created.database_id(), 2);
+
+        let published = transport
+            .publish_release(&repo, created.database_id())
+            .await
+            .expect("publish");
+        assert!(!published.is_draft());
+
+        let upload = AssetUpload {
+            name: "larch".to_owned(),
+            content: vec![1, 2, 3, 4],
+        };
+        let asset = transport
+            .upload_asset(&repo, published.database_id(), &upload)
+            .await
+            .expect("upload asset");
+        assert_eq!(asset.name(), "larch");
+
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn transport_reads_redirect_and_terminal_body_hops() {
+        let (service, base, server) = stub(vec![
+            redirect_reply("https://release-assets.githubusercontent.com/x"),
+            octet_reply(vec![7, 8, 9, 10]),
+        ]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        let request = FetchRequest {
+            url: Url::parse(&format!("{base}asset")).expect("loopback url"),
+            strip_authorization: false,
+            max_bytes: 1024,
+        };
+
+        match transport
+            .fetch_asset_hop(&request)
+            .await
+            .expect("redirect hop")
+        {
+            FetchOutcome::Redirect { location } => {
+                assert_eq!(location, "https://release-assets.githubusercontent.com/x");
+            }
+            other @ FetchOutcome::Body { .. } => panic!("expected redirect, got {other:?}"),
+        }
+        match transport.fetch_asset_hop(&request).await.expect("body hop") {
+            FetchOutcome::Body {
+                status,
+                content_type,
+                body,
+                ..
+            } => {
+                assert_eq!(status, 200);
+                assert_eq!(content_type.as_deref(), Some(ASSET_MEDIA_TYPE));
+                assert_eq!(body, vec![7, 8, 9, 10]);
+            }
+            other @ FetchOutcome::Redirect { .. } => panic!("expected body, got {other:?}"),
+        }
+
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn transport_reports_transport_mutation_and_cancellation_failures() {
+        let (service, _base, server) = stub(vec![
+            json_reply(500, &json!({"message": "boom"})),
+            json_reply(500, &json!({"message": "boom"})),
+        ]);
+        let repo = repo();
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+
+        assert!(matches!(
+            transport.list_releases(&repo).await,
+            Err(ReleaseServiceError::Transport(_))
+        ));
+
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "main".to_owned(),
+            body: "notes".to_owned(),
+        };
+        assert_eq!(
+            transport.create_draft_release(&repo, &input).await,
+            Err(ReleaseServiceError::AmbiguousMutation)
+        );
+
+        let cancelled = Cancellation::new();
+        cancelled.cancel();
+        let cancelled_transport = OctocrabReleaseTransport::new(&service, &cancelled);
+        assert_eq!(
+            cancelled_transport.list_releases(&repo).await,
+            Err(ReleaseServiceError::Completion(
+                GitHubCompletionError::Cancelled
+            ))
+        );
+
+        server.join().expect("stub completed");
+    }
+
+    #[test]
+    fn ref_object_reads_sha_and_type_or_reports_missing() {
+        let value = json!({"object": {"sha": "abcd", "type": "commit"}});
+        assert_eq!(
+            ref_object(&value).expect("object present"),
+            ("abcd".to_owned(), "commit".to_owned())
+        );
+        assert!(matches!(
+            ref_object(&json!({})),
+            Err(ReleaseServiceError::Data(_))
+        ));
+    }
 }
