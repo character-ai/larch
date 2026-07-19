@@ -1354,11 +1354,11 @@ conditional-sources = [
 root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
-# Issues #7731/#7725/#7733/#7726/#7732 add trust boundaries to imported SECURITY.md;
+# Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface.
-closure-max-lines = 3699
-closure-max-tokens = 142635
-closure-max-content-tokens = 142337
+closure-max-lines = 3725
+closure-max-tokens = 143041
+closure-max-content-tokens = 142741
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1405,8 +1405,8 @@ roots = [
   "skills/shared/reviewer-templates.md",
   "skills/shared/voting-protocol.md",
 ]
-# Issues #7731/#7725/#7733/#7726/#7732 add trust boundaries to imported SECURITY.md;
+# Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface.
-closure-max-lines = 5987
-closure-max-tokens = 168107
-closure-max-content-tokens = 167647
+closure-max-lines = 6013
+closure-max-tokens = 168513
+closure-max-content-tokens = 168051

@@ -1,6 +1,6 @@
 //! Bounded repository, issue, comment, label, and search operations.
 
-use crate::github::{GitHubCompletionError, OctocrabGitHubService};
+use crate::github::{GitHubCompletionError, OctocrabGitHubService, octocrab_status};
 use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueCreate,
     GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch, GitHubIssueState, GitHubLabel,
@@ -890,13 +890,6 @@ fn issue_matches_edit(issue: &GitHubIssue, request: &GitHubIssueEdit) -> bool {
                     .iter()
                     .all(|value| issue.labels.iter().any(|label| label.name == *value))
         })
-}
-
-fn octocrab_status(error: &octocrab::Error) -> Option<u16> {
-    match error {
-        octocrab::Error::GitHub { source, .. } => Some(source.status_code.as_u16()),
-        _ => None,
-    }
 }
 
 fn transient_octocrab_error(error: &octocrab::Error) -> bool {
