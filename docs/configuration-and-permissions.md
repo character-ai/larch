@@ -173,6 +173,23 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ## Environment Variables
 
+### Google Application Default Credentials
+
+Google-backed Rust adapters use standard ADC. Operators may set
+`GOOGLE_APPLICATION_CREDENTIALS` to a trusted credential file before starting
+larch. If it is unset, the official authentication library checks the
+well-known local ADC file and then the attached-service-account metadata
+service. Repository files, issue text, workflow output, and agent output cannot
+select credential paths or credential JSON.
+
+Production composition rejects `GCE_METADATA_HOST`, even when it is inherited
+from a test or emulator environment. External-account JSON cannot use an
+executable subject-token source. Token, impersonation, AWS metadata, and Azure
+metadata URLs must match the documented provider endpoints. Custom Google
+universe domains are not supported. Larch requests operation-specific scopes,
+keeps tokens inside the official authentication layer, and does not persist
+them.
+
 ### `LARCH_BINARY`
 
 `LARCH_BINARY` selects an explicit local Rust executable for `scripts/larch.sh`.

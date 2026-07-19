@@ -126,9 +126,19 @@ work:
   a non-empty `GH_TOKEN`, never reads GitHub CLI state, and does not expose an
   arbitrary REST URL or GraphQL document to domain callers.
 - Google code uses larch-owned core ports and official Rust clients with
-  Application Default Credentials. It never shells out to `gcloud` or stores
-  access tokens. Credential configuration is trusted operator input, not
-  repository or workflow data.
+  Application Default Credentials. `google-cloud-auth` is pinned centrally,
+  uses rustls, and owns token caching and refresh. Larch validates external
+  account and impersonation endpoints before construction, rejects executable
+  subject-token sources, and disables metadata endpoint overrides in production.
+  It never shells out to `gcloud` or stores access tokens. Credential
+  configuration is trusted operator input, not repository or workflow data.
+  The [Google service inventory](docs/google-service-inventory.md) must name a
+  production operation before its larch-owned port or official service client
+  is added.
+  `google-cloud-auth`'s reviewed rustls provider compiles vendored AWS-LC into
+  the executable. It needs a C/C++ compiler and CMake at build time, but adds no
+  shared-library runtime dependency. The existing native release matrix builds
+  and smoke-tests all four supported macOS and glibc targets.
 - Service adapters apply fixed hosts, deadlines, response limits, same-origin
   redirect checks, bounded retries, mutation reconciliation, redaction, and
   child-environment allowlists. Tests inject fakes at core ports and do not
