@@ -1,14 +1,20 @@
 //! Authenticated, policy-bound GitHub transport foundation and the typed
-//! pull-request, review, and issue-dependency operations built on it.
+//! pull-request, review, issue-dependency, and release operations built on it.
 
 mod mutation_auth;
 mod operations;
+mod release;
 
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
     CreatedPullRequest, DependencyMutation, DependencyRef, GitHubOperationError, MergeStateStatus,
     Mergeable, PullRequest, PullRequestEdit, PullRequestReviewState, PullRequestSpec,
     PullRequestState, ReviewDecision,
+};
+pub use release::{
+    AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,
+    ReleaseFuture, ReleaseOperations, ReleaseServiceError, ReleaseTransport, RepoSlug, find_asset,
+    validate_download_redirect,
 };
 
 use http::header::HeaderName;

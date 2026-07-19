@@ -1,7 +1,21 @@
 //! Narrow GitHub service port and shared hostile-transport policy.
 
 use crate::{ProcessCancellation, RetryClass, SafeText, StopReason};
-use std::{error::Error, fmt, future::Future, pin::Pin, time::Duration};
+use std::{error::Error, fmt, future::Future, pin::Pin, sync::LazyLock, time::Duration};
+
+use regex::Regex;
+
+/// The only content type accepted for a binary release-asset download.
+pub const ASSET_MEDIA_TYPE: &str = "application/octet-stream";
+const UPLOADED_ASSET_STATE: &str = "uploaded";
+const MAX_ASSET_NAME_BYTES: usize = 255;
+
+static DIGEST_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^sha256:[0-9a-f]{64}$").expect("static digest regex must compile")
+});
+static OBJECT_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$").expect("static object-id regex must compile")
+});
 
 /// Injectable GitHub boundary used by domain code.
 ///
@@ -726,6 +740,435 @@ pub const fn classify_github_retry(
     }
 }
 
+/// Why a release or asset value violated its fail-closed contract.
+///
+/// Every variant renders a fixed, secret-free message. Untrusted API values
+/// such as asset names, tags, or object ids never enter a diagnostic.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReleaseDataErrorKind {
+    /// An asset name was empty, oversized, or carried path or control bytes.
+    InvalidAssetName,
+    /// An asset byte size was absent, zero, or not a positive integer.
+    InvalidAssetSize,
+    /// An asset digest was not a lowercase `sha256:<64 hex>` value.
+    InvalidAssetDigest,
+    /// An asset was present but not in the uploaded state.
+    AssetNotUploaded,
+    /// A tag reference resolved to a value that was not a Git object id.
+    InvalidObjectId,
+    /// A release state carried an invalid database id, tag, or mutability flag.
+    InvalidReleaseState,
+    /// More than one release claimed the same tag.
+    DuplicateReleaseTag,
+    /// A streamed asset exceeded the reviewed per-asset byte cap.
+    AssetTooLarge,
+    /// A download response advertised a content type other than octet-stream.
+    UnexpectedContentType,
+    /// A streamed asset ended before its declared length.
+    TruncatedAsset,
+}
+
+/// A release or asset contract violation that never retains API text.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReleaseDataError {
+    kind: ReleaseDataErrorKind,
+}
+
+impl ReleaseDataError {
+    const fn new(kind: ReleaseDataErrorKind) -> Self {
+        Self { kind }
+    }
+
+    /// Return the stable failure class.
+    #[must_use]
+    pub const fn kind(self) -> ReleaseDataErrorKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for ReleaseDataError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self.kind {
+            ReleaseDataErrorKind::InvalidAssetName => "release asset name is invalid",
+            ReleaseDataErrorKind::InvalidAssetSize => {
+                "release asset size is not a positive integer"
+            }
+            ReleaseDataErrorKind::InvalidAssetDigest => {
+                "release asset digest is not a lowercase sha256 digest"
+            }
+            ReleaseDataErrorKind::AssetNotUploaded => "release asset is not in the uploaded state",
+            ReleaseDataErrorKind::InvalidObjectId => "tag reference is not a Git object id",
+            ReleaseDataErrorKind::InvalidReleaseState => "release state fields are invalid",
+            ReleaseDataErrorKind::DuplicateReleaseTag => "more than one release claims the tag",
+            ReleaseDataErrorKind::AssetTooLarge => "release asset exceeds the byte cap",
+            ReleaseDataErrorKind::UnexpectedContentType => {
+                "release asset download has an unexpected content type"
+            }
+            ReleaseDataErrorKind::TruncatedAsset => {
+                "release asset ended before its declared length"
+            }
+        })
+    }
+}
+
+impl Error for ReleaseDataError {}
+
+/// A lowercase `sha256:<64 hex>` release-asset digest.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AssetDigest(String);
+
+impl AssetDigest {
+    /// Parse and validate a release-asset digest.
+    ///
+    /// # Errors
+    /// Rejects any value that is not a lowercase `sha256:<64 hex>` digest.
+    pub fn parse(value: &str) -> Result<Self, ReleaseDataError> {
+        if DIGEST_RE.is_match(value) {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::InvalidAssetDigest,
+            ))
+        }
+    }
+
+    /// Borrow the canonical digest text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A validated Git object id that a tag reference resolved to.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TagObjectId(String);
+
+impl TagObjectId {
+    /// Validate a resolved tag object id.
+    ///
+    /// # Errors
+    /// Rejects any value that is not a 40- or 64-character lowercase hex id.
+    pub fn parse(value: &str) -> Result<Self, ReleaseDataError> {
+        if OBJECT_ID_RE.is_match(value) {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err(ReleaseDataError::new(ReleaseDataErrorKind::InvalidObjectId))
+        }
+    }
+
+    /// Borrow the object id text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Resolve the object id a tag points at, preferring the peeled target.
+///
+/// This mirrors `git ls-remote origin refs/tags/<tag> refs/tags/<tag>^{}`:
+/// an annotated tag's peeled commit wins over the tag object itself, and an
+/// absent tag yields `None`.
+///
+/// # Errors
+/// Rejects a resolved value that is not a Git object id.
+pub fn resolve_tag_object_id(
+    direct: Option<&str>,
+    peeled: Option<&str>,
+) -> Result<Option<TagObjectId>, ReleaseDataError> {
+    peeled
+        .or(direct)
+        .map_or(Ok(None), |value| TagObjectId::parse(value).map(Some))
+}
+
+/// Validated metadata for one uploaded release asset.
+///
+/// Fields mirror the machine-readable shape current release callers consume:
+/// a name, a positive byte size, and a `sha256:` digest for an uploaded asset.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RemoteAsset {
+    name: String,
+    size: u64,
+    digest: AssetDigest,
+}
+
+impl RemoteAsset {
+    /// Validate one asset metadata record.
+    ///
+    /// # Errors
+    /// Rejects an invalid name, a non-positive size, a malformed digest, or an
+    /// asset whose state is anything other than uploaded.
+    pub fn new(name: &str, size: u64, digest: &str, state: &str) -> Result<Self, ReleaseDataError> {
+        if !is_valid_asset_name(name) {
+            return Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::InvalidAssetName,
+            ));
+        }
+        if size == 0 {
+            return Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::InvalidAssetSize,
+            ));
+        }
+        if state != UPLOADED_ASSET_STATE {
+            return Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::AssetNotUploaded,
+            ));
+        }
+        Ok(Self {
+            name: name.to_owned(),
+            size,
+            digest: AssetDigest::parse(digest)?,
+        })
+    }
+
+    /// Borrow the asset name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the asset byte size.
+    #[must_use]
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// Borrow the asset digest.
+    #[must_use]
+    pub const fn digest(&self) -> &AssetDigest {
+        &self.digest
+    }
+}
+
+fn is_valid_asset_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= MAX_ASSET_NAME_BYTES
+        && !name.contains(['/', '\\'])
+        && !name.chars().any(char::is_control)
+}
+
+/// Validated state of one release selected by tag.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseState {
+    database_id: u64,
+    tag: String,
+    draft: bool,
+    immutable: bool,
+    assets: Vec<RemoteAsset>,
+}
+
+impl ReleaseState {
+    /// Validate one release state record for the requested tag.
+    ///
+    /// # Errors
+    /// Rejects a zero database id or a tag that does not match the request.
+    pub fn new(
+        database_id: u64,
+        tag: &str,
+        draft: bool,
+        immutable: bool,
+        assets: Vec<RemoteAsset>,
+    ) -> Result<Self, ReleaseDataError> {
+        if database_id == 0 || tag.is_empty() {
+            return Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::InvalidReleaseState,
+            ));
+        }
+        Ok(Self {
+            database_id,
+            tag: tag.to_owned(),
+            draft,
+            immutable,
+            assets,
+        })
+    }
+
+    /// Return the release database id.
+    #[must_use]
+    pub const fn database_id(&self) -> u64 {
+        self.database_id
+    }
+
+    /// Borrow the release tag.
+    #[must_use]
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    /// Return whether the release is still a draft.
+    #[must_use]
+    pub const fn is_draft(&self) -> bool {
+        self.draft
+    }
+
+    /// Return whether the release is immutable.
+    #[must_use]
+    pub const fn is_immutable(&self) -> bool {
+        self.immutable
+    }
+
+    /// Borrow the uploaded assets.
+    #[must_use]
+    pub fn assets(&self) -> &[RemoteAsset] {
+        &self.assets
+    }
+
+    /// Return whether the release is a mutable draft safe to edit.
+    #[must_use]
+    pub const fn is_mutable_draft(&self) -> bool {
+        self.draft && !self.immutable
+    }
+}
+
+/// Select the single release that claims `tag`, rejecting duplicates.
+///
+/// This mirrors the bounded-page selection current callers use: exactly one
+/// match returns it, no match returns `None`, and more than one match is a
+/// fail-closed duplicate error rather than an arbitrary pick.
+///
+/// # Errors
+/// Returns [`ReleaseDataErrorKind::DuplicateReleaseTag`] when two or more
+/// releases share the tag.
+pub fn select_release_for_tag(
+    tag: &str,
+    releases: impl IntoIterator<Item = ReleaseState>,
+) -> Result<Option<ReleaseState>, ReleaseDataError> {
+    let mut selected: Option<ReleaseState> = None;
+    for release in releases {
+        if release.tag() != tag {
+            continue;
+        }
+        if selected.is_some() {
+            return Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::DuplicateReleaseTag,
+            ));
+        }
+        selected = Some(release);
+    }
+    Ok(selected)
+}
+
+/// Reject any download content type other than binary octet-stream.
+///
+/// The media type is compared case-insensitively and tolerates trailing
+/// parameters such as `; charset=...`.
+///
+/// # Errors
+/// Returns [`ReleaseDataErrorKind::UnexpectedContentType`] for any other type.
+pub fn require_asset_content_type(content_type: &str) -> Result<(), ReleaseDataError> {
+    let media_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    if media_type == ASSET_MEDIA_TYPE {
+        Ok(())
+    } else {
+        Err(ReleaseDataError::new(
+            ReleaseDataErrorKind::UnexpectedContentType,
+        ))
+    }
+}
+
+/// Enforces the per-asset byte cap and declared-length completeness while a
+/// download streams, without buffering the whole asset.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AssetStreamGuard {
+    received: u64,
+    max_bytes: u64,
+    declared_length: Option<u64>,
+}
+
+impl AssetStreamGuard {
+    /// Start a guard bounded by `max_bytes` and an optional declared length.
+    ///
+    /// A declared length greater than the cap is clamped so an oversized
+    /// advertisement cannot raise the effective ceiling.
+    #[must_use]
+    pub const fn new(max_bytes: u64, declared_length: Option<u64>) -> Self {
+        Self {
+            received: 0,
+            max_bytes,
+            declared_length,
+        }
+    }
+
+    /// Account for one received chunk, rejecting an over-cap total.
+    ///
+    /// # Errors
+    /// Returns [`ReleaseDataErrorKind::AssetTooLarge`] when the running total
+    /// would exceed the byte cap or the declared length.
+    pub fn accept(&mut self, chunk_len: usize) -> Result<(), ReleaseDataError> {
+        let next = self
+            .received
+            .checked_add(chunk_len as u64)
+            .ok_or_else(|| ReleaseDataError::new(ReleaseDataErrorKind::AssetTooLarge))?;
+        let ceiling = match self.declared_length {
+            Some(length) => length.min(self.max_bytes),
+            None => self.max_bytes,
+        };
+        if next > ceiling {
+            return Err(ReleaseDataError::new(ReleaseDataErrorKind::AssetTooLarge));
+        }
+        self.received = next;
+        Ok(())
+    }
+
+    /// Finish the stream, rejecting a body shorter than its declared length.
+    ///
+    /// # Errors
+    /// Returns [`ReleaseDataErrorKind::TruncatedAsset`] when fewer than the
+    /// declared bytes arrived.
+    pub const fn finish(self) -> Result<u64, ReleaseDataError> {
+        if let Some(length) = self.declared_length
+            && self.received < length
+        {
+            return Err(ReleaseDataError::new(ReleaseDataErrorKind::TruncatedAsset));
+        }
+        Ok(self.received)
+    }
+
+    /// Return the bytes accepted so far.
+    #[must_use]
+    pub const fn received(&self) -> u64 {
+        self.received
+    }
+}
+
+/// Outcome of reconciling an ambiguous mutation before any retry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReconciledMutation {
+    /// A read-back proved the mutation already committed; do not repeat it.
+    AlreadyApplied,
+    /// The mutation is safe to run again within the shared retry policy.
+    SafeToRetry(RetryClass),
+    /// The failure is permanent or an authorization stop; abort the operation.
+    Abort(StopReason),
+}
+
+/// Reconcile a classified transport action against an observed post-state.
+///
+/// A mutation whose transport outcome is ambiguous ([`GitHubRetryAction::ReconcileMutation`])
+/// is never blindly repeated: when the read-back shows the effect already
+/// landed, the caller stops; otherwise it retries the idempotent operation.
+#[must_use]
+pub const fn reconcile_mutation(
+    action: GitHubRetryAction,
+    already_applied: bool,
+) -> ReconciledMutation {
+    match action {
+        GitHubRetryAction::Retry(class) => ReconciledMutation::SafeToRetry(class),
+        GitHubRetryAction::Stop(reason) => ReconciledMutation::Abort(reason),
+        GitHubRetryAction::ReconcileMutation => {
+            if already_applied {
+                ReconciledMutation::AlreadyApplied
+            } else {
+                ReconciledMutation::SafeToRetry(RetryClass::Transient)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -825,5 +1268,226 @@ mod tests {
     fn actions_errors_render_their_safe_detail() {
         let error = GitHubActionsError::new(GitHubActionsErrorKind::Transport, "request failed");
         assert_eq!(error.to_string(), "request failed");
+    }
+}
+
+#[cfg(test)]
+mod release_tests {
+    use super::*;
+
+    const DIGEST: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+    fn asset(name: &str) -> RemoteAsset {
+        RemoteAsset::new(name, 10, DIGEST, "uploaded").expect("valid asset")
+    }
+
+    fn release(tag: &str, draft: bool, immutable: bool) -> ReleaseState {
+        ReleaseState::new(42, tag, draft, immutable, vec![asset("larch")]).expect("valid release")
+    }
+
+    #[test]
+    fn asset_metadata_validates_name_size_digest_and_state() {
+        let parsed = asset("larch-v1.2.3-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(parsed.size(), 10);
+        assert_eq!(parsed.digest().as_str(), DIGEST);
+
+        for (name, size, digest, state, kind) in [
+            (
+                "",
+                10,
+                DIGEST,
+                "uploaded",
+                ReleaseDataErrorKind::InvalidAssetName,
+            ),
+            (
+                "../escape",
+                10,
+                DIGEST,
+                "uploaded",
+                ReleaseDataErrorKind::InvalidAssetName,
+            ),
+            (
+                "larch",
+                0,
+                DIGEST,
+                "uploaded",
+                ReleaseDataErrorKind::InvalidAssetSize,
+            ),
+            (
+                "larch",
+                10,
+                "sha1:dead",
+                "uploaded",
+                ReleaseDataErrorKind::InvalidAssetDigest,
+            ),
+            (
+                "larch",
+                10,
+                DIGEST,
+                "starter",
+                ReleaseDataErrorKind::AssetNotUploaded,
+            ),
+        ] {
+            assert_eq!(
+                RemoteAsset::new(name, size, digest, state)
+                    .expect_err("invalid asset should fail")
+                    .kind(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn digest_and_object_id_reject_uppercase_and_wrong_length() {
+        assert!(AssetDigest::parse(&DIGEST.to_uppercase()).is_err());
+        assert!(TagObjectId::parse("0123456789abcdef0123456789abcdef01234567").is_ok());
+        assert_eq!(
+            TagObjectId::parse("XYZ")
+                .expect_err("non-hex id should fail")
+                .kind(),
+            ReleaseDataErrorKind::InvalidObjectId
+        );
+    }
+
+    #[test]
+    fn tag_resolution_prefers_peeled_target_and_tolerates_absence() {
+        let oid = "0123456789abcdef0123456789abcdef01234567";
+        let peeled = "89abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            resolve_tag_object_id(Some(oid), Some(peeled))
+                .expect("valid")
+                .expect("present")
+                .as_str(),
+            peeled
+        );
+        assert_eq!(
+            resolve_tag_object_id(Some(oid), None)
+                .expect("valid")
+                .expect("present")
+                .as_str(),
+            oid
+        );
+        assert!(resolve_tag_object_id(None, None).expect("valid").is_none());
+    }
+
+    #[test]
+    fn release_selection_rejects_duplicate_tags_and_reports_absence() {
+        let releases = [release("v1", true, false), release("v2", false, true)];
+        let selected = select_release_for_tag("v2", releases.iter().cloned())
+            .expect("selection")
+            .expect("present");
+        assert!(selected.is_immutable());
+        assert!(!selected.is_mutable_draft());
+
+        assert!(
+            select_release_for_tag("absent", releases.iter().cloned())
+                .expect("selection")
+                .is_none()
+        );
+        assert_eq!(
+            select_release_for_tag(
+                "dup",
+                [release("dup", true, false), release("dup", true, false)]
+            )
+            .expect_err("duplicate tag should fail")
+            .kind(),
+            ReleaseDataErrorKind::DuplicateReleaseTag
+        );
+    }
+
+    #[test]
+    fn mutable_draft_requires_draft_and_not_immutable() {
+        assert!(release("v1", true, false).is_mutable_draft());
+        assert!(!release("v1", true, true).is_mutable_draft());
+        assert!(!release("v1", false, false).is_mutable_draft());
+    }
+
+    #[test]
+    fn content_type_accepts_only_octet_stream() {
+        require_asset_content_type("application/octet-stream").expect("binary type");
+        require_asset_content_type("Application/Octet-Stream; charset=binary").expect("params ok");
+        assert_eq!(
+            require_asset_content_type("text/html")
+                .expect_err("html should fail")
+                .kind(),
+            ReleaseDataErrorKind::UnexpectedContentType
+        );
+    }
+
+    #[test]
+    fn stream_guard_rejects_oversize_and_truncation_but_accepts_exact() {
+        let mut guard = AssetStreamGuard::new(1024, Some(6));
+        guard.accept(3).expect("first chunk");
+        guard.accept(3).expect("second chunk");
+        assert_eq!(guard.finish().expect("complete"), 6);
+
+        let mut capped = AssetStreamGuard::new(4, None);
+        assert_eq!(
+            capped.accept(5).expect_err("over cap should fail").kind(),
+            ReleaseDataErrorKind::AssetTooLarge
+        );
+
+        let mut declared = AssetStreamGuard::new(1024, Some(10));
+        declared.accept(4).expect("partial chunk");
+        assert_eq!(
+            declared
+                .finish()
+                .expect_err("short body should fail")
+                .kind(),
+            ReleaseDataErrorKind::TruncatedAsset
+        );
+    }
+
+    #[test]
+    fn stream_guard_clamps_declared_length_to_the_byte_cap() {
+        let mut guard = AssetStreamGuard::new(4, Some(1_000_000));
+        assert_eq!(
+            guard
+                .accept(5)
+                .expect_err("declared length cannot raise the cap")
+                .kind(),
+            ReleaseDataErrorKind::AssetTooLarge
+        );
+    }
+
+    #[test]
+    fn reconciliation_never_repeats_a_committed_mutation() {
+        assert_eq!(
+            reconcile_mutation(GitHubRetryAction::ReconcileMutation, true),
+            ReconciledMutation::AlreadyApplied
+        );
+        assert_eq!(
+            reconcile_mutation(GitHubRetryAction::ReconcileMutation, false),
+            ReconciledMutation::SafeToRetry(RetryClass::Transient)
+        );
+        assert_eq!(
+            reconcile_mutation(GitHubRetryAction::Retry(RetryClass::Throttled), true),
+            ReconciledMutation::SafeToRetry(RetryClass::Throttled)
+        );
+        assert_eq!(
+            reconcile_mutation(GitHubRetryAction::Stop(StopReason::Authorization), false),
+            ReconciledMutation::Abort(StopReason::Authorization)
+        );
+    }
+
+    #[test]
+    fn release_data_errors_render_without_untrusted_text() {
+        let rendered = [
+            ReleaseDataErrorKind::InvalidAssetName,
+            ReleaseDataErrorKind::InvalidAssetSize,
+            ReleaseDataErrorKind::InvalidAssetDigest,
+            ReleaseDataErrorKind::AssetNotUploaded,
+            ReleaseDataErrorKind::InvalidObjectId,
+            ReleaseDataErrorKind::InvalidReleaseState,
+            ReleaseDataErrorKind::DuplicateReleaseTag,
+            ReleaseDataErrorKind::AssetTooLarge,
+            ReleaseDataErrorKind::UnexpectedContentType,
+            ReleaseDataErrorKind::TruncatedAsset,
+        ]
+        .map(|kind| ReleaseDataError::new(kind).to_string());
+        for message in rendered {
+            assert!(!message.is_empty());
+            assert!(!message.contains("sha256:"));
+        }
     }
 }

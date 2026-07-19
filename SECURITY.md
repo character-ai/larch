@@ -123,6 +123,31 @@ They return success only when the requested postcondition is present. Creates,
 which lack a collision-free request identity, return a typed ambiguous-outcome
 error instead of risking a duplicate issue, comment, or label.
 
+### Release and asset service operations
+
+The release leaf adds typed methods for the current release and asset
+operations only: bounded release listing with duplicate-safe tag selection,
+tag-reference resolution, immutable-release policy reads, draft creation,
+publish, asset upload, and bounded asset download. Every path is constructed
+from a validated `owner/repo` slug and numeric object ids; no operation shells
+out to `gh`, accepts a caller-supplied absolute URL, or exposes an arbitrary
+API path. The immutable-publish state machine and installation workflow stay
+with their owning caller and are not duplicated here.
+
+Ambiguous create, upload, edit, and publish outcomes are never blindly
+repeated. A mutation whose transport result is uncertain is reconciled by
+reading current state back: a landed effect is accepted without a second write,
+and only a provably absent effect retries the idempotent operation.
+
+Asset download uses an operation-specific host policy that differs from the
+same-origin API continuation policy: a download may leave the API origin for a
+signed content host, but each redirect hop must stay HTTPS (no downgrade),
+carry no embedded credentials, and never revisit a prior URL, and the hop count
+is bounded. The credential is withheld on every cross-origin hop. The streamed
+body is bounded by a per-asset byte cap, must advertise the binary
+octet-stream content type, and is rejected if it ends before its declared
+length. The whole download is deadline-bounded and cooperatively cancellable.
+
 ## Rust GitHub Pull-Request, Review, and Dependency Operations
 
 The pull-request, review, and issue-dependency leaf adds typed operations behind
