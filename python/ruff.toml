@@ -702,12 +702,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"release_prepare.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
 "render_session_transcript.py" = [
     "C901",
     "PLR0912",

@@ -87,7 +87,7 @@ case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit
 case "$RUN_ID" in *[!A-Za-z0-9._-]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID must match ^[A-Za-z0-9._-]+$"; exit 1 ;; esac
 
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
-version="$(python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null || true)"
+version="$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null || true)"
 [ -n "$version" ] || version="unknown"
 
 {

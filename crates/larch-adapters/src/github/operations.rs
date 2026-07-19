@@ -17,6 +17,7 @@ use std::{error::Error, fmt, future::Future};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/";
 const DIAGNOSTIC_LIMIT: usize = 500;
+const RELEASE_PAGE_SIZE: usize = 100;
 
 /// Fixed GraphQL document for merge and review state REST does not expose.
 const REVIEW_STATE_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision mergeStateStatus mergeable}}}";
@@ -117,6 +118,17 @@ pub struct PullRequest {
     base_ref: String,
     draft: bool,
     merged: bool,
+}
+
+/// Pull-request fields used to prepare release notes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleasePullRequest {
+    pub number: u64,
+    pub title: String,
+    pub labels: Vec<String>,
+    pub author: String,
+    pub url: String,
+    pub head_ref: String,
 }
 
 impl PullRequest {
@@ -276,6 +288,160 @@ enum DependencyWrite {
 }
 
 impl OctocrabGitHubService {
+    /// Read the unique GitHub Latest release tag.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, or response-contract failure.
+    pub async fn latest_release_tag(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Option<String>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/releases/latest");
+        let operation = self.client.get(route.as_str(), None::<&()>);
+        let value = match self.guard_operation(cancellation, operation).await {
+            Ok(Ok(value)) => value,
+            Ok(Err(error)) if octocrab_status(&error) == Some(404) => return Ok(None),
+            Ok(Err(error)) => return Err(self.transport_error(&error)),
+            Err(completion) => return Err(completion_error(completion)),
+        };
+        let object = as_object(&value)?;
+        required_str(object, "tag_name", self.policy.limits(), "release tag").map(Some)
+    }
+
+    /// List every open pull request through bounded pagination.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, limit, or response-contract failure.
+    pub async fn list_release_open_pull_requests(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<ReleasePullRequest>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/pulls");
+        self.release_pull_request_pages(cancellation, &route, Some("open"))
+            .await
+    }
+
+    /// Read release-note metadata for one pull request.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, or response-contract failure.
+    pub async fn release_pull_request(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<ReleasePullRequest, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/pulls/{number}");
+        let value = self
+            .fetch_json(cancellation, self.client.get(route.as_str(), None::<&()>))
+            .await?;
+        parse_release_pull_request(&value, self.policy.limits())
+            .map(|pull_request| self.redact_release_pull_request(pull_request))
+    }
+
+    /// List pull requests associated with one commit through bounded pagination.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, limit, or response-contract failure.
+    pub async fn commit_pull_requests(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        commit: &str,
+    ) -> Result<Vec<ReleasePullRequest>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        if commit.is_empty() || !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(GitHubOperationError::Malformed("commit object id"));
+        }
+        let route = format!("/repos/{owner}/{repo}/commits/{commit}/pulls");
+        self.release_pull_request_pages(cancellation, &route, None)
+            .await
+    }
+
+    /// Read one companion issue title.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, or response-contract failure.
+    pub async fn issue_title(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<String, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/issues/{number}");
+        let value = self
+            .fetch_json(cancellation, self.client.get(route.as_str(), None::<&()>))
+            .await?;
+        let object = as_object(&value)?;
+        required_str(object, "title", self.policy.limits(), "issue title")
+            .map(|title| self.redactor.safe_text(title).to_string())
+    }
+
+    async fn release_pull_request_pages(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        route: &str,
+        state: Option<&str>,
+    ) -> Result<Vec<ReleasePullRequest>, GitHubOperationError> {
+        let limits = self.policy.limits();
+        let mut output = Vec::new();
+        for page in 1..=limits.pages() {
+            let page_text = page.to_string();
+            let mut parameters = vec![("per_page", "100"), ("page", page_text.as_str())];
+            if let Some(state) = state {
+                parameters.push(("state", state));
+            }
+            let value = self
+                .fetch_json(cancellation, self.client.get(route, Some(&parameters)))
+                .await?;
+            let page_items = parse_release_pull_requests(&value, limits)?;
+            let count = page_items.len();
+            if output.len().saturating_add(count) > limits.items() {
+                return Err(GitHubOperationError::Malformed(
+                    "pull request list exceeds item bound",
+                ));
+            }
+            output.extend(
+                page_items
+                    .into_iter()
+                    .map(|pull_request| self.redact_release_pull_request(pull_request)),
+            );
+            if count < RELEASE_PAGE_SIZE {
+                return Ok(output);
+            }
+        }
+        Err(GitHubOperationError::Malformed(
+            "pull request pagination exceeds page bound",
+        ))
+    }
+
+    fn redact_release_pull_request(
+        &self,
+        mut pull_request: ReleasePullRequest,
+    ) -> ReleasePullRequest {
+        pull_request.title = self.redactor.safe_text(pull_request.title).to_string();
+        pull_request.author = self.redactor.safe_text(pull_request.author).to_string();
+        pull_request.url = self.redactor.safe_text(pull_request.url).to_string();
+        pull_request.head_ref = self.redactor.safe_text(pull_request.head_ref).to_string();
+        pull_request.labels = pull_request
+            .labels
+            .into_iter()
+            .map(|label| self.redactor.safe_text(label).to_string())
+            .collect();
+        pull_request
+    }
+
     /// Fetch one pull request by number.
     ///
     /// # Errors
@@ -705,6 +871,62 @@ fn parse_pull_requests(
     array
         .iter()
         .map(|element| parse_pull_request(element, limits))
+        .collect()
+}
+
+fn parse_release_pull_request(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<ReleasePullRequest, GitHubOperationError> {
+    let object = as_object(value)?;
+    let labels = object
+        .get("labels")
+        .and_then(Value::as_array)
+        .ok_or(GitHubOperationError::Malformed("pull request labels"))?;
+    if labels.len() > limits.items() {
+        return Err(GitHubOperationError::Malformed("pull request labels"));
+    }
+    let labels = labels
+        .iter()
+        .map(|label| {
+            let label = as_object(label)?;
+            required_str(label, "name", limits, "pull request label")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let author = object
+        .get("user")
+        .and_then(Value::as_object)
+        .and_then(|user| user.get("login"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    if author.len() > limits.string_bytes() {
+        return Err(GitHubOperationError::Malformed("pull request author"));
+    }
+    Ok(ReleasePullRequest {
+        number: required_u64(object, "number", "pull request number")?,
+        title: required_str(object, "title", limits, "pull request title")?,
+        labels,
+        author: author.to_owned(),
+        url: required_str(object, "html_url", limits, "pull request url")?,
+        head_ref: required_ref(object, "head", limits, "pull request head ref")?,
+    })
+}
+
+fn parse_release_pull_requests(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<Vec<ReleasePullRequest>, GitHubOperationError> {
+    let array = value
+        .as_array()
+        .ok_or(GitHubOperationError::Malformed("pull request list"))?;
+    if array.len() > RELEASE_PAGE_SIZE {
+        return Err(GitHubOperationError::Malformed(
+            "pull request page exceeds item bound",
+        ));
+    }
+    array
+        .iter()
+        .map(|element| parse_release_pull_request(element, limits))
         .collect()
 }
 
@@ -1174,6 +1396,17 @@ mod service_tests {
         .to_string()
     }
 
+    fn release_pull_request_value(number: u64, title: &str) -> serde_json::Value {
+        json!({
+            "number": number,
+            "title": title,
+            "labels": [{ "name": "release-note" }],
+            "user": { "login": "author" },
+            "html_url": format!("https://github.com/o/r/pull/{number}"),
+            "head": { "ref": format!("feature-{number}") },
+        })
+    }
+
     fn spec(head: &str) -> PullRequestSpec<'_> {
         PullRequestSpec {
             owner: "character-ai",
@@ -1271,6 +1504,40 @@ mod service_tests {
             .await
             .expect("valid list");
         assert_eq!(list.len(), 2);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn release_pull_requests_paginate_and_redact_note_fields() {
+        let first_page = (1..=100)
+            .map(|number| release_pull_request_value(number, "Feature"))
+            .collect::<Vec<_>>();
+        let secret = ["ghp", "_123456789012345678901234567890"].concat();
+        let second_page = vec![json!({
+            "number": 101,
+            "title": &secret,
+            "labels": [{ "name": &secret }],
+            "user": { "login": &secret },
+            "html_url": &secret,
+            "head": { "ref": &secret },
+        })];
+        let (service, server) = stub_service(vec![
+            (200, serde_json::to_string(&first_page).unwrap()),
+            (200, serde_json::to_string(&second_page).unwrap()),
+        ]);
+
+        let pull_requests = service
+            .list_release_open_pull_requests(&Cancellation::new(), "o", "r")
+            .await
+            .expect("paginated pull requests");
+
+        assert_eq!(pull_requests.len(), 101);
+        let redacted = &pull_requests[100];
+        assert_eq!(redacted.title, "<REDACTED-TOKEN>");
+        assert_eq!(redacted.labels, ["<REDACTED-TOKEN>"]);
+        assert_eq!(redacted.author, "<REDACTED-TOKEN>");
+        assert_eq!(redacted.url, "<REDACTED-TOKEN>");
+        assert_eq!(redacted.head_ref, "<REDACTED-TOKEN>");
         server.join().expect("stub completed");
     }
 

@@ -167,6 +167,11 @@ pull requests for the head branch first and adopts an existing one instead of
 opening a second. On an ambiguous create outcome it re-reads the head branch and
 adopts any pull request that now exists rather than retrying blindly.
 
+Release preparation uses typed, bounded reads for the Latest release, PRs, and
+companion issue titles. It redacts release-note fields before TSV output and
+uses `RepositoryRead` for repository identity and commit selection. It exposes
+no raw Git, `gh`, URL, GraphQL, or Python fallback.
+
 Issue-dependency add and remove stay behind the live-mutation authorization gate
 ported from the Python boundary: operator mode, or a regular, non-symlink session
 context file directly under a canonical larch session root that carries

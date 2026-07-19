@@ -483,10 +483,29 @@ impl RepositoryRead for GixRepository {
         walk.take(limit)
             .map(|info| {
                 let info = info.map_err(|_| error(RepositoryErrorKind::MissingObject))?;
-                Ok(Commit {
-                    id: object_id(&info.id),
-                    parents: info.parent_ids().map(|id| object_id(id.as_ref())).collect(),
-                })
+                commit_record(&repository, &info)
+            })
+            .collect()
+    }
+
+    fn walk_commits_range(
+        &self,
+        exclude: &ObjectId,
+        include: &ObjectId,
+        limit: usize,
+    ) -> Result<Vec<Commit>, RepositoryError> {
+        let repository = self.local()?;
+        let start = gix_id(include, repository.object_hash())?;
+        let hidden = gix_id(exclude, repository.object_hash())?;
+        let walk = repository
+            .rev_walk([start])
+            .with_hidden([hidden])
+            .all()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        walk.take(limit)
+            .map(|info| {
+                let info = info.map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+                commit_record(&repository, &info)
             })
             .collect()
     }
@@ -643,6 +662,36 @@ impl RepositoryRead for GixRepository {
         Ok(ChangeSet::new(changes))
     }
 
+    fn blob_at_commit(
+        &self,
+        commit: &ObjectId,
+        path: &GitPath,
+    ) -> Result<Option<Vec<u8>>, RepositoryError> {
+        if path.as_bytes().is_empty() || path.as_bytes().contains(&0) {
+            return Err(error(RepositoryErrorKind::InvalidInput));
+        }
+        let repository = self.local()?;
+        let commit = repository
+            .find_commit(gix_id(commit, repository.object_hash())?)
+            .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+        let tree = commit
+            .tree()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let Some(entry) = tree
+            .lookup_entry(path.as_bytes().split(|byte| *byte == b'/'))
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+        else {
+            return Ok(None);
+        };
+        if !entry.mode().is_blob() {
+            return Err(error(RepositoryErrorKind::ObjectType));
+        }
+        entry
+            .object()
+            .map(|object| Some(object.data.clone()))
+            .map_err(|_| error(RepositoryErrorKind::MissingObject))
+    }
+
     fn validate_ref_name(&self, name: &RefName, format: RefFormat) -> Result<(), RepositoryError> {
         let name = name.as_bytes().as_bstr();
         let valid = match format {
@@ -656,6 +705,32 @@ impl RepositoryRead for GixRepository {
             Err(error(RepositoryErrorKind::InvalidRef))
         }
     }
+}
+
+fn commit_record(
+    repository: &gix::Repository,
+    info: &gix::revision::walk::Info,
+) -> Result<Commit, RepositoryError> {
+    let commit = repository
+        .find_commit(info.id)
+        .map_err(|_| error(RepositoryErrorKind::MissingObject))?;
+    Ok(Commit {
+        id: object_id(&info.id),
+        parents: info.parent_ids().map(|id| object_id(id.as_ref())).collect(),
+        tree: object_id(
+            commit
+                .tree_id()
+                .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+                .as_ref(),
+        ),
+        subject: commit
+            .message_raw()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_vec(),
+    })
 }
 
 fn reject_unsupported_status_semantics(

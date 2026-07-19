@@ -4842,11 +4842,11 @@ verb = "read-version"
 python_module = "larch.release.version_bump"
 python_function = "read_plugin_version_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7749
 
 [[commands]]
 domain = "pr"
@@ -5214,11 +5214,11 @@ verb = "classify-bump"
 python_module = "larch.release.version_bump"
 python_function = "classify_bump_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7749
 
 [[commands]]
 domain = "release"
@@ -5286,11 +5286,11 @@ verb = "prepare"
 python_module = "larch.release.release_prepare"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7749
 
 [[commands]]
 domain = "release"
@@ -8229,14 +8229,14 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/post-tracking-issue.sh"
 kind = "skill"
-python = ["kv get", "plugin read-version", "tracking-issue *"]
-rust = []
+python = ["kv get", "tracking-issue *"]
+rust = ["plugin read-version"]
 
 [[callers]]
 path = "skills/implement/scripts/refresh-execution-issues.sh"
 kind = "skill"
-python = ["kv get", "plugin read-version", "tracking-issue *"]
-rust = []
+python = ["kv get", "tracking-issue *"]
+rust = ["plugin read-version"]
 
 [[callers]]
 path = "skills/implement/scripts/run-step-checks.md"

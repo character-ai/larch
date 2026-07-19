@@ -79,13 +79,6 @@
   {
     "line": 3,
     "message": "banned pylint skip-file directive",
-    "path": "python/larch/release/release_prepare.py",
-    "reason": "deferred module debt: release_prepare still carries a file-wide pylint skip pending duplicate-code burndown",
-    "rule_id": "pylint-skip-file"
-  },
-  {
-    "line": 3,
-    "message": "banned pylint skip-file directive",
     "path": "python/larch/rendering/render_chart.py",
     "reason": "deferred module debt: render_chart still carries a file-wide pylint skip pending duplicate-code burndown",
     "rule_id": "pylint-skip-file"

@@ -239,6 +239,8 @@ pub struct Object {
 pub struct Commit {
     pub id: ObjectId,
     pub parents: Vec<ObjectId>,
+    pub tree: ObjectId,
+    pub subject: Vec<u8>,
 }
 
 /// One linked or main worktree.
@@ -587,6 +589,16 @@ pub trait RepositoryRead: Send + Sync {
     /// # Errors
     /// Returns a typed hash, missing-object, or repository read failure.
     fn walk_commits(&self, start: &ObjectId, limit: usize) -> Result<Vec<Commit>, RepositoryError>;
+    /// Walk commits reachable from `include` but not from `exclude`.
+    ///
+    /// # Errors
+    /// Returns a typed hash, missing-object, or repository read failure.
+    fn walk_commits_range(
+        &self,
+        exclude: &ObjectId,
+        include: &ObjectId,
+        limit: usize,
+    ) -> Result<Vec<Commit>, RepositoryError>;
     /// Count every commit reachable from `start`.
     ///
     /// # Errors
@@ -625,6 +637,15 @@ pub trait RepositoryRead: Send + Sync {
         old_tree: &ObjectId,
         new_tree: &ObjectId,
     ) -> Result<ChangeSet, RepositoryError>;
+    /// Read one blob from a commit tree by repository-relative byte path.
+    ///
+    /// # Errors
+    /// Returns a typed hash, path, object-type, or repository read failure.
+    fn blob_at_commit(
+        &self,
+        commit: &ObjectId,
+        path: &GitPath,
+    ) -> Result<Option<Vec<u8>>, RepositoryError>;
     /// Validate a name under the requested Git ref format.
     ///
     /// # Errors

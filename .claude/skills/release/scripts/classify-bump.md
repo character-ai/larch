@@ -1,18 +1,18 @@
-# python/cli.py release classify-bump
+# larch release classify-bump
 
-`python/cli.py release classify-bump` is the deterministic classifier for the dev-only `/release` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes `$IMPLEMENT_TMPDIR/bump-version-reasoning.md` when the session tmpdir is writable (otherwise a `mktemp`-created `bump-version-reasoning.XXXXXX` under `${TMPDIR:-/tmp}`), and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
+`scripts/larch.sh release classify-bump` is the deterministic classifier for the dev-only `/release` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes `$IMPLEMENT_TMPDIR/bump-version-reasoning.md` when the session tmpdir is writable (otherwise a uniquely created `bump-version-reasoning.*` file under `${TMPDIR:-/tmp}`), and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
 
 ## Optional `--base <ref>` and `--head <ref>`
 
-When `--base` is set (consumer: dev-only `/release` via `python/cli.py release prepare`):
+When `--base` is set (consumer: dev-only `/release` via `scripts/larch.sh release prepare`):
 
-- Resolves `<ref>` with `git rev-parse --verify` and uses that commit as `BASE` directly (skips merge-base resolution and the best-effort `git fetch origin main`).
+- Resolves `<ref>` through the typed repository reader and uses that commit as `BASE` directly, skipping merge-base resolution.
 - Skips the idempotency short-circuit (`BUMP_TYPE=NONE` for trailing `Bump version to X.Y.Z` commits), so aggregate classification over `BASE..HEAD` is not suppressed by historical version commits on `main`. `/release` consumers never see `NONE` from this script.
 
-When `--head <ref>` is set (consumer: dev-only `/release` via `python/cli.py release prepare`):
+When `--head <ref>` is set (consumer: dev-only `/release` via `scripts/larch.sh release prepare`):
 
-- Resolves `<ref>` with `git rev-parse --verify` and uses that commit as the diff head instead of `HEAD`, so aggregate classification is anchored to `origin/main` (or another explicit ref) when the caller is not checked out at the release tip.
-- Reads `CURRENT_VERSION` from `git show <ref>:.claude-plugin/plugin.json` and fails closed when the worktree `plugin.json` version disagrees.
+- Resolves `<ref>` through the typed repository reader and uses that commit as the diff head instead of `HEAD`, so aggregate classification is anchored to `origin/main` (or another explicit ref) when the caller is not checked out at the release tip.
+- Reads `CURRENT_VERSION` from the typed commit-tree blob and fails closed when the worktree `plugin.json` version disagrees.
 
 When `--base` / `--head` are omitted, the classifier uses the merge-base against `main` / `origin/main` and applies the local idempotency shortcut.
 
@@ -22,4 +22,4 @@ The classifier treats the branch as already versioned when the idempotency head 
 
 ## Edit-in-sync
 
-Keep this file aligned with `python/cli.py release classify-bump`, `python/test_release.py`, and `python/cli.py release prepare`.
+Keep this file aligned with `larch release classify-bump`, `crates/larch-cli/tests/release_prepare.rs`, and `larch release prepare`.

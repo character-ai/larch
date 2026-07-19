@@ -19,6 +19,7 @@ mod git_commands;
 mod github_repository_resolution;
 mod push_network;
 mod release_plugin_runtime;
+mod release_prepare;
 
 use git_commands::GitCommand as BranchGitCommand;
 
@@ -45,6 +46,9 @@ enum Domain {
     /// Local Git repository read and status commands.
     #[command(subcommand)]
     Git(GitSubcommand),
+    /// Plugin metadata commands.
+    #[command(subcommand)]
+    Plugin(PluginCommand),
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
@@ -161,8 +165,36 @@ enum ExampleCommand {
 
 #[derive(Subcommand)]
 enum ReleaseCommand {
+    /// Classify the semantic version bump for the public plugin surface.
+    ClassifyBump(ClassifyBumpArguments),
+    /// Prepare the release window, PR list, and aggregate bump.
+    Prepare(PrepareReleaseArguments),
     /// Generate or validate the runtime-only plugin projection.
     PluginRuntime(PluginRuntimeArguments),
+}
+
+#[derive(Subcommand)]
+enum PluginCommand {
+    /// Print the active plugin version as a machine-readable row.
+    ReadVersion(TrailingArguments),
+}
+
+#[derive(Args)]
+struct ClassifyBumpArguments {
+    #[arg(long)]
+    base: Option<String>,
+    #[arg(long)]
+    head: Option<String>,
+}
+
+#[derive(Args)]
+struct PrepareReleaseArguments {
+    #[arg(long = "repo", default_value = "character-ai/larch", value_parser = parse_repository)]
+    repository: larch_core::GitHubRepositoryRef,
+    #[arg(long, value_parser = ["major", "minor", "patch"])]
+    bump: Option<String>,
+    #[arg(long, required = true)]
+    out_dir: PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -248,11 +280,36 @@ fn run(
             Ok(ExitCode::SUCCESS)
         }
         Domain::Git(command) => run_git(command).map_err(command_failure),
-        Domain::Release(ReleaseCommand::PluginRuntime(arguments)) => {
-            release_plugin_runtime::run(arguments.check)
-                .map(|()| ExitCode::SUCCESS)
-                .map_err(command_failure)
+        Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
+            Ok(release_prepare::read_plugin_version(&arguments.args))
         }
+        Domain::Release(command) => match command {
+            ReleaseCommand::ClassifyBump(arguments) => Ok(release_prepare::classify_bump(
+                &release_prepare::ClassifyArguments {
+                    base: arguments.base,
+                    head: arguments.head,
+                },
+            )),
+            ReleaseCommand::Prepare(arguments) => {
+                let bump = arguments.bump.as_deref().map(|value| match value {
+                    "major" => release_prepare::BumpType::Major,
+                    "minor" => release_prepare::BumpType::Minor,
+                    _ => release_prepare::BumpType::Patch,
+                });
+                Ok(release_prepare::prepare(
+                    &release_prepare::PrepareArguments {
+                        repository: arguments.repository,
+                        bump,
+                        out_dir: arguments.out_dir,
+                    },
+                ))
+            }
+            ReleaseCommand::PluginRuntime(arguments) => {
+                release_plugin_runtime::run(arguments.check)
+                    .map(|()| ExitCode::SUCCESS)
+                    .map_err(command_failure)
+            }
+        },
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)
