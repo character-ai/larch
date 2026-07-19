@@ -6,6 +6,7 @@ useDefault = true
 [allowlist]
 paths = [
     '''^\.gitleaks\.toml$''',
+    '''^target/''',
     '''^scripts/redact-secrets\.sh$''',
     '''^scripts/scrub-log-secrets\.sh$''',
     '''^scripts/test-redact-secrets\.sh$''',

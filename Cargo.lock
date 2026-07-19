@@ -2184,9 +2184,13 @@ dependencies = [
 name = "larch-adapters"
 version = "53.1.24"
 dependencies = [
+ "bytes",
+ "chrono",
  "gix",
  "google-cloud-auth",
  "http",
+ "http-body",
+ "http-body-util",
  "larch-core",
  "larch-test-support",
  "nix",

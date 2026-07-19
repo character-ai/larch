@@ -9,9 +9,13 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bytes.workspace = true
+chrono.workspace = true
 gix.workspace = true
 google-cloud-auth.workspace = true
 http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
 larch-core.workspace = true
 octocrab.workspace = true
 serde.workspace = true

@@ -139,6 +139,24 @@ paths, config values, and remote URLs as bytes. Errors use fixed classes and do
 not include repository paths, config values, remote credentials, or upstream
 library diagnostics.
 
+## Rust GitHub Actions Operation Boundary
+
+The Actions operation port builds repository, workflow, run, job, and check
+paths only from validated typed inputs. Reads retry a bounded transient set
+within the overall deadline and cap pages, items, body bytes, strings, and JSON
+nesting. Rerun and dispatch mutations are serialized. They honor numeric
+`Retry-After` pacing before read-back and report an ambiguous outcome when the
+read-back cannot prove the mutation happened.
+
+Workflow log archives have a 64 MiB and 60 second limit. The adapter follows at
+most three redirects, rejects loops, URL credentials, fragments, plaintext,
+unexpected content types, and oversize or incomplete streams. Redirect hosts
+are limited to the documented `*.actions.githubusercontent.com` suffix and the
+`productionresultssa<digits>.blob.core.windows.net` storage family. Octocrab
+adds authorization only for `api.github.com`, so cross-origin log requests do
+not carry `Authorization`. Expired download URLs and every other non-success
+response fail with a typed, redacted error.
+
 ## Scoped Live-Mutation Authorization Boundary
 
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.
@@ -437,6 +455,10 @@ fixtures such as `python/tests/core/test_redact.py` and session-local Python cac
 directories under `python/`. Those entries are blind spots for gitleaks pattern
 matching in those paths, so test fixtures must stay obviously fake and live
 credential coverage continues to rely on the independent TruffleHog CI job.
+
+The ignored `target/` build directory is excluded because compiled dependency
+metadata can contain dependency-owned key fixtures. Authored source and
+committed artifacts remain in the working-tree and history scan scopes.
 
 `.gitleaks.toml` maintains a narrow path-based allowlist: the config's self-allowlist (`^\.gitleaks\.toml$`), redaction/scrubber source (`python/larch/core/redact.py`, reached via `python/cli.py redact secrets` / `redact scrub-log-secrets`), redaction-scanner test fixtures (`python/tests/core/test_redact.py`), and the tracking-issue Python module (`python/larch/issue/tracking_issue.py`, `python/tests/issue/test_tracking_issue.py`). These paths legitimately carry token-shaped strings throughout — regex literals, token-family tables, and synthetic test inputs — so per-line allowlisting would churn without adding signal. **The committed run-log tree (`larch-logs/`) is intentionally NOT allowlisted**: gitleaks Layers 1–2 scan it like any other path. The UUID-shaped `LARCH_TOKEN_SESSION_ID` `generic-api-key` false positive that originally motivated a blanket `larch-logs/` exclusion does not fire under the pinned engine, so the exclusion was removed. The primary run-log leak defense is `python/cli.py redact scrub-log-secrets`, a larch-owned pre-flush secret gate invoked right before every flush (`run-log commit`, `design-log-publish.sh`, and the `python/` `ship-pr` rework's `run_logs._scrub_run_tree`): it scrubs secret-shaped values — including Cursor `crsr_` / `key_` keys, which gitleaks does NOT cover — from the entire staged run tree in place so the flush still proceeds, while emitting a very loud warning so the operator can rotate the exposed credential. Consumer repos therefore need no third-party scanner installed for covered secret-shaped token families, but run logs remain sensitive documents: secrets or PII outside the scrubber patterns, including non-standard tokens, private hostnames, and domain-specific sensitive data, still require operator discipline before publication. Publishable `*.stderr-tail` sidecars copied into `larch-logs/` are scrubbed by the same gate; treat run logs as sensitive regardless. **High-churn documentation is NOT allowlisted** (#375): `README.md`, `CHANGELOG.md`, `SECURITY.md` itself, `skills/issue/SKILL.md`, and the issue creation CLI surface are scanned by gitleaks in both Layer 1 (pre-commit, working tree) and Layer 2 (CI, full history). The layer responsibilities remain distinct: gitleaks Layers 1–2 catch regex-matched patterns including synthetic token-shaped literals in docs; trufflehog Layer 3 (`--only-verified`) catches ONLY live, authenticable credentials and is non-redundant with gitleaks for that reason, NOT a replacement for it — an accidental paste of a revoked token or a covered-family token in an unusual format is caught by gitleaks Layers 1–2, not by the verified-only scan. Tokens whose format falls outside gitleaks' covered rule families (see the "Outbound shell-layer redaction" subsection below for the covered families) may slip both Layer 1–2 (no matching regex rule) and Layer 3 (nothing to authenticate against a live API) — contributors must not rely on scanner layers as a substitute for editorial discipline in docs. Contributors adding new token-shaped examples to docs should use non-detector-matching forms: short prefixes without the high-entropy suffix (e.g., `ghp_` as a prefix mention rather than a full 40-character token) or an explicit placeholder like `<REDACTED-TOKEN>`.
 
