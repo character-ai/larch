@@ -114,7 +114,7 @@ Run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git conflict-files` once and parse e
 
 1. Look up that path in the conflict-files inventory from the single call above.
 2. **Unsupported conflict types**: if any required stage is missing, or the file is binary, classify as **uncertain**. Do not auto-resolve.
-3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
+3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
 4. **Text conflicts with both sides available**: read both sides through wrappers:
    - `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git show-stage --stage 2 --file <file>` → **upstream (main)** version. If it fails, classify as uncertain.
    - `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git show-stage --stage 3 --file <file>` → **feature branch commit** version. If it fails, classify as uncertain.
@@ -122,14 +122,14 @@ Run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git conflict-files` once and parse e
 5. **Classify confidence**:
    - **High-confidence**: non-overlapping regions, or conflict markers show only whitespace, import-order, or formatting differences. Both intents are clear and composable.
    - **Uncertain**: overlapping semantic changes to the same function/block, correctness needing domain knowledge, failed stage reads, or non-text/binary conflicts.
-6. Auto-resolve trivial and high-confidence files. Stage resolved files with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`.
+6. Auto-resolve trivial and high-confidence files. Stage resolved files with `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git stage <file>`.
 7. Always use upstream (main) and feature branch commit labels when describing sides; never use rebase-inverted labels.
 
 ### Phase 2 - Operator escalation handoff
 
 If there are uncertain conflicts and no operator guidance is present in your prompt: do **not** call AskUserQuestion (you have no operator channel). Abort nothing yet; leave staged resolutions as-is when safe, keep the rebase in progress, and return `FIXER_RESULT=needs-operator` with a `FIXER_SUMMARY` that names every uncertain file. Include enough per-file context in the message body (upstream vs feature excerpts and a proposed resolution) for the main agent to escalate.
 
-When operator guidance is present (SendMessage / fresh-spawn resume): incorporate it, write each resolved file, stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`, then continue. If the operator says to abort, or the conflict still cannot be resolved, run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git rebase-abort` and return `FIXER_RESULT=bail`.
+When operator guidance is present (SendMessage / fresh-spawn resume): incorporate it, write each resolved file, stage with `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git stage <file>`, then continue. If the operator says to abort, or the conflict still cannot be resolved, run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git rebase-abort` and return `FIXER_RESULT=bail`.
 
 If there are no uncertain conflicts: for `caller_kind=early_rebase`, skip to Phase 4; for `caller_kind=ship_pr_pre_push`, continue to Phase 3 so the trivial-all gate can skip or self-review can run.
 
@@ -160,7 +160,7 @@ Otherwise, run self-review for non-trivial `ship_pr_pre_push` conflict resolutio
 **Intent**: <one-line description of what each side was trying to do>
 ```
 
-**3d. Self-review loop**: review the staged resolutions against the context blocks and staged files. If you find a defect, re-resolve the affected file, stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`, and repeat Phase 3 from the context block preparation. If no defect remains, proceed to Phase 4. Allow up to **2 total resolution-review rounds**. After 2 rounds with unresolved defects, run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git rebase-abort` and return `FIXER_RESULT=bail`.
+**3d. Self-review loop**: review the staged resolutions against the context blocks and staged files. If you find a defect, re-resolve the affected file, stage it with `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git stage <file>`, and repeat Phase 3 from the context block preparation. If no defect remains, proceed to Phase 4. Allow up to **2 total resolution-review rounds**. After 2 rounds with unresolved defects, run `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" git rebase-abort` and return `FIXER_RESULT=bail`.
 
 **3e. Cleanup**: remove `$IMPLEMENT_TMPDIR/conflict-review/` after Phase 3 completes, on success and bail paths, before proceeding.
 

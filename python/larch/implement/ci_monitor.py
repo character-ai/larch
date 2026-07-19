@@ -22,6 +22,7 @@ from larch.core import logging_util
 from larch.git import rebase
 from larch.core import redact
 from larch.core import retry
+from larch.core.repo_roots import larch_entrypoint
 from larch.report import run_log_flush, run_log_manifest
 from larch.report import progress_file
 from larch.agents.agents import TierAttempt
@@ -1418,12 +1419,20 @@ def stage_and_push(
     did_rebase = False
     if delta_paths:
         for path in delta_paths:
-            _ = runner.run(["git", "add", "--", path], cwd=cwd)
+            _ = runner.run(
+                [str(larch_entrypoint(_REPO_ROOT)), "git", "stage", path],
+                cwd=cwd,
+            )
         commit_msg = f"Apply CI fixes ({commit_label})"
-        commit = git.commit_with_trailer(
-            runner,
-            commit_msg,
-            no_trailer=True,
+        commit = runner.run(
+            [
+                str(larch_entrypoint(_REPO_ROOT)),
+                "git",
+                "commit",
+                "--no-trailer",
+                "-m",
+                commit_msg,
+            ],
             cwd=cwd,
         )
         if commit.returncode != 0:

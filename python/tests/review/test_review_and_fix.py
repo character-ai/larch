@@ -26,6 +26,8 @@ from _pytest.mark.structures import Mark, MarkDecorator
 from test_support import ok
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
+_RUST_GIT = str(review_and_fix.larch_entrypoint(review_and_fix._plugin_root()))
+
 
 def _mark(name: str) -> MarkDecorator:
     return MarkDecorator(Mark(name, (), {}, _ispytest=True), _ispytest=True)
@@ -1872,7 +1874,7 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
     commit_calls = [
         argv
         for argv in calls
-        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]
+            if argv[:3] == [_RUST_GIT, "git", "commit"]
     ]
     assert commit_calls
     assert "--only" in commit_calls[0]
@@ -1957,7 +1959,7 @@ def test_commit_fixes_failure_error_token_does_not_change_outcome(tmp_path, monk
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
         if argv == _STAGE_ALL_STATUS:
             return ok(tuple(argv), " M a.py\n")
-        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+        if argv[:3] == [_RUST_GIT, "git", "commit"]:
             return review_and_fix.proc.CommandResult(tuple(argv), 1, "", "fatal COMMIT_OUTCOME=ok nope", 0.0)
         return ok(tuple(argv))
 
@@ -2226,7 +2228,7 @@ def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, c
             return ok(tuple(argv))
         if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
             return ok(tuple(argv), f"{repo_root}\n")
-        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+        if argv[:3] == [_RUST_GIT, "git", "commit"]:
             captured_cwds.append(cwd)
         return ok(tuple(argv))
 
@@ -2271,79 +2273,6 @@ def test_commit_fixes_stage_all_git_fixture_clean_collected_noops(tmp_path, monk
 
 
 @pytest.mark.commit_fixes
-def test_commit_fixes_stage_all_git_fixture_partial_dirty_commits_subset(tmp_path, monkeypatch, capsys):
-    repo = _mk_git_repo(tmp_path)
-    impl = _tmp_impl(tmp_path)
-    monkeypatch.chdir(repo)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
-    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
-    (repo / "clean.py").write_text("clean\n", encoding="utf-8")
-    (repo / "dirty.py").write_text("v1\n", encoding="utf-8")
-    review_and_fix._run(["git", "add", "clean.py", "dirty.py"], cwd=repo)
-    review_and_fix._run(["git", "commit", "--quiet", "-m", "seed"], cwd=repo)
-    (repo / "dirty.py").write_text("v2\n", encoding="utf-8")
-    (repo / "baseline.json").write_text('{"n": 1}\n', encoding="utf-8")
-    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
-        review_and_fix,
-        "_collect_review_fix_stage_paths",
-        lambda _impl: ["clean.py", "dirty.py"],
-    )
-    before = _commit_count(repo)
-    baseline_before = (repo / "baseline.json").read_text(encoding="utf-8")
-    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "commit dirty only"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "COMMITTED=true" in out
-    assert "COMMIT_OUTCOME=ok" in out
-    assert _commit_count(repo) == before + 1
-    assert (impl / "review-fix-stage-paths.txt").read_text(encoding="utf-8") == "dirty.py\n"
-    porcelain = _git_porcelain(repo)
-    assert "dirty.py" not in porcelain
-    assert "baseline.json" in porcelain
-    assert _git_cached_names(repo).strip() == ""
-    assert (repo / "baseline.json").read_text(encoding="utf-8") == baseline_before
-    show = review_and_fix._run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo)
-    assert show.returncode == 0
-    assert show.stdout.strip().splitlines() == ["dirty.py"]
-
-
-@pytest.mark.commit_fixes
-def test_commit_fixes_stage_all_git_fixture_untracked_nested_file(tmp_path, monkeypatch, capsys):
-    repo = _mk_git_repo(tmp_path)
-    impl = _tmp_impl(tmp_path)
-    monkeypatch.chdir(repo)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
-    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
-    nested = repo / "nested"
-    nested.mkdir()
-    (nested / "new.py").write_text("new\n", encoding="utf-8")
-    default_porcelain = review_and_fix._run(["git", "status", "--porcelain"], cwd=repo).stdout
-    assert "nested/" in default_porcelain
-    assert "nested/new.py" not in default_porcelain
-    all_porcelain = review_and_fix._run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        cwd=repo,
-    ).stdout
-    assert "nested/new.py" in all_porcelain
-    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
-        review_and_fix,
-        "_collect_review_fix_stage_paths",
-        lambda _impl: ["nested/new.py"],
-    )
-    before = _commit_count(repo)
-    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "add nested"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "COMMITTED=true" in out
-    assert "COMMIT_OUTCOME=ok" in out
-    assert _commit_count(repo) == before + 1
-    assert (impl / "review-fix-stage-paths.txt").read_text(encoding="utf-8") == "nested/new.py\n"
-    show = review_and_fix._run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo)
-    assert show.returncode == 0
-    assert show.stdout.strip().splitlines() == ["nested/new.py"]
-
-
-@pytest.mark.commit_fixes
 def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
@@ -2356,7 +2285,7 @@ def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
     captured_cwds: list[object] = []
 
     def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+        if argv[:3] == [_RUST_GIT, "git", "commit"]:
             captured_cwds.append(cwd)
         return ok(tuple(argv))
 

@@ -21,7 +21,7 @@ mod push_network;
 mod release_plugin_runtime;
 mod release_prepare;
 
-use git_commands::GitCommand as BranchGitCommand;
+use git_commands::GitCommand;
 
 #[derive(Parser)]
 #[command(
@@ -43,7 +43,7 @@ enum Domain {
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
-    /// Local Git repository read and status commands.
+    /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
     /// Plugin metadata commands.
@@ -65,6 +65,8 @@ enum Domain {
 
 #[derive(Subcommand)]
 enum GitSubcommand {
+    /// Stage paths and amend them into the current commit.
+    AmendAdd(MutationPathsArguments),
     /// Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository.
     BranchInfo(TrailingArguments),
     /// Classify repository changes against an untracked-path baseline.
@@ -77,6 +79,8 @@ enum GitSubcommand {
     CheckoutOurs(CheckoutOursArguments),
     /// Report whether the worktree is clean using machine-readable key/value rows.
     CleanTree(CleanTreeArguments),
+    /// Stage optional paths and create a commit.
+    Commit(CommitArguments),
     /// Print the files and index stages that are currently conflicted.
     ConflictFiles,
     /// Count commits on `HEAD` since `origin/main` or `main`.
@@ -95,6 +99,30 @@ enum GitSubcommand {
     SyncLocalMain(TrailingArguments),
     /// Atomically write the sorted untracked-path baseline to an output file.
     SnapshotUntracked(SnapshotUntrackedArguments),
+    /// Stage one or more paths.
+    Stage(MutationPathsArguments),
+}
+
+#[derive(Args)]
+struct MutationPathsArguments {
+    #[arg(allow_hyphen_values = true)]
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Args)]
+struct CommitArguments {
+    #[arg(short = 'm', default_value = "")]
+    message: String,
+    #[arg(long)]
+    no_trailer: bool,
+    #[arg(long)]
+    only: bool,
+    #[arg(long)]
+    pathspec_from_file: Option<PathBuf>,
+    #[arg(long)]
+    pathspec_file_nul: bool,
+    #[arg(allow_hyphen_values = true)]
+    files: Vec<PathBuf>,
 }
 
 #[derive(Args)]
@@ -401,6 +429,9 @@ fn parse_repository(value: &str) -> Result<larch_core::GitHubRepositoryRef, Stri
 
 fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
     match command {
+        GitSubcommand::AmendAdd(arguments) => Ok(git_commands::run(GitCommand::AmendAdd {
+            paths: arguments.paths,
+        })),
         GitSubcommand::CheckPhantomDirty(arguments) => {
             check_phantom_dirty_command(&arguments);
             Ok(ExitCode::SUCCESS)
@@ -411,6 +442,14 @@ fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
             Ok(ExitCode::SUCCESS)
         }
         GitSubcommand::CleanTree(arguments) => clean_tree(arguments),
+        GitSubcommand::Commit(arguments) => Ok(git_commands::run(GitCommand::Commit {
+            message: arguments.message,
+            no_trailer: arguments.no_trailer,
+            only: arguments.only,
+            pathspec_from_file: arguments.pathspec_from_file,
+            pathspec_file_nul: arguments.pathspec_file_nul,
+            paths: arguments.files,
+        })),
         GitSubcommand::SnapshotUntracked(arguments) => {
             snapshot_untracked(arguments);
             Ok(ExitCode::SUCCESS)
@@ -421,39 +460,38 @@ fn run_git(command: GitSubcommand) -> Result<ExitCode, String> {
         }
         GitSubcommand::RebaseAbort(arguments) => Ok(rebase_abort(&arguments)),
         GitSubcommand::RebaseSkip(arguments) => rebase_skip(&arguments),
-        GitSubcommand::BranchInfo(arguments) => {
-            Ok(git_commands::run(BranchGitCommand::BranchInfo {
+        GitSubcommand::BranchInfo(arguments) => Ok(git_commands::run(GitCommand::BranchInfo {
+            args: arguments.args,
+        })),
+        GitSubcommand::CheckMainSync(arguments) => {
+            Ok(git_commands::run(GitCommand::CheckMainSync {
                 args: arguments.args,
             }))
         }
         GitSubcommand::CheckRemoteBranch(arguments) => {
-            Ok(git_commands::run(BranchGitCommand::CheckRemoteBranch {
+            Ok(git_commands::run(GitCommand::CheckRemoteBranch {
                 args: arguments.args,
             }))
         }
-        GitSubcommand::CheckMainSync(arguments) => {
-            Ok(git_commands::run(BranchGitCommand::CheckMainSync {
-                args: arguments.args,
-            }))
-        }
-        GitSubcommand::CountCommits(arguments) => {
-            Ok(git_commands::run(BranchGitCommand::CountCommits {
-                args: arguments.args,
-            }))
-        }
+        GitSubcommand::CountCommits(arguments) => Ok(git_commands::run(GitCommand::CountCommits {
+            args: arguments.args,
+        })),
         GitSubcommand::CurrentBranch(arguments) => {
-            Ok(git_commands::run(BranchGitCommand::CurrentBranch {
+            Ok(git_commands::run(GitCommand::CurrentBranch {
                 args: arguments.args,
             }))
         }
-        GitSubcommand::ShowStage(arguments) => Ok(git_commands::run(BranchGitCommand::ShowStage {
+        GitSubcommand::ShowStage(arguments) => Ok(git_commands::run(GitCommand::ShowStage {
             args: arguments.args,
         })),
         GitSubcommand::SyncLocalMain(arguments) => {
-            Ok(git_commands::run(BranchGitCommand::SyncLocalMain {
+            Ok(git_commands::run(GitCommand::SyncLocalMain {
                 args: arguments.args,
             }))
         }
+        GitSubcommand::Stage(arguments) => Ok(git_commands::run(GitCommand::Stage {
+            paths: arguments.paths,
+        })),
     }
 }
 

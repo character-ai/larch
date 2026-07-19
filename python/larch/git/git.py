@@ -6,20 +6,16 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from dataclasses import dataclass
 
-import argparse
-import sys
 from larch.core import config
 from larch.core import redact
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.retry import with_transient_retry
-from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -522,61 +518,6 @@ def commit(
         argv.extend(["--", *paths])
     return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
 
-def commit_with_trailer(
-    runner: Runner,
-    message: str,
-    *,
-    only: bool = False,
-    no_trailer: bool = False,
-    paths: Sequence[str] = (),
-    pathspec_from_file: str | None = None,
-    pathspec_file_nul: bool = False,
-    cwd: str | None = None,
-) -> CommandResult:
-    """Commit via temp file + interpret-trailers for ``cli.py git commit``."""
-    _assert_branch_write_allowed(runner, cwd=cwd)
-    trailer = config.GIT_COMMIT_CO_AUTHORED_BY_TRAILER
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        suffix=".txt",
-        delete=False,
-    ) as handle:
-        _ = handle.write(f"{message}\n")
-        tmp_path = handle.name
-    try:
-        if not no_trailer:
-            trailer_result = _run(
-                runner,
-                [
-                    "git",
-                    "interpret-trailers",
-                    "--in-place",
-                    "--if-exists",
-                    "addIfDifferent",
-                    "--if-missing",
-                    "add",
-                    "--trailer",
-                    trailer,
-                    tmp_path,
-                ],
-                cwd=cwd,
-            )
-            if trailer_result.returncode != 0:
-                return trailer_result
-        argv = ["git", "commit", "--file", tmp_path]
-        if only:
-            argv.append("--only")
-        if pathspec_from_file is not None:
-            argv.append(f"--pathspec-from-file={pathspec_from_file}")
-            if pathspec_file_nul:
-                argv.append("--pathspec-file-nul")
-        elif paths:
-            argv.extend(["--", *paths])
-        return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
-    finally:
-        Path(tmp_path).unlink()
-
 def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
     _assert_branch_write_allowed(runner, cwd=cwd)
     argv = ["git", "add"]
@@ -591,32 +532,6 @@ def rm(runner: Runner, *paths: str, force: bool = False, cwd: str | None = None)
     if paths:
         argv.extend(["--", *paths])
     return _run(runner, argv, cwd=cwd)
-
-def add_pathspec_file(
-    runner: Runner,
-    pathspec_from_file: str,
-    *,
-    pathspec_file_nul: bool = False,
-    cwd: str | None = None,
-) -> CommandResult:
-    _assert_branch_write_allowed(runner, cwd=cwd)
-    argv = ["git", "add", f"--pathspec-from-file={pathspec_from_file}"]
-    if pathspec_file_nul:
-        argv.append("--pathspec-file-nul")
-    return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
-
-def amend_add(
-    runner: Runner,
-    paths: Sequence[str],
-    *,
-    cwd: str | None = None,
-) -> CommandResult:
-    if not paths:
-        return CommandResult(("git", "amend-add"), 1, "", "at least one file argument is required\n", 0.0)
-    staged = add(runner, *paths, cwd=cwd)
-    if staged.returncode != 0:
-        return staged
-    return _run(runner, ["git", "commit", "--amend", "--no-edit"], cwd=cwd)
 
 def diff_name_status(
     runner: Runner,
@@ -1106,74 +1021,3 @@ def remote_branch_state(
     )
     err = redact.redact_outbound(err_raw)
     return RemoteBranchState(state="error", rc=result.returncode, error=err)
-
-# CLI entrypoints migrated from git_cli.py.
-def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
-    try:
-        return parser.parse_args(argv)
-    except SystemExit:
-        return None
-
-def commit_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git commit", add_help=True)
-    parser.add_argument("-m", dest="message", default="")
-    parser.add_argument("--no-trailer", action="store_true")
-    parser.add_argument("--only", action="store_true")
-    parser.add_argument("--pathspec-from-file", default=None)
-    parser.add_argument("--pathspec-file-nul", action="store_true")
-    parser.add_argument("files", nargs="*")
-    args = _parse(parser=parser, argv=argv)
-    if args is None:
-        return 1
-    if not args.message.strip():
-        print("git-commit.sh: commit message must be non-empty", file=sys.stderr)
-        return 1
-    removed, diagnostic = _try_remove_stale_index_lock(proc)
-    if removed:
-        print(diagnostic, file=sys.stderr)
-    if args.pathspec_from_file:
-        staged = add_pathspec_file(
-            proc,
-            args.pathspec_from_file,
-            pathspec_file_nul=args.pathspec_file_nul,
-        )
-    elif args.files:
-        staged = add(proc, *args.files)
-    else:
-        staged = None
-    if staged is not None and staged.returncode != 0:
-        sys.stdout.write(staged.stdout)
-        sys.stderr.write(staged.stderr)
-        return staged.returncode
-    result = commit_with_trailer(
-        proc,
-        args.message,
-        only=args.only,
-        no_trailer=args.no_trailer,
-        paths=tuple(args.files),
-        pathspec_from_file=args.pathspec_from_file,
-        pathspec_file_nul=args.pathspec_file_nul,
-    )
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
-
-def stage_main(argv: list[str]) -> int:
-    if not argv:
-        print("git-stage.sh: at least one file argument is required", file=sys.stderr)
-        print("usage: git-stage.sh <file> [<file> ...]", file=sys.stderr)
-        return 1
-    result = add(proc, *argv)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
-
-def amend_add_main(argv: list[str]) -> int:
-    if not argv:
-        print("git-amend-add.sh: at least one file argument is required", file=sys.stderr)
-        print("usage: git-amend-add.sh <file> [<file> ...]", file=sys.stderr)
-        return 1
-    result = amend_add(proc, argv)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode

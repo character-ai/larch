@@ -8,8 +8,8 @@ use std::ffi::OsString;
 use larch_core::GitCliOperation;
 
 use super::{
-    GitCliInputError, GitCliInputErrorKind, GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote,
-    GitToken, GitUrl,
+    GitCliInputError, GitCliInputErrorKind, GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec,
+    GitRemote, GitToken, GitUrl,
 };
 
 pub(super) trait GitOperation {
@@ -192,7 +192,8 @@ git_op!(RemoteMutationRequest, RemoteMutation);
 pub struct AddRequest {
     pub all: bool,
     pub force: bool,
-    pub pathspec_from_file: Option<GitPath>,
+    pub pathspec_from_file: Option<GitFilePath>,
+    pub pathspec_file_nul: bool,
     pub paths: Vec<GitPath>,
 }
 impl AddRequest {
@@ -214,7 +215,16 @@ impl AddRequest {
             let mut flag = OsString::from("--pathspec-from-file=");
             flag.push(path.as_os_str());
             a.push(flag);
+            if self.pathspec_file_nul {
+                a.push("--pathspec-file-nul".into());
+            }
             return Ok(a);
+        }
+        if self.pathspec_file_nul {
+            return Err(err(
+                GitCliInputErrorKind::UnsupportedCombination,
+                "--pathspec-file-nul requires --pathspec-from-file",
+            ));
         }
         if self.all {
             if !self.paths.is_empty() {
@@ -423,7 +433,7 @@ git_op!(ApplyRequest, Apply);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommitMessage {
     Literal(OsString),
-    File(GitPath),
+    File(GitFilePath),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommitRequest {
@@ -431,6 +441,9 @@ pub struct CommitRequest {
     pub amend: bool,
     pub no_edit: bool,
     pub allow_empty: bool,
+    pub only: bool,
+    pub pathspec_from_file: Option<GitFilePath>,
+    pub pathspec_file_nul: bool,
     pub paths: Vec<GitPath>,
 }
 impl CommitRequest {
@@ -444,6 +457,9 @@ impl CommitRequest {
         }
         if self.no_edit {
             a.push("--no-edit".into());
+        }
+        if self.only {
+            a.push("--only".into());
         }
         match &self.message {
             Some(CommitMessage::Literal(message)) => {
@@ -463,7 +479,25 @@ impl CommitRequest {
                 ));
             }
         }
-        if !self.paths.is_empty() {
+        if let Some(path) = &self.pathspec_from_file {
+            if !self.paths.is_empty() {
+                return Err(err(
+                    GitCliInputErrorKind::UnsupportedCombination,
+                    "pathspec-from-file cannot combine with path arguments",
+                ));
+            }
+            let mut flag = OsString::from("--pathspec-from-file=");
+            flag.push(path.as_os_str());
+            a.push(flag);
+            if self.pathspec_file_nul {
+                a.push("--pathspec-file-nul".into());
+            }
+        } else if self.pathspec_file_nul {
+            return Err(err(
+                GitCliInputErrorKind::UnsupportedCombination,
+                "--pathspec-file-nul requires --pathspec-from-file",
+            ));
+        } else if !self.paths.is_empty() {
             a.push("--".into());
             a.extend(self.paths.iter().map(|p| p.as_os_str().into()));
         }
@@ -475,7 +509,9 @@ git_op!(CommitRequest, Commit);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InterpretTrailersRequest {
     pub trailers: Vec<OsString>,
-    pub in_place: Option<GitPath>,
+    pub in_place: Option<GitFilePath>,
+    pub add_if_different: bool,
+    pub add_if_missing: bool,
     /// Commit-message body fed on stdin when `in_place` is unset.
     pub stdin: Vec<u8>,
 }
@@ -494,6 +530,12 @@ impl InterpretTrailersRequest {
             ));
         }
         let mut a = Vec::new();
+        if self.add_if_different {
+            a.extend(["--if-exists".into(), "addIfDifferent".into()]);
+        }
+        if self.add_if_missing {
+            a.extend(["--if-missing".into(), "add".into()]);
+        }
         for trailer in &self.trailers {
             reject_value(trailer)?;
             a.push("--trailer".into());

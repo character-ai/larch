@@ -879,7 +879,6 @@ IDEMPOTENCY_DEPTH: Final = 3
 TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX: Final = "chore(larch-logs): "
 CLASSIFY_SCOPE_DIRS: Final[tuple[str, ...]] = ("skills", "agents")
 APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES: Final = (".launcher-stderr", ".redacted.log")
-GIT_COMMIT_CO_AUTHORED_BY_TRAILER: Final = "Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 # CI monitor loop (Phase 6)
 CI_MONITOR_MAX_ITERATIONS: Final = 50

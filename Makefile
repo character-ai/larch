@@ -291,7 +291,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
+test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose test-git-commit-only step-7a-bash-harness
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
@@ -809,7 +809,7 @@ test-codex-implementer:
 
 
 test-git-commit-only:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_git.py -q -k 'commit_pathspec_file_nul_only'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content
 
 test-refresh-run-logs:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k refresh_run_logs

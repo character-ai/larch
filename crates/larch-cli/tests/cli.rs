@@ -15,7 +15,7 @@ Usage: larch <COMMAND>
 
 Commands:
   example        Non-production commands that exercise dispatcher wiring
-  git            Local Git repository read and status commands
+  git            Local Git repository commands
   plugin         Plugin metadata commands
   release        Release-maintenance commands
   gh             GitHub workflow helper commands
@@ -42,17 +42,19 @@ Options:
 ";
 
 const GIT_HELP: &str = "\
-Local Git repository read and status commands
+Local Git repository commands
 
 Usage: larch git <COMMAND>
 
 Commands:
+  amend-add            Stage paths and amend them into the current commit
   branch-info          Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository
   check-phantom-dirty  Classify repository changes against an untracked-path baseline
   check-remote-branch  Probe whether a remote branch exists via typed ls-remote
   check-main-sync      Classify or reset a flush-only local main branch ahead of origin/main
   checkout-ours        Check out the current side of conflicted paths
   clean-tree           Report whether the worktree is clean using machine-readable key/value rows
+  commit               Stage optional paths and create a commit
   conflict-files       Print the files and index stages that are currently conflicted
   count-commits        Count commits on `HEAD` since `origin/main` or `main`
   current-branch       Emit `BRANCH` for the current symbolic `HEAD`
@@ -62,6 +64,7 @@ Commands:
   show-stage           Print the blob at an index conflict stage
   sync-local-main      Update a non-checked-out local main branch from its remote-tracking ref
   snapshot-untracked   Atomically write the sorted untracked-path baseline to an output file
+  stage                Stage one or more paths
   help                 Print this message or the help of the given subcommand(s)
 
 Options:

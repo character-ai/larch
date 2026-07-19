@@ -6,7 +6,21 @@ use std::{
     process::Command as StdCommand,
 };
 
+#[cfg(unix)]
+use std::{
+    io::Read as _,
+    process::Stdio,
+    thread,
+    time::{Duration, Instant},
+};
+#[cfg(unix)]
+use wait_timeout::ChildExt as _;
+
 use assert_cmd::Command;
+use larch_test_support::{
+    ExecutionSnapshot, ExitClass, GitFixture, GitRepository, SemanticSnapshot,
+};
+use predicates::prelude::PredicateBooleanExt as _;
 use tempfile::TempDir;
 
 fn larch() -> Command {
@@ -641,4 +655,470 @@ fn check_main_sync_refuses_a_dirty_flush_reset_and_sync_local_main_updates_a_fea
             .stdout
     );
     git(&repo, &["fsck", "--full", "--no-dangling"]);
+}
+
+fn git_stdout(cwd: &Path, args: &[&str]) -> String {
+    let output = StdCommand::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .expect("git should run");
+    assert!(output.status.success(), "git {args:?} failed");
+    String::from_utf8(output.stdout).expect("git stdout should be UTF-8")
+}
+
+#[test]
+fn stage_requires_at_least_one_path() {
+    larch()
+        .args(["git", "stage"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(
+            "git-stage.sh: at least one file argument is required\nusage: git-stage.sh <file> [<file> ...]\n",
+        );
+}
+
+#[test]
+fn commit_requires_a_nonempty_message() {
+    larch()
+        .args(["git", "commit", "-m", "  "])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-commit.sh: commit message must be non-empty\n");
+}
+
+#[test]
+fn missing_git_preserves_command_not_found_exit_class() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+
+    larch()
+        .args(["git", "stage", "file.txt"])
+        .env("PATH", "")
+        .current_dir(&repo)
+        .assert()
+        .code(127)
+        .stderr(predicates::str::contains("cannot spawn external process"));
+}
+
+#[test]
+fn stage_commit_and_amend_add_preserve_public_behavior() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    let spaced = repo.join("space name.txt");
+    fs::write(&spaced, "first\n").expect("write spaced path");
+
+    larch()
+        .args(["git", "stage", "space name.txt"])
+        .current_dir(&repo)
+        .assert()
+        .success();
+    larch()
+        .args(["git", "commit", "-m", "add spaced path"])
+        .current_dir(&repo)
+        .assert()
+        .success();
+
+    let message = git_stdout(&repo, &["log", "-1", "--format=%B"]);
+    assert!(message.starts_with("add spaced path\n"));
+    assert!(message.contains("Co-Authored-By: Claude Code <noreply@anthropic.com>"));
+    let before = git_stdout(&repo, &["rev-list", "--count", "HEAD"]);
+
+    fs::write(&spaced, "amended\n").expect("rewrite spaced path");
+    larch()
+        .args(["git", "amend-add", "space name.txt"])
+        .current_dir(&repo)
+        .assert()
+        .success();
+
+    assert_eq!(git_stdout(&repo, &["rev-list", "--count", "HEAD"]), before);
+    assert_eq!(
+        git_stdout(&repo, &["show", "HEAD:space name.txt"]),
+        "amended\n"
+    );
+}
+
+#[test]
+fn commit_matches_the_shared_semantic_snapshot_oracle() {
+    let baseline = GitRepository::builder(GitFixture::Changes)
+        .build()
+        .expect("baseline fixture");
+    let candidate = GitRepository::builder(GitFixture::Changes)
+        .build()
+        .expect("candidate fixture");
+    git(candidate.root(), &["config", "user.name", "Larch Fixture"]);
+    git(
+        candidate.root(),
+        &["config", "user.email", "fixture@example.invalid"],
+    );
+    git(candidate.root(), &["config", "commit.gpgSign", "false"]);
+    let baseline_result = baseline
+        .git(["commit", "--no-gpg-sign", "-m", "semantic parity"])
+        .expect("baseline commit");
+    assert!(baseline_result.success());
+
+    larch()
+        .args(["git", "commit", "--no-trailer", "-m", "semantic parity"])
+        .current_dir(candidate.root())
+        .assert()
+        .success();
+
+    let baseline_snapshot = SemanticSnapshot::capture(&baseline, ExecutionSnapshot::success())
+        .expect("baseline snapshot");
+    let candidate_snapshot = SemanticSnapshot::capture(&candidate, ExecutionSnapshot::success())
+        .expect("candidate snapshot");
+    assert_eq!(candidate_snapshot.index, baseline_snapshot.index);
+    assert_eq!(
+        candidate_snapshot.index_flags,
+        baseline_snapshot.index_flags
+    );
+    assert_eq!(candidate_snapshot.untracked, baseline_snapshot.untracked);
+    assert_eq!(candidate_snapshot.ignored, baseline_snapshot.ignored);
+    assert_eq!(candidate_snapshot.worktree, baseline_snapshot.worktree);
+    assert_eq!(
+        candidate_snapshot.operation_state,
+        baseline_snapshot.operation_state
+    );
+    assert_eq!(
+        candidate_snapshot.transcripts,
+        baseline_snapshot.transcripts
+    );
+    assert_eq!(candidate_snapshot.fsck, baseline_snapshot.fsck);
+    assert_eq!(candidate_snapshot.refs.exit_class, ExitClass::Success);
+    assert_eq!(candidate_snapshot.reflogs.exit_class, ExitClass::Success);
+}
+
+#[test]
+fn commit_no_trailer_does_not_add_the_default_trailer() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+
+    larch()
+        .args(["git", "commit", "--no-trailer", "-m", "plain", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .success();
+
+    assert_eq!(
+        git_stdout(&repo, &["log", "-1", "--format=%B"]),
+        "plain\n\n"
+    );
+}
+
+#[test]
+fn pathspec_file_nul_without_a_pathspec_file_remains_a_noop_flag() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+
+    larch()
+        .args([
+            "git",
+            "commit",
+            "--pathspec-file-nul",
+            "-m",
+            "compatible",
+            "file.txt",
+        ])
+        .current_dir(&repo)
+        .assert()
+        .success();
+
+    assert_eq!(
+        git_stdout(&repo, &["log", "-1", "--format=%s"]),
+        "compatible\n"
+    );
+}
+
+#[test]
+fn nul_pathspec_only_commit_preserves_unrelated_staged_content() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("staged.txt"), "base\n").expect("write");
+    fs::create_dir(repo.join("dir with space")).expect("mkdir");
+    fs::write(repo.join("dir with space/new file.txt"), "base\n").expect("write");
+    git(&repo, &["add", "staged.txt", "dir with space/new file.txt"]);
+    git(&repo, &["commit", "-m", "more base"]);
+
+    fs::write(repo.join("staged.txt"), "unrelated staged\n").expect("write");
+    git(&repo, &["add", "staged.txt"]);
+    fs::write(repo.join("dir with space/new file.txt"), "selected\n").expect("write");
+    let pathspec = temp.path().join("paths.nul");
+    fs::write(&pathspec, b"dir with space/new file.txt\0").expect("pathspec");
+
+    larch()
+        .args([
+            "git",
+            "commit",
+            "--only",
+            "--pathspec-from-file",
+            pathspec.to_str().expect("UTF-8 pathspec"),
+            "--pathspec-file-nul",
+            "-m",
+            "selected only",
+        ])
+        .current_dir(&repo)
+        .assert()
+        .success();
+
+    assert_eq!(
+        git_stdout(&repo, &["show", "--name-only", "--format=", "HEAD"]),
+        "dir with space/new file.txt\n"
+    );
+    assert_eq!(
+        git_stdout(&repo, &["diff", "--cached", "--name-only"]),
+        "staged.txt\n"
+    );
+}
+
+#[test]
+fn zero_byte_index_lock_is_removed_and_the_stage_retries_once() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+    let lock = repo.join(".git/index.lock");
+    fs::write(&lock, b"").expect("stale lock");
+
+    larch()
+        .args(["git", "stage", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stderr(
+            predicates::str::contains("removed stale .git/index.lock")
+                .and(predicates::str::contains("retrying git command once")),
+        );
+
+    assert!(!lock.exists());
+    assert_eq!(
+        git_stdout(&repo, &["diff", "--cached", "--name-only"]),
+        "file.txt\n"
+    );
+}
+
+#[test]
+fn nonempty_index_lock_is_never_removed() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+    let lock = repo.join(".git/index.lock");
+    fs::write(&lock, b"owned").expect("live-shaped lock");
+
+    larch()
+        .args(["git", "stage", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("non-empty lock"));
+
+    assert_eq!(fs::read(&lock).expect("lock retained"), b"owned");
+}
+
+#[test]
+#[cfg(unix)]
+fn live_zero_byte_index_lock_is_never_removed() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+    let lock = repo.join(".git/index.lock");
+    let mut holder = StdCommand::new("sh")
+        .args(["-c", "exec 3>\"$1\"; printf x; read _", "holder"])
+        .arg(&lock)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("lock holder");
+    let mut ready = [0_u8; 1];
+    holder
+        .stdout
+        .as_mut()
+        .expect("holder stdout")
+        .read_exact(&mut ready)
+        .expect("holder ready");
+
+    larch()
+        .args(["git", "stage", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("lock held by process"));
+
+    assert!(lock.exists());
+    holder.kill().expect("stop holder");
+    holder.wait().expect("reap holder");
+}
+
+#[test]
+fn protected_original_branch_refuses_staging() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+    let state = temp.path().join("ship-pr-state.sh");
+    fs::write(&state, "ORIGINAL_BRANCH_FORBIDDEN=true\nBRANCH_NAME=main\n").expect("state");
+
+    larch()
+        .args(["git", "stage", "file.txt"])
+        .env("SHIP_PR_STATE_FILE", &state)
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr("refusing commit or push on forbidden original branch: main\n");
+
+    assert!(git_stdout(&repo, &["diff", "--cached", "--name-only"]).is_empty());
+}
+
+#[test]
+#[cfg(unix)]
+fn rejected_pre_commit_hook_preserves_git_stderr_and_exit() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+    let hook = repo.join(".git/hooks/pre-commit");
+    fs::write(&hook, "#!/bin/sh\necho hook-rejected >&2\nexit 1\n").expect("hook");
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    larch()
+        .args(["git", "commit", "-m", "blocked", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("hook-rejected"));
+
+    assert_eq!(git_stdout(&repo, &["log", "-1", "--format=%s"]), "init\n");
+}
+
+#[test]
+#[cfg(unix)]
+fn interrupted_commit_cleans_up_children_and_temporary_message() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join("file.txt"), "changed\n").expect("write");
+    let messages = temp.path().join("messages");
+    fs::create_dir(&messages).expect("message directory");
+    let marker = repo.join(".git/hook-started");
+    let hook = repo.join(".git/hooks/pre-commit");
+    fs::write(
+        &hook,
+        "#!/bin/sh\nprintf started > .git/hook-started\nkill -STOP $$\n",
+    )
+    .expect("hook");
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin!("larch"))
+        .args(["git", "commit", "-m", "interrupted", "file.txt"])
+        .current_dir(&repo)
+        .env("TMPDIR", &messages)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("larch commit");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !marker.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(marker.exists(), "pre-commit hook did not start");
+    let signal = StdCommand::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .expect("send interrupt");
+    assert!(signal.success());
+    let status = child
+        .wait_timeout(Duration::from_secs(10))
+        .expect("wait for interrupted command")
+        .expect("interrupted command should exit");
+
+    assert_eq!(status.code(), Some(130));
+    assert_eq!(git_stdout(&repo, &["log", "-1", "--format=%s"]), "init\n");
+    assert!(fs::read_dir(&messages).expect("messages").next().is_none());
+    git(&repo, &["fsck", "--no-dangling"]);
+}
+
+#[test]
+#[cfg(unix)]
+fn required_clean_filter_failure_stops_staging() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::write(repo.join(".gitattributes"), "filtered.txt filter=fail\n").expect("attributes");
+    git(&repo, &["config", "filter.fail.clean", "false"]);
+    git(&repo, &["config", "filter.fail.required", "true"]);
+    fs::write(repo.join("filtered.txt"), "content\n").expect("filtered file");
+
+    larch()
+        .args(["git", "stage", "filtered.txt"])
+        .current_dir(&repo)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("clean filter 'fail' failed"));
+
+    assert!(!repo.join(".git/index.lock").exists());
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn stage_preserves_non_utf8_path_bytes() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    let name = OsString::from_vec(b"non-utf8-\xff.txt".to_vec());
+    fs::write(repo.join(&name), b"bytes\n").expect("non-UTF-8 path");
+
+    larch()
+        .args(["git", "stage"])
+        .arg(&name)
+        .current_dir(&repo)
+        .assert()
+        .success();
+
+    let output = StdCommand::new("git")
+        .args(["diff", "--cached", "--name-only", "-z"])
+        .current_dir(&repo)
+        .output()
+        .expect("git diff");
+    assert!(output.status.success());
+    assert_eq!(output.stdout, [name.as_encoded_bytes(), b"\0"].concat());
+}
+
+#[test]
+#[cfg(unix)]
+fn signing_failure_preserves_git_failure_and_repository_state() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    let signer = temp.path().join("reject-signing");
+    fs::write(&signer, "#!/bin/sh\necho signing-rejected >&2\nexit 1\n").expect("signer");
+    fs::set_permissions(&signer, fs::Permissions::from_mode(0o755)).expect("chmod");
+    git(&repo, &["config", "commit.gpgSign", "true"]);
+    git(
+        &repo,
+        &[
+            "config",
+            "gpg.program",
+            signer.to_str().expect("signer path"),
+        ],
+    );
+    fs::write(repo.join("file.txt"), "signed change\n").expect("write");
+
+    larch()
+        .args(["git", "commit", "--no-trailer", "-m", "signed", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("failed to sign"));
+
+    assert_eq!(git_stdout(&repo, &["log", "-1", "--format=%s"]), "init\n");
+    assert_eq!(
+        git_stdout(&repo, &["diff", "--cached", "--name-only"]),
+        "file.txt\n"
+    );
 }

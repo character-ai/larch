@@ -1,5 +1,9 @@
 //! Shared configuration names that survive the Python migration.
 
+/// Trailer added by the public Git commit command unless explicitly disabled.
+pub const GIT_COMMIT_CO_AUTHORED_BY_TRAILER: &str =
+    "Co-Authored-By: Claude Code <noreply@anthropic.com>";
+
 /// Environment-variable names read at Rust composition boundaries.
 ///
 /// Core domain code does not read the process environment. The CLI and adapter

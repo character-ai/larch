@@ -7,7 +7,6 @@ import contextlib
 import os
 import re
 import shutil
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +16,8 @@ from larch.agents import agents
 from larch.core import config
 from larch.core import external_defaults
 from larch.core import redact
+from larch.core.repo_roots import larch_entrypoint
 from larch.review._raf_util import (
-    _PY_CLI,
     _append_text,
     _count_findings,
     _git_head,
@@ -327,7 +326,7 @@ def _stage_and_commit_round(
         return RoundCommitResult()
     msg = f"Address code review feedback (round {round_num})"
     repo_root = _step5_repo_root()
-    commit = _run([sys.executable, str(_PY_CLI), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg], cwd=Path(repo_root) if repo_root else None)
+    commit = _run([str(larch_entrypoint(_plugin_root())), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg], cwd=Path(repo_root) if repo_root else None)
     _append_text(path=round_dir / "coder-commit.log", text=commit.stdout + commit.stderr)
     if commit.returncode != 0:
         if "larch: stale .git/index.lock not removed" in f"{commit.stdout}\n{commit.stderr}":

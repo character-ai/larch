@@ -38,7 +38,7 @@ from larch.core import external_defaults
 from larch.core import proc
 from larch.core import redact
 from larch.git import git
-from larch.core.repo_roots import plugin_root
+from larch.core.repo_roots import larch_entrypoint, plugin_root
 from larch.issue import execution_issues
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, Runner
@@ -1977,7 +1977,8 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 tier_ledger_path=str(tier_ledger),
             )
         if baseline_clean:
-            add_result = runner.run(["git", "add", "--", *delta_paths], cwd=cwd)
+            entrypoint = str(larch_entrypoint(plugin_root()))
+            add_result = runner.run([entrypoint, "git", "stage", *delta_paths], cwd=cwd)
             if add_result.returncode != 0:
                 _ = runner.run(["git", "reset", "--quiet", "--", *delta_paths], cwd=cwd)
                 return FixOutcome(
@@ -1989,12 +1990,14 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     coder_tool=coder_tool,
                     tier_ledger_path=str(tier_ledger),
                 )
-            commit_result = git.commit_with_trailer(
-                runner,
+            commit_result = runner.run([
+                entrypoint,
+                "git",
+                "commit",
+                "--no-trailer",
+                "-m",
                 f"Apply relevant-checks fixes ({site_label})",
-                no_trailer=True,
-                cwd=cwd,
-            )
+            ], cwd=cwd)
             if commit_result.returncode != 0:
                 _ = runner.run(["git", "reset", "--quiet", "--", *delta_paths], cwd=cwd)
                 return FixOutcome(

@@ -30,6 +30,7 @@ macro_rules! git_value {
 
 git_value!(GitUrl, "url");
 git_value!(GitToken, "token");
+git_value!(GitFilePath, "file path");
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GitPath(OsString);

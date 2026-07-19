@@ -22,7 +22,7 @@ pub use attestation::{
     ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseTag,
     VerifiedArtifactAttestation, VerifiedReleaseAttestation,
 };
-pub use config::env;
+pub use config::{GIT_COMMIT_CO_AUTHORED_BY_TRAILER, env};
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use env_file::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
@@ -57,10 +57,10 @@ pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workfl
 pub use logging_util::emit_kv;
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
-    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, LarchProgram,
-    ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent, ProcessEventKind,
-    ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest, ProcessRequestError,
-    ProcessRequestErrorKind, ProcessStatus, VendorProgram,
+    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, HostUtilityProgram,
+    LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
+    ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest,
+    ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, VendorProgram,
 };
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
 pub use retry::{

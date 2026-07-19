@@ -210,6 +210,41 @@ worktree traversal exceeds its entry cap.
 Typed results contain paths, modes, IDs, and flags, but no file content or
 upstream diagnostic text.
 
+## Rust Git Mutation Compatibility Boundary
+
+`git stage`, `git commit`, and `git amend-add` run through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The script is the sole production
+bootstrap and version-validation entrypoint. Remaining Python callers resolve
+that script. They do not select an implementation, execute `bin/larch`
+directly, invoke Cargo, or fall back to Python command behavior.
+
+Rust composes closed `AddRequest`, `CommitRequest`, and
+`InterpretTrailersRequest` operations. The installed Git executable remains the
+compatibility backend. Git therefore keeps ownership of hooks, clean and
+process filters, signing programs, helpers, commit message cleanup, index
+updates, refs, reflogs, diagnostics, and exit status. Arguments are typed and
+byte-preserving. There is no arbitrary Git argument surface. The process
+adapter clears ambient Git repository overrides, inherits only its reviewed
+environment allowlist, sets `GIT_TERMINAL_PROMPT=0`, bounds captured output,
+and terminates and reaps the Git process group on timeout or cancellation.
+
+Commit messages use a private temporary file. The command removes that file on
+success, Git failure, hook rejection, signing failure, filter failure, and
+cancellation. The default co-author trailer is prepared through Git's
+`interpret-trailers` operation. `--no-trailer` skips only that operation.
+Pathspec files may be absolute because recovery files live outside the
+repository. Their paths reject empty, option-like, and NUL values. Repository
+paths still reject absolute paths, parent traversal, options, and NUL bytes.
+
+Index-lock recovery is narrow. Larch removes only a regular, zero-byte
+`.git/index.lock` after the repository's trusted Git directory is resolved and
+no holder is found by `/proc` or the typed, bounded `lsof` host-utility probe.
+It verifies removal, retries the
+failed Git operation once, and reports the decision. Non-empty, held,
+unreadable, symlink, or unverifiable locks remain untouched. Branch-write
+protection is checked before staging or committing, including the persisted
+original-branch prohibition used by the ship workflow.
+
 ## Rust GitHub Actions Operation Boundary
 
 The Actions operation port builds repository, workflow, run, job, and check

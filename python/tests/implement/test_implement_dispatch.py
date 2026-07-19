@@ -3818,15 +3818,6 @@ def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path
     assert "REASON=manifest-oos-materialization-failed" in out
 
 
-def test_commit_main_commits_named_file(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    (repo / "commit-me.txt").write_text("x\n", encoding="utf-8")
-    rc = implement_dispatch.commit_main(["--message", "Commit helper", "commit-me.txt"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "COMMITTED=true" in out
-    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "Commit helper"
-
-
 def test_commit_main_passes_named_files_once(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     calls: list[list[str]] = []
 
@@ -3871,7 +3862,7 @@ def test_commit_main_git_commit_failure_preserves_exit_code(repo: Path, monkeypa
     (repo / "file.txt").write_text("x\n", encoding="utf-8")
 
     def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
-        if list(argv[:4]) == [sys.executable, str(implement_dispatch._current_cli_path()), "git", "commit"]:  # pyright: ignore[reportPrivateUsage]
+        if list(argv[1:3]) == ["git", "commit"]:
             return subprocess.CompletedProcess(argv, 7, "", "hook rejected commit")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
