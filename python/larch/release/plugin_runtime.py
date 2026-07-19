@@ -7,6 +7,7 @@ import filecmp
 import json
 import shutil
 from pathlib import Path
+from typing import cast
 
 from larch.core import proc
 
@@ -116,9 +117,13 @@ def _validate_root(root: Path) -> None:
         raise RuntimeError(
             "plugin runtime projection requires the larch repository root"
         ) from error
+    if not isinstance(payload, dict):
+        raise RuntimeError(  # noqa: TRY004 - malformed repository manifest is an external-state failure
+            "plugin runtime projection requires the larch repository root"
+        )
+    manifest_data = cast("dict[str, object]", payload)
     if (
-        not isinstance(payload, dict)
-        or payload.get("name") != "larch"
+        manifest_data.get("name") != "larch"
         or not (root / ".git").exists()
         or authority.resolve() != Path(__file__).resolve()
     ):
@@ -133,7 +138,7 @@ def projection_errors(root: Path) -> list[str]:
     projection = root / "plugin"
     if projection.is_symlink():
         return ["runtime projection root must be a real directory"]
-    actual = (
+    actual: set[str] = (
         {
             path.relative_to(projection).as_posix()
             for path in projection.rglob("*")
@@ -179,7 +184,7 @@ def sync(root: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py release plugin-runtime")
-    parser.add_argument("--check", action="store_true")
+    _ = parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     root = Path.cwd().resolve()
     if args.check:

@@ -204,6 +204,10 @@ suppress = [
 # mirroring the runtime harness's opt-in shape) and
 # python/test_research_eval.py (sibling contract).
 exclude = [
+  # plugin/ is a generated, byte-for-byte runtime projection of the canonical
+  # plugin sources. Scan the canonical paths once; release plugin-runtime
+  # --check rejects projection drift.
+  "plugin/",
   # Temporary reachability stopgap for inventories removed from
   # skills/design/SKILL.md and skills/implement/SKILL.md. These excludes
   # replace reachability-only anchors until zhupanov/agent-lint#106 ships
