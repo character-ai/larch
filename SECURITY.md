@@ -139,6 +139,19 @@ paths, config values, and remote URLs as bytes. Errors use fixed classes and do
 not include repository paths, config values, remote credentials, or upstream
 library diagnostics.
 
+Status and typed tree changes follow the same reopen rule. Status uses the full
+configured `gix` iterator and never writes its optional index-stat refreshes.
+Repository and worktree config that defines an external clean, process,
+textconv, or diff command returns `UnsupportedSemantics` before iteration.
+Callers must route those byte-sensitive cases through the closed exact-diff Git
+CLI operation. User and system filter definitions remain operator-owned config;
+status rejects repository attributes that select them before `gix` can launch a
+filter. Effective conversion attributes are queried through the configured
+attribute stack. Discovery does not follow symlinks and fails closed when the
+worktree traversal exceeds its entry cap.
+Typed results contain paths, modes, IDs, and flags, but no file content or
+upstream diagnostic text.
+
 ## Rust GitHub Actions Operation Boundary
 
 The Actions operation port builds repository, workflow, run, job, and check

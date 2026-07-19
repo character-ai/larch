@@ -24,10 +24,12 @@ pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };
 pub use git::{
-    Commit, ConfigKey, ConfigScope, ConfigValue, GitPath, Head, Object, ObjectHash, ObjectId,
-    ObjectKind, RefFormat, RefName, Reference, ReferenceKind, ReferenceTarget, Remote,
-    RepositoryError, RepositoryErrorKind, RepositoryLocation, RepositoryRead, Revision, Upstream,
-    Worktree,
+    Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
+    ConflictStage, GitMode, GitPath, Head, IgnoreKind, IgnoredEntry, IndexFlags, Object,
+    ObjectHash, ObjectId, ObjectKind, RefFormat, RefName, Reference, ReferenceKind,
+    ReferenceTarget, Remote, RepositoryError, RepositoryErrorKind, RepositoryLocation,
+    RepositoryRead, RepositoryStatus, Revision, StatusOptions, TrackedEntry, UnmergedEntry,
+    Upstream, Worktree,
 };
 pub use github::{
     CheckBucket, CheckRun, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,

@@ -45,6 +45,11 @@ through `GixRepository`. Compare typed IDs, ref targets, config provenance,
 URLs, worktree records, and error classes with parsed Git oracle results. Path
 comparisons may normalize filesystem aliases such as macOS `/var` and
 `/private/var`, but the adapter result must retain its original path bytes.
+For status and change sets, compare staged, unstaged, untracked, ignored, and
+unmerged paths plus change kinds, modes, IDs, conflict stages, and flags. Cover
+pathspec and case configuration, filters and CRLF, sparse indexes, submodules,
+non-UTF-8 paths, symlinks, executable bits, and configured rewrite behavior.
+An unsupported semantic must return its typed error instead of dropping data.
 
 Use `SemanticSnapshot::capture` after each implementation runs against its own
 equivalent repository. Supply the operation's public result through

@@ -116,6 +116,11 @@ work:
   It reopens through strict config parsing and ownership checks before reading
   mutable repository state. Callers receive core byte types and cannot select
   `gix` or Git CLI reads.
+- Configured status iteration and tree changes return core-owned change sets.
+  They preserve byte paths, modes, object IDs, conflict stages, ignored-entry
+  safety classes, and the index flags needed to interpret status. Patch text,
+  `--raw`, `--numstat`, textconv, and external-diff bytes remain owned by the
+  typed exact-diff Git CLI method.
 - Git mutations and network operations stay behind a closed, typed Git CLI
   compatibility adapter where installed-Git behavior is part of the contract.
   There is no public arbitrary-argv escape hatch.

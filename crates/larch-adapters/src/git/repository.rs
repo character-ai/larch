@@ -4,10 +4,12 @@ use std::path::{Path, PathBuf};
 
 use gix::bstr::ByteSlice;
 use larch_core::{
-    Commit, ConfigKey, ConfigScope, ConfigValue, GitPath, Head, Object, ObjectHash, ObjectId,
-    ObjectKind, RefFormat, RefName, Reference, ReferenceKind, ReferenceTarget, Remote,
-    RepositoryError, RepositoryErrorKind, RepositoryLocation, RepositoryRead, Revision, Upstream,
-    Worktree,
+    Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
+    ConflictStage, GitMode, GitPath, Head, IgnoreKind, IgnoredEntry, IndexFlags, Object,
+    ObjectHash, ObjectId, ObjectKind, RefFormat, RefName, Reference, ReferenceKind,
+    ReferenceTarget, Remote, RepositoryError, RepositoryErrorKind, RepositoryLocation,
+    RepositoryRead, RepositoryStatus, Revision, StatusOptions, TrackedEntry, UnmergedEntry,
+    Upstream, Worktree,
 };
 
 /// The only production repository metadata reader.
@@ -357,6 +359,144 @@ impl RepositoryRead for GixRepository {
         Ok(output)
     }
 
+    fn status(&self, options: &StatusOptions) -> Result<RepositoryStatus, RepositoryError> {
+        let repository = self.local()?;
+        reject_unsupported_status_semantics(&repository)?;
+        let index = repository
+            .index_or_empty()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let untracked = if options.include_untracked || options.include_ignored {
+            gix::status::UntrackedFiles::Files
+        } else {
+            gix::status::UntrackedFiles::None
+        };
+        let mut platform = repository
+            .status(gix::progress::Discard)
+            .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?
+            .index(gix::worktree::IndexPersistedOrInMemory::Persisted(
+                index.clone(),
+            ))
+            .untracked_files(untracked);
+        if options.include_ignored {
+            platform = platform.dirwalk_options(|dirwalk| {
+                dirwalk.emit_ignored(Some(gix::dir::walk::EmissionMode::Matching))
+            });
+        }
+        let patterns = options
+            .pathspecs
+            .iter()
+            .map(|path| path.as_bytes().into())
+            .collect::<Vec<gix::bstr::BString>>();
+        let tracked = tracked_entries(&repository, &index, &patterns)?;
+        let iter = platform
+            .into_iter(patterns)
+            .map_err(|error_value| map_status_init_error(&error_value))?;
+        let mut staged = Vec::new();
+        let mut unstaged = Vec::new();
+        let mut untracked_paths = Vec::new();
+        let mut ignored = Vec::new();
+        let mut unmerged = Vec::new();
+        for item in iter {
+            match item.map_err(|error_value| map_status_item_error(&error_value))? {
+                gix::status::Item::TreeIndex(change) => {
+                    staged.push(index_change(change, &index));
+                }
+                gix::status::Item::IndexWorktree(item) => collect_worktree_item(
+                    item,
+                    &mut unstaged,
+                    &mut untracked_paths,
+                    &mut ignored,
+                    &mut unmerged,
+                ),
+            }
+        }
+        unmerged.sort_by(|left, right| left.path.cmp(&right.path));
+        staged.retain(|change| !unmerged.iter().any(|entry| entry.path == change.path));
+        unstaged.retain(|change| !unmerged.iter().any(|entry| entry.path == change.path));
+        sort_changes(&mut staged);
+        sort_changes(&mut unstaged);
+        untracked_paths.sort();
+        untracked_paths.dedup();
+        if !options.include_untracked {
+            untracked_paths.clear();
+        }
+        ignored.sort_by(|left, right| left.path.cmp(&right.path));
+        ignored.dedup_by(|left, right| left.path == right.path);
+        Ok(RepositoryStatus {
+            tracked,
+            tree_to_index: ChangeSet::new(staged),
+            index_to_worktree: ChangeSet::new(unstaged),
+            untracked: untracked_paths,
+            ignored,
+            unmerged,
+        })
+    }
+
+    fn tree_changes(
+        &self,
+        old_tree: &ObjectId,
+        new_tree: &ObjectId,
+    ) -> Result<ChangeSet, RepositoryError> {
+        let repository = self.local()?;
+        reject_external_diff_drivers(&repository)?;
+        let old = repository
+            .try_find_object(gix_id(old_tree, repository.object_hash())?)
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+            .ok_or_else(|| error(RepositoryErrorKind::MissingObject))?
+            .try_into_tree()
+            .map_err(|_| error(RepositoryErrorKind::ObjectType))?;
+        let new = repository
+            .try_find_object(gix_id(new_tree, repository.object_hash())?)
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?
+            .ok_or_else(|| error(RepositoryErrorKind::MissingObject))?
+            .try_into_tree()
+            .map_err(|_| error(RepositoryErrorKind::ObjectType))?;
+        let mut changes = Vec::new();
+        let mut configured = old
+            .changes()
+            .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?;
+        configured
+            .for_each_to_obtain_tree(&new, |change| {
+                changes.push(tree_change(change));
+                Ok::<_, std::convert::Infallible>(std::ops::ControlFlow::Continue(()))
+            })
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let copy_sources = changes
+            .iter()
+            .filter(|change| change.kind == ChangeKind::Copied)
+            .filter_map(|change| change.source_path.clone())
+            .collect::<Vec<_>>();
+        if !copy_sources.is_empty() {
+            let mut without_rewrites = old
+                .changes()
+                .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?;
+            without_rewrites.options(|options| {
+                options.track_rewrites(None);
+            });
+            without_rewrites
+                .for_each_to_obtain_tree(&new, |change| {
+                    let change = tree_change(change);
+                    if copy_sources.contains(&change.path)
+                        && !changes.iter().any(|existing| {
+                            existing.path == change.path && existing.kind == change.kind
+                        })
+                        && matches!(
+                            change.kind,
+                            ChangeKind::Modified
+                                | ChangeKind::TypeChanged
+                                | ChangeKind::SubmoduleModified
+                        )
+                    {
+                        changes.push(change);
+                    }
+                    Ok::<_, std::convert::Infallible>(std::ops::ControlFlow::Continue(()))
+                })
+                .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        }
+        sort_changes(&mut changes);
+        Ok(ChangeSet::new(changes))
+    }
+
     fn validate_ref_name(&self, name: &RefName, format: RefFormat) -> Result<(), RepositoryError> {
         let name = name.as_bytes().as_bstr();
         let valid = match format {
@@ -370,6 +510,588 @@ impl RepositoryRead for GixRepository {
             Err(error(RepositoryErrorKind::InvalidRef))
         }
     }
+}
+
+fn reject_unsupported_status_semantics(
+    repository: &gix::Repository,
+) -> Result<(), RepositoryError> {
+    let config = repository.config_snapshot();
+    let external_filters = config.sections_by_name("filter").is_some_and(|sections| {
+        sections
+            .into_iter()
+            .any(|section| section.value("clean").is_some() || section.value("process").is_some())
+    });
+    let repository_filters = config.sections_by_name("filter").is_some_and(|sections| {
+        sections.into_iter().any(|section| {
+            matches!(
+                section.meta().source,
+                gix::config::Source::Local | gix::config::Source::Worktree
+            ) && (section.value("clean").is_some() || section.value("process").is_some())
+        })
+    });
+    let attributes = attribute_semantics(repository)?;
+    if repository_filters || attributes.conversion || attributes.filter && external_filters {
+        return Err(error(RepositoryErrorKind::UnsupportedSemantics));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct AttributeSemantics {
+    conversion: bool,
+    filter: bool,
+}
+
+fn attribute_semantics(
+    repository: &gix::Repository,
+) -> Result<AttributeSemantics, RepositoryError> {
+    const ENTRY_MAX: usize = 1_000_000;
+    let index = repository
+        .index_or_empty()
+        .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+    let mut stack = repository
+        .attributes_only(
+            &index,
+            gix::worktree::stack::state::attributes::Source::WorktreeThenIdMapping,
+        )
+        .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?;
+    let mut output = AttributeSemantics::default();
+    for entry in index.entries() {
+        merge_path_attribute_semantics(
+            &mut stack,
+            gix::path::from_bstr(entry.path(&index)),
+            Some(entry.mode),
+            &mut output,
+        )?;
+    }
+    let Some(workdir) = repository.workdir() else {
+        return Ok(output);
+    };
+    let mut pending = vec![workdir.to_owned()];
+    let mut entries_seen = 0_usize;
+    while let Some(directory) = pending.pop() {
+        let entries = std::fs::read_dir(directory).map_err(|_| error(RepositoryErrorKind::Io))?;
+        for entry in entries {
+            let entry = entry.map_err(|_| error(RepositoryErrorKind::Io))?;
+            entries_seen = entries_seen
+                .checked_add(1)
+                .ok_or_else(|| error(RepositoryErrorKind::UnsupportedSemantics))?;
+            if entries_seen > ENTRY_MAX {
+                return Err(error(RepositoryErrorKind::UnsupportedSemantics));
+            }
+            let file_type = entry
+                .file_type()
+                .map_err(|_| error(RepositoryErrorKind::Io))?;
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                let path = entry.path();
+                let is_dot_git = name.to_string_lossy().as_ref().eq_ignore_ascii_case(".git");
+                let is_nested_repository = std::fs::symlink_metadata(path.join(".git")).is_ok();
+                if !is_dot_git && !is_nested_repository {
+                    pending.push(path);
+                }
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let relative = entry
+                .path()
+                .strip_prefix(workdir)
+                .map_err(|_| error(RepositoryErrorKind::Io))?
+                .to_owned();
+            merge_path_attribute_semantics(&mut stack, relative, None, &mut output)?;
+        }
+    }
+    Ok(output)
+}
+
+fn merge_path_attribute_semantics(
+    stack: &mut gix::AttributeStack<'_>,
+    path: impl AsRef<Path>,
+    mode: Option<gix::index::entry::Mode>,
+    output: &mut AttributeSemantics,
+) -> Result<(), RepositoryError> {
+    let mut matches = stack.selected_attribute_matches([
+        "text",
+        "eol",
+        "crlf",
+        "ident",
+        "working-tree-encoding",
+        "filter",
+    ]);
+    stack
+        .at_path(path, mode)
+        .map_err(|_| error(RepositoryErrorKind::Io))?
+        .matching_attributes(&mut matches);
+    for match_value in matches.iter_selected() {
+        if matches!(
+            match_value.assignment.state,
+            gix::attrs::StateRef::Unspecified
+        ) {
+            continue;
+        }
+        if match_value.assignment.name.as_str() == "filter" {
+            output.filter = true;
+        } else {
+            output.conversion = true;
+        }
+    }
+    Ok(())
+}
+
+fn reject_external_diff_drivers(repository: &gix::Repository) -> Result<(), RepositoryError> {
+    let config = repository.config_snapshot();
+    if config.sections_by_name("diff").is_some_and(|sections| {
+        sections.into_iter().any(|section| {
+            matches!(
+                section.meta().source,
+                gix::config::Source::Local | gix::config::Source::Worktree
+            ) && section.header().subsection_name().is_some()
+                && (section.value("command").is_some() || section.value("textconv").is_some())
+        })
+    }) {
+        return Err(error(RepositoryErrorKind::UnsupportedSemantics));
+    }
+    Ok(())
+}
+
+fn tracked_entries(
+    repository: &gix::Repository,
+    index: &gix::index::State,
+    patterns: &[gix::bstr::BString],
+) -> Result<Vec<TrackedEntry>, RepositoryError> {
+    let mut pathspec = repository
+        .pathspec(
+            true,
+            patterns,
+            true,
+            index,
+            gix::worktree::stack::state::attributes::Source::WorktreeThenIdMapping,
+        )
+        .map_err(|_| error(RepositoryErrorKind::InvalidInput))?;
+    let mut output = index
+        .entries()
+        .iter()
+        .filter(|entry| entry.stage() == gix::index::entry::Stage::Unconflicted)
+        .filter(|entry| {
+            pathspec.is_included(
+                entry.path(index),
+                Some(entry.mode == gix::index::entry::Mode::DIR),
+            )
+        })
+        .map(|entry| TrackedEntry {
+            path: GitPath::new(entry.path(index).to_vec()),
+            mode: GitMode::new(entry.mode.bits()),
+            id: object_id(&entry.id),
+            flags: index_flags(entry.flags),
+        })
+        .collect::<Vec<_>>();
+    output.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(output)
+}
+
+const fn map_status_init_error(error_value: &gix::status::into_iter::Error) -> RepositoryError {
+    match error_value {
+        gix::status::into_iter::Error::HeadTreeDiff(
+            gix::status::tree_index::Error::TreeIndexDiff(gix::diff::index::Error::IsSparse),
+        ) => error(RepositoryErrorKind::UnsupportedSemantics),
+        gix::status::into_iter::Error::Pathspec(_) => error(RepositoryErrorKind::InvalidInput),
+        gix::status::into_iter::Error::ConfigSkipHash(_)
+        | gix::status::into_iter::Error::PrepareSubmodules(_) => {
+            error(RepositoryErrorKind::MalformedConfig)
+        }
+        _ => error(RepositoryErrorKind::CorruptRepository),
+    }
+}
+
+const fn map_status_item_error(error_value: &gix::status::iter::Error) -> RepositoryError {
+    match error_value {
+        gix::status::iter::Error::TreeIndex(gix::status::tree_index::Error::TreeIndexDiff(
+            gix::diff::index::Error::IsSparse,
+        )) => error(RepositoryErrorKind::UnsupportedSemantics),
+        _ => error(RepositoryErrorKind::CorruptRepository),
+    }
+}
+
+fn collect_worktree_item(
+    item: gix::status::index_worktree::Item,
+    changes: &mut Vec<Change>,
+    untracked: &mut Vec<GitPath>,
+    ignored: &mut Vec<IgnoredEntry>,
+    unmerged: &mut Vec<UnmergedEntry>,
+) {
+    use gix::status::index_worktree::Item;
+    use gix::status::plumbing::index_as_worktree::{Change as WorktreeChange, EntryStatus};
+    match item {
+        Item::Modification {
+            entry,
+            rela_path,
+            status,
+            ..
+        } => match status {
+            EntryStatus::Conflict { summary, entries } => {
+                let stages = entries
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        entry.as_ref().map(|entry| ConflictStage {
+                            stage: u8::try_from(index + 1).expect("three conflict stages"),
+                            mode: GitMode::new(entry.mode.bits()),
+                            id: object_id(&entry.id),
+                            flags: index_flags(entry.flags),
+                        })
+                    })
+                    .collect();
+                unmerged.push(UnmergedEntry {
+                    path: GitPath::new(rela_path.to_vec()),
+                    kind: conflict_kind(summary),
+                    stages,
+                });
+            }
+            EntryStatus::Change(change) => {
+                let old_mode = entry.mode.bits();
+                let (kind, new_mode) = match change {
+                    WorktreeChange::Removed => (ChangeKind::Deleted, None),
+                    WorktreeChange::Type { worktree_mode } => {
+                        (ChangeKind::TypeChanged, Some(worktree_mode.bits()))
+                    }
+                    WorktreeChange::Modification {
+                        executable_bit_changed,
+                        ..
+                    } => {
+                        let mode =
+                            executable_bit_changed.then(|| toggled_executable_mode(old_mode));
+                        (ChangeKind::Modified, mode.or(Some(old_mode)))
+                    }
+                    WorktreeChange::SubmoduleModification(_) => {
+                        (ChangeKind::SubmoduleModified, Some(old_mode))
+                    }
+                };
+                changes.push(Change {
+                    kind,
+                    path: GitPath::new(rela_path.to_vec()),
+                    source_path: None,
+                    old_mode: Some(GitMode::new(old_mode)),
+                    new_mode: new_mode.map(GitMode::new),
+                    old_id: Some(object_id(&entry.id)),
+                    new_id: None,
+                    index_flags: Some(index_flags(entry.flags)),
+                });
+            }
+            EntryStatus::IntentToAdd => changes.push(Change {
+                kind: ChangeKind::Added,
+                path: GitPath::new(rela_path.to_vec()),
+                source_path: None,
+                old_mode: None,
+                new_mode: Some(GitMode::new(entry.mode.bits())),
+                old_id: None,
+                new_id: None,
+                index_flags: Some(index_flags(entry.flags)),
+            }),
+            EntryStatus::NeedsUpdate(_) => {}
+        },
+        Item::DirectoryContents { entry, .. } => {
+            collect_directory_entry(&entry, untracked, ignored);
+        }
+        Item::Rewrite {
+            source,
+            dirwalk_entry,
+            dirwalk_entry_id,
+            copy,
+            ..
+        } => changes.push(worktree_rewrite(
+            &source,
+            &dirwalk_entry,
+            &dirwalk_entry_id,
+            copy,
+        )),
+    }
+}
+
+fn collect_directory_entry(
+    entry: &gix::dir::Entry,
+    untracked: &mut Vec<GitPath>,
+    ignored: &mut Vec<IgnoredEntry>,
+) {
+    match entry.status {
+        gix::dir::entry::Status::Untracked => {
+            untracked.push(GitPath::new(entry.rela_path.to_vec()));
+        }
+        gix::dir::entry::Status::Ignored(kind) => ignored.push(IgnoredEntry {
+            path: GitPath::new(entry.rela_path.to_vec()),
+            kind: match kind {
+                gix::ignore::Kind::Expendable => IgnoreKind::Expendable,
+                gix::ignore::Kind::Precious => IgnoreKind::Precious,
+            },
+        }),
+        gix::dir::entry::Status::Pruned | gix::dir::entry::Status::Tracked => {}
+    }
+}
+
+fn worktree_rewrite(
+    source: &gix::status::index_worktree::RewriteSource,
+    destination: &gix::dir::Entry,
+    destination_id: &gix::hash::ObjectId,
+    copy: bool,
+) -> Change {
+    Change {
+        kind: if copy {
+            ChangeKind::Copied
+        } else {
+            ChangeKind::Renamed
+        },
+        path: GitPath::new(destination.rela_path.to_vec()),
+        source_path: Some(GitPath::new(source.rela_path().to_vec())),
+        old_mode: None,
+        new_mode: None,
+        old_id: None,
+        new_id: (!destination_id.is_null()).then(|| object_id(destination_id)),
+        index_flags: rewrite_source_flags(source),
+    }
+}
+
+fn index_change(change: gix::diff::index::Change, index: &gix::index::State) -> Change {
+    use gix::diff::index::Change;
+    match change {
+        Change::Addition {
+            location,
+            index: entry_index,
+            entry_mode,
+            id,
+            ..
+        } => with_index_flags(
+            typed_change(
+                ChangeKind::Added,
+                location.as_ref(),
+                None,
+                None,
+                Some(entry_mode.bits()),
+                None,
+                Some(id.as_ref()),
+            ),
+            index_flags(index.entries()[entry_index].flags),
+        ),
+        Change::Deletion {
+            location,
+            entry_mode,
+            id,
+            ..
+        } => typed_change(
+            ChangeKind::Deleted,
+            location.as_ref(),
+            None,
+            Some(entry_mode.bits()),
+            None,
+            Some(id.as_ref()),
+            None,
+        ),
+        Change::Modification {
+            location,
+            index: entry_index,
+            previous_entry_mode,
+            previous_id,
+            entry_mode,
+            id,
+            ..
+        } => with_index_flags(
+            typed_change(
+                modified_kind(previous_entry_mode.bits(), entry_mode.bits()),
+                location.as_ref(),
+                None,
+                Some(previous_entry_mode.bits()),
+                Some(entry_mode.bits()),
+                Some(previous_id.as_ref()),
+                Some(id.as_ref()),
+            ),
+            index_flags(index.entries()[entry_index].flags),
+        ),
+        Change::Rewrite {
+            source_location,
+            source_entry_mode,
+            source_id,
+            location,
+            index: entry_index,
+            entry_mode,
+            id,
+            copy,
+            ..
+        } => with_index_flags(
+            typed_change(
+                if copy {
+                    ChangeKind::Copied
+                } else {
+                    ChangeKind::Renamed
+                },
+                location.as_ref(),
+                Some(source_location.as_ref()),
+                Some(source_entry_mode.bits()),
+                Some(entry_mode.bits()),
+                Some(source_id.as_ref()),
+                Some(id.as_ref()),
+            ),
+            index_flags(index.entries()[entry_index].flags),
+        ),
+    }
+}
+
+fn tree_change(change: gix::object::tree::diff::Change<'_, '_, '_>) -> Change {
+    use gix::object::tree::diff::Change;
+    match change {
+        Change::Addition {
+            location,
+            entry_mode,
+            id,
+            ..
+        } => typed_change(
+            ChangeKind::Added,
+            location,
+            None,
+            None,
+            Some(u32::from(entry_mode.value())),
+            None,
+            Some(id.as_ref()),
+        ),
+        Change::Deletion {
+            location,
+            entry_mode,
+            id,
+            ..
+        } => typed_change(
+            ChangeKind::Deleted,
+            location,
+            None,
+            Some(u32::from(entry_mode.value())),
+            None,
+            Some(id.as_ref()),
+            None,
+        ),
+        Change::Modification {
+            location,
+            previous_entry_mode,
+            previous_id,
+            entry_mode,
+            id,
+        } => typed_change(
+            modified_kind(
+                u32::from(previous_entry_mode.value()),
+                u32::from(entry_mode.value()),
+            ),
+            location,
+            None,
+            Some(u32::from(previous_entry_mode.value())),
+            Some(u32::from(entry_mode.value())),
+            Some(previous_id.as_ref()),
+            Some(id.as_ref()),
+        ),
+        Change::Rewrite {
+            source_location,
+            source_entry_mode,
+            source_id,
+            location,
+            entry_mode,
+            id,
+            copy,
+            ..
+        } => typed_change(
+            if copy {
+                ChangeKind::Copied
+            } else {
+                ChangeKind::Renamed
+            },
+            location,
+            Some(source_location),
+            Some(u32::from(source_entry_mode.value())),
+            Some(u32::from(entry_mode.value())),
+            Some(source_id.as_ref()),
+            Some(id.as_ref()),
+        ),
+    }
+}
+
+fn typed_change(
+    kind: ChangeKind,
+    path_value: &[u8],
+    source_path: Option<&[u8]>,
+    old_mode: Option<u32>,
+    new_mode: Option<u32>,
+    old_id: Option<&gix::hash::oid>,
+    new_id: Option<&gix::hash::oid>,
+) -> Change {
+    Change {
+        kind,
+        path: GitPath::new(path_value),
+        source_path: source_path.map(GitPath::new),
+        old_mode: old_mode.map(GitMode::new),
+        new_mode: new_mode.map(GitMode::new),
+        old_id: old_id.map(object_id),
+        new_id: new_id.map(object_id),
+        index_flags: None,
+    }
+}
+
+const fn with_index_flags(mut change: Change, flags: IndexFlags) -> Change {
+    change.index_flags = Some(flags);
+    change
+}
+
+const fn rewrite_source_flags(
+    source: &gix::status::index_worktree::RewriteSource,
+) -> Option<IndexFlags> {
+    use gix::status::index_worktree::RewriteSource;
+    match source {
+        RewriteSource::RewriteFromIndex { source_entry, .. } => {
+            Some(index_flags(source_entry.flags))
+        }
+        RewriteSource::CopyFromDirectoryEntry { .. } => None,
+    }
+}
+
+const fn modified_kind(old_mode: u32, new_mode: u32) -> ChangeKind {
+    if old_mode == 0o160_000 && new_mode == 0o160_000 {
+        ChangeKind::SubmoduleModified
+    } else if old_mode & 0o170_000 != new_mode & 0o170_000 {
+        ChangeKind::TypeChanged
+    } else {
+        ChangeKind::Modified
+    }
+}
+
+const fn toggled_executable_mode(mode: u32) -> u32 {
+    if mode == 0o100_755 {
+        0o100_644
+    } else {
+        0o100_755
+    }
+}
+
+const fn index_flags(flags: gix::index::entry::Flags) -> IndexFlags {
+    IndexFlags {
+        assume_valid: flags.contains(gix::index::entry::Flags::ASSUME_VALID),
+        intent_to_add: flags.contains(gix::index::entry::Flags::INTENT_TO_ADD),
+        skip_worktree: flags.contains(gix::index::entry::Flags::SKIP_WORKTREE),
+    }
+}
+
+const fn conflict_kind(kind: gix::status::plumbing::index_as_worktree::Conflict) -> ConflictKind {
+    use gix::status::plumbing::index_as_worktree::Conflict;
+    match kind {
+        Conflict::BothDeleted => ConflictKind::BothDeleted,
+        Conflict::AddedByUs => ConflictKind::AddedByUs,
+        Conflict::DeletedByThem => ConflictKind::DeletedByThem,
+        Conflict::AddedByThem => ConflictKind::AddedByThem,
+        Conflict::DeletedByUs => ConflictKind::DeletedByUs,
+        Conflict::BothAdded => ConflictKind::BothAdded,
+        Conflict::BothModified => ConflictKind::BothModified,
+    }
+}
+
+fn sort_changes(changes: &mut [Change]) {
+    changes.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.source_path.cmp(&right.source_path))
+    });
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
