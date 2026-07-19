@@ -28,9 +28,16 @@ Use one workflow for registry or caller changes:
    cargo run --quiet --locked --package larch-lint -- command-registry report
    ```
 
+The caller ledger inventories `skill`, `hook`, `script`, `ci`, `agent`, and
+`python-runtime` paths. Python modules that build a command with the shared
+`larch.core.repo_roots.larch_entrypoint` resolver are Rust callers because the
+resolver returns the verified `scripts/larch.sh` bootstrap. Syntax-aware
+inspection recognizes resolver and module aliases while ignoring comments and
+unexecuted string literals.
+
 The rule fails for missing or duplicate command rows, stale Python target or
 machine-stdout metadata, invalid status combinations, caller drift, unknown
-caller selectors, and Rust ownership while a known Python caller remains.
+caller selectors, and incomplete Python retirement evidence.
 
 ## State transitions
 
@@ -38,10 +45,19 @@ Keep `owner = "python"` and `consumer_cutover = "pending"` while Python owns
 production behavior. A parity implementation may set
 `implementation_parity = "complete"` without changing ownership.
 
-Cut over one command atomically: update all production callers, set
-`owner = "rust"`, and set `consumer_cutover = "complete"`. The rule rejects a
-Rust owner if any inventoried Python caller remains. Remove the Python registry
-entry later and then set `python_removal = "complete"`.
+Cut over one command atomically: complete parity, update all production callers,
+remove the Python registry row and module-level entrypoint, remove every
+production import and call of that symbol, set `owner = "rust"`, and mark both
+completion fields `complete`. There is no Rust-owned pending-removal state.
+`python_module` and `python_function` remain in the ledger after deletion so
+the rule can continue proving that the retired entrypoint is absent.
+
+The atomic-owner diagnostic is
+`non-atomic-rust-owner <domain> <verb>: python removal is not complete`.
+Retirement evidence uses `python-entrypoint-still-present` for a remaining
+registration or module-level definition, `python-entrypoint-still-imported`
+for an import or attribute reference, and `python-entrypoint-still-called` for
+a direct or qualified call. Each diagnostic includes the selector and path.
 
 For retirement, remove every caller and Python registry entry, set
 `owner = "retired"`, `implementation_parity = "not-applicable"`, and mark both

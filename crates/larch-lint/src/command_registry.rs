@@ -12,6 +12,7 @@ use std::{
 
 use regex::Regex;
 use serde::Deserialize;
+use tree_sitter::{Node, Parser, Tree};
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
 
@@ -62,8 +63,9 @@ impl Rule for CommandRegistryRule {
         let ledger = read_ledger(repository)?;
         let python = read_python_registry(repository)?;
         let known = ledger.commands.iter().map(CommandRecord::key).collect();
-        let callers = discover_callers(repository, &known)?;
-        validate_ledger(&ledger, &python, &callers)
+        let python_sources = read_python_sources(repository, &ledger)?;
+        let callers = discover_callers(repository, &known, Some(&python_sources))?;
+        validate_ledger(&ledger, &python, &callers, &python_sources)
     }
 }
 
@@ -187,6 +189,8 @@ enum CallerKind {
     Hook,
     Script,
     Ci,
+    Agent,
+    PythonRuntime,
 }
 
 impl CallerKind {
@@ -196,6 +200,8 @@ impl CallerKind {
             Self::Hook => "hook",
             Self::Script => "script",
             Self::Ci => "ci",
+            Self::Agent => "agent",
+            Self::PythonRuntime => "python-runtime",
         }
     }
 }
@@ -286,6 +292,7 @@ fn validate_ledger(
     ledger: &Ledger,
     python: &BTreeMap<CommandKey, PythonCommand>,
     live_callers: &[CallerRecord],
+    python_sources: &[PythonSource],
 ) -> Result<RuleOutput, LintError> {
     let commands = command_map(ledger)?;
     let callers = caller_map(&ledger.callers)?;
@@ -303,6 +310,9 @@ fn validate_ledger(
     }
     for (key, record) in &commands {
         validate_command_state(key, record, python.get(key), &callers, &mut findings);
+        if record.python_removal == Completion::Complete {
+            validate_python_retirement(key, record, python.get(key), python_sources, &mut findings);
+        }
     }
     compare_callers(&callers, &live_callers, &mut findings);
     Ok(RuleOutput::from_findings(findings))
@@ -419,12 +429,6 @@ fn validate_command_state(
                 key.selector()
             )));
         }
-        if record.python_removal == Completion::Complete {
-            findings.push(finding(format!(
-                "{} claims Python removal but remains registered",
-                key.selector()
-            )));
-        }
     } else if record.owner == Owner::Python || record.python_removal == Completion::Pending {
         findings.push(finding(format!(
             "{} is absent from Python but its ownership or removal state is pending",
@@ -459,6 +463,12 @@ fn validate_command_state(
             {
                 findings.push(finding(format!(
                     "{} is Rust-owned without completed parity and consumer cutover",
+                    key.selector()
+                )));
+            }
+            if record.python_removal != Completion::Complete {
+                findings.push(finding(format!(
+                    "non-atomic-rust-owner {}: python removal is not complete",
                     key.selector()
                 )));
             }
@@ -578,8 +588,14 @@ fn finding(message: String) -> Finding {
 fn discover_callers(
     repository: &Repository,
     known: &BTreeSet<CommandKey>,
+    python_sources: Option<&[PythonSource]>,
 ) -> Result<Vec<CallerRecord>, LintError> {
     let hook_paths = discover_hook_paths(repository)?;
+    let parsed_python: BTreeMap<&str, &PythonSource> = python_sources
+        .unwrap_or_default()
+        .iter()
+        .map(|document| (document.path.as_str(), document))
+        .collect();
     let mut callers = Vec::new();
     for path in repository.paths() {
         let Some(kind) = classify_caller(path.as_str(), &hook_paths) else {
@@ -587,10 +603,25 @@ fn discover_callers(
         };
         let content = repository.read_utf8(path)?;
         let python = filter_selectors(extract_selectors(&content, "python/cli.py"), known);
-        let mut rust = filter_selectors(extract_selectors(&content, "bin/larch"), known);
-        for selector in filter_selectors(extract_selectors(&content, "scripts/larch.sh"), known) {
-            if !rust.contains(&selector) {
-                rust.push(selector);
+        let mut rust = if kind == CallerKind::PythonRuntime {
+            let selectors =
+                if !content.contains("larch_entrypoint") && !content.contains("scripts/larch.sh") {
+                    Vec::new()
+                } else if let Some(document) = parsed_python.get(path.as_str()) {
+                    extract_python_rust_selectors_from_tree(document.tree.root_node(), &content)
+                } else {
+                    extract_python_rust_selectors(path.as_str(), &content)?
+                };
+            filter_selectors(selectors, known)
+        } else {
+            filter_selectors(extract_selectors(&content, "bin/larch"), known)
+        };
+        if kind != CallerKind::PythonRuntime {
+            for selector in filter_selectors(extract_selectors(&content, "scripts/larch.sh"), known)
+            {
+                if !rust.contains(&selector) {
+                    rust.push(selector);
+                }
             }
         }
         rust.sort();
@@ -643,6 +674,18 @@ fn classify_caller(path: &str, hook_paths: &BTreeSet<String>) -> Option<CallerKi
     }
     if path.starts_with("skills/") {
         Some(CallerKind::Skill)
+    } else if (path.starts_with("agents/") || path.starts_with(".claude/agents/"))
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+    {
+        Some(CallerKind::Agent)
+    } else if path.starts_with("python/larch/")
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+    {
+        Some(CallerKind::PythonRuntime)
     } else if path.starts_with("scripts/")
         && Path::new(path).extension().is_some_and(|extension| {
             extension.eq_ignore_ascii_case("sh") || extension.eq_ignore_ascii_case("py")
@@ -655,6 +698,501 @@ fn classify_caller(path: &str, hook_paths: &BTreeSet<String>) -> Option<CallerKi
         Some(CallerKind::Ci)
     } else {
         None
+    }
+}
+
+#[derive(Debug)]
+struct PythonSource {
+    path: String,
+    module: String,
+    package: String,
+    source: String,
+    tree: Tree,
+}
+
+#[derive(Default)]
+struct PythonBindings {
+    direct_symbols: BTreeSet<String>,
+    module_aliases: BTreeSet<String>,
+    imported: bool,
+}
+
+fn parse_python(path: &str, source: &str) -> Result<Tree, LintError> {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_python::LANGUAGE.into())
+        .map_err(|error| {
+            LintError::new(format!("{path}: cannot configure Python parser: {error}"))
+        })?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| LintError::new(format!("{path}: cannot parse Python source")))?;
+    if tree.root_node().has_error() {
+        return Err(LintError::new(format!("{path}: invalid Python syntax")));
+    }
+    Ok(tree)
+}
+
+fn read_python_sources(
+    repository: &Repository,
+    ledger: &Ledger,
+) -> Result<Vec<PythonSource>, LintError> {
+    let mut sources = Vec::new();
+    for path in repository.paths() {
+        let path_text = path.as_str();
+        if !path_text.starts_with("python/larch/")
+            || !Path::new(path_text)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+        {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        let module = path_text
+            .strip_prefix("python/")
+            .and_then(|value| value.strip_suffix(".py"))
+            .unwrap_or_default()
+            .replace('/', ".")
+            .trim_end_matches(".__init__")
+            .to_owned();
+        let package = if path_text.ends_with("/__init__.py") {
+            module.clone()
+        } else {
+            module
+                .rsplit_once('.')
+                .map_or_else(String::new, |(parent, _)| parent.to_owned())
+        };
+        let runtime_candidate =
+            source.contains("larch_entrypoint") || source.contains("scripts/larch.sh");
+        let retirement_candidate = ledger.commands.iter().any(|record| {
+            if record.python_removal != Completion::Complete {
+                return false;
+            }
+            let module_leaf = record
+                .python_module
+                .rsplit('.')
+                .next()
+                .unwrap_or(record.python_module.as_str());
+            module == record.python_module
+                || (source.contains(module_leaf)
+                    && (source.contains(&record.python_function) || source.contains("import *")))
+        });
+        if !runtime_candidate && !retirement_candidate {
+            continue;
+        }
+        let tree = parse_python(path_text, &source)?;
+        sources.push(PythonSource {
+            path: path_text.to_owned(),
+            module,
+            package,
+            source,
+            tree,
+        });
+    }
+    Ok(sources)
+}
+
+fn validate_python_retirement(
+    key: &CommandKey,
+    record: &CommandRecord,
+    registered: Option<&PythonCommand>,
+    sources: &[PythonSource],
+    findings: &mut Vec<Finding>,
+) {
+    if registered.is_some() {
+        findings.push(retirement_finding(
+            "python-entrypoint-still-present",
+            key,
+            PYTHON_REGISTRY_PATH,
+        ));
+    }
+    let module_leaf = record
+        .python_module
+        .rsplit('.')
+        .next()
+        .unwrap_or(record.python_module.as_str());
+    for document in sources {
+        let may_import_or_reference = document.source.contains(module_leaf)
+            && (document.source.contains(&record.python_function)
+                || document.source.contains("import *"));
+        if document.module != record.python_module && !may_import_or_reference {
+            continue;
+        }
+        if document.module == record.python_module
+            && has_module_function(
+                document.tree.root_node(),
+                &document.source,
+                &record.python_function,
+            )
+        {
+            findings.push(retirement_finding(
+                "python-entrypoint-still-present",
+                key,
+                &document.path,
+            ));
+        }
+        let bindings = python_bindings(
+            document.tree.root_node(),
+            &document.source,
+            &document.package,
+            &record.python_module,
+            &record.python_function,
+        );
+        let (referenced, called) = python_symbol_uses(
+            document.tree.root_node(),
+            &document.source,
+            &bindings,
+            &record.python_function,
+        );
+        if bindings.imported || referenced {
+            findings.push(retirement_finding(
+                "python-entrypoint-still-imported",
+                key,
+                &document.path,
+            ));
+        }
+        if called {
+            findings.push(retirement_finding(
+                "python-entrypoint-still-called",
+                key,
+                &document.path,
+            ));
+        }
+    }
+}
+
+fn retirement_finding(token: &str, key: &CommandKey, path: &str) -> Finding {
+    finding(format!("{token} {}: {path}", key.selector()))
+}
+
+fn has_module_function(root: Node<'_>, source: &str, function: &str) -> bool {
+    let mut cursor = root.walk();
+    root.named_children(&mut cursor).any(|child| {
+        let definition = if child.kind() == "decorated_definition" {
+            child.child_by_field_name("definition")
+        } else {
+            Some(child)
+        };
+        definition.is_some_and(|node| {
+            node.kind() == "function_definition"
+                && node
+                    .child_by_field_name("name")
+                    .and_then(|name| node_text(name, source))
+                    .is_some_and(|name| name == function)
+        })
+    })
+}
+
+fn python_bindings(
+    root: Node<'_>,
+    source: &str,
+    current_package: &str,
+    target_module: &str,
+    target_function: &str,
+) -> PythonBindings {
+    let mut bindings = PythonBindings::default();
+    walk_named(root, &mut |node| match node.kind() {
+        "import_statement" => inspect_import_statement(
+            node_text(node, source).unwrap_or_default(),
+            target_module,
+            &mut bindings,
+        ),
+        "import_from_statement" => inspect_from_import(
+            node_text(node, source).unwrap_or_default(),
+            current_package,
+            target_module,
+            target_function,
+            &mut bindings,
+        ),
+        _ => {}
+    });
+    bindings
+}
+
+fn inspect_import_statement(text: &str, target_module: &str, bindings: &mut PythonBindings) {
+    let Some(body) = text.trim().strip_prefix("import ") else {
+        return;
+    };
+    for item in body.split(',') {
+        let mut parts = item.split_whitespace();
+        let name = parts.next().unwrap_or_default();
+        if name != target_module
+            && !target_module
+                .strip_prefix(name)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+        {
+            continue;
+        }
+        let alias = match (parts.next(), parts.next()) {
+            (Some("as"), Some(alias)) => alias,
+            _ => name,
+        };
+        let suffix = target_module.strip_prefix(name).unwrap_or_default();
+        let _ = bindings.module_aliases.insert(format!("{alias}{suffix}"));
+    }
+}
+
+fn inspect_from_import(
+    text: &str,
+    current_package: &str,
+    target_module: &str,
+    target_function: &str,
+    bindings: &mut PythonBindings,
+) {
+    let flattened = text.replace(['\n', '\r', '(', ')'], " ");
+    let Some(body) = flattened.trim().strip_prefix("from ") else {
+        return;
+    };
+    let Some((raw_module, imports)) = body.split_once(" import ") else {
+        return;
+    };
+    let module = resolve_import_module(current_package, raw_module.trim());
+    for item in imports.split(',') {
+        let mut parts = item.split_whitespace();
+        let name = parts.next().unwrap_or_default();
+        let alias = match (parts.next(), parts.next()) {
+            (Some("as"), Some(alias)) => alias,
+            _ => name,
+        };
+        if module == target_module && (name == target_function || name == "*") {
+            bindings.imported = true;
+            let _ = bindings.direct_symbols.insert(if name == "*" {
+                target_function.to_owned()
+            } else {
+                alias.to_owned()
+            });
+        }
+        let imported_module = format!("{module}.{name}");
+        if imported_module == target_module
+            || target_module
+                .strip_prefix(&imported_module)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+        {
+            let suffix = target_module
+                .strip_prefix(&imported_module)
+                .unwrap_or_default();
+            let _ = bindings.module_aliases.insert(format!("{alias}{suffix}"));
+        }
+    }
+}
+
+fn resolve_import_module(current_package: &str, imported: &str) -> String {
+    let dots = imported.bytes().take_while(|byte| *byte == b'.').count();
+    if dots == 0 {
+        return imported.to_owned();
+    }
+    let mut parts: Vec<&str> = current_package
+        .split('.')
+        .filter(|part| !part.is_empty())
+        .collect();
+    for _ in 1..dots {
+        let _ = parts.pop();
+    }
+    let suffix = &imported[dots..];
+    if !suffix.is_empty() {
+        parts.push(suffix);
+    }
+    parts.join(".")
+}
+
+fn python_symbol_uses(
+    root: Node<'_>,
+    source: &str,
+    bindings: &PythonBindings,
+    target_function: &str,
+) -> (bool, bool) {
+    let mut referenced = false;
+    let mut called = false;
+    walk_named(root, &mut |node| {
+        if node.kind() == "attribute" {
+            let text = compact_node_text(node, source);
+            if bindings
+                .module_aliases
+                .iter()
+                .any(|module| text == format!("{module}.{target_function}"))
+            {
+                referenced = true;
+                if node.parent().is_some_and(|parent| {
+                    parent.kind() == "call" && parent.child_by_field_name("function") == Some(node)
+                }) {
+                    called = true;
+                }
+            }
+        } else if node.kind() == "identifier"
+            && node_text(node, source).is_some_and(|name| bindings.direct_symbols.contains(name))
+            && !has_ancestor_kind(node, &["import_statement", "import_from_statement"])
+        {
+            referenced = true;
+            if node.parent().is_some_and(|parent| {
+                parent.kind() == "call" && parent.child_by_field_name("function") == Some(node)
+            }) {
+                called = true;
+            }
+        }
+    });
+    (referenced, called)
+}
+
+fn has_ancestor_kind(mut node: Node<'_>, kinds: &[&str]) -> bool {
+    while let Some(parent) = node.parent() {
+        if kinds.contains(&parent.kind()) {
+            return true;
+        }
+        node = parent;
+    }
+    false
+}
+
+fn extract_python_rust_selectors(path: &str, source: &str) -> Result<Vec<String>, LintError> {
+    let tree = parse_python(path, source)?;
+    Ok(extract_python_rust_selectors_from_tree(
+        tree.root_node(),
+        source,
+    ))
+}
+
+fn extract_python_rust_selectors_from_tree(root: Node<'_>, source: &str) -> Vec<String> {
+    let resolver_bindings = python_bindings(
+        root,
+        source,
+        "",
+        "larch.core.repo_roots",
+        "larch_entrypoint",
+    );
+    let mut entrypoint_variables = BTreeSet::new();
+    walk_named(root, &mut |node| {
+        if node.kind() != "assignment" {
+            return;
+        }
+        let Some(left) = node.child_by_field_name("left") else {
+            return;
+        };
+        let Some(right) = node.child_by_field_name("right") else {
+            return;
+        };
+        if left.kind() == "identifier"
+            && contains_entrypoint(right, source, &resolver_bindings, &BTreeSet::new())
+            && let Some(name) = node_text(left, source)
+        {
+            let _ = entrypoint_variables.insert(name.to_owned());
+        }
+    });
+    let mut selectors = BTreeSet::new();
+    walk_named(root, &mut |node| {
+        if !matches!(node.kind(), "list" | "tuple") {
+            return;
+        }
+        let mut cursor = node.walk();
+        let elements: Vec<Node<'_>> = node.named_children(&mut cursor).collect();
+        let Some(executable) = elements.first() else {
+            return;
+        };
+        if !contains_entrypoint(
+            *executable,
+            source,
+            &resolver_bindings,
+            &entrypoint_variables,
+        ) && !is_larch_script_literal(*executable, source)
+        {
+            return;
+        }
+        let Some(domain) = elements
+            .get(1)
+            .and_then(|node| python_string(*node, source))
+        else {
+            return;
+        };
+        if !valid_token(&domain) {
+            return;
+        }
+        let selector = elements
+            .get(2)
+            .and_then(|node| python_string(*node, source))
+            .filter(|verb| valid_token(verb))
+            .map_or_else(|| format!("{domain} *"), |verb| format!("{domain} {verb}"));
+        let _ = selectors.insert(selector);
+    });
+    selectors.into_iter().collect()
+}
+
+fn contains_entrypoint(
+    root: Node<'_>,
+    source: &str,
+    bindings: &PythonBindings,
+    variables: &BTreeSet<String>,
+) -> bool {
+    let mut found = false;
+    walk_named(root, &mut |node| {
+        if found {
+            return;
+        }
+        if node.kind() == "identifier"
+            && node_text(node, source).is_some_and(|name| variables.contains(name))
+        {
+            found = true;
+            return;
+        }
+        if node.kind() != "call" {
+            return;
+        }
+        let Some(function) = node.child_by_field_name("function") else {
+            return;
+        };
+        if function.kind() == "identifier"
+            && node_text(function, source)
+                .is_some_and(|name| bindings.direct_symbols.contains(name))
+        {
+            found = true;
+        } else if function.kind() == "attribute" {
+            let text = compact_node_text(function, source);
+            if bindings
+                .module_aliases
+                .iter()
+                .any(|module| text == format!("{module}.larch_entrypoint"))
+            {
+                found = true;
+            }
+        }
+    });
+    found
+}
+
+fn is_larch_script_literal(node: Node<'_>, source: &str) -> bool {
+    python_string(node, source)
+        .is_some_and(|value| value == "scripts/larch.sh" || value.ends_with("/scripts/larch.sh"))
+}
+
+fn python_string(node: Node<'_>, source: &str) -> Option<String> {
+    if node.kind() != "string" {
+        return None;
+    }
+    let text = node_text(node, source)?.trim();
+    let quote = text.find(['\'', '"'])?;
+    let literal = &text[quote..];
+    let delimiter = literal.chars().next()?;
+    if literal.starts_with(&delimiter.to_string().repeat(3)) || !literal.ends_with(delimiter) {
+        return None;
+    }
+    Some(literal[delimiter.len_utf8()..literal.len() - delimiter.len_utf8()].to_owned())
+}
+
+fn compact_node_text(node: Node<'_>, source: &str) -> String {
+    node_text(node, source)
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect()
+}
+
+fn node_text<'source>(node: Node<'_>, source: &'source str) -> Option<&'source str> {
+    source.get(node.byte_range())
+}
+
+fn walk_named(node: Node<'_>, visit: &mut impl FnMut(Node<'_>)) {
+    visit(node);
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        walk_named(child, visit);
     }
 }
 
@@ -850,7 +1388,7 @@ pub fn sync_command_registry(
     let ledger = Ledger {
         schema_version: SCHEMA_VERSION,
         commands: commands.into_values().collect(),
-        callers: discover_callers(repository, &known)?,
+        callers: discover_callers(repository, &known, None)?,
     };
     command_map(&ledger)?;
     let rendered = render_ledger(&ledger);
@@ -949,8 +1487,9 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
     let ledger = read_ledger(repository)?;
     let python = read_python_registry(repository)?;
     let known = ledger.commands.iter().map(CommandRecord::key).collect();
-    let live_callers = discover_callers(repository, &known)?;
-    let validation = validate_ledger(&ledger, &python, &live_callers)?;
+    let python_sources = read_python_sources(repository, &ledger)?;
+    let live_callers = discover_callers(repository, &known, Some(&python_sources))?;
+    let validation = validate_ledger(&ledger, &python, &live_callers, &python_sources)?;
     if let Some(finding) = validation.findings().first() {
         return Err(LintError::new(format!(
             "cannot render progress from an invalid command registry: {finding}"
