@@ -14,7 +14,7 @@ from larch.agents import agents
 from larch.core import coder_delta_guards
 from larch.core import config
 from larch.core import external_defaults
-from larch.core.repo_roots import larch_binary
+from larch.core import repo_roots
 from larch.git import git
 from larch.core import redact
 from larch.core import retry
@@ -107,7 +107,7 @@ def _abort_rebase(runner: Runner, *, cwd: str | None) -> None:
 
 
 def _rebase_skip(runner: Runner, *, cwd: str | None) -> CommandResult:
-    binary = larch_binary(Path(__file__).resolve().parents[3])
+    binary = repo_roots.larch_binary(Path(__file__).resolve().parents[3])
     return runner.run([str(binary), "git", "rebase-skip"], cwd=cwd)
 
 

@@ -509,7 +509,10 @@ fn rebase_skip_preserves_git_diagnostics_and_completes_the_rebase() {
         .assert()
         .failure()
         .stdout("")
-        .stderr(predicate::str::contains("No rebase in progress"));
+        .stderr(
+            predicate::str::contains("no rebase in progress")
+                .or(predicate::str::contains("No rebase in progress")),
+        );
     assert_fsck(clean.path());
 
     let repository = rebase_conflict_repository();
