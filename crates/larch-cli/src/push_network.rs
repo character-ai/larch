@@ -1,9 +1,7 @@
 //! Closed typed push commands migrated from the Python runtime.
 
 use std::{
-    env,
-    fmt::Write as _,
-    fs,
+    env, fs,
     io::{self, Write},
     path::Path,
     process::ExitCode,
@@ -16,7 +14,7 @@ use larch_adapters::{
     GixRepository, LsRemoteRequest, PushRequest, TokioProcessRunner,
     runtime::{Cancellation, LarchRuntime},
 };
-use larch_core::{Head, ObjectId, RefName, RepositoryRead, SafeText, emit_kv};
+use larch_core::{Head, RefName, RepositoryRead, SafeText, emit_kv};
 
 const REMOTE: &str = "origin";
 const MAX_ATTEMPTS: u32 = 3;
@@ -298,7 +296,7 @@ fn local_head() -> Option<String> {
     let repo = GixRepository::discover(cwd).ok()?;
     let head = repo.head().ok()?;
     match head {
-        Head::Symbolic { target, .. } | Head::Detached { target } => Some(hex(&target)),
+        Head::Symbolic { target, .. } | Head::Detached { target } => Some(target.to_hex()),
         Head::Unborn { .. } => None,
     }
 }
@@ -312,16 +310,6 @@ fn short_branch_name(name: &RefName) -> Option<String> {
     .ok()
     .filter(|branch| !branch.is_empty())
     .map(ToOwned::to_owned)
-}
-
-fn hex(id: &ObjectId) -> String {
-    id.digest().iter().fold(
-        String::with_capacity(id.digest().len() * 2),
-        |mut output, byte| {
-            let _ = write!(output, "{byte:02x}");
-            output
-        },
-    )
 }
 
 fn clean_tree() -> bool {

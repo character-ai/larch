@@ -13,13 +13,15 @@ use std::{
 
 use larch_adapters::{
     GixRepository, PathIntent, RepositoryRoot, TemporaryRoot, atomic_write_utf8,
-    github::{OctocrabGitHubService, ReleasePullRequest},
+    github::{OctocrabGitHubService, ReleasePlanningService, ReleasePullRequest},
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
     ChangeKind, GitPath, Head, ObjectId, RepositoryRead, Revision, SafeText, StatusOptions, emit_kv,
 };
 use serde_json::Value;
+
+use crate::github_repository_resolution::parse_github_remote_url;
 
 const PLUGIN_JSON: &str = ".claude-plugin/plugin.json";
 const TRANSPARENT_LOG_PREFIX: &str = "chore(larch-logs): ";
@@ -64,6 +66,7 @@ struct Classification {
     reasoning: String,
 }
 
+#[derive(Debug)]
 struct ReleaseSelection {
     selected: Vec<ReleasePullRequest>,
     written: BTreeSet<u64>,
@@ -188,12 +191,12 @@ fn prepare_inner(arguments: &PrepareArguments) -> Result<(), PrepareError> {
     })
 }
 
-async fn prepare_with_service(
+async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
     arguments: &PrepareArguments,
     out_dir: &TemporaryRoot,
     root: &Path,
     repository: &GixRepository,
-    service: &OctocrabGitHubService,
+    service: &S,
     cancellation: &Cancellation,
 ) -> Result<(), PrepareError> {
     let owner = arguments.repository.owner();
@@ -231,7 +234,7 @@ async fn prepare_with_service(
     }
 
     let open = service
-        .list_release_open_pull_requests(cancellation, owner, name)
+        .list_open_pull_requests(cancellation, owner, name)
         .await
         .map_err(|error| PrepareError::new("release-pr-list-failed", error.to_string()))?;
     if open.iter().any(|pull_request| {
@@ -269,14 +272,14 @@ async fn prepare_with_service(
 
     let classification = classify(root, repository, Some(&baseline), Some("origin/main"))
         .map_err(|error| PrepareError::new("classify-bump-failed", error))?;
-    let (bump, new_version) = arguments.bump.map_or_else(
-        || (classification.bump, classification.new_version),
-        |bump| {
-            let new_version = apply_bump(&classification.current_version, bump)
-                .expect("validated current version and explicit bump must apply");
-            (bump, new_version)
-        },
-    );
+    let (bump, new_version) = match arguments.bump {
+        Some(bump) => (
+            bump,
+            apply_bump(&classification.current_version, bump)
+                .map_err(|error| PrepareError::new("classify-bump-failed", error))?,
+        ),
+        None => (classification.bump, classification.new_version),
+    };
     emit_kv("BASELINE_TAG", &baseline);
     emit_kv("CURRENT_VERSION", &classification.current_version);
     emit_kv("NEW_VERSION", &new_version);
@@ -294,9 +297,9 @@ async fn prepare_with_service(
     Ok(())
 }
 
-async fn write_pr_list(
+async fn write_pr_list<S: ReleasePlanningService + ?Sized>(
     out_dir: &TemporaryRoot,
-    service: &OctocrabGitHubService,
+    service: &S,
     cancellation: &Cancellation,
     owner: &str,
     name: &str,
@@ -322,8 +325,8 @@ async fn write_pr_list(
         .map_err(|error| PrepareError::new("pr-list-write-failed", error.to_string()))
 }
 
-async fn select_pull_requests(
-    service: &OctocrabGitHubService,
+async fn select_pull_requests<S: ReleasePlanningService + ?Sized>(
+    service: &S,
     cancellation: &Cancellation,
     owner: &str,
     name: &str,
@@ -339,7 +342,7 @@ async fn select_pull_requests(
     let mut unresolved = BTreeSet::new();
     for number in suffix_numbers {
         match service
-            .release_pull_request(cancellation, owner, name, number)
+            .pull_request(cancellation, owner, name, number)
             .await
         {
             Ok(pull_request) if is_log_housekeeping(&pull_request.title) => {
@@ -361,7 +364,7 @@ async fn select_pull_requests(
         if pr_suffix(&subject).is_some_and(|number| !unresolved.contains(&number)) {
             continue;
         }
-        let sha = hex_id(&commit.id);
+        let sha = commit.id.to_hex();
         let pulls = service
             .commit_pull_requests(cancellation, owner, name, &sha)
             .await
@@ -428,7 +431,8 @@ fn verify_origin(
         .iter()
         .find(|remote| remote.name == b"origin")
         .and_then(|remote| remote.fetch_url.as_deref())
-        .and_then(parse_github_remote);
+        .and_then(|url| std::str::from_utf8(url).ok())
+        .and_then(parse_github_remote_url);
     if actual.as_deref() == Some(&format!("{}/{}", expected.owner(), expected.name())) {
         Ok(())
     } else {
@@ -667,9 +671,10 @@ fn classification_result(
     major: &[String],
     minor: &[String],
 ) -> Classification {
+    let base_hex = base.to_hex();
     let mut reasoning = format!(
         "# Version Bump Reasoning\n\n- **Base commit**: `{}`\n- **Current version**: `{current_version}`\n- **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).\n\n## Result: {}\n\n- **New version**: `{new_version}`\n",
-        &hex_id(base)[..7.min(hex_id(base).len())],
+        &base_hex[..7.min(base_hex.len())],
         bump.machine()
     );
     if !major.is_empty() {
@@ -730,7 +735,8 @@ fn idempotency_subject(
             && changes.entries().iter().all(|change| {
                 let path = change.path.as_bytes();
                 expected == "CHANGELOG.md" && path == b"CHANGELOG.md"
-                    || expected == "larch-logs/" && path.starts_with(b"larch-logs/")
+                    || expected == "larch-logs/"
+                        && (path == b"larch-logs" || path.starts_with(b"larch-logs/"))
             });
         if !valid {
             return Ok(Some(subject));
@@ -759,8 +765,8 @@ fn release_already_cut(
         }))
 }
 
-async fn companion_title(
-    service: &OctocrabGitHubService,
+async fn companion_title<S: ReleasePlanningService + ?Sized>(
+    service: &S,
     cancellation: &Cancellation,
     owner: &str,
     repo: &str,
@@ -875,9 +881,18 @@ fn semver(value: &str) -> Option<(u64, u64, u64)> {
 fn apply_bump(version: &str, bump: BumpType) -> Result<String, String> {
     let (major, minor, patch) = semver(version).ok_or_else(|| "invalid version".to_owned())?;
     match bump {
-        BumpType::Major => Ok(format!("{}.0.0", major + 1)),
-        BumpType::Minor => Ok(format!("{major}.{}.0", minor + 1)),
-        BumpType::Patch => Ok(format!("{major}.{minor}.{}", patch + 1)),
+        BumpType::Major => major
+            .checked_add(1)
+            .map(|major| format!("{major}.0.0"))
+            .ok_or_else(|| "major version overflow".to_owned()),
+        BumpType::Minor => minor
+            .checked_add(1)
+            .map(|minor| format!("{major}.{minor}.0"))
+            .ok_or_else(|| "minor version overflow".to_owned()),
+        BumpType::Patch => patch
+            .checked_add(1)
+            .map(|patch| format!("{major}.{minor}.{patch}"))
+            .ok_or_else(|| "patch version overflow".to_owned()),
         BumpType::None => Ok(version.to_owned()),
     }
 }
@@ -886,27 +901,6 @@ fn resolve(repository: &GixRepository, revision: &str) -> Result<ObjectId, Strin
     repository
         .resolve_revision(&Revision::new(revision))
         .map_err(|error| error.to_string())
-}
-
-fn hex_id(id: &ObjectId) -> String {
-    id.digest().iter().fold(
-        String::with_capacity(id.digest().len() * 2),
-        |mut output, byte| {
-            let _ = write!(output, "{byte:02x}");
-            output
-        },
-    )
-}
-
-fn parse_github_remote(value: &[u8]) -> Option<String> {
-    let text = std::str::from_utf8(value).ok()?.trim_end_matches('/');
-    let path = text
-        .strip_prefix("https://github.com/")
-        .or_else(|| text.strip_prefix("ssh://git@github.com/"))
-        .or_else(|| text.strip_prefix("git@github.com:"))?;
-    let slug = path.strip_suffix(".git").unwrap_or(path);
-    let (owner, repo) = slug.split_once('/')?;
-    (!owner.is_empty() && !repo.is_empty() && !repo.contains('/')).then(|| slug.to_owned())
 }
 
 fn pr_suffix(subject: &str) -> Option<u64> {
@@ -994,38 +988,5 @@ fn tsv(value: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{frontmatter, is_log_housekeeping, is_release_subject, prepare_out_dir, tsv};
-
-    #[test]
-    fn release_subject_and_frontmatter_parsers_require_exact_delimiters() {
-        assert!(is_release_subject("Release v1.2.3"));
-        assert!(is_release_subject("Release v1.2.3 (#42)"));
-        assert!(!is_release_subject("Release v1.2.3 trailing"));
-        assert!(!is_release_subject("Release v1.2.3 (#bad)"));
-        assert_eq!(frontmatter("---\nname: demo\n---"), "name: demo");
-        assert!(frontmatter("---\nname: demo").is_empty());
-    }
-
-    #[test]
-    fn release_note_rows_exclude_housekeeping_and_flatten_untrusted_fields() {
-        assert!(is_log_housekeeping("chore(larch-logs): flush run"));
-        assert!(!is_log_housekeeping("Feature"));
-        assert_eq!(tsv("title\twith\r\ncontrols"), "title with  controls");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn prepare_out_dir_rejects_a_symlink() {
-        use std::os::unix::fs::symlink;
-
-        let parent = tempfile::tempdir().expect("parent");
-        let target = tempfile::tempdir().expect("target");
-        let link = parent.path().join("out");
-        symlink(target.path(), &link).expect("symlink");
-        assert_eq!(
-            prepare_out_dir(&link).expect_err("symlink must fail").token,
-            "invalid-args"
-        );
-    }
-}
+#[path = "release_prepare/tests.rs"]
+mod tests;

@@ -131,6 +131,99 @@ pub struct ReleasePullRequest {
     pub head_ref: String,
 }
 
+/// Typed, injectable GitHub reads used by release preparation.
+pub trait ReleasePlanningService: Sync {
+    fn latest_release_tag<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> impl Future<Output = Result<Option<String>, GitHubOperationError>> + Send + 'a;
+
+    fn list_open_pull_requests<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> impl Future<Output = Result<Vec<ReleasePullRequest>, GitHubOperationError>> + Send + 'a;
+
+    fn pull_request<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> impl Future<Output = Result<ReleasePullRequest, GitHubOperationError>> + Send + 'a;
+
+    fn commit_pull_requests<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        commit: &'a str,
+    ) -> impl Future<Output = Result<Vec<ReleasePullRequest>, GitHubOperationError>> + Send + 'a;
+
+    fn issue_title<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> impl Future<Output = Result<String, GitHubOperationError>> + Send + 'a;
+}
+
+impl ReleasePlanningService for OctocrabGitHubService {
+    fn latest_release_tag<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> impl Future<Output = Result<Option<String>, GitHubOperationError>> + Send + 'a {
+        Self::latest_release_tag(self, cancellation, owner, repo)
+    }
+
+    fn list_open_pull_requests<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> impl Future<Output = Result<Vec<ReleasePullRequest>, GitHubOperationError>> + Send + 'a
+    {
+        self.list_release_open_pull_requests(cancellation, owner, repo)
+    }
+
+    fn pull_request<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> impl Future<Output = Result<ReleasePullRequest, GitHubOperationError>> + Send + 'a {
+        self.release_pull_request(cancellation, owner, repo, number)
+    }
+
+    fn commit_pull_requests<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        commit: &'a str,
+    ) -> impl Future<Output = Result<Vec<ReleasePullRequest>, GitHubOperationError>> + Send + 'a
+    {
+        Self::commit_pull_requests(self, cancellation, owner, repo, commit)
+    }
+
+    fn issue_title<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> impl Future<Output = Result<String, GitHubOperationError>> + Send + 'a {
+        Self::issue_title(self, cancellation, owner, repo, number)
+    }
+}
+
 impl PullRequest {
     #[must_use]
     pub const fn number(&self) -> u64 {
@@ -1343,7 +1436,7 @@ mod service_tests {
     use super::{
         DependencyEdge, DependencyMutation, GitHubOperationError, LiveMutationRequest,
         MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestSpec,
-        PullRequestState, ReviewDecision,
+        PullRequestState, ReleasePlanningService, ReviewDecision,
     };
     use crate::runtime::Cancellation;
     use serde_json::json;
@@ -1538,6 +1631,61 @@ mod service_tests {
         assert_eq!(redacted.author, "<REDACTED-TOKEN>");
         assert_eq!(redacted.url, "<REDACTED-TOKEN>");
         assert_eq!(redacted.head_ref, "<REDACTED-TOKEN>");
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn release_planning_port_exercises_every_typed_read() {
+        let pull = release_pull_request_value(42, "Fixes #7: feature");
+        let (service, server) = stub_service(vec![
+            (200, json!({ "tag_name": "v1.2.3" }).to_string()),
+            (200, json!([pull.clone()]).to_string()),
+            (200, pull.to_string()),
+            (200, json!([pull]).to_string()),
+            (200, json!({ "title": "Companion title" }).to_string()),
+        ]);
+        let cancellation = Cancellation::new();
+
+        assert_eq!(
+            ReleasePlanningService::latest_release_tag(&service, &cancellation, "o", "r")
+                .await
+                .expect("latest release")
+                .as_deref(),
+            Some("v1.2.3")
+        );
+        assert_eq!(
+            ReleasePlanningService::list_open_pull_requests(&service, &cancellation, "o", "r",)
+                .await
+                .expect("open pull requests")
+                .len(),
+            1
+        );
+        assert_eq!(
+            ReleasePlanningService::pull_request(&service, &cancellation, "o", "r", 42)
+                .await
+                .expect("pull request")
+                .number,
+            42
+        );
+        assert_eq!(
+            ReleasePlanningService::commit_pull_requests(
+                &service,
+                &cancellation,
+                "o",
+                "r",
+                "0123456789abcdef0123456789abcdef01234567",
+            )
+            .await
+            .expect("commit pull requests")
+            .len(),
+            1
+        );
+        assert_eq!(
+            ReleasePlanningService::issue_title(&service, &cancellation, "o", "r", 7)
+                .await
+                .expect("issue title"),
+            "Companion title"
+        );
         server.join().expect("stub completed");
     }
 

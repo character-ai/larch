@@ -15,7 +15,7 @@ pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mu
 pub use operations::{
     CreatedPullRequest, DependencyMutation, DependencyRef, GitHubOperationError, MergeStateStatus,
     Mergeable, PullRequest, PullRequestEdit, PullRequestReviewState, PullRequestSpec,
-    PullRequestState, ReleasePullRequest, ReviewDecision,
+    PullRequestState, ReleasePlanningService, ReleasePullRequest, ReviewDecision,
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,

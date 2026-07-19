@@ -1,6 +1,6 @@
 //! Byte-oriented repository metadata types and the sole read port for Git state.
 
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, fmt::Write as _};
 
 /// The object hash algorithm used by a repository.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -52,6 +52,18 @@ impl ObjectId {
     #[must_use]
     pub fn digest(&self) -> &[u8] {
         &self.digest
+    }
+
+    /// Render the complete lowercase hexadecimal object identifier.
+    #[must_use]
+    pub fn to_hex(&self) -> String {
+        self.digest.iter().fold(
+            String::with_capacity(self.digest.len() * 2),
+            |mut output, byte| {
+                let _ = write!(output, "{byte:02x}");
+                output
+            },
+        )
     }
 }
 
@@ -659,7 +671,8 @@ mod tests {
 
     #[test]
     fn object_ids_require_the_algorithm_digest_length() {
-        assert!(ObjectId::new(ObjectHash::Sha1, [0; 20]).is_ok());
+        let sha1 = ObjectId::new(ObjectHash::Sha1, [0xab; 20]).unwrap();
+        assert_eq!(sha1.to_hex(), "abababababababababababababababababababab");
         assert!(ObjectId::new(ObjectHash::Sha256, [0; 32]).is_ok());
         assert_eq!(
             ObjectId::new(ObjectHash::Sha1, [0; 32]).unwrap_err().kind(),
