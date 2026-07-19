@@ -16,6 +16,8 @@ use larch_adapters::{
     github::{OctocrabGitHubService, ReleasePlanningService, ReleasePullRequest},
     runtime::{Cancellation, LarchRuntime},
 };
+
+use crate::release_common::semver;
 use larch_core::{
     ChangeKind, GitPath, Head, ObjectId, RepositoryRead, Revision, SafeText, StatusOptions, emit_kv,
 };
@@ -864,18 +866,6 @@ fn strict_plugin_version_bytes(bytes: &[u8], source: &str) -> Result<String, Str
         ));
     }
     Ok(version.to_owned())
-}
-
-fn semver(value: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = value.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next()?.parse().ok()?;
-    (parts.next().is_none()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || byte == b'.'))
-    .then_some((major, minor, patch))
 }
 
 fn apply_bump(version: &str, bump: BumpType) -> Result<String, String> {

@@ -17,6 +17,7 @@ clap.workspace = true
 flate2.workspace = true
 larch-adapters.workspace = true
 larch-core.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tempfile.workspace = true

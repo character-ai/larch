@@ -19,8 +19,10 @@ mod git_commands;
 mod github_repository_resolution;
 mod push_network;
 mod release_assets;
+mod release_common;
 mod release_plugin_runtime;
 mod release_prepare;
+mod release_version;
 
 use git_commands::GitCommand;
 
@@ -206,6 +208,8 @@ enum ReleaseCommand {
     Prepare(PrepareReleaseArguments),
     /// Generate or validate the runtime-only plugin projection.
     PluginRuntime(PluginRuntimeArguments),
+    /// Update every synchronized release version surface.
+    SetVersion(SetVersionArguments),
     /// Validate the final release asset allowlist.
     ValidateAssets(ValidateAssetsArguments),
 }
@@ -292,6 +296,11 @@ struct PrepareReleaseArguments {
     bump: Option<String>,
     #[arg(long, required = true)]
     out_dir: PathBuf,
+}
+
+#[derive(Args)]
+struct SetVersionArguments {
+    version: String,
 }
 
 #[derive(Subcommand)]
@@ -469,6 +478,7 @@ fn run_release(
         ReleaseCommand::PluginRuntime(arguments) => release_plugin_runtime::run(arguments.check)
             .map(|()| ExitCode::SUCCESS)
             .map_err(command_failure),
+        ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
         ReleaseCommand::ValidateAssets(arguments) => Ok(release_assets::validate_assets(
             &release_assets::ValidateArguments {
                 version: arguments.version,
