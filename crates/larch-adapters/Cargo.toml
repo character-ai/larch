@@ -20,10 +20,15 @@ larch-core.workspace = true
 octocrab.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sigstore-trust-root.workspace = true
+sigstore-types.workspace = true
+sigstore-verify.workspace = true
+snap.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 url.workspace = true
+x509-cert.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

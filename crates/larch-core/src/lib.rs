@@ -1,5 +1,6 @@
 //! Domain types, use cases, and effect-free service ports for larch.
 
+mod attestation;
 mod config;
 mod context;
 mod env_file;
@@ -16,6 +17,11 @@ mod telemetry;
 mod time;
 mod upgrade_larch;
 
+pub use attestation::{
+    ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
+    ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseTag,
+    VerifiedArtifactAttestation, VerifiedReleaseAttestation,
+};
 pub use config::env;
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use env_file::{

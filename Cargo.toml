@@ -41,6 +41,10 @@ proc-macro2 = { version = "1.0.106", default-features = false, features = ["span
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf", "unicode-perl"] }
 serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.150", default-features = false, features = ["std"] }
+sigstore-trust-root = { version = "=0.11.0", default-features = false }
+sigstore-types = { version = "=0.11.0", default-features = false }
+sigstore-verify = { version = "=0.11.0", default-features = false }
+snap = { version = "=1.1.2", default-features = false }
 syn = { version = "2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit"] }
 tempfile = { version = "3.27.0", default-features = false }
 tokio = { version = "1.53.0", default-features = false, features = ["io-util", "macros", "process", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
@@ -52,6 +56,7 @@ tree-sitter-bash = { version = "0.25.1", default-features = false }
 url = { version = "2.5.8", default-features = false, features = ["std"] }
 uuid = { version = "1.24.0", default-features = false, features = ["std"] }
 wait-timeout = { version = "0.2.1", default-features = false }
+x509-cert = { version = "=0.2.5", default-features = false }
 zip = { version = "=7.2.0", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]

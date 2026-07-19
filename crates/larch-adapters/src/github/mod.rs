@@ -1,9 +1,15 @@
 //! Authenticated, policy-bound GitHub transport foundation and the typed
 //! pull-request, review, issue-dependency, and release operations built on it.
 
+mod attestation;
 mod mutation_auth;
 mod operations;
 mod release;
+
+pub use attestation::{
+    AttestationFuture, AttestationOperations, AttestationQuery, AttestationServiceError,
+    AttestationServiceErrorKind, AttestationTransport, OctocrabAttestationTransport,
+};
 
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{

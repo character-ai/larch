@@ -136,6 +136,23 @@ work:
   a non-empty `LARCH_GH_TOKEN`, never reads `GH_TOKEN`, `GITHUB_TOKEN`, or
   GitHub CLI state, and does not expose an arbitrary REST URL or GraphQL
   document to domain callers.
+- Attestation domain inputs fix the repository to `character-ai/larch`, the
+  release workflow to `.github/workflows/rust-release-assets.yaml`, GitHub's
+  OIDC issuer and signer identities, and the trust roots. Callers provide only
+  a validated release tag, source commit, and expected asset subjects. The
+  adapter retrieves only the fixed repository attestation endpoint. A
+  response-supplied compressed bundle may use only GitHub's exact
+  `tmaproduction.blob.core.windows.net/attestations/` store, with bounded
+  redirects, compressed bytes, decompressed bytes, and bundle count.
+- Artifact provenance uses the embedded Sigstore public-good root and requires
+  the signed SLSA workflow, repository, ref, commit, hosted-runner, subject,
+  certificate identity, issuer, and transparency evidence. Immutable releases
+  use the embedded GitHub Sigstore root and require GitHub's release identity,
+  timestamp evidence, tag, commit, repository, and exact final asset set.
+  `sigstore-verify`, `sigstore-types`, and `sigstore-trust-root` are pinned at
+  `0.11.0` with default features disabled. `snap` is pinned at `1.1.2` for the
+  API's bounded bundle encoding. Trust-root or verifier updates require the
+  normal central dependency review and both checked-in cryptographic fixtures.
 - Google code uses larch-owned core ports and official Rust clients with
   Application Default Credentials. `google-cloud-auth` is pinned centrally,
   uses rustls, and owns token caching and refresh. Larch validates external
