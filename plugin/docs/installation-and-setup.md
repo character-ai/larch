@@ -77,7 +77,19 @@ gcloud auth application-default print-access-token >/dev/null
 ```
 
 Both commands succeed silently when the expected local file is readable and
-ADC can obtain an access token.
+ADC can obtain an access token. The second command is an optional operator
+setup check. Larch does not run `gcloud` during service calls.
+
+The Rust credential boundary follows the standard ADC order: the file named by
+`GOOGLE_APPLICATION_CREDENTIALS`, the well-known local ADC file, then the
+attached-service-account metadata service. It requires each service adapter to
+request explicit Google OAuth scopes. The official Google authentication layer
+owns access-token caching and refresh. Larch does not copy ADC files, print or
+persist access tokens, or provide a separate credential store.
+
+External-account ADC must use Google's documented token and provider endpoints.
+Executable subject-token sources, custom impersonation endpoints, custom cloud
+universes, and `GCE_METADATA_HOST` overrides fail closed in production.
 
 ### Install
 - **Anthropic / Claude Code**: `curl -fsSL https://claude.ai/install.sh | bash`
