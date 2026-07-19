@@ -123,6 +123,32 @@ They return success only when the requested postcondition is present. Creates,
 which lack a collision-free request identity, return a typed ambiguous-outcome
 error instead of risking a duplicate issue, comment, or label.
 
+## Rust GitHub Pull-Request, Review, and Dependency Operations
+
+The pull-request, review, and issue-dependency leaf adds typed operations behind
+the transport boundary above. Its DTOs cover only the pull-request, review, and
+dependency fields current callers require and expose no raw URL or arbitrary
+GraphQL surface. Merge and review state that REST does not expose
+(`reviewDecision`, `mergeStateStatus`, `mergeable`) is read through one fixed
+GraphQL document compiled into the adapter with typed variables. Any GraphQL
+response that carries an `errors` member fails closed, including a partial-data
+response that also returns `data`. CI-check state is out of scope for this leaf.
+
+Pull-request creation reconciles before it could duplicate. It lists the open
+pull requests for the head branch first and adopts an existing one instead of
+opening a second. On an ambiguous create outcome it re-reads the head branch and
+adopts any pull request that now exists rather than retrying blindly.
+
+Issue-dependency add and remove stay behind the live-mutation authorization gate
+ported from the Python boundary: operator mode, or a regular, non-symlink session
+context file directly under a canonical larch session root that carries
+`LARCH_LIVE_MUTATION_OK=true` with a matching run id. A test denial overrides
+session-inherited authorization but not operator mode. Each mutation reads the
+current edges first for freshness and idempotency, treats an already-satisfied
+edge as a no-op, and confirms the exact edge by read-back after the write. An
+unavailable dependency API and transport failures surface as typed, length-
+bounded, redacted diagnostics.
+
 ## Rust Repository Metadata Read Boundary
 
 `larch_adapters::git::GixRepository` is the sole production implementation of

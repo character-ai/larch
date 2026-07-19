@@ -1,4 +1,15 @@
-//! Authenticated, policy-bound GitHub transport foundation.
+//! Authenticated, policy-bound GitHub transport foundation and the typed
+//! pull-request, review, and issue-dependency operations built on it.
+
+mod mutation_auth;
+mod operations;
+
+pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
+pub use operations::{
+    CreatedPullRequest, DependencyMutation, DependencyRef, GitHubOperationError, MergeStateStatus,
+    Mergeable, PullRequest, PullRequestEdit, PullRequestReviewState, PullRequestSpec,
+    PullRequestState, ReviewDecision,
+};
 
 use http::header::HeaderName;
 use larch_core::{GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env};
