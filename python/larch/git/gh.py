@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-import argparse
 import sys
 from larch.core import config
 from larch.core import redact
