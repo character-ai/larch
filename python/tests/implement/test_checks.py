@@ -3974,6 +3974,10 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     precommit = (repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-build-test:", 1)[0]
+    lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
+    lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  # Python duplicate-code", 1)[0]
+    lint_skip = lint.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
+    lint_local_skip = lint_local.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
 
     assert "id: ruff" in precommit
     assert "ruff check --fix" in precommit
@@ -3996,6 +4000,18 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     assert "make rust-test" in workflow
     assert "make rust-coverage" in workflow
     assert "cargo-deny-action@" in workflow
+    for hook in (
+        "cargo-fmt",
+        "cargo-clippy",
+        "larch-lint",
+        "lint-run-log-run-id",
+        "check-topology-rule-paths",
+        "lint-em-dash-output",
+        "lint-codex-exec-auth",
+        "lint-retired-scripts",
+    ):
+        assert hook in lint_skip
+        assert hook in lint_local_skip
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

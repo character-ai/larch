@@ -44,22 +44,39 @@ lint: test-harnesses lint-em-dash-output lint-codex-exec-auth rust-lint lint-lif
 
 py-lint: py-lint-main py-typecheck
 
-# Fast Python lints (ruff + custom AST ratchets): a few seconds total. Shared by
-# the local full lint (py-lint-main) and CI shard 1 (py-lint-shard) so the check
-# set is defined once.
+# Fast Python lints (ruff + custom AST ratchets). Shared by the local full lint
+# (py-lint-main) and the Python CI shards so the check set is defined once.
+#
+# Timed locally under the same concurrent process shape as CI, then LPT-packed
+# into three 110–111-second groups. Keep every check in the master list and in
+# exactly one three-way group. One-way mode remains the local default.
+PY_LINT_FAST_CHECKS := ruff complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption
+PY_LINT_FAST_CHECKS_SHARD_1 := ruff subprocess-via-runner layering result-env-key-parity env-via-config-constant kv-codec shared-convention-regex tmpdir-arg-env-fallback self-disarmable-gate
+PY_LINT_FAST_CHECKS_SHARD_2 := monkeypatch-facade-binding git-push-refspec wire-artifact-pairing gh-argv-literal suppression-reason root-resolution run-log-walkers complexity-baseline renderer-golden-tests module-manifest keyword-only
+PY_LINT_FAST_CHECKS_SHARD_3 := status-routing-truthiness lifecycle-prefix-literal tempfile-dir pylint-skip-file unreachable-branch guidelines-note-wrapper-bypass flat-tests engine-adoption markdown-heading-fence-state
+PY_LINT_FAST_SHARD_ID ?= 1
+PY_LINT_FAST_SHARD_COUNT ?= 1
+
 py-lint-checks-fast:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-lint-checks-fast requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
 	@# ruff + the AST ratchet checks are independent read-only checks. Run them
 	@# concurrently (each to its own log) and aggregate exit codes so wall time is
-	@# the slowest single check, not the ~90s serial sum that dominated CI
-	@# python-lint shard 1. Logs replay in deterministic order after all finish,
+	@# the slowest single check, not the serial sum. CI distributes the checks
+	@# across its three pylint shards. Logs replay in deterministic order after all finish,
 	@# so parallelism never muddies which check failed. POSIX sh only (CI /bin/sh
 	@# is dash): no pipefail, no arrays.
-	@tmp=$$(mktemp -d); rc=0; pids=""; \
-	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption; do \
-		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
+	@case "$(PY_LINT_FAST_SHARD_COUNT):$(PY_LINT_FAST_SHARD_ID)" in \
+		1:1) checks="$(PY_LINT_FAST_CHECKS)" ;; \
+		3:1) checks="$(PY_LINT_FAST_CHECKS_SHARD_1)" ;; \
+		3:2) checks="$(PY_LINT_FAST_CHECKS_SHARD_2)" ;; \
+		3:3) checks="$(PY_LINT_FAST_CHECKS_SHARD_3)" ;; \
+		*) printf '%s\n' "ERROR: unsupported PY_LINT_FAST_SHARD_COUNT:PY_LINT_FAST_SHARD_ID=$(PY_LINT_FAST_SHARD_COUNT):$(PY_LINT_FAST_SHARD_ID)" >&2; exit 2 ;; \
+	esac; \
+	tmp=$$(mktemp -d); rc=0; pids=""; \
+	for chk in $$checks; do \
+		if [ "$$chk" = ruff ]; then ( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1; else $(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1; fi & \
+		pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
 		p=$${entry%%:*}; name=$${entry#*:}; \
@@ -76,16 +93,15 @@ py-lint-checks-fast:
 py-lint-main: py-lint-checks-fast
 	cd python && pylint -j $(PYLINT_JOBS) .
 
-# CI per-shard Python lint (matrix PYLINT_SHARD_ID of PYLINT_SHARD_COUNT). The
-# ruff + AST ratchet fast checks (~10s on CI) run once, on shard 1; pylint runs
-# on this shard's basename subset (python/pylint_sharding.py). Shard 1 holds the
-# a..o source, the lightest pylint shard on CI, so it absorbs the fast-check lump
-# with the least imbalance. A python-lint-gate job aggregates the matrix so the
-# required status check name stays stable across resharding.
+# CI per-shard Python lint (matrix PYLINT_SHARD_ID of PYLINT_SHARD_COUNT). Fast
+# checks and pylint both run on each shard. The fast checks are an exact three-way
+# partition; pylint runs on its basename subset (python/pylint_sharding.py). A
+# python-lint-gate job aggregates the matrix so the required status check name
+# stays stable across resharding.
 py-lint-shard:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-lint-shard requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
+	@$(MAKE) py-lint-checks-fast PY_LINT_FAST_SHARD_ID=$(PYLINT_SHARD_ID) PY_LINT_FAST_SHARD_COUNT=$(PYLINT_SHARD_COUNT)
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
 .PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-kv-codec-baseline

@@ -71,7 +71,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-codex-exec-auth
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-run-log-run-id,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-em-dash-output,lint-codex-exec-auth,lint-retired-scripts
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -127,9 +127,10 @@ jobs:
       - name: Run pre-commit linters (local)
         # Runs only local bash/python linters. External tools (markdownlint,
         # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
-        # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright) are skipped here.
+        # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright, and Rust
+        # hooks covered by rust-gate) are skipped here.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint,larch-lint
+          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,lint-run-log-run-id,check-topology-rule-paths,lint-em-dash-output,lint-codex-exec-auth,lint-retired-scripts
         run: make lint-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
