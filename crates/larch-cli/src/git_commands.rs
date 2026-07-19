@@ -193,7 +193,8 @@ fn check_remote_branch(args: &[String]) -> u8 {
         Err(message) => {
             emit_kv("STATE", "error");
             emit_kv("RC", "1");
-            emit_kv("ERROR", &message);
+            // Sanitize argv-derived text before ERROR= (G-IO-2); match network path.
+            emit_kv("ERROR", &one_line_summary(&message));
             return 0;
         }
     };
