@@ -8621,3 +8621,9 @@ path = "skills/triage/SKILL.md"
 kind = "skill"
 python = ["issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block", "verify skill-called"]
 rust = []
+
+[[callers]]
+path = "skills/upgrade-larch/SKILL.md"
+kind = "skill"
+python = []
+rust = ["upgrade-larch run"]
