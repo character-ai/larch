@@ -106,6 +106,23 @@ The core service port exposes policy and typed transport classifications, not
 raw URLs, arbitrary GraphQL documents, or the concrete client. Operation
 leaves must add typed paths and DTOs behind this same adapter.
 
+Repository, issue, comment, label, and search responses are untrusted data.
+The Rust operation adapter converts Octocrab models immediately into
+larch-owned DTOs, rejects missing required fields and unknown states, and
+enforces response-byte, page, item, string, and JSON-nesting limits before it
+returns data to a caller. Pagination follows only parsed same-origin HTTPS
+continuations. Issue titles, bodies, comments, labels, authors, URLs, and search
+results must never become shell text, paths, format strings, or prompt
+instructions.
+
+Idempotent reads have bounded retry and honor a structured `retry_after` value
+when GitHub supplies one. Mutations are serialized by their caller and are not
+blindly retried. Issue edits and closes, comment edits and deletes, and label
+changes read back the owning resource after an ambiguous transport outcome.
+They return success only when the requested postcondition is present. Creates,
+which lack a collision-free request identity, return a typed ambiguous-outcome
+error instead of risking a duplicate issue, comment, or label.
+
 ## Rust Repository Metadata Read Boundary
 
 `larch_adapters::git::GixRepository` is the sole production implementation of

@@ -1,0 +1,30 @@
+{
+  "success": [
+    [200, "repository"],
+    [200, "issue"],
+    [200, "issues"],
+    [200, "search"],
+    [200, "issue"],
+    [200, "issue"],
+    [200, "issue"],
+    [200, "comments"],
+    [200, "comment"],
+    [200, "comment"],
+    [204, "empty"],
+    [200, "labels"],
+    [200, "label"],
+    [200, "labels"],
+    [200, "labels"]
+  ],
+  "failures": [
+    [500, "failure"],
+    [200, "issue"],
+    [500, "failure"],
+    [200, "issue"],
+    [500, "failure"],
+    [403, "forbidden"],
+    [200, "empty_array"],
+    [200, "empty_array"],
+    [200, "issue"]
+  ]
+}

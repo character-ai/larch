@@ -2191,6 +2191,7 @@ dependencies = [
  "larch-test-support",
  "nix",
  "octocrab",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

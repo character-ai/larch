@@ -30,8 +30,12 @@ pub use git::{
     Worktree,
 };
 pub use github::{
-    GitHubFailureInput, GitHubRateLimitInputs, GitHubRequestKind, GitHubResponseLimits,
-    GitHubRetryAction, GitHubService, GitHubTransportPolicy, classify_github_retry,
+    GitHubCloseReason, GitHubComment, GitHubFailureInput, GitHubFuture, GitHubIssue,
+    GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueSearch, GitHubIssueState,
+    GitHubLabel, GitHubLabelCreate, GitHubOperationError, GitHubOperationErrorKind,
+    GitHubRateLimitInputs, GitHubRepository, GitHubRepositoryRef, GitHubRequestKind,
+    GitHubResponseLimits, GitHubRetryAction, GitHubService, GitHubTransportPolicy,
+    classify_github_retry,
 };
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{

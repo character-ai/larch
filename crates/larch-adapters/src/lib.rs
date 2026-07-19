@@ -3,6 +3,7 @@
 pub mod clock;
 pub mod git;
 pub mod github;
+mod github_rest;
 pub mod google_auth;
 pub mod logging;
 pub mod process;

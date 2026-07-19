@@ -1,9 +1,7 @@
 //! Authenticated, policy-bound GitHub transport foundation.
 
 use http::header::HeaderName;
-use larch_core::{
-    GitHubService, GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env,
-};
+use larch_core::{GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env};
 use octocrab::Octocrab;
 use std::{error::Error, ffi::OsString, fmt, future::Future};
 use url::Url;
@@ -161,12 +159,21 @@ impl GitHubCredential {
 /// typed paths and DTOs instead of exposing Octocrab, raw REST URLs, or
 /// arbitrary GraphQL documents to domain callers.
 pub struct OctocrabGitHubService {
-    _client: Octocrab,
-    policy: GitHubTransportPolicy,
+    pub(crate) client: Octocrab,
+    pub(crate) policy: GitHubTransportPolicy,
     redactor: RuntimeRedactor,
 }
 
 impl OctocrabGitHubService {
+    #[cfg(test)]
+    pub(crate) fn with_test_client(client: Octocrab) -> Self {
+        Self {
+            client,
+            policy: GitHubTransportPolicy::github_com(),
+            redactor: RuntimeRedactor::default(),
+        }
+    }
+
     /// Load the sole supported credential and construct one hardened client.
     ///
     /// # Errors
@@ -191,7 +198,7 @@ impl OctocrabGitHubService {
             GitHubClientError::Configuration(redactor.safe_text(error.to_string()))
         })?;
         Ok(Self {
-            _client: client,
+            client,
             policy,
             redactor,
         })
@@ -255,12 +262,6 @@ impl OctocrabGitHubService {
     }
 }
 
-impl GitHubService for OctocrabGitHubService {
-    fn transport_policy(&self) -> GitHubTransportPolicy {
-        self.policy
-    }
-}
-
 fn build_client(
     credential: &GitHubCredential,
     policy: GitHubTransportPolicy,
@@ -303,7 +304,7 @@ fn validate_approved_url(url: &Url) -> Result<(), GitHubHostError> {
 mod tests {
     use super::*;
     use crate::runtime::{Cancellation, LarchRuntime};
-    use larch_core::GitHubResponseLimits;
+    use larch_core::{GitHubResponseLimits, GitHubService};
     use std::{collections::BTreeMap, sync::Mutex};
 
     struct FakeEnvironment {
