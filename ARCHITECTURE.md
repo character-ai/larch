@@ -124,6 +124,12 @@ work:
 - Git mutations and network operations stay behind a closed, typed Git CLI
   compatibility adapter where installed-Git behavior is part of the contract.
   There is no public arbitrary-argv escape hatch.
+- [`docs/git-operation-inventory.md`](docs/git-operation-inventory.md) records
+  every production Git surface and its one owner. `larch-lint` rejects matrix
+  drift, concrete `gix` use outside `larch-adapters`, duplicate Git owners,
+  direct Rust Git processes, changes to the closed CLI operation set, and
+  non-atomic final rows for the #7675 commands. A later-domain row remains
+  Python-owned until its named migration issue performs the atomic cutover.
 - Product child processes use the `ExternalProcessRunner` core port. Its closed
   enum permits typed Claude, Codex, Cursor, Git, and #7670 larch bootstrap or
   self-check operations. Larch program paths derive from validated plugin roots.

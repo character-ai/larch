@@ -15,6 +15,17 @@ The documented plugin-cache `Bash(.../scripts/*)` rule also authorizes
 absolute path. They must not ask strict-permission consumers to authorize a
 bare `bin/larch` command.
 
+Rust-backed Git operations do not add an arbitrary executable permission.
+Larch selects `git` through its closed process enum and exposes only typed
+compatibility methods. The child environment forces non-interactive terminal
+and editor behavior, keeps only the approved environment allowlist, and may
+launch user-configured hooks, filters, signing tools, SSH, credential helpers,
+askpass, merge drivers, or editors through installed Git. Treat those programs
+as approved operator configuration with untrusted output and failure behavior.
+Remaining Python-owned rows are listed in
+[`docs/git-operation-inventory.md`](git-operation-inventory.md) until their
+named domain issue cuts them over atomically.
+
 ```json
 "Skill(alias)",
 "Skill(block-issue)",

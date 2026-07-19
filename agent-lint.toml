@@ -1368,9 +1368,10 @@ root-max-content-tokens = 35301
 # issue #7750 adds the release-version transaction boundary;
 # issue #7728 adds the service-ownership CLI-independence trust boundary;
 # issue #7783 adds shared-owner implementation-lease enforcement.
-closure-max-lines = 3836
-closure-max-tokens = 145746
-closure-max-content-tokens = 145439
+# issue #7736 adds the final Git ownership boundary.
+closure-max-lines = 3844
+closure-max-tokens = 145879
+closure-max-content-tokens = 145572
 conditional-max-lines = 591
 conditional-max-tokens = 18803
 conditional-max-content-tokens = 18756
@@ -1427,6 +1428,7 @@ roots = [
 # issue #7750 adds the release-version transaction boundary;
 # issue #7728 adds the service-ownership CLI-independence trust boundary;
 # issue #7783 adds shared-owner implementation-lease enforcement.
-closure-max-lines = 6124
-closure-max-tokens = 171198
-closure-max-content-tokens = 170730
+# issue #7736 adds the final Git ownership boundary.
+closure-max-lines = 6132
+closure-max-tokens = 171330
+closure-max-content-tokens = 170861

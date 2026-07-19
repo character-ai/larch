@@ -84,6 +84,13 @@ or a remote URL that can resolve to a service. Run the named fixture matrix on
 macOS and Linux. Capability skips must name the missing feature and host error
 in test output.
 
+The final ownership gate runs in the same cross-platform Rust lane. Focused
+coverage is `cargo test --locked --package larch-lint --test git_ownership`.
+It injects direct process creation, arbitrary Git arguments, `gix` bypasses,
+duplicate owners, a new CLI exception, non-atomic command state, and inventory
+drift. The adapter and CLI suites supply the SHA-1/SHA-256, case, path, filter,
+hook, credential, worktree, interruption, recovery, and `git fsck` fixtures.
+
 ## Test boundaries
 
 - Unit tests live in a crate-local `#[cfg(test)]` module. They cover private
