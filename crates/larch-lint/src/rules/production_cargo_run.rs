@@ -1,13 +1,15 @@
 //! Reject Cargo and target-directory execution from production runtime surfaces.
 
-use std::{collections::BTreeSet, path::Path, sync::LazyLock};
+use std::{collections::BTreeSet, path::Path};
 
-use regex::Regex;
 use tree_sitter::Node;
 
 use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
-    syntax::{FenceState, MarkdownDocument, leaf_bash_commands, parse_bash, parse_python},
+    syntax::{
+        ShellCommand, json_shell_commands, leaf_bash_commands, markdown_shell_commands,
+        normalize_shell_word, parse_bash, parse_python, shell_command_words, shell_commands,
+    },
 };
 
 use super::larch_runtime_entrypoint::is_production_surface;
@@ -17,22 +19,6 @@ const DESCRIPTION: &str = "Reject production Cargo and target-directory larch ex
 const MESSAGE: &str =
     "production runtime must use scripts/larch.sh; cargo and target-directory execution are development-only";
 const RELEASE_OWNER: &str = ".claude/skills/release/SKILL.md";
-
-static INLINE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:run|execute|invoke|call|use)\s*:?\s*$")
-        .expect("inline command lead-in is valid")
-});
-static NEGATED_INLINE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:do\s+not|don't|never)\s+(?:run|execute|invoke|call|use)\s*:?\s*$")
-        .expect("negated inline command lead-in is valid")
-});
-static INLINE_CODE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"`([^`\n]+)`").expect("inline code expression is valid")
-});
-static JSON_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?s)\"command\"\s*:\s*\"((?:\\.|[^\"\\])*)\""#)
-        .expect("JSON command expression is valid")
-});
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,
@@ -96,46 +82,21 @@ fn is_fixture_surface(path: &str) -> bool {
 }
 
 fn check_shell(path: &str, source: &str, line_offset: usize) -> Result<Vec<Finding>, LintError> {
-    let tree = parse_bash(source)?;
-    let mut lines = BTreeSet::new();
-    for command in leaf_bash_commands(&tree) {
-        let words = shell_command_words(command, source);
-        if prohibited_argv(&words) && !is_allowed_release_command(path, &words) {
-            lines.insert(command.start_position().row + line_offset + 1);
-        }
-    }
-    lines
+    check_commands(path, shell_commands(source, line_offset)?)
+}
+
+fn check_commands(path: &str, commands: Vec<ShellCommand>) -> Result<Vec<Finding>, LintError> {
+    commands
         .into_iter()
-        .map(|line| {
-            let number = u32::try_from(line)
+        .filter(|command| {
+            prohibited_argv(command.words()) && !is_allowed_release_command(path, command.words())
+        })
+        .map(|command| {
+            let number = u32::try_from(command.line())
                 .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
             Ok(Finding::new(path, number, MESSAGE))
         })
         .collect()
-}
-
-fn shell_command_words(command: Node<'_>, source: &str) -> Vec<String> {
-    let Some(name) = command.child_by_field_name("name") else {
-        return Vec::new();
-    };
-    let mut words = vec![node_text(name, source)];
-    let mut cursor = command.walk();
-    words.extend(
-        command
-            .children_by_field_name("argument", &mut cursor)
-            .map(|argument| node_text(argument, source)),
-    );
-    words
-}
-
-fn node_text(node: Node<'_>, source: &str) -> String {
-    normalize_word(source.get(node.byte_range()).unwrap_or(""))
-}
-
-fn normalize_word(word: &str) -> String {
-    word.replace("\\\n", "")
-        .replace(['\"', '\''], "")
-        .replace('\\', "/")
 }
 
 fn prohibited_argv(words: &[String]) -> bool {
@@ -373,75 +334,15 @@ fn python_string_value(node: Node<'_>, source: &str) -> String {
     let trimmed = raw
         .trim_start_matches(['r', 'R', 'b', 'B', 'f', 'F'])
         .trim_matches(['\"', '\'']);
-    normalize_word(trimmed)
+    normalize_shell_word(trimmed)
 }
 
 fn check_markdown(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let mut findings = Vec::new();
-    let mut block = String::new();
-    let mut block_start = 0;
-    for line in MarkdownDocument::new(source).lines() {
-        let executable = matches!(
-            line.fence_state(),
-            FenceState::Inside { language: Some(language) } if is_executable_fence(language)
-        ) && !line.is_fence_boundary();
-        if executable {
-            if block.is_empty() {
-                block_start = line.number() - 1;
-            }
-            let text = line
-                .text()
-                .strip_prefix("$ ")
-                .unwrap_or_else(|| line.text());
-            block.push_str(text);
-            block.push('\n');
-        } else if !block.is_empty() {
-            findings.extend(check_shell(path, &block, block_start)?);
-            block.clear();
-        }
-        if matches!(line.fence_state(), FenceState::Outside) {
-            findings.extend(check_inline_command(path, line.number(), line.text())?);
-        }
-    }
-    if !block.is_empty() {
-        findings.extend(check_shell(path, &block, block_start)?);
-    }
-    Ok(findings)
-}
-
-fn is_executable_fence(language: &str) -> bool {
-    matches!(language.to_ascii_lowercase().as_str(), "bash" | "sh" | "shell" | "console")
-}
-
-fn check_inline_command(path: &str, line: usize, text: &str) -> Result<Vec<Finding>, LintError> {
-    let mut findings = Vec::new();
-    for capture in INLINE_CODE.captures_iter(text) {
-        let Some(command) = capture.get(1) else {
-            continue;
-        };
-        let lead_in = &text[..capture.get(0).map_or(0, |matched| matched.start())];
-        if !INLINE_COMMAND.is_match(lead_in) || NEGATED_INLINE_COMMAND.is_match(lead_in) {
-            continue;
-        }
-        let scanned = check_shell(path, command.as_str(), line.saturating_sub(1))?;
-        findings.extend(scanned);
-    }
-    Ok(findings)
+    check_commands(path, markdown_shell_commands(source)?)
 }
 
 fn check_json(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let mut findings = Vec::new();
-    for capture in JSON_COMMAND.captures_iter(source) {
-        let Some(raw) = capture.get(1) else {
-            continue;
-        };
-        let encoded = format!("\"{}\"", raw.as_str());
-        let command: String = serde_json::from_str(&encoded)
-            .map_err(|error| LintError::new(format!("{path}: invalid command string: {error}")))?;
-        let line = source[..raw.start()].lines().count();
-        findings.extend(check_shell(path, &command, line.saturating_sub(1))?);
-    }
-    Ok(findings)
+    check_commands(path, json_shell_commands(path, source)?)
 }
 
 #[cfg(test)]

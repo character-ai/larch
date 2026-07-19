@@ -284,6 +284,44 @@ against Step 3 / Gate C plan previews, the mechanical behavior is the live
 `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` and the **Chat-order note** there); do not assume duplicated inline fenced
 bodies remain the source of that logic. Issue-level acceptance or transcript audits must not treat the plan preview as immediately after the Step 3 breadcrumb alone — the visible breadcrumb is followed by a `python3 python/cli.py timing mark` line before the preview output.
 
+## Plan receipt and native blocker freshness (M4/M5)
+
+`/design` publish writes a plan receipt immediately after the `larch:plan`
+block:
+
+```text
+<!-- larch:plan-receipt v1 plan_sha256=<64hex> base_sha=<40hex> blockers_sha256=<64hex> owners_sha256=<64hex> -->
+```
+
+Hash inputs:
+
+| Field | Canonical input |
+|---|---|
+| `plan_sha256` | Exact plan-block inner bytes |
+| `blockers_sha256` | Sorted `number\\tstate\\tupdatedAt` rows for body-declared native blockers plus live native edges |
+| `owners_sha256` | Sorted unique exact `larch:owners` rows (empty when absent) |
+| `base_sha` | `HEAD` at publish time |
+
+Base-scope freshness fingerprints declared plan paths (globs expanded against
+tracked files at the SHA) plus owner keys. Main advancing alone does not stale
+a plan; only in-scope path or owner-key drift between `base_sha` and current
+`HEAD` emits `stale-plan-base-scope`.
+
+Native blocker fields are exactly `Native blocker:` / `Native blockers:`
+(fence-aware). Parity tokens:
+
+- `missing-native-blocker-edge issue=#N`
+- `undocumented-native-blocker-edge issue=#N`
+- `closed-blocker-edge-retained issue=#N` (report-only)
+- `blocker-read-unavailable` (fail-closed; never an empty set)
+
+Receipt tokens: `stale-plan-body`, `stale-plan-base-scope`,
+`stale-blocker-snapshot`, `stale-owner-snapshot`.
+
+The same verifier runs at `/implement` Preflight (before lifecycle adoption),
+Step 2 dispatch (before coder launch), after ship rebase, and before PR
+creation. Owner module: `python/larch/issue/migration_governance.py`.
+
 Force mode is intentionally narrow: `/implement --force` skips the
 Preflight plan-adequacy audit entirely (no `AUDIT=refuse` result exists on that
 path, so no bypass-log entry is written for the skip) and may

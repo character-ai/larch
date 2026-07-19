@@ -3,6 +3,8 @@
 # pyright: reportPrivateUsage=false
 # pyright: reportMissingParameterType=false
 # pyright: reportUnknownParameterType=false
+# pyright: reportUnknownArgumentType=false
+# pyright: reportUnknownLambdaType=false
 
 from __future__ import annotations
 
@@ -80,6 +82,16 @@ def _stub_plan_contract_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright:
         return plan_grammar.PlanValidationResult(defects=())
 
     monkeypatch.setattr(plan_grammar, "validate_plan_contract", _ok)
+
+
+@pytest.fixture(autouse=True)
+def _stub_plan_receipt_persist(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Publish success paths stub receipt persistence; dedicated tests cover the owner."""
+
+    def _noop(**_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(design_publish, "_persist_published_plan_receipt", _noop)
 
 
 @pytest.fixture(autouse=True)
