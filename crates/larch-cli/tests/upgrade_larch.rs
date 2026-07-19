@@ -59,6 +59,7 @@ impl Harness {
     }
 
     fn command(&self) -> Command {
+        let coverage_profile = std::env::var_os("LLVM_PROFILE_FILE");
         let mut command = Command::cargo_bin("larch").expect("larch binary");
         command
             .env_clear()
@@ -67,6 +68,9 @@ impl Harness {
             .env("CLAUDE_PLUGIN_DATA", &self.data)
             .env("CLAUDE_PLUGIN_ROOT", &self.old_root)
             .env("LARCH_EXPECTED_STABLE_VERSION", "2.0.0");
+        if let Some(profile) = coverage_profile {
+            command.env("LLVM_PROFILE_FILE", profile);
+        }
         command
     }
 
