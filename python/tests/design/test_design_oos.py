@@ -12,6 +12,8 @@ import pytest
 from larch.design import design_step5b
 from larch.design import design_oos
 from larch.design import design_pause
+from larch.issue import issue_mutation
+from larch.errors import ShipError
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
 
 
@@ -1102,14 +1104,15 @@ def test_design_annotate_labels_only_high_risk_url_with_repo(
         gh_calls.append([*argv, "--repo", repo])
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    def fake_label_add(
-        _runner: object, number: str, label: str, *, repo: str
-    ) -> subprocess.CompletedProcess[str]:
-        label_calls.append((number, label, repo))
-        return subprocess.CompletedProcess([], 0, "", "")
+    def fake_update_labels(
+        _runner: object, *, repository: str, issue: str, labels: frozenset[str]
+    ) -> None:
+        assert design_oos.oos_priority.OOS_CORRECTNESS_LABEL in labels
+        label_calls.append((issue, design_oos.oos_priority.OOS_CORRECTNESS_LABEL, repository))
 
     monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
-    monkeypatch.setattr(design_oos.gh, "issue_label_add", fake_label_add)
+    monkeypatch.setattr(design_oos.issue_mutation, "read_snapshot", lambda _runner, *, repository, issue: issue_mutation.IssueSnapshot(repository, issue, "Regular", "", frozenset(), "OPEN", "2026-07-19T00:00:00Z"))
+    monkeypatch.setattr(design_oos.issue_mutation, "update_labels", fake_update_labels)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
 
@@ -1134,15 +1137,13 @@ def test_design_annotate_label_failure_preserves_pending_retry_state(
         _ = repo
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    def fake_label_add(
-        _runner: object, _number: str, _label: str, *, repo: str
-    ) -> subprocess.CompletedProcess[str]:
-        _ = repo
-        return subprocess.CompletedProcess([], 1, "", "edit failed")
+    def fake_update_labels(_runner: object, **_kwargs: object) -> None:
+        raise ShipError("edit failed")
 
     monkeypatch.setattr(design_oos, "_cross_session_cache_path", fake_cache)
     monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
-    monkeypatch.setattr(design_oos.gh, "issue_label_add", fake_label_add)
+    monkeypatch.setattr(design_oos.issue_mutation, "read_snapshot", lambda _runner, *, repository, issue: issue_mutation.IssueSnapshot(repository, issue, "Regular", "", frozenset(), "OPEN", "2026-07-19T00:00:00Z"))
+    monkeypatch.setattr(design_oos.issue_mutation, "update_labels", fake_update_labels)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
     captured = capsys.readouterr()

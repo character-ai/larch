@@ -146,8 +146,13 @@ def test_link_pr_closes_no_prefix_collision() -> None:
     assert "Closes #42\n" in linked
 
 
-def test_rename_strips_legacy_prefix() -> None:
+def test_rename_strips_legacy_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner()
+
+    def update_title(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(tracking_issue.issue_mutation, "update_title", update_title)
     title = "[IN PROGRESS] [DONE] My feature"
     new = tracking_issue.rename(
         runner,
@@ -163,8 +168,15 @@ def test_rename_strips_legacy_prefix() -> None:
 @pytest.mark.parametrize("current_title", ["[BUG] My feature", "[DESIGNED] [BUG] My feature"])
 def test_rename_prepends_lifecycle_prefix_without_stripping_bug_prefix(
     current_title: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = RecordingRunner()
+    captured: dict[str, str] = {}
+
+    def update_title(*_args: object, title: str, **_kwargs: object) -> None:
+        captured["title"] = title
+
+    monkeypatch.setattr(tracking_issue.issue_mutation, "update_title", update_title)
     new = tracking_issue.rename(
         runner,
         "1",
@@ -173,8 +185,7 @@ def test_rename_prepends_lifecycle_prefix_without_stripping_bug_prefix(
         current_title=current_title,
     )
     assert new == "[IMPLEMENTING] [BUG] My feature"
-    title_index = runner.calls[-1].index("--title") + 1
-    assert runner.calls[-1][title_index] == new
+    assert captured["title"] == new
 
 
 def test_append_comment_rejects_invalid_lifecycle_marker() -> None:
@@ -260,9 +271,17 @@ def test_upsert_token_report_rename_matrix() -> None:
     assert "PATCH" in runner.calls[-1]
 
 
-def test_rename_truncates_after_redaction() -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("gh", "issue", "edit", "1"), 0, "", "", 0.01)],
+def test_rename_truncates_after_redaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = RecordingRunner()
+    captured: dict[str, str] = {}
+
+    def update_title(*_args: object, title: str, **_kwargs: object) -> None:
+        captured.setdefault("title", title)
+
+    monkeypatch.setattr(
+        tracking_issue.issue_mutation,
+        "update_title",
+        update_title,
     )
     long_tail = "x" * 300
     title = f"[DESIGNING] {long_tail}"
@@ -274,9 +293,7 @@ def test_rename_truncates_after_redaction() -> None:
         current_title=title,
     )
     assert len(new) <= config.TRACKING_TITLE_MAX_LEN
-    edit_argv = runner.calls[-1]
-    title_arg_index = edit_argv.index("--title") + 1
-    assert len(edit_argv[title_arg_index]) <= config.TRACKING_TITLE_MAX_LEN
+    assert len(captured["title"]) <= config.TRACKING_TITLE_MAX_LEN
 
 
 def test_rename_skips_edit_when_redacted_canonical_current_matches() -> None:

@@ -513,45 +513,34 @@ def test_apply_rewrites_only_skips_edges(tmp_path: Path, monkeypatch, capsys) ->
         edges_to_write=[{"client_issue": 1, "blocker_issue": 2, "source": "latent", "reason": "edge"}],
         counts={"skipped_latent_pairs": 0},
     )
-    calls: list[Sequence[str]] = []
-
     def live_meta(*, repo: str, issue: int) -> dict[str, object]:
         _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        calls.append(argv)
-        return result(argv)
-
     monkeypatch.setattr(deps_audit, "_live_issue_meta", live_meta)
-    monkeypatch.setattr(deps_audit.proc, "run", fake_run)
+    def update_body(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(deps_audit.issue_mutation, "update_body", update_body)
     assert deps_audit.apply_main(["--repo", "o/r", "--plan-file", str(plan), "--rewrites-only"]) == 0
     data = read_stdout_json(capsys)
     assert data["applied"] == [{"kind": "rewrite", "issue": 1}]
-    assert not any("block-issue" in call for call in calls)
 
 
-def test_apply_rewrite_passes_existing_temporary_body_file_and_cleans_it(monkeypatch) -> None:
+def test_apply_rewrite_routes_sanitized_body_through_mutation_owner(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
-    def edit_body(_runner: object, issue: str, body_file: str, *, repo: str) -> CommandResult:
-        path = Path(body_file)
-        seen["issue"] = issue
-        seen["repo"] = repo
-        seen["path"] = path
-        seen["body"] = path.read_text(encoding="utf-8")
-        assert path.is_file()
-        return result(["gh", "issue", "edit", issue])  # lint-gh-argv-literal: ok fixture assertion
+    def update_body(_runner: object, *, repository: str, issue: str, body: str) -> None:
+        seen.update(repository=repository, issue=issue, body=body)
 
-    monkeypatch.setattr(deps_audit.gh, "issue_edit_body_file", edit_body)
+    monkeypatch.setattr(deps_audit.issue_mutation, "update_body", update_body)
 
     ok, error = deps_audit._apply_rewrite(repo="o/r", issue=7, body="updated\n")  # pyright: ignore[reportPrivateUsage]
 
     assert (ok, error) == (True, "")
     assert seen["issue"] == "7"
-    assert seen["repo"] == "o/r"
+    assert seen["repository"] == "o/r"
     assert seen["body"] == "updated\n"
-    assert not Path(seen["path"]).exists()
 
 
 def test_apply_edges_only_skips_rewrites_and_closes(tmp_path: Path, monkeypatch, capsys) -> None:

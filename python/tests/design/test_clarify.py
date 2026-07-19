@@ -582,9 +582,15 @@ def test_comment_transient_retry_fails_once_then_succeeds(tmp_path: Path) -> Non
     assert len(runner.calls) == 2
 
 
-def test_label_add_create_and_metadata() -> None:
+def test_label_add_create_and_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner(
-        responses=[_result(stdout=""), _result(), _result()],
+        responses=[_result(stdout=""), _result()],
+    )
+    captured: list[frozenset[str]] = []
+    monkeypatch.setattr(
+        clarify.issue_mutation,
+        "update_labels",
+        lambda *_args, labels, **_kwargs: captured.append(labels),
     )
     result = clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True)
     assert result == clarify.ClarifyLabelResult(changed=True, action="add", label=clarify.LABEL_NAME)
@@ -600,15 +606,16 @@ def test_label_add_create_and_metadata() -> None:
         "--description",
         clarify.LABEL_DESCRIPTION,
     ]
-    assert runner.calls[2][-2:] == ["--add-label", clarify.LABEL_NAME]
+    assert captured == [frozenset({clarify.LABEL_NAME})]
 
 
 
 
-def test_label_repeated_add_with_omitted_label_creates_each_time() -> None:
+def test_label_repeated_add_with_omitted_label_creates_each_time(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner(
-        responses=[_result(stdout=""), _result(), _result(), _result(stdout=""), _result(), _result()],
+        responses=[_result(stdout=""), _result(), _result(stdout=""), _result()],
     )
+    monkeypatch.setattr(clarify.issue_mutation, "update_labels", lambda *_args, **_kwargs: None)
     assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
     assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
     create_calls = [call for call in runner.calls if call[:3] == ["gh", "label", "create"]]  # lint-gh-argv-literal: ok fixture assertion
@@ -622,30 +629,41 @@ def test_label_add_exact_present_skips_mutation() -> None:
     assert len(runner.calls) == 1
 
 
-def test_label_different_case_is_absent_for_add_and_remove() -> None:
-    runner = RecordingRunner(responses=[_result(stdout="Needs-Design-Clarification\n"), _result()])
+def test_label_different_case_is_absent_for_add_and_remove(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = RecordingRunner(responses=[_result(stdout="Needs-Design-Clarification\n")])
+    captured: list[frozenset[str]] = []
+    monkeypatch.setattr(clarify.issue_mutation, "update_labels", lambda *_args, labels, **_kwargs: captured.append(labels))
     assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r").changed is True
+    assert captured == [frozenset({"Needs-Design-Clarification", clarify.LABEL_NAME})]
     runner = RecordingRunner(responses=[_result(stdout="Needs-Design-Clarification\n")])
     assert clarify.clarify_label(runner=runner, issue="7", action="remove", repo="o/r").changed is False
     assert len(runner.calls) == 1
 
 
-def test_label_remove_present_calls_remove() -> None:
-    runner = RecordingRunner(responses=[_result(stdout=f"{clarify.LABEL_NAME}\n"), _result()])
+def test_label_remove_present_calls_remove(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = RecordingRunner(responses=[_result(stdout=f"{clarify.LABEL_NAME}\n")])
+    captured: list[frozenset[str]] = []
+    monkeypatch.setattr(clarify.issue_mutation, "update_labels", lambda *_args, labels, **_kwargs: captured.append(labels))
     assert clarify.clarify_label(runner=runner, issue="7", action="remove", repo="o/r").changed is True
-    assert runner.calls[1][-2:] == ["--remove-label", clarify.LABEL_NAME]
+    assert captured == [frozenset()]
 
 
 @pytest.mark.parametrize("message", ["already exists", "ALREADY BEEN TAKEN"])
-def test_label_duplicate_create_errors_are_nonfatal(message: str) -> None:
-    runner = RecordingRunner(responses=[_result(), _result(rc=1, stderr=message), _result()])
+def test_label_duplicate_create_errors_are_nonfatal(message: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = RecordingRunner(responses=[_result(), _result(rc=1, stderr=message)])
+    monkeypatch.setattr(clarify.issue_mutation, "update_labels", lambda *_args, **_kwargs: None)
     assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
 
 
 @pytest.mark.parametrize("action", ["add", "remove"])
-def test_label_mutation_failure_raises(action: str) -> None:
+def test_label_mutation_failure_raises(action: str, monkeypatch: pytest.MonkeyPatch) -> None:
     labels = "" if action == "add" else f"{clarify.LABEL_NAME}\n"
-    runner = RecordingRunner(responses=[_result(stdout=labels), _result(rc=1, stderr="boom")])
+    runner = RecordingRunner(responses=[_result(stdout=labels)])
+    monkeypatch.setattr(
+        clarify.issue_mutation,
+        "update_labels",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ShipError("boom")),
+    )
     with pytest.raises(ShipError, match="boom"):
         clarify.clarify_label(runner=runner, issue="7", action=action, repo="o/r")
 

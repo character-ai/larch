@@ -1674,6 +1674,27 @@ def issue_view_title_body_read(
     return _issue_view_read(runner, issue, "title,body", repo=repo, cwd=cwd)
 
 
+def issue_mutation_snapshot_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Read the fixed fields needed by the issue-mutation owner.
+
+    This is deliberately a transport primitive.  Lifecycle, freshness, and
+    field-authorization policy belong to ``larch.issue.issue_mutation``.
+    """
+    return _issue_view_read(
+        runner,
+        issue,
+        "title,body,labels,state,updatedAt",
+        repo=repo,
+        cwd=cwd,
+    )
+
+
 def find_issue_comment_id_by_marker(
     runner: Runner,
     issue: str,

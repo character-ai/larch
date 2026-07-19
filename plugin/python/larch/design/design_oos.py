@@ -15,7 +15,8 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.git import gh
+from larch.issue import issue_mutation
+from larch.errors import ShipError
 from larch.core.repo_roots import plugin_root
 from larch.issue import file_oos
 from larch.issue import oos_priority
@@ -836,8 +837,17 @@ def _apply_oos_correctness_label(*, url: str, repo: str) -> bool:
     number = oos_priority.issue_number_from_url(url)
     if not repo or not number:
         return False
-    result = gh.issue_label_add(proc, number, oos_priority.OOS_CORRECTNESS_LABEL, repo=repo)
-    return result.returncode == 0
+    try:
+        snapshot = issue_mutation.read_snapshot(proc, repository=repo, issue=number)
+        _ = issue_mutation.update_labels(
+            proc,
+            repository=repo,
+            issue=number,
+            labels=frozenset({*snapshot.labels, oos_priority.OOS_CORRECTNESS_LABEL}),
+        )
+    except ShipError:
+        return False
+    return True
 
 
 def _apply_priority_labels_only(  # noqa: PLR0913

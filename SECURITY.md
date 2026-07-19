@@ -276,7 +276,7 @@ Scoped GitHub issue create, comment, close, and label operations require explici
 
 **Refusal behavior**: Unauthorized calls emit `ISSUE_FAILED=true` and a designated refusal exit code without making any `gh` call. Reporter-level refusals write a local fallback artifact with the designated reason and do not retry through another mutation route.
 
-**Residual limitation**: This boundary prevents accidental execution by in-dev code and test escapes. It does not prevent a malicious process that can alter code, session state, or credentials from bypassing the check. Unrelated existing GitHub mutation surfaces (tracking-issue lifecycle helpers, decomposition close-original, clarification mutations) remain outside this boundary.
+**Residual limitation**: This boundary does not stop a process that can alter code, session state, or credentials. Issue-field writes require matching `updatedAt` and state, redaction, and a strictly newer exact read-back. Protected bodies require a matching lease and can change one named block only. Other mutation surfaces remain outside this boundary.
 
 ## Security Findings in OOS Workflows
 

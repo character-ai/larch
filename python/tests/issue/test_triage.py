@@ -96,7 +96,7 @@ def test_valid_apply_preserves_original_and_verifies_readback(
 ) -> None:
     body_file = triage_root / "body.md"
     body_file.write_text("## Summary\n\nCorrected diagnosis.", encoding="utf-8")
-    calls = 0
+    edited = False
     expected_body = (
         "Original report\n\n<!-- larch:triage:start -->\n"
         "## Summary\n\nCorrected diagnosis.\n<!-- larch:triage:end -->\n"
@@ -104,18 +104,18 @@ def test_valid_apply_preserves_original_and_verifies_readback(
     expected_title = "[TRIAGED] Bug report"
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        nonlocal calls
-        calls += 1
+        nonlocal edited
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
-        if calls in {1, 3}:
-            return _result(argv, stdout=_snapshot())
-        if calls == 5:
+        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             assert argv[:4] == ["gh", "issue", "edit", "7"]  # lint-gh-argv-literal: ok fixture assertion
             assert "--title" in argv
             assert argv[argv.index("--title") + 1] == expected_title
             assert Path(argv[-1]).read_text(encoding="utf-8") == expected_body
+            edited = True
             return _result(argv)
+        if not edited:
+            return _result(argv, stdout=_snapshot())
         return _result(
             argv,
             stdout=_snapshot(
@@ -156,7 +156,7 @@ def test_valid_apply_bug_prefix_title_gets_triaged_infix(
 ) -> None:
     body_file = triage_root / "body.md"
     body_file.write_text("## Summary\n\nRoot cause.", encoding="utf-8")
-    calls = 0
+    edited = False
     expected_body = (
         "Original report\n\n<!-- larch:triage:start -->\n"
         "## Summary\n\nRoot cause.\n<!-- larch:triage:end -->\n"
@@ -164,16 +164,16 @@ def test_valid_apply_bug_prefix_title_gets_triaged_infix(
     expected_title = "[BUG] [TRIAGED] Crash on startup"
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        nonlocal calls
-        calls += 1
+        nonlocal edited
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
-        if calls in {1, 3}:
-            return _result(argv, stdout=_snapshot(title="[BUG] Crash on startup"))
-        if calls == 5:
+        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             assert "--title" in argv
             assert argv[argv.index("--title") + 1] == expected_title
+            edited = True
             return _result(argv)
+        if not edited:
+            return _result(argv, stdout=_snapshot(title="[BUG] Crash on startup"))
         return _result(
             argv,
             stdout=_snapshot(
