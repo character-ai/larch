@@ -27,14 +27,20 @@ external-default-features = "allow"
 # google-cloud-auth 1.14.0 uses async-trait's syn 3 parser while larch and the
 # rest of the workspace remain on syn 2. Keep this exact exception until the
 # workspace can converge without changing the reviewed authentication release.
+# Octocrab's
+# rustls and mandatory JWT graphs use adjacent generations of getrandom, syn,
+# untrusted, and windows-sys; the older generation is listed where applicable.
 skip = [
     { name = "block-buffer", version = "=0.10.4" },
     { name = "cpufeatures", version = "=0.2.17" },
     { name = "crypto-common", version = "=0.1.7" },
     { name = "digest", version = "=0.10.7" },
+    { name = "getrandom", version = "=0.2.17" },
     { name = "hashbrown", version = "=0.14.5" },
     { name = "hashbrown", version = "=0.16.1" },
     { name = "syn", version = "=3.0.0" },
+    { name = "untrusted", version = "=0.7.1" },
+    { name = "windows-sys", version = "=0.52.0" },
 ]
 
 [sources]

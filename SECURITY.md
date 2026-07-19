@@ -72,6 +72,40 @@ explicit least-privilege scopes and IAM permissions. Offline tests use local
 fixtures. Live ADC tests are ignored by default, require explicit opt-in, and do
 not render credential headers.
 
+## Rust GitHub Credential and Transport Boundary
+
+The Rust GitHub service reads exactly one non-empty `LARCH_GH_TOKEN` from the
+environment. It never falls back to `GH_TOKEN`, `GITHUB_TOKEN`, GitHub CLI
+configuration, keychain state, argv, stdin, repository content, issue text, or
+session files. Missing, whitespace-only, and non-Unicode values fail before
+network access. The credential is held by a non-`Debug` wrapper, registered by
+exact value with an invocation-owned redactor, and omitted from the typed child
+environment allowlist. Authorization diagnostics pass through that redactor;
+the Octocrab build excludes its tracing feature.
+
+The adapter constructs one private Octocrab client inside the larch Tokio
+runtime. Octocrab is pinned with default features disabled and only its
+rustls-ring client, timeout, and required JWT support enabled. Octocrab 0.54
+requires a JWT backend even though this adapter exposes token authentication
+only; larch selects AWS-LC because the alternative RustCrypto RSA graph carries
+an unpatched advisory. `aws-lc-sys` builds its bundled C and assembly with CMake
+and a platform C compiler; it adds no dynamic system-library requirement and
+is built by the existing four-target release matrix. Automatic redirects and
+retries are disabled. Requests use fixed `User-Agent`, GitHub JSON `Accept`,
+and API-version headers. The API and upload bases are both pinned to
+`https://api.github.com/`; response-supplied
+continuations must remain HTTPS on the same approved origin. The host policy
+also recognizes `https://github.com` for later typed download boundaries but
+does not permit a continuation to cross between the two origins.
+
+Connect, read, write, and overall deadlines are fixed. Overall execution is
+cooperatively cancellable, response bodies and pagination are bounded, and
+only reviewed transient failures from idempotent reads are retry inputs.
+Uncertain mutations route to typed reconciliation instead of automatic retry.
+The core service port exposes policy and typed transport classifications, not
+raw URLs, arbitrary GraphQL documents, or the concrete client. Operation
+leaves must add typed paths and DTOs behind this same adapter.
+
 ## Scoped Live-Mutation Authorization Boundary
 
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.

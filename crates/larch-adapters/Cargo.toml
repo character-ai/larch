@@ -11,7 +11,9 @@ rust-version.workspace = true
 [dependencies]
 gix.workspace = true
 google-cloud-auth.workspace = true
+http.workspace = true
 larch-core.workspace = true
+octocrab.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 tokio.workspace = true

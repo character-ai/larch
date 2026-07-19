@@ -2,6 +2,7 @@
 
 pub mod clock;
 pub mod google_auth;
+pub mod github;
 pub mod logging;
 pub mod process;
 pub mod retry;

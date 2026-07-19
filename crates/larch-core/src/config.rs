@@ -19,8 +19,10 @@ pub mod env {
     pub const CURSOR_API_KEY: &str = "CURSOR_API_KEY";
     /// Temporary directory for an active design run.
     pub const DESIGN_TMPDIR: &str = "DESIGN_TMPDIR";
-    /// GitHub service credential. Larch does not fall back to `GITHUB_TOKEN`.
+    /// Legacy GitHub CLI credential, never read by the Rust GitHub service.
     pub const GH_TOKEN: &str = "GH_TOKEN";
+    /// GitHub Actions credential, never read by the Rust GitHub service.
+    pub const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
     /// Optional Google Application Default Credentials file.
     pub const GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
     /// Current user's home directory.
@@ -41,6 +43,8 @@ pub mod env {
     pub const LARCH_CODEX_VOTE_MODEL: &str = "LARCH_CODEX_VOTE_MODEL";
     /// Optional Cursor model override.
     pub const LARCH_CURSOR_MODEL: &str = "LARCH_CURSOR_MODEL";
+    /// Sole credential read by the Rust GitHub service.
+    pub const LARCH_GH_TOKEN: &str = "LARCH_GH_TOKEN";
     /// Disable run-log commits for the current workflow.
     pub const LARCH_NO_LOGS_COMMIT: &str = "LARCH_NO_LOGS_COMMIT";
     /// Canonical run identifier.
@@ -63,7 +67,7 @@ pub mod env {
     pub const USER: &str = "USER";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 28] = [
+    pub const ALL: [&str; 30] = [
         ANTHROPIC_API_KEY,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
@@ -72,6 +76,7 @@ pub mod env {
         CURSOR_API_KEY,
         DESIGN_TMPDIR,
         GH_TOKEN,
+        GITHUB_TOKEN,
         GOOGLE_APPLICATION_CREDENTIALS,
         HOME,
         IMPLEMENT_TMPDIR,
@@ -82,6 +87,7 @@ pub mod env {
         LARCH_CODEX_REVIEW_MODEL,
         LARCH_CODEX_VOTE_MODEL,
         LARCH_CURSOR_MODEL,
+        LARCH_GH_TOKEN,
         LARCH_NO_LOGS_COMMIT,
         LARCH_RUN_ID,
         LOGNAME,
@@ -103,6 +109,8 @@ mod tests {
     #[test]
     fn environment_names_preserve_live_public_strings() {
         assert_eq!(env::GH_TOKEN, "GH_TOKEN");
+        assert_eq!(env::GITHUB_TOKEN, "GITHUB_TOKEN");
+        assert_eq!(env::LARCH_GH_TOKEN, "LARCH_GH_TOKEN");
         assert_eq!(
             env::GOOGLE_APPLICATION_CREDENTIALS,
             "GOOGLE_APPLICATION_CREDENTIALS"
