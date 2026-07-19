@@ -1535,23 +1535,26 @@ def _probe(
     exit_code: int = 0,
     route: str = "continue",
     conflict_files: str = "",
-) -> bootstrap.push.CheckpointProbeResult:
+) -> bootstrap.rust_runtime.CheckpointProbeOutput:
     routing = {"REBASE_OUTCOME": "ok", "ROUTE": route, "CHECKPOINT_NEXT": "continue"}
     if conflict_files:
         routing["CONFLICT_FILES"] = conflict_files
-    return bootstrap.push.CheckpointProbeResult(
-        exit_code,
-        routing,
+    return bootstrap.rust_runtime.CheckpointProbeOutput(
+        exit_code=exit_code,
+        stdout="",
+        stderr="",
+        routing=routing,
+        advisory_lines=(),
     )
 
 
-def _install_tail_fakes(monkeypatch: pytest.MonkeyPatch, *, gate: bootstrap.agents.DegradedToolsResult | None = None, probe: bootstrap.push.CheckpointProbeResult | None = None) -> None:
+def _install_tail_fakes(monkeypatch: pytest.MonkeyPatch, *, gate: bootstrap.agents.DegradedToolsResult | None = None, probe: bootstrap.rust_runtime.CheckpointProbeOutput | None = None) -> None:
     def healthy_reviewers() -> bootstrap.agents.CheckReviewersResult:
         return _reviewers()
 
     monkeypatch.setattr(bootstrap.agents, "check_reviewers", healthy_reviewers)
     monkeypatch.setattr(bootstrap.agents, "degraded_tools_result", lambda **_kwargs: gate or _gate())
-    monkeypatch.setattr(bootstrap.push, "checkpoint_probe", lambda **_kwargs: probe or _probe())
+    monkeypatch.setattr(bootstrap.rust_runtime, "checkpoint_probe", lambda *_args, **_kwargs: probe or _probe())
 
 
 def test_bootstrap_has_no_cli_self_reentry() -> None:
@@ -1595,7 +1598,7 @@ def test_absorbed_tail_one_down_prompts_interactively(tmp_path: Path, monkeypatc
 def test_absorbed_tail_self_subagents_skip_tool_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bootstrap.agents, "check_reviewers", lambda: (_ for _ in ()).throw(AssertionError("unexpected gate")))
     monkeypatch.setattr(bootstrap.agents, "degraded_tools_result", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected gate")))
-    monkeypatch.setattr(bootstrap.push, "checkpoint_probe", lambda **_kwargs: _probe())
+    monkeypatch.setattr(bootstrap.rust_runtime, "checkpoint_probe", lambda *_args, **_kwargs: _probe())
     tail = bootstrap._run_absorbed_continue_tail(_continue_data(tmp_path), opts=bootstrap.BootstrapOptions(up_to_phase="coder", self_review_requested="true", self_implement_requested="true"), non_interactive=True)  # pyright: ignore[reportPrivateUsage]
     assert tail.routing["DEGRADED"] == "false"
     assert tail.routing["ROUTE"] == "continue"

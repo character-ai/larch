@@ -10,23 +10,23 @@ import sys
 errors=[]
 skill=Path('skills/implement/SKILL.md').read_text()
 ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
-probe=Path('python/larch/git/push.py').read_text()
+owner=Path('crates/larch-cli/src/push_rebase.rs').read_text()
 bootstrap=Path('python/larch/state/bootstrap.py').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
 step7a_py=Path('python/larch/implement/step_7a.py').read_text()
 
-if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 1.r') != 0:
+if skill.count('larch-run.sh" scripts/larch.sh push checkpoint-probe 1.r') != 0:
     errors.append('SKILL.md must not call prompt-side 1.r probe')
-if 'push.checkpoint_probe(' not in bootstrap or 'step_prefix="1.r"' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py must invoke the typed checkpoint probe for 1.r')
+if 'rust_runtime.checkpoint_probe(' not in bootstrap or 'step_prefix="1.r"' not in bootstrap:
+    errors.append('python/larch/state/bootstrap.py must invoke the Rust checkpoint probe for 1.r')
 if 'plan materialization' not in bootstrap:
     errors.append('python/larch/state/bootstrap.py 1.r probe must use plan materialization label')
-if '--forked-target' not in bootstrap or 'REBASE_RC' not in bootstrap:
-    errors.append('python/larch/state/bootstrap.py must pass --forked-target and synthesize REBASE_RC')
+if 'forked_target' not in bootstrap or 'REBASE_RC' not in bootstrap:
+    errors.append('python/larch/state/bootstrap.py must pass forked_target and synthesize REBASE_RC')
 if '"CHECKPOINT_NEXT"' not in bootstrap:
     errors.append('python/larch/state/bootstrap.py must relay CHECKPOINT_NEXT')
-if 'CHECKPOINT_NEXT' not in probe or 'load-routing' not in probe:
-    errors.append('python/larch/git/push.py must emit CHECKPOINT_NEXT continue/load-routing directives')
+if 'CHECKPOINT_NEXT' not in owner or 'load-routing' not in owner:
+    errors.append('crates/larch-cli/src/push_rebase.rs must emit CHECKPOINT_NEXT continue/load-routing directives')
 for needle in [
     'CHECKPOINT_NEXT=continue|load-routing',
     'CHECKPOINT_NEXT=continue` is the only macro no-op predicate',
@@ -36,9 +36,9 @@ for needle in [
 ]:
     if needle not in skill:
         errors.append(f'SKILL.md missing CHECKPOINT_NEXT macro contract {needle!r}')
-if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 0:
+if skill.count('larch-run.sh" scripts/larch.sh push checkpoint-probe 4.r') != 0:
     errors.append('4.r standalone launcher probe call must be folded into the Step 3 composite')
-if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 0:
+if skill.count('larch-run.sh" scripts/larch.sh push checkpoint-probe 7.r') != 0:
     errors.append('7.r standalone launcher probe call must be folded into the Step 6 composite')
 if skill.count('skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"') != 1:
     errors.append('Step 3 composite launcher must carry --rebase-checkpoint-4r and --forked-target')
@@ -61,13 +61,13 @@ for needle in [
 ]:
     if needle not in ref:
         errors.append(f'rebase reference missing {needle}')
-if '--forked-target' not in probe or 'base_remote = args.base_remote or ("upstream"' not in probe or 'base_ref = args.base_ref or "main"' not in probe:
-    errors.append('python/larch/git/push.py does not implement --forked-target upstream/main mapping')
+if '--forked-target' not in owner or 'FORKED_REMOTE' not in owner or '"upstream"' not in owner or '"main"' not in owner:
+    errors.append('crates/larch-cli/src/push_rebase.rs does not implement --forked-target upstream/main mapping')
 if 'implement step-7a' not in step7a or 'python/cli.py' not in step7a:
     errors.append('step-7a.sh must delegate to python/cli.py implement step-7a')
-if '"push"' not in step7a_py or '"checkpoint-probe"' not in step7a_py or '"7a.r"' not in step7a_py:
-    errors.append('python/step_7a.py must keep one internal 7a.r probe invocation')
-if '"--base-remote"' not in step7a_py or '"--base-ref"' not in step7a_py or 'base_remote = "upstream"' not in step7a_py:
+if 'rust_runtime.checkpoint_probe(' not in step7a_py or 'step_prefix="7a.r"' not in step7a_py:
+    errors.append('python/step_7a.py must keep one internal 7a.r Rust probe invocation')
+if 'base_remote=base_remote' not in step7a_py or 'base_ref=base_ref' not in step7a_py or 'base_remote = "upstream"' not in step7a_py:
     errors.append('python/step_7a.py must keep its internal base derivation')
 if errors:
     print('\n'.join(errors), file=sys.stderr)

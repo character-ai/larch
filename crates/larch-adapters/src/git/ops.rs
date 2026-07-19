@@ -851,6 +851,10 @@ pub enum ForceWithLease {
         reference: GitRef,
         oid: GitRef,
     },
+    /// Require the remote reference to be absent (empty `<expect>` after the colon).
+    ExpectingAbsent {
+        reference: GitRef,
+    },
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PushRequest {
@@ -873,6 +877,12 @@ impl PushRequest {
                 flag.push(reference.as_os_str());
                 flag.push(":");
                 flag.push(oid.as_os_str());
+                a.push(flag);
+            }
+            Some(ForceWithLease::ExpectingAbsent { reference }) => {
+                let mut flag = OsString::from("--force-with-lease=");
+                flag.push(reference.as_os_str());
+                flag.push(":");
                 a.push(flag);
             }
             None => {}

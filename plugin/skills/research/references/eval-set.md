@@ -13,11 +13,11 @@
 ## Entries
 
 ### eval-1: where-defined-rebase-push
-- **question**: Where is `python/cli.py push rebase` defined in this repository, what does its `--skip-if-pushed` flag do, and which scripts consume it?
+- **question**: Where is `scripts/larch.sh push rebase` defined in this repository, what does its `--skip-if-pushed` flag do, and which callers consume it?
 - **category**: lookup
 - **expected_provenance_count**: 3
-- **expected_keywords**: python/cli.py push rebase, --skip-if-pushed, SKIPPED_ALREADY_PUSHED, python/rebase.py
-- **notes**: Lookup; should cite `python/cli.py push rebase` plus at least two consumers (the Rebase Checkpoint Macro in `/implement` and any Step 1 / Step 1.m caller).
+- **expected_keywords**: scripts/larch.sh push rebase, --skip-if-pushed, SKIPPED_ALREADY_PUSHED, crates/larch-cli/src/push_rebase.rs
+- **notes**: Lookup; should cite the Rust owner `crates/larch-cli/src/push_rebase.rs` plus at least two consumers (the Rebase Checkpoint Macro in `/implement` and the fork-mode CI comparison caller).
 
 ### eval-2: deny-edit-write-hook-contract
 - **question**: How does the `/research` skill's best-effort read-only contract partition mechanically enforced versus prompt-enforced perimeters, what hook backs the mechanical tier, and what tools fall under the prompt-enforced tier?
@@ -114,7 +114,7 @@
 - **question**: What are the failure modes of `/implement`'s CI-fix rebase/conflict-resolution flow, and how does each map to Step 12 hard-bail versus Step 10 graceful-degrade behavior?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: python/cli.py push rebase, conflict-resolution.md, ship_pr_pre_push, force-push, hard-bail, 12d, step10
+- **expected_keywords**: scripts/larch.sh push rebase, conflict-resolution.md, ship_pr_pre_push, force-push, hard-bail, 12d, step10
 - **notes**: Risk; should enumerate at least three failure modes (remaining rebase conflict handoff, unresolved conflict-resolution bail, force-push rejection, post-rebase verification failure) and pair each with the correct Step 12 versus Step 10 disposition.
 
 ### eval-16: deny-edit-write-bypass-blast-radius

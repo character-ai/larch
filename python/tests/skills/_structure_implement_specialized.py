@@ -340,8 +340,8 @@ def run(repo_root: Path) -> list[str]:
         for needle in ["2-post-dispatch", "step-2-post-dispatch.sh", "8-pre-ship", "Do not probe when `STATUS=claude_fallback`"]:
             if needle not in phantom_ref:
                 checks.append(f"phantom-probe.md missing {needle!r}")
-        require("python/larch/git/push.py", "--forked-target", "rebase probe forked target flag")
-        require("python/larch/git/push.py", "CHECKPOINT_NEXT", "rebase probe checkpoint directive")
+        require("crates/larch-cli/src/push_rebase.rs", "--forked-target", "rebase probe forked target flag")
+        require("crates/larch-cli/src/push_rebase.rs", "CHECKPOINT_NEXT", "rebase probe checkpoint directive")
         require("python/larch/state/bootstrap.py", '"CHECKPOINT_NEXT"', "bootstrap checkpoint directive relay")
         require(skill, "CHECKPOINT_NEXT=continue|load-routing", "SKILL checkpoint directive macro")
         require(skill, "The `7a.r` macro skip is `CHECKPOINT_NEXT`-only", "SKILL Step 7a checkpoint-only macro skip")
@@ -473,7 +473,7 @@ def run(repo_root: Path) -> list[str]:
                 if needle not in conflict_text:
                     checks.append(f"conflict-resolution.md missing {needle!r}")
             for needle in [
-                'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict',
+                '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" push rebase --continue --no-push --keep-on-conflict',
                 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh",
                 "Step 8 bgjob start/wait",
                 "`larch:ci-fixer`",
@@ -505,7 +505,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/state/bootstrap.py", 'preserve_coder=args.resume == "true"', "bootstrap parse-routing resume preserves coder")
         forbid(skill, launcher + "skills/implement/scripts/step-0-degraded-gate.sh", "SKILL active flow must not call step-0-degraded-gate.sh")
         require("python/larch/state/bootstrap.py", "degraded-tools-gate", "bootstrap absorbed degraded gate")
-        require("python/larch/state/bootstrap.py", "push.checkpoint_probe(", "bootstrap uses the typed absorbed 1.r probe")
+        require("python/larch/state/bootstrap.py", "rust_runtime.checkpoint_probe(", "bootstrap uses the typed absorbed 1.r probe")
         require("python/larch/state/bootstrap.py", "DEGRADED_PROMPT_REQUIRED", "bootstrap degraded prompt routing")
         require("python/larch/state/bootstrap.py", "REBASE_RC", "bootstrap rebase rc synthesis")
         require("python/larch/state/bootstrap.py", "result.advisory_lines", "bootstrap relays typed phantom advisories")

@@ -20,13 +20,13 @@ from pathlib import Path
 
 from larch.calibration.difficulty import resolve_step2_effective_difficulty
 from larch.state import dirty_tree, session_env
-from larch.core import config, external_defaults, proc
+from larch.core import config, external_defaults, proc, rust_runtime
 from larch import io as larch_io
 from larch.core import logging_util, redact
 from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
 from larch.design import plan_grammar, plan_quality
-from larch.git import gh, git, pr, pr_body, push
+from larch.git import gh, git, pr, pr_body
 from larch.issue import issue_query, tracking_issue
 from larch.report import progress_file, run_log_batch, run_logs, statusline_install, timing, tokens
 from larch.agents import agents
@@ -1485,8 +1485,10 @@ def _refresh_gate_probe(st: BootstrapState) -> str | None:
     return None
 
 def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
-    result = push.checkpoint_probe(
-        step_prefix="1.r", short_name="plan materialization",
+    result = rust_runtime.checkpoint_probe(
+        proc,
+        step_prefix="1.r",
+        short_name="plan materialization",
         forked_target=forked_target if forked_target in {"true", "false"} else "false",
     )
     routing = dict(result.routing)

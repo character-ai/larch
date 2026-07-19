@@ -729,8 +729,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("pr", "compose-summary"): ("larch.git.pr_body", "compose_pr_summary_main", True),
     ("oos", "serialize"): ("larch.issue.oos", "oos_serialize_main", False),
     ("oos", "normalize-header"): ("larch.issue.oos", "oos_normalize_header_main", False),
-    ("push", "rebase"): ("larch.git.push", "rebase_main", False),
-    ("push", "checkpoint-probe"): ("larch.git.push", "checkpoint_probe_main", False),
     ("pr", "create-branch"): ("larch.git.pr", "create_branch_main", False),
     ("pr", "create"): ("larch.git.pr", "create_main", False),
     ("pr", "body-update"): ("larch.git.pr", "body_update_main", False),

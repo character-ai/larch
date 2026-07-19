@@ -75,7 +75,7 @@ Half of expert knowledge is knowing what NOT to do. Models do not have this intu
 - **Include an explicit NEVER list** where the skill touches fragile or commonly-mistaken patterns.
 - **Always state the reason.** `"NEVER use purple gradient on white background — it is the signature of AI-generated content"` is useful. `"NEVER use bad colors"` is not.
 - **Weak anti-patterns:** "Avoid errors", "be careful with edge cases", "write clean code" — these are generic filler Claude already knows.
-- **Strong anti-patterns** read like incident reports: `"NEVER skip the python/cli.py push rebase --continue path when handling a conflict. This leaves the rebase in progress and the next invocation fails with a cryptic error"`.
+- **Strong anti-patterns** read like incident reports: `"NEVER skip the scripts/larch.sh push rebase --continue path when handling a conflict. This leaves the rebase in progress and the next invocation fails with a cryptic error"`.
 
 When you find yourself writing a vague anti-pattern, either sharpen it with a specific WHY or delete it.
 

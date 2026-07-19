@@ -590,10 +590,10 @@ exclude = [
   # dirty-tree detector. Referenced only from Makefile
   # (test-check-mid-run-dirty-tree target) and its sibling contract.
   "python/test_dirty_tree.py",
-  # python/cli.py push checkpoint-probe — combined /implement rebase checkpoint +
-  # post-rebase phantom probe; invoked only from skills/implement/SKILL.md
-  # foreground fences (G004 does not follow markdown invocations).
-  "python/cli.py push checkpoint-probe",
+  # skills/implement/references/rebase-checkpoint-routing.md is a lazy reference
+  # target invoked only from skills/implement/SKILL.md foreground fences (G004
+  # does not follow markdown invocations). The rebase checkpoint command itself
+  # moved to the Rust runtime in #7762.
   "skills/implement/references/rebase-checkpoint-routing.md",
   # python/cli.py checks repair-loop is invoked from SKILL.md failure-path
   # prose via reference indirection; G004 does not follow markdown
@@ -1370,8 +1370,8 @@ closure-max-lines = 3830
 closure-max-tokens = 145390
 closure-max-content-tokens = 145084
 conditional-max-lines = 591
-conditional-max-tokens = 18798
-conditional-max-content-tokens = 18750
+conditional-max-tokens = 18803
+conditional-max-content-tokens = 18756
 
 [[lint.prompt-source-budgets]]
 name = "review"

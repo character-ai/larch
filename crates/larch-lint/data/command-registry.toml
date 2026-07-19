@@ -5058,11 +5058,11 @@ verb = "checkpoint-probe"
 python_module = "larch.git.push"
 python_function = "checkpoint_probe_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7762
 
 [[commands]]
 domain = "push"
@@ -5082,11 +5082,11 @@ verb = "rebase"
 python_module = "larch.git.push"
 python_function = "rebase_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7762
 
 [[commands]]
 domain = "redact"
@@ -7689,8 +7689,8 @@ rust = []
 [[callers]]
 path = "agents/ci-fixer.md"
 kind = "agent"
-python = ["ci distill-log", "push rebase"]
-rust = ["git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "git stage", "push branch"]
+python = ["ci distill-log"]
+rust = ["git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "git stage", "push branch", "push rebase"]
 
 [[callers]]
 path = "agents/claude-implementer.md"
@@ -7804,7 +7804,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["git phantom-probe", "push branch"]
+rust = ["git phantom-probe", "push branch", "push checkpoint-probe"]
 
 [[callers]]
 path = "python/larch/core/verify_skill.py"
@@ -7859,12 +7859,6 @@ path = "python/larch/design/design_summary.py"
 kind = "python-runtime"
 python = ["render run-summary"]
 rust = []
-
-[[callers]]
-path = "python/larch/git/push.py"
-kind = "python-runtime"
-python = []
-rust = ["git checkout-ours", "git rebase-skip"]
 
 [[callers]]
 path = "python/larch/git/rebase.py"
@@ -8445,8 +8439,8 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-finalize", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "push checkpoint-probe", "push rebase", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
-rust = ["git current-branch", "push branch"]
+python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-finalize", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["git current-branch", "push branch", "push checkpoint-probe", "push rebase"]
 
 [[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
@@ -8481,8 +8475,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/conflict-resolution.md"
 kind = "skill"
-python = ["push rebase"]
-rust = ["git rebase-abort"]
+python = []
+rust = ["git rebase-abort", "push rebase"]
 
 [[callers]]
 path = "skills/implement/references/execution-issues-tracking.md"
@@ -8505,8 +8499,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/phantom-probe.md"
 kind = "skill"
-python = ["push checkpoint-probe"]
-rust = ["git phantom-probe"]
+python = []
+rust = ["git phantom-probe", "push checkpoint-probe"]
 
 [[callers]]
 path = "skills/implement/references/preflight-plan-audit.md"
@@ -8517,8 +8511,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/rebase-checkpoint-routing.md"
 kind = "skill"
-python = ["implement step-7a", "push checkpoint-probe", "push rebase"]
-rust = ["git rebase-abort"]
+python = ["implement step-7a"]
+rust = ["git rebase-abort", "push checkpoint-probe", "push rebase"]
 
 [[callers]]
 path = "skills/implement/references/self-review.md"
@@ -8751,8 +8745,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-7a.md"
 kind = "skill"
-python = ["diagrams upsert", "push checkpoint-probe", "tracking-issue upsert-summary"]
-rust = []
+python = ["diagrams upsert", "tracking-issue upsert-summary"]
+rust = ["push checkpoint-probe"]
 
 [[callers]]
 path = "skills/implement/scripts/step-7a.sh"
@@ -8901,8 +8895,8 @@ rust = []
 [[callers]]
 path = "skills/research/references/eval-set.md"
 kind = "skill"
-python = ["admission gate", "eval research", "plan-review run", "push rebase", "tracking-issue upsert-summary"]
-rust = []
+python = ["admission gate", "eval research", "plan-review run", "tracking-issue upsert-summary"]
+rust = ["push rebase"]
 
 [[callers]]
 path = "skills/research/references/research-phase.md"
@@ -9003,8 +8997,8 @@ rust = []
 [[callers]]
 path = "skills/shared/skill-design-principles.md"
 kind = "skill"
-python = ["push rebase"]
-rust = []
+python = []
+rust = ["push rebase"]
 
 [[callers]]
 path = "skills/shared/subskill-invocation.md"

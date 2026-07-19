@@ -26,7 +26,7 @@ skills/implement/scripts/step-7a.sh \
 | `LOG_FLUSH_STATUS` | `ok`, `degraded`, or `skipped-no-logs-commit`; rebase failure emits the same real flush status as success paths |
 | `STEP_7A_BAIL_REASON` | Empty on non-argument paths; `argv`, `missing-implement-tmpdir`, or `invalid-implement-tmpdir` on argument validation errors |
 
-The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
+The helper re-emits the `scripts/larch.sh push checkpoint-probe` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
 
 ## Exit Codes
 

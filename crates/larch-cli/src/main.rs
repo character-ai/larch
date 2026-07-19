@@ -18,6 +18,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 mod git_commands;
 mod github_repository_resolution;
 mod push_network;
+mod push_rebase;
 mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
@@ -348,6 +349,10 @@ enum PushSubcommand {
     Branch(TrailingArguments),
     /// Force-push the current branch with a lease.
     Force(PushForceArguments),
+    /// Rebase the current branch onto its base, then optionally force-push.
+    Rebase(TrailingArguments),
+    /// Rebase checkpoint probe with trivial-conflict pre-pass and phantom tail.
+    CheckpointProbe(TrailingArguments),
 }
 
 #[derive(Args)]
@@ -403,6 +408,10 @@ fn run(
         Domain::Push(PushSubcommand::Force(arguments)) => Ok(push_network::force(
             arguments.expected_remote_oid.as_deref(),
         )),
+        Domain::Push(PushSubcommand::Rebase(arguments)) => Ok(push_rebase::rebase(&arguments.args)),
+        Domain::Push(PushSubcommand::CheckpointProbe(arguments)) => {
+            Ok(push_rebase::checkpoint_probe(&arguments.args))
+        }
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {
                 let version = arguments
@@ -759,26 +768,46 @@ fn check_phantom_dirty(baseline: &Path, step: &str, paths_dir: &Path) -> Phantom
 }
 
 fn phantom_probe(arguments: &PhantomProbeArguments) {
-    eprintln!("→ phantom-probe: {}", arguments.step);
+    for line in phantom_probe_lines(&arguments.step, arguments.baseline_file.as_deref(), true) {
+        println!("{line}");
+    }
+}
+
+/// Produce the `PHANTOM_*` advisory rows for a checkpoint step. Shared by the
+/// `git phantom-probe` command and the `push checkpoint-probe` success tail so
+/// both compose the #7757 phantom inspection through one owner. `announce`
+/// mirrors the command's stderr banner; the checkpoint tail suppresses it
+/// because Python swallowed the probe subprocess's stderr.
+pub(crate) fn phantom_probe_lines(
+    step: &str,
+    baseline_override: Option<&Path>,
+    announce: bool,
+) -> Vec<String> {
+    if announce {
+        eprintln!("→ phantom-probe: {step}");
+    }
     let Some(implement_tmpdir) = env::var_os("IMPLEMENT_TMPDIR").filter(|value| !value.is_empty())
     else {
-        emit_phantom_dirty(
+        return phantom_dirty_lines(
             &PhantomDirtyResult::unknown("IMPLEMENT_TMPDIR-unset"),
             "PHANTOM_",
         );
-        return;
     };
     let implement_tmpdir = PathBuf::from(implement_tmpdir);
-    let baseline = arguments
-        .baseline_file
-        .clone()
-        .unwrap_or_else(|| implement_tmpdir.join("untracked-baseline.z"));
-    let result = check_phantom_dirty(&baseline, &arguments.step, &implement_tmpdir);
-    let append_error = append_phantom_warning(&implement_tmpdir, &arguments.step, &result);
-    emit_phantom_dirty(&result, "PHANTOM_");
+    let baseline = baseline_override.map_or_else(
+        || implement_tmpdir.join("untracked-baseline.z"),
+        Path::to_path_buf,
+    );
+    let result = check_phantom_dirty(&baseline, step, &implement_tmpdir);
+    let append_error = append_phantom_warning(&implement_tmpdir, step, &result);
+    let mut lines = phantom_dirty_lines(&result, "PHANTOM_");
     if let Some(error) = append_error {
-        println!("PHANTOM_APPEND_WARN_ERROR={}", fold_whitespace(&error));
+        lines.push(format!(
+            "PHANTOM_APPEND_WARN_ERROR={}",
+            fold_whitespace(&error)
+        ));
     }
+    lines
 }
 
 fn append_phantom_warning(
@@ -920,16 +949,23 @@ fn insert_warning_entry(text: &str, entry: &str) -> String {
     output.join("\n") + "\n"
 }
 
-fn emit_phantom_dirty(result: &PhantomDirtyResult, prefix: &str) {
-    println!("{prefix}STATUS={}", result.status);
+fn phantom_dirty_lines(result: &PhantomDirtyResult, prefix: &str) -> Vec<String> {
+    let mut lines = vec![format!("{prefix}STATUS={}", result.status)];
     if let Some(reason) = result.reason {
-        println!("{prefix}REASON={reason}");
+        lines.push(format!("{prefix}REASON={reason}"));
     }
     if result.status == "phantom" {
-        println!("PHANTOM_COUNT={}", result.count);
+        lines.push(format!("PHANTOM_COUNT={}", result.count));
         if let Some(paths_file) = &result.paths_file {
-            println!("PHANTOM_PATHS_FILE={}", paths_file.display());
+            lines.push(format!("PHANTOM_PATHS_FILE={}", paths_file.display()));
         }
+    }
+    lines
+}
+
+fn emit_phantom_dirty(result: &PhantomDirtyResult, prefix: &str) {
+    for line in phantom_dirty_lines(result, prefix) {
+        println!("{line}");
     }
 }
 

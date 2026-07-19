@@ -22,7 +22,9 @@ from larch.bgjob import daemon as bgjob_daemon
 from larch.bgjob import model as bgjob_model
 from larch.bgjob import registry as bgjob_registry
 from larch.core import config
+from larch.core import proc
 from larch.core import redact
+from larch.core import rust_runtime
 from larch.errors import ShipError
 from larch.implement import checks
 from larch.implement import checks_result_identity
@@ -1066,14 +1068,16 @@ def _run_commit_route_leg(
 
 
 def _run_7r_rebase_checkpoint(forked_target: str) -> int:
-    result = _invoke_cli(["push", "checkpoint-probe", "7.r", "commit (review)", "--forked-target", forked_target])
+    result = rust_runtime.checkpoint_probe(
+        proc, step_prefix="7.r", short_name="commit (review)", forked_target=forked_target,
+    )
     for line in result.stdout.splitlines():
         if line:
             print(line)
     if result.stderr:
         sys.stderr.write(result.stderr)
         sys.stderr.flush()
-    return result.returncode
+    return result.exit_code
 
 
 _STEP4_COMMIT_SITE = CommitRouteSite(
@@ -1378,7 +1382,9 @@ def _run_step4_recovery_recompute(implement_tmpdir: Path, *, repo_root: Path) ->
 
 
 def _run_4r_rebase_checkpoint(forked_target: str) -> int:
-    result = _invoke_cli(["push", "checkpoint-probe", "4.r", "commit (impl)", "--forked-target", forked_target])
+    result = rust_runtime.checkpoint_probe(
+        proc, step_prefix="4.r", short_name="commit (impl)", forked_target=forked_target,
+    )
     for line in result.stdout.splitlines():
         if line:
             print(line)
@@ -1386,7 +1392,7 @@ def _run_4r_rebase_checkpoint(forked_target: str) -> int:
         sys.stderr.write(result.stderr)
         sys.stderr.flush()
     _emit_kv(key="NEXT_ACTION", value="continue")
-    return result.returncode
+    return result.exit_code
 
 
 def _run_step5_resume_leg(

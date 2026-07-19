@@ -25,6 +25,68 @@ class PushOutput:
     branch: str = ""
 
 
+@dataclass(frozen=True)
+class CheckpointProbeOutput:
+    """Parsed result from the Rust-owned ``push checkpoint-probe`` command.
+
+    ``routing`` holds the ``KEY=value`` rebase-routing rows; ``advisory_lines``
+    holds the trailing ``PHANTOM_*`` phantom-probe rows. The split mirrors the
+    retired Python ``CheckpointProbeResult`` so consumers keep their contract.
+    """
+
+    exit_code: int
+    stdout: str
+    stderr: str
+    routing: dict[str, str]
+    advisory_lines: tuple[str, ...]
+
+
+def checkpoint_probe(  # noqa: PLR0913 - mirrors the checkpoint-probe CLI arg surface (step, name, forked, base) plus the injected runner
+    runner: Runner,
+    *,
+    step_prefix: str,
+    short_name: str,
+    forked_target: str = "false",
+    base_remote: str | None = None,
+    base_ref: str | None = None,
+    cwd: str | None = None,
+) -> CheckpointProbeOutput:
+    """Invoke the Rust checkpoint-probe owner and split routing from phantom advisory."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "push",
+        "checkpoint-probe",
+        step_prefix,
+        short_name,
+        "--forked-target",
+        forked_target,
+    ]
+    if base_remote is not None:
+        argv.extend(["--base-remote", base_remote])
+    if base_ref is not None:
+        argv.extend(["--base-ref", base_ref])
+    result = runner.run(argv, cwd=cwd)
+    routing: dict[str, str] = {}
+    advisory: list[str] = []
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("PHANTOM_"):
+            advisory.append(line)
+        elif "=" in line:
+            key, _, value = line.partition("=")
+            routing[key] = value
+        else:
+            advisory.append(line)
+    return CheckpointProbeOutput(
+        exit_code=result.returncode,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        routing=routing,
+        advisory_lines=tuple(advisory),
+    )
+
+
 def phantom_probe(runner: Runner, *, step: str, cwd: str | None = None) -> PhantomProbeOutput:
     """Invoke the Rust owner and fail closed when its KV envelope is absent."""
     result = runner.run(
