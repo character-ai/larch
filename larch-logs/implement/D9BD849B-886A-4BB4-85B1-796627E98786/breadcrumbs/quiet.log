@@ -6,5 +6,24 @@
 === larch-quiet-ship.py-15636.log ===
 ship.py: pr-prep: postbump/Flush+Push
 === larch-quiet-ship.py-1919.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 13s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 27s
+ci_monitor: poll 3/180 pending after 31s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 41s
+ci_monitor: poll 4/180 pending after 45s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 55s
+ci_monitor: poll 5/180 pending after 58s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 68s
+ci_monitor: poll 6/180 pending after 72s; sleeping 10s
+ci_monitor: CI status query #7 in progress after 82s
+ci_monitor: CI fail after 86s -> evaluate_failure
+=== larch-quiet-ship.py-30040.log ===
+ship.py: pre-pr-reentry: de-terminalized prior phase stalled -> assessments
+=== larch-quiet-ship.py-37641.log ===
 === larch-quiet-ship.py-71383.log ===
 ship.py: pr-prep: postbump/Flush+Push
