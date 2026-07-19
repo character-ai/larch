@@ -740,8 +740,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("git", "commit"): ("larch.git.git", "commit_main", False),
     ("git", "stage"): ("larch.git.git", "stage_main", False),
     ("git", "amend-add"): ("larch.git.git", "amend_add_main", False),
-    ("git", "sync-local-main"): ("larch.git.git", "sync_local_main_main", False),
-    ("git", "check-main-sync"): ("larch.git.git", "check_main_sync_main", False),
     ("push", "rebase"): ("larch.git.push", "rebase_main", False),
     ("push", "checkpoint-probe"): ("larch.git.push", "checkpoint_probe_main", False),
     ("pr", "create-branch"): ("larch.git.pr", "create_branch_main", False),
