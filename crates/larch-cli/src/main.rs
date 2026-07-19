@@ -20,6 +20,7 @@ mod github_repository_resolution;
 mod push_network;
 mod release_plugin_runtime;
 mod release_prepare;
+mod release_version;
 
 use git_commands::GitCommand;
 
@@ -199,6 +200,8 @@ enum ReleaseCommand {
     Prepare(PrepareReleaseArguments),
     /// Generate or validate the runtime-only plugin projection.
     PluginRuntime(PluginRuntimeArguments),
+    /// Update every synchronized release version surface.
+    SetVersion(SetVersionArguments),
 }
 
 #[derive(Subcommand)]
@@ -223,6 +226,11 @@ struct PrepareReleaseArguments {
     bump: Option<String>,
     #[arg(long, required = true)]
     out_dir: PathBuf,
+}
+
+#[derive(Args)]
+struct SetVersionArguments {
+    version: String,
 }
 
 #[derive(Subcommand)]
@@ -337,6 +345,7 @@ fn run(
                     .map(|()| ExitCode::SUCCESS)
                     .map_err(command_failure)
             }
+            ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
         },
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());

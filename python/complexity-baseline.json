@@ -5136,30 +5136,6 @@
     "history": []
   },
   {
-    "file": "larch/release/version_bump.py",
-    "code": "C901",
-    "qualified_symbol": "apply_bump",
-    "metric": 21,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
-    "code": "PLR0911",
-    "qualified_symbol": "apply_bump",
-    "metric": 8,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/release/version_bump.py",
-    "code": "PLR0915",
-    "qualified_symbol": "apply_bump",
-    "metric": 60,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/rendering/_rendering_generators.py",
     "code": "C901",
     "qualified_symbol": "generate_check_main",

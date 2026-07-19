@@ -5322,11 +5322,11 @@ verb = "set-version"
 python_module = "larch.release.version_bump"
 python_function = "set_version_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7750
 
 [[commands]]
 domain = "release"

@@ -87,7 +87,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("dirty-tree", "checkpoint"): ("larch.state.dirty_tree", "checkpoint_main", True),
     ("dirty-tree", "scope-check"): ("larch.state.dirty_tree", "scope_check_main", False),
     ("dirty-tree", "scope-marker"): ("larch.state.dirty_tree", "scope_marker_main", False),
-    ("release", "set-version"): ("larch.release.version_bump", "set_version_main", False),
     ("release", "asset-candidate"): ("larch.release.assets", "candidate_main", False),
     ("release", "package-asset"): ("larch.release.assets", "package_main", False),
     ("release", "collect-assets"): ("larch.release.assets", "collect_main", False),
