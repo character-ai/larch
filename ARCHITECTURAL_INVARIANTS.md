@@ -177,3 +177,7 @@ test_ship_pre_fix_rebase_closed_pr_does_not_override_conflict_handoff in
 python/tests/implement/test_implement_dispatch.py; extend the guard and tests
 when a new recovery route can reach a rebase or push for a closed or merged
 PR.
+
+### I-Plan-1: Force can waive review, never the execution plan
+
+Every `/implement` run consumes exactly one well-formed issue-body `larch:plan` block with concrete file or glob scope, ordered implementation steps, closed ownership decisions, verifiable acceptance, and explicit breaking-change or migration treatment. `--force` may waive semantic plan review and approval metadata. It must not materialize raw issue prose as a plan, infer an execution sequence from requirements, or bypass the mechanical plan contract. Evidence of violation: #7735 entered `/implement --force` with requirements-only prose and stalled on a false missing-runtime-seam premise. Mechanical backing: `issue-plan-contract`, `plan-scope-paths`, and force admission validation.

@@ -15,11 +15,52 @@ import pytest
 from larch.core.proc import CommandResult
 from larch.implement import preflight
 from larch.design import plan_grammar
+from larch.issue import issue_wire
+
+
+@pytest.fixture(autouse=True)
+def _stub_tracked_paths_for_plan_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Preflight tests stub subprocess.run; keep M2 off the patched git seam."""
+    monkeypatch.setattr(
+        plan_grammar,
+        "_load_tracked_paths",
+        lambda _repo_root: frozenset(
+            {
+                "python/larch/implement/preflight.py",
+                "python/larch/design/plan_grammar.py",
+                "README.md",
+            }
+        ),
+    )
 
 
 def _write(handle: object, text: str) -> None:
     if hasattr(handle, "write"):
         _ = handle.write(text)  # type: ignore[attr-defined]
+
+
+def _executable_plan_inner(*, review_status: str = "complete", rounds_completed: int = 2, extra_body: str = "") -> str:
+    return (
+        "## Plan\n\n"
+        "### Closed decisions and ownership\n\n"
+        "- Fixture owns this plan.\n\n"
+        "### Ordered implementation\n\n"
+        "1. Apply the change.\n\n"
+        "## Files to modify/create\n\n"
+        "### UPDATED: python/larch/implement/preflight.py\n\n"
+        f"{extra_body}"
+        "## Acceptance\n\n"
+        "- Fixture acceptance holds.\n\n"
+        "## Breaking changes and migration\n\n"
+        "None.\n\n"
+        f"review_status: {review_status}\n"
+        f"rounds_completed: {rounds_completed}\n"
+        "diff_lines: 12\n"
+    )
+
+
+def _body_with_plan(plan_inner: str) -> str:
+    return "prologue\n" + issue_wire.compose_named_block(marker="plan", inner=plan_inner)
 
 
 def test_read_kv_lines_uses_last_duplicate_value() -> None:
@@ -174,6 +215,10 @@ def test_preflight_success_emits_kv_and_forwards_repo(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     calls: list[list[str]] = []
+    plan_inner = _executable_plan_inner(extra_body="")
+    # include difficulty trailer for DESIGN_DIFFICULTY
+    plan_inner = plan_inner.replace("diff_lines: 12\n", "difficulty: MODERATE\ndiff_lines: 12\n")
+    body = _body_with_plan(plan_inner)
 
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         calls.append(list(argv))
@@ -183,12 +228,12 @@ def test_preflight_success_emits_kv_and_forwards_repo(
             return _fake_completed(argv)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: complete\nrounds_completed: 2\ndifficulty: MODERATE\ndiff_lines: 12\n", encoding="utf-8")
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
             return _fake_completed(argv)
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "[DESIGNED] Work", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "[DESIGNED] Work", "body": body})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "12", "--repo", "o/r", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
@@ -200,10 +245,10 @@ def test_preflight_success_emits_kv_and_forwards_repo(
     assert "BYPASS_COUNT=0" in out
     assert "MAIN_CI_STATUS=error" in out
     assert (tmp_path / "main-health.env").is_file()
-    assert (tmp_path / "issue.json").read_text(encoding="utf-8") == '{"title": "[DESIGNED] Work", "body": "body"}'
-    assert (tmp_path / "gh-issue-view.stderr").read_text(encoding="utf-8") == ""
+    assert (tmp_path / "issue.json").read_text(encoding="utf-8")
     assert any(call[-2:] == ["--repo", "o/r"] for call in calls if "admission" in call)
     assert any(call[-2:] == ["--repo", "o/r"] for call in calls if "plan-block" in call)
+
 
 
 def test_preflight_success_envelope_validation_failure_returns_two(
@@ -211,6 +256,9 @@ def test_preflight_success_envelope_validation_failure_returns_two(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = _executable_plan_inner()
+    body = _body_with_plan(plan_inner)
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
@@ -218,7 +266,7 @@ def test_preflight_success_envelope_validation_failure_returns_two(
             return _fake_completed(argv)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 12\n", encoding="utf-8")
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
             return _fake_completed(argv)
         return _fake_completed(argv)
@@ -229,7 +277,7 @@ def test_preflight_success_envelope_validation_failure_returns_two(
         rows = original_rows(values)
         return [(key, "empty" if key == "RESUME" else value) for key, value in rows]
 
-    _stub_issue_view(monkeypatch, payload={"title": "Work", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Work", "body": body})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     monkeypatch.setattr(preflight, "_success_envelope_rows", malformed_rows)  # pyright: ignore[reportPrivateUsage]
     rc = preflight.preflight_main(["--issue", "12", "--preflight-tmpdir", str(tmp_path)])
@@ -239,7 +287,7 @@ def test_preflight_success_envelope_validation_failure_returns_two(
     assert "PLAN_PATH=" not in out
 
 
-def test_preflight_force_missing_plan_uses_raw_body(
+def test_preflight_force_missing_plan_refuses_without_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -255,14 +303,15 @@ def test_preflight_force_missing_plan_uses_raw_body(
     _stub_issue_view(monkeypatch, payload={"title": "[IMPLEMENTING] Title", "body": "Do the thing"})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "5", "--force", "--preflight-tmpdir", str(tmp_path)])
-    assert rc == 0
-    assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Do the thing"
+    assert rc == 2
+    assert not (tmp_path / "plan-from-issue.txt").exists() or (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == ""
     out = capsys.readouterr().out
-    assert "raw issue body" in out
-    assert "BYPASS_COUNT=1" in out
+    assert "missing-plan-block" in out
+    assert plan_grammar.FORCE_PLAN_CONTRACT_ERROR in out
+    assert "raw issue body" not in out
 
 
-def test_preflight_force_short_flag_missing_plan_uses_raw_body(
+def test_preflight_force_short_flag_missing_plan_refuses_without_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -278,11 +327,10 @@ def test_preflight_force_short_flag_missing_plan_uses_raw_body(
     _stub_issue_view(monkeypatch, payload={"title": "[IMPLEMENTING] Title", "body": "Do the thing"})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "5", "-f", "--preflight-tmpdir", str(tmp_path)])
-    assert rc == 0
-    assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Do the thing"
+    assert rc == 2
     out = capsys.readouterr().out
-    assert "raw issue body" in out
-    assert "BYPASS_COUNT=1" in out
+    assert "missing-plan-block" in out
+    assert plan_grammar.FORCE_PLAN_CONTRACT_ERROR in out
 
 
 def test_preflight_refuses_admission_failure(
@@ -308,24 +356,21 @@ def test_preflight_allows_footer_rounds_completed_despite_body_prose(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = _executable_plan_inner(
+        extra_body="Illustrative example: rounds_completed: 0\n\n",
+    )
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
             _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text(
-                "Illustrative example: rounds_completed: 0\n\n"
-                "review_status: complete\n"
-                "rounds_completed: 2\n"
-                "oversize_override: operator\n"
-                "diff_lines: 12\n",
-                encoding="utf-8",
-            )
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": _body_with_plan(plan_inner)})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "5", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
@@ -337,20 +382,28 @@ def test_preflight_refuses_malformed_rounds_completed_metadata(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = (
+        "## Plan\n\n"
+        "### Closed decisions and ownership\n\n- x\n\n"
+        "### Ordered implementation\n\n1. x\n\n"
+        "## Files to modify/create\n\n"
+        "### UPDATED: python/larch/implement/preflight.py\n\n"
+        "## Acceptance\n\n- x\n\n"
+        "## Breaking changes and migration\n\nNone.\n\n"
+        "review_status: complete\nrounds_completed: nope\ndiff_lines: 8\n"
+    )
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
             _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text(
-                "review_status: complete\nrounds_completed: nope\ndiff_lines: 8\n",
-                encoding="utf-8",
-            )
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": _body_with_plan(plan_inner)})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "5", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2
@@ -415,17 +468,19 @@ def test_preflight_refuses_zero_review_provenance(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = _executable_plan_inner(rounds_completed=0)
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
             _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: complete\nrounds_completed: 0\ndiff_lines: 8\n", encoding="utf-8")
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": _body_with_plan(plan_inner)})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "5", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2
@@ -437,6 +492,8 @@ def test_preflight_force_missing_designed_prefix_bypass(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = _executable_plan_inner()
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
@@ -444,11 +501,11 @@ def test_preflight_force_missing_designed_prefix_bypass(
             return _fake_completed(argv, 5)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 8\n", encoding="utf-8")
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": _body_with_plan(plan_inner)})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
@@ -471,14 +528,19 @@ def test_preflight_refuses_malformed_plan_without_force(
             return _fake_completed(argv, 1)
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(
+        monkeypatch,
+        payload={"title": "Title", "body": "<!-- larch:plan:start -->\nbroken\n"},
+    )
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "42", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2
-    assert "MALFORMED=start-without-end" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "missing-plan-block" in out
+    assert plan_grammar.FORCE_PLAN_CONTRACT_ERROR not in out
 
 
-def test_preflight_force_empty_body_uses_stripped_title(
+def test_preflight_force_empty_body_refuses_missing_plan(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -494,14 +556,13 @@ def test_preflight_force_empty_body_uses_stripped_title(
     _stub_issue_view(monkeypatch, payload={"title": "[IMPLEMENTING] Foo", "body": ""})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
-    assert rc == 0
-    assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Foo"
+    assert rc == 2
     out = capsys.readouterr().out
-    assert "using the issue title" in out
-    assert "BYPASS_COUNT=1" in out
+    assert "missing-plan-block" in out
+    assert plan_grammar.FORCE_PLAN_CONTRACT_ERROR in out
 
 
-def test_preflight_force_empty_title_aborts_without_plan_file(
+def test_preflight_force_empty_title_refuses_missing_plan(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -516,17 +577,12 @@ def test_preflight_force_empty_title_aborts_without_plan_file(
 
     _stub_issue_view(monkeypatch, payload={"title": "[IMPLEMENTING] ", "body": ""})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    try:
-        preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
-        rc = 0
-    except SystemExit as exc:
-        rc = int(exc.code or 0)
+    rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2
-    assert not (tmp_path / "plan-from-issue.txt").exists()
-    assert "issue title is empty" in capsys.readouterr().out
+    assert "missing-plan-block" in capsys.readouterr().out
 
 
-def test_preflight_force_malformed_plan_empty_title_aborts_without_plan_file(
+def test_preflight_force_malformed_plan_refuses_without_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -540,40 +596,17 @@ def test_preflight_force_malformed_plan_empty_title_aborts_without_plan_file(
             return _fake_completed(argv, 1)
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "[DESIGNED]   ", "body": ""})
-    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    try:
-        preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
-        rc = 0
-    except SystemExit as exc:
-        rc = int(exc.code or 0)
-    assert rc == 2
-    assert not (tmp_path / "plan-from-issue.txt").exists()
-    assert "issue title is empty" in capsys.readouterr().out
-
-
-def test_preflight_force_malformed_plan_uses_body(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        stdout = kwargs.get("stdout")
-        if "admission" in argv:
-            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
-        elif "plan-block" in argv:
-            _write(handle=stdout, text="BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
-            return _fake_completed(argv, 1)
-        return _fake_completed(argv)
-
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "Emergency body"})
+    _stub_issue_view(
+        monkeypatch,
+        payload={"title": "Title", "body": "<!-- larch:plan:start -->\nEmergency body\n"},
+    )
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
-    assert rc == 0
-    assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Emergency body"
+    assert rc == 2
     out = capsys.readouterr().out
-    assert "BYPASS_COUNT=1" in out
-    assert "malformed larch:plan block" in out
+    assert "missing-plan-block" in out
+    assert plan_grammar.FORCE_PLAN_CONTRACT_ERROR in out
+    assert "raw issue body" not in out
 
 
 def test_preflight_refuses_panel_init_failed(
@@ -581,17 +614,19 @@ def test_preflight_refuses_panel_init_failed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = _executable_plan_inner(review_status="panel-init-failed", rounds_completed=0)
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
             _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: panel-init-failed\nrounds_completed: 0\ndiff_lines: 8\n", encoding="utf-8")
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": _body_with_plan(plan_inner)})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "42", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2
@@ -603,17 +638,19 @@ def test_preflight_refuses_panel_skipped_even_in_force(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    plan_inner = _executable_plan_inner(review_status="panel-skipped", rounds_completed=0)
+
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
             _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: panel-skipped\nrounds_completed: 0\ndiff_lines: 8\n", encoding="utf-8")
+            out_path.write_text(plan_inner, encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
-    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": "body"})
+    _stub_issue_view(monkeypatch, payload={"title": "Title", "body": _body_with_plan(plan_inner)})
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2

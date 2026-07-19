@@ -7,20 +7,49 @@ issue **comments** before `/implement` proceeds. Helpers under
 `python/cli.py clarify` state, comment-post, and label verbs are what
 `/design` and `/implement` use:
 `/implement` **Preflight** (`skills/implement/SKILL.md` — issue-anchored
-plan) on non-force runs reads the plan block, runs the in-prompt
-plan-adequacy audit, and on
+plan) reads the plan block, runs the executable-plan contract (M1/M2), runs the
+in-prompt plan-adequacy audit on non-force runs, and on
 refuse posts a clarify request and label via
 `python/cli.py clarify comment-post` / `python/cli.py clarify label`
 (exit **3**).
-`/implement --force` skips the in-prompt plan-adequacy audit and may
-downgrade the missing/malformed plan block gate to warn-and-proceed;
+`/implement --force` skips the in-prompt plan-adequacy audit and may bypass the
+`[DESIGNED]` title prefix, but still requires a valid `larch:plan` block;
 semantic materiality still fires under force mode. `/design`
 writes the plan block via `python/cli.py named-block write --marker plan` and posts matching clarify
 responses.
 
 ## Plan grammar ownership
 
-`python/larch/design/plan_grammar.py` owns plan heading and trailer syntax. It accepts level-two and level-three colon or bracket headings for `NEW`, `UPDATED`, `REWRITTEN`, and `MAY_UPDATE`. Its fence-aware iterators ignore heading-like text inside Markdown fences. The module also owns trailer keys, subsets, final contiguous-block parsing, and canonical ordering. `python/larch/issue/issue_wire.py` remains the sole owner of issue-body `larch:plan` markers.
+`python/larch/design/plan_grammar.py` owns plan heading and trailer syntax plus the
+executable-plan contract (M1 shape facets and M2 repository-scope path checks).
+It accepts level-two and level-three colon or bracket headings for `NEW`,
+`UPDATED`, `REWRITTEN`, and `MAY_UPDATE`. Its fence-aware iterators ignore
+heading-like text inside Markdown fences. The module also owns trailer keys,
+subsets, final contiguous-block parsing, and canonical ordering.
+`python/larch/issue/issue_wire.py` remains the sole owner of issue-body
+`larch:plan` markers.
+
+### Executable-plan contract
+
+Every `/design` publish and `/implement` Preflight run requires exactly one
+well-formed issue-body `larch:plan` block (or, at publish time, a composed plan
+that will become that block) that satisfies:
+
+- **M1 shape**: firm file scope (`NEW` / `UPDATED` / `REWRITTEN`), numbered
+  ordered-implementation steps, non-empty Acceptance, closed decisions and
+  ownership, breaking changes and migration, and a terminal `diff_lines:`
+  trailer. Defect tokens are ordered and include `missing-plan-block`,
+  `multiple-plan-blocks`, `missing-firm-scope`, `missing-ordered-implementation`,
+  `missing-acceptance`, `missing-closed-decisions`, `missing-breaking-migration`,
+  and `missing-diff-lines`.
+- **M2 repository scope**: `UPDATED` / `REWRITTEN` / `MAY_UPDATE` paths must be
+  tracked paths or non-empty tracked globs; `NEW` paths must be absent under
+  safe non-escaping parents. Defect tokens: `empty-plan-glob`,
+  `missing-updated-plan-path`, `existing-new-plan-path`, `unsafe-plan-path`.
+
+`/implement --force` may skip semantic plan review and the `[DESIGNED]` title
+prefix. It cannot admit a missing or malformed plan, and it never materializes
+raw issue prose or the issue title as a plan.
 
 ## Disambiguation: issue-body `larch:plan:*` vs tracking-issue `<!-- larch:plan v1 … -->`
 
@@ -98,8 +127,10 @@ Rules:
   `$DESIGN_TMPDIR/plan.txt` before publishing; when Override is chosen it writes
   `oversize_override: operator` as an explicit trusted operator decision,
   deletes stale `composed-plan.md`, and lets Step 5c recompose from `plan.txt`.
-- The `## Plan` and `## Acceptance` sub-sections are **conventional** — parsers
-  do not enforce their presence or heading level.
+- The `## Plan` and `## Acceptance` sub-sections, plus closed-decisions,
+  ordered-implementation, and breaking-changes/migration headings, are part of
+  the executable-plan contract enforced by `plan_grammar.validate_plan_contract`
+  / `validate_issue_plan` before `/design` publish and `/implement` Preflight.
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
   `start` without `end`, or `end` without `start`.
 
@@ -256,15 +287,13 @@ bodies remain the source of that logic. Issue-level acceptance or transcript aud
 Force mode is intentionally narrow: `/implement --force` skips the
 Preflight plan-adequacy audit entirely (no `AUDIT=refuse` result exists on that
 path, so no bypass-log entry is written for the skip) and may
-downgrade `BLOCK_PRESENT=false`, malformed plan extraction, and the
-`missing-designed-prefix` admission carve-out from hard stops to loud warnings
-with an execution-issues audit trail. It does not bypass other admission
-failures (managed lifecycle prefixes, blockers, audit-report) or the
-semantic materiality stale-plan notice.
+downgrade the `missing-designed-prefix` admission carve-out from a hard stop to
+a loud warning with an execution-issues audit trail. It does not bypass the
+executable-plan contract, other admission failures (managed lifecycle prefixes,
+blockers, audit-report), or the semantic materiality stale-plan notice.
 
-Canonical force bypass-log tokens for `/implement` are `missing-plan`,
-`malformed-plan`, and `missing-designed-prefix`, each written as
-`BYPASS kind=<token> issue=<number>`.
+Canonical force bypass-log token for `/implement` is `missing-designed-prefix`,
+written as `BYPASS kind=<token> issue=<number>`.
 
 ## `NEXT_ID` and clarify posting
 

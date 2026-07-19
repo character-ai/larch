@@ -19,6 +19,7 @@ from larch.core import config
 from larch.design import design_log_publish_flow
 from larch.design import design_publish
 from larch.design import design_step5c
+from larch.design import plan_grammar
 from tests.support.design_wire import diff_lines_trailer, plan_body, write_result_env
 
 
@@ -60,8 +61,40 @@ def _install_log_publish_stub(
     return calls
 
 
+
+def _executable_plan(*, body: str = "body", diff_lines: int = 1, difficulty: str | None = "HARD") -> str:
+    """Minimal executable plan for publish success paths (subprocess-safe)."""
+    return plan_body(
+        executable=True,
+        sections=(("UPDATED", "README.md"),),
+        body=body,
+        diff_lines=diff_lines,
+        difficulty=difficulty,
+    )
+
+@pytest.fixture(autouse=True)
+def _stub_plan_contract_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Publish unit tests chdir outside a git repo; keep path checks in dedicated coverage."""
+    monkeypatch.setattr(
+        plan_grammar,
+        "validate_plan_contract",
+        lambda **_kwargs: plan_grammar.PlanValidationResult(defects=()),
+    )
+
+
 @pytest.fixture(autouse=True)
 def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Isolate cwd, but keep a tiny git repo so M2 path checks can resolve tracked files."""
+    readme = tmp_path / "README.md"
+    readme.write_text("publish-test\n", encoding="utf-8")
+    _ = subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    _ = subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True, capture_output=True)
+    _ = subprocess.run(
+        ["git", "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-m", "init"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
     monkeypatch.chdir(tmp_path)
 
 
@@ -414,7 +447,7 @@ def _run_publish_with_fake_cli(
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     for key, value in env_overrides.items():
         monkeypatch.setenv(key, value)
@@ -476,7 +509,7 @@ def _minimal_publish_design(tmp_path: Path) -> tuple[Path, Path]:
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     return plugin_root, design
 
 
@@ -884,7 +917,7 @@ def test_publish_main_completes_step5b5_with_missing_candidate(tmp_path: Path) -
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     _ = (design / "architecture-diagram.md").write_text("stale diagram\n", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
@@ -960,7 +993,10 @@ def test_publish_rejects_missing_difficulty_when_validation_enforces_it(tmp_path
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(plan_body(body="body", diff_lines=1), encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(
+        _executable_plan(body="body", diff_lines=1, difficulty=None),
+        encoding="utf-8",
+    )
     call_log = tmp_path / "calls.ndjson"
     record_file = tmp_path / "validate-invocation.env"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
@@ -1013,6 +1049,14 @@ def test_publish_recovers_auto_composed_embedded_difficulty_without_raw_sidecar(
     _ = (design / "plan.txt").write_text(
         """## Plan
 
+### Closed decisions and ownership
+
+- Keep auto-compose recovery.
+
+### Ordered implementation
+
+1. Recover difficulty from embedded trailer.
+
 ## Approach
 
 Implement the fix.
@@ -1021,9 +1065,17 @@ Implement the fix.
 
 Run targeted publish validation.
 
+## Files to modify/create
+
+### UPDATED: README.md
+
 ## Edge cases
 
 Keep strict final-trailer validation.
+
+## Breaking changes and migration
+
+None.
 
 difficulty: MODERATE
 confidence: high
@@ -1106,7 +1158,7 @@ def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(plan_body(body="body", difficulty="HARD", diff_lines=1), encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(body="body", difficulty="HARD", diff_lines=1), encoding="utf-8")
     _ = (design / difficulty.DESIGN_RAW_RATING_BASENAME).write_text(
         '{"predicted_tier":"TRIVIAL","confidence":"low","rationale":"raw sidecar"}\n',
         encoding="utf-8",
@@ -1154,7 +1206,7 @@ def test_publish_rejects_invalid_raw_sidecar_before_label_or_record_writes(tmp_p
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(plan_body(body="body", difficulty="MODERATE", diff_lines=1), encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(body="body", difficulty="MODERATE", diff_lines=1), encoding="utf-8")
     _ = (design / difficulty.DESIGN_RAW_RATING_BASENAME).write_text("{invalid-json}\n", encoding="utf-8")
     call_log = tmp_path / "calls.ndjson"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
@@ -1196,17 +1248,24 @@ def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: P
     consumer = tmp_path / "consumer"
     consumer.mkdir()
     _ = subprocess.run(["git", "init", "-q", str(consumer)], check=True)
+    _ = (consumer / "README.md").write_text("consumer\n", encoding="utf-8")
     script = consumer / "scripts" / "consumer-only.sh"
     script.parent.mkdir()
     _ = script.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
     script.chmod(0o755)
+    _ = subprocess.run(["git", "-C", str(consumer), "add", "README.md", "scripts/consumer-only.sh"], check=True)
+    _ = subprocess.run(
+        ["git", "-C", str(consumer), "-c", "user.email=t@e.com", "-c", "user.name=t", "commit", "-m", "init"],
+        check=True,
+        capture_output=True,
+    )
 
     design = consumer / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text(
-        "## Plan\n\n```bash\nbash scripts/consumer-only.sh\n```\n\ndiff_lines: 1\n",
+        _executable_plan(body="```bash\nbash scripts/consumer-only.sh\n```", diff_lines=1),
         encoding="utf-8",
     )
 
@@ -1254,7 +1313,7 @@ def test_publish_reports_missing_script_count_from_validate_log(tmp_path: Path) 
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     log = tmp_path / "validate-plan-commands.log"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
@@ -1298,7 +1357,7 @@ def test_publish_success_writes_result_env(
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     rc = design_publish.publish_core(
         [
@@ -1335,7 +1394,7 @@ def test_publish_suppresses_named_block_stdout_noise(
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("FAKE_CLI_NAMED_BLOCK_STDOUT", "NAMED_BLOCK_STDOUT_SENTINEL")
     rc = design_publish.publish_core(
@@ -1364,7 +1423,7 @@ def test_publish_present_empty_session_id_skips_log_publish(tmp_path: Path) -> N
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     call_log = tmp_path / "fake-cli-calls.ndjson"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
@@ -1406,7 +1465,7 @@ def test_publish_omitted_session_id_fails_closed_before_plan_write(tmp_path: Pat
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     call_log = tmp_path / "fake-cli-calls.ndjson"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
@@ -1443,7 +1502,7 @@ def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(plan_body(header="# plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(diff_lines=1), encoding="utf-8")
     _ = write_result_env(
         design / ".step3-review-result.env",
         {
@@ -1481,7 +1540,7 @@ def test_publish_refuses_complete_without_step3_sentinel(tmp_path: Path) -> None
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(plan_body(header="# plan", diff_lines=1), encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(diff_lines=1), encoding="utf-8")
     _ = write_result_env(
         design / ".step3-review-result.env",
         {
@@ -1522,7 +1581,7 @@ def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-3").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(plan_body(body="body", diff_lines=3), encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(body="body", diff_lines=3), encoding="utf-8")
     _ = write_result_env(
         design / ".step3-review-result.env",
         {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "2"},
@@ -1554,8 +1613,8 @@ def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     composed = (design / "composed-plan.md").read_text(encoding="utf-8")
     lines = composed.splitlines()
     diff_idx = next(i for i, line in enumerate(lines) if line.startswith("diff_lines:"))
-    assert lines[diff_idx - 2] == "review_status: complete"
-    assert lines[diff_idx - 1] == "rounds_completed: 2"
+    assert "review_status: complete" in lines[diff_idx - 3 : diff_idx]
+    assert "rounds_completed: 2" in lines[diff_idx - 3 : diff_idx]
     assert lines[0] == "## Plan"
 
 
@@ -1566,7 +1625,7 @@ def test_publish_upserts_architecture_diagram_when_present(tmp_path: Path) -> No
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     _ = (design / "architecture-diagram.md").write_text(
         "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
     )
@@ -1619,7 +1678,7 @@ def test_publish_promotes_valid_candidate_before_upsert(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     candidate = design / "architecture-diagram.candidate.md"
     diagram = "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n"
     _ = candidate.write_text(diagram, encoding="utf-8")
@@ -1668,7 +1727,7 @@ def test_publish_rejected_candidate_skips_and_sanitizes_logs(tmp_path: Path) -> 
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     _ = (design / "architecture-diagram.candidate.md").write_text(
         "## Architecture Diagram\n```mermaid\ngraph TD; SECRET-->B;\n```\n",
         encoding="utf-8",
@@ -1726,7 +1785,7 @@ def test_publish_clears_architecture_when_skipped(tmp_path: Path) -> None:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     # DIAGRAM_REQUIRED=false leaves an empty architecture-diagram.skipped marker
     # and no architecture-diagram.md; the publish tail must clear the section.
     _ = (design / "architecture-diagram.skipped").write_text("", encoding="utf-8")
@@ -1770,7 +1829,7 @@ def test_publish_skips_upsert_when_no_diagram(tmp_path: Path) -> None:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
@@ -1811,7 +1870,7 @@ def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     _ = (design / "architecture-diagram.md").write_text(
         "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
     )
@@ -1860,7 +1919,7 @@ def test_publish_warns_rotate_on_secret_scrub_violations(
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("FAKE_CLI_SCRUB_VIOLATIONS", "2")
     rc = design_publish.publish_core(
@@ -1894,7 +1953,7 @@ def test_publish_no_rotate_warning_when_zero_violations(
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("FAKE_CLI_SCRUB_VIOLATIONS", "0")
     rc = design_publish.publish_core(
@@ -2301,7 +2360,7 @@ def test_publish_fresh_result_initialization_failure_returns_5_without_publish(
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     (design / config.DESIGN_PUBLISH_RESULT_FILE).mkdir()
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     publish_calls: list[list[str]] = []
@@ -2330,7 +2389,7 @@ def test_publish_checkpoint_failure_propagates_instead_of_using_stale_state(
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     calls = 0
     real_write = design_publish._write_result_env  # pyright: ignore[reportPrivateUsage]
@@ -2357,7 +2416,7 @@ def test_publish_delegates_to_log_publish_without_inline_capture(
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     capture_calls: list[object] = []
 
@@ -2393,7 +2452,7 @@ def test_publish_capture_does_not_read_session_env(tmp_path: Path) -> None:
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text(_executable_plan(), encoding="utf-8")
     (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
     (design / "session-env.sh").mkdir()
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"

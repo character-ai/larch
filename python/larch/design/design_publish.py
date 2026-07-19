@@ -464,6 +464,25 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
     _ = _write_result_env(path=result_env, rows=kvs)
 
 
+def _emit_plan_contract_refusal(
+    *,
+    defects: tuple[str, ...],
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> None:
+    tokens = ",".join(defects)
+    print(
+        f"**⚠ 5c: publish refused: executable-plan contract defects `{tokens}`; "
+        "repair plan.txt / composed-plan.md before publish**",
+        flush=True,
+    )
+    _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value=f"plan-contract:{tokens}")
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="defects-found")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value=str(len(defects)))
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
+
+
 def check_invariant_assessment_completeness(
     *,
     design_tmpdir: Path,
@@ -1248,6 +1267,11 @@ def publish_core(argv: Sequence[str]) -> int:
             kvs=kvs,
             result_env=result_env,
         )
+        return 4
+
+    contract = plan_grammar.validate_plan_contract(plan_text=plan_text, repo_root=repo_root_arg)
+    if not contract.ok:
+        _emit_plan_contract_refusal(defects=contract.defects, kvs=kvs, result_env=result_env)
         return 4
 
     redacted_plan = design_tmpdir / "composed-plan.redacted.md"

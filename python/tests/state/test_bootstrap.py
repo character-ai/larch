@@ -275,7 +275,7 @@ def test_force_bypass_valid_bypass_makes_no_run_log_write(tmp_path, monkeypatch)
     impl = tmp_path / "impl"
     preflight.mkdir()
     impl.mkdir()
-    (preflight / "force-bypass.log").write_text("BYPASS kind=missing-plan issue=7\n", encoding="utf-8")
+    (preflight / "force-bypass.log").write_text("BYPASS kind=missing-designed-prefix issue=7\n", encoding="utf-8")
     def unexpected_append_failure(**_kwargs: object) -> Path:
         raise AssertionError("valid bypasses are intentional; no warning is logged")
 
