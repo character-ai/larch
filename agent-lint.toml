@@ -208,6 +208,10 @@ exclude = [
   # plugin sources. Scan the canonical paths once; release plugin-runtime
   # --check rejects projection drift.
   "plugin/**",
+  # agent-lint 3.0.1 discovers nested agent fragments before applying broad
+  # walker exclusions on Linux; keep the generated copy aligned with the
+  # canonical fragment exclusion below.
+  "plugin/agents/_implementer-base.md",
   # Temporary reachability stopgap for inventories removed from
   # skills/design/SKILL.md and skills/implement/SKILL.md. These excludes
   # replace reachability-only anchors until zhupanov/agent-lint#106 ships
