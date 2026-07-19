@@ -100,7 +100,7 @@ probe_sparse_cone_drift() {
     fi
 
     configured=$(git -C "$marketplace_clone" sparse-checkout list 2>/dev/null | sed '/^$/d' | sort || true)
-    expected=$(python3 "$SCRIPT_DIR/../python/cli.py" upgrade-larch sparse-dirs 2>/dev/null || true)
+    expected=".claude-plugin"
     if [[ -n "$configured" && -n "$expected" && "$configured" != "$expected" ]]; then
         append_msg "larch hook preflight: larch-local marketplace sparse checkout is out of date; run /upgrade-larch to repair it."
     fi

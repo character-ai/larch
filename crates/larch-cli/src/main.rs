@@ -37,6 +37,9 @@ enum Domain {
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
+    /// Upgrade the installed larch plugin and executable.
+    #[command(subcommand)]
+    UpgradeLarch(UpgradeLarchCommand),
 }
 
 #[derive(Subcommand)]
@@ -84,6 +87,26 @@ enum ReleaseCommand {
     PluginRuntime(PluginRuntimeArguments),
 }
 
+#[derive(Subcommand)]
+enum UpgradeLarchCommand {
+    /// Resolve the cache root used by release Step 7.
+    ReleaseStep7Root(ReleaseStep7Arguments),
+    /// Upgrade to the latest verified stable release.
+    Run,
+    /// Print the legacy sparse-checkout allowlist.
+    SparseDirs,
+}
+
+#[derive(Args)]
+struct ReleaseStep7Arguments {
+    /// Current version used only to disambiguate one cache directory.
+    #[arg(long, conflicts_with = "positional_current_version")]
+    current_version: Option<String>,
+    /// Backward-compatible positional spelling of the current version.
+    #[arg(conflicts_with = "current_version")]
+    positional_current_version: Option<String>,
+}
+
 #[derive(Args)]
 struct PluginRuntimeArguments {
     /// Validate projection drift without changing the worktree.
@@ -115,7 +138,10 @@ struct EchoArguments {
     message: String,
 }
 
-fn run(cli: Cli, metadata: larch_core::BuildMetadata) -> Result<ExitCode, String> {
+fn run(
+    cli: Cli,
+    metadata: larch_core::BuildMetadata,
+) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
     match cli.domain {
         Domain::Bootstrap(BootstrapCommand::SelfCheck) => {
             println!("{}", larch_core::bootstrap_self_check(metadata));
@@ -125,16 +151,39 @@ fn run(cli: Cli, metadata: larch_core::BuildMetadata) -> Result<ExitCode, String
             println!("{}", larch_core::example::echo(&arguments.message));
             Ok(ExitCode::SUCCESS)
         }
-        Domain::Git(command) => run_git(command),
+        Domain::Git(command) => run_git(command).map_err(command_failure),
         Domain::Release(ReleaseCommand::PluginRuntime(arguments)) => {
-            release_plugin_runtime::run(arguments.check).map(|()| ExitCode::SUCCESS)
+            release_plugin_runtime::run(arguments.check)
+                .map(|()| ExitCode::SUCCESS)
+                .map_err(command_failure)
         }
         Domain::Gh(GhCommand::WorkflowPath) => {
             print!("{}", larch_core::workflow_path());
             Ok(ExitCode::SUCCESS)
         }
         Domain::Gh(GhCommand::RunLogs(arguments)) => Ok(run_logs(&arguments)),
+        Domain::UpgradeLarch(command) => match command {
+            UpgradeLarchCommand::ReleaseStep7Root(arguments) => {
+                let version = arguments
+                    .current_version
+                    .as_deref()
+                    .or(arguments.positional_current_version.as_deref());
+                larch_adapters::upgrade_larch::release_step7_root(version)
+                    .map(|()| ExitCode::SUCCESS)
+            }
+            UpgradeLarchCommand::Run => {
+                larch_adapters::upgrade_larch::run().map(|()| ExitCode::SUCCESS)
+            }
+            UpgradeLarchCommand::SparseDirs => {
+                larch_adapters::upgrade_larch::sparse_dirs();
+                Ok(ExitCode::SUCCESS)
+            }
+        },
     }
+}
+
+const fn command_failure(message: String) -> larch_adapters::upgrade_larch::Failure {
+    larch_adapters::upgrade_larch::Failure { code: 1, message }
 }
 
 fn run_logs(arguments: &RunLogsArguments) -> ExitCode {
@@ -360,10 +409,10 @@ fn main() -> ExitCode {
     match run(cli, metadata) {
         Ok(exit_code) => exit_code,
         Err(error) => {
-            if !error.is_empty() {
-                eprintln!("{error}");
+            if !error.message.is_empty() {
+                eprintln!("{}", error.message);
             }
-            ExitCode::from(1)
+            ExitCode::from(error.code)
         }
     }
 }

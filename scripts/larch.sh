@@ -563,6 +563,20 @@ preflight_release() {
     printf 'LARCH_PREFLIGHT_VERSION=%s\n' "$version"
 }
 
+latest_stable_version() {
+    local version=""
+    command -v gh >/dev/null 2>&1 || die "required tool is missing: gh"
+    gh api --help >/dev/null 2>&1 || die "GitHub CLI is too old: gh api is required"
+    version="$(
+        gh api --paginate "repos/$RELEASE_REPO/releases" \
+            --jq '.[] | select(.prerelease == false and .draft == false) | .tag_name' |
+            awk '{ sub(/^v/, ""); if (found == "" && $0 ~ /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/) found = $0 } END { if (found != "") print found }'
+    )"
+    [ -n "$version" ] || die "GitHub returned no valid stable larch release tags"
+    validate_release_version "$version"
+    printf 'LARCH_STABLE_VERSION=%s\n' "$version"
+}
+
 run_binary() {
     local candidate="$1"
     shift
@@ -580,6 +594,11 @@ main() {
     if [ "${1:-}" = "--preflight-release" ]; then
         [ "$#" -eq 2 ] || die "--preflight-release requires exactly one version"
         preflight_release "$2"
+        return 0
+    fi
+    if [ "${1:-}" = "--latest-stable-version" ]; then
+        [ "$#" -eq 1 ] || die "--latest-stable-version accepts no arguments"
+        latest_stable_version
         return 0
     fi
 

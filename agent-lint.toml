@@ -528,10 +528,6 @@ exclude = [
   # start/wait/reap coverage (make test-bgjob -> pytest python/tests/bgjob).
   # agent-lint's G004/dead-script rule does not follow Makefile targets.
   "scripts/test-bgjob.sh",
-  # not invokable directly) carrying the canonical plugin sparse install
-  # allowlist for upgrade-larch run and SessionStart probes. Referenced via
-  # source directives only, which agent-lint does not follow.
-  # (script-md-siblings / G004).
   # agent-lint does not follow source directives.
   # (script-md-siblings / G004).
   # not invokable directly). It provides is_transient_net_signature() to
@@ -737,10 +733,6 @@ exclude = [
   # the test covers reentry guard and router flag recovery.
   "python/tests/design/test_design_lifecycle.py",
   "python/test_design_publish.py",
-  # upgrade-larch release-step7-root is invoked by /release Step 7 and upgrade-larch run;
-  # agent-lint's dead-script graph does not follow source directives or prompt
-  # fence source comments, so exclude the sourced-only helper and contract.
-  "python/cli.py upgrade-larch release-step7-root",
   "python/test_design_pause.py",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
@@ -1362,10 +1354,11 @@ conditional-sources = [
 root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
-# Issues #7731/#7725/#7733/#7726/#7732 add trust boundaries to imported SECURITY.md.
+# Issues #7731/#7725/#7733/#7726/#7732 add trust boundaries to imported SECURITY.md;
+# issue #7753 moves upgrade-larch guidance to the Rust command surface.
 closure-max-lines = 3699
-closure-max-tokens = 142575
-closure-max-content-tokens = 142276
+closure-max-tokens = 142635
+closure-max-content-tokens = 142337
 conditional-max-lines = 589
 conditional-max-tokens = 18764
 conditional-max-content-tokens = 18717
@@ -1412,7 +1405,8 @@ roots = [
   "skills/shared/reviewer-templates.md",
   "skills/shared/voting-protocol.md",
 ]
-# Issues #7731/#7725/#7733/#7726/#7732 add trust boundaries to imported SECURITY.md.
+# Issues #7731/#7725/#7733/#7726/#7732 add trust boundaries to imported SECURITY.md;
+# issue #7753 moves upgrade-larch guidance to the Rust command surface.
 closure-max-lines = 5987
-closure-max-tokens = 168047
-closure-max-content-tokens = 167586
+closure-max-tokens = 168107
+closure-max-content-tokens = 167647

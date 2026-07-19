@@ -311,15 +311,7 @@ assert_contains "$(cat "$SCRIPT")" 'if implement_session_dir_exists && command -
 assert_contains "$(cat "$SCRIPT")" "IMPLEMENT_TMPDIR=\$(python3 \"\$PLUGIN_ROOT/python/cli.py\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\"" \
     "case 4a0: resolver capture is fail-open under set -e"
 
-EXPECTED_SPARSE_DIRS=()
-while IFS= read -r sparse_dir; do
-    [[ -n "$sparse_dir" ]] || continue
-    EXPECTED_SPARSE_DIRS+=("$sparse_dir")
-done < <(python3 "$REPO_ROOT/python/cli.py" upgrade-larch sparse-dirs)
-if [[ "${#EXPECTED_SPARSE_DIRS[@]}" -eq 0 ]]; then
-    echo "FAIL: expected sparse dir library returned no directories" >&2
-    exit 1
-fi
+EXPECTED_SPARSE_DIRS=(".claude-plugin")
 
 echo "=== Case 4b: sparse cone drift emits /upgrade-larch advisory ==="
 mkdir -p "$tmp/c4b-cwd"
@@ -347,49 +339,6 @@ rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4d-cwd" "$tmp/c4d.out" "$tmp/c4d.err" "
 assert_eq "$rc" "0" "case 4d: exit code 0"
 stdout=$(cat "$tmp/c4d.out")
 assert_empty "$stdout" "case 4d: stdout empty with no marketplace clone"
-
-echo "=== Case 4e: missing Python sparse authority is silent ==="
-mkdir -p "$tmp/c4e/scripts" "$tmp/c4e-cwd"
-cp "$SCRIPT" "$tmp/c4e/scripts/sessionstart-health.sh"
-home="$tmp/c4e-home"
-make_sparse_marketplace "$home" .claude scripts skills >/dev/null
-ORIGINAL_SCRIPT="$SCRIPT"
-SCRIPT="$tmp/c4e/scripts/sessionstart-health.sh"
-rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4e-cwd" "$tmp/c4e.out" "$tmp/c4e.err" "$home")
-SCRIPT="$ORIGINAL_SCRIPT"
-assert_eq "$rc" "0" "case 4e: exit code 0"
-stdout=$(cat "$tmp/c4e.out")
-assert_empty "$stdout" "case 4e: stdout empty when Python sparse authority is missing"
-
-echo "=== Case 4f: empty Python sparse authority is silent ==="
-mkdir -p "$tmp/c4f/scripts" "$tmp/c4f-cwd"
-cp "$SCRIPT" "$tmp/c4f/scripts/sessionstart-health.sh"
-mkdir -p "$tmp/c4f/python"
-printf '%s\n' 'import sys' 'sys.exit(0)' > "$tmp/c4f/python/cli.py"
-home="$tmp/c4f-home"
-make_sparse_marketplace "$home" .claude scripts skills >/dev/null
-ORIGINAL_SCRIPT="$SCRIPT"
-SCRIPT="$tmp/c4f/scripts/sessionstart-health.sh"
-rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4f-cwd" "$tmp/c4f.out" "$tmp/c4f.err" "$home")
-SCRIPT="$ORIGINAL_SCRIPT"
-assert_eq "$rc" "0" "case 4f: exit code 0"
-stdout=$(cat "$tmp/c4f.out")
-assert_empty "$stdout" "case 4f: stdout empty when Python sparse authority emits nothing"
-
-echo "=== Case 4f2: Python sparse authority failure is fail-open ==="
-mkdir -p "$tmp/c4f2/scripts" "$tmp/c4f2-cwd"
-cp "$SCRIPT" "$tmp/c4f2/scripts/sessionstart-health.sh"
-mkdir -p "$tmp/c4f2/python"
-printf '%s\n' 'import sys' 'sys.exit(1)' > "$tmp/c4f2/python/cli.py"
-home="$tmp/c4f2-home"
-make_sparse_marketplace "$home" .claude scripts skills >/dev/null
-ORIGINAL_SCRIPT="$SCRIPT"
-SCRIPT="$tmp/c4f2/scripts/sessionstart-health.sh"
-rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4f2-cwd" "$tmp/c4f2.out" "$tmp/c4f2.err" "$home")
-SCRIPT="$ORIGINAL_SCRIPT"
-assert_eq "$rc" "0" "case 4f2: exit code 0"
-stdout=$(cat "$tmp/c4f2.out")
-assert_empty "$stdout" "case 4f2: stdout empty when sparse library fails while sourcing"
 
 echo "=== Case 4g: probe ignores HOOK_CWD and later PLUGIN_ROOT ==="
 mkdir -p "$tmp/c4g-cwd" "$tmp/c4g-hook-cwd"
@@ -436,21 +385,6 @@ rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4k-cwd" "$tmp/c4k.out" "$tmp/c4k.err" "
 assert_eq "$rc" "0" "case 4k: exit code 0"
 stdout=$(cat "$tmp/c4k.out")
 assert_empty "$stdout" "case 4k: stdout empty when configured sparse list is empty"
-
-echo "=== Case 4l: empty expected sparse list is silent ==="
-mkdir -p "$tmp/c4l/scripts" "$tmp/c4l-cwd"
-cp "$SCRIPT" "$tmp/c4l/scripts/sessionstart-health.sh"
-mkdir -p "$tmp/c4l/python"
-printf '%s\n' 'import sys' 'sys.exit(0)' > "$tmp/c4l/python/cli.py"
-home="$tmp/c4l-home"
-make_sparse_marketplace "$home" .claude scripts skills >/dev/null
-ORIGINAL_SCRIPT="$SCRIPT"
-SCRIPT="$tmp/c4l/scripts/sessionstart-health.sh"
-rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4l-cwd" "$tmp/c4l.out" "$tmp/c4l.err" "$home")
-SCRIPT="$ORIGINAL_SCRIPT"
-assert_eq "$rc" "0" "case 4l: exit code 0"
-stdout=$(cat "$tmp/c4l.out")
-assert_empty "$stdout" "case 4l: stdout empty when expected sparse list is empty"
 
 echo "=== Case 5: dirty working tree ==="
 repo=$(make_repo dirty)

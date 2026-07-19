@@ -7254,11 +7254,11 @@ verb = "release-step7-root"
 python_module = "larch.core.upgrade_larch"
 python_function = "release_step7_root_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7753
 
 [[commands]]
 domain = "upgrade-larch"
@@ -7266,11 +7266,11 @@ verb = "run"
 python_module = "larch.core.upgrade_larch"
 python_function = "run_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7753
 
 [[commands]]
 domain = "upgrade-larch"
@@ -7278,11 +7278,11 @@ verb = "sparse-dirs"
 python_module = "larch.core.upgrade_larch"
 python_function = "sparse_dirs_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7687
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7753
 
 [[commands]]
 domain = "validate-merged"
@@ -7737,7 +7737,7 @@ rust = []
 [[callers]]
 path = "scripts/sessionstart-health.sh"
 kind = "hook"
-python = ["kv get", "session resolve-implement-tmpdir", "upgrade-larch sparse-dirs"]
+python = ["kv get", "session resolve-implement-tmpdir"]
 rust = []
 
 [[callers]]
@@ -8620,10 +8620,4 @@ rust = []
 path = "skills/triage/SKILL.md"
 kind = "skill"
 python = ["issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block", "verify skill-called"]
-rust = []
-
-[[callers]]
-path = "skills/upgrade-larch/SKILL.md"
-kind = "skill"
-python = ["upgrade-larch release-step7-root", "upgrade-larch run"]
 rust = []
