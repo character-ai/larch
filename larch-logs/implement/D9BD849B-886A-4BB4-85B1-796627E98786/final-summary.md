@@ -2,12 +2,20 @@
 
 No review rounds completed.
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run D9BD849B-886A-4BB4-85B1-796627E98786: shipping
 
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 02:37:55
-- **Cost**: 💰 TOTAL ~$49.66: Claude $46.86, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.80  |  Tokens: 53337k
+- **Cost**: 💰 TOTAL ~$53.10: Claude $50.30, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.80  |  Tokens: 57402k
 - **Issue**: #7738: https://github.com/character-ai/larch/issues/7738
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
