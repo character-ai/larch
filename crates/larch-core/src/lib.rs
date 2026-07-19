@@ -4,6 +4,7 @@ mod config;
 mod context;
 mod env_file;
 mod error;
+mod github;
 mod outcome;
 mod process;
 mod redaction;
@@ -21,6 +22,10 @@ pub use env_file::{
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };
+pub use github::{
+    GitHubFailureInput, GitHubRateLimitInputs, GitHubRequestKind, GitHubResponseLimits,
+    GitHubRetryAction, GitHubService, GitHubTransportPolicy, classify_github_retry,
+};
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, ProcessCancellation,
@@ -28,7 +33,7 @@ pub use process::{
     ProcessOutput, ProcessRequest, ProcessRequestError, ProcessRequestErrorKind, ProcessStatus,
     VendorProgram,
 };
-pub use redaction::{RedactionResult, SafeText, redact, redact_sensitive_paths};
+pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
     RetryPolicy, RetryPolicyError, StopReason,

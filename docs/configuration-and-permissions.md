@@ -190,6 +190,19 @@ universe domains are not supported. Larch requests operation-specific scopes,
 keeps tokens inside the official authentication layer, and does not persist
 them.
 
+### `LARCH_GH_TOKEN`
+
+`LARCH_GH_TOKEN` is the sole credential input for Rust GitHub service calls.
+Set it in the environment before starting larch. Missing, empty, and
+whitespace-only values fail before any network request with setup guidance.
+
+Larch does not consult `GH_TOKEN`, `GITHUB_TOKEN`, `gh` configuration,
+keychain state, argv, stdin, repository configuration, issue text, or session
+files as fallbacks. The value stays in a non-`Debug` secret wrapper, is
+registered exactly with the runtime redactor, and is excluded from child
+process environments. The initial transport supports only GitHub.com over
+HTTPS; GitHub Enterprise needs a separate reviewed host policy.
+
 ### `LARCH_BINARY`
 
 `LARCH_BINARY` selects an explicit local Rust executable for `scripts/larch.sh`.

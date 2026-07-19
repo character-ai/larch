@@ -204,6 +204,64 @@ impl fmt::Display for SafeText {
     }
 }
 
+/// Invocation-owned exact-secret registry layered over family redaction.
+///
+/// This type intentionally has no `Debug` implementation. Registering the
+/// exact runtime credential covers tokens whose format matches no known
+/// prefix without introducing global mutable state between concurrent runs.
+#[derive(Default)]
+pub struct RuntimeRedactor {
+    exact_secrets: Vec<Box<str>>,
+}
+
+impl RuntimeRedactor {
+    /// Register one non-empty exact value. Returns false for an empty value.
+    pub fn register_exact_secret(&mut self, secret: impl Into<String>) -> bool {
+        let secret = secret.into();
+        if secret.is_empty() {
+            return false;
+        }
+        if !self
+            .exact_secrets
+            .iter()
+            .any(|known| known.as_ref() == secret)
+        {
+            self.exact_secrets.push(secret.into_boxed_str());
+            self.exact_secrets
+                .sort_unstable_by_key(|value| std::cmp::Reverse(value.len()));
+        }
+        true
+    }
+
+    /// Redact registered exact values, sensitive paths, and known families.
+    #[must_use]
+    pub fn redact(&self, text: &str) -> RedactionResult {
+        let mut exact_count = 0_usize;
+        let mut scrubbed = String::from(text);
+        for secret in &self.exact_secrets {
+            exact_count += scrubbed.matches(secret.as_ref()).count();
+            scrubbed = scrubbed.replace(secret.as_ref(), REDACTED_TOKEN);
+        }
+        let mut result = redact(&scrubbed);
+        if exact_count != 0 {
+            result.findings.insert("runtime-exact", exact_count);
+        }
+        result
+    }
+
+    /// Produce display-safe text with exact runtime values removed first.
+    #[must_use]
+    pub fn safe_text(&self, text: impl AsRef<str>) -> SafeText {
+        let candidate = self.redact(text.as_ref()).text;
+        let verified = self.redact(&candidate);
+        if verified.findings.is_empty() {
+            SafeText(candidate)
+        } else {
+            SafeText(String::from(REDACTION_FAILURE))
+        }
+    }
+}
+
 /// Redact every supported secret family while preserving newline intent.
 #[must_use]
 pub fn redact_secrets(text: &str) -> RedactionResult {
@@ -367,5 +425,29 @@ mod tests {
         let safe = SafeText::diagnostic("bad\u{1b}[31m\nforged\u{7f}");
 
         assert_eq!(safe.as_str(), "bad[31mforged");
+    }
+
+    #[test]
+    fn runtime_redactor_scrubs_exact_unknown_token_formats() {
+        let mut redactor = RuntimeRedactor::default();
+        assert!(redactor.register_exact_secret("short opaque credential"));
+
+        let result = redactor.redact("Authorization: Bearer short opaque credential");
+
+        assert_eq!(result.findings().get("runtime-exact"), Some(&1));
+        assert_eq!(result.text(), "Authorization: Bearer <REDACTED-TOKEN>");
+        assert!(
+            !redactor
+                .safe_text(result.text())
+                .as_str()
+                .contains("credential")
+        );
+    }
+
+    #[test]
+    fn runtime_redactor_rejects_empty_registration() {
+        let mut redactor = RuntimeRedactor::default();
+        assert!(!redactor.register_exact_secret(String::new()));
+        assert_eq!(redactor.redact("ordinary text").text(), "ordinary text");
     }
 }

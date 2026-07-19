@@ -2,6 +2,8 @@
 
 use crate::logging::JsonlJournal;
 use crate::runtime::{Cancellation, ChildProcess, ChildWait, shutdown_child};
+#[cfg(test)]
+use larch_core::env as larch_env;
 use larch_core::{
     BusinessClock, ChildEnvironment, ExternalProcessRunner, JournalRecord, ProcessCancellation,
     ProcessError, ProcessErrorKind, ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver,
@@ -633,7 +635,9 @@ mod tests {
         let inherited: Vec<&str> = ChildEnvironment::production()
             .map(ChildEnvironment::name)
             .collect();
-        assert!(!inherited.contains(&"GH_TOKEN"));
+        assert!(!inherited.contains(&larch_env::LARCH_GH_TOKEN));
+        assert!(!inherited.contains(&larch_env::GH_TOKEN));
+        assert!(!inherited.contains(&larch_env::GITHUB_TOKEN));
         assert!(!inherited.contains(&"GOOGLE_APPLICATION_CREDENTIALS"));
         assert!(!inherited.contains(&"OPENAI_API_KEY"));
     }

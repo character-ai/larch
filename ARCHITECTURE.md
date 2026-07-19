@@ -123,8 +123,9 @@ work:
   graph and require reason-bearing lint suppressions.
 - GitHub code uses a larch-owned core service port. Its adapter uses a pinned
   Octocrab client with native TLS disabled and `rustls` enabled. It accepts only
-  a non-empty `GH_TOKEN`, never reads GitHub CLI state, and does not expose an
-  arbitrary REST URL or GraphQL document to domain callers.
+  a non-empty `LARCH_GH_TOKEN`, never reads `GH_TOKEN`, `GITHUB_TOKEN`, or
+  GitHub CLI state, and does not expose an arbitrary REST URL or GraphQL
+  document to domain callers.
 - Google code uses larch-owned core ports and official Rust clients with
   Application Default Credentials. `google-cloud-auth` is pinned centrally,
   uses rustls, and owns token caching and refresh. Larch validates external
