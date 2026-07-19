@@ -23,6 +23,11 @@ pub use filesystem::{
     ConfinedPath, PathIntent, PathSafetyError, PathSafetyErrorKind, PluginRoot, RepositoryRoot,
     SecureTempDir, SecureTempFile, TemporaryRoot, normalize_path,
 };
+pub use git::{
+    GitCli, GitCliError, GitCliInputError, GitCliInputErrorKind, GitCliPolicy, GitCliResult,
+    GitConfigKey, GitPath, GitRef, GitRefspec, GitRemote, GitToken, GitUrl, classify_process_error,
+};
+pub use process::{NoopProcessObserver, TokioProcessRunner};
 
 /// Return metadata compiled into the adapter layer.
 #[must_use]
