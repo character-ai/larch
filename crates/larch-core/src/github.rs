@@ -1,7 +1,7 @@
 //! Narrow GitHub service port and shared hostile-transport policy.
 
-use crate::{RetryClass, StopReason};
-use std::time::Duration;
+use crate::{ProcessCancellation, RetryClass, SafeText, StopReason};
+use std::{error::Error, fmt, future::Future, pin::Pin, time::Duration};
 
 /// Injectable GitHub boundary used by domain code.
 ///
@@ -10,6 +10,322 @@ use std::time::Duration;
 pub trait GitHubService: Send + Sync {
     /// Return the immutable transport policy enforced by this service.
     fn transport_policy(&self) -> GitHubTransportPolicy;
+
+    fn repository<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubRepository>;
+
+    fn issue<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        number: u64,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubIssue>;
+
+    fn list_issues<'a>(
+        &'a self,
+        request: &'a GitHubIssueList,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, Vec<GitHubIssue>>;
+
+    fn search_issues<'a>(
+        &'a self,
+        request: &'a GitHubIssueSearch,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, Vec<GitHubIssue>>;
+
+    fn create_issue<'a>(
+        &'a self,
+        request: &'a GitHubIssueCreate,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubIssue>;
+
+    fn edit_issue<'a>(
+        &'a self,
+        request: &'a GitHubIssueEdit,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubIssue>;
+
+    fn close_issue<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        number: u64,
+        reason: GitHubCloseReason,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubIssue>;
+
+    fn list_comments<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        number: u64,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, Vec<GitHubComment>>;
+
+    fn create_comment<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        number: u64,
+        body: &'a str,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubComment>;
+
+    fn edit_comment<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        comment_id: u64,
+        body: &'a str,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubComment>;
+
+    fn delete_comment<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        comment_id: u64,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, ()>;
+
+    fn list_labels<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, Vec<GitHubLabel>>;
+
+    fn create_label<'a>(
+        &'a self,
+        request: &'a GitHubLabelCreate,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubLabel>;
+
+    fn add_label<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        number: u64,
+        label: &'a str,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, Vec<GitHubLabel>>;
+
+    fn remove_label<'a>(
+        &'a self,
+        repo: &'a GitHubRepositoryRef,
+        number: u64,
+        label: &'a str,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, Vec<GitHubLabel>>;
+}
+
+pub type GitHubFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<T, GitHubOperationError>> + Send + 'a>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubOperationErrorKind {
+    InvalidInput,
+    Authentication,
+    Permission,
+    SsoRequired,
+    NotFound,
+    RateLimited,
+    MalformedResponse,
+    LimitExceeded,
+    Transport,
+    AmbiguousMutation,
+    Cancelled,
+    DeadlineExceeded,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubOperationError {
+    kind: GitHubOperationErrorKind,
+    status: Option<u16>,
+    retry_after: Option<Duration>,
+    detail: SafeText,
+}
+
+impl GitHubOperationError {
+    #[must_use]
+    pub fn new(
+        kind: GitHubOperationErrorKind,
+        status: Option<u16>,
+        retry_after: Option<Duration>,
+        detail: impl AsRef<str>,
+    ) -> Self {
+        Self {
+            kind,
+            status,
+            retry_after,
+            detail: SafeText::from_untrusted(detail),
+        }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> GitHubOperationErrorKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> Option<u16> {
+        self.status
+    }
+
+    #[must_use]
+    pub const fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+}
+
+impl fmt::Display for GitHubOperationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.detail.fmt(formatter)
+    }
+}
+
+impl Error for GitHubOperationError {}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct GitHubRepositoryRef {
+    owner: String,
+    name: String,
+}
+
+impl GitHubRepositoryRef {
+    /// Build a repository reference from path-safe GitHub slug components.
+    ///
+    /// # Errors
+    /// Rejects empty, dot-segment, non-ASCII, and path-delimiter input.
+    pub fn new(
+        owner: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Result<Self, GitHubOperationError> {
+        let value = Self {
+            owner: owner.into(),
+            name: name.into(),
+        };
+        if valid_repository_part(&value.owner) && valid_repository_part(&value.name) {
+            Ok(value)
+        } else {
+            Err(GitHubOperationError::new(
+                GitHubOperationErrorKind::InvalidInput,
+                None,
+                None,
+                "GitHub repository owner or name is invalid",
+            ))
+        }
+    }
+
+    #[must_use]
+    pub fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+fn valid_repository_part(value: &str) -> bool {
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubRepository {
+    pub id: u64,
+    pub name_with_owner: String,
+    pub url: String,
+    pub default_branch: String,
+    pub private: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubIssueState {
+    Open,
+    Closed,
+    All,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubCloseReason {
+    Completed,
+    NotPlanned,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssue {
+    pub id: u64,
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub state: GitHubIssueState,
+    pub url: String,
+    pub author: String,
+    pub labels: Vec<GitHubLabel>,
+    pub comments: u32,
+    pub created_at: String,
+    pub updated_at: String,
+    pub is_pull_request: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubComment {
+    pub id: u64,
+    pub body: String,
+    pub author: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubLabel {
+    pub id: u64,
+    pub name: String,
+    pub color: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssueList {
+    pub repo: GitHubRepositoryRef,
+    pub state: GitHubIssueState,
+    pub labels: Vec<String>,
+    pub limit: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssueSearch {
+    pub repo: GitHubRepositoryRef,
+    pub query: String,
+    pub limit: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssueCreate {
+    pub repo: GitHubRepositoryRef,
+    pub title: String,
+    pub body: String,
+    pub labels: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssueEdit {
+    pub repo: GitHubRepositoryRef,
+    pub number: u64,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub labels: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubLabelCreate {
+    pub repo: GitHubRepositoryRef,
+    pub name: String,
+    pub color: String,
+    pub description: String,
 }
 
 /// Fixed per-response and continuation bounds.
