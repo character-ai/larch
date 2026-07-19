@@ -17,6 +17,7 @@ import pytest
 from larch.agents import agents
 from larch.agents import _review_launcher
 from larch.agents._vendor import VendorCapCheckResult
+from larch.core.proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
@@ -54,6 +55,20 @@ def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
         timeout=60,
         check=False,
     )
+
+
+def _mock_rust_snapshot(monkeypatch: pytest.MonkeyPatch, contents: bytes) -> None:
+    """Provide the Rust snapshot side effect without requiring a released binary."""
+    original_run = _review_launcher.proc.run
+
+    def run(argv: list[str], **_kwargs: object) -> CommandResult:
+        if argv[1:3] != ["git", "snapshot-untracked"]:
+            return original_run(argv, **_kwargs)
+        output = Path(argv[argv.index("--output") + 1])
+        output.write_bytes(contents)
+        return CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(_review_launcher.proc, "run", run)
 
 
 def _codex_review_args(tmp_path: Path, out_name: str = "out.txt", **overrides: object) -> argparse.Namespace:
@@ -1382,6 +1397,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
     monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
+    _mock_rust_snapshot(monkeypatch, b"preexisting.txt\0")
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1404,6 +1420,7 @@ def test_cursor_reviewer_untracked_yields_dirty_sidecar(tmp_path: Path, monkeypa
     out = tmp_path / "out.txt"
     monkeypatch.chdir(repo)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    _mock_rust_snapshot(monkeypatch, b"preexisting.txt\0")
     baseline = agents._review_capture_cursor_dirty_baseline(out)
     (repo / "reviewer-new.txt").write_text("reviewer\n", encoding="utf-8")
     agents._review_write_cursor_dirty_tree_from_baseline(output=out, baseline=baseline)
@@ -1426,6 +1443,7 @@ def test_cursor_dirty_tree_resolves_consumer_repo_from_non_git_cwd(tmp_path: Pat
     out = tmp_path / "out.txt"
     monkeypatch.chdir(plugin_cache)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(consumer))
+    _mock_rust_snapshot(monkeypatch, b"")
     baseline = agents._review_capture_cursor_dirty_baseline(out)
     agents._review_write_cursor_dirty_tree_from_baseline(output=out, baseline=baseline)
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")

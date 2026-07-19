@@ -104,3 +104,8 @@ def plugin_root(fallback: Path | str | None = None, *, use_env: bool = True) -> 
     configured = os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, "") if use_env else ""
     default = Path(__file__).resolve().parents[3]
     return Path(configured or fallback or default).resolve()
+
+
+def larch_binary(fallback: Path | str | None = None) -> Path:
+    """Return the installed Rust executable for production command cutovers."""
+    return plugin_root(fallback) / "bin" / "larch"

@@ -291,7 +291,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: write-final-report-bash-harness test-voter-calibration test-design-step3-review test-design-step3b-tail test-hook-stop-fail-close test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
+test-harnesses-2: test-harness-shards-coverage test-check-clean-tree test-read-result-env test-design-multi-round-integration test-sweep-design-logs test-deny-edit-write test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose step-7a-bash-harness
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-sessionstart test-cache-root-validation test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt oos-disposition-gate-bash-harness
 
@@ -393,7 +393,7 @@ test-preflight-args:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/state/test_admission.py -x -q -k 'preflight'
 
 test-check-clean-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_git.py -q -k 'clean_tree'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state
 
 test-check-main-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/git/test_check_main_sync.py python/tests/git/test_git.py -q -k 'check_main_sync'

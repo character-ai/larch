@@ -17,6 +17,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.core.repo_roots import larch_binary
 from larch.git import gh
 
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -197,7 +198,7 @@ def gate_main(argv: list[str]) -> int:
 
 
 def _clean_tree() -> str:
-    result = _run([sys.executable, str(_PY_CLI), "git", "clean-tree", "--fail-closed"])
+    result = _run([str(larch_binary(Path(__file__).resolve().parents[3])), "git", "clean-tree", "--fail-closed"])
     if result.stderr:
         sys.stderr.write(result.stderr)
     return larch_io.kv_value(text=result.stdout, key="CLEAN", duplicate_policy="first")
