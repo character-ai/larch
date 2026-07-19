@@ -5274,11 +5274,11 @@ verb = "plugin-runtime"
 python_module = "larch.release.plugin_runtime"
 python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7691
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7748
 
 [[commands]]
 domain = "release"

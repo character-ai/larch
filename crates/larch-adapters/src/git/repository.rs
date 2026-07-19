@@ -72,6 +72,27 @@ impl GixRepository {
         gix::ThreadSafeRepository::open_opts(&self.git_dir, read_options().open_path_as_is(true))
             .map_err(|error| map_open_error(&error))
     }
+
+    /// Return every path represented in the repository index.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable, redacted repository error when the trusted repository
+    /// cannot read its index.
+    pub fn tracked_paths(&self) -> Result<Vec<GitPath>, RepositoryError> {
+        let repository = self.local()?;
+        let index = repository
+            .index()
+            .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+        let mut paths: Vec<GitPath> = index
+            .entries()
+            .iter()
+            .map(|entry| GitPath::new(entry.path(&index).to_vec()))
+            .collect();
+        paths.sort();
+        paths.dedup();
+        Ok(paths)
+    }
 }
 
 impl RepositoryRead for GixRepository {

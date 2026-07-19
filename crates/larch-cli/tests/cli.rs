@@ -10,6 +10,7 @@ Usage: larch <COMMAND>
 
 Commands:
   example  Non-production commands that exercise dispatcher wiring
+  release  Release-maintenance commands
   help     Print this message or the help of the given subcommand(s)
 
 Options:
