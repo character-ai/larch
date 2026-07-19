@@ -77,8 +77,13 @@ validation:
 
 ```bash
 cargo test --locked --package larch-lint --test command_registry
+cargo test --locked --package larch-cli --test parity
 cargo run --quiet --locked --package larch-lint -- rule command-registry
 ```
+
+The focused lint validates `clean_install_test` references against the shared
+parity matrix. Use `command-registry audit --input INPUT.json` for typed
+issue-to-registry parity evidence.
 
 ### Python complexity ratchet
 

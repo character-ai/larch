@@ -20,6 +20,7 @@ const NAME: &str = "command-registry";
 const DESCRIPTION: &str =
     "Validate command ownership, migration state, and production caller inventory";
 const LEDGER_PATH: &str = "crates/larch-lint/data/command-registry.toml";
+const CLEAN_INSTALL_CASES_PATH: &str = "crates/larch-cli/tests/parity.rs";
 const PYTHON_REGISTRY_PATH: &str = "python/larch/cli.py";
 const HOOKS_PATH: &str = "hooks/hooks.json";
 const SCHEMA_VERSION: u32 = 1;
@@ -37,6 +38,12 @@ static PYTHON_KEY: LazyLock<Regex> = LazyLock::new(|| {
 static HOOK_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"\$\{CLAUDE_PLUGIN_ROOT\}/(?P<path>[^\"\s]+)"#)
         .expect("hook command path expression is valid")
+});
+static CLEAN_INSTALL_CASE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"CleanInstallCase::new\(\s*\"(?P<id>[a-z0-9-]+)\"\s*,\s*\"(?P<domain>[a-z0-9-]+)\"\s*,\s*\"(?P<verb>[a-z0-9-]+)\"\s*,?\s*\)"#,
+    )
+    .expect("clean-install parity case expression is valid")
 });
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
@@ -65,7 +72,14 @@ impl Rule for CommandRegistryRule {
         let known = ledger.commands.iter().map(CommandRecord::key).collect();
         let python_sources = read_python_sources(repository, &ledger)?;
         let callers = discover_callers(repository, &known, Some(&python_sources))?;
-        validate_ledger(&ledger, &python, &callers, &python_sources)
+        let clean_install_cases = read_clean_install_cases(repository)?;
+        validate_ledger(
+            &ledger,
+            &python,
+            &callers,
+            &python_sources,
+            &clean_install_cases,
+        )
     }
 }
 
@@ -111,6 +125,8 @@ struct CommandRecord {
     consumer_cutover: Completion,
     python_removal: Completion,
     migration_issue: u64,
+    #[serde(default)]
+    clean_install_test: Option<String>,
 }
 
 impl CommandRecord {
@@ -213,6 +229,46 @@ struct PythonCommand {
     machine_stdout: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct MigrationIssueAuditInput {
+    schema_version: u32,
+    rollout_enabled: bool,
+    #[serde(default)]
+    issues: Vec<MigrationIssueRecord>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct MigrationIssueRecord {
+    number: u64,
+    state: IssueState,
+    executable_leaf: bool,
+    command: Option<CommandKeyRecord>,
+    #[serde(default)]
+    plan_commands: Vec<CommandKeyRecord>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum IssueState {
+    Open,
+    Closed,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(deny_unknown_fields)]
+struct CommandKeyRecord {
+    domain: String,
+    verb: String,
+}
+
+impl CommandKeyRecord {
+    fn key(&self) -> CommandKey {
+        CommandKey::new(&self.domain, &self.verb)
+    }
+}
+
 fn read_ledger(repository: &Repository) -> Result<Ledger, LintError> {
     let content = required_utf8(repository, LEDGER_PATH)?;
     parse_ledger(&content)
@@ -228,6 +284,54 @@ fn parse_ledger(content: &str) -> Result<Ledger, LintError> {
         )));
     }
     Ok(ledger)
+}
+
+fn read_clean_install_cases(
+    repository: &Repository,
+) -> Result<BTreeMap<String, CommandKey>, LintError> {
+    let source = required_utf8(repository, CLEAN_INSTALL_CASES_PATH)?;
+    let table_start = source.find("const CLEAN_INSTALL_CASES:").ok_or_else(|| {
+        LintError::new(format!(
+            "{CLEAN_INSTALL_CASES_PATH}: missing CLEAN_INSTALL_CASES table"
+        ))
+    })?;
+    let table_tail = &source[table_start..];
+    let table_end = table_tail.find("];").ok_or_else(|| {
+        LintError::new(format!(
+            "{CLEAN_INSTALL_CASES_PATH}: unterminated CLEAN_INSTALL_CASES table"
+        ))
+    })?;
+    let table = &table_tail[..table_end + 2];
+    let mut by_id = BTreeMap::new();
+    let mut by_selector = BTreeMap::new();
+    for captures in CLEAN_INSTALL_CASE.captures_iter(table) {
+        let id = captures["id"].to_owned();
+        let key = CommandKey::new(&captures["domain"], &captures["verb"]);
+        if by_id.insert(id.clone(), key.clone()).is_some() {
+            return Err(LintError::new(format!(
+                "{CLEAN_INSTALL_CASES_PATH}: duplicate clean-install fixture id {id}"
+            )));
+        }
+        if let Some(previous) = by_selector.insert(key.clone(), id.clone()) {
+            return Err(LintError::new(format!(
+                "{CLEAN_INSTALL_CASES_PATH}: duplicate clean-install selector {} in {previous} and {id}",
+                key.selector()
+            )));
+        }
+    }
+    let syntactic_rows = table.matches("CleanInstallCase::new(").count();
+    if syntactic_rows != by_id.len() {
+        return Err(LintError::new(format!(
+            "{CLEAN_INSTALL_CASES_PATH}: parsed {} of {syntactic_rows} clean-install fixture rows",
+            by_id.len()
+        )));
+    }
+    if by_id.is_empty() {
+        return Err(LintError::new(format!(
+            "{CLEAN_INSTALL_CASES_PATH}: clean-install fixture table is empty"
+        )));
+    }
+    Ok(by_id)
 }
 
 fn read_python_registry(
@@ -293,8 +397,10 @@ fn validate_ledger(
     python: &BTreeMap<CommandKey, PythonCommand>,
     live_callers: &[CallerRecord],
     python_sources: &[PythonSource],
+    clean_install_cases: &BTreeMap<String, CommandKey>,
 ) -> Result<RuleOutput, LintError> {
     let commands = command_map(ledger)?;
+    validate_clean_install_references(&commands, clean_install_cases)?;
     let callers = caller_map(&ledger.callers)?;
     validate_caller_selectors(&callers, &commands)?;
     let live_callers = caller_map(live_callers)?;
@@ -310,6 +416,13 @@ fn validate_ledger(
     }
     for (key, record) in &commands {
         validate_command_state(key, record, python.get(key), &callers, &mut findings);
+        validate_clean_install_coverage(
+            key,
+            record,
+            &live_callers,
+            clean_install_cases,
+            &mut findings,
+        );
         if record.python_removal == Completion::Complete {
             validate_python_retirement(key, record, python.get(key), python_sources, &mut findings);
         }
@@ -335,6 +448,9 @@ fn command_map(ledger: &Ledger) -> Result<BTreeMap<CommandKey, &CommandRecord>, 
                 command.key().selector()
             )));
         }
+        if let Some(fixture) = &command.clean_install_test {
+            validate_token("clean_install_test", fixture)?;
+        }
         let key = command.key();
         if commands.insert(key.clone(), command).is_some() {
             return Err(LintError::new(format!(
@@ -344,6 +460,55 @@ fn command_map(ledger: &Ledger) -> Result<BTreeMap<CommandKey, &CommandRecord>, 
         }
     }
     Ok(commands)
+}
+
+fn validate_clean_install_references(
+    commands: &BTreeMap<CommandKey, &CommandRecord>,
+    cases: &BTreeMap<String, CommandKey>,
+) -> Result<(), LintError> {
+    let mut claimed = BTreeMap::new();
+    for (key, command) in commands {
+        let Some(fixture) = &command.clean_install_test else {
+            continue;
+        };
+        if let Some(previous) = claimed.insert(fixture, key) {
+            return Err(LintError::new(format!(
+                "{LEDGER_PATH}: duplicate clean_install_test {fixture:?} for {} and {}",
+                previous.selector(),
+                key.selector()
+            )));
+        }
+        if !cases.contains_key(fixture) {
+            return Err(LintError::new(format!(
+                "{LEDGER_PATH}: {} references unknown clean_install_test {fixture:?}",
+                key.selector()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_clean_install_coverage(
+    key: &CommandKey,
+    record: &CommandRecord,
+    callers: &BTreeMap<String, &CallerRecord>,
+    cases: &BTreeMap<String, CommandKey>,
+    findings: &mut Vec<Finding>,
+) {
+    if record.owner != Owner::Rust || matching_callers(key, callers, Runtime::Rust).is_empty() {
+        return;
+    }
+    let covered = record
+        .clean_install_test
+        .as_ref()
+        .and_then(|fixture| cases.get(fixture))
+        .is_some_and(|fixture_key| fixture_key == key);
+    if !covered {
+        findings.push(finding(format!(
+            "clean-install-coverage-missing {}",
+            key.selector()
+        )));
+    }
 }
 
 fn caller_map(callers: &[CallerRecord]) -> Result<BTreeMap<String, &CallerRecord>, LintError> {
@@ -1386,6 +1551,7 @@ pub fn sync_command_registry(
                 consumer_cutover: Completion::Pending,
                 python_removal: Completion::Pending,
                 migration_issue,
+                clean_install_test: None,
             });
         record.python_module.clone_from(&source.module);
         record.python_function.clone_from(&source.function);
@@ -1463,6 +1629,9 @@ fn render_ledger(ledger: &Ledger) -> String {
             command.python_removal.as_str()
         );
         let _ = writeln!(output, "migration_issue = {}", command.migration_issue);
+        if let Some(fixture) = &command.clean_install_test {
+            let _ = writeln!(output, "clean_install_test = {fixture:?}");
+        }
     }
     for caller in &ledger.callers {
         output.push_str("\n[[callers]]\n");
@@ -1485,6 +1654,99 @@ fn render_array(values: &[String]) -> String {
     )
 }
 
+/// Compare canonical issue command evidence with registry migration ownership.
+///
+/// # Errors
+///
+/// Returns an error when the audit input or command registry is malformed.
+pub fn audit_migration_issue_commands(
+    repository: &Repository,
+    input_path: &Path,
+) -> Result<RuleOutput, LintError> {
+    let content = fs::read_to_string(input_path).map_err(|error| {
+        LintError::new(format!(
+            "{}: cannot read migration issue audit input: {error}",
+            input_path.display()
+        ))
+    })?;
+    let input: MigrationIssueAuditInput = serde_json::from_str(&content).map_err(|error| {
+        LintError::new(format!(
+            "{}: invalid migration issue audit JSON: {error}",
+            input_path.display()
+        ))
+    })?;
+    if input.schema_version != 1 {
+        return Err(LintError::new(format!(
+            "{}: unsupported schema_version {}; expected 1",
+            input_path.display(),
+            input.schema_version
+        )));
+    }
+    let ledger = read_ledger(repository)?;
+    let commands = command_map(&ledger)?;
+    let mut issues = BTreeMap::new();
+    for issue in &input.issues {
+        if issue.number == 0 || issues.insert(issue.number, issue).is_some() {
+            return Err(LintError::new(format!(
+                "{}: issue numbers must be positive and unique",
+                input_path.display()
+            )));
+        }
+        if let Some(command) = &issue.command {
+            validate_token("audit command domain", &command.domain)?;
+            validate_token("audit command verb", &command.verb)?;
+        }
+        let mut previous = None;
+        for command in &issue.plan_commands {
+            validate_token("plan command domain", &command.domain)?;
+            validate_token("plan command verb", &command.verb)?;
+            if previous.is_some_and(|value| value >= command) {
+                return Err(LintError::new(format!(
+                    "{}: issue #{} plan_commands must be sorted and unique",
+                    input_path.display(),
+                    issue.number
+                )));
+            }
+            previous = Some(command);
+        }
+    }
+
+    let mut findings = BTreeSet::new();
+    for issue in &input.issues {
+        if let Some(command) = &issue.command {
+            let key = command.key();
+            let registry_matches = commands
+                .get(&key)
+                .is_some_and(|record| record.migration_issue == issue.number);
+            let plan_mentions = issue.plan_commands.binary_search(command).is_ok();
+            if !registry_matches || !plan_mentions {
+                let _ = findings.insert(migration_issue_drift(issue.number, &key));
+            }
+        }
+    }
+    if input.rollout_enabled {
+        for (key, record) in &commands {
+            let Some(issue) = issues.get(&record.migration_issue) else {
+                continue;
+            };
+            if issue.state != IssueState::Open || !issue.executable_leaf {
+                continue;
+            }
+            if issue.command.as_ref().map(CommandKeyRecord::key).as_ref() != Some(key) {
+                let _ = findings.insert(migration_issue_drift(issue.number, key));
+            }
+        }
+    }
+    Ok(RuleOutput::from_findings(findings.into_iter().collect()))
+}
+
+fn migration_issue_drift(issue: u64, key: &CommandKey) -> Finding {
+    finding(format!(
+        "migration-issue-command-drift issue=#{issue} command={}",
+        key.selector()
+    ))
+}
+
 /// Render deterministic Markdown progress data for the Chief migration issue.
 ///
 /// # Errors
@@ -1496,7 +1758,14 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
     let known = ledger.commands.iter().map(CommandRecord::key).collect();
     let python_sources = read_python_sources(repository, &ledger)?;
     let live_callers = discover_callers(repository, &known, Some(&python_sources))?;
-    let validation = validate_ledger(&ledger, &python, &live_callers, &python_sources)?;
+    let clean_install_cases = read_clean_install_cases(repository)?;
+    let validation = validate_ledger(
+        &ledger,
+        &python,
+        &live_callers,
+        &python_sources,
+        &clean_install_cases,
+    )?;
     if let Some(finding) = validation.findings().first() {
         return Err(LintError::new(format!(
             "cannot render progress from an invalid command registry: {finding}"

@@ -38,7 +38,7 @@ enum Command {
     Registry(CommandRegistryCommand),
 }
 
-#[derive(Clone, Copy, Debug, Subcommand)]
+#[derive(Clone, Debug, Subcommand)]
 enum CommandRegistryCommand {
     /// Refresh Python command metadata and production caller inventory.
     Sync {
@@ -48,6 +48,12 @@ enum CommandRegistryCommand {
     },
     /// Render migration progress for the Chief migration issue.
     Report,
+    /// Compare issue command evidence with registry migration ownership.
+    Audit {
+        /// JSON input produced from canonical issue owner and plan parsers.
+        #[arg(long, value_name = "PATH")]
+        input: PathBuf,
+    },
 }
 
 /// Run the production command-line interface.
@@ -83,6 +89,17 @@ fn execute_command_registry(command: CommandRegistryCommand, root: Option<&Path>
             crate::render_command_progress(&repository).map(|report| {
                 print!("{report}");
             })
+        }
+        CommandRegistryCommand::Audit { input } => {
+            match crate::audit_migration_issue_commands(&repository, &input) {
+                Ok(output) => {
+                    if let Err(error) = render_findings(output.findings(), &mut std::io::stdout()) {
+                        return render_error(&error, &mut std::io::stderr()).as_i32();
+                    }
+                    return crate::finding_exit_code(output.findings()).as_i32();
+                }
+                Err(error) => Err(error),
+            }
         }
     };
     match result {

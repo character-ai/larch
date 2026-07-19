@@ -162,6 +162,25 @@ class LeaseAuditFinding:
     cleanup_command: str
 
 
+@dataclass(frozen=True, order=True)
+class CommandAuditKey:
+    """One normalized command selector passed to the Rust registry audit."""
+
+    domain: str
+    verb: str
+
+
+@dataclass(frozen=True)
+class CommandAuditIssue:
+    """Canonical issue evidence for migration-issue command parity."""
+
+    number: int
+    state: str
+    executable_leaf: bool
+    command: CommandAuditKey | None
+    plan_commands: tuple[CommandAuditKey, ...]
+
+
 @dataclass(frozen=True)
 class GovernanceGateVerdict:
     """Combined blocker-parity and receipt-freshness gate used at all four sites."""
@@ -215,6 +234,85 @@ def parse_native_blocker_refs(*, body: str) -> tuple[int, ...]:
 def parse_owner_rows(*, body: str) -> tuple[str, ...]:
     """Return exact owner rows through the canonical wire parser."""
     return issue_wire.parse_owner_block(body=body).raw_rows
+
+
+def build_command_audit_issue(
+    *,
+    number: int,
+    state: str,
+    executable_leaf: bool,
+    body: str,
+    registry_commands: Sequence[CommandAuditKey],
+) -> CommandAuditIssue:
+    """Build typed Rust audit evidence through canonical issue parsers."""
+    normalized_state = _normalize_state(state)
+    if number <= 0 or normalized_state not in {"open", "closed"}:
+        raise ShipError("invalid-command-audit-issue")
+    parsed_owner = issue_wire.parse_owner_block(body=body)
+    command = (
+        CommandAuditKey(parsed_owner.block.domain, parsed_owner.block.verb)
+        if parsed_owner.block is not None
+        else None
+    )
+    plan_inner, malformed = parse_named_block(body=body, marker="plan")
+    plan_commands: tuple[CommandAuditKey, ...] = ()
+    if not malformed and plan_inner is not None:
+        plan_commands = tuple(
+            sorted(
+                {
+                    selector
+                    for selector in registry_commands
+                    if _plan_mentions_command(plan_inner=plan_inner, selector=selector)
+                }
+            )
+        )
+    return CommandAuditIssue(
+        number=number,
+        state=normalized_state,
+        executable_leaf=executable_leaf,
+        command=command,
+        plan_commands=plan_commands,
+    )
+
+
+def _plan_mentions_command(*, plan_inner: str, selector: CommandAuditKey) -> bool:
+    expression = re.compile(
+        rf"(?<![a-z0-9-]){re.escape(selector.domain)}[ \t]+{re.escape(selector.verb)}(?![a-z0-9-])"
+    )
+    return expression.search(plan_inner) is not None
+
+
+def render_command_audit_input(
+    *, rows: Sequence[CommandAuditIssue], rollout_enabled: bool
+) -> str:
+    """Render stable schema-v1 JSON for ``command-registry audit``."""
+    by_number: dict[int, CommandAuditIssue] = {}
+    for row in rows:
+        if row.number in by_number:
+            raise ShipError("duplicate-command-audit-issue")
+        by_number[row.number] = row
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "rollout_enabled": rollout_enabled,
+        "issues": [
+            {
+                "number": row.number,
+                "state": row.state,
+                "executable_leaf": row.executable_leaf,
+                "command": (
+                    {"domain": row.command.domain, "verb": row.command.verb}
+                    if row.command is not None
+                    else None
+                ),
+                "plan_commands": [
+                    {"domain": command.domain, "verb": command.verb}
+                    for command in row.plan_commands
+                ],
+            }
+            for row in sorted(by_number.values(), key=lambda item: item.number)
+        ],
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
 
 
 def owner_keys_from_rows(*, rows: Sequence[str]) -> tuple[str, ...]:
@@ -1023,6 +1121,8 @@ __all__ = [
     "REASON_UNDOCUMENTED_NATIVE",
     "RECEIPT_STALE_REASONS",
     "BlockerSnapshotRow",
+    "CommandAuditIssue",
+    "CommandAuditKey",
     "CommandResult",
     "FreshnessVerdict",
     "GovernanceGateVerdict",
@@ -1031,6 +1131,7 @@ __all__ = [
     "ParityVerdict",
     "PlanReceipt",
     "audit_stale_implementation_leases",
+    "build_command_audit_issue",
     "build_receipt_for_body",
     "compare_blocker_parity",
     "compute_base_scope_fingerprint",
@@ -1049,6 +1150,7 @@ __all__ = [
     "parse_receipt",
     "persist_plan_receipt",
     "read_issue_body",
+    "render_command_audit_input",
     "render_receipt",
     "strip_adjacent_plan_receipts",
     "strip_plan_receipt_lines",

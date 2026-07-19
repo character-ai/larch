@@ -18,7 +18,9 @@ mod rules {
 }
 
 pub use cli::run_cli;
-pub use command_registry::{render_command_progress, sync_command_registry};
+pub use command_registry::{
+    audit_migration_issue_commands, render_command_progress, sync_command_registry,
+};
 pub use metadata::{
     RuleMetadata, RuleRegistration, registered_rule_registry, validate_migration_ledger,
 };

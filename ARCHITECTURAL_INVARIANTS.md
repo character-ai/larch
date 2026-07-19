@@ -72,6 +72,10 @@ so a clean plugin cache could reach a missing `bin/larch`. Mechanical backing:
 outside the bootstrap and upgrade allowlist; the command-registry caller
 inventory recognizes `scripts/larch.sh`; clean-install tests prove first use.
 
+### I-Cutover-1: A command changes owner atomically
+
+A command becomes Rust-owned only in the change that proves Rust implementation parity, switches every production caller, removes the Python registration and superseded Python entrypoint, and proves clean-install execution through the verified runtime entrypoint. Until every condition holds, the command remains Python-owned even when a Rust parity implementation exists. No dual-owner, bridge, shim, selector fallback, or pending-removal Rust state is valid. Mechanical backing: the command registry state machine, expanded caller inventory, Python entrypoint retirement checks, and clean-install coverage ledger.
+
 ## Run-log integrity
 
 ### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string
