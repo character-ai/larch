@@ -1,0 +1,1074 @@
+"""Tunables for the ship-pr Python rewrite (stdlib-only; no logic)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Final, Literal
+
+from larch.outcomes import Outcome
+
+ToolName = Literal["cursor", "codex", "claude"]
+RoleKind = Literal["waterfall", "first_available", "slot_panel", "voter_policies", "single_slot"]
+
+RETRY_POLICY_CAPS: Final[dict[str, tuple[int, str]]] = {
+    "transient-infra": (4, "sleep-seconds.sh 5"),
+    "test-failure": (8, "none"),
+    "lint-failure": (8, "none"),
+    "ci-fix-exhausted": (0, "none"),
+    "dispatch-failure": (3, "none"),
+    "protected-path": (1, "none"),
+    "submodule-restricted": (0, "none"),
+    "same-cause-repeat": (2, "none"),
+    "contract-failure": (0, "none"),
+    "recoverable": (0, "none"),
+    "unrecoverable": (0, "none"),
+}
+STEP5_RESULT_ENVELOPE_KEYS: Final[tuple[str, ...]] = (
+    "STEP5_REVIEW_STATUS", "STALL_TRACKING", "STALL_REASON", "ROUNDS_COMPLETED",
+    "FINAL_ROUND_NUM", "FINAL_REVIEW_AND_FIX_STATUS", "CODER_STATUS",
+    "FILES_CHANGED_HINT", "EFFECTIVE_ROUND_CAP",
+)
+
+# Exit codes (align with ship-pr / implement conventions)
+EXIT_OK: Final = 0
+EXIT_USAGE: Final = 2
+EXIT_NEEDS_USER_INPUT: Final = 3
+EXIT_STALLED: Final = 4
+EXIT_TRANSIENT: Final = 6
+EXIT_REAUTHOR_REQUIRED: Final = 7
+EXIT_INTERNAL_ERROR: Final = 1
+# Helper-script parity exits used by the sh-to-py CLI companions.
+EXIT_USAGE_ONE: Final = 1
+EXIT_USAGE_TWO: Final = 2
+EXIT_FORCE_PUSH_SETUP: Final = 2
+EXIT_REBASE_CONFLICT: Final = 1
+EXIT_REBASE_PUSH_FAILED: Final = 2
+EXIT_REBASE_ERROR: Final = 3
+EXIT_CHECK_MAIN_SYNC_BLOCKED: Final = 1
+EXIT_CHECK_MAIN_SYNC_ERROR: Final = 2
+EXIT_BEHIND_COUNT_USAGE: Final = 2
+EXIT_PHANTOM_PROBE_USAGE: Final = 2
+EXIT_GH_RUN_LOGS_IN_PROGRESS: Final = 3
+EXIT_GH_RUN_LOGS_HEALTH_BAIL: Final = 5
+# run-log commit refuses to publish a run tree whose required artifacts are
+# absent without committed execution-issue evidence.
+RUN_LOG_INCOMPLETE_RC: Final = 7
+# report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
+EXIT_BAIL: Final = 4
+EXIT_TIMEOUT: Final = 124
+OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
+    Outcome.OK: EXIT_OK,
+    Outcome.NEEDS_USER_INPUT: EXIT_NEEDS_USER_INPUT,
+    Outcome.STALLED: EXIT_STALLED,
+    Outcome.TRANSIENT: EXIT_TRANSIENT,
+    Outcome.INTERNAL_ERROR: EXIT_INTERNAL_ERROR,
+}
+
+
+# ship.py JSON/result literals
+JOURNAL_EVENT_SHIP_RESULT: Final = "ship-result"
+NEEDS_USER_FIRST_FIXER_NON_HEALTH: Final = "first-fixer-non-health"
+NEEDS_USER_CI_FIX_EXHAUSTED: Final = "ci-fix-exhausted"
+NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED: Final = "fix-attempts-exhausted"
+NEEDS_USER_REVIEW_REQUIRED: Final = "review-required"
+NEEDS_USER_LOCAL_UNFIXABLE: Final = "local-unfixable"
+NEEDS_USER_CI_LOCAL_UNFIXABLE: Final = "ci-local-unfixable"
+NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX: Final = "ship-pr-internal-lint-fix"
+NEEDS_USER_MAIN_CI_FAIL: Final = "main-ci-fail"
+NEEDS_USER_POSTMERGE_MAIN_CI_FAIL: Final = "postmerge-main-ci-fail"
+NEEDS_USER_FLAKY_DEFECT_UNFIXED: Final = "flaky-defect-unfixed"
+NEEDS_USER_SCOPE_DISPOSITION: Final = "scope-disposition"
+NEEDS_USER_ARCHITECTURAL_ASSESSMENTS: Final = "architectural-assessments"
+SHIP_STALL_STEP_MAIN_CI: Final = "main-ci"
+SHIP_STALL_STEP_MERGE: Final = "merge"
+SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH: Final = "postmerge-push-watch"
+SHIP_STALL_STEPS: Final[frozenset[str]] = frozenset({
+    SHIP_STALL_STEP_MAIN_CI,
+    SHIP_STALL_STEP_MERGE,
+    SHIP_STALL_STEP_POSTMERGE_PUSH_WATCH,
+})
+NEEDS_USER_REASON_TOKENS: Final = (
+    NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+    NEEDS_USER_CI_FIX_EXHAUSTED,
+    NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
+    NEEDS_USER_REVIEW_REQUIRED,
+    NEEDS_USER_LOCAL_UNFIXABLE,
+    NEEDS_USER_CI_LOCAL_UNFIXABLE,
+    NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    NEEDS_USER_MAIN_CI_FAIL,
+    NEEDS_USER_POSTMERGE_MAIN_CI_FAIL,
+    NEEDS_USER_FLAKY_DEFECT_UNFIXED,
+    NEEDS_USER_SCOPE_DISPOSITION,
+    NEEDS_USER_ARCHITECTURAL_ASSESSMENTS,
+)
+SHIP_ROUTE_ACTION_POSTMERGE_REPAIR: Final = "postmerge-repair"
+SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION: Final = "halt-scope-disposition"
+SHIP_ROUTE_ACTION_ASSESSMENTS: Final = "assessments"
+ASSESSMENT_KIND_INVARIANTS: Final = "invariants"
+ASSESSMENT_KIND_GUIDELINES: Final = "guidelines"
+TERMINAL_DONE_CLEAR_FIELDS: Final[tuple[tuple[str, str], ...]] = (
+    ("STALL_TRACKING", "false"),
+    ("STALL_STEP", ""),
+    ("BAIL_REASON", ""),
+    ("BAIL_NEEDS_USER_INPUT", "false"),
+    ("BAIL_FAILURE_DETAIL_LOG", ""),
+    ("FAILED_RUN_ID", ""),
+    ("EXIT_CODE", "0"),
+)
+RECONCILE_TERMINAL_DONE_CLEAR_FIELDS: Final[tuple[tuple[str, str], ...]] = (
+    *TERMINAL_DONE_CLEAR_FIELDS,
+    ("IMPLEMENT_BAIL_REASON", ""),
+)
+ASSESSMENT_OUTCOME_CLEAN: Final = "clean"
+ASSESSMENT_OUTCOME_VIOLATION: Final = "violation"
+ASSESSMENT_OUTCOME_DEVIATION: Final = "deviation"
+INVARIANT_ASSESSMENT_OUTCOMES: Final[frozenset[str]] = frozenset({
+    ASSESSMENT_OUTCOME_CLEAN,
+    ASSESSMENT_OUTCOME_VIOLATION,
+})
+GUIDELINE_ASSESSMENT_OUTCOMES: Final[frozenset[str]] = frozenset({
+    ASSESSMENT_OUTCOME_CLEAN,
+    ASSESSMENT_OUTCOME_DEVIATION,
+})
+ASSESSMENT_RESULT_REAUTHOR_REQUIRED: Final = "re-author-required"
+ASSESSMENT_STATUS_REAUTHOR_REQUIRED: Final = ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME: Final = "invalid-explicit-outcome"
+ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH: Final = "clean-outcome-prose-mismatch: identifier citation found in clean note"
+ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA: Final = "missing-or-invalid-outcome-metadata"
+POST_DISPATCH_NEXT_CONTINUE: Final = "continue"
+POST_DISPATCH_NEXT_BAIL: Final = "bail"
+POST_DISPATCH_BAIL_MAIN_BRANCH: Final = "main-branch-post-dispatch"
+BAIL_REASON_RECOVERY_OUT_OF_SCOPE: Final = "recovery-out-of-scope"
+IMPLEMENTATION_COMMIT_FAILED: Final = "implementation-commit-failed"
+REVIEW_CHANGE_DETECTION_FAILED: Final = "review-change-detection-failed"
+CHECKS_COMMIT_ROUTE_MARKER_STEP3: Final = "implement-step3-checks"
+CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW: Final = "implement-step5-self-review"
+# Checks bgjob result-input identity (I-Stale-1 for run-step-checks / step-6-entry).
+CHECKS_INPUT_HEAD_SHA_KEY: Final = "CHECKS_INPUT_HEAD_SHA"
+CHECKS_INPUT_TREE_FP_KEY: Final = "CHECKS_INPUT_TREE_FP"
+CHECKS_INPUT_FP_SCHEMA_KEY: Final = "CHECKS_INPUT_FP_SCHEMA"
+CHECKS_INPUT_FP_SCHEMA_V1: Final = "v1"
+CHECKS_TERMINAL_ACTION_CONTINUE: Final = "continue"
+CHECKS_TERMINAL_ACTION_STALL: Final = "stall"
+CHECKS_TERMINAL_ACTION_CHECKS_FAILED: Final = "checks-failed"
+CHECKS_TERMINAL_ACTION_SKIP_TO_7A: Final = "skip-to-7a"
+CHECKS_TERMINAL_ACTIONS: Final[frozenset[str]] = frozenset(
+    {
+        CHECKS_TERMINAL_ACTION_CONTINUE,
+        CHECKS_TERMINAL_ACTION_STALL,
+        CHECKS_TERMINAL_ACTION_CHECKS_FAILED,
+        CHECKS_TERMINAL_ACTION_SKIP_TO_7A,
+    }
+)
+CHECKS_IDENTITY_INTEGRITY_FAILED_ACTION: Final = "identity-integrity-failed"
+CHECKS_RESULT_STATE_MATCHING: Final = "matching"
+CHECKS_RESULT_STATE_STALE: Final = "stale"
+CHECKS_RESULT_STATE_INCOMPLETE: Final = "incomplete"
+CHECKS_RESULT_STATE_UNSAFE: Final = "unsafe"
+CHECKS_RESULT_STATE_ABSENT: Final = "absent"
+STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
+    NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+    NEEDS_USER_CI_FIX_EXHAUSTED,
+    NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
+    NEEDS_USER_REVIEW_REQUIRED,
+    NEEDS_USER_LOCAL_UNFIXABLE,
+    NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    NEEDS_USER_MAIN_CI_FAIL,
+    NEEDS_USER_FLAKY_DEFECT_UNFIXED,
+    NEEDS_USER_SCOPE_DISPOSITION,
+)
+
+# Subprocess / CI wait
+SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
+CI_WAIT_TIMEOUT_SEC: Final = 1800
+FIXER_LANE_TIMEOUT_SEC: Final = 1800
+CI_WAIT_POLL_INTERVAL_SEC: Final = 10
+# Per-call subprocess timeout for the poll-time CI status queries (gh pr view /
+# gh pr checks). Dedicated and far shorter than SUBPROCESS_DEFAULT_TIMEOUT_SEC so
+# a single hung gh read cannot block gather_status for the whole poll budget
+# (issue #5066). A hung query hits this timeout, returns exit EXIT_TIMEOUT, and a
+# pr-view timeout counts toward CI_MONITOR_STATUS_FAILURE_BAIL (bail with
+# CI_WAIT_BAIL_STATUS_STALE after the threshold).
+CI_STATUS_QUERY_TIMEOUT_SEC: Final = 120
+# Default empty-checks grace for the manual `ci status` / `ci wait` CLIs: a
+# runless PR head (zero attached checks) classifies as NO_CHECKS within this
+# window instead of polling the full CI_WAIT_TIMEOUT_SEC budget (issue #4924).
+CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 120
+MAIN_HEALTH_DEFAULT_WORKFLOW: Final = "CI"
+MAIN_HEALTH_RUN_LIST_LIMIT: Final = 20
+MAIN_HEALTH_MAX_TRANSIENT_RETRIES: Final = 1
+MAIN_HEALTH_WAIT_TIMEOUT_SEC: Final = 600
+MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC: Final = 10
+MAIN_HEALTH_DETAIL_MAX_CHARS: Final = 240
+# Bounded "did a fresh CI run start?" window for the ship merge loop after a
+# head-changing push (CI-fix or rebase). When the push triggers no fresh run
+# (observed: GitHub drops the `synchronize` event, issue #4867), zero checks on
+# the new head would otherwise classify as "pending" and the monitor would poll
+# the full CI_WAIT_TIMEOUT_SEC budget (~30 min) with no signal. Passing this
+# grace makes a missing run surface as NO_CHECKS within the window so the driver
+# fails loudly to a recoverable stall instead of hanging.
+CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC: Final = 120
+# Ship-driver-only poll-based startup deadline for the initial CI wait. First
+# PR runs can attach more slowly than post-fix synchronize runs, so this window
+# is longer than the post-fix grace but still avoids the full poll timeout for a
+# truly runless head. This is not passed through empty_checks_grace because that
+# path sleeps once for the whole grace period instead of probing every poll.
+CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC: Final = 300
+CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED: Final = "poll-budget-exhausted"
+CI_WAIT_BAIL_UNEXPECTED_EXIT: Final = "ci-wait-unexpected-exit"
+CI_WAIT_BAIL_NO_CHECKS_OBSERVED: Final = "no-ci-checks-observed"
+CI_WAIT_BAIL_STATUS_STALE: Final = "ci-status-stale"
+CI_WAIT_BAIL_DECIDE_ERROR: Final = "ci-decide-error"
+CI_WAIT_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
+    CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED,
+    CI_WAIT_BAIL_UNEXPECTED_EXIT,
+    CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
+    CI_WAIT_BAIL_STATUS_STALE,
+    CI_WAIT_BAIL_DECIDE_ERROR,
+)
+CI_DECIDE_BAIL_STATUS_ERROR: Final = "ci-status-error"
+CI_DECIDE_BAIL_TIMEOUT: Final = "ci-timeout"
+CI_DECIDE_BAIL_TOO_MANY_REBASES: Final = "ci-too-many-rebases"
+CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED: Final = NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED
+CI_DECIDE_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
+    CI_DECIDE_BAIL_STATUS_ERROR,
+    CI_DECIDE_BAIL_TIMEOUT,
+    CI_DECIDE_BAIL_TOO_MANY_REBASES,
+    CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED,
+)
+# Step 5 review-loop terminal bail tokens, covering lint-fix loop failures and
+# MAV/coder resume handoff commit failures. Single source of truth for the
+# render-safe set below, the python/stall_recovery._classify_text lint-fix-bail-token
+# check, and the bash safe_bail_reason_value() allowlist (kept in sync via
+# scripts/python/cli.py stall-recovery lint_runtime_bail_tokens).
+LINT_FIX_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
+    "lint-fix-failed",
+    "lint-fix-attempt-cap",
+    "lint-fix-main-agent-required",
+    "lint-fix-commit-failed",
+    "resume-handoff-commit-failed",
+    "review-fix-commit-failed",
+)
+STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys((
+    *CI_WAIT_BAIL_REASON_TOKENS,
+    *CI_DECIDE_BAIL_REASON_TOKENS,
+    *STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS,
+    *LINT_FIX_BAIL_REASON_TOKENS,
+    IMPLEMENTATION_COMMIT_FAILED,
+    REVIEW_CHANGE_DETECTION_FAILED,
+    "quota",
+    "design-flaw",
+    "escalate",
+    "all-vendors-failed",
+)))
+
+# Shared state for /learn-from-bugs backlog nudges.
+LEARN_FROM_BUGS_NUDGE_THRESHOLD: Final = 25
+LEARN_FROM_BUGS_STATE_RELPATH: Final = "larch-logs/shared/learn-from-bugs-state.json"
+ANALYZE_BUGS_STATE_RELPATH: Final = "larch-logs/shared/analyze-bugs-state.json"
+VALIDATE_MERGED_STATE_RELPATH: Final = "larch-logs/shared/validate-merged-state.json"
+
+# Transient retry defaults shared with python/retry.py.
+TRANSIENT_RETRY_MAX_ATTEMPTS: Final = 3
+TRANSIENT_RETRY_BACKOFF_SEC: Final = (2, 4)
+
+
+# Bgjob long-running transport wire constants.
+BGJOB_REGISTRY_DIRNAME: Final = "daemons"
+BGJOB_TMP_SUBDIR: Final = "bgjob"
+BGJOB_RESULT_ENV_SUFFIX: Final = ".result.env"
+BGJOB_STARTUP_ENV_SUFFIX: Final = ".startup.env"
+BGJOB_INPUT_FP_SUFFIX: Final = ".input-fp"
+BGJOB_SLUG_PATTERN: Final = r"[a-z0-9][a-z0-9-]{0,96}"
+ENV_BGJOB_REGISTRY_ROOT: Final = "LARCH_BGJOB_REGISTRY_ROOT"
+ENV_BGJOB_OWNER_PID: Final = "LARCH_BGJOB_OWNER_PID"
+ENV_TEST_BGJOB_OWNER_GRACE_S: Final = "LARCH_TEST_BGJOB_OWNER_GRACE_S"
+ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S: Final = "LARCH_TEST_BGJOB_DAEMON_POLL_INTERVAL_S"
+ENV_HOOK_DENY_RUN_IN_BACKGROUND_DISABLE: Final = "LARCH_HOOK_DENY_RUN_IN_BACKGROUND_DISABLE"
+BGJOB_WAIT_DEFAULT_CHUNK_S: Final = 270
+BGJOB_WAIT_MAX_CHUNK_S: Final = 270
+BGJOB_WAIT_HARD_DEADLINE_GRACE_S: Final = 30
+BGJOB_STARTUP_GRACE_S: Final = 25
+BGJOB_OWNER_GRACE_S: Final = 120
+BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD: Final = 3
+BGJOB_DAEMON_POLL_INTERVAL_S: Final = 1.0
+BGJOB_LOG_TAIL_BYTES: Final = 4096
+BGJOB_START_PIPE_PARTS: Final = 2
+BGJOB_STATUS_KEY: Final = "BGJOB_STATUS"
+BGJOB_STATUS_STARTED: Final = "STARTED"
+BGJOB_STATUS_DONE: Final = "DONE"
+BGJOB_STATUS_WAIT: Final = "WAIT"
+BGJOB_STATUS_DEAD: Final = "DEAD"
+BGJOB_RC_KEY: Final = "BGJOB_RC"
+BGJOB_ELAPSED_KEY: Final = "BGJOB_ELAPSED_S"
+BGJOB_RC_TIMEOUT: Final = "timeout"
+BGJOB_RC_ORPHANED: Final = "orphaned"
+
+# Identity-validated process signaling sidecars and logs.
+PROCESS_IDENTITY_PS_TIMEOUT_S: Final = 5.0
+ACTIVE_LEG_IDENTITY_FILE: Final = ".active-leg.json"
+ACTIVE_LEG_LEGACY_PGID_FILE: Final = ".active-leg-pgid"
+ENV_ACTIVE_LEG_OWNER_TOKEN: Final = "LARCH_ACTIVE_LEG_OWNER_TOKEN"
+DESIGN_STEP3_LOOP_IDENTITY_FILE: Final = ".step3-loop-identity.json"
+DESIGN_STEP3_WRAPPER_DETACHED_FILE: Final = ".step3-wrapper-detached"
+DESIGN_STEP3_REATTACH_ACTIVE_FILE: Final = ".step3-reattach-active"
+IMPLEMENT_STEP5_LOOP_IDENTITY_FILE: Final = ".step5-loop-identity.json"
+IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE: Final = ".step5-wrapper-detached"
+IMPLEMENT_STEP5_REATTACH_ACTIVE_FILE: Final = ".step5-reattach-active"
+IMPLEMENT_STEP5_KILL_LOG_FILE: Final = "implement-step5-kill.log.jsonl"
+DETACHED_REVIEW_ORPHAN_TIMEOUT_DEFAULT_S: Final = 7200
+STEP3_ESCALATION_FAILURE_STATUSES: Final[tuple[str, ...]] = (
+    "panel-failed",
+    "panel-init-failed",
+    "tally-error",
+    "degraded-empty-collector",
+)
+ACTIVE_LEG_KILL_LOG_FILE: Final = "active-leg-kill.log.jsonl"
+DESIGN_STEP3_KILL_LOG_FILE: Final = "design-step3-kill.log.jsonl"
+FINALIZE_KILL_LOG_FILE: Final = "finalize-kill.log.jsonl"
+
+# Voter calibration prompt-feedback.
+ENV_LARCH_VOTER_CALIBRATION_FEEDBACK: Final = "LARCH_VOTER_CALIBRATION_FEEDBACK"
+ENV_LARCH_VOTER_CALIBRATION_WINDOW: Final = "LARCH_VOTER_CALIBRATION_WINDOW"
+ENV_LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT: Final = "LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT"
+VOTER_CALIBRATION_WINDOW_DEFAULT: Final = 100
+
+# Difficulty-tier policy
+DIFFICULTY_TIER_TRIVIAL: Final = "TRIVIAL"
+DIFFICULTY_TIER_MODERATE: Final = "MODERATE"
+DIFFICULTY_TIER_HARD: Final = "HARD"
+DIFFICULTY_TIERS: Final[tuple[str, ...]] = (
+    DIFFICULTY_TIER_TRIVIAL,
+    DIFFICULTY_TIER_MODERATE,
+    DIFFICULTY_TIER_HARD,
+)
+DIFFICULTY_AUDIT_DENOMINATOR: Final = 30
+DIFFICULTY_TIER_CEILINGS: Final[dict[str, int]] = {
+    DIFFICULTY_TIER_TRIVIAL: 2,
+    DIFFICULTY_TIER_MODERATE: 2,
+    DIFFICULTY_TIER_HARD: 2,
+}
+DIFFICULTY_CODEX_MODEL_ROLES: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: "review",
+    DIFFICULTY_TIER_MODERATE: "review",
+    DIFFICULTY_TIER_HARD: "review",
+}
+DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES: Final[dict[str, dict[str, str]]] = {}
+DIFFICULTY_THRESHOLD_PANEL_TOKENS: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: "simple",
+    DIFFICULTY_TIER_MODERATE: "hard",
+    DIFFICULTY_TIER_HARD: "hard",
+}
+
+# Loop caps
+RCC_MAX_ITER_DEFAULT: Final = 3
+CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
+WATERFALL_MAX_TIERS: Final = 3
+
+CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
+# Effort is embedded in the Cursor grok model id; the CLI has no bare `grok-4.5`
+# and passes no separate effort argv. `cursor-grok-4.5-high` is the valid pin for
+# the MODERATE implement lane. Do not use `-fast` variants; they are pricier.
+CURSOR_GROK_4_5_HIGH_MODEL: Final = "cursor-grok-4.5-high"
+CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
+    DIFFICULTY_TIER_TRIVIAL: ("cursor", "codex", "claude"),
+    DIFFICULTY_TIER_MODERATE: ("cursor", "codex", "claude"),
+    DIFFICULTY_TIER_HARD: ("codex", "cursor", "claude"),
+}
+CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: CURSOR_GROK_4_5_HIGH_MODEL,
+    DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
+    DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
+}
+
+
+@dataclass(frozen=True)
+class SlotDefault:
+    slot: str
+    tool: ToolName
+    semantic_label: str = ""
+    model_role: str = ""
+    cursor_model: str = ""
+    agent: str = ""
+    output: str = ""
+    focus_area: str = ""
+    weight: int = 0
+    archetype: str = ""
+
+
+@dataclass(frozen=True)
+class VoterPolicyDefault:
+    slot_num: str
+    slot_name: str
+    primary_tool: ToolName
+    default_label: str
+    archetype: str
+    prompt_label: str
+    output_name: str
+    semantic_labels: tuple[tuple[str, str], ...] = ()
+    allow_codex_fallback: bool = True
+
+
+@dataclass(frozen=True)
+class PanelDispatchPolicy:
+    no_fallback_when_both_present_round_lt: int | None = None
+    generic_codex_rounds: frozenset[int] = frozenset()
+
+
+@dataclass(frozen=True)
+class VoterDispatchPolicy:
+    voter_waterfall_no_fallback: bool = False
+    no_fallback_slots: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class DecomposePanelPolicy:
+    parallel_tools: tuple[ToolName, ...] = ()
+    panel_no_fallback: bool = False
+    archetypes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RoleDefault:
+    role_id: str
+    kind: RoleKind
+    order: tuple[ToolName, ...] = ()
+    slots: tuple[SlotDefault, ...] = ()
+    voter_policies: tuple[VoterPolicyDefault, ...] = ()
+    dispatch_policy: PanelDispatchPolicy | None = None
+    voter_dispatch_policy: VoterDispatchPolicy | None = None
+    decompose_panel_policy: DecomposePanelPolicy | None = None
+    env_override: str = ""
+    doc_phase: str = ""
+    doc_role: str = ""
+    doc_skills: str = ""
+    doc_fallback: str = ""
+
+
+# three specialists per vendor: correctness, edge/failure behavior, and testing.
+# Architectural invariants/guidelines compliance is owned by Step 8 arch-assessment.
+_CODE_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = (
+    "correctness",
+    "edge-cases",
+    "testing",
+)
+_PLAN_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = ("arch", "innovation", "pragmatic", "requirements")
+_DECOMPOSE_ARCHETYPES: Final[tuple[str, ...]] = ("decomposition-specialist", "dependency-analyst", "scope-minimalist", "risk-isolation")
+
+
+def _waterfall_role(role_id: str, *, order: tuple[ToolName, ...], doc_phase: str, doc_role: str, doc_skills: str, doc_fallback: str) -> RoleDefault:  # noqa: PLR0913
+    return RoleDefault(role_id=role_id, kind="waterfall", order=order, doc_phase=doc_phase, doc_role=doc_role, doc_skills=doc_skills, doc_fallback=doc_fallback)
+
+
+ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
+    "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick Cursor first for TRIVIAL or MODERATE and Codex first for HARD; --coder reorders the two external tools, then Claude."),
+    "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
+    "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("codex", "cursor", "claude"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M."),
+    "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
+    "review.fix_coder": _waterfall_role("review.fix_coder", order=("codex", "cursor", "claude"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M; main agent required after automated tiers fail."),
+    "review.dynamic_archetype_scout": _waterfall_role("review.dynamic_archetype_scout", order=("cursor", "claude"), doc_phase="Code-review scout", doc_role="Propose dynamic reviewer archetypes", doc_skills="/review", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
+    "design.plan_archetype_scout": _waterfall_role("design.plan_archetype_scout", order=("cursor", "claude"), doc_phase="Plan-review scout", doc_role="Propose dynamic plan-review archetypes", doc_skills="/design", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
+    "design.plan_revision": _waterfall_role("design.plan_revision", order=("codex", "cursor", "claude"), doc_phase="Plan revision", doc_role="Apply accepted plan findings", doc_skills="/design", doc_fallback="Codex fix, then Cursor composer-2.5, then Claude Sonnet 4.6 1M."),
+    "design.brainstorm_framing": _waterfall_role("design.brainstorm_framing", order=("cursor", "codex", "claude"), doc_phase="Brainstorm framing", doc_role="Generate framing ideas", doc_skills="/design", doc_fallback="Step 1d.5 reads this role before launch and picks the first eligible external, then Claude text fallback."),
+    "design.brainstorm_scope": _waterfall_role("design.brainstorm_scope", order=("codex", "cursor", "claude"), doc_phase="Brainstorm scope", doc_role="Generate scope ideas", doc_skills="/design", doc_fallback="Step 1d.5 reads this role before launch and picks the first eligible external, then Claude text fallback."),
+    "design.plan_drafter": RoleDefault(
+        role_id="design.plan_drafter",
+        kind="first_available",
+        order=("codex", "claude"),
+        env_override="LARCH_DESIGN_DRAFTER",
+        doc_phase="Plan drafting",
+        doc_role="Draft the implementation plan",
+        doc_skills="/design",
+        doc_fallback="Codex when present, else Claude; LARCH_DESIGN_DRAFTER is the only env override and invalid values soft-skip to inline drafting.",
+    ),
+    "review.panel": RoleDefault(
+        role_id="review.panel",
+        kind="slot_panel",
+        slots=(
+            *(
+                SlotDefault(
+                    slot=archetype,
+                    tool=tool,
+                    agent=f"agents/reviewer-{archetype}.md",
+                    output=f"{tool}-specialist-{archetype}-output.txt",
+                    model_role="review" if tool == "codex" else "",
+                    archetype=archetype,
+                )
+                for archetype in _CODE_REVIEW_ARCHETYPES
+                for tool in ("cursor", "codex")
+            ),
+        ),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
+        doc_phase="Code review panel",
+        doc_role="Review code changes",
+        doc_skills="/review, /implement Step 5",
+        doc_fallback="TRIVIAL emits Cursor Composer 2.5 singles when Cursor is available, else Codex review singles. MODERATE emits Cursor Composer 2.5 plus Codex gpt-5.6-terra pairs. HARD emits Cursor Composer 2.5 plus Codex gpt-5.6-terra pairs. Reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
+    ),
+    "design.plan_review_panel": RoleDefault(
+        role_id="design.plan_review_panel",
+        kind="slot_panel",
+        slots=(
+            *(
+                SlotDefault(
+                    slot=f"{tool}-plan-{archetype}",
+                    tool=tool,
+                    output=(f"codex-primary-plan-{archetype}-output.txt" if tool == "codex" else f"cursor-plan-{archetype}-output.txt"),
+                    focus_area=archetype,
+                    model_role="review" if tool == "codex" else "",
+                    archetype=archetype,
+                )
+                for archetype in _PLAN_REVIEW_ARCHETYPES
+                for tool in ("cursor", "codex")
+            ),
+            SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic-output.txt", focus_area="code-quality", model_role="review", archetype="generic"),
+        ),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
+        doc_phase="Plan review panel",
+        doc_role="Review implementation plans",
+        doc_skills="/design",
+        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor reviewer rows resolve to Composer 2.5 by default when Cursor is available; Codex rows emit when Codex is available with the review role and a tier-resolved --default-model; no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
+    ),
+    "design.decompose_panel": RoleDefault(
+        role_id="design.decompose_panel",
+        kind="slot_panel",
+        slots=tuple(
+            SlotDefault(slot=f"decomp-{tool}-{archetype}", tool=tool, output=f"decomp-{tool}-{archetype}-output.txt", archetype=archetype)
+            for archetype in _DECOMPOSE_ARCHETYPES
+            for tool in ("cursor", "codex")
+        ),
+        decompose_panel_policy=DecomposePanelPolicy(parallel_tools=("cursor", "codex"), panel_no_fallback=True, archetypes=_DECOMPOSE_ARCHETYPES),
+        doc_phase="Decompose panel",
+        doc_role="Propose issue partitions",
+        doc_skills="/design",
+        doc_fallback="Allowed parallel tools are Cursor and Codex; emit only present vendors per archetype with --no-fallback. Claude generic remains an explicit both-absent branch.",
+    ),
+    "review.voters": RoleDefault(
+        role_id="review.voters",
+        kind="voter_policies",
+        voter_policies=(
+            VoterPolicyDefault("1", "voter-1", "codex", "codex-validity", "validity-correctness", "validity", "codex-validity-vote-output.txt", (("codex", "codex-validity"), ("cursor", "cursor-validity"), ("claude", "claude"))),
+            VoterPolicyDefault("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", (("codex", "codex-plan-fidelity"), ("cursor", "cursor-plan-fidelity"), ("claude", "claude"))),
+            VoterPolicyDefault("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", (("codex", "codex-pragmatism"), ("cursor", "cursor-pragmatism"), ("claude", "claude"))),
+        ),
+        doc_phase="Code-review voters",
+        doc_role="Vote on code-review findings",
+        doc_skills="/review",
+        doc_fallback="All voters dispatch through one shared waterfall manifest and re-dispatch on runtime failure: all three voters waterfall Codex, then Cursor, then Claude and voters 2/3 join the manifest whenever either external is present, so a both-external-down panel shrinks to the single Claude voter-1 anchor.",
+    ),
+    "design.plan_voters": RoleDefault(
+        role_id="design.plan_voters",
+        kind="voter_policies",
+        voter_policies=(
+            VoterPolicyDefault("1", "voter-1", "codex", "codex-validity", "validity-correctness", "validity", "codex-validity-vote-output.txt", (("codex", "codex-validity"), ("cursor", "cursor-validity"), ("claude", "claude"))),
+            VoterPolicyDefault("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", (("codex", "codex-plan-fidelity"), ("cursor", "cursor-plan-fidelity"), ("claude", "claude"))),
+            VoterPolicyDefault("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", (("codex", "codex-pragmatism"), ("cursor", "cursor-pragmatism"), ("claude", "claude"))),
+        ),
+        doc_phase="Plan voters",
+        doc_role="Vote on plan-review findings",
+        doc_skills="/design",
+        doc_fallback="All three plan voters share the code-review voter shape: Codex primary, then Cursor, then Claude in one shared waterfall manifest. When both external tools are down, the panel shrinks to one dedicated Claude voter-1 floor.",
+    ),
+    "review.findings_aggregator": RoleDefault(
+        role_id="review.findings_aggregator",
+        kind="single_slot",
+        slots=(SlotDefault(slot="aggregator", tool="codex", output="aggregator-output.txt", model_role="review"),),
+        doc_phase="Code findings aggregation",
+        doc_role="Merge code-review findings",
+        doc_skills="/review, /implement Step 5",
+        doc_fallback="Codex-primary single slot through dispatch-waterfall, using the review model role before Cursor or Claude fallback.",
+    ),
+    "design.plan_findings_aggregator": RoleDefault(
+        role_id="design.plan_findings_aggregator",
+        kind="single_slot",
+        slots=(SlotDefault(slot="aggregator", tool="codex", output="aggregator-output.txt", model_role="review"),),
+        doc_phase="Plan findings aggregation",
+        doc_role="Merge plan-review findings",
+        doc_skills="/design",
+        doc_fallback="Codex-primary single slot through dispatch-waterfall, using the review model role before Cursor or Claude fallback.",
+    ),
+    "design.decompose_aggregator": RoleDefault(
+        role_id="design.decompose_aggregator",
+        kind="single_slot",
+        slots=(SlotDefault(slot="decompose-aggregator", tool="codex", output="aggregator-raw-output.txt"),),
+        doc_phase="Decompose aggregator",
+        doc_role="Merge partition proposals",
+        doc_skills="/design",
+        doc_fallback="Codex-primary single slot through dispatch-waterfall.",
+    ),
+}
+
+# Deprecated compatibility alias. Runtime consumers should use role-specific
+# external_defaults.tool_order(...) calls instead of this shared name.
+FIXER_TIER_ORDER: Final[tuple[str, ...]] = ROLE_DEFAULTS["implement.ci_recovery_fixer"].order
+FIXER_TIER_ACTION_SELECTED: Final = "selected"
+FIXER_TIER_ACTION_UNAVAILABLE: Final = "unavailable"
+FIXER_TIER_ACTION_EXHAUSTED: Final = "exhausted"
+FIXER_TIER_ACTIONS: Final[tuple[str, ...]] = (
+    FIXER_TIER_ACTION_SELECTED,
+    FIXER_TIER_ACTION_UNAVAILABLE,
+    FIXER_TIER_ACTION_EXHAUSTED,
+)
+FIXER_TIER_FAIL_REASON_UNAVAILABLE: Final = "unavailable"
+FIXER_TIER_FAIL_REASON_EXHAUSTED: Final = "exhausted"
+FIXER_TIER_FAIL_REASONS: Final[tuple[str, ...]] = (
+    FIXER_TIER_FAIL_REASON_UNAVAILABLE,
+    FIXER_TIER_FAIL_REASON_EXHAUSTED,
+)
+CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
+CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
+CLAUDE_SONNET_4_6_1M_MODEL: Final = "claude-sonnet-4-6[1m]"
+CLAUDE_HAIKU_4_5_MODEL: Final = "claude-haiku-4-5"
+CLAUDE_FABLE_5_MODEL: Final = "claude-fable-5"
+CLAUDE_GLM_5_2_MODEL: Final = "glm-5.2"
+CLAUDE_GLM_5_2_1M_MODEL: Final = "glm-5.2[1m]"
+# Final-summary-only: divide GLM main-agent token cost by this to estimate plan cost.
+GLM_TOKEN_TO_PLAN_DIVISOR: Final = 15
+ANALYZE_BUGS_CACHE_DIR_NAME: Final = "analyze-bugs"
+ANALYZE_BUGS_DEFAULT_COUNT: Final = 200
+ANALYZE_BUGS_DEFAULT_DEEP_MAX: Final = 30
+ANALYZE_BUGS_DEFAULT_RUNTIME_MAX: Final = 10
+ANALYZE_BUGS_RUNTIME_TIMEOUT_SEC: Final = 300
+ANALYZE_BUGS_DEFAULT_BATCH_SIZE: Final = 10
+ANALYZE_BUGS_DEEP_MODEL_ALIASES: Final[dict[str, tuple[str, str]]] = {
+    "sonnet": (CLAUDE_SONNET_4_6_MODEL, CLAUDE_SONNET_4_6_MODEL),
+    "opus": (CLAUDE_OPUS_4_8_MODEL, CLAUDE_OPUS_4_8_MODEL),
+    "fable": (CLAUDE_FABLE_5_MODEL, CLAUDE_FABLE_5_MODEL),
+}
+ANALYZE_BUGS_TRIAGE_VERDICTS: Final[tuple[str, ...]] = (
+    "FIXED_CLEAR",
+    "FIXED_LIKELY",
+    "SUSPECT",
+    "NEEDS_DEEP",
+)
+ANALYZE_BUGS_DEEP_VERDICTS: Final[tuple[str, ...]] = (
+    "CONFIRMED_FIXED",
+    "INCOMPLETE",
+    "REGRESSED",
+    "NOT_FIXED",
+    "UNVERIFIABLE",
+)
+CLAUDE_CI_FIX_MODEL: Final = CLAUDE_OPUS_4_8_MODEL
+CLAUDE_CI_RECOVERY_MODEL: Final = CLAUDE_SONNET_4_6_1M_MODEL
+CLAUDE_SUB_DEFAULT_MODEL_BY_RAW: Final[dict[str, str]] = {
+    "claude_review": CLAUDE_SONNET_4_6_MODEL,
+    "claude_vote": CLAUDE_SONNET_4_6_MODEL,
+    "claude_scout": CLAUDE_SONNET_4_6_MODEL,
+    "claude_draft": CLAUDE_SONNET_4_6_MODEL,
+    "claude_ci_fix": CLAUDE_CI_RECOVERY_MODEL,
+    "claude_lint_fix": CLAUDE_OPUS_4_8_MODEL,
+    "claude_review_fix": CLAUDE_SONNET_4_6_1M_MODEL,
+}
+
+
+def normalize_claude_ledger_model(model: str) -> str:
+    return CLAUDE_SONNET_4_6_MODEL if model == CLAUDE_SONNET_4_6_1M_MODEL else model
+
+
+def canonicalize_glm_main_model(model: str) -> str:
+    """Map the GLM main-agent ``[1m]`` alias to canonical ``glm-5.2``.
+
+    Leaves every other model string unchanged, including non-GLM ``[1m]``
+    variants. Use only for main-agent rate lookup and final-summary GLM
+    identity detection — never for subprocess ``claude_sub`` pricing.
+    """
+    return CLAUDE_GLM_5_2_MODEL if model == CLAUDE_GLM_5_2_1M_MODEL else model
+
+
+def claude_sub_default_model(raw: str) -> str:
+    return normalize_claude_ledger_model(CLAUDE_SUB_DEFAULT_MODEL_BY_RAW.get(raw, CLAUDE_OPUS_4_8_MODEL))
+
+
+IMPLEMENT_STEP2_LABEL: Final = "Step 2 — implementation"
+IMPLEMENT_STEP2_PREFIX: Final = "Step 2 "
+CODEX_IMPLEMENT_RAW_LABEL: Final = "codex_implement"
+CURSOR_IMPLEMENT_RAW_LABEL: Final = "cursor_implement"
+FIXER_ROLE: Final = "resolve-conflict"
+REBASE_MAX_ATTEMPTS: Final = 20
+SHIP_PR_RRR_RESUME_PHASE: Final = "ship-pr-rrr-phase14"
+SHIP_PR_PRE_PUSH_CALLER_KIND: Final = "ship_pr_pre_push"
+SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME: Final = "ship-pr-rrr-after-phase14.flag"
+
+# Environment variable names
+ENV_LARCH_CI_LOCAL_FIX_ITER: Final = "LARCH_CI_LOCAL_FIX_ITER"
+ENV_LARCH_NO_LOGS_COMMIT: Final = "LARCH_NO_LOGS_COMMIT"
+ENV_LARCH_RUN_ID: Final = "LARCH_RUN_ID"
+ENV_DESIGN_TMPDIR: Final = "DESIGN_TMPDIR"
+ENV_IMPLEMENT_TMPDIR: Final = "IMPLEMENT_TMPDIR"
+ENV_CLAUDE_PLUGIN_ROOT: Final = "CLAUDE_PLUGIN_ROOT"
+ENV_REPO: Final = "REPO"
+ENV_ISSUE_NUMBER: Final = "ISSUE_NUMBER"
+ENV_SESSION_ID: Final = "SESSION_ID"
+ENV_SESSION_TMPDIR: Final = "SESSION_TMPDIR"
+ENV_CLAUDE_PID: Final = "CLAUDE_PID"
+ENV_CLAUDE_BINARY_FOUND: Final = "CLAUDE_BINARY_FOUND"
+ENV_CODEX_BINARY_FOUND: Final = "CODEX_BINARY_FOUND"
+ENV_CURSOR_BINARY_FOUND: Final = "CURSOR_BINARY_FOUND"
+ENV_CODEX_PRESENT: Final = "CODEX_PRESENT"
+ENV_CURSOR_PRESENT: Final = "CURSOR_PRESENT"
+ENV_SUMMARY_OUTCOME: Final = "SUMMARY_OUTCOME"
+ENV_FINAL_SUMMARY_PATH: Final = "FINAL_SUMMARY_PATH"
+ENV_LARCH_DESIGN_DRIFT_MULTIPLE: Final = "LARCH_DESIGN_DRIFT_MULTIPLE"
+ENV_LARCH_DESIGN_PUBLISH_ATTEMPT_ID: Final = "LARCH_DESIGN_PUBLISH_ATTEMPT_ID"
+
+# /design Step 5c publish-tail state contract.
+DESIGN_PUBLISH_RESULT_FILE: Final = ".design-publish-result.env"
+DESIGN_PUBLISH_FAILURE_DETAIL_FILE: Final = "design-publish-tail.failure.log"
+DESIGN_PUBLISH_STDOUT_TAIL_FILE: Final = "design-publish-tail.stdout.log"
+DESIGN_PUBLISH_STDERR_TAIL_FILE: Final = "design-publish-tail.stderr.log"
+DESIGN_PUBLISH_RENAME_STDERR_FILE: Final = "design-publish-rename.stderr.log"
+DESIGN_PUBLISH_LOG_STDERR_FILE: Final = "design-publish-log.stderr.log"
+DESIGN_PUBLISH_TAIL_BYTE_CAP: Final = 16384
+DESIGN_PUBLISH_RC_SOURCE_RETURNED: Final = "returned"
+DESIGN_PUBLISH_RC_SOURCE_EXCEPTION: Final = "exception"
+DESIGN_PUBLISH_RESUME_HINT: Final = "resume-post-plan-publish"
+DESIGN_PUBLISH_CLASSIFIER_PATTERN: Final = "design-publish-tail-current-attempt"
+
+# Plan-size guardrail thresholds (#6527). Calibrated from run 0BE6E8A0 /
+# #6514, where an 85-firm-heading plan with diff_lines: 4800 silently
+# landed only 25 headings under STATUS=complete.
+PLAN_SIZE_MAX_PLAN_BODY_LINES: Final = 800
+PLAN_SIZE_MAX_DIFF_ADDED: Final = 2000
+PLAN_SIZE_MAX_DIFF_LINES: Final = 1500
+PLAN_SIZE_MAX_FIRM_HEADINGS: Final = 25
+PLAN_SIZE_MAX_SURFACES: Final = 4
+
+# Plan-coverage disposition bands (#6526). The same incident showed that
+# 61 untouched firm headings out of 85 could flow as advisory-only; middle
+# forces plan-fidelity review, while high or todos_left requires disposition.
+PLAN_COVERAGE_MIDDLE_UNTOUCHED_PERCENT: Final = 20
+PLAN_COVERAGE_MIDDLE_UNTOUCHED_COUNT: Final = 10
+PLAN_COVERAGE_HIGH_UNTOUCHED_PERCENT: Final = 50
+PLAN_COVERAGE_HIGH_UNTOUCHED_COUNT: Final = 30
+IMPLEMENT_COMPLETION_RETRY_CAP: Final = 3
+OVERSIZE_OVERRIDE_OPERATOR: Final = "operator"
+ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL: Final = "LARCH_EXEC_ISSUE_ASSESSMENT_MODEL"
+ENV_LARCH_CURSOR_MODEL: Final = "LARCH_CURSOR_MODEL"
+ENV_LARCH_CODEX_MODEL: Final = "LARCH_CODEX_MODEL"
+ENV_LARCH_CODEX_REVIEW_MODEL: Final = "LARCH_CODEX_REVIEW_MODEL"
+ENV_LARCH_CODEX_VOTE_MODEL: Final = "LARCH_CODEX_VOTE_MODEL"
+ENV_LARCH_CODEX_FIX_MODEL: Final = "LARCH_CODEX_FIX_MODEL"
+ENV_LARCH_CODEX_EFFORT: Final = "LARCH_CODEX_EFFORT"
+ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL: Final = "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"
+ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL: Final = "CLAUDE_PLUGIN_OPTION_CODEX_MODEL"
+ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT: Final = "CLAUDE_PLUGIN_OPTION_CODEX_EFFORT"
+ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX: Final = "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX"
+ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL: Final = "RUN_EXTERNAL_AGENT_POLL_INTERVAL"
+ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME: Final = "LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME"
+ENV_LARCH_EXTERNAL_STARTUP_LOCK_TTL: Final = "LARCH_EXTERNAL_STARTUP_LOCK_TTL"
+ENV_LARCH_EXTERNAL_STARTUP_LOCK_TRIES: Final = "LARCH_EXTERNAL_STARTUP_LOCK_TRIES"
+ENV_LARCH_REVIEWER_STRAGGLER_MULTIPLE: Final = "LARCH_REVIEWER_STRAGGLER_MULTIPLE"
+ENV_LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS: Final = "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS"
+ENV_LARCH_REVIEWER_STRAGGLER_MAX_SECONDS: Final = "LARCH_REVIEWER_STRAGGLER_MAX_SECONDS"
+REVIEWER_STRAGGLER_MULTIPLE_DEFAULT: Final = 2.5
+REVIEWER_STRAGGLER_FLOOR_SECONDS_DEFAULT: Final = 300
+REVIEWER_STRAGGLER_MAX_SECONDS_DEFAULT: Final = 900
+LAUNCH_FAILURE_REASON_OPENAI_STREAM_DISCONNECTED: Final = "openai-stream-disconnected"
+LAUNCH_FAILURE_REASON_CURSOR_API_UNREACHABLE: Final = "cursor-api-unreachable"
+ENV_VALIDATE_STATUS: Final = "VALIDATE_STATUS"
+ENV_VALIDATE_DEFECT_COUNT: Final = "VALIDATE_DEFECT_COUNT"
+ENV_VALIDATE_MISSING_SCRIPT_COUNT: Final = "VALIDATE_MISSING_SCRIPT_COUNT"
+ENV_VALIDATE_UNSAFE_TOKEN_COUNT: Final = "VALIDATE_UNSAFE_TOKEN_COUNT"
+ENV_VALIDATE_SKIPPED_COUNT: Final = "VALIDATE_SKIPPED_COUNT"
+ENV_VALIDATE_LOG_FILE: Final = "VALIDATE_LOG_FILE"
+ENV_VALIDATOR_TARGET_FILE: Final = "_validator_target_file"
+ENV_SITE: Final = "SITE"
+ENV_MODE: Final = "MODE"
+ENV_TMPDIR: Final = "TMPDIR"
+ENV_HOME: Final = "HOME"
+ENV_PATH: Final = "PATH"
+ENV_USER: Final = "USER"
+ENV_LOGNAME: Final = "LOGNAME"
+ENV_LARCH_QUIET_DISABLE: Final = "LARCH_QUIET_DISABLE"
+ENV_LARCH_QUIET_ACTIVE: Final = "LARCH_QUIET_ACTIVE"
+ENV_LARCH_QUIET_LOG_FILE: Final = "LARCH_QUIET_LOG_FILE"
+ENV_LARCH_QUIET_PID: Final = "LARCH_QUIET_PID"
+ENV_LARCH_DESIGN_DRAFTER: Final = "LARCH_DESIGN_DRAFTER"
+ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
+EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30
+# /status model-pin resolution statuses (soft health report; never abort /status).
+MODEL_PINS_STATUS_OK: Final = "ok"
+MODEL_PINS_STATUS_UNKNOWN_ID: Final = "unknown-id"
+MODEL_PINS_STATUS_LIST_FAILED: Final = "list-failed"
+MODEL_PINS_STATUS_UNPARSEABLE: Final = "unparseable"
+MODEL_PINS_STATUS_UNVERIFIABLE: Final = "unverifiable"
+MODEL_PINS_STATUS_SKIPPED: Final = "skipped"
+MODEL_PINS_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        MODEL_PINS_STATUS_OK,
+        MODEL_PINS_STATUS_UNKNOWN_ID,
+        MODEL_PINS_STATUS_LIST_FAILED,
+        MODEL_PINS_STATUS_UNPARSEABLE,
+        MODEL_PINS_STATUS_UNVERIFIABLE,
+        MODEL_PINS_STATUS_SKIPPED,
+    }
+)
+# Cursor model-list argv (G-Ext-1): `cursor agent models` — same family as probe
+# `cursor agent -p`; equivalent to the `cursor-agent models` surface.
+CURSOR_MODEL_LIST_ARGV: Final[tuple[str, ...]] = ("cursor", "agent", "models")
+CURSOR_MODEL_LIST_HEADER: Final = "Available models"
+# Pinned grammar: `<id> - <display name>` (one line each). Fail closed otherwise.
+CURSOR_MODEL_LIST_LINE_RE: Final = r"^([A-Za-z0-9][A-Za-z0-9._+-]*) - .+$"
+EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT: Final = "claude-haiku-4-5"
+CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
+CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.6-luna"
+CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.6-terra"
+CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.6-terra"
+CODEX_TERRA_MODEL: Final = "gpt-5.6-terra"
+CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC: Final = 5
+CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: CODEX_TERRA_MODEL,
+    DIFFICULTY_TIER_MODERATE: CODEX_TERRA_MODEL,
+    DIFFICULTY_TIER_HARD: CODEX_TERRA_MODEL,
+}
+CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: "",
+    DIFFICULTY_TIER_MODERATE: CODEX_TERRA_MODEL,
+    DIFFICULTY_TIER_HARD: CODEX_TERRA_MODEL,
+}
+CODEX_VOTE_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: CODEX_REVIEW_MODEL_DEFAULT,
+    DIFFICULTY_TIER_MODERATE: CODEX_VOTE_MODEL_DEFAULT,
+    DIFFICULTY_TIER_HARD: CODEX_VOTE_MODEL_DEFAULT,
+}
+# Teams plan per-token surcharge on all tokens (input, cache-read, output) for pinned-model
+# Cursor agent requests. Source: cursor.com/docs/account/teams/pricing — "Cursor Token
+# Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) requests.
+# Empirically confirmed via June 2026 usage export (R²=0.998, no per-request fee).
+CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M: Final = 0.25
+ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M: Final = "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M"
+
+# Implementation selector values
+SHIP_PR_IMPL_BASH: Final = "bash"
+SHIP_PR_IMPL_PYTHON: Final = "python"
+
+# Path / artifact templates (format with .format or str.replace as needed)
+PATH_MANIFEST_TEMPLATE: Final = "{tmpdir}/manifest.json"
+PATH_QA_PENDING_TEMPLATE: Final = "{tmpdir}/qa-pending.json"
+PATH_QUIET_LOG_TEMPLATE: Final = "{tmpdir}/larch-quiet-{script}-{pid}.log"
+PATH_JSONL_JOURNAL_TEMPLATE: Final = "{tmpdir}/larch-journal-{run_id}.jsonl"
+
+# Redaction placeholders (must not match redact patterns)
+REDACTED_TOKEN: Final = "<REDACTED-TOKEN>"
+REDACTED_PRIVATE_KEY: Final = "<REDACTED-PRIVATE-KEY>"
+REDACTED_TMPDIR: Final = "<TMPDIR>"
+REDACTED_OPERATOR_REPO: Final = "<OPERATOR_REPO_PATH>"
+
+# proc.run timeout handling
+PROC_TIMEOUT_EXIT_CODE: Final = EXIT_TIMEOUT
+
+
+# /report-tokens live Python entrypoint
+GITHUB_ISSUE_BODY_MAX_BYTES: Final = 65536
+ENV_LARCH_REPORT_TOKENS_NO_ISSUE: Final = "LARCH_REPORT_TOKENS_NO_ISSUE"
+ENV_LARCH_REPORT_TOKENS_NO_PLOT: Final = "LARCH_REPORT_TOKENS_NO_PLOT"
+ENV_LARCH_REPORT_TOKENS_NO_OPEN: Final = "LARCH_REPORT_TOKENS_NO_OPEN"
+ENV_LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND: Final = "LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND"
+ENV_LARCH_REPORT_TOKENS_ACTUAL_SPEND: Final = "LARCH_REPORT_TOKENS_ACTUAL_SPEND"
+ENV_LARCH_REPORT_TOKENS_REPO: Final = "LARCH_REPORT_TOKENS_REPO"
+ENV_LARCH_REPORT_TOKENS_LIMIT: Final = "LARCH_REPORT_TOKENS_LIMIT"
+REPORT_TOKENS_TITLE_BY_SKILL: Final[dict[str, str]] = {
+    "design": "[Design Analysis Report] Token costs as of {timestamp}",
+    "implement": "[Implement Analysis Report] Token costs as of {timestamp}",
+}
+
+# Version bump classification helpers (dev/CI; release owns live versioning)
+BUMP_COMMIT_SUBJECT_TEMPLATE: Final = "Bump version to {version}"
+SEMVER_RE: Final = r"^[0-9]+\.[0-9]+\.[0-9]+$"
+PLUGIN_JSON_PATH: Final = ".claude-plugin/plugin.json"
+IDEMPOTENCY_DEPTH: Final = 3
+TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX: Final = "chore(larch-logs): "
+CLASSIFY_SCOPE_DIRS: Final[tuple[str, ...]] = ("skills", "agents")
+APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES: Final = (".launcher-stderr", ".redacted.log")
+GIT_COMMIT_CO_AUTHORED_BY_TRAILER: Final = "Co-Authored-By: Claude Code <noreply@anthropic.com>"
+
+# CI monitor loop (Phase 6)
+CI_MONITOR_MAX_ITERATIONS: Final = 50
+SHIP_MERGE_LOOP_MAX_ITERATIONS: Final = 50
+SHIP_MERGE_CI_NOT_READY_STALL_THRESHOLD: Final = 3
+CI_MONITOR_MAX_REBASES: Final = 20
+CI_MONITOR_MAX_FIX_ATTEMPTS: Final = 10
+CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS: Final = 3
+CI_MONITOR_TRANSIENT_RERUN_MAX: Final = 1
+CI_MONITOR_STATUS_FAILURE_BAIL: Final = 3
+CI_MONITOR_LOG_TAIL_LINES: Final = 100
+CI_MONITOR_IN_PROGRESS_POLL_INTERVAL: Final = 15
+CI_MONITOR_IN_PROGRESS_TIMEOUT: Final = 3600
+CI_FIXER_DISTILL_STEP_HEAD_LINES: Final = 80
+CI_FIXER_DISTILL_STEP_TAIL_LINES: Final = 80
+CI_FIXER_DISTILL_STEP_CONTEXT_LINES: Final = 4
+CI_FIXER_DISTILL_TOTAL_BYTES: Final = 60000
+CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT: Final = 2
+# Distill bail class surfaced when gh itself is unavailable (auth/quota/binary).
+# Emitted by the ci distill-log health-bail branch and forwarded as
+# CI_ERRORS_DISTILL_CLASS in the ship route-exit handoff (#7192).
+CI_FIXER_STATUS_HEALTH_BAIL: Final = "ci-fixer-health-bail"
+CI_FIX_ROLE: Final = "fix"
+CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
+    "lint",
+    "lint-local",
+    "shellcheck",
+    "test-harnesses",
+    "agent-lint",
+    "agnix",
+    "agent-sync",
+    "python-lint",
+    "python-pyright",
+    "python-lint-duplicate-code",
+    "python-tests",
+})
+
+# Phase 5 — PR / merge / logging (live/default Python driver)
+TRACKING_ISSUE_STATES: Final[tuple[str, ...]] = (
+    "designing",
+    "designed",
+    "implementing",
+    "done",
+    "stalled",
+)
+TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
+    "designing": "[DESIGNING] ",
+    "designed": "[DESIGNED] ",
+    "implementing": "[IMPLEMENTING] ",
+    "done": "[DONE] ",
+    "stalled": "[STALLED] ",
+}
+TRACKING_TITLE_MAX_LEN: Final = 256
+REFRESH_SKIP_NO_REPO_CWD: Final = "no-repo-cwd"
+
+MERGE_RESULT_MERGED: Final = "merged"
+MERGE_RESULT_ADMIN_MERGED: Final = "admin_merged"
+MERGE_RESULT_MAIN_ADVANCED: Final = "main_advanced"
+MERGE_RESULT_CI_NOT_READY: Final = "ci_not_ready"
+MERGE_RESULT_VERSION_ALREADY_PUBLISHED: Final = "version_already_published"
+MERGE_RESULT_POLICY_DENIED: Final = "policy_denied"
+MERGE_RESULT_ADMIN_FAILED: Final = "admin_failed"
+MERGE_RESULT_REVIEW_REQUIRED: Final = "review_required"
+MERGE_RESULT_ERROR: Final = "error"
+MERGE_RESULTS: Final[frozenset[str]] = frozenset({
+    MERGE_RESULT_MERGED,
+    MERGE_RESULT_ADMIN_MERGED,
+    MERGE_RESULT_MAIN_ADVANCED,
+    MERGE_RESULT_CI_NOT_READY,
+    MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
+    MERGE_RESULT_POLICY_DENIED,
+    MERGE_RESULT_ADMIN_FAILED,
+    MERGE_RESULT_REVIEW_REQUIRED,
+    MERGE_RESULT_ERROR,
+})
+MERGE_RESULT_DRIVER_ALREADY_MERGED: Final = "already_merged"
+POST_MERGE_MERGE_RESULTS: Final[frozenset[str]] = frozenset({
+    MERGE_RESULT_MERGED,
+    MERGE_RESULT_ADMIN_MERGED,
+    MERGE_RESULT_DRIVER_ALREADY_MERGED,
+})
+
+RECONCILE_STATUS_KEY: Final = "RECONCILE_STATUS"
+RECONCILE_STATUS_OK: Final = "ok"
+RECONCILE_STATUS_FAILED: Final = "failed"
+
+CLOSE_POSTCONDITION_UNVERIFIED: Final = "close-postcondition-unverified"
+LABEL_POSTCONDITION_UNVERIFIED: Final = "label-postcondition-unverified"
+
+FLUSH_COMMIT_SUBJECT_PREFIX: Final = "chore(larch-logs): flush "
+FLUSH_RECOVERY_MAX_COMMITS: Final = 5
+MERGE_PR_INITIAL_UNKNOWN_RETRIES: Final = 4
+MERGE_PR_POST_PUSH_UNKNOWN_RETRIES: Final = 3
+MERGE_DIAGNOSTIC_MAX_LEN: Final = 500
+
+MANIFEST_STATUS_PARTIAL: Final = "partial"
+MANIFEST_STATUS_DONE: Final = "done"
+MANIFEST_STATUS_IN_PROGRESS: Final = "in-progress"
+
+REFRESH_SKIP_STATE_FILE_MISSING: Final = "state-file-missing-fail-closed"
+REFRESH_SKIP_POST_MERGE: Final = "post-merge"
+REFRESH_SKIP_NO_RUN_ID: Final = "no-run-id"
+REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
+REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
+REFRESH_SKIP_COMMIT_FAILED: Final = "commit-failed"
+REFRESH_SKIP_PRETERMINAL_OUTCOME: Final = "preterminal-outcome"
+REFRESH_SKIP_RUN_LOG_INCOMPLETE: Final = "run-log-incomplete"
+REFRESH_SKIP_VOLATILE_ONLY: Final = "volatile-only"
+PRETERMINAL_FORBIDDEN_OUTCOME_LABELS: Final[frozenset[str]] = frozenset({
+    "stalled",
+    "bailed",
+    "bailed-needs-user-input",
+})
+# Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
+REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
+    REFRESH_SKIP_NO_REPO_CWD,
+    REFRESH_SKIP_POST_MERGE,
+    REFRESH_SKIP_STATE_FILE_MISSING,
+    REFRESH_SKIP_NO_RUN_ID,
+    REFRESH_SKIP_INVALID_RUN_ID,
+    REFRESH_SKIP_NO_LOGS_COMMIT,
+    REFRESH_SKIP_COMMIT_FAILED,
+    REFRESH_SKIP_PRETERMINAL_OUTCOME,
+    REFRESH_SKIP_VOLATILE_ONLY,
+})
+REFRESH_SKIP_POST_ENSURE_PR_OK: Final[frozenset[str]] = frozenset({
+    REFRESH_SKIP_NO_REPO_CWD,
+    REFRESH_SKIP_POST_MERGE,
+    REFRESH_SKIP_STATE_FILE_MISSING,
+    REFRESH_SKIP_NO_RUN_ID,
+    REFRESH_SKIP_INVALID_RUN_ID,
+    REFRESH_SKIP_NO_LOGS_COMMIT,
+    REFRESH_SKIP_VOLATILE_ONLY,
+})
+
+MERGE_SKIP_NOT_REQUESTED: Final = "merge skipped: merge=false"
+MERGE_SKIP_DRAFT: Final = "merge skipped: draft PR"
+MERGE_SKIP_FORKED: Final = "merge skipped: forked implement"
+MERGE_SKIP_REPO_UNAVAILABLE: Final = "merge skipped: repo unavailable"
+
+MERMAID_REASON_PIPE_IN_NODE: Final = "pipe-in-node-label"
+MERMAID_REASON_BR_IN_ALIAS: Final = "br-in-participant-alias"
+MERMAID_REASON_DOLLAR_IN_ALIAS: Final = "dollar-in-participant-alias"
+MERMAID_REASON_UNCLOSED_FRONTMATTER: Final = "unclosed-frontmatter"
+
+RUN_LOG_BATCH_TOKEN_REPORT: Final = "token-report"
+RUN_LOG_BATCH_TIMING_REPORT: Final = "timing-report"
+RUN_LOG_BATCH_SESSION_TRANSCRIPT: Final = "session-transcript"
+RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: Final = "architectural-guideline-outcome"
+RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: Final = "architectural-invariant-outcome"
+GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION: Final = "52.4.16"
+INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION: Final = "52.4.16"
+
+NOTE_STATE_AUTHORED: Final = "authored"
+NOTE_STATE_DETERMINISTIC_CLEAN: Final = "deterministic-clean"
+NOTE_STATE_UNAVAILABLE: Final = "unavailable"
+NOTE_STATE_TOKENS: Final[frozenset[str]] = frozenset({
+    NOTE_STATE_AUTHORED,
+    NOTE_STATE_DETERMINISTIC_CLEAN,
+    NOTE_STATE_UNAVAILABLE,
+})
+REASON_DETERMINISTIC_CLEAN: Final = "deterministic-clean"
+REASON_UNAVAILABLE: Final = "unavailable"
+
+TOKEN_SIDECAR_KEYS: Final[frozenset[str]] = frozenset({
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_create_tokens",
+    "total_tokens",
+})
+
+PUSH_MAX_ATTEMPTS: Final = 3
+ADMIN_ELIGIBLE_MERGE_STATES: Final[frozenset[str]] = frozenset({
+    "CLEAN",
+    "UNSTABLE",
+    "HAS_HOOKS",
+    "BLOCKED",
+    "BEHIND",
+})
+
+INLINE_TRIAGE_MARKER: Final = "Inline-triage rule"
+OOS_FILED_URL_FIELD: Final = "**Filed URL**"
+
+# Scoped live-mutation authorization boundary (#6896)
+LIVE_MUTATION_AUTH_KEY: Final = "LARCH_LIVE_MUTATION_OK"
+LIVE_MUTATION_TEST_DENY_KEY: Final = "LARCH_ISSUE_MUTATION_DENY"
+LIVE_MUTATION_OPERATOR_MODE: Final = "operator"
+LIVE_MUTATION_SESSION_MODE: Final = "session"
+LIVE_MUTATION_REFUSAL_STATUS: Final = "mutation-refused"
+LIVE_MUTATION_REFUSAL_REASON: Final = "unauthorized-mutation"
+EXIT_MUTATION_REFUSED: Final = 5

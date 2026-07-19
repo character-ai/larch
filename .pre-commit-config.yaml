@@ -15,7 +15,7 @@
 # `--no-git --source .` (pass_filenames: false) and ignores this list, and the
 # dedicated CI gitleaks job scans the newly-added subdir. always_run hooks that
 # scan internally exclude larch-logs in their own logic. See SECURITY.md.
-exclude: ^(\.venv/|node_modules/|larch-logs/)
+exclude: ^(\.venv/|node_modules/|larch-logs/|plugin/)
 
 repos:
   - repo: local

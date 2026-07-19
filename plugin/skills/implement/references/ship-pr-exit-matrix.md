@@ -1,0 +1,82 @@
+# Ship PR NEXT_ACTION routing
+
+**Consumer**: `/implement` Step 8+ orchestrator.
+**Contract**: Python-owned post-driver and OOS-checkpoint routing that emits one `NEXT_ACTION=` token.
+**When to load**: **MANDATORY: READ ENTIRE FILE** at Step 8+ entry, before any Step 8+ orchestrator fence, including `ship route-exit` and `ship pre-driver`.
+
+## Durable result env
+
+The Step 8 wrapper delegates launch and reattachment to `bgjob adapt`. Its child passes the adapter-provided merge-result env to `ship pr` as `--result-env-path`. The bgjob daemon merges the direct ship outcome KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; Bash neither captures nor parses ship JSON.
+
+## `ship route-exit` contract
+
+`python/cli.py ship route-exit` reads the Step 8 bgjob result env, validates required outcome KVs, writes `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env`, and emits exactly one `NEXT_ACTION=<token>` on stdout. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no safe `NEXT_ACTION` exists, such as a malformed result env, a missing required field, or a handoff write failure. Do not apply the generic `BGJOB_RC=0` success gate here: Step 8 route-exit follows the numeric driver rc and ship outcome in the result env. `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, `BGJOB_STATUS=DEAD`, or a missing/malformed outcome block route-exit; other non-zero driver rc values such as 3 or 6 are valid route inputs when the outcome is current. Driver exit 2 (`EXIT_USAGE` / local-harness-confirms-failure) has no direct ship outcome, so `ship route-exit` fails closed and recovery re-invokes `step-8-ship.sh` through the Step 8 bgjob start/wait pair without `--resume-phase`.
+
+Required result-env fields:
+
+| Driver rc | Required fields | Routing |
+| --- | --- | --- |
+| 0 | `outcome` | `OK` maps to `complete`; any other outcome maps to `reship`. |
+| 1 | `outcome=INTERNAL_ERROR` | `tool-failure`. |
+| 3 | `outcome`, non-empty `needs_user_reason` | Reason table below. |
+| 4 | `outcome` | `stall`; persisted pre-push conflict handoffs map to `conflict-fix`, and `no-ci-checks-observed` with a pending phase14 rebase flag maps to `reship`. |
+| 6 | `outcome` | retries 1-3 `reship`; retry 4 `stall`. |
+
+Exit 3 reason routing:
+
+- `oos-filing` maps to `oos-pipeline`.
+- `architectural-assessments` maps to `assessments`; `DETAIL` is a comma-separated kind list containing `invariants`, `guidelines`, or `invariants,guidelines`.
+- `architectural-invariants-assessment` maps to `invariants-assessment`.
+- `architectural-invariants-violation` maps to `invariants-assessment` (normalized to `assessments` with `DETAIL=invariants`) so the compose-time violation re-enters the Step 8 fix ladder (materialize, tier-1 coder, fresh-assessor re-judge through `submit`, tier-2 main agent, terminal `invariant-violation-unresolved` hard stop) without requiring `FAILED_RUN_ID`; it never reaches the ci-fixer subagent.
+- `architectural-guidelines-assessment` maps to `guidelines-assessment`.
+- `first-fixer-non-health`, `main-ci-fail`, `flaky-defect-unfixed`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable` map to `ci-fix`.
+- `postmerge-main-ci-fail` maps to `postmerge-repair`; load only `postmerge-emergency-repair.md`.
+- `ci-fix-exhausted`, `fix-attempts-exhausted`, `unsupported-rebase-continuation`, `checkout-mismatch`, and unknown operator-only reasons map to `operator-bail`.
+- `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in scoped state makes prose skip autonomous `ci-fix` and use operator-bail.
+
+The handoff env stores safe single-line values: `FAILED_RUN_ID`, `NEEDS_USER_REASON`, `DETAIL`, optional `DETAIL_FILE`, `MAIN_HEALTH_HEAD_SHA`, main-health repair marker fields, emergency-repair fields, ledger keys, and conflict handoff keys (`RESUME_PHASE`, `CALLER_KIND`, `CONFLICT_FILES`) when `NEXT_ACTION=conflict-fix`. Before the assessment materialize step, normalize all three assessment actions into `NEXT_ACTION=assessments`: preserve valid combined requested kinds from `DETAIL` or its existing `DETAIL_FILE` source, map `invariants-assessment` to `DETAIL=invariants`, and map `guidelines-assessment` to `DETAIL=guidelines`. Preserve unrelated keys and reject malformed requested kinds. Both requested materializations are produced during the combined pause from one frozen diff snapshot, so their `HEAD_SHA`, `BASE_REF`, and `DIFF_FINGERPRINT` match. The compatibility actions remain Python outputs for one release but are dormant after normalization. The handoff includes `PRE_FIX_REBASE_REQUIRED=true` for `ci-fix` and `reship`. Boolean ledger values are lowercase `true` or `false`. When `ledger_ready=true`, prose records escalation before any `ci-fix` or `operator-bail` edits.
+
+## Branch semantics
+
+- **`complete`**: continue to Step 16.
+- **`assessments`**, **`invariants-assessment`**, and **`guidelines-assessment`**: normalize once immediately before the `architectural-assessment materialize` step. Preserve valid combined detail, map the invariant alias to canonical `DETAIL=invariants`, map the guideline alias to canonical `DETAIL=guidelines`, and preserve unrelated handoff keys. Empty, duplicate, unknown, whitespace-repaired, missing, or unsafe requested-kind data routes to Tool Failure without prompt-side repair. Then follow the SKILL.md Step 8+ subagent assessment procedure: `materialize` owns deterministic filtering, persistence, reuse, and scoped reassessment; one `larch:arch-assessor` subagent authors all pending kinds from file paths only; `architectural-assessment submit` revalidates identity fail-closed and persists each note. Require `ASSESSMENT_MATERIALIZE_STATUS=ok` and `ASSESSMENT_STATUS=complete` from `submit` for every pending kind. A `submit` exit code `10` (HEAD drift) re-materializes and spawns a fresh assessor, bounded at two attempts per kind. An unparseable assessor message or `submit` `ASSESSMENT_STATUS=invalid-note` gets one respawn, then Tool Failure. Any stale, malformed, incomplete, mismatched, or `fail-closed` result routes to Tool Failure with no ship relaunch. After validation, relaunch `step-8-ship.sh` exactly once for all requested kinds. Anti-halt to Step 8, not Step 16.
+- **`reship`**: skip the pre-fix rebase only when `.ship-route-exit-handoff.env` has `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`; this is an existing conflict-resolution continuation. For every other `reship`, run `python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"` before the Step 8 bgjob relaunch. When persisted state has `PR_CLOSED=true`, `ship pre-fix-rebase` skips the physical rebase and emits `NEXT_ACTION=continue`, letting the Step 8 relaunch resume the persisted phase such as `postmerge-push-watch`; `ship route-exit` still marks `PRE_FIX_REBASE_REQUIRED=true` for `reship`. On `NEXT_ACTION=continue`, re-invoke `step-8-ship.sh` through the Step 8 bgjob start/wait pair. On `NEXT_ACTION=conflict-fix`, run conflict resolution first. On `NEXT_ACTION=stall`, route like post-driver stall. Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 completes. Do not sleep on `RESHIP_DELAY_SECONDS`; the router already applied exit-6 delay.
+- **`oos-pipeline`**: security sidecar disposition only. Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `SECURITY.md` `## Security Findings in OOS Workflows` private disclosure with no public `/issue`, and clear the sidecar only after private disposition completes. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely before invoking `step-8-oos-checkpoint.sh`.
+- **`ci-fix`**: Handles PR run failures, `main-ci-fail`, and `flaky-defect-unfixed`; `FAILED_RUN_ID` may be a default-branch push run. If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in scoped `ship-pr-state.sh`, skip autonomous edits and route to operator-bail. Otherwise, run `python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"` before autonomous repair. On `NEXT_ACTION=continue`, apply the SKILL.md Step 8+ `.ship-pre-fix-rebase-ok` proof guard when `PRE_FIX_REBASE_REQUIRED=true`, then follow the SKILL.md Step 8+ ci-fixer subagent round loop; the handoff carries `CI_ERRORS_FILE=<path>` on distill success or `CI_ERRORS_FILE=` plus `CI_ERRORS_DISTILL_CLASS=<class>` on distill failure. On `NEXT_ACTION=conflict-fix`, run conflict resolution first. On `NEXT_ACTION=stall`, route like post-driver stall. Any autonomous repair path that ends in ship re-entry must use the Step 8 bgjob start/wait pair, including exact `local-unfixable` routing via the Exit 3 table. Exhausted rounds route operator-bail `ci-fix-exhausted`; two consecutive no-progress rounds route operator-bail `ci-fix-no-progress`; a non-consecutive repeated failure signature routes operator-bail `ci-fix-oscillation`; missing evidence after one re-distill attempt routes operator-bail `ci-evidence-unavailable`.
+- **`postmerge-repair`**: read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/postmerge-emergency-repair.md` and resume the dedicated emergency-repair state machine. This branch is entered from `postmerge-main-ci-fail`, not generic `ci-fix`, and keeps the original `PR_NUMBER` separate from `EMERGENCY_REPAIR_PR_NUMBER`.
+- **`conflict-fix`**: read `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` from `.ship-route-exit-handoff.env`. This branch is already mid-rebase; do not run `ship pre-fix-rebase` again. When they match the `ship_pr_pre_push` handoff, run conflict-resolution first (spawn `larch:ci-fixer` `MODE=conflict`; main agent parses `FIXER_*` only). Otherwise the default route is Step 16, then Step 18.
+- **`operator-bail`**: read `NEEDS_USER_REASON` and `DETAIL` from `.ship-route-exit-handoff.env`. Do not run the pre-fix rebase; this branch is operator-owned. When `ledger_ready=true`, record escalation first. For `invariant-violation-unresolved` (Step 8 fix-ladder hard stop after coder and main-agent fixes both left an invariant `violation`), HARD STOP with Step 12d: there is no waiver and no override, and the run must not create or merge the PR. For `architectural-guideline-deviation-unresolved` (a guideline `deviation` reached the ship gate without the documented-exception block), re-run the assessments route so the fix ladder either fixes the deviation or records the `Exception:` block; do not proceed to PR without a valid exception block. Other reasons use the existing operator question and Step 12d. If CI metadata lacks `failed_run_id`, use `${CLAUDE_PLUGIN_ROOT}/python/cli.py pr checks` as the fallback diagnostic path before deciding whether to stall. Do not enter Steps 16–18 while approved recovery remains pending. Manual recovery must finish with verified `RECONCILE_STATUS=ok`, including full bail-overlay clearance across ship, finalize, and session state. Clear in-memory stall state and pass `--stall-tracking-memory false`. Publish corrected durable records through a normal reviewable repair PR, never a post-merge commit to the merged implementation PR.
+- **Post-driver `stall`**: the default route is Step 16, then Step 18. Recoverable pre-push conflicts use `conflict-fix` instead.
+- **`tool-failure`**: hard Tool Failures stop. Do not rename as stalled and do not use Step 18 recovery.
+
+Pre-driver `NEXT_ACTION=stall` stays separate: skip ship and go directly to Step 18. OOS-checkpoint `NEXT_ACTION=stall` is also separate: halt Step 8+ until the gap or bookkeeping failure is resolved.
+
+## Step 8 CI-fix subagent records
+
+The ci-fixer subagent round loop is prose-owned in `skills/implement/SKILL.md`. The main agent appends each complete `FIXER_SUMMARY` value, beginning `failure_signature=<value>`, to `$IMPLEMENT_TMPDIR/ci-fixer-rounds.md` and parses only the subagent's three `FIXER_*` result lines (`pushed`, `no-progress`, `bail`). Subagent tokens bill to the main Claude session; attribution labels them as fixer-subagent work, not main-agent inline fixing. These are Step 8 ci-fix handoff statuses for the prose-owned subagent flow; they are not new Python ship driver `NEXT_ACTION` tokens unless a future implementation explicitly wires them into `ship route-exit`.
+
+## Initial state seeder contract
+
+`python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/tests/implement/test_ship.py` pins the ordered keys. `step-8-seed-initial.sh` is the sole shell argv wrapper. Inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
+
+`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a readable JSON manifest. The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH`. The bash ship path is retired, so `LARCH_SHIP_PR_IMPL=bash` prose is moot.
+
+## Long-running driver re-entry
+
+Post-driver Step 8+ continuations cover non-empty `PR_NUMBER`, post-cold-start `PHASE`, OOS checkpoint re-entry, transient retry, conflict resolution, or Exit 3 after PR creation. Invoke only `step-8-ship.sh` through the Step 8 bgjob start/wait pair; do not rerun the pre-driver verb. The wrapper still runs its guard and advisory phantom probe before the driver.
+
+Unexpected turn-end recovery follows the same rule: use `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` for the active driver call; the adapter rejoins a live identity-valid registry row or deliberately replaces a completed result for a reship. The Python driver reads persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. If the pre-driver predicate still matches, re-evaluate it first and run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
+
+## Terminal manifest contract
+
+Terminal runs must leave explicit `steps_ran` values through `python/cli.py final-report write`. The full invariant lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.md`.
+
+## Execution-issues checkpoint and metadata refresh
+
+`CI_PASSED=true` does not append execution-issues after green CI. The primary flush is Step 7a, before ship, so CI validates the same PR tree that carries the NDJSON record. Later steps may add entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-ship flush skips, and shared external-implementer / pre-push paths (`python/cli.py run-log flush`, `python/cli.py run-log refresh`) flush a later non-empty tail before the next log commit once that marker exists. Step 18 teardown remains the safety net.
+
+Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`). Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip the refresh helper entirely; do not call GitHub for issue `#0`.
+
+Pre-PR Step 2 main-health repair is documented in `step2-main-health-fix.md`, not this post-driver matrix. A recorded repair marker may allow merging over the same red main failure; new or different default-branch failures route through `main-ci-fail`.
+
+| Step 8 assessment | `submit` exit `10` (HEAD drift) | Re-materialize and spawn a fresh `larch:arch-assessor` for that kind; bounded at two attempts per kind, then Tool Failure; no ship relaunch |

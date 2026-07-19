@@ -792,7 +792,7 @@ def _verify_release_version(root: Path, expected: str) -> None:
     )
 
 
-def _set_release_version(root: Path, *, current: str, new: str) -> None:
+def _release_originals(root: Path) -> tuple[dict[Path, bytes], Path | None]:
     plugin_path = root / config.PLUGIN_JSON_PATH
     cargo_path = root / _CARGO_MANIFEST_PATH
     lock_path = root / _CARGO_LOCK_PATH
@@ -801,6 +801,20 @@ def _set_release_version(root: Path, *, current: str, new: str) -> None:
         cargo_path: _require_release_file(cargo_path),
         lock_path: _require_release_file(lock_path),
     }
+    projected_plugin_path = root / "plugin" / config.PLUGIN_JSON_PATH
+    if not projected_plugin_path.exists():
+        return originals, None
+    originals[projected_plugin_path] = _require_release_file(projected_plugin_path)
+    if originals[projected_plugin_path] != originals[plugin_path]:
+        raise ShipError("runtime projection plugin version source is out of sync")
+    return originals, projected_plugin_path
+
+
+def _set_release_version(root: Path, *, current: str, new: str) -> None:
+    plugin_path = root / config.PLUGIN_JSON_PATH
+    cargo_path = root / _CARGO_MANIFEST_PATH
+    lock_path = root / _CARGO_LOCK_PATH
+    originals, projected_plugin_path = _release_originals(root)
     cargo_data = _toml_data(originals[cargo_path], path=cargo_path)
     if _workspace_version(cargo_data) != current:
         raise ShipError("Cargo workspace version does not match plugin version")
@@ -841,12 +855,16 @@ def _set_release_version(root: Path, *, current: str, new: str) -> None:
         cargo_path: cargo_text.encode(),
         lock_path: lock_text.encode(),
     }
+    if projected_plugin_path is not None:
+        rendered[projected_plugin_path] = rendered[plugin_path]
     replaced: list[Path] = []
     try:
         for path, content in rendered.items():
             _atomic_replace(path, content)
             replaced.append(path)
         _verify_release_version(root, new)
+        if projected_plugin_path is not None and _read_plugin_version(projected_plugin_path) != new:
+            raise ShipError("runtime projection plugin version does not match release version")
     except (OSError, ShipError) as exc:
         rollback_errors: list[str] = []
         for path in reversed(replaced):

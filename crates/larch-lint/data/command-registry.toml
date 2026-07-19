@@ -5270,6 +5270,18 @@ migration_issue = 7687
 
 [[commands]]
 domain = "release"
+verb = "plugin-runtime"
+python_module = "larch.release.plugin_runtime"
+python_function = "main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7691
+
+[[commands]]
+domain = "release"
 verb = "prepare"
 python_module = "larch.release.release_prepare"
 python_function = "main"

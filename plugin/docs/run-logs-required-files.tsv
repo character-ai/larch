@@ -1,0 +1,20 @@
+relative_path	condition	batch_slug	extension
+# This manifest describes committed /implement run directories using step-scoped
+# conditions. Design-only and other pre-Step-7a bailout paths may produce
+# committed partial logs that omit Step-7a+ batches entirely.
+# GC note: run dirs that carry a gc-slimmed marker (written by /gc-run-logs) may
+# be missing non-keep-set files. Audit scanners should treat such absences as
+# informational rather than fail when the gc-slimmed marker is present.
+manifest.json	always	manifest	json
+plan-review-tally.json	always	plan-review-tally	json
+difficulty-rating.json	always	difficulty-rating	json
+code-review-tally.json	step5	code-review-tally	json
+review-findings-full.jsonl	step5	review-findings-full	jsonl
+final-summary.md	step8	direct-file	md
+token-report.json	step7a	token-report	json
+timing-report.json	step7a	timing-report	json
+execution-issues.ndjson	step7a	execution-issues	ndjson
+session-transcript.jsonl	step7a	session-transcript	jsonl
+round-*/aggregator-validate.stderr	exn-agg-validate-fail	direct-file	stderr
+round-*/aggregator-dispatch.stderr	exn-agg-dispatch-fail	direct-file	stderr
+run-statistics.md	step9a1	run-statistics	md

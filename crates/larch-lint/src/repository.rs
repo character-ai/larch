@@ -198,6 +198,11 @@ impl Repository {
         let committed = parse_tracked_paths(&git.committed_paths(&root)?)?;
         let mut paths = Vec::with_capacity(discovered.len());
         for path in discovered {
+            // `plugin/` is a generated, byte-for-byte runtime projection. Lint
+            // its canonical source paths once instead of reporting duplicates.
+            if path.as_str().starts_with("plugin/") {
+                continue;
+            }
             let candidate = root.join(path.as_str());
             let metadata = match std::fs::symlink_metadata(&candidate) {
                 Ok(metadata) => metadata,

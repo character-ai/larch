@@ -12,6 +12,8 @@ tools = ["claude-code"]
 #   is expected and must NOT be fixed on the fixture itself.
 # - agents/_implementer-base.md — source-of-truth prompt fragment for the
 #   generated implementer agents, not an invokable Claude Code agent.
+# - plugin/** — generated runtime projection; canonical sources are validated
+#   above it and release plugin-runtime --check rejects projection drift.
 # - larch-logs/** — committed run-log artifacts (reviewer prompts, voter
 #   outputs, plan embeds) contain arbitrary XML-like text that is not
 #   intended to be valid XML and must not be validated as skill content.
@@ -21,6 +23,7 @@ exclude = [
   "target/**",
   "tests/fixtures/**",
   "agents/_implementer-base.md",
+  "plugin/**",
   "larch-logs/**",
 ]
 

@@ -1,0 +1,384 @@
+# pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false
+"""Step 18 gate/finalize: stall layer resolution and final cleanup."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+from larch.core import config
+from larch.errors import ShipError
+from larch.implement.dispatch_helpers import (
+    _emit_kv,
+    _invoke_cli,
+    _parse_kv,
+    _read_kv_file,
+    _read_session_key_default,
+    _rehydrate_larch_triplet,
+    _rehydrate_plugin_root,
+    _run_cli_forward,
+)
+from larch.implement.dispatch_leg import _run_cli_capture
+from larch.issue import execution_issues
+from larch.state import finalize
+from larch.state._tokens import _abandoned_checks_bgjob_stall_step
+
+
+_TERMINAL_SHIPPING_REFUSAL_REASON = "step18-terminal-shipping-without-pr"
+_TERMINAL_SHIPPING_REFUSAL_ENTRY = (
+    "- **Step 18 terminal gate**: refused terminal `shipping` without PR evidence; "
+    "preserved the session for stall recovery."
+)
+_TRUTHY = frozenset({"1", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On"})
+
+
+def _stall_layer_active(value: str) -> bool:
+    return bool(value) and value != "false"
+
+
+def _resolve_stall_memory_layer(*, stall_tracking_memory_arg: str, env_stall_tracking: str) -> str:
+    if stall_tracking_memory_arg in {"true", "false"}:
+        return stall_tracking_memory_arg
+    if stall_tracking_memory_arg == "":
+        return env_stall_tracking or "false"
+    return stall_tracking_memory_arg
+
+
+def _read_stall_layer_from_file(*, path: Path, key: str, default: str = "false") -> str:
+    if not path.is_file():
+        return default
+    return _read_kv_file(path=path, key=key, default=default)
+
+
+@dataclass(frozen=True)
+class StallLayers:
+    memory: str
+    disk: str
+    finalize: str
+    session: str
+    abandoned_checks_bgjob: str
+
+    def any_active(self) -> bool:
+        return any(
+            _stall_layer_active(value)
+            for value in (self.memory, self.disk, self.finalize, self.session, self.abandoned_checks_bgjob)
+        )
+
+
+def _resolve_stall_layers(implement_tmpdir: Path, *, stall_tracking_memory_arg: str) -> StallLayers:
+    return StallLayers(
+        memory=_resolve_stall_memory_layer(
+            stall_tracking_memory_arg=stall_tracking_memory_arg,
+            env_stall_tracking=os.environ.get("STALL_TRACKING", "false"),
+        ),
+        disk=_read_stall_layer_from_file(path=implement_tmpdir / "ship-pr-state.sh", key="STALL_TRACKING"),
+        finalize=_read_stall_layer_from_file(path=implement_tmpdir / "finalize-state.sh", key="STALL_TRACKING"),
+        session=_read_stall_layer_from_file(path=implement_tmpdir / "session-env.sh", key="STALL_TRACKING"),
+        abandoned_checks_bgjob="true" if _abandoned_checks_bgjob_stall_step(implement_tmpdir) else "false",
+    )
+
+
+def _emit_stall_layers(layers: StallLayers) -> None:
+    _emit_kv(key="STALL_TRACKING_MEMORY", value=layers.memory)
+    _emit_kv(key="STALL_TRACKING_DISK", value=layers.disk)
+    _emit_kv(key="STALL_TRACKING_FINALIZE", value=layers.finalize)
+    _emit_kv(key="STALL_TRACKING_SESSION", value=layers.session)
+    _emit_kv(key="STALL_TRACKING_ABANDONED_MARKER", value=layers.abandoned_checks_bgjob)
+
+
+def _normalize_outcome_for_step18(implement_tmpdir: Path, *, memory_layer: str, env: dict[str, str]) -> dict[str, str]:
+    result = _run_cli_capture(
+        [
+            "stall-recovery",
+            "normalize-outcome",
+            "--implement-tmpdir",
+            str(implement_tmpdir),
+            "--in-memory-stall-tracking",
+            memory_layer,
+        ],
+        env=env,
+    )
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        sys.stderr.flush()
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+        sys.stdout.flush()
+    return _parse_kv(result.stdout if result.returncode == 0 else "")
+
+
+def _is_terminal_shipping_without_pr(normalized: dict[str, str]) -> bool:
+    return (
+        normalized.get("IMPLEMENT_NORMALIZED_OUTCOME") == "shipping"
+        and not normalized.get("IMPLEMENT_PR_NUMBER", "").strip()
+    )
+
+
+def _record_terminal_shipping_refusal(*, implement_tmpdir: Path) -> bool:
+    """Persist the terminal-gate refusal before returning a hard failure.
+
+    ``shipping`` is only valid for a committed, pre-PR snapshot.  Once Step 18
+    starts terminal finalization, retaining that label would otherwise permit a
+    teardown that loses the session needed to recover the failed ship attempt.
+    """
+    state_path = implement_tmpdir / "finalize-state.sh"
+    if state_path.is_symlink():
+        return False
+    try:
+        state: dict[str, str] = finalize.read_finalize_state(state_path)
+        state.update(
+            {
+                "BAIL_REASON": _TERMINAL_SHIPPING_REFUSAL_REASON,
+                "EXIT_CODE": str(config.EXIT_INTERNAL_ERROR),
+                "PHASE": "stalled",
+                "STALL_STEP": "8",
+                "STALL_TRACKING": "true",
+                "STEP18_GATE_REFUSAL": _TERMINAL_SHIPPING_REFUSAL_REASON,
+            }
+        )
+        finalize.write_finalize_state_merged(path=state_path, data=state)
+        persisted: dict[str, str] = finalize.read_finalize_state(state_path)
+        expected = {
+            "BAIL_REASON": _TERMINAL_SHIPPING_REFUSAL_REASON,
+            "EXIT_CODE": str(config.EXIT_INTERNAL_ERROR),
+            "PHASE": "stalled",
+            "STALL_STEP": "8",
+            "STALL_TRACKING": "true",
+            "STEP18_GATE_REFUSAL": _TERMINAL_SHIPPING_REFUSAL_REASON,
+        }
+        if any(persisted.get(key) != value for key, value in expected.items()):
+            return False
+        issue_log = implement_tmpdir / "execution-issues.md"
+        execution_issues.append_execution_issue(
+            issue_log,
+            category="Tool Failures",
+            entry=_TERMINAL_SHIPPING_REFUSAL_ENTRY,
+        )
+        return _TERMINAL_SHIPPING_REFUSAL_ENTRY in issue_log.read_text(encoding="utf-8")
+    except (OSError, ShipError):
+        return False
+
+
+def _append_failure_best_effort(*, implement_tmpdir: Path, site: str, tool: str, rc: int, log: Path) -> None:
+    if not log.is_file():
+        try:
+            log.write_text("", encoding="utf-8")
+        except OSError:
+            return
+    _ = _invoke_cli([
+        "run-log", "append-failure",
+        "--log", str(implement_tmpdir / "execution-issues.md"),
+        "--site", site,
+        "--tool", tool,
+        "--exit-code", str(rc),
+        "--category", "Tool Failures",
+        "--output-file", str(log),
+        "--redact",
+    ])
+
+
+def _print_summary_markers(implement_tmpdir: Path) -> int:
+    summary_path = implement_tmpdir / "summary-final.md"
+    print("---LARCH-SUMMARY-FINAL-BEGIN---")
+    try:
+        body = summary_path.read_text(encoding="utf-8")
+    except OSError:
+        return 1
+    sys.stdout.write(body)
+    if body and not body.endswith("\n"):
+        sys.stdout.write("\n")
+    print("---LARCH-SUMMARY-FINAL-END---")
+    (implement_tmpdir / ".step17-emitted").touch()
+    return 0
+
+
+def _should_restore_finalize(implement_tmpdir: Path) -> bool:
+    ship_state = implement_tmpdir / "ship-pr-state.sh"
+    if not ship_state.is_file():
+        return False
+    finalize_state = implement_tmpdir / "finalize-state.sh"
+    if not finalize_state.is_file():
+        return True
+    ship_stall = _read_kv_file(path=ship_state, key="STALL_TRACKING", default="false")
+    ship_bail = _read_kv_file(path=ship_state, key="BAIL_NEEDS_USER_INPUT", default="false")
+    ship_step = _read_kv_file(path=ship_state, key="STALL_STEP", default="")
+    final_step = _read_kv_file(path=finalize_state, key="STALL_STEP", default="")
+    if ship_stall in _TRUTHY or ship_bail in _TRUTHY:
+        return True
+    return bool(ship_step) and ship_step != final_step
+
+
+def _step18_gate(*, implement_tmpdir: Path, stall_tracking_memory: str) -> int:
+    layers = _resolve_stall_layers(implement_tmpdir, stall_tracking_memory_arg=stall_tracking_memory)
+    _emit_kv(key="STALL_TRACKING_MEMORY", value=layers.memory)
+    _emit_kv(key="STALL_TRACKING_DISK", value=layers.disk)
+    _emit_kv(key="STALL_TRACKING_FINALIZE", value=layers.finalize)
+    _emit_kv(key="STALL_TRACKING_SESSION", value=layers.session)
+    if any(_stall_layer_active(value) for value in (layers.memory, layers.disk, layers.finalize, layers.session)):
+        _emit_kv(key="STALL_RECOVERY_REQUIRED", value="true")
+        return 0
+    _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
+    print("⏩ 18a: stall recovery; no stall detected")
+    return 0
+
+
+def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:  # noqa: C901 - finalize sequences report render, token and timing marks, transcript capture, and teardown
+    if step17_emitted == "true":
+        (implement_tmpdir / ".step17-emitted").touch()
+
+    step18b_out = implement_tmpdir / "step18b-final-report.stdout"
+    step18b_err = implement_tmpdir / "step18b-final-report.stderr"
+    with contextlib.suppress(OSError):
+        step18b_err.write_text("", encoding="utf-8")
+    result = _run_cli_capture([
+        "final-report", "step18b",
+        "--implement-tmpdir", str(implement_tmpdir),
+        "--step17-emitted", step17_emitted,
+    ])
+    try:
+        step18b_out.write_text(result.stdout or "", encoding="utf-8")
+        if result.stderr:
+            step18b_err.write_text(result.stderr, encoding="utf-8")
+    except OSError:
+        pass
+    values = _parse_kv(result.stdout or "")
+    emit_body = values.get("EMIT_BODY", "false") or "false"
+    wfr_rc = values.get("WFR_RC", "") or str(result.returncode)
+    step17_present = values.get("STEP17_EMITTED_PRESENT", "false") or "false"
+    snapshot_ok = values.get("SNAPSHOT_OK", "absent") or "absent"
+    wfr_error = values.get("ERROR", "")
+    if result.returncode != 0:
+        _append_failure_best_effort(
+            implement_tmpdir=implement_tmpdir,
+            site="Step 18b — final-report",
+            tool="python/cli.py final-report step18b",
+            rc=result.returncode,
+            log=step18b_err,
+        )
+    _emit_kv(key="EMIT_BODY", value=emit_body)
+    _emit_kv(key="WFR_RC", value=wfr_rc)
+    _emit_kv(key="STEP17_EMITTED_PRESENT", value=step17_present)
+    _emit_kv(key="SNAPSHOT_OK", value=snapshot_ok)
+    _emit_kv(key="ERROR", value=wfr_error)
+    if wfr_rc != "0":
+        reason = wfr_error or "render failed (no reason surfaced)"
+        print(f"**⚠ Step 18: final report render failed (WFR_RC={wfr_rc}): {reason}.**", file=sys.stderr)
+    if emit_body == "true" and wfr_rc == "0" and (implement_tmpdir / "summary-final.md").is_file() and (implement_tmpdir / "summary-final.md").stat().st_size > 0:
+        _ = _print_summary_markers(implement_tmpdir)
+
+    _ = _invoke_cli(["token", "report", "--since-last-mark", "--terse"])
+    timing_env = {**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}
+    _ = _run_cli_capture(["timing", "report", "--since-last-mark", "--terse"], env=timing_env)
+    _ = _invoke_cli(["token", "mark", "Step 18 — done"])
+    _ = _run_cli_capture(["timing", "mark", "Step 18 — done"], env=timing_env)
+
+    run_id = os.environ.get("RUN_ID") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default="")
+    if run_id:
+        _ = _invoke_cli([
+            "execution-issues", "flush-safety-net",
+            "--log-root", str(implement_tmpdir / "larch-logs"),
+            "--run-id", run_id,
+            "--issue-log", str(implement_tmpdir / "execution-issues.md"),
+        ])
+        source_file = os.environ.get("LARCH_CLAUDE_SOURCE_FILE") or _read_session_key_default(
+            implement_tmpdir=implement_tmpdir, key="LARCH_CLAUDE_SOURCE_FILE", default=""
+        )
+        if source_file and not (implement_tmpdir / "bgjob" / "implement-step7a.result.env").is_file():
+            capture = _run_cli_capture([
+                "run-log", "capture-transcript",
+                "--source-file", source_file,
+                "--log-root", str(implement_tmpdir / "larch-logs"),
+                "--skill", "implement",
+                "--run-id", run_id,
+                "--defer-commit", "true",
+                "--execution-issues-log", str(implement_tmpdir / "execution-issues.md"),
+                "--warning-step-label", "18",
+            ])
+            for line in (capture.stdout or "").splitlines():
+                if line.startswith("SESSION_TRANSCRIPT_STATUS="):
+                    print(line)
+
+    if _should_restore_finalize(implement_tmpdir):
+        restore = _invoke_cli(["session", "restore-finalize-state", "--implement-tmpdir", str(implement_tmpdir)])
+        if restore.returncode != 0:
+            print("**⚠ Step 18: restore-finalize-state.sh failed; proceeding to teardown.**", file=sys.stderr)
+
+    claude_pid = os.environ.get("LARCH_CLAUDE_PID") or str(os.getppid())
+    _ = _invoke_cli(["session", "clear-implement-pointer", "--claude-pid", claude_pid])
+    return _run_cli_forward([
+        "implement-finalize", "teardown",
+        "--state-file", str(implement_tmpdir / "finalize-state.sh"),
+        "--implement-tmpdir", str(implement_tmpdir),
+    ])
+
+
+def step_18_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-18")
+    parser.add_argument("--phase", choices=("gate", "finalize"), default="gate")
+    parser.add_argument("--stall-tracking-memory", default="")
+    parser.add_argument("--step17-emitted", choices=("true", "false"), default="false")
+    args = parser.parse_args(argv)
+    implement_tmpdir_raw = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not implement_tmpdir_raw:
+        print("implement step-18: IMPLEMENT_TMPDIR is required", file=sys.stderr)
+        return 2
+    implement_tmpdir = Path(implement_tmpdir_raw)
+    plugin_root = _rehydrate_plugin_root(implement_tmpdir)
+    if not plugin_root.is_dir():
+        print(f"step-18: CLAUDE_PLUGIN_ROOT not found: {plugin_root}", file=sys.stderr)
+        return 2
+    _rehydrate_larch_triplet(implement_tmpdir)
+    run_id = os.environ.get("RUN_ID") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default="")
+    if run_id:
+        os.environ["RUN_ID"] = run_id
+    if args.phase == "gate":
+        return _step18_gate(implement_tmpdir=implement_tmpdir, stall_tracking_memory=args.stall_tracking_memory)
+    return _step18_finalize(implement_tmpdir=implement_tmpdir, step17_emitted=args.step17_emitted)
+
+
+def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-18-gate-finalize")
+    parser.add_argument("--implement-tmpdir", default="")
+    parser.add_argument("--stall-tracking-memory", default="")
+    parser.add_argument("--step17-emitted", choices=("true", "false"), default="false")
+    args = parser.parse_args(argv)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        print("implement step-18-gate-finalize: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
+        return 2
+    implement_tmpdir = Path(raw_tmpdir)
+    os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
+    plugin_root = _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    env = dict(os.environ)
+    env[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    layers = _resolve_stall_layers(implement_tmpdir, stall_tracking_memory_arg=args.stall_tracking_memory)
+    _emit_stall_layers(layers)
+    if layers.any_active():
+        _emit_kv(key="STALL_RECOVERY_REQUIRED", value="true")
+        _emit_kv(key="NEXT_ACTION", value="stall-recovery")
+        return 0
+
+    print("⏩ 18a: stall recovery; no stall detected")
+    normalized = _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
+    if _is_terminal_shipping_without_pr(normalized):
+        persisted = _record_terminal_shipping_refusal(implement_tmpdir=implement_tmpdir)
+        _emit_kv(key="STALL_RECOVERY_REQUIRED", value="true" if persisted else "unknown")
+        _emit_kv(key="TERMINAL_FINALIZE_REFUSED", value="true")
+        _emit_kv(key="STATUS", value="blocked")
+        _emit_kv(key="OUTCOME", value="stalled")
+        _emit_kv(key="NEXT_ACTION", value="tool-failure")
+        if not persisted:
+            print("implement step-18-gate-finalize: cannot persist terminal shipping refusal", file=sys.stderr)
+        return config.EXIT_INTERNAL_ERROR
+
+    _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
+    finalize_rc = _step18_finalize(implement_tmpdir=implement_tmpdir, step17_emitted=args.step17_emitted)
+    _emit_kv(key="NEXT_ACTION", value="finalize-done")
+    return finalize_rc

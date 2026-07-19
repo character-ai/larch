@@ -1,0 +1,1240 @@
+"""Final report rendering and Step 18b helpers for /implement."""
+
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import cast
+
+from larch.core import architectural_guidelines
+from larch.state import closeout
+from larch.core import config
+from larch.core import logging_util
+from larch.report import exec_issue_detail
+from larch import io as larch_io
+from larch.issue import execution_issues
+from larch.git import pr_body
+from larch.report import report_tokens_cost
+from larch.report import review_phase_detail
+from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
+from larch.state import stall_recovery
+from larch.report import tokens
+from larch.report import progress_file
+from larch.implement import scope_disposition
+from larch.errors import ShipError
+from larch.calibration import difficulty
+
+_OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
+_STALLED_OUTCOME_LINE_RE = re.compile(
+    r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*(?:❌[ \t]+)?stalled[ \t]*$",
+    re.IGNORECASE,
+)
+_LEGACY_DONE_OUTCOME_LINE_RE = re.compile(
+    r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*DONE[ \t]*$",
+)
+
+
+def _read_kv(*, path: Path, key: str, default: str = "") -> str:
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
+
+
+def _safe_int(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _object_map(value: object) -> Mapping[str, object]:
+    return cast("Mapping[str, object]", value) if isinstance(value, dict) else {}
+
+
+def _json_object(path: Path) -> Mapping[str, object]:
+    try:
+        parsed: object = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast("Mapping[str, object]", parsed) if isinstance(parsed, dict) else {}
+
+
+def _json_archetype_count(path: Path) -> int | None:
+    try:
+        data: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    archetypes = cast("Mapping[str, object]", data).get("archetypes")
+    return len(cast("list[object]", archetypes)) if isinstance(archetypes, list) else None
+
+
+def _first_round_scout_status(implement_tmpdir: Path) -> str:
+    for status_file in sorted(implement_tmpdir.glob("round-*/scout-round*-status.env")):
+        status = _read_kv(path=status_file, key="SCOUT_STATUS")
+        if status:
+            return status
+    return ""
+
+
+def _first_round_scout_manifest(implement_tmpdir: Path) -> Path | None:
+    for manifest in sorted(implement_tmpdir.glob("round-*/scout-round*-manifest.json")):
+        if manifest.is_file():
+            return manifest
+    return None
+
+
+def _self_review_requested(implement_tmpdir: Path) -> bool:
+    return _read_kv(path=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED") == "true"
+
+
+def _difficulty_summary_line(run_dir: Path) -> str:
+    record = run_dir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if not record.is_file():
+        return ""
+    try:
+        data: object = json.loads(record.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return difficulty.difficulty_line(cast("dict[str, object]", data)) if isinstance(data, dict) else ""
+
+
+def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
+    round_status = _first_round_scout_status(implement_tmpdir)
+    if round_status.startswith("skipped-"):
+        return round_status
+    if round_status in {"producer-missing", "producer-invalid"}:
+        return "static-only, producer missing-or-invalid"
+    if round_status == "pre-scouted-empty":
+        return "static-only, pre-scouted-empty"
+    if round_status == "pre-scouted":
+        round_manifest = _first_round_scout_manifest(implement_tmpdir)
+        count = _json_archetype_count(round_manifest) if round_manifest is not None else None
+        if count is not None:
+            return f"ok ({count})"
+        return "unknown"
+    if not round_status:
+        if _self_review_requested(implement_tmpdir):
+            return "N/A"
+        status_file = implement_tmpdir / "step2-scout-coder-status.env"
+        if not status_file.is_file():
+            return "unknown"
+        coder_status = _read_kv(path=status_file, key="SCOUT_CODER_STATUS")
+        if not coder_status:
+            return "unknown"
+        if coder_status != "ok":
+            return "static-only, producer missing-or-invalid"
+        manifest = implement_tmpdir / "scout-coder-manifest.json"
+        marker = implement_tmpdir / "step2-external-scout-eligible.txt"
+        count = _json_archetype_count(manifest)
+        if count is None or not marker.is_file():
+            return "static-only, producer missing-or-invalid"
+        if count == 0:
+            return "static-only, producer empty"
+        return f"ok ({count})"
+    return "unknown"
+
+
+def _current_head_sha() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],  # noqa: S607
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _format_architectural_guidelines_section(text: str) -> str:
+    stripped = text.strip()
+    return "## Architectural guidelines\n\n" + stripped + "\n" if stripped else ""
+
+
+def _format_architectural_invariants_section(text: str) -> str:
+    stripped = text.strip()
+    return "## Architectural invariants\n\n" + stripped + "\n" if stripped else ""
+
+
+def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) -> str:
+    try:
+        note = architectural_guidelines.durable_note_path(implement_tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return ""
+    redacted = pr_body.redact_pr_body(note)
+    return _format_architectural_guidelines_section(redacted)
+
+
+def _read_consumable_architectural_invariants_section(implement_tmpdir: Path) -> str:
+    try:
+        note = architectural_guidelines.invariant_durable_note_path(implement_tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return ""
+    redacted = pr_body.redact_pr_body(note)
+    return _format_architectural_invariants_section(redacted)
+
+
+def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
+    head_sha = _current_head_sha()
+    if head_sha and architectural_guidelines.note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+    ):
+        return _read_consumable_architectural_guidelines_section(implement_tmpdir)
+    return ""
+
+
+def _architectural_invariants_section(implement_tmpdir: Path) -> str:
+    head_sha = _current_head_sha()
+    if head_sha and architectural_guidelines.invariant_note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+    ):
+        return _read_consumable_architectural_invariants_section(implement_tmpdir)
+    return ""
+
+
+def _append_architectural_knowledge(body: str, implement_tmpdir: Path) -> str:
+    """Append invariant and guideline sections to the report body, fail-soft."""
+    for section_fn in (_architectural_invariants_section, _architectural_guidelines_section):
+        try:
+            section = section_fn(implement_tmpdir)
+        except Exception:
+            section = ""
+        if section:
+            body = body.rstrip("\n") + "\n\n" + section
+    return body
+
+
+def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
+    """Codex token flags split by model from ``BUCKETS_codex_by_model``.
+
+    Mini-class rows route to ``--codex-mini-*`` (mini rates); every other model
+    folds into ``--codex-*`` (gpt-5.6 rates, the documented unknown/legacy fallback).
+    Falls back to the model-summed ``BUCKETS_codex`` when no per-model split exists.
+    """
+    by_model = _object_map(data.get("BUCKETS_codex_by_model"))
+    if not by_model:
+        return [
+            "--codex-input-tokens", str(_safe_int(bucket.get("input"))),
+            "--codex-cached-input-tokens", str(_safe_int(bucket.get("cached_input"))),
+            "--codex-output-tokens", str(_safe_int(bucket.get("output"))),
+        ]
+    main_in = main_cached = main_out = 0
+    mini_in = mini_cached = mini_out = 0
+    for model, raw_mb in by_model.items():
+        mb = _object_map(raw_mb)
+        if model in report_tokens_cost.CODEX_MINI_MODELS:
+            mini_in += _safe_int(mb.get("input"))
+            mini_cached += _safe_int(mb.get("cached_input"))
+            mini_out += _safe_int(mb.get("output"))
+        else:
+            main_in += _safe_int(mb.get("input"))
+            main_cached += _safe_int(mb.get("cached_input"))
+            main_out += _safe_int(mb.get("output"))
+    return [
+        "--codex-input-tokens", str(main_in),
+        "--codex-cached-input-tokens", str(main_cached),
+        "--codex-output-tokens", str(main_out),
+        "--codex-mini-input-tokens", str(mini_in),
+        "--codex-mini-cached-input-tokens", str(mini_cached),
+        "--codex-mini-output-tokens", str(mini_out),
+    ]
+
+
+def _cursor_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
+    return report_tokens_cost.cursor_argv_from_buckets(
+        by_model=data.get("BUCKETS_cursor_by_model"),
+        bucket=bucket,
+    )
+
+
+def _manifest_main_model(run_dir: Path) -> str:
+    data = _json_object(run_dir / "manifest.json")
+    roster = _object_map(data.get("model_roster"))
+    return str(roster.get("main") or "")
+
+
+def _token_argv_for_run_report(*, data_obj: dict[str, object], run_dir: Path) -> list[str]:
+    data = tokens.enrich_claude_sub_by_model(
+        tokens.enrich_codex_by_model(data_obj, run_dir=run_dir),
+        run_dir=run_dir,
+    )
+    token_argv = _token_argv_from_report(data)
+    main_model = _manifest_main_model(run_dir)
+    if main_model:
+        token_argv = ["--claude-model", main_model, *token_argv]
+    return token_argv
+
+
+def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
+    argv: list[str] = []
+    vendor_buckets = (
+        ("claude", "BUCKETS_claude", "claude"),
+        ("codex", "BUCKETS_codex", "codex"),
+        ("cursor", "BUCKETS_cursor", "cursor"),
+        ("claude_sub", "BUCKETS_claude_sub", "claude-sub"),
+    )
+    for vendor, bucket_key, flag_prefix in vendor_buckets:
+        bucket = _object_map(data.get(bucket_key))
+        if bucket and any(_safe_int(value) for value in bucket.values()):
+            if vendor in {"claude", "claude_sub"}:
+                if vendor == "claude_sub":
+                    argv.extend(report_tokens_cost.claude_sub_argv_from_buckets(
+                        by_model=_object_map(data.get("BUCKETS_claude_sub_by_model")),
+                        bucket=bucket,
+                    ))
+                    continue
+                cache_create_5m = _safe_int(bucket.get("cache_create_5m"))
+                if cache_create_5m == 0:
+                    cache_create_5m = _safe_int(bucket.get("cache_create"))
+                argv.extend([
+                    f"--{flag_prefix}-input-tokens", str(_safe_int(bucket.get("input"))),
+                    f"--{flag_prefix}-cache-read-tokens", str(_safe_int(bucket.get("cache_read"))),
+                    f"--{flag_prefix}-cache-write-5m-tokens", str(cache_create_5m),
+                    f"--{flag_prefix}-cache-write-1h-tokens", str(_safe_int(bucket.get("cache_create_1h"))),
+                    f"--{flag_prefix}-output-tokens", str(_safe_int(bucket.get("output"))),
+                ])
+            elif vendor == "codex":
+                argv.extend(_codex_token_argv(data=data, bucket=bucket))
+            else:
+                argv.extend(_cursor_token_argv(data=data, bucket=bucket))
+            continue
+        totals = _object_map(data.get(vendor))
+        nested_totals = _object_map(totals.get("totals"))
+        if nested_totals:
+            total = _safe_int(nested_totals.get("total"))
+            if total:
+                argv.extend([f"--{flag_prefix}-tokens", str(total)])
+    return argv
+
+
+def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    token_json: Path | None = None
+    for cand in (run_dir / "token-report.json", implement_tmpdir / "token-report-rendered.json"):
+        if cand.is_file() and not cand.is_symlink():
+            token_json = cand
+            break
+    if token_json is None:
+        tr_json = implement_tmpdir / "token-report-truth.json"
+        env = {**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)}
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parents[2] / "cli.py"),
+                "token",
+                "report",
+                "--full",
+                "--format",
+                "json",
+                "--output",
+                str(tr_json),
+            ],
+            env=env,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode == 0 and tr_json.is_file():
+            token_json = tr_json
+    if token_json is None:
+        return {"cost_unavailable": True}
+    try:
+        data_obj = json.loads(token_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"cost_unavailable": True}
+    if not isinstance(data_obj, dict):
+        return {"cost_unavailable": True}
+    data = cast("dict[str, object]", data_obj)
+    claude = _object_map(data.get("claude"))
+    if not _object_map(claude.get("totals")):
+        return {"cost_unavailable": True}
+    token_argv = _token_argv_for_run_report(data_obj=data, run_dir=run_dir)
+    if not token_argv:
+        return {"cost_unavailable": True}
+    try:
+        cost_kv = report_tokens_cost.token_cost_from_args(token_argv)
+    except Exception:
+        return {"cost_unavailable": True}
+
+    total_cost = larch_io.kv_value(text=cost_kv, key="TOTAL_COST", default="N/A")
+    if total_cost == "N/A":
+        return {"cost_unavailable": True}
+    return {
+        "cost_unavailable": False,
+        "total_cost": total_cost,
+        "claude_cost": larch_io.kv_value(text=cost_kv, key="CLAUDE_COST", default="N/A"),
+        "codex_cost": larch_io.kv_value(text=cost_kv, key="CODEX_COST", default="N/A"),
+        "codex_gpt_5_5_cost": larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_5_COST", default="N/A"),
+        "codex_gpt_5_4_mini_cost": larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_4_MINI_COST", default="N/A"),
+        "cursor_cost": larch_io.kv_value(text=cost_kv, key="CURSOR_COST", default="N/A"),
+        "cursor_composer_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_COMPOSER_COST", default="") or None),
+        "cursor_grok_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_GROK_COST", default="") or None),
+        "claude_sub_cost": larch_io.kv_value(text=cost_kv, key="CLAUDE_SUB_COST", default="N/A"),
+        "total_tokens": int(larch_io.kv_value(text=cost_kv, key="TOTAL_TOKENS", default="N/A") or 0),
+    }
+
+
+def _final_report_duration(*, run_dir: Path, ship: Path) -> str:
+    timing = run_dir / "timing-report.json"
+    if timing.is_file():
+        try:
+            data_obj = json.loads(timing.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data_obj = None
+        if isinstance(data_obj, dict):
+            data = cast("dict[str, object]", data_obj)
+            total_hms = data.get("total_hms")
+            if total_hms:
+                return str(total_hms)
+            total_seconds = data.get("total_seconds")
+            if total_seconds is not None:
+                return f"{total_seconds}s"
+    return _read_kv(path=ship, key="DURATION", default="N/A")
+
+
+def _refresh_issue_counts(*, implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir, prefer_run_dir=True)
+    return exec_issue_detail.count_load_result(result)
+
+
+def _issue_load_result_for_run(
+    *, implement_tmpdir: Path,
+    run_id: str,
+) -> tuple[Path, exec_issue_detail.LoadResult, int, int]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    load_result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir, prefer_run_dir=True)
+    exec_count, warn_count = exec_issue_detail.count_load_result(load_result)
+    return run_dir, load_result, exec_count, warn_count
+
+
+def _merge_line_count_state(*, ship: Path, pr_number: str, lines: tokens.PrLineCountResult) -> None:
+    if not ship.is_file() or ship.is_symlink() or not os.access(ship, os.W_OK):
+        return
+    preserved: list[str] = []
+    for line in ship.read_text(encoding="utf-8", errors="replace").splitlines():
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        key = next(iter(parsed), "")
+        if key and key not in {"LINES_PR_NUMBER", "LINES_STATUS", "CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"}:
+            preserved.append(line)
+    tmp = ship.with_suffix(ship.suffix + ".tmp")
+    tmp.write_text(
+        "".join(f"{line}\n" for line in preserved)
+        + f"LINES_PR_NUMBER={pr_number or '0'}\n"
+        + "".join(f"{key}={value}\n" for key, value in lines.kv_items() if key != "REASON"),
+        encoding="utf-8",
+    )
+    tmp.replace(ship)
+
+
+def _derive_pr_line_counts(*, repo: str, repo_unavailable: bool, pr_number: str, ship: Path) -> tuple[str, str, str, str]:
+    if repo_unavailable or not pr_number or pr_number == "0":
+        return "", "", "", ""
+    cached_pr = _read_kv(path=ship, key="LINES_PR_NUMBER")
+    if cached_pr == pr_number and _read_kv(path=ship, key="LINES_STATUS") == "ok":
+        ca, cd, la, ld = (_read_kv(path=ship, key=key) for key in ("CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"))
+        if all(value.isdigit() for value in (ca, cd, la, ld)):
+            return ca, cd, la, ld
+    result = tokens.compute_pr_line_counts(pr_number=int(pr_number), repo=repo or None)
+    if result.status == "ok":
+        with contextlib.suppress(OSError):
+            _merge_line_count_state(ship=ship, pr_number=pr_number, lines=result)
+        return (
+            str(result.code_added),
+            str(result.code_deleted),
+            str(result.logs_added),
+            str(result.logs_deleted),
+        )
+    return "", "", "", ""
+
+
+def _derive_review_line_from_findings(run_dir: Path) -> str:
+    accepted, rejected, seen_code_review = _count_code_review_findings(run_dir / "review-findings-full.jsonl")
+    total = accepted + rejected
+    if total > 0:
+        return f"{accepted}/{total} accepted"
+    return "0 findings" if seen_code_review else "N/A"
+
+
+def _derive_review_line(*, run_dir: Path, filename: str) -> str:
+    tally = run_dir / filename
+    if not tally.is_file():
+        if filename == "code-review-tally.json":
+            return _derive_review_line_from_findings(run_dir)
+        return "N/A"
+    try:
+        data_obj = json.loads(tally.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "N/A"
+    if not isinstance(data_obj, dict):
+        return "N/A"
+    data = cast("dict[str, object]", data_obj)
+    try:
+        accepted = int(str(data.get("accepted_count") or 0))
+        rejected = int(str(data.get("rejected_count") or 0))
+    except (TypeError, ValueError):
+        return "N/A"
+    if accepted < 0 or rejected < 0:
+        return "N/A"
+    total = accepted + rejected
+    if total > 0:
+        return f"{accepted}/{total} accepted"
+    # Zero-count tally: distinguish "review ran clean" from "no review ran", but
+    # only for code-review tallies. plan-review (or any non-code-review phase)
+    # zero totals stay N/A.
+    is_code_review = filename == "code-review-tally.json" or data.get("phase") == "code-review"
+    if not is_code_review:
+        return "N/A"
+    if data.get("mode") == "self-review":
+        return "self-review: 0 findings"
+    return "0 findings"
+
+
+def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
+    ndjson = run_dir / "oos-issues.ndjson"
+    if not ndjson.is_file():
+        return "0", ""
+    text = ndjson.read_text(encoding="utf-8", errors="replace")
+    lines = [line for line in text.splitlines() if line.strip()]
+    urls: list[str] = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        body = cast("Mapping[str, object]", record).get("body")
+        if isinstance(body, str):
+            urls.extend(_OOS_FILED_URL_LINE_RE.findall(body))
+    return str(len(lines)), ",".join(sorted(set(urls)))
+
+
+
+_STALE_LIVE_COVERAGE_MISMATCH = "coverage artifact does not match live repository inputs"
+
+
+def _is_stale_live_coverage_mismatch(exc: BaseException) -> bool:
+    """True only for the canonical post-merge live-fingerprint ShipError."""
+    return isinstance(exc, ShipError) and str(exc) == _STALE_LIVE_COVERAGE_MISMATCH
+
+
+def _plan_coverage_summary_line(
+    implement_tmpdir: Path, *, manifest_path: Path | None = None
+) -> str:
+    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=implement_tmpdir)
+    if repo_root is None:
+        if scope_disposition.load_coverage(implement_tmpdir) is None:
+            if scope_disposition.disposition_path(implement_tmpdir).exists() or scope_disposition.disposition_path(implement_tmpdir).is_symlink():
+                _ = scope_disposition.load_disposition(implement_tmpdir)
+                raise ShipError("scope disposition exists without trusted coverage")
+            return ""
+        raise ShipError("persisted repository root is required for coverage validation")
+    try:
+        coverage = scope_disposition.load_live_coverage(
+            tmpdir=implement_tmpdir,
+            repo_root=repo_root,
+            manifest_path=manifest_path,
+        )
+    except ShipError as exc:
+        if _is_stale_live_coverage_mismatch(exc):
+            if not (implement_tmpdir / "post-merge-sentinel").is_file():
+                raise
+            persisted_coverage = scope_disposition.load_coverage(implement_tmpdir)
+            if persisted_coverage is None:
+                raise ShipError(_STALE_LIVE_COVERAGE_MISMATCH) from exc
+            _ = scope_disposition.load_disposition(
+                implement_tmpdir, coverage=persisted_coverage
+            )
+            return ""
+        raise
+    if coverage is None:
+        if scope_disposition.disposition_path(implement_tmpdir).exists() or scope_disposition.disposition_path(implement_tmpdir).is_symlink():
+            _ = scope_disposition.load_disposition(implement_tmpdir)
+            raise ShipError("scope disposition exists without trusted coverage")
+        return ""
+    record = scope_disposition.load_disposition(implement_tmpdir, coverage=coverage)
+    disposition = record.disposition if record is not None else "none"
+    followup = f"; follow-up #{record.followup_issue_number}" if record is not None and record.followup_issue_number else ""
+    return (
+        f"{coverage.touched}/{coverage.total} firm headings; "
+        f"band: {coverage.band}; disposition: {disposition}; "
+        f"todos_left: {coverage.todos_left_count}{followup}"
+    )
+
+
+def _plan_coverage_summary_line_or_empty(
+    implement_tmpdir: Path, *, manifest_path: Path | None = None
+) -> str:
+    """Optional plan-coverage line for the final report; never fatal.
+
+    The final report is written after merge, when live coverage no longer
+    matches the persisted fingerprint (the same stale-live mismatch #6908
+    recovers in teardown). That expected mismatch must not abort the whole
+    report before summary-final.md is written, so degrade to an empty line.
+    Genuine integrity failures (corrupt or unreadable artifacts) are not stale
+    mismatches and still propagate so they fail loudly.
+    """
+    try:
+        return _plan_coverage_summary_line(
+            implement_tmpdir, manifest_path=manifest_path
+        )
+    except ShipError as exc:
+        if not _is_stale_live_coverage_mismatch(exc):
+            raise
+        logging_util.BreadcrumbWriter().emit(
+            "final report: live coverage no longer matches repository inputs; "
+            "omitting optional plan-coverage line",
+            quiet=False,
+        )
+        return ""
+
+
+def _manifest_pr_number(data: Mapping[str, object]) -> int:
+    for key in ("pr_number", "PR_NUMBER"):
+        value = data.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.strip().isdigit() and int(value.strip()) > 0:
+            return int(value.strip())
+    reserved = data.get("reserved")
+    if isinstance(reserved, dict):
+        return _manifest_pr_number(cast("Mapping[str, object]", reserved))
+    return 0
+
+
+def _manifest_only_recovered_outcome(run_dir: Path) -> str:
+    data = _json_object(run_dir / "manifest.json")
+    if data.get("status") == config.MANIFEST_STATUS_DONE and _manifest_pr_number(data) > 0:
+        return "merged"
+    return ""
+
+
+def _state_file_has_rows(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(line.strip() and "=" in line for line in text.splitlines())
+
+
+def _outcome_with_manifest_only_backstop(
+    *,
+    implement_tmpdir: Path,
+    run_id: str,
+    outcome: str,
+    ship: Path,
+    final: Path,
+) -> str:
+    if _state_file_has_rows(ship) or _state_file_has_rows(final):
+        return outcome
+    recovered = _manifest_only_recovered_outcome(
+        implement_tmpdir / "larch-logs" / "implement" / run_id
+    )
+    return recovered or outcome
+
+
+def _summary_heading_line_is_stalled(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("## /") and stripped.endswith((": stalled", "— stalled"))
+
+
+def summary_heading_is_stalled(text: str) -> bool:
+    return any(_summary_heading_line_is_stalled(line) for line in text.splitlines())
+
+
+def _summary_stalled_heading_index(lines: Sequence[str]) -> int | None:
+    for idx, line in enumerate(lines):
+        if _summary_heading_line_is_stalled(line):
+            return idx
+    return None
+
+
+def _summary_stalled_outcome_index(lines: list[str]) -> int | None:
+    for idx, line in enumerate(lines):
+        stripped = line.rstrip("\n")
+        if _STALLED_OUTCOME_LINE_RE.match(stripped) or _LEGACY_DONE_OUTCOME_LINE_RE.match(stripped):
+            return idx
+    return None
+
+
+def _implement_tmpdir_from_run_dir(run_dir: Path) -> Path:
+    return run_dir.parent.parent.parent
+
+
+def _manifest_only_reconciliation_allowed(run_dir: Path) -> bool:
+    implement_tmpdir = _implement_tmpdir_from_run_dir(run_dir)
+    ship = implement_tmpdir / "ship-pr-state.sh"
+    final = implement_tmpdir / "finalize-state.sh"
+    return not _state_file_has_rows(ship) and not _state_file_has_rows(final)
+
+
+def stalled_summary_manifest_reconciliation_needed(run_dir: Path) -> bool:
+    summary = run_dir / "final-summary.md"
+    if (
+        not _manifest_only_reconciliation_allowed(run_dir)
+        or _manifest_only_recovered_outcome(run_dir) != "merged"
+        or not summary.is_file()
+    ):
+        return False
+    lines = summary.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    return _summary_stalled_heading_index(lines) is not None and _summary_stalled_outcome_index(lines) is not None
+
+
+def reconcile_stalled_summary_from_manifest(run_dir: Path) -> bool:
+    """Conservatively rewrite a manifest-only shipped summary away from stalled."""
+    if not _manifest_only_reconciliation_allowed(run_dir):
+        return False
+    outcome = _manifest_only_recovered_outcome(run_dir)
+    if outcome != "merged":
+        return False
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file():
+        return False
+    text = summary.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    heading_idx = _summary_stalled_heading_index(lines)
+    outcome_idx = _summary_stalled_outcome_index(lines)
+    if heading_idx is None or outcome_idx is None:
+        return False
+    line = lines[heading_idx]
+    newline = "\n" if line.endswith("\n") else ""
+    heading = line.rstrip("\n").rstrip()
+    rewritten_heading = re.sub(r"(?:\s—|:)\s*stalled$", f": {outcome}", heading)
+    lines[heading_idx] = rewritten_heading + newline
+    outcome_line = lines[outcome_idx]
+    outcome_newline = "\n" if outcome_line.endswith("\n") else ""
+    recovered_display: str = pr_body._map_outcome_display("merged")  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001 - reuse shared outcome display mapping
+    lines[outcome_idx] = f"- **Outcome**: {recovered_display}{outcome_newline}"
+    rewritten = "".join(lines)
+    if _STALLED_OUTCOME_LINE_RE.search(rewritten):
+        return False
+    larch_io.atomic_write(summary, rewritten, prefix=".final-summary-", nofollow=True)
+    return True
+
+
+def _derive_final_report_fields(
+    implement_tmpdir: Path,
+    *,
+    run_id: str,
+    repo: str,
+    repo_unavailable: bool,
+    pr_number: str,
+    ship: Path,
+) -> dict[str, str]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    code_added, code_deleted, logs_added, logs_deleted = _derive_pr_line_counts(
+        repo=repo,
+        repo_unavailable=repo_unavailable,
+        pr_number=pr_number,
+        ship=ship,
+    )
+    plan_line = _read_kv(path=ship, key="PLAN_REVIEW_LINE") or _derive_review_line(run_dir=run_dir, filename="plan-review-tally.json")
+    code_line = _derive_review_line(run_dir=run_dir, filename="code-review-tally.json")
+    oos_count = _read_kv(path=ship, key="OOS_COUNT") or _derive_oos_fields(run_dir)[0]
+    oos_urls = _read_kv(path=ship, key="OOS_URLS") or _derive_oos_fields(run_dir)[1]
+    return {
+        "plan_review_line": plan_line or "N/A",
+        "code_review_line": code_line or "N/A",
+        "code_added": code_added or _read_kv(path=ship, key="CODE_ADDED"),
+        "code_deleted": code_deleted or _read_kv(path=ship, key="CODE_DELETED"),
+        "logs_added": logs_added or _read_kv(path=ship, key="LOGS_ADDED"),
+        "logs_deleted": logs_deleted or _read_kv(path=ship, key="LOGS_DELETED"),
+        "oos_count": oos_count or "0",
+        "oos_urls": oos_urls,
+    }
+
+
+def _append_issue_detail(*, body: str, load_result: exec_issue_detail.LoadResult) -> str:
+    detail_block = exec_issue_detail.build_issue_detail_section(load_result)
+    if not detail_block:
+        return body
+    return body.rstrip("\n") + "\n\n" + detail_block.strip("\n") + "\n"
+
+
+def _join_prefixed_summary(*, prefix_sections: Sequence[str], summary_body: str) -> str:
+    sections: list[str] = [section.strip("\n") for section in prefix_sections if section.strip()]
+    if not sections:
+        return summary_body
+    return "\n\n".join([*sections, summary_body.strip("\n")]) + "\n"
+
+
+def _reconcile_manifest_for_terminal_report(
+    implement_tmpdir: Path,
+    *,
+    run_id: str,
+    outcome: str,
+) -> tuple[int, str]:
+    if not run_id or run_id == "unknown":
+        return 0, ""
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    manifest = run_dir / "manifest.json"
+    if not manifest.is_file():
+        return 0, ""
+    fields: list[str] = []
+    if not (run_dir / "run-statistics.md").is_file():
+        fields.append("steps_ran.step9a1=false")
+    if (run_dir / "final-summary.md").is_file() or (run_dir / "version-bump-reasoning.md").is_file():
+        fields.append("steps_ran.step8=true")
+    else:
+        fields.append("steps_ran.step8=false")
+    step7a_artifact_present = any(
+        (run_dir / name).is_file()
+        for name in (
+            "token-report.json",
+            "timing-report.json",
+            "execution-issues.ndjson",
+            "session-transcript.jsonl",
+        )
+    )
+    if step7a_artifact_present:
+        fields.append("steps_ran.step7a=true")
+    else:
+        fields.append("steps_ran.step7a=false")
+    if outcome in {"pr-created", "pr-created-draft", "shipping"}:
+        fields.append(f"status={config.MANIFEST_STATUS_IN_PROGRESS}")
+    pr_number = _read_kv(path=implement_tmpdir / "ship-pr-state.sh", key="PR_NUMBER") or _read_kv(
+        path=implement_tmpdir / "finalize-state.sh",
+        key="PR_NUMBER",
+    )
+    if pr_number.strip().isdigit() and int(pr_number.strip()) > 0:
+        fields.append(f"pr_number={pr_number.strip()}")
+    if not fields:
+        return 0, ""
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve().parents[2] / "cli.py"),
+        "run-log",
+        "manifest",
+        "--log-root",
+        str(implement_tmpdir / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        run_id,
+    ]
+    for field in fields:
+        cmd.extend(["--field", field])
+    completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if completed.returncode != 0:
+        err = (completed.stderr or completed.stdout or "manifest update failed").strip()
+        return completed.returncode or 1, f"run-log manifest reconcile failed: {err[:300]}"
+    return 0, ""
+
+
+# Outcomes where the merge actually completed; a stale needs-user handoff must not
+# override these into a needs-user display (#7074).
+_MERGE_COMPLETED_OUTCOMES = frozenset({"merged", "force-merged-externally"})
+
+
+def _needs_user_ship_handoff(implement_tmpdir: Path, *, outcome: str) -> tuple[str, str] | None:
+    """Return ``(reason, next_action)`` for a terminal needs-user ship handoff (#7074).
+
+    A needs-user bail (e.g. architectural assessments unavailable) creates the PR but
+    skips the merge and CI watch, so the summary must not read ``✅ DONE``. The signal
+    is ``NEEDS_USER_REASON`` in the committed ``.ship-route-exit-handoff.env``. Returns
+    None when the merge completed or no needs-user reason is recorded.
+    """
+    if outcome in _MERGE_COMPLETED_OUTCOMES:
+        return None
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    reason = _read_kv(path=handoff, key="NEEDS_USER_REASON")
+    if not reason:
+        return None
+    return reason, _read_kv(path=handoff, key="NEXT_ACTION")
+
+
+def _append_needs_user_execution_issue(
+    implement_tmpdir: Path, *, reason: str, next_action: str
+) -> None:
+    """Append an exec-issues row naming the skipped merge/CI watch and pending action (#7074).
+
+    Without this the operator cannot learn from the summary itself that the PR still
+    needs action. Idempotent: ``append_execution_issue`` dedupes on the exact entry.
+    """
+    pending = f"; pending NEXT_ACTION={next_action}" if next_action else ""
+    entry = f"- ship route: merge and CI watch skipped — needs user (reason: {reason}{pending})"
+    with contextlib.suppress(OSError):
+        execution_issues.append_execution_issue(
+            implement_tmpdir / "execution-issues.md",
+            category="Tool Failures",
+            entry=entry,
+        )
+
+
+def _resolve_needs_user_execution_issue(
+    implement_tmpdir: Path,
+    *,
+    run_dir: Path,
+    reason: str,
+    next_action: str,
+) -> str:
+    """Record a durable resolution before removing the live needs-user entry."""
+    pending = f"; pending NEXT_ACTION={next_action}" if next_action else ""
+    entry = f"- ship route: merge and CI watch skipped — needs user (reason: {reason}{pending})"
+    batch_path = run_dir / "execution-issues.ndjson"
+    if batch_path.is_file():
+        try:
+            batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
+            if not execution_issues.execution_issue_batch_has_resolution(
+                batch_text=batch_text, category="Tool Failures", entry=entry,
+            ):
+                record = execution_issues.execution_issue_resolution_record(
+                    category="Tool Failures", entry=entry, resolution="merge-completed",
+                )
+                with tempfile.NamedTemporaryFile(
+                    "w", delete=False, dir=run_dir, encoding="utf-8",
+                ) as handle:
+                    record_path = Path(handle.name)
+                    _ = handle.write(record + "\n")
+                try:
+                    # Function-scoped import avoids the run-log flush import cycle.
+                    from larch.report import run_logs  # noqa: PLC0415 - local import avoids the run-log flush import cycle.
+
+                    append_result = run_logs.log_append(
+                        log_root=implement_tmpdir / "larch-logs",
+                        skill="implement",
+                        run_id=run_dir.name,
+                        batch="execution-issues",
+                        record_file=str(record_path),
+                    )
+                    appended = append_result.path.read_text(encoding="utf-8", errors="replace")
+                    if not execution_issues.execution_issue_batch_has_resolution(
+                        batch_text=appended, category="Tool Failures", entry=entry,
+                    ):
+                        return "execution-issue resolution was not persisted"
+                finally:
+                    record_path.unlink(missing_ok=True)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            return f"execution-issue resolution failed: {exc}"
+    try:
+        execution_issues.resolve_execution_issue(
+            implement_tmpdir / "execution-issues.md", entry=entry,
+        )
+    except OSError as exc:
+        return f"execution-issue live resolution failed: {exc}"
+    return ""
+
+
+def _prime_needs_user_execution_issue(
+    implement_tmpdir: Path,
+    *,
+    outcome: str,
+    run_dir: Path,
+) -> tuple[str, str]:
+    """Append the needs-user exec-issues row when the handoff applies (#7074).
+
+    Returns ``(reason, next_action)`` (both empty when it does not apply). Callers
+    must load the issue counts *after* this so the appended row is counted.
+    """
+    resolution_error = _resolve_stale_needs_user_handoff(
+        implement_tmpdir, run_dir=run_dir, outcome=outcome,
+    )
+    if resolution_error:
+        raise ShipError(resolution_error)
+    needs_user = _needs_user_ship_handoff(implement_tmpdir, outcome=outcome)
+    if needs_user is None:
+        return "", ""
+    reason, next_action = needs_user
+    _append_needs_user_execution_issue(implement_tmpdir, reason=reason, next_action=next_action)
+    return reason, next_action
+
+
+def _resolve_stale_needs_user_handoff(
+    implement_tmpdir: Path,
+    *,
+    run_dir: Path,
+    outcome: str,
+) -> str:
+    """Resolve a prior ship handoff once a terminal merge supersedes it."""
+    if outcome not in _MERGE_COMPLETED_OUTCOMES:
+        return ""
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    reason = _read_kv(path=handoff, key="NEEDS_USER_REASON")
+    if not reason:
+        return ""
+    return _resolve_needs_user_execution_issue(
+        implement_tmpdir,
+        run_dir=run_dir,
+        reason=reason,
+        next_action=_read_kv(path=handoff, key="NEXT_ACTION"),
+    )
+
+
+def write_final_report(
+    implement_tmpdir: Path,
+    *,
+    comment_only: bool = False,
+    print_stdout: bool = False,
+    skip_tracking_upsert: bool = False,
+) -> tuple[int, str, str]:
+    parent = implement_tmpdir / "parent-issue.md"
+    session = implement_tmpdir / "session-env.sh"
+    ship = implement_tmpdir / "ship-pr-state.sh"
+    final = implement_tmpdir / "finalize-state.sh"
+    run_flags = implement_tmpdir / "run-flags.sh"
+    issue = _read_kv(path=parent, key="ISSUE_NUMBER", default="0") or "0"
+    run_id = _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "unknown")
+    if "/" in run_id or ".." in run_id:
+        return 1, "", "invalid RUN_ID (path-traversal characters rejected)"
+    repo = _read_kv(path=session, key="REPO")
+    pr_number = _read_kv(path=ship, key="PR_NUMBER") or _read_kv(path=final, key="PR_NUMBER")
+    pr_url = _read_kv(path=ship, key="PR_URL", default="N/A") or _read_kv(path=final, key="PR_URL", default="N/A")
+    issue_url = f"https://github.com/{repo}/issues/{issue}" if repo and issue and issue != "0" else ""
+    derived = _derive_final_report_fields(
+        implement_tmpdir,
+        run_id=run_id or "unknown",
+        repo=repo,
+        repo_unavailable=_read_kv(path=session, key="REPO_UNAVAILABLE", default="false") == "true",
+        pr_number=pr_number,
+        ship=ship,
+    )
+    cost_fields = _final_report_token_fields(implement_tmpdir=implement_tmpdir, run_id=run_id)
+    outcome_values = stall_recovery.normalized_outcome_values(
+        argparse.Namespace(implement_tmpdir=str(implement_tmpdir), in_memory_stall_tracking="")
+    )
+    outcome = _outcome_with_manifest_only_backstop(
+        implement_tmpdir=implement_tmpdir,
+        run_id=run_id or "unknown",
+        outcome=outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed"),
+        ship=ship,
+        final=final,
+    )
+    # #7074: a terminal needs-user ship handoff creates the PR but skips the merge
+    # and CI watch, so it must not render as ✅ DONE. Prime the exec-issues row from
+    # the committed handoff *before* loading the issue counts so the row is counted.
+    needs_user_reason, needs_user_next_action = _prime_needs_user_execution_issue(
+        implement_tmpdir,
+        outcome=outcome,
+        run_dir=implement_tmpdir / "larch-logs" / "implement" / run_id,
+    )
+    run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(
+        implement_tmpdir=implement_tmpdir, run_id=run_id
+    )
+    # #6995: pass manifest_path=None so the coverage line resolves the
+    # *dispatcher* manifest (implement_tmpdir/manifest.json, which carries
+    # todos_left), not run_dir/manifest.json, which is the run-log manifest
+    # and legitimately omits todos_left. Feeding the run-log manifest to the
+    # scope-disposition validator raised "resolved manifest schema-invalid"
+    # and aborted the whole report.
+    plan_coverage_line = _plan_coverage_summary_line_or_empty(implement_tmpdir)
+    summary_body = pr_body.render_run_summary(
+        skill="implement",
+        outcome=outcome,
+        run_id=run_id or "unknown",
+        mode=_read_kv(path=session, key="MODE", default="N/A"),
+        workflow_path=_read_kv(path=session, key="WORKFLOW_PATH"),
+        duration=_final_report_duration(run_dir=run_dir, ship=ship),
+        issue_number=issue,
+        issue_url=issue_url,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        plan_review_line=derived["plan_review_line"],
+        plan_coverage_line=plan_coverage_line,
+        difficulty_line=_difficulty_summary_line(run_dir),
+        dynamic_archetypes_line=_dynamic_archetypes_line(implement_tmpdir),
+        code_review_line=derived["code_review_line"],
+        code_added=derived["code_added"],
+        code_deleted=derived["code_deleted"],
+        logs_added=derived["logs_added"],
+        logs_deleted=derived["logs_deleted"],
+        oos_count=derived["oos_count"],
+        oos_urls=derived["oos_urls"],
+        exec_issues=exec_count,
+        warnings=warn_count,
+        run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
+        force_requested=_read_kv(path=run_flags, key="FORCE_REQUESTED", default="false"),
+        merge_downgraded=outcome_values.get("IMPLEMENT_MERGE_DOWNGRADED", "false"),
+        needs_user_reason=needs_user_reason,
+        needs_user_next_action=needs_user_next_action,
+        manifest_path=str(run_dir / "manifest.json"),
+        **cost_fields,
+    )
+    try:
+        review_detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=implement_tmpdir, run_id=run_id or "unknown")
+    except Exception:
+        review_detail = ""
+    issue_detail = exec_issue_detail.build_issue_detail_section(load_result)
+    architectural_detail = _append_architectural_knowledge("", implement_tmpdir)
+    body = _join_prefixed_summary(
+        prefix_sections=(review_detail, issue_detail, architectural_detail),
+        summary_body=summary_body,
+    )
+    summary = implement_tmpdir / "summary-final.md"
+    try:
+        summary.write_text(body, encoding="utf-8")
+    except OSError as exc:
+        if print_stdout:
+            sys.stdout.write(body)
+        return 1, "", f"summary-final write failed: {exc}"
+    if not comment_only:
+        try:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
+        except OSError as exc:
+            if print_stdout:
+                sys.stdout.write(body)
+            return 1, "", f"final-summary write failed: {exc}"
+        if not skip_tracking_upsert:
+            reconcile_rc, reconcile_err = _reconcile_manifest_for_terminal_report(
+                implement_tmpdir,
+                run_id=run_id or "unknown",
+                outcome=outcome,
+            )
+            if reconcile_rc != 0:
+                if print_stdout:
+                    sys.stdout.write(body)
+                return reconcile_rc, "", reconcile_err
+        if skip_tracking_upsert:
+            if print_stdout:
+                sys.stdout.write(body)
+            return 0, "", ""
+    comment_url = ""
+    repo_unav = _read_kv(path=session, key="REPO_UNAVAILABLE", default="false") == "true"
+    if issue and issue != "0" and not repo_unav:
+        marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
+        cmd = [
+            sys.executable,
+            str(Path(__file__).resolve().parents[2] / "cli.py"),
+            "tracking-issue",
+            "upsert-summary",
+            "--issue",
+            issue,
+            "--marker",
+            marker,
+            "--content-file",
+            str(summary),
+        ]
+        if repo:
+            cmd += ["--repo", repo]
+        completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        if completed.returncode != 0:
+            err = (completed.stderr or completed.stdout or "tracking-issue upsert failed").strip()
+            if print_stdout:
+                sys.stdout.write(body)
+            return 1, "", err[:500]
+        m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
+        comment_url = m.group(1) if m else ""
+    if print_stdout:
+        sys.stdout.write(body)
+    return 0, comment_url, ""
+
+
+def write_final_report_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py final-report write")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--comment-only", action="store_true")
+    parser.add_argument("--print-stdout", action="store_true")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        logging_util.emit_kv(key="COMMENT_URL", value="")
+        logging_util.emit_kv(key="STATUS", value="failed")
+        logging_util.emit_kv(key="ERROR", value="usage")
+        return 2
+    # write_final_report must never crash this CLI (#6979): an uncaught composition
+    # exception previously escaped as a traceback (rc!=0, no ERROR=) and left the
+    # Step 17 caller unable to name the cause. Surface it as STATUS=failed + ERROR=.
+    try:
+        rc, url, err = write_final_report(Path(args.implement_tmpdir), comment_only=args.comment_only, print_stdout=args.print_stdout)
+    except Exception as exc:
+        rc, url, err = 1, "", f"final report render failed: {exc}"
+        logging_util.BreadcrumbWriter().emit(f"final report: {err}", quiet=False)
+    logging_util.emit_kv(key="COMMENT_URL", value=url)
+    logging_util.emit_kv(key="STATUS", value="ok" if rc == 0 else "failed")
+    if err:
+        logging_util.emit_kv(key="ERROR", value=" ".join(err.split())[:500])
+    return rc
+
+
+def step18b_final_report(
+    implement_tmpdir: Path,
+    *,
+    step17_emitted: bool | None = None,
+) -> tuple[bool, int, bool, str, str]:
+    step17_present = (
+        (implement_tmpdir / ".step17-emitted").exists()
+        if step17_emitted is None
+        else step17_emitted
+    )
+    if not (implement_tmpdir / ".step16-16a-done").exists():
+        closeout.step_16_16a(["--implement-tmpdir", str(implement_tmpdir)])
+    emit_body = not step17_present
+    snapshot_ok = "absent"
+    pre = implement_tmpdir / ".step18-prebody"
+    summary = implement_tmpdir / "summary-final.md"
+    if summary.exists():
+        try:
+            pre.write_bytes(summary.read_bytes())
+            snapshot_ok = "true"
+        except OSError:
+            snapshot_ok = "false"
+            with contextlib.suppress(OSError):
+                pre.unlink()
+    # write_final_report must never crash this terminal step (#6979): an uncaught
+    # composition exception previously escaped both callers (no try/except at the
+    # write_final_report_main and step18b_final_report call sites) and produced a
+    # silent EMIT_BODY=false with no diagnosable cause. Surface the reason instead.
+    wfr_err = ""
+    try:
+        wfr_rc, _url, wfr_err = write_final_report(implement_tmpdir)
+    except Exception as exc:
+        wfr_rc, wfr_err = 1, f"final report render failed: {exc}"
+        logging_util.BreadcrumbWriter().emit(f"final report: {wfr_err}", quiet=False)
+    summary_present = summary.is_file() and summary.stat().st_size > 0
+    snapshot_changed = pre.is_file() and pre.read_bytes() != summary.read_bytes()
+    snapshot_unavailable = snapshot_ok in {"absent", "false"}
+    should_emit_updated_body = (
+        wfr_rc == 0
+        and summary_present
+        and not emit_body
+        and (snapshot_unavailable or snapshot_changed)
+    )
+    if should_emit_updated_body:
+        emit_body = True
+    return (emit_body and wfr_rc == 0 and summary_present), wfr_rc, step17_present, snapshot_ok, wfr_err
+
+
+def step18b_final_report_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py final-report step18b")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--step17-emitted", choices=("true", "false"))
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        logging_util.emit_kv(key="ERROR", value="usage")
+        return config.EXIT_USAGE
+    explicit = None if args.step17_emitted is None else args.step17_emitted == "true"
+    emit_body, wfr_rc, present, snapshot, error = step18b_final_report(
+        Path(args.implement_tmpdir),
+        step17_emitted=explicit,
+    )
+    logging_util.emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
+    logging_util.emit_kv(key="WFR_RC", value=str(wfr_rc))
+    logging_util.emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())
+    logging_util.emit_kv(key="SNAPSHOT_OK", value=snapshot)
+    # ERROR=<reason> makes a render failure self-identifying instead of a silent
+    # EMIT_BODY=false (#6979). Collapse to one line so the KV stream stays parseable.
+    logging_util.emit_kv(key="ERROR", value=" ".join(error.split())[:500])
+    if error:
+        # Mirror the reason to stderr so step-18.sh's append_failure_best_effort
+        # (which captures step18b stderr) records it in execution-issues — the
+        # tmpdir is torn down after Step 18, so stdout KVs alone are not durable.
+        sys.stderr.write(f"final report render failed: {error}\n")
+        sys.stderr.flush()
+    return wfr_rc
