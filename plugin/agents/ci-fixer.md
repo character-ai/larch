@@ -52,7 +52,7 @@ Treat absent `MODE=` and legacy `MODE=ci-fix` as `MODE=ci`.
    "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" push branch
    ```
 
-   Require a successful push. If the push fails, follow its diagnostics; do not force-push and do not bypass the wrapper. When `MODE=checks`, do **not** push. The later checks re-entry owns validation and the later ship step owns push.
+   Require success. If the push fails, follow its diagnostics; do not force-push and do not bypass the wrapper. When `MODE=checks`, do **not** push. The later checks re-entry owns validation and the later ship step owns push.
 5. If you could not produce a fix (see `no-progress` and `bail` below), do not commit or push anything. Leave the tree as you found it.
 
 ### Oscillation guard (`MODE=ci`)

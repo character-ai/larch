@@ -1,7 +1,9 @@
 //! Closed typed push commands migrated from the Python runtime.
 
 use std::{
-    env, fs,
+    env,
+    fmt::Write as _,
+    fs,
     io::{self, Write},
     path::Path,
     process::ExitCode,
@@ -192,7 +194,7 @@ fn run_push(request: PushRequest) -> Result<(), PushFailure> {
             .as_str()
             .to_owned(),
     })?;
-    let policy = GitCliPolicy::new(cwd).map_err(git_failure)?;
+    let policy = GitCliPolicy::new(cwd).map_err(|error| git_failure(&error))?;
     let runtime = LarchRuntime::new().map_err(|error| PushFailure {
         code: 1,
         diagnostic: SafeText::from_untrusted(error.to_string())
@@ -204,22 +206,22 @@ fn run_push(request: PushRequest) -> Result<(), PushFailure> {
     runtime
         .block_on(GitCli::new(&runner, policy).push(request, &cancellation))
         .map(|_| ())
-        .map_err(git_failure)
+        .map_err(|error| git_failure(&error))
 }
 
 fn fetch_branch(branch: &str) -> Result<(), PushFailure> {
-    let remote = GitRemote::new(REMOTE).map_err(input_failure_result)?;
+    let remote = GitRemote::new(REMOTE).map_err(|error| input_failure_result(&error))?;
     let refspec = GitRefspec::new(format!(
         "refs/heads/{branch}:refs/remotes/{REMOTE}/{branch}"
     ))
-    .map_err(input_failure_result)?;
+    .map_err(|error| input_failure_result(&error))?;
     let cwd = env::current_dir().map_err(|error| PushFailure {
         code: 1,
         diagnostic: SafeText::from_untrusted(error.to_string())
             .as_str()
             .to_owned(),
     })?;
-    let policy = GitCliPolicy::new(cwd).map_err(git_failure)?;
+    let policy = GitCliPolicy::new(cwd).map_err(|error| git_failure(&error))?;
     let runtime = LarchRuntime::new().map_err(|error| PushFailure {
         code: 1,
         diagnostic: SafeText::from_untrusted(error.to_string())
@@ -238,7 +240,7 @@ fn fetch_branch(branch: &str) -> Result<(), PushFailure> {
             &cancellation,
         ))
         .map(|_| ())
-        .map_err(git_failure)
+        .map_err(|error| git_failure(&error))
 }
 
 fn remote_matches_head(branch: &str) -> bool {
@@ -313,10 +315,13 @@ fn short_branch_name(name: &RefName) -> Option<String> {
 }
 
 fn hex(id: &ObjectId) -> String {
-    id.digest()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    id.digest().iter().fold(
+        String::with_capacity(id.digest().len() * 2),
+        |mut output, byte| {
+            let _ = write!(output, "{byte:02x}");
+            output
+        },
+    )
 }
 
 fn clean_tree() -> bool {
@@ -355,14 +360,14 @@ fn original_branch_forbidden(branch: &str) -> bool {
     forbidden && saved_branch == branch
 }
 
-fn git_failure(error: GitCliError) -> PushFailure {
+fn git_failure(error: &GitCliError) -> PushFailure {
     PushFailure {
-        code: exit_code(&error),
-        diagnostic: diagnostic(&error),
+        code: exit_code(error),
+        diagnostic: diagnostic(error),
     }
 }
 
-fn input_failure_result(error: larch_adapters::GitCliInputError) -> PushFailure {
+fn input_failure_result(error: &larch_adapters::GitCliInputError) -> PushFailure {
     PushFailure {
         code: 1,
         diagnostic: SafeText::from_untrusted(error.to_string())

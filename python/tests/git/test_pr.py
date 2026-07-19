@@ -44,6 +44,11 @@ def _ctx(**kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+def _pushed_branch(_runner: Runner, *, cwd: str | None = None) -> rust_runtime.PushOutput:
+    _ = cwd
+    return rust_runtime.PushOutput(status="pushed", branch="feat")
+
+
 def test_ensure_pr_invalid_issue_raises() -> None:
     runner = RecordingRunner()
     with pytest.raises(ShipError, match="invalid issue"):
@@ -201,7 +206,7 @@ def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         rust_runtime,
         "push_branch",
-        lambda *_args, **_kwargs: rust_runtime.PushOutput(status="pushed", branch="feat"),
+        _pushed_branch,
     )
     _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(draft=True), body="body", title="t")
     assert drafts == [True]
@@ -232,7 +237,7 @@ def test_ensure_pr_recovers_create_conflict(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         rust_runtime,
         "push_branch",
-        lambda *_args, **_kwargs: rust_runtime.PushOutput(status="pushed", branch="feat"),
+        _pushed_branch,
     )
     result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
     assert result.number == 11
@@ -310,7 +315,7 @@ def test_ensure_pr_threads_base_to_create(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(
         rust_runtime,
         "push_branch",
-        lambda *_args, **_kwargs: rust_runtime.PushOutput(status="pushed", branch="feat"),
+        _pushed_branch,
     )
     result = pr_module.ensure_pr(
         runner=runner, ctx=_ctx(), body="body", title="t", base="main"

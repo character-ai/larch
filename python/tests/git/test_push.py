@@ -24,11 +24,6 @@ class RecordingRunner(_RecordingRunner):
     strict: bool = True
 
 
-# CLI contract tests migrated from test_push_cli.py.
-def _res(rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
-    return CommandResult(("cmd",), rc, stdout, stderr, 0.01)
-
-
 def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     @dataclass
     class _RebaseResult:

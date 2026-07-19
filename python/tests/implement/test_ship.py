@@ -20,6 +20,7 @@ from larch.report import run_log_batch
 from larch.report import run_log_manifest
 from larch.implement import ship
 from larch.implement import ship_guidelines
+from larch.implement import ship_merge
 from larch.implement import ship_pr
 from larch.implement import ship_resume
 from larch.implement import ship_result
@@ -273,9 +274,14 @@ def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(
-        ship.push,
+        ship_pr.rust_runtime,
         "push_branch",
-        lambda *_a, **_k: ship.push.PushResult(remote="origin", attempts=1, status="pushed"),
+        lambda *_a, **_k: ship_pr.rust_runtime.PushOutput(status="pushed", branch="feat"),
+    )
+    monkeypatch.setattr(
+        ship_merge.rust_runtime,
+        "push_branch",
+        lambda *_a, **_k: ship_merge.rust_runtime.PushOutput(status="pushed", branch="feat"),
     )
 
 
@@ -1085,9 +1091,9 @@ def test_happy_path_stage_order(
 
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(
-        ship.push,
+        ship_merge.rust_runtime,
         "push_branch",
-        lambda *_a, **_k: order.append("push") or ship.push.PushResult(remote="origin", attempts=1, status="pushed"),
+        lambda *_a, **_k: order.append("push") or ship_merge.rust_runtime.PushOutput(status="pushed", branch="feat"),
     )
     monkeypatch.setattr(
         ship.pr,
@@ -1590,9 +1596,9 @@ def test_recovered_stalled_summary_push_failure_blocks_merge(
     push_statuses = ["pushed", "failed"]
 
     def fake_push(*_args: object, **_kwargs: object) -> object:
-        return ship.push.PushResult(remote="origin", attempts=1, status=push_statuses.pop(0))
+        return ship_pr.rust_runtime.PushOutput(status=push_statuses.pop(0), branch="feat")
 
-    monkeypatch.setattr(ship.push, "push_branch", fake_push)
+    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", fake_push)
 
     def fake_merge(*_args: object, **_kwargs: object) -> object:
         nonlocal merge_called
@@ -1637,7 +1643,7 @@ def test_recovered_stalled_summary_push_exception_blocks_merge(
     def fake_push(*_args: object, **_kwargs: object) -> object:
         push_calls["count"] += 1
         if push_calls["count"] == 1:
-            return ship.push.PushResult(remote="origin", attempts=1, status="pushed")
+            return ship_pr.rust_runtime.PushOutput(status="pushed", branch="feat")
         raise ShipError("network unavailable")
 
     def fake_merge(*_args: object, **_kwargs: object) -> object:
@@ -1645,7 +1651,7 @@ def test_recovered_stalled_summary_push_exception_blocks_merge(
         merge_called = True
         return type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})()
 
-    monkeypatch.setattr(ship.push, "push_branch", fake_push)
+    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", fake_push)
     monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -1736,9 +1742,9 @@ def test_post_ensure_push_failure_stalls_before_monitor(
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(
-        ship.push,
+        ship_merge.rust_runtime,
         "push_branch",
-        lambda *_a, **_k: ship.push.PushResult(remote="origin", attempts=3, status="failed"),
+        lambda *_a, **_k: ship_merge.rust_runtime.PushOutput(status="failed", branch="feat"),
     )
 
     def fake_monitor(*_a: object, **_k: object) -> object:
@@ -1895,9 +1901,9 @@ def _no_checks_loop_stubs(
         flush_calls.append(True)
         return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
-    def recording_push(*_args: object, **_kwargs: object) -> ship.push.PushResult:
+    def recording_push(*_args: object, **_kwargs: object) -> ship_pr.rust_runtime.PushOutput:
         push_calls.append(True)
-        return ship.push.PushResult(remote="origin", attempts=1, status="pushed")
+        return ship_pr.rust_runtime.PushOutput(status="pushed", branch="feat")
 
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "h0")
@@ -1914,7 +1920,7 @@ def _no_checks_loop_stubs(
     )
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", recording_flush)
-    monkeypatch.setattr(ship.push, "push_branch", recording_push)
+    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", recording_push)
     # Force a bounded empty-checks grace so a NO_CHECKS bail classifies as the
     # recoverable stall the loop fix targets, independent of git head routing.
     monkeypatch.setattr(
@@ -6405,7 +6411,8 @@ def _forbid_pr_mutations(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("PR mutation must not run before refusal")
 
-    monkeypatch.setattr(ship.push, "push_branch", forbidden)
+    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", forbidden)
+    monkeypatch.setattr(ship_merge.rust_runtime, "push_branch", forbidden)
     monkeypatch.setattr(ship.gh, "pr_create", forbidden)
     monkeypatch.setattr(ship.pr_body, "update_pr_body", forbidden)
 
@@ -7386,9 +7393,9 @@ def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
     )
     monkeypatch.setattr(
-        ship.push,
+        ship_merge.rust_runtime,
         "push_branch",
-        lambda *_a, **_k: ship.push.PushResult(remote="origin", attempts=1, status="pushed"),
+        lambda *_a, **_k: ship_merge.rust_runtime.PushOutput(status="pushed", branch="feat"),
     )
     monkeypatch.setattr(
         ship.ci_monitor,
