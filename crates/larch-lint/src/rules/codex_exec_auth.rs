@@ -12,12 +12,11 @@ use std::{collections::BTreeSet, path::Path, sync::LazyLock};
 
 use regex::Regex;
 use syn::{ExprMethodCall, visit::Visit};
-use tree_sitter::Node;
 
 use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
     suppression::reason,
-    syntax::{FenceState, MarkdownDocument, parse_bash},
+    syntax::{FenceState, MarkdownDocument, leaf_bash_commands, parse_bash},
 };
 
 use super::command_arguments::{Argument, Constants};
@@ -85,10 +84,8 @@ fn is_markdown_path(path: &str) -> bool {
 
 fn check_shell(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
     let tree = parse_bash(source)?;
-    let mut commands = Vec::new();
-    collect_leaf_commands(tree.root_node(), false, &mut commands);
     let mut lines = BTreeSet::new();
-    for command in commands {
+    for command in leaf_bash_commands(&tree) {
         let text = source.get(command.byte_range()).unwrap_or("");
         if CODEX_EXEC.is_match(text) && !range_suppressed(source, command, SUPPRESSION_TOKEN)? {
             lines.insert(line_number(command.start_position().row));
@@ -100,25 +97,7 @@ fn check_shell(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
         .collect())
 }
 
-fn collect_leaf_commands<'tree>(node: Node<'tree>, within_heredoc: bool, commands: &mut Vec<Node<'tree>>) {
-    let inside_heredoc = within_heredoc || node.kind() == "heredoc_body";
-    if node.kind() == "command" && !inside_heredoc && !contains_nested_command(node) {
-        commands.push(node);
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_leaf_commands(child, inside_heredoc, commands);
-    }
-}
-
-fn contains_nested_command(node: Node<'_>) -> bool {
-    let mut cursor = node.walk();
-    node.named_children(&mut cursor)
-        .any(|child| child.kind() == "command" || contains_nested_command(child))
-}
-
-fn range_suppressed(source: &str, node: Node<'_>, token: &str) -> Result<bool, LintError> {
+fn range_suppressed(source: &str, node: tree_sitter::Node<'_>, token: &str) -> Result<bool, LintError> {
     let start = node.start_position().row;
     let end = node.end_position().row;
     source

@@ -52,6 +52,51 @@ pub fn parse_bash(source: &str) -> Result<tree_sitter::Tree, LintError> {
         .ok_or_else(|| LintError::new("cannot parse Bash source"))
 }
 
+/// Parse Python source with the workspace's maintained grammar.
+///
+/// # Errors
+///
+/// Returns an error when the parser cannot be configured or produce a tree.
+pub fn parse_python(source: &str) -> Result<tree_sitter::Tree, LintError> {
+    let mut parser = TreeSitterParser::new();
+    parser
+        .set_language(&tree_sitter_python::LANGUAGE.into())
+        .map_err(|error| LintError::new(format!("cannot configure Python parser: {error}")))?;
+    parser
+        .parse(source, None)
+        .ok_or_else(|| LintError::new("cannot parse Python source"))
+}
+
+/// Return leaf Bash commands, excluding heredoc payloads.
+#[must_use]
+pub fn leaf_bash_commands(tree: &tree_sitter::Tree) -> Vec<tree_sitter::Node<'_>> {
+    let mut commands = Vec::new();
+    collect_leaf_bash_commands(tree.root_node(), false, &mut commands);
+    commands
+}
+
+fn collect_leaf_bash_commands<'tree>(
+    node: tree_sitter::Node<'tree>,
+    within_heredoc: bool,
+    commands: &mut Vec<tree_sitter::Node<'tree>>,
+) {
+    let inside_heredoc = within_heredoc || node.kind() == "heredoc_body";
+    if node.kind() == "command" && !inside_heredoc && !contains_nested_bash_command(node) {
+        commands.push(node);
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_leaf_bash_commands(child, inside_heredoc, commands);
+    }
+}
+
+fn contains_nested_bash_command(node: tree_sitter::Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .any(|child| child.kind() == "command" || contains_nested_bash_command(child))
+}
+
 /// Return the one-based line of the `occurrence`-th match of `needle`.
 ///
 /// # Errors
