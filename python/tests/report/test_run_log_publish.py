@@ -10,7 +10,8 @@ from typing import cast
 
 import pytest
 
-from larch.report import run_log_publish
+from larch.core import repo_roots
+from larch.report import run_log_archive, run_log_publish, storage_config
 from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, RemoteObject
 from larch.report.storage_config import StorageRoot
 
@@ -124,7 +125,7 @@ def test_publish_uses_exact_key_and_promotes_staging_without_download(
     def unexpected_materialization(**_kwargs: object) -> object:
         raise AssertionError("the normal publication path must not decompress its archive")
 
-    monkeypatch.setattr(run_log_publish, "materialize_run_archive", unexpected_materialization)
+    monkeypatch.setattr(run_log_archive, "materialize_run_archive", unexpected_materialization)
     result = _publish(
         repo=repo,
         staging=staging,
@@ -250,12 +251,12 @@ def test_cache_failure_after_upload_retries_from_archive_without_overwrite(
     repo, staging, cache_home, state_home, storage_root = _fixture(tmp_path)
     store = MemoryObjectStore()
     paths = _paths(repo=repo, cache_home=cache_home, state_home=state_home)
-    original_promote = run_log_publish.promote_staging_run_directory
+    original_promote = run_log_archive.promote_staging_run_directory
 
     def interrupted_promotion(**_kwargs: object) -> object:
         raise OSError("simulated cache promotion crash")
 
-    monkeypatch.setattr(run_log_publish, "promote_staging_run_directory", interrupted_promotion)
+    monkeypatch.setattr(run_log_archive, "promote_staging_run_directory", interrupted_promotion)
     with pytest.raises(OSError, match="simulated cache promotion crash"):
         _ = _publish(
             repo=repo,
@@ -268,7 +269,7 @@ def test_cache_failure_after_upload_retries_from_archive_without_overwrite(
     assert paths.pending_archive.is_file()
     assert len(store.objects) == 1
 
-    monkeypatch.setattr(run_log_publish, "promote_staging_run_directory", original_promote)
+    monkeypatch.setattr(run_log_archive, "promote_staging_run_directory", original_promote)
     result = _publish(
         repo=repo,
         staging=None,
@@ -413,8 +414,8 @@ def test_publish_cli_returns_nonzero_without_clean_success_on_terminal_failure(
     def fail_publish(**_kwargs: object) -> run_log_publish.PublicationResult:
         raise ObjectStoreError(ObjectStoreErrorKind.TRANSPORT, "fake", "upload")
 
-    monkeypatch.setattr(run_log_publish, "consumer_repo_root", fake_repo_root)
-    monkeypatch.setattr(run_log_publish, "discover_storage_root", fake_storage_root)
+    monkeypatch.setattr(repo_roots, "consumer_repo_root", fake_repo_root)
+    monkeypatch.setattr(storage_config, "discover_storage_root", fake_storage_root)
     monkeypatch.setattr(run_log_publish, "publish_run", fail_publish)
 
     rc: int = run_log_publish.main(

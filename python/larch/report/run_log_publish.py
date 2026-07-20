@@ -20,27 +20,17 @@ from pathlib import Path
 from typing import Final, Protocol, cast
 
 from larch import io as larch_io
-from larch.core import config
-from larch.core.repo_roots import consumer_repo_root
+from larch.core import config, repo_roots
+from larch.report import run_log_archive, storage_config
 from larch.report.object_store import (
     ObjectStoreError,
     ObjectStoreErrorKind,
     RemoteObject,
     object_store_for,
 )
-from larch.report.run_log_archive import (
-    RunArchiveMaterializationResult,
-    create_run_archive,
-    materialize_run_archive,
-    promote_staging_run_directory,
-    verify_materialized_run_directory,
-)
+from larch.report.run_log_archive import RunArchiveMaterializationResult
 from larch.report.run_log_batch import validate_run_id_slug
-from larch.report.storage_config import (
-    StorageConfigurationError,
-    StorageRoot,
-    discover_storage_root,
-)
+from larch.report.storage_config import StorageConfigurationError, StorageRoot
 
 _PENDING_SCHEMA_VERSION: Final = 1
 _PENDING_ARCHIVE_NAME: Final = "archive.tar.gz"
@@ -453,7 +443,7 @@ def _create_pending(
     try:
         if request.staging_root is None:
             raise PublicationError("a staging root is required to create a pending archive")
-        created = create_run_archive(
+        created = run_log_archive.create_run_archive(
             staging_root=request.staging_root,
             output_dir=temporary,
             skill=request.skill,
@@ -571,7 +561,7 @@ def _cache_result(
 ) -> tuple[RunArchiveMaterializationResult, CachePublicationStatus]:
     _ = _ensure_concurrent_directory(paths.cache_dir.parent)
     if paths.cache_dir.exists() or paths.cache_dir.is_symlink():
-        existing: RunArchiveMaterializationResult = verify_materialized_run_directory(
+        existing: RunArchiveMaterializationResult = run_log_archive.verify_materialized_run_directory(
             run_dir=paths.cache_dir,
             expected_skill=pending.skill,
             expected_run_id=pending.run_id,
@@ -580,7 +570,7 @@ def _cache_result(
             raise PublicationError("existing cache directory contains different run content")
         return existing, CachePublicationStatus.PRESENT
     if staging_root is not None:
-        promoted: RunArchiveMaterializationResult = promote_staging_run_directory(
+        promoted: RunArchiveMaterializationResult = run_log_archive.promote_staging_run_directory(
             staging_root=staging_root,
             run_dir=paths.cache_dir,
             expected_skill=pending.skill,
@@ -588,7 +578,7 @@ def _cache_result(
             expected_manifest_sha256=pending.manifest_sha256,
         )
         return promoted, CachePublicationStatus.PROMOTED
-    materialized: RunArchiveMaterializationResult = materialize_run_archive(
+    materialized: RunArchiveMaterializationResult = run_log_archive.materialize_run_archive(
         archive_path=paths.pending_archive,
         run_dir=paths.cache_dir,
         expected_skill=pending.skill,
@@ -698,12 +688,14 @@ def main(argv: Sequence[str]) -> int:
         return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
     try:
         requested_root: Path = Path(args.repo_root)
-        repo_root: Path | None = consumer_repo_root(requested_root)
+        repo_root: Path | None = repo_roots.consumer_repo_root(requested_root)
         if repo_root is None:
             raise StorageConfigurationError(
                 f"could not discover a Git repository root from {requested_root}"
             )
-        storage_root: StorageRoot = discover_storage_root(start=repo_root)
+        storage_root: StorageRoot = storage_config.discover_storage_root(
+            start=repo_root
+        )
         result: PublicationResult = publish_run(
             request=PublicationRequest(
                 repo_root=repo_root,
