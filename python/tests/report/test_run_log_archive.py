@@ -106,6 +106,39 @@ def _write_fixture_archive(
                 archive.addfile(info, io.BytesIO(content))
 
 
+def _write_legacy_fixture(
+    path: Path, *, archive_members: list[FixtureMember],
+    inventory_members: list[tuple[str, bytes, int]] | None = None,
+) -> run_log_archive.LegacyRunArchive:
+    with tarfile.open(path, mode="w:gz", format=tarfile.PAX_FORMAT) as archive:
+        for name, kind, content, member_type in archive_members:
+            info = tarfile.TarInfo(name)
+            info.type, info.mode, info.mtime = member_type, (0o755 if kind == "executable" else 0o644), 0
+            info.uid, info.gid, info.uname, info.gname = 0, 0, "", ""
+            if member_type in {tarfile.SYMTYPE, tarfile.LNKTYPE}:
+                info.linkname, info.size = "target", 0
+                archive.addfile(info)
+            elif member_type == tarfile.REGTYPE:
+                info.size = len(content)
+                archive.addfile(info, io.BytesIO(content))
+            else:
+                info.size = 0
+                archive.addfile(info)
+    selected = inventory_members if inventory_members is not None else [
+        (name, content, 0o755 if kind == "executable" else 0o644)
+        for name, kind, content, member_type in archive_members if member_type == tarfile.REGTYPE
+    ]
+    members: tuple[run_log_archive.LegacyArchiveMember, ...] = tuple(
+        run_log_archive.LegacyArchiveMember(
+            name, len(content), hashlib.sha256(content).hexdigest(), mode,
+        ) for name, content, mode in selected
+    )
+    return run_log_archive.LegacyRunArchive(
+        archive_size=path.stat().st_size, archive_sha256=run_log_archive.sha256_file(path),
+        member_count=len(members), expanded_size=sum(member.size for member in members), members=members,
+    )
+
+
 def _create_materialization_fixture(staging: Path, tmp_path: Path) -> run_log_archive.RunArchiveResult:
     return run_log_archive.create_run_archive(
         staging_root=staging,
@@ -519,3 +552,100 @@ def test_materialize_main_emits_verified_run_envelope(tmp_path: Path, capsys: py
     assert "MANIFEST_SHA256=" in output
     assert "MEMBER_COUNT=1\n" in output
     assert "EXPANDED_SIZE=" in output
+
+
+def test_legacy_materialization_synthesizes_directories_and_manifest(tmp_path: Path) -> None:
+    archive_path = tmp_path / "legacy.tar.gz"
+    legacy = _write_legacy_fixture(archive_path, archive_members=[
+        ("manifest.json", "file", b'{"issue_number":7886}\n', tarfile.REGTYPE),
+        ("nested/result.txt", "file", b"legacy\n", tarfile.REGTYPE),
+    ])
+    run_dir = tmp_path / "cache/run-materialize"
+    run_dir.parent.mkdir()
+
+    result = run_log_archive.materialize_legacy_run_archive(
+        archive_path=archive_path, run_dir=run_dir, expected_skill="implement",
+        expected_run_id="run-materialize", legacy=legacy,
+    )
+
+    assert (run_dir / "nested/result.txt").read_bytes() == b"legacy\n"
+    manifest = json.loads((run_dir / run_log_archive.ARCHIVE_MANIFEST_NAME).read_text(encoding="utf-8"))
+    assert manifest["archive_format"] == run_log_archive.ARCHIVE_FORMAT
+    assert {row["path"] for row in manifest["members"]} == {
+        "manifest.json", "nested", "nested/result.txt",
+    }
+    assert run_log_archive.verify_materialized_run_directory(
+        run_dir=run_dir, expected_skill="implement", expected_run_id="run-materialize",
+    ) == result
+
+
+@pytest.mark.parametrize(("archive_members", "inventory_members", "message"), [
+    ([("kept.txt", "file", b"kept", tarfile.REGTYPE)],
+     [("kept.txt", b"kept", 0o644), ("missing.txt", b"missing", 0o644)], "do not match"),
+    ([("kept.txt", "file", b"kept", tarfile.REGTYPE), ("extra.txt", "file", b"extra", tarfile.REGTYPE)],
+     [("kept.txt", b"kept", 0o644)], "do not match"),
+    ([("same.txt", "file", b"same", tarfile.REGTYPE), ("same.txt", "file", b"same", tarfile.REGTYPE)],
+     [("same.txt", b"same", 0o644)], "ambiguous archive member path"),
+    ([("../escape.txt", "file", b"escape", tarfile.REGTYPE)],
+     [("safe.txt", b"escape", 0o644)], "archive member path"),
+    ([("link", "file", b"", tarfile.SYMTYPE)], [("link", b"", 0o644)], "unsupported archive member type"),
+    ([("device", "file", b"", tarfile.CHRTYPE)], [("device", b"", 0o644)], "unsupported archive member type"),
+])
+def test_legacy_materialization_rejects_unsafe_or_uninventoried_members(
+    tmp_path: Path, archive_members: list[FixtureMember],
+    inventory_members: list[tuple[str, bytes, int]], message: str,
+) -> None:
+    archive_path = tmp_path / "legacy-invalid.tar.gz"
+    legacy = _write_legacy_fixture(
+        archive_path, archive_members=archive_members, inventory_members=inventory_members,
+    )
+    run_dir = tmp_path / "cache/run-materialize"
+    run_dir.parent.mkdir()
+
+    with pytest.raises(ValueError, match=message):
+        _ = run_log_archive.materialize_legacy_run_archive(
+            archive_path=archive_path, run_dir=run_dir, expected_skill="implement",
+            expected_run_id="run-materialize", legacy=legacy,
+        )
+
+    assert not run_dir.exists()
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_legacy_materialization_rejects_member_digest_mismatch(tmp_path: Path) -> None:
+    archive_path = tmp_path / "legacy-digest.tar.gz"
+    legacy = _write_legacy_fixture(
+        archive_path, archive_members=[("result.txt", "file", b"actual", tarfile.REGTYPE)],
+        inventory_members=[("result.txt", b"bogus!", 0o644)],
+    )
+    run_dir = tmp_path / "cache/run-materialize"
+    run_dir.parent.mkdir()
+
+    with pytest.raises(ValueError, match="digest mismatch"):
+        _ = run_log_archive.materialize_legacy_run_archive(
+            archive_path=archive_path, run_dir=run_dir, expected_skill="implement",
+            expected_run_id="run-materialize", legacy=legacy,
+        )
+
+
+def test_legacy_materialization_rejects_truncated_archive(tmp_path: Path) -> None:
+    archive_path = tmp_path / "legacy-truncated.tar.gz"
+    legacy = _write_legacy_fixture(archive_path, archive_members=[
+        ("result.txt", "file", b"content" * 10_000, tarfile.REGTYPE),
+    ])
+    encoded = archive_path.read_bytes()
+    _ = archive_path.write_bytes(encoded[:len(encoded) // 2])
+    truncated = run_log_archive.LegacyRunArchive(
+        archive_size=archive_path.stat().st_size, archive_sha256=run_log_archive.sha256_file(archive_path),
+        member_count=legacy.member_count, expanded_size=legacy.expanded_size, members=legacy.members,
+    )
+    run_dir = tmp_path / "cache/run-materialize"
+    run_dir.parent.mkdir()
+
+    with pytest.raises((EOFError, OSError, tarfile.TarError, ValueError)):
+        _ = run_log_archive.materialize_legacy_run_archive(
+            archive_path=archive_path, run_dir=run_dir, expected_skill="implement",
+            expected_run_id="run-materialize", legacy=truncated,
+        )
+
+    assert not run_dir.exists()

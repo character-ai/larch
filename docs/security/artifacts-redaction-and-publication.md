@@ -277,6 +277,17 @@ invalid entry, restores it on failure, and removes stale private transfer and
 repair state under the same lock. See
 [Run-log archive format](../run-log-archive.md).
 
+The larch repository pins its one-time legacy migration inventory in repository
+configuration. A manifest-less archive reaches the compatibility extractor only
+when its exact object key, compressed byte size, archive SHA-256, member rows,
+expanded size, source commit, and storage root match that hash-verified bounded
+inventory. The extractor rejects unsafe paths, collisions, links, devices,
+special files, unsupported modes, missing or extra members, content mismatches,
+and expansion-limit violations. It promotes a private extraction only after it
+synthesizes and verifies the normal local `archive-manifest.json`. Repositories
+without the descriptor, and unrecognized manifest-less archives, fail closed.
+No compatibility operation mutates remote storage.
+
 Mutable analyzer state is not an archive and never appears under `run-logs/`.
 It stays under the private XDG state home with owner-scoped paths, `0600`
 files, atomic replacement, per-file locks, and stale-writer detection. Treat
