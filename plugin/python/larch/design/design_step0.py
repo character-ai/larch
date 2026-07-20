@@ -21,7 +21,7 @@ from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.design import design_pause
 from larch.git import gh
-from larch.core import proc
+from larch.core import config, proc
 
 from larch.design.design_core import _capture_contract_stream_to_paths, _cli_cmd, _append_failure
 from larch.design.design_router import _parse_stdout_kv, _write_kv_file
@@ -190,6 +190,55 @@ def step0_session_entry_main(argv: Sequence[str]) -> int:
     return step0_session_main(argv)
 
 
+def _start_design_lifecycle(
+    *, plugin_root: Path, repo_root: Path, design_path: Path, run_id: str
+) -> int:
+    result = proc.run(
+        _cli_cmd(
+            plugin_root,
+            "run-log",
+            "lifecycle-start",
+            "--repo-root",
+            str(repo_root),
+            "--skill",
+            "design",
+            "--run-id",
+            run_id,
+            "--log-root",
+            str(design_path / "larch-logs"),
+            "--adopt-existing",
+        ),
+        check=False,
+    )
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    lifecycle_kv = _parse_stdout_kv(result.stdout)
+    if (
+        result.returncode == 0
+        and lifecycle_kv.get("LIFECYCLE_STARTED", [""])[-1] == "true"
+    ):
+        return 0
+    if result.stderr:
+        print(
+            result.stderr,
+            file=sys.stderr,
+            end="" if result.stderr.endswith("\n") else "\n",
+        )
+    print(
+        "**⚠ /design: lifecycle start failed; preserving the session**",
+        file=sys.stderr,
+    )
+    return result.returncode or config.EXIT_INTERNAL_ERROR
+
+
+def _reviewer_probe_kv(
+    result: subprocess.CompletedProcess[str],
+) -> dict[str, list[str]]:
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    return _parse_stdout_kv(result.stdout) if result.returncode == 0 else {}
+
+
 def step0_session_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     plugin_root = require_plugin_root(ns.plugin_root)
@@ -225,17 +274,21 @@ def step0_session_main(argv: Sequence[str]) -> int:
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
     active_run_id = parsed.get("run_id", "") or session_id
+    lifecycle_rc = _start_design_lifecycle(
+        plugin_root=plugin_root,
+        repo_root=repo_root,
+        design_path=design_path,
+        run_id=active_run_id,
+    )
+    if lifecycle_rc != 0:
+        return lifecycle_rc
     reviewer_probe = subprocess.run(
         _cli_cmd(plugin_root, "agent", "check-reviewers"),
         capture_output=True,
         text=True,
         check=False,
     )
-    if reviewer_probe.stdout:
-        print(reviewer_probe.stdout, end="" if reviewer_probe.stdout.endswith("\n") else "\n")
-    reviewer_kv = _parse_stdout_kv(reviewer_probe.stdout)
-    if reviewer_probe.returncode != 0:
-        reviewer_kv = {}
+    reviewer_kv = _reviewer_probe_kv(reviewer_probe)
     wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root), "--live-mutation-ok", "true")
     for flag, value in (
         ("--codex-present", reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", [""]))[-1]),

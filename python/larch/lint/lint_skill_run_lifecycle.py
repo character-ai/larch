@@ -23,6 +23,7 @@ SHARED_MARKER_RE: Final = re.compile(
 ALLOWED_TOOLS_RE: Final = re.compile(r"^allowed-tools:\s*([^\n]+)$", re.MULTILINE)
 MARKER_PREFIX: Final = "# larch-run-lifecycle:"
 SHARED_CONTRACT: Final = Path("skills/shared/run-lifecycle.md")
+OWNERSHIP_REGISTRY: Final = Path("skills/shared/run-lifecycle-ownership.tsv")
 SHARED_REFERENCE: Final = "skills/shared/run-lifecycle.md"
 SKILL_ROOTS: Final = (Path("skills"), Path(".claude/skills"))
 REQUIRED_TERMINAL_VERBS: Final = (
@@ -31,6 +32,9 @@ REQUIRED_TERMINAL_VERBS: Final = (
     "lifecycle-cancel",
     "lifecycle-early-return",
 )
+_OWNER_HEADER: Final = "skill\tstart_owner\tterminal_owner\tno_archive_exception"
+_DIRECT_PUBLISHER_TOKENS: Final = ("run-log publish", "publish_log_run(")
+_PYTHON_PUBLISHER_ALLOWLIST: Final = frozenset({Path("python/larch/report/run_lifecycle.py"), Path("python/larch/report/run_log_publish.py"), Path("python/larch/lint/lint_skill_run_lifecycle.py")})
 
 
 def _skill_files(root: Path) -> list[Path]:
@@ -116,19 +120,92 @@ def _shared_contract_findings(root: Path) -> list[str]:
     return []
 
 
+def _ownership_rows(root: Path) -> tuple[dict[str, tuple[Path, Path, str]], list[str]]:
+    path = root / OWNERSHIP_REGISTRY
+    if path.is_symlink() or not path.is_file():
+        return {}, [f"{OWNERSHIP_REGISTRY}: ownership registry is missing or unsafe"]
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != _OWNER_HEADER:
+        return {}, [f"{OWNERSHIP_REGISTRY}: invalid ownership registry header"]
+    rows: dict[str, tuple[Path, Path, str]] = {}
+    findings: list[str] = []
+    for line_number, line in enumerate(lines[1:], start=2):
+        fields = line.split("\t")
+        if len(fields) != len(_OWNER_HEADER.split("\t")) or not all(fields):
+            findings.append(f"{OWNERSHIP_REGISTRY}:{line_number}: expected four non-empty fields")
+            continue
+        skill, start_owner, terminal_owner, exception = fields
+        if skill in rows:
+            findings.append(f"{OWNERSHIP_REGISTRY}:{line_number}: duplicate skill {skill!r}")
+            continue
+        rows[skill] = (Path(start_owner), Path(terminal_owner), exception)
+    if "*" not in rows:
+        findings.append(f"{OWNERSHIP_REGISTRY}: missing default '*' ownership row")
+    return rows, findings
+
+
+def _owner_file_findings(*, root: Path, skill: str, role: str, relative_path: Path) -> list[str]:
+    path = root / relative_path
+    if path.is_symlink() or not path.is_file():
+        return [f"{OWNERSHIP_REGISTRY}: {skill} {role} owner is missing or unsafe: {relative_path}"]
+    text = path.read_text(encoding="utf-8")
+    if role == "start":
+        wired = "lifecycle-start" in text or "run_lifecycle.start_run(" in text
+    else:
+        wired = any(verb in text for verb in REQUIRED_TERMINAL_VERBS) or "run_lifecycle.finish_run(" in text
+    if not wired:
+        return [f"{OWNERSHIP_REGISTRY}: {skill} {role} owner is not lifecycle-wired: {relative_path}"]
+    return []
+
+
+def _publisher_findings(root: Path, prompts: list[Path]) -> list[str]:
+    findings: list[str] = []
+    for prompt in prompts:
+        text = prompt.read_text(encoding="utf-8")
+        if any(token in text for token in _DIRECT_PUBLISHER_TOKENS):
+            findings.append(f"{prompt.relative_to(root).as_posix()}: direct terminal publisher bypasses lifecycle ownership")
+    production = root / "python" / "larch"
+    for path in sorted(production.rglob("*.py")):
+        relative = path.relative_to(root)
+        if relative in _PYTHON_PUBLISHER_ALLOWLIST:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "publish_log_run(" in text:
+            findings.append(f"{relative.as_posix()}: second terminal run-log publisher bypasses lifecycle ownership")
+    return findings
+
+
 def lint_root(root: Path) -> int:
     """Scan the complete shipped skill inventory and print findings."""
     try:
         findings = _shared_contract_findings(root)
-        for prompt in _skill_files(root):
+        prompts = _skill_files(root)
+        rows, registry_findings = _ownership_rows(root)
+        findings.extend(registry_findings)
+        skill_names = {prompt.parent.name for prompt in prompts}
+        for registered in sorted(set(rows) - {"*"} - skill_names):
+            findings.append(f"{OWNERSHIP_REGISTRY}: ownership row has no shipped skill: {registered}")
+        default = rows.get("*")
+        for prompt in prompts:
             relative = prompt.relative_to(root).as_posix()
+            skill = prompt.parent.name
             findings.extend(
                 lint_skill_text(
                     relative_path=relative,
-                    skill=prompt.parent.name,
+                    skill=skill,
                     text=prompt.read_text(encoding="utf-8"),
                 )
             )
+            ownership = rows.get(skill, default)
+            if ownership is None:
+                findings.append(f"{relative}: no lifecycle ownership row resolves")
+                continue
+            start_owner, terminal_owner, exception = ownership
+            if exception not in {"-", "no-logs-commit"}:
+                findings.append(f"{OWNERSHIP_REGISTRY}: unsupported no-archive exception for {skill}: {exception}")
+            findings.extend(_owner_file_findings(root=root, skill=skill, role="start", relative_path=start_owner))
+            findings.extend(_owner_file_findings(root=root, skill=skill, role="terminal", relative_path=terminal_owner))
+        findings.extend(_publisher_findings(root, prompts))
     except (OSError, UnicodeError, ValueError) as exc:
         print(f"lint-skill-run-lifecycle: {exc}", file=sys.stderr)
         return EXIT_ERROR

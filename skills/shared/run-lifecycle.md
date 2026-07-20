@@ -2,6 +2,10 @@
 
 This contract applies only to a skill whose `SKILL.md` contains
 `# larch-run-lifecycle: shared-v1 skill=<name>` in its YAML frontmatter.
+The machine-checked ownership registry is
+`skills/shared/run-lifecycle-ownership.tsv`. A specialized row replaces the
+generic start and terminal commands below. Do not run a second lifecycle path
+for a specialized skill.
 
 At invocation start, run this command before the skill performs work:
 
@@ -9,9 +13,15 @@ At invocation start, run this command before the skill performs work:
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log lifecycle-start --repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" --skill "<name>"
 ```
 
-Parse `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `STORAGE_URI`, and
+Parse `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `CONTEXT_FILE`, `STORAGE_URI`, and
 `LIFECYCLE_STARTED` from stdout without `eval` or `source`. Stop if the command
 fails or `LIFECYCLE_STARTED` is not `true`.
+
+Callers that already own a run ID pass `--run-id "<id>"`. Specialized owners
+also pass their absolute `--log-root` and `--adopt-existing` when rich artifact
+setup created the manifest first. The context file persists the validated
+identity, staging root, and storage URI so later subprocesses rehydrate them
+without shell state.
 
 After start succeeds, run exactly one matching terminal command before the
 skill returns. A terminal command must succeed with `LIFECYCLE_FLUSHED=true`.
@@ -33,5 +43,7 @@ archives.
 
 Aliases are parent invocations, not alternate names for the target run. Start
 and finish the alias under its alias name. When invoking its target through the
-Skill tool, keep the alias `SKILL` and `RUN_ID` in context so the target starts
-as a distinct child. Apply the same handoff to every other child Skill call.
+Skill tool, pass the parsed `CONTEXT_FILE` as the target's internal
+`--lifecycle-parent-context` argument before positional arguments, so the target
+starts with a distinct child ID and immutable parent metadata. Apply the same
+handoff to every other child Skill call.

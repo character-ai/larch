@@ -25,6 +25,7 @@ from larch.implement.dispatch_helpers import (
 )
 from larch.implement.dispatch_leg import _run_cli_capture
 from larch.issue import execution_issues
+from larch.report import run_log_batch
 from larch.state import finalize
 from larch.state._tokens import _abandoned_checks_bgjob_stall_step
 
@@ -34,7 +35,14 @@ _TERMINAL_SHIPPING_REFUSAL_ENTRY = (
     "- **Step 18 terminal gate**: refused terminal `shipping` without PR evidence; "
     "preserved the session for stall recovery."
 )
-_TRUTHY = frozenset({"1", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On"})
+_TRUTHY = frozenset(
+    {"1", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On"}
+)
+_LIFECYCLE_VERB_BY_ACTION = {
+    "cancel": "lifecycle-cancel",
+    "failure": "lifecycle-failure",
+    "finalize": "lifecycle-finalize",
+}
 
 
 def _stall_layer_active(value: str) -> bool:
@@ -235,7 +243,29 @@ def _terminal_publication_repo_root(implement_tmpdir: Path) -> Path | None:
     return None
 
 
-def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str) -> int:
+def _terminal_lifecycle_action(*, implement_tmpdir: Path, wfr_rc: str) -> str:
+    if wfr_rc != "0":
+        return "failure"
+    summary = implement_tmpdir / "summary-final.md"
+    if not summary.is_file():
+        return "failure"
+    try:
+        summary_text = summary.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        summary_text = ""
+    label = run_log_batch.parse_preterminal_outcome_label(summary_text)
+    if label is None:
+        return "failure"
+    if "cancel" in label:
+        return "cancel"
+    if any(token in label for token in ("bail", "fail", "stall")):
+        return "failure"
+    return "finalize"
+
+
+def _publish_terminal_archive(
+    *, implement_tmpdir: Path, run_id: str, lifecycle_action: str
+) -> int:
     if _terminal_publication_suppressed(implement_tmpdir):
         _emit_kv(key="RUN_LOG_PUBLISH_SKIPPED", value="no-logs-commit")
         return 0
@@ -244,12 +274,16 @@ def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str) -> int:
         print("Step 18: run-log publication failed: persisted REPO_ROOT is unavailable", file=sys.stderr)
         _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
         return config.EXIT_INTERNAL_ERROR
-    log_root: Path = implement_tmpdir / "larch-logs"
     publish = _run_cli_capture(
         [
-            "run-log", "publish",
-            "--repo-root", str(repo_root), "--skill", "implement",
-            "--run-id", run_id, "--staging-root", str(log_root / "implement" / run_id),
+            "run-log",
+            _LIFECYCLE_VERB_BY_ACTION[lifecycle_action],
+            "--repo-root",
+            str(repo_root),
+            "--skill",
+            "implement",
+            "--run-id",
+            run_id,
         ],
         cwd=repo_root,
     )
@@ -261,7 +295,7 @@ def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str) -> int:
     cache_dir: Path | None = Path(cache_dir_raw) if cache_dir_raw else None
     postcondition_ok: bool = (
         publish.returncode == 0
-        and publication_values.get("PUBLISH_OK") == "true"
+        and publication_values.get("LIFECYCLE_FLUSHED") == "true"
         and bool(publication_values.get("REMOTE_KEY"))
         and cache_dir is not None
         and cache_dir.is_dir()
@@ -318,7 +352,13 @@ def _complete_terminal_run_log(*, implement_tmpdir: Path, run_id: str, emit_body
             _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="false")
             return flush.returncode
         _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="true")
-        publish_rc: int = _publish_terminal_archive(implement_tmpdir=implement_tmpdir, run_id=run_id)
+        publish_rc: int = _publish_terminal_archive(
+            implement_tmpdir=implement_tmpdir,
+            run_id=run_id,
+            lifecycle_action=_terminal_lifecycle_action(
+                implement_tmpdir=implement_tmpdir, wfr_rc=wfr_rc
+            ),
+        )
         if publish_rc != 0:
             return publish_rc
     summary = implement_tmpdir / "summary-final.md"

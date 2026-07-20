@@ -174,21 +174,22 @@ def main() -> int:
     if args[:2] == ["run-log", "append-failure"]:
         log("append-failure " + " ".join(args[2:]))
         return 0
-    if args[:2] == ["run-log", "publish"]:
-        log("run-log publish " + " ".join(args[2:]))
+    if len(args) >= 2 and args[0] == "run-log" and args[1] in {
+        "lifecycle-cancel",
+        "lifecycle-failure",
+        "lifecycle-finalize",
+    }:
+        log("run-log " + args[1] + " " + " ".join(args[2:]))
         publish_rc = int(os.environ.get("STEP18_STUB_PUBLISH_RC") or "0")
         if publish_rc != 0:
             print("publication failed: stub upload failure", file=sys.stderr)
             return publish_rc
-        staging = Path(args[args.index("--staging-root") + 1])
-        cache = staging.parent.parent.parent / "published-cache"
+        cache = Path(os.environ["IMPLEMENT_TMPDIR"]) / "published-cache"
         cache.mkdir(parents=True, exist_ok=True)
         print("REMOTE_KEY=run-logs/implement/RUN1.tar.gz")
         print("ARCHIVE_SHA256=" + "a" * 64)
         print(f"CACHE_DIR={cache}")
-        print("REMOTE_STATUS=created")
-        print("CACHE_STATUS=promoted")
-        print("PUBLISH_OK=true")
+        print("LIFECYCLE_FLUSHED=true")
         return 0
     if args[:2] == ["token", "report"]:
         log("token report")
@@ -953,7 +954,7 @@ def test_step18_finalize_body_and_teardown(tmp_path: Path) -> None:
     )
     assert "SESSION_TRANSCRIPT_STATUS=captured" in text, "finalize transcript status relay"
     assert log_text.index("capture-transcript") < log_text.index("flush-safety-net")
-    assert log_text.index("flush-safety-net") < log_text.index("run-log publish")
+    assert log_text.index("flush-safety-net") < log_text.index("run-log lifecycle-")
 
 
 @pytest.mark.parametrize(
@@ -991,7 +992,7 @@ def test_step18_terminal_log_failure_preserves_session(
     assert "---LARCH-SUMMARY-FINAL-BEGIN---" not in result.stdout
     assert stderr_text in result.stderr
     log_text = log.read_text(encoding="utf-8")
-    assert ("run-log publish" in log_text) is published
+    assert ("run-log lifecycle-" in log_text) is published
     assert "flush-safety-net" in log_text
     assert "teardown" not in log_text
     assert impl.is_dir()
@@ -1019,7 +1020,7 @@ def test_step18_no_logs_commit_skips_archive_publication(tmp_path: Path) -> None
     log_text = log.read_text(encoding="utf-8")
     assert "capture-transcript" not in log_text
     assert "flush-safety-net" not in log_text
-    assert "run-log publish" not in log_text
+    assert "run-log lifecycle-" not in log_text
     assert "teardown" in log_text
 
 
@@ -1314,7 +1315,7 @@ def test_step18_no_run_id_fails_before_safety_nets_and_teardown(tmp_path: Path) 
     log_text = log.read_text(encoding="utf-8")
     assert "flush-safety-net" not in log_text, "no run id flush safety net skip"
     assert "capture-transcript" not in log_text, "no run id transcript safety net skip"
-    assert "run-log publish" not in log_text, "no run id publication skip"
+    assert "run-log lifecycle-" not in log_text, "no run id publication skip"
     assert "teardown sentinel=" not in log_text, "no run id preserves the session"
     assert impl.is_dir()
 

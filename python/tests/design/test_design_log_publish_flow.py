@@ -13,7 +13,8 @@ from typing import Any
 import pytest
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
-from larch.report import run_log_publish as run_log_publisher
+from larch.report import run_lifecycle, run_log_publish as run_log_publisher, run_logs
+from larch.report.storage_config import StorageRoot
 from test_support import operator_repo_with_remote as _operator_repo_with_remote
 from test_support import write_gh_pr_stub as _write_gh_stub
 
@@ -110,6 +111,30 @@ else:
     # The real cli is used for run-log init/commit + redact; all git writes are
     # cwd-scoped to the disposable worktree, never the operator or plugin repo.
     env["CLAUDE_PLUGIN_ROOT"] = str(Path(real_cli).resolve().parents[1])
+    lifecycle = subprocess.run(
+        [
+            sys.executable,
+            str(real_cli),
+            "run-log",
+            "lifecycle-start",
+            "--repo-root",
+            str(repo),
+            "--skill",
+            "design",
+            "--run-id",
+            RUN_ID,
+            "--log-root",
+            str(design / "larch-logs"),
+            "--adopt-existing",
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    if lifecycle.returncode != 0:
+        return lifecycle
     return subprocess.run(
         [
             sys.executable,
@@ -143,23 +168,42 @@ def _patch_archive_publish(
     monkeypatch: pytest.MonkeyPatch,
     cache_dir: Path,
 ) -> None:
-    def fake_publish_log_run(**kwargs: object) -> tuple[run_log_publisher.PublicationResult, int]:
-        log_root = kwargs["log_root"]
-        assert isinstance(log_root, Path)
-        shutil.copytree(log_root / "design" / RUN_ID, cache_dir)
-        return (
-            run_log_publisher.PublicationResult(
+    staging_root = cache_dir.parent / "staging"
+    run_dir = staging_root / "design" / RUN_ID
+    context_file = cache_dir.parent / "context.json"
+
+    def fake_load(**_kwargs: object) -> run_lifecycle.LifecycleStart:
+        _ = run_logs.log_init(log_root=staging_root, skill="design", run_id=RUN_ID)
+        return run_lifecycle.LifecycleStart(
+            repo_root=cache_dir.parent,
+            storage_root=StorageRoot("s3", "bucket", "larch"),
+            skill="design",
+            run_id=RUN_ID,
+            log_root=staging_root,
+            run_dir=run_dir,
+            context_file=context_file,
+        )
+
+    def fake_finish(**_kwargs: object) -> run_lifecycle.LifecycleTerminal:
+        shutil.copytree(run_dir, cache_dir)
+        return run_lifecycle.LifecycleTerminal(
+            outcome="success",
+            publication=run_log_publisher.PublicationResult(
                 remote_key=f"run-logs/design/{RUN_ID}.tar.gz",
                 archive_sha256="a" * 64,
                 cache_dir=cache_dir,
                 remote_status=run_log_publisher.RemotePublicationStatus.CREATED,
                 cache_status=run_log_publisher.CachePublicationStatus.PROMOTED,
             ),
-            0,
+            secret_scrub_violations=0,
         )
 
-    monkeypatch.setattr(design_log_publish_flow.storage_config, "discover_storage_root", lambda **_kwargs: object())
-    monkeypatch.setattr(design_log_publish_flow.run_log_publisher, "publish_log_run", fake_publish_log_run)
+    monkeypatch.setattr(
+        design_log_publish_flow.run_lifecycle, "load_run_context", fake_load
+    )
+    monkeypatch.setattr(
+        design_log_publish_flow.run_lifecycle, "finish_run", fake_finish
+    )
 
 
 def test_log_publish_dry_run_success(tmp_path: Path) -> None:
@@ -1212,12 +1256,28 @@ def test_publish_design_logs_classifies_archive_finalization_failure(
 
     monkeypatch.setattr(design_log_publish_flow, "_run", _fake_run)
     monkeypatch.setattr(design_log_publish_flow, "_copy_tree_redacted", _copy_ok)
-    monkeypatch.setattr(design_log_publish_flow.storage_config, "discover_storage_root", lambda **_kwargs: object())
+    context = run_lifecycle.LifecycleStart(
+        repo_root=tmp_path,
+        storage_root=StorageRoot("s3", "bucket", "larch"),
+        skill="design",
+        run_id="RUN1",
+        log_root=tmp_path / "logs",
+        run_dir=tmp_path / "logs" / "design" / "RUN1",
+        context_file=tmp_path / "context.json",
+    )
+    _ = run_logs.log_init(log_root=context.log_root, skill="design", run_id="RUN1")
+    monkeypatch.setattr(
+        design_log_publish_flow.run_lifecycle,
+        "load_run_context",
+        lambda **_kwargs: context,
+    )
 
-    def fail_publish(**_kwargs: object) -> object:
+    def fail_publish(**_kwargs: object) -> run_lifecycle.LifecycleTerminal:
         raise run_log_publisher.PublicationError("secret survived scrubbing")
 
-    monkeypatch.setattr(design_log_publish_flow.run_log_publisher, "publish_log_run", fail_publish)
+    monkeypatch.setattr(
+        design_log_publish_flow.run_lifecycle, "finish_run", fail_publish
+    )
 
     result = design_log_publish_flow._publish_design_logs(
         request=design_log_publish_flow.PublishDesignLogsRequest(
@@ -1226,6 +1286,7 @@ def test_publish_design_logs_classifies_archive_finalization_failure(
             run_id="RUN1",
             issue="12",
             repo="",
+            lifecycle_outcome="success",
         )
     )
     assert result[0] is False

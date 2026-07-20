@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from larch.core.proc import CommandResult
+from larch.implement import dispatch_bootstrap
 from larch.state import bootstrap
 
 from test_support import ROOT as _REPO_ROOT, seed_feature_description, seed_plan
@@ -659,6 +660,28 @@ def test_step0_wrapper_runs_without_non_interactive_flag() -> None:
     assert "resolve-non-interactive" in script_src
 
 
+@pytest.mark.parametrize(("no_logs", "expected_calls"), [("false", 2), ("true", 1)])
+def test_step0_bootstrap_adopts_lifecycle_unless_logs_are_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_logs: str, expected_calls: int) -> None:
+    calls: list[list[str]] = []
+
+    def fake_invoke(args: list[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ["bootstrap", "invoke"]:
+            return subprocess.CompletedProcess(args, 0, f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=run-7887\nISSUE_NUMBER=7887\n", "")
+        return subprocess.CompletedProcess(args, 0, "LIFECYCLE_STARTED=true\n", "")
+
+    monkeypatch.setitem(dispatch_bootstrap.__dict__, "_invoke_cli", fake_invoke)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(_REPO_ROOT))
+    parent_context = tmp_path / "parent-context.json"
+    argv = ["--mode", "initial", "--non-interactive", "true", "--no-logs-commit", no_logs, "--lifecycle-parent-context", str(parent_context)]
+    rc = dispatch_bootstrap.step0_bootstrap_main(argv)
+    assert rc == 0
+    assert len(calls) == expected_calls
+    if no_logs == "true":
+        return
+    lifecycle = calls[1]
+    values = tuple(lifecycle[lifecycle.index(flag) + 1] for flag in ("--run-id", "--log-root", "--parent-context"))
+    assert (values, "--adopt-existing" in lifecycle) == (("run-7887", str(tmp_path / "larch-logs"), str(parent_context)), True)
 
 
 def test_invoke_persists_ship_seed_input_flags(tmp_path, monkeypatch) -> None:

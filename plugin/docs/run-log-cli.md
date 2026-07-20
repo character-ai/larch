@@ -60,8 +60,12 @@ lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and
 `SYNC_OK=true`. See [Run-log storage contracts](run-log-archive.md).
 
-The universal lifecycle starts each invocation with a UUID and declared skill
-name after the configured bucket preflight succeeds. Child runs also record the
+The universal lifecycle starts each invocation with a declared skill and either
+a caller-supplied `--run-id` or a generated UUID after the configured bucket
+preflight succeeds. `--log-root <absolute-path>` selects specialized staging;
+`--adopt-existing` adopts a matching manifest already created there. The start
+envelope returns `CONTEXT_FILE`, whose durable JSON record binds repository,
+storage URI, skill, run ID, log root, and run directory. Child runs also record the
 parent skill and run ID, but retain their own archive. Every terminal verb
 writes `final-report.md`, records a missing transcript as an execution issue
 when capture is unavailable, and attempts the same create-only publication.
@@ -118,8 +122,10 @@ dividing by summed cache-read.
 
 ## Implement archive publication
 
-Step 18 runs `run-log publish` after its execution-issue and transcript safety
-nets. The publisher validates and sanitizes the final staging tree. A successful
+Step 0 adopts `$IMPLEMENT_TMPDIR/larch-logs` into the lifecycle under the
+implement run ID. Step 18 runs the matching lifecycle terminal verb after its
+execution-issue and transcript safety nets. The shared terminal owner validates
+and sanitizes that final staging tree. A successful
 call creates one immutable remote object and one validated unpacked cache
 directory. A failed upload returns nonzero, retains the durable pending archive,
 and stops teardown. Re-entry retries the content-pinned pending archive.

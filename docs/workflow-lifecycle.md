@@ -110,14 +110,21 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 Every shipped skill resolves `.larch/config.toml` or `LARCH_LOGS_URI`, validates
 the storage root, and performs the provider bucket-root preflight before run
-work. Each invocation owns one skill name and run ID. Nested and alias calls
-publish separate parent-linked archives.
+work. Each invocation owns one skill name, run ID, staging tree, durable context,
+and terminal publication. Specialized design, implement, and review owners adopt
+their rich staging trees into that same lifecycle. Nested and alias calls publish
+separate parent-linked archives; nested review is a child of its implement run.
 
 Terminal paths sanitize the final staging tree and publish exactly one
 create-only object at `<URI>/run-logs/<skill>/<run-id>.tar.gz`. Success also
 requires a validated unpacked cache directory. Failure returns nonzero and
 keeps a content-pinned pending archive for retry. No run-log path creates a Git
 branch, commit, push, pull request, or merge.
+
+The enforceable owner registry is
+`skills/shared/run-lifecycle-ownership.tsv`. Its specialized row replaces the
+generic prompt owner for that boundary; the specialized code may stage richer
+artifacts but may not invoke a second archive publisher.
 
 Analysis skills synchronize the repository corpus at most once per invocation.
 They keep the returned cache path and use ordinary local reads for every later

@@ -10,19 +10,27 @@ error, and Rust-handoff contracts are defined in
 
 ## Universal skill lifecycle
 
-`skills/shared/run-lifecycle.md` defines the shared start and terminal contract.
-Each invocation owns a UUID under its declared skill. A nested invocation stores
+`skills/shared/run-lifecycle.md` defines the shared start and terminal contract,
+and `skills/shared/run-lifecycle-ownership.tsv` assigns each skill its start and
+terminal owner. Each invocation owns one explicit run ID under its declared skill. A nested invocation stores
 its parent's skill and run ID in its manifest without sharing the parent's run
 directory or archive. The universal minimum is `manifest.json`,
 `final-report.md`, and `execution-issues.ndjson`. When session transcript
 capture is unavailable, the execution-issues record names that omission before
 terminal publication, as required by I-Flush-1.
 
+Specialized owners may adopt an existing rich staging tree by passing the same
+run ID and an absolute `--log-root`. The lifecycle stores that choice in a
+durable context file, so terminal publication does not depend on inherited shell
+state. Design, implement, and review use this adoption path and keep their rich
+artifacts in the one lifecycle-owned tree.
+
 The inventory includes public skills, shipped aliases, internal child skills,
 and dev-only skills. An alias publishes under the alias name, then passes its
-identity to the target as parent metadata. The lifecycle lint rejects temporary
-migration markers and any skill whose declaration, name, or mandatory contract
-instruction is incomplete.
+identity to the target as parent metadata. Nested review publishes a separate
+review archive linked to its implement parent. The lifecycle lint rejects
+temporary migration markers, incomplete declarations, unregistered specialized
+owners, and direct archive publishers outside the shared terminal owner.
 
 ## Plan scope and Git isolation
 

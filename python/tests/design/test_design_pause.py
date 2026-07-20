@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from larch.design import design_pause
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
+from larch.report import run_lifecycle
 from test_support import operator_repo_with_remote as _operator_repo_with_remote
 from test_support import write_gh_pr_stub as _write_gh_stub
 
@@ -336,24 +337,27 @@ def test_pause_save_uses_real_log_publish_path(
         log_root = kwargs["log_root"]
         assert isinstance(log_root, Path)
         _ = shutil.copytree(log_root / "design" / "RUN1", cache_dir)
-        result = design_log_publish_flow.run_log_publisher.PublicationResult(
+        result = run_lifecycle.run_log_publish.PublicationResult(
             remote_key="run-logs/design/RUN1.tar.gz",
             archive_sha256="a" * 64,
             cache_dir=cache_dir,
-            remote_status=design_log_publish_flow.run_log_publisher.RemotePublicationStatus.CREATED,
-            cache_status=design_log_publish_flow.run_log_publisher.CachePublicationStatus.PROMOTED,
+            remote_status=run_lifecycle.run_log_publish.RemotePublicationStatus.CREATED,
+            cache_status=run_lifecycle.run_log_publish.CachePublicationStatus.PROMOTED,
         )
         return result, 0
 
+    storage_root = run_lifecycle.storage_config.StorageRoot("s3", "test-bucket", "test-prefix")
+
     def fake_storage_root(**_kwargs: object) -> object:
-        return object()
+        return storage_root
 
     monkeypatch.setattr(
-        design_log_publish_flow.storage_config,
-        "discover_storage_root",
+        run_lifecycle.storage_config,
+        "load_storage_root",
         fake_storage_root,
     )
-    monkeypatch.setattr(design_log_publish_flow.run_log_publisher, "publish_log_run", fake_publish_log_run)
+    _ = run_lifecycle.start_run(repo_root=repo, skill="design", run_id="RUN1", log_root=design / "larch-logs", storage_root=storage_root, preflight=lambda _root: None)
+    monkeypatch.setattr(run_lifecycle.run_log_publish, "publish_log_run", fake_publish_log_run)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
