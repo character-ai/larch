@@ -1,12 +1,15 @@
 use crate::google_auth::GoogleAdc;
-use google_cloud_storage::client::{Storage, StorageControl};
+use google_cloud_storage::{
+    client::{Storage, StorageControl},
+    stub::{DefaultStorage, Storage as StorageStub},
+};
 use larch_core::{ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject};
 use std::path::Path;
 use tokio::io::AsyncWriteExt as _;
 const STORAGE_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.read_write";
 #[derive(Clone)]
-pub struct GoogleCloudStorage {
-    data: Storage,
+pub struct GoogleCloudStorage<S: StorageStub + 'static = DefaultStorage> {
+    data: Storage<S>,
     control: StorageControl,
 }
 impl GoogleCloudStorage {
@@ -31,14 +34,15 @@ impl GoogleCloudStorage {
             .map_err(|_error| ObjectStoreError::Authentication)?;
         Ok(Self { data, control })
     }
-
+}
+impl<S: StorageStub + 'static> GoogleCloudStorage<S> {
     #[doc(hidden)]
     #[must_use]
-    pub const fn from_clients(data: Storage, control: StorageControl) -> Self {
+    pub const fn from_clients(data: Storage<S>, control: StorageControl) -> Self {
         Self { data, control }
     }
 }
-impl ObjectStore for GoogleCloudStorage {
+impl<S: StorageStub + 'static> ObjectStore for GoogleCloudStorage<S> {
     fn preflight_bucket<'a>(&'a self, bucket: &'a str) -> ObjectStoreFuture<'a, ()> {
         Box::pin(async move {
             transport(
