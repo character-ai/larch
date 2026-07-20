@@ -7713,6 +7713,12 @@ python = ["checks contains-pins", "checks gitleaks", "generate check", "residual
 rust = []
 
 [[callers]]
+path = ".github/workflows/migration-governance.yaml"
+kind = "ci"
+python = ["issue migration-audit", "tracking-issue upsert-summary"]
+rust = []
+
+[[callers]]
 path = ".github/workflows/rust-release-assets.yaml"
 kind = "ci"
 python = []
