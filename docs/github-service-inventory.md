@@ -19,10 +19,10 @@ service request surfaces, and `gcloud` stay inside `crates/larch-adapters`.
 `crates/larch-adapters/src/github/mod.rs` is the single concrete GitHub client
 owner. `OctocrabGitHubService::from_environment` builds the one private Octocrab
 client, reads exactly `LARCH_GH_TOKEN`, and pins the `api.github.com` and
-`github.com` host allowlist. Every other adapter module layers typed operations
-over that one client and exposes no raw REST URL, GraphQL document, or concrete
-client to domain callers. No production code outside `crates/larch-adapters`
-imports Octocrab, names a GitHub service host, or embeds a GraphQL document.
+`github.com` host allowlist. It verifies that pinned Octocrab supplies one API
+version header. Other adapters layer typed operations over that client and hide
+REST URLs, GraphQL documents, and the client. Only
+`crates/larch-adapters` imports Octocrab or names GitHub hosts and GraphQL.
 
 ## Adapter operation ownership
 

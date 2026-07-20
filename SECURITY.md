@@ -111,9 +111,9 @@ requires a JWT backend even though this adapter exposes token authentication
 only; larch selects AWS-LC because the alternative RustCrypto RSA graph carries
 an unpatched advisory. `aws-lc-sys` builds its bundled C and assembly with CMake
 and a platform C compiler; it adds no dynamic system-library requirement and
-is built by the existing four-target release matrix. Automatic redirects and
-retries are disabled. Requests use fixed `User-Agent`, GitHub JSON `Accept`,
-and API-version headers. The API and upload bases are both pinned to
+is built by the existing four-target release matrix. Redirects and retries are
+disabled. Larch sets `User-Agent` and `Accept`; pinned Octocrab supplies one
+API-version header. Both bases are pinned to
 `https://api.github.com/`; response-supplied
 continuations must remain HTTPS on the same approved origin. The host policy
 also recognizes `https://github.com` for later typed download boundaries but
@@ -276,8 +276,8 @@ unexpected content types, and oversize or incomplete streams. Redirect hosts
 are limited to the documented `*.actions.githubusercontent.com` suffix and the
 `productionresultssa<digits>.blob.core.windows.net` storage family. Octocrab
 adds authorization only for `api.github.com`, so cross-origin log requests do
-not carry `Authorization`. Expired download URLs and every other non-success
-response fail with a typed, redacted error.
+not carry `Authorization`. They preserve the signed query. A production-auth
+loopback test checks both hops. Failures return redacted errors.
 
 ## Scoped Live-Mutation Authorization Boundary
 
