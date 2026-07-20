@@ -1,10 +1,10 @@
 ---
+# pending:7827
 name: design
-description: "Use when authoring or vetting an issue-anchored GitHub implementation plan. Runs direct drafting, plan review, clarify loop, and issue-body plan markers."
+description: "Use when authoring or vetting an issue-anchored GitHub implementation plan. Runs drafting, review, clarify loop, and issue plan markers."
 argument-hint: "[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] [--difficulty <TRIVIAL|MODERATE|HARD>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
-
 # Design Skill
 
 Design an implementation plan and review it with the mechanical plan-review panel. `skills/design/references/plan-review-runtime.md` owns Step 3 topology, slots, adjudication, and voting; `plan-review.md` is editing-only authority. Flow: Step 2a sentinel prep is folded into the Step 2b drafter wrapper, Step 2b drafts from direct codebase inspection, Step 3 runs review, Step 5b files accepted non-security OOS via `/larch:issue`, and Step 5c writes `larch:plan` with `python/cli.py named-block write --marker plan`. No design manifest export.

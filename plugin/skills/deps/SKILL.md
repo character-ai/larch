@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: deps
 description: "Use when auditing all open GitHub issues for stale REGULAR issue text and missing issue dependencies, with one approval gate before any mutation."
 argument-hint: "[--repo owner/name] [--pair-cap N]"

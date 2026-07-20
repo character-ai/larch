@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: gc-run-logs
 description: "Use when slimming or deleting aged larch run-log directories to cap repo growth. Applies age retention and creates a log-only PR for operator merge."
 allowed-tools: Bash

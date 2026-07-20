@@ -48,11 +48,23 @@ make a log public-safe. See the canonical
 - `run-log materialize`
 - `run-log publish`
 - `run-log sync`
+- `run-log lifecycle-start`
+- `run-log lifecycle-finalize`
+- `run-log lifecycle-failure`
+- `run-log lifecycle-cancel`
+- `run-log lifecycle-early-return`
 
 The archive lifecycle verbs use their own machine envelopes. `run-log sync`
 lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and
 `SYNC_OK=true`. See [Run-log archive format](run-log-archive.md).
+
+The universal lifecycle starts each invocation with a UUID and declared skill
+name after the configured bucket preflight succeeds. Child runs also record the
+parent skill and run ID, but retain their own archive. Every terminal verb
+writes `final-report.md`, records a missing transcript as an execution issue
+when capture is unavailable, and attempts the same create-only publication.
+Publication failure returns nonzero and retains the durable pending archive.
 
 `exists` exits 0 only after argument, log-root, slug, and batch validation
 succeed. It sets `UNCHANGED=true` when the batch file exists.

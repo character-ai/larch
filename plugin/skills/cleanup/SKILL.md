@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: cleanup
 description: "Use when cleaning up stale larch session temp directories by age and reaping dangling /design session-env symlinks."
 allowed-tools: Bash

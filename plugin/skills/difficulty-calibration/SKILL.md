@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: difficulty-calibration
 description: "Use when comparing predicted and realized larch difficulty tiers from synchronized run logs. Diagnostic only; changes no thresholds, panels, points, or routing."
 argument-hint: "[--log-root DIR] [--out FILE]"

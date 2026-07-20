@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: f
 description: "Use when forcing an implementation with Claude subagent implement + self-review. Shortcut for /implement --force --self-review --self-implement."
 argument-hint: "<arguments>"

@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: alias
 description: "Use when creating shortcut aliases for existing larch skills with preset flags. Routes plugin-source aliases to skills/ unless --private forces .claude/skills/."
 argument-hint: "[--merge] [--private] <alias-name> <target-skill> [preset-flags...]"

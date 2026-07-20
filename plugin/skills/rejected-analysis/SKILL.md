@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: rejected-analysis
 description: "Use when recovering verified real rejected code-review findings from synchronized larch run logs and filing GitHub issues for findings that remain unfixed."
 argument-hint: "--n DAYS"
