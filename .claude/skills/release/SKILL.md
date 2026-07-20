@@ -245,7 +245,7 @@ On candidate CI, asset workflow, draft validation, or merge failure, stop before
 
 ```bash
 SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
-python3 "$PWD/python/cli.py" release finish \
+"$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
@@ -257,7 +257,7 @@ python3 "$PWD/python/cli.py" release finish \
 If Step 6 fails after Step 5 merged the release PR, do **not** re-run full `/release`. Re-run Step 6 only with the same version, PR, and source commit:
 
 ```bash
-python3 "$PWD/python/cli.py" release finish \
+"$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
@@ -407,9 +407,9 @@ Runtime helpers:
 - `"$PWD/scripts/larch.sh" release stage`: tag the candidate and create or verify its draft Release
 - `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
 - `"$PWD/scripts/larch.sh" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
-- `python3 "$PWD/python/cli.py" release finish`: revalidate, publish immutable, verify release attestations, and promote Latest
-- `python3 "$PWD/python/cli.py" release promote`: promote a specific release after `finish`, or during promote-only recovery
-- `python3 "$PWD/python/cli.py" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
+- `"$PWD/scripts/larch.sh" release finish`: revalidate, publish immutable, verify release attestations, and promote Latest
+- `"$PWD/scripts/larch.sh" release promote`: promote a specific release after `finish`, or during promote-only recovery
+- `"$PWD/scripts/larch.sh" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
 
 Repo-root helpers referenced from steps above:
 
@@ -425,5 +425,5 @@ Offline harnesses:
 
 - `crates/larch-cli/tests/release_prepare.rs`: release preparation and bump-classification parity coverage
 - `crates/larch-cli/tests/release_version.rs`: synchronized version validation, mutation, rollback, and replay coverage
-- `python/tests/release/test_release.py`: candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
+- `crates/larch-cli/src/release_stage.rs` and `crates/larch-cli/src/release_publish.rs`: candidate staging, draft validation, recovery, finish, promote, and promote-latest regression coverage
 - Makefile targets: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`

@@ -19,6 +19,7 @@ use larch_core::{
     reconcile_mutation, require_asset_content_type, resolve_tag_object_id, select_release_for_tag,
 };
 use octocrab::models::repos::{Asset, Release};
+use octocrab::repos::releases::MakeLatest;
 use std::{error::Error, fmt, future::Future, pin::Pin};
 use url::Url;
 
@@ -202,6 +203,8 @@ pub type ReleaseFuture<'a, T> =
 pub trait ReleaseTransport: Send + Sync {
     /// List releases on the bounded first page for duplicate-safe selection.
     fn list_releases<'a>(&'a self, repo: &RepoSlug) -> ReleaseFuture<'a, Vec<ReleaseState>>;
+    /// Read the repository's current Latest release.
+    fn latest_release<'a>(&'a self, repo: &RepoSlug) -> ReleaseFuture<'a, Option<ReleaseState>>;
     /// Resolve the object id a tag points at, preferring the peeled target.
     fn resolve_tag<'a>(
         &'a self,
@@ -233,6 +236,12 @@ pub trait ReleaseTransport: Send + Sync {
     fn release_body<'a>(&'a self, repo: &RepoSlug, release_id: u64) -> ReleaseFuture<'a, String>;
     /// Publish a staged draft release by database id.
     fn publish_release<'a>(
+        &'a self,
+        repo: &RepoSlug,
+        release_id: u64,
+    ) -> ReleaseFuture<'a, ReleaseState>;
+    /// Clear prerelease and mark one published release as Latest.
+    fn promote_release<'a>(
         &'a self,
         repo: &RepoSlug,
         release_id: u64,
@@ -324,6 +333,32 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
     ) -> Result<Option<ReleaseState>, ReleaseServiceError> {
         let releases = self.transport.list_releases(repo).await?;
         Ok(select_release_for_tag(tag, releases)?)
+    }
+
+    /// Select the most recently published non-draft release.
+    ///
+    /// # Errors
+    /// Fails when the bounded release list cannot be read.
+    pub async fn newest_published_release(
+        &self,
+        repo: &RepoSlug,
+    ) -> Result<Option<ReleaseState>, ReleaseServiceError> {
+        let releases = self.transport.list_releases(repo).await?;
+        Ok(releases
+            .into_iter()
+            .filter(|release| !release.is_draft() && release.published_at().is_some())
+            .max_by(|left, right| left.published_at().cmp(&right.published_at())))
+    }
+
+    /// Read the repository's current Latest release.
+    ///
+    /// # Errors
+    /// Fails when the owning GitHub surface cannot be read.
+    pub async fn latest_release(
+        &self,
+        repo: &RepoSlug,
+    ) -> Result<Option<ReleaseState>, ReleaseServiceError> {
+        self.transport.latest_release(repo).await
     }
 
     /// Create a draft release, reconciling an ambiguous create before retry.
@@ -439,6 +474,60 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
             }
             Err(other) => Err(other),
         }
+    }
+
+    /// Promote one published release to Latest and verify the owning surface.
+    ///
+    /// An ambiguous first write is retried only after Latest read-back proves
+    /// the effect absent. Every success path re-reads Latest and prerelease
+    /// state before returning.
+    ///
+    /// # Errors
+    /// Fails on a definite mutation error or when read-back does not show the
+    /// requested release as non-draft, non-prerelease Latest.
+    pub async fn promote_release(
+        &self,
+        repo: &RepoSlug,
+        release: &ReleaseState,
+    ) -> Result<ReleaseState, ReleaseServiceError> {
+        if release.is_draft() {
+            return Err(ReleaseServiceError::MutationLost);
+        }
+        let first = self
+            .transport
+            .promote_release(repo, release.database_id())
+            .await;
+        match first {
+            Ok(_) => {}
+            Err(error) if is_ambiguous_write(&error) => {
+                if let Some(observed) = self.promoted_state(repo, release.database_id()).await? {
+                    return Ok(observed);
+                }
+                let retry = self
+                    .transport
+                    .promote_release(repo, release.database_id())
+                    .await;
+                if let Err(error) = retry
+                    && !is_ambiguous_write(&error)
+                {
+                    return Err(error);
+                }
+            }
+            Err(other) => return Err(other),
+        }
+        self.promoted_state(repo, release.database_id())
+            .await?
+            .ok_or(ReleaseServiceError::MutationLost)
+    }
+
+    async fn promoted_state(
+        &self,
+        repo: &RepoSlug,
+        release_id: u64,
+    ) -> Result<Option<ReleaseState>, ReleaseServiceError> {
+        Ok(self.latest_release(repo).await?.filter(|release| {
+            release.database_id() == release_id && !release.is_draft() && !release.is_prerelease()
+        }))
     }
 
     /// Upload an asset, reconciling an ambiguous upload before retry.
@@ -789,6 +878,14 @@ fn map_release(release: &Release) -> Result<ReleaseState, ReleaseServiceError> {
         release.immutable.unwrap_or(false),
         assets,
     )
+    .map(|state| {
+        let published_at = release
+            .published_at
+            .as_ref()
+            .or(release.created_at.as_ref())
+            .map(ToString::to_string);
+        state.with_publication(release.prerelease, published_at)
+    })
     .map_err(ReleaseServiceError::Data)
 }
 
@@ -820,6 +917,25 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
                 .await
                 .map_err(|error| self.transport_error(&error))?;
             page.items.iter().map(map_release).collect()
+        }))
+    }
+
+    fn latest_release<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, Option<ReleaseState>> {
+        let url = format!("/repos/{}/releases/latest", repo.path());
+        Box::pin(self.guard(async move {
+            self.get_json(url)
+                .await?
+                .map(|value| {
+                    serde_json::from_value::<Release>(value)
+                        .map_err(|_| {
+                            ReleaseServiceError::Transport(
+                                self.service
+                                    .redact_diagnostic("latest release is malformed"),
+                            )
+                        })
+                        .and_then(|release| map_release(&release))
+                })
+                .transpose()
         }))
     }
 
@@ -988,6 +1104,31 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
                 .update(release_id)
                 .draft(false)
                 .prerelease(false)
+                .make_latest(MakeLatest::False)
+                .send()
+                .await
+                .map_err(|error| self.mutation_error(&error))?;
+            map_release(&release)
+        }))
+    }
+
+    fn promote_release<'b>(
+        &'b self,
+        repo: &RepoSlug,
+        release_id: u64,
+    ) -> ReleaseFuture<'b, ReleaseState> {
+        let owner = repo.owner().to_owned();
+        let name = repo.repo().to_owned();
+        Box::pin(self.guard(async move {
+            let release = self
+                .service
+                .client
+                .repos(owner, name)
+                .releases()
+                .update(release_id)
+                .draft(false)
+                .prerelease(false)
+                .make_latest(MakeLatest::True)
                 .send()
                 .await
                 .map_err(|error| self.mutation_error(&error))?;
@@ -1068,6 +1209,10 @@ mod release_tests {
         ReleaseState::new(id, tag, draft, immutable, assets).expect("valid release")
     }
 
+    fn published(id: u64, tag: &str, prerelease: bool, at: &str) -> ReleaseState {
+        release(id, tag, false, true, Vec::new()).with_publication(prerelease, Some(at.to_owned()))
+    }
+
     fn pop<T>(queue: &ReleaseQueue<T>) -> Option<Result<T, ReleaseServiceError>> {
         queue.lock().expect("queue lock").pop_front()
     }
@@ -1080,9 +1225,11 @@ mod release_tests {
         merge_commits: bool,
         release_body: String,
         list: ReleaseQueue<Vec<ReleaseState>>,
+        latest: ReleaseQueue<Option<ReleaseState>>,
         create: ReleaseQueue<ReleaseState>,
         update: ReleaseQueue<ReleaseState>,
         publish: ReleaseQueue<ReleaseState>,
+        promote: ReleaseQueue<ReleaseState>,
         upload: ReleaseQueue<RemoteAsset>,
         hops: ReleaseQueue<FetchOutcome>,
         list_calls: Mutex<usize>,
@@ -1094,6 +1241,14 @@ mod release_tests {
             let scripted = pop(&self.list);
             let fallback = self.releases.clone();
             Box::pin(async move { scripted.unwrap_or(Ok(fallback)) })
+        }
+
+        fn latest_release<'a>(
+            &'a self,
+            _repo: &RepoSlug,
+        ) -> ReleaseFuture<'a, Option<ReleaseState>> {
+            let outcome = pop(&self.latest);
+            Box::pin(async move { outcome.unwrap_or(Ok(None)) })
         }
 
         fn resolve_tag<'a>(
@@ -1153,6 +1308,15 @@ mod release_tests {
             _id: u64,
         ) -> ReleaseFuture<'a, ReleaseState> {
             let outcome = pop(&self.publish);
+            Box::pin(async move { outcome.unwrap_or(Err(ReleaseServiceError::MutationLost)) })
+        }
+
+        fn promote_release<'a>(
+            &'a self,
+            _repo: &RepoSlug,
+            _id: u64,
+        ) -> ReleaseFuture<'a, ReleaseState> {
+            let outcome = pop(&self.promote);
             Box::pin(async move { outcome.unwrap_or(Err(ReleaseServiceError::MutationLost)) })
         }
 
@@ -1366,6 +1530,64 @@ mod release_tests {
         let published = run(ReleaseOperations::new(&transport).publish_release(&repo(), &draft))
             .expect("reconciled publish");
         assert!(!published.is_draft());
+    }
+
+    #[test]
+    fn publication_selection_and_ambiguous_promotion_use_owning_read_back() {
+        let selected = published(8, "v2", true, "2026-07-19T02:00:00+00:00");
+        let transport = FakeTransport {
+            releases: vec![
+                published(7, "v1", false, "2026-07-19T01:00:00+00:00"),
+                selected.clone(),
+                release(9, "v3", true, false, Vec::new()),
+            ],
+            latest: Mutex::new(
+                [Ok(Some(selected.clone().with_publication(
+                    false,
+                    selected.published_at().map(str::to_owned),
+                )))]
+                .into(),
+            ),
+            promote: Mutex::new([Err(ReleaseServiceError::AmbiguousMutation)].into()),
+            ..FakeTransport::default()
+        };
+        let operations = ReleaseOperations::new(&transport);
+        assert_eq!(
+            run(operations.newest_published_release(&repo()))
+                .expect("newest")
+                .expect("present")
+                .database_id(),
+            8
+        );
+        assert_eq!(
+            run(operations.promote_release(&repo(), &selected))
+                .expect("reconciled promotion")
+                .database_id(),
+            8
+        );
+        assert!(transport.promote.lock().expect("promote queue").is_empty());
+    }
+
+    #[test]
+    fn failed_promotion_never_accepts_the_prior_latest() {
+        let candidate = published(8, "v2", false, "2026-07-19T02:00:00+00:00");
+        let transport = FakeTransport {
+            latest: Mutex::new(
+                [Ok(Some(published(
+                    7,
+                    "v1",
+                    false,
+                    "2026-07-19T01:00:00+00:00",
+                )))]
+                .into(),
+            ),
+            promote: Mutex::new([Ok(candidate.clone())].into()),
+            ..FakeTransport::default()
+        };
+        assert_eq!(
+            run(ReleaseOperations::new(&transport).promote_release(&repo(), &candidate)),
+            Err(ReleaseServiceError::MutationLost)
+        );
     }
 
     #[test]
@@ -1589,6 +1811,7 @@ mod transport_tests {
         status: u16,
         headers: Vec<(&'static str, String)>,
         body: Vec<u8>,
+        expected_request: Option<&'static str>,
     }
 
     fn json_reply(status: u16, value: &serde_json::Value) -> Reply {
@@ -1596,6 +1819,18 @@ mod transport_tests {
             status,
             headers: vec![("Content-Type", "application/json".to_owned())],
             body: value.to_string().into_bytes(),
+            expected_request: None,
+        }
+    }
+
+    fn json_reply_expecting(
+        status: u16,
+        value: &serde_json::Value,
+        expected_request: &'static str,
+    ) -> Reply {
+        Reply {
+            expected_request: Some(expected_request),
+            ..json_reply(status, value)
         }
     }
 
@@ -1604,6 +1839,7 @@ mod transport_tests {
             status: 302,
             headers: vec![("Location", location.to_owned())],
             body: Vec::new(),
+            expected_request: None,
         }
     }
 
@@ -1612,6 +1848,7 @@ mod transport_tests {
             status: 200,
             headers: vec![("Content-Type", ASSET_MEDIA_TYPE.to_owned())],
             body: bytes,
+            expected_request: None,
         }
     }
 
@@ -1626,6 +1863,13 @@ mod transport_tests {
                 let mut request = [0_u8; 16_384];
                 let read = socket.read(&mut request).expect("read request");
                 assert!(read > 0, "request must not be empty");
+                if let Some(expected) = reply.expected_request {
+                    let request = String::from_utf8_lossy(&request[..read]);
+                    assert!(
+                        request.contains(expected),
+                        "request did not contain {expected:?}: {request}"
+                    );
+                }
                 let mut head = format!("HTTP/1.1 {} Stub\r\n", reply.status);
                 for (name, value) in &reply.headers {
                     head.push_str(name);
@@ -1690,6 +1934,8 @@ mod transport_tests {
             "draft": draft,
             "prerelease": false,
             "immutable": true,
+            "created_at": "2026-07-18T00:00:00Z",
+            "published_at": (!draft).then_some("2026-07-18T01:00:00Z"),
             "assets": [asset_json("larch")]
         })
     }
@@ -1700,12 +1946,28 @@ mod transport_tests {
 
     #[tokio::test]
     async fn transport_maps_release_list_create_publish_and_upload() {
+        serde_json::from_value::<Release>(release_json(2, "v1", false))
+            .expect("release fixture should deserialize");
         // `upload_asset` first GETs the release to read its `upload_url`, then
         // POSTs the asset there, so it consumes two scripted replies.
         let (service, _base, server) = stub(vec![
             json_reply(200, &json!([release_json(1, "v1", true)])),
             json_reply(201, &release_json(2, "v1", true)),
-            json_reply(200, &release_json(2, "v1", false)),
+            json_reply_expecting(
+                200,
+                &release_json(2, "v1", false),
+                "\"make_latest\":\"false\"",
+            ),
+            json_reply_expecting(
+                200,
+                &release_json(2, "v1", false),
+                "/repos/o/r/releases/latest",
+            ),
+            json_reply_expecting(
+                200,
+                &release_json(2, "v1", false),
+                "\"make_latest\":\"true\"",
+            ),
             json_reply(200, &release_json(2, "v1", false)),
             json_reply(201, &asset_json("larch")),
         ]);
@@ -1735,6 +1997,19 @@ mod transport_tests {
             .await
             .expect("publish");
         assert!(!published.is_draft());
+
+        let latest = transport
+            .latest_release(&repo)
+            .await
+            .expect("read Latest")
+            .expect("Latest release");
+        assert_eq!(latest.database_id(), published.database_id());
+
+        let promoted = transport
+            .promote_release(&repo, published.database_id())
+            .await
+            .expect("promote");
+        assert_eq!(promoted.database_id(), published.database_id());
 
         let upload = AssetUpload {
             name: "larch".to_owned(),

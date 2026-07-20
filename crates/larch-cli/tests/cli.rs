@@ -1117,6 +1117,84 @@ fn release_stage_commands_enter_the_rust_service_boundary() {
     }
 }
 
+#[test]
+fn release_publication_commands_enter_the_rust_service_boundary() {
+    let repository = repository();
+    let commands = [
+        vec![
+            "release",
+            "finish",
+            "--version",
+            "1.2.3",
+            "--repo",
+            "character-ai/larch",
+            "--pr",
+            "7",
+            "--source-commit",
+            "1111111111111111111111111111111111111111",
+        ],
+        vec![
+            "release",
+            "promote",
+            "1.2.3",
+            "--repo",
+            "character-ai/larch",
+        ],
+        vec![
+            "release",
+            "promote-latest",
+            "--repo",
+            "character-ai/larch",
+            "--dry-run",
+        ],
+    ];
+    for arguments in commands {
+        larch()
+            .current_dir(repository.path())
+            .env_remove("LARCH_GH_TOKEN")
+            .args(arguments)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("LARCH_GH_TOKEN is required"));
+    }
+}
+
+#[test]
+fn release_publication_constructs_production_services_before_validating_inputs() {
+    let repository = repository();
+    git(
+        repository.path(),
+        [
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/character-ai/other.git",
+        ],
+    );
+    let token = "github_pat_000000000000000000000000000000000000";
+    command_at(
+        repository.path(),
+        &[
+            "release",
+            "finish",
+            "--version",
+            "1.2.3",
+            "--repo",
+            "character-ai/larch",
+            "--pr",
+            "7",
+            "--source-commit",
+            "1111111111111111111111111111111111111111",
+        ],
+    )
+    .env("LARCH_GH_TOKEN", token)
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains(
+        "origin repository does not match --repo",
+    ));
+}
+
 fn command_at_owned(root: &Path, arguments: &[String]) -> Command {
     let mut command = larch();
     command.current_dir(root).args(arguments);

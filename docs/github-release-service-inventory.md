@@ -1,36 +1,27 @@
 # GitHub Release Service Inventory
 
-This ledger records the GitHub release and asset service operations for
-issue #7738. It separates adapter parity, consumer cutover, and Python
-removal so implementation parity can land before #7674 cuts its release
-state machine over to the Rust boundary. The three milestones advance
-independently, mirroring the [command registry](rust-command-registry.md)
-and the [Google service inventory](google-service-inventory.md).
+This ledger records the GitHub release and asset service operations. It
+separates adapter parity, consumer cutover, and Python removal. The three
+milestones advance independently, mirroring the
+[command registry](rust-command-registry.md) and the
+[Google service inventory](google-service-inventory.md).
 
 ## Checked scope
 
-The inventory was checked against main commit `8f0cbbd47` and the issue branch.
-The current production callers are the Python release helpers, which reach
-GitHub through `gh api` and `gh release` subprocesses:
-
-- `python/larch/release/release_finish.py` lists releases for duplicate-safe
-  tag selection, resolves the remote tag object id, reads the
-  immutable-release policy, stages a draft, and downloads release assets.
-- `python/larch/release/promote_release.py` edits a release to clear the
-  pre-release flag and mark it latest.
-
-The release state machine, asset packaging, and installation workflow stay
-with #7674. Issue #7755 adds attestation adapter parity without switching these
-production callers.
+The inventory was checked for issue #7752. Production publication and
+promotion now enter Rust through `scripts/larch.sh release finish`,
+`scripts/larch.sh release promote`, and
+`scripts/larch.sh release promote-latest`. The retired Python implementations
+and registrations are removed.
 
 ## Operation ledger
 
 | Service category | Current production operations | Production callers | Adapter parity | Consumer cutover | Python removal |
 | --- | --- | --- | --- | --- | --- |
-| Release reads | List releases, tag-reference resolution, immutable-release policy | `release_finish.py` | Landed (#7738) | Pending #7674 | Pending |
-| Release mutations | Create draft, publish or edit release | `release_finish.py`, `promote_release.py` | Landed (#7738) | Pending #7674 | Pending |
-| Asset operations | Asset metadata, upload, bounded download | `release_finish.py` | Landed (#7738) | Pending #7674 | Pending |
-| Attestation verification | Artifact provenance and immutable-release tag, commit, and asset-set verification | `release_finish.py`, `scripts/larch.sh` | Landed (#7755) | Pending #7674 | Pending |
+| Release reads | List releases, tag-reference resolution, immutable-release policy, Latest | Rust `release stage`, `release finish`, `release promote`, `release promote-latest` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
+| Release mutations | Create draft, publish without Latest, promote to Latest | Rust `release stage`, `release finish`, `release promote`, `release promote-latest` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
+| Asset operations | Asset metadata, upload, bounded download | Rust `release stage`, `release finish` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
+| Attestation verification | Artifact provenance and immutable-release tag, commit, and asset-set verification | Rust `release stage`, `release finish`, bootstrap | Landed (#7755) | Complete (#7752) | Complete (#7752) |
 
 The Rust adapter now owns the typed release and asset operations behind the
 hardened Octocrab client from #7724: `larch-core` carries the effect-free
@@ -51,9 +42,11 @@ provenance checks, and immutable-release asset-set binding. Real larch
 domains. The adapter does not accept caller-supplied repositories, workflows,
 issuers, signer identities, trust roots, or URLs.
 
-Consumer cutover is deferred: #7674 continues to own the release state machine
-and its `gh`-backed callers until it repoints them at this boundary. Python
-removal follows cutover; the Python release helpers remain the production path
-until then. Before advancing either milestone, update this ledger and add a
-default-ignored, opt-in, credential-free live test alongside the offline
-fixtures.
+The publication state machine uses typed GitHub, pull-request, Git, and
+attestation services. It publishes a validated draft with `make_latest=false`,
+revalidates the resulting immutable release, verifies its attestation, and only
+then promotes it with `make_latest=true`. Ambiguous promotion outcomes read back
+Latest before any retry. A failed verification or promotion leaves the prior
+Latest release unchanged. Recovery accepts the same already-published immutable
+release and resumes verification and promotion without creating a tag, release,
+or asset.

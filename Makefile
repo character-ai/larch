@@ -537,10 +537,13 @@ test-release-set-version:
 	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --test release_version
 
 test-release-finish:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k 'release_finish or verify_main'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests
+	python3 python/cli.py timing harness-mark --label $@-verify-main -- python3 -m pytest python/tests/release/test_release.py -q
 
+# This Rust-only entry point is a standalone alias, not a test-harnesses
+# prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-promote-release:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_release.py -q -k 'promote and not release_finish'
+	python3 python/cli.py timing harness-mark --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests::promotion
 
 
 test-git-push:

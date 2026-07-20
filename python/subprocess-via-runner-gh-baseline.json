@@ -258,60 +258,6 @@
     "reason": "Legacy direct gh calls pending wrapper migration."
   },
   {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_latest_main",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_latest_main",
-    "occurrence": 2,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_latest_main",
-    "occurrence": 3,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_main",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_main",
-    "occurrence": 2,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_main",
-    "occurrence": 3,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_main",
-    "occurrence": 4,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/promote_release.py",
-    "qualified_symbol": "promote_main",
-    "occurrence": 5,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/release/release_finish.py",
-    "qualified_symbol": "_gh",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
     "file": "larch/report/tokens.py",
     "qualified_symbol": "compute_pr_line_counts",
     "occurrence": 1,

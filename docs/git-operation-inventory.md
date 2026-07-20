@@ -35,9 +35,11 @@ crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/push_network.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/push_rebase.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/release_common.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/release_plugin_runtime.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_prepare.rs	gix-read	#7671	typed-read
-crates/larch-cli/src/release_stage.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_drafter.py	later-domain	#7678	dynamic
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
@@ -80,7 +82,6 @@ python/larch/lint/lint_common.py	later-domain	#7685	dynamic
 python/larch/lint/lint_git_push_refspec.py	later-domain	#7685	push
 python/larch/lint/lint_run_log_walkers.py	later-domain	#7685	dynamic
 python/larch/lint/timing_task_kind_allowlist.py	later-domain	#7685	dynamic
-python/larch/release/release_finish.py	later-domain	#7674	dynamic
 python/larch/rendering/_rendering_generators.py	later-domain	#7683	commit,diff,ls-files
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/final_report.py	later-domain	#7683	rev-parse

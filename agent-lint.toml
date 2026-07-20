@@ -964,10 +964,6 @@ exclude = [
   "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-implement-timing-rehydration.md",
-  # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators
-  # call it directly from the terminal. Its sibling contract
-  # python/cli.py release promote is excluded for the same reason.
-  "python/cli.py release promote",
   # Referenced from Makefile (test-promote-release target in test-harnesses-20)
   # and python/test_release.py (sibling contract). G004 cannot discover
   # the Makefile edge.
@@ -1367,13 +1363,14 @@ root-max-content-tokens = 35301
 # issue #7780 tightens force-mode.md and SECURITY.md force-admission prose;
 # issue #7747 documents typed release-asset attestation verification;
 # issue #7750 adds the release-version transaction boundary;
+# issue #7752 documents immutable publication and Latest promotion;
 # issue #7728 adds the service-ownership CLI-independence trust boundary;
 # issue #7783 adds shared-owner implementation-lease enforcement.
 # issue #7736 adds the final Git ownership boundary.
 # issue #7785 adds clean-install and issue-registry audit boundaries.
-closure-max-lines = 3854
-closure-max-tokens = 146145
-closure-max-content-tokens = 145838
+closure-max-lines = 3858
+closure-max-tokens = 146209
+closure-max-content-tokens = 145903
 conditional-max-lines = 591
 conditional-max-tokens = 18803
 conditional-max-content-tokens = 18756
@@ -1428,10 +1425,11 @@ roots = [
 # issue #7780 updates SECURITY.md force-admission trust-boundary prose;
 # issue #7747 documents typed release-asset attestation verification;
 # issue #7750 adds the release-version transaction boundary;
+# issue #7752 documents immutable publication and Latest promotion;
 # issue #7728 adds the service-ownership CLI-independence trust boundary;
 # issue #7783 adds shared-owner implementation-lease enforcement.
 # issue #7736 adds the final Git ownership boundary.
 # issue #7785 adds clean-install and issue-registry audit boundaries.
-closure-max-lines = 6142
-closure-max-tokens = 171595
-closure-max-content-tokens = 171125
+closure-max-lines = 6146
+closure-max-tokens = 171660
+closure-max-content-tokens = 171191

@@ -23,6 +23,7 @@ mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
 mod release_prepare;
+mod release_publish;
 mod release_stage;
 mod release_version;
 
@@ -208,10 +209,16 @@ enum ReleaseCommand {
     CollectAssets(CollectAssetsArguments),
     /// Enable and verify release repository policy.
     EnsurePolicy(EnsurePolicyArguments),
+    /// Publish, attest, and promote the merged release candidate.
+    Finish(FinishReleaseArguments),
     /// Package one target archive and metadata fragment.
     PackageAsset(PackageAssetArguments),
     /// Prepare the release window, PR list, and aggregate bump.
     Prepare(PrepareReleaseArguments),
+    /// Promote one immutable release to Latest.
+    Promote(PromoteReleaseArguments),
+    /// Promote the newest immutable non-draft release to Latest.
+    PromoteLatest(PromoteLatestArguments),
     /// Generate or validate the runtime-only plugin projection.
     PluginRuntime(PluginRuntimeArguments),
     /// Update every synchronized release version surface.
@@ -254,6 +261,33 @@ struct AssetRunArguments {
 struct EnsurePolicyArguments {
     #[arg(long = "repo")]
     repository: String,
+}
+
+#[derive(Args)]
+struct FinishReleaseArguments {
+    #[arg(long)]
+    version: String,
+    #[arg(long = "repo")]
+    repository: String,
+    #[arg(long)]
+    pr: String,
+    #[arg(long)]
+    source_commit: String,
+}
+
+#[derive(Args)]
+struct PromoteReleaseArguments {
+    version: String,
+    #[arg(long = "repo")]
+    repository: Option<String>,
+}
+
+#[derive(Args)]
+struct PromoteLatestArguments {
+    #[arg(long = "repo", default_value = "character-ai/larch")]
+    repository: String,
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[derive(Args)]
@@ -516,6 +550,12 @@ fn run_release(
         ReleaseCommand::EnsurePolicy(arguments) => {
             Ok(release_stage::ensure_policy(&arguments.repository))
         }
+        ReleaseCommand::Finish(arguments) => Ok(release_publish::finish(
+            &arguments.version,
+            &arguments.repository,
+            &arguments.pr,
+            &arguments.source_commit,
+        )),
         ReleaseCommand::PackageAsset(arguments) => Ok(release_assets::package_asset(
             &release_assets::PackageArguments {
                 version: arguments.version,
@@ -541,6 +581,14 @@ fn run_release(
                 },
             ))
         }
+        ReleaseCommand::Promote(arguments) => Ok(release_publish::promote(
+            &arguments.version,
+            arguments.repository.as_deref(),
+        )),
+        ReleaseCommand::PromoteLatest(arguments) => Ok(release_publish::promote_latest(
+            &arguments.repository,
+            arguments.dry_run,
+        )),
         ReleaseCommand::PluginRuntime(arguments) => release_plugin_runtime::run(arguments.check)
             .map(|()| ExitCode::SUCCESS)
             .map_err(command_failure),

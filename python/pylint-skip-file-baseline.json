@@ -70,13 +70,6 @@
     "rule_id": "pylint-skip-file"
   },
   {
-    "line": 2,
-    "message": "banned pylint skip-file directive",
-    "path": "python/larch/release/promote_release.py",
-    "reason": "deferred module debt: promote_release still carries a file-wide pylint skip pending duplicate-code burndown",
-    "rule_id": "pylint-skip-file"
-  },
-  {
     "line": 3,
     "message": "banned pylint skip-file directive",
     "path": "python/larch/rendering/render_chart.py",
