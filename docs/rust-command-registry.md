@@ -2,9 +2,12 @@
 
 `crates/larch-lint/data/command-registry.toml` is the migration source of
 truth for larch commands and production callers. Each command pair appears
-once. Its row records the current owner, machine-stdout contract, responsible
-migration issue, implementation parity, consumer cutover, Python removal, and
-an optional `clean_install_test` fixture ID.
+once. Its row records the current owner, machine-stdout contract, required
+`planning_issue`, optional exact `migration_issue`, implementation parity,
+consumer cutover, Python removal, and an optional `clean_install_test` fixture
+ID. The planning issue locates the command on the migration roadmap. The
+migration issue names only the executable leaf accountable for its atomic
+cutover; it stays absent until that leaf exists.
 
 ## Update workflow
 
@@ -16,12 +19,15 @@ Use one workflow for registry or caller changes:
    any newly added command:
 
    ```bash
-   cargo run --quiet --locked --package larch-lint -- command-registry sync --migration-issue ISSUE
+   cargo run --quiet --locked --package larch-lint -- command-registry sync --planning-issue ISSUE
    ```
 
 3. Edit only the affected command rows to advance `owner`,
    `implementation_parity`, `consumer_cutover`, or `python_removal`. Sync keeps
-   these fields and existing `migration_issue` values unchanged.
+   these fields and existing issue values unchanged. For a newly registered
+   command, sync records the supplied roadmap owner as `planning_issue` and
+   leaves `migration_issue` absent. Add the latter only when a filed executable
+   leaf accepts responsibility for the eventual atomic cutover.
 4. Validate the ledger and render the Chief issue progress block:
 
    ```bash
@@ -47,10 +53,13 @@ unexecuted string literals.
 The rule fails for missing or duplicate command rows, stale Python target or
 machine-stdout metadata, invalid status combinations, caller drift, unknown
 caller selectors, incomplete Python retirement evidence, and missing
-clean-install coverage. A pending command names its domain migration owner;
-the #7687 chief umbrella is too broad and fails lint. Completed commands retain
-the exact leaf that landed their atomic cutover. Every Rust-owned command with
-a production caller must
+clean-install coverage. Every command names a roadmap owner in
+`planning_issue`; the #7687 chief umbrella is too broad even for that field.
+`migration_issue` may be absent while a Python-owned command awaits an
+executable cutover leaf, but it must never name a migration umbrella. Completed
+commands retain the exact leaf that landed their atomic cutover, and completed
+migration state without that leaf fails lint. Every Rust-owned command with a
+production caller must
 name one unique fixture from `CLEAN_INSTALL_CASES` in
 `crates/larch-cli/tests/parity.rs`. The shared matrix starts without
 `bin/larch`, validates the local binary version and target through
@@ -60,8 +69,10 @@ The clean-install diagnostic is
 `clean-install-coverage-missing <domain> <verb>`. The issue audit reports
 `migration-issue-command-drift issue=#N command=<domain> <verb>` when a
 canonical issue `COMMAND` row, its plan mention, or the registry's
-`migration_issue` disagrees. Registry-to-issue checks apply only to open
-executable leaves after the audit input enables rollout.
+`migration_issue` disagrees. An absent `migration_issue` therefore cannot
+silently satisfy an issue that claims the command. Registry-to-issue checks
+apply only to assigned open executable leaves after the audit input enables
+rollout.
 
 ## Final release and upgrade boundary
 

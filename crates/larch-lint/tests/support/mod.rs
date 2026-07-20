@@ -111,7 +111,7 @@ fn seed_tracked_tree(repository: &TempRepo) {
     );
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
-        b"schema_version = 1\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nmigration_issue = 7661\n",
+        b"schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
     );
     repository.write(
         "python/larch/report/timing.py",

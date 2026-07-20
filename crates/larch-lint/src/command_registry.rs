@@ -23,8 +23,9 @@ const LEDGER_PATH: &str = "crates/larch-lint/data/command-registry.toml";
 const CLEAN_INSTALL_CASES_PATH: &str = "crates/larch-cli/tests/parity.rs";
 const PYTHON_REGISTRY_PATH: &str = "python/larch/cli.py";
 const HOOKS_PATH: &str = "hooks/hooks.json";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 const CHIEF_MIGRATION_ISSUE: u64 = 7687;
+const MIGRATION_UMBRELLA_ISSUES: std::ops::RangeInclusive<u64> = 7673..=7687;
 
 static PYTHON_ROW: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -96,11 +97,11 @@ pub fn python_retirement_findings_for_issues(
     let python = read_python_registry(repository)?;
     let python_sources = read_python_sources(repository, &ledger)?;
     let mut findings = Vec::new();
-    for record in ledger
-        .commands
-        .iter()
-        .filter(|record| migration_issues.contains(&record.migration_issue))
-    {
+    for record in ledger.commands.iter().filter(|record| {
+        record
+            .migration_issue
+            .is_some_and(|issue| migration_issues.contains(&issue))
+    }) {
         let key = record.key();
         validate_python_retirement(
             &key,
@@ -154,7 +155,9 @@ struct CommandRecord {
     implementation_parity: Parity,
     consumer_cutover: Completion,
     python_removal: Completion,
-    migration_issue: u64,
+    planning_issue: u64,
+    #[serde(default)]
+    migration_issue: Option<u64>,
     #[serde(default)]
     clean_install_test: Option<String>,
 }
@@ -472,15 +475,31 @@ fn command_map(ledger: &Ledger) -> Result<BTreeMap<CommandKey, &CommandRecord>, 
                 command.key().selector()
             )));
         }
-        if command.migration_issue == 0 {
+        if command.planning_issue == 0 {
             return Err(LintError::new(format!(
-                "{LEDGER_PATH}: {} has no responsible migration issue",
+                "{LEDGER_PATH}: {} has no responsible planning issue",
                 command.key().selector()
             )));
         }
-        if command.migration_issue == CHIEF_MIGRATION_ISSUE {
+        if command.planning_issue == CHIEF_MIGRATION_ISSUE {
             return Err(LintError::new(format!(
-                "{LEDGER_PATH}: {} delegates migration ownership to chief umbrella #{CHIEF_MIGRATION_ISSUE}; name the domain migration owner or completed leaf",
+                "{LEDGER_PATH}: {} delegates planning ownership to chief umbrella #{CHIEF_MIGRATION_ISSUE}; name the domain roadmap owner or completed leaf",
+                command.key().selector()
+            )));
+        }
+        if let Some(issue) = command.migration_issue {
+            if issue == 0 || MIGRATION_UMBRELLA_ISSUES.contains(&issue) {
+                return Err(LintError::new(format!(
+                    "{LEDGER_PATH}: {} assigns atomic migration ownership to umbrella #{issue}; name an executable leaf",
+                    command.key().selector()
+                )));
+            }
+        } else if command.owner != Owner::Python
+            || command.consumer_cutover == Completion::Complete
+            || command.python_removal == Completion::Complete
+        {
+            return Err(LintError::new(format!(
+                "{LEDGER_PATH}: {} completed migration state without an exact migration leaf",
                 command.key().selector()
             )));
         }
@@ -1535,14 +1554,15 @@ fn after_variable_reference<'content>(line: &'content str, name: &str) -> Option
 /// Refresh imported Python metadata and production caller rows.
 ///
 /// Existing ownership, status, and issue fields are preserved. The supplied
-/// issue is assigned only to command pairs not already present in the ledger.
+/// planning issue is assigned only to command pairs not already present in the
+/// ledger; their exact migration leaf remains unassigned.
 ///
 /// # Errors
 ///
 /// Returns an error when source discovery, ledger parsing, or the atomic write fails.
 pub fn sync_command_registry(
     repository: &Repository,
-    migration_issue: u64,
+    planning_issue: u64,
 ) -> Result<String, LintError> {
     let python = read_python_registry(repository)?;
     let existing = if repository
@@ -1582,7 +1602,8 @@ pub fn sync_command_registry(
                 implementation_parity: Parity::Pending,
                 consumer_cutover: Completion::Pending,
                 python_removal: Completion::Pending,
-                migration_issue,
+                planning_issue,
+                migration_issue: None,
                 clean_install_test: None,
             });
         record.python_module.clone_from(&source.module);
@@ -1660,7 +1681,10 @@ fn render_ledger(ledger: &Ledger) -> String {
             "python_removal = {:?}",
             command.python_removal.as_str()
         );
-        let _ = writeln!(output, "migration_issue = {}", command.migration_issue);
+        let _ = writeln!(output, "planning_issue = {}", command.planning_issue);
+        if let Some(issue) = command.migration_issue {
+            let _ = writeln!(output, "migration_issue = {issue}");
+        }
         if let Some(fixture) = &command.clean_install_test {
             let _ = writeln!(output, "clean_install_test = {fixture:?}");
         }
@@ -1749,7 +1773,7 @@ pub fn audit_migration_issue_commands(
             let key = command.key();
             let registry_matches = commands
                 .get(&key)
-                .is_some_and(|record| record.migration_issue == issue.number);
+                .is_some_and(|record| record.migration_issue == Some(issue.number));
             let plan_mentions = issue.plan_commands.binary_search(command).is_ok();
             if !registry_matches || !plan_mentions {
                 let _ = findings.insert(migration_issue_drift(issue.number, &key));
@@ -1758,7 +1782,10 @@ pub fn audit_migration_issue_commands(
     }
     if input.rollout_enabled {
         for (key, record) in &commands {
-            let Some(issue) = issues.get(&record.migration_issue) else {
+            let Some(migration_issue) = record.migration_issue else {
+                continue;
+            };
+            let Some(issue) = issues.get(&migration_issue) else {
                 continue;
             };
             if issue.state != IssueState::Open || !issue.executable_leaf {
@@ -1829,15 +1856,19 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
         .values()
         .filter(|record| record.machine_stdout)
         .count();
+    let exact_leaf_assignments = commands
+        .values()
+        .filter(|record| record.migration_issue.is_some())
+        .count();
     let mut by_issue: BTreeMap<u64, (usize, usize, usize)> = BTreeMap::new();
     for record in commands.values() {
-        let row = by_issue.entry(record.migration_issue).or_default();
+        let row = by_issue.entry(record.planning_issue).or_default();
         row.0 += 1;
         row.1 += usize::from(record.owner == Owner::Rust);
         row.2 += usize::from(record.owner == Owner::Retired);
     }
     let mut output = format!(
-        "## Rust command migration progress\n\n| Metric | Complete | Total |\n| --- | ---: | ---: |\n| Rust ownership | {rust_owned} | {total} |\n| Implementation parity | {parity} | {total} |\n| Consumer cutover | {cutover} | {total} |\n| Python removal | {removed} | {total} |\n| Retired commands | {retired} | {total} |\n\nMachine-stdout commands: {machine_stdout}. Production caller paths: {}.\n\n| Migration issue | Commands | Rust-owned | Retired |\n| --- | ---: | ---: | ---: |\n",
+        "## Rust command migration progress\n\n| Metric | Complete | Total |\n| --- | ---: | ---: |\n| Rust ownership | {rust_owned} | {total} |\n| Implementation parity | {parity} | {total} |\n| Consumer cutover | {cutover} | {total} |\n| Python removal | {removed} | {total} |\n| Retired commands | {retired} | {total} |\n| Exact migration-leaf assignments | {exact_leaf_assignments} | {total} |\n\nMachine-stdout commands: {machine_stdout}. Production caller paths: {}.\n\n| Planning issue | Commands | Rust-owned | Retired |\n| --- | ---: | ---: | ---: |\n",
         ledger.callers.len()
     );
     for (issue, (count, issue_rust, issue_retired)) in by_issue {

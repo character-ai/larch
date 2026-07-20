@@ -21,7 +21,7 @@ fn ownership_matrix(adapter: &str) -> String {
     })
     .join("\n");
     format!(
-        "Owner: {adapter}\n<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tmigration_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\n{rows}\n```\n<!-- github-service-ownership:end -->\n"
+        "Owner: {adapter}\n<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\n{rows}\n```\n<!-- github-service-ownership:end -->\n"
     )
 }
 

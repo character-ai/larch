@@ -149,7 +149,7 @@ impl GitCli {
 ";
 
 fn command_registry() -> String {
-    let mut output = String::from("schema_version = 1\n");
+    let mut output = String::from("schema_version = 2\n");
     for (domain, verb, python_function, issue) in COMMANDS {
         let python_module = if domain == "git" {
             "larch.git.git"
@@ -169,6 +169,7 @@ owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
+planning_issue = 7675
 migration_issue = {issue}
 "#,
         );

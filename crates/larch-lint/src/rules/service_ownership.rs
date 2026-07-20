@@ -38,7 +38,7 @@ const GOOGLE_INVENTORY: &str = "docs/google-service-inventory.md";
 const COMMAND_REGISTRY: &str = "crates/larch-lint/data/command-registry.toml";
 const INVENTORY_START: &str = "<!-- github-service-ownership:start -->";
 const INVENTORY_END: &str = "<!-- github-service-ownership:end -->";
-const INVENTORY_HEADER: &str = "operation\tadapter_owner\tcurrent_owner\tmigration_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands";
+const INVENTORY_HEADER: &str = "operation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands";
 const CHIEF_MIGRATION_OWNER: &str = "#7687";
 const REQUIRED_OPERATION_GROUPS: [&str; 10] = [
     "actions",
@@ -145,7 +145,7 @@ struct OwnershipCommand {
     implementation_parity: String,
     consumer_cutover: String,
     python_removal: String,
-    migration_issue: u64,
+    planning_issue: u64,
 }
 
 fn check_github_operation_inventory(
@@ -261,7 +261,7 @@ fn validate_operation_row(
     let operation = columns[0].trim();
     let adapter = columns[1].trim();
     let owner = columns[2].trim();
-    let migration_issues = columns[3].trim();
+    let planning_issues = columns[3].trim();
     let parity = columns[4].trim();
     let cutover = columns[5].trim();
     let removal = columns[6].trim();
@@ -282,17 +282,19 @@ fn validate_operation_row(
     if !matches!(owner, "python" | "rust" | "retired") {
         inventory_finding(line_number, "GitHub service current owner is invalid", findings);
     }
-    let issues: BTreeSet<u64> = migration_issues
+    let issues: BTreeSet<u64> = planning_issues
         .split(',')
         .filter_map(|value| value.strip_prefix('#')?.parse().ok())
         .collect();
     if issues.is_empty()
-        || issues.len() != migration_issues.split(',').count()
-        || migration_issues.split(',').any(|value| value == CHIEF_MIGRATION_OWNER)
+        || issues.len() != planning_issues.split(',').count()
+        || planning_issues
+            .split(',')
+            .any(|value| value == CHIEF_MIGRATION_OWNER)
     {
         inventory_finding(
             line_number,
-            "GitHub service migration owner must name concrete issues and must not delegate to #7687",
+            "GitHub service planning owner must name concrete issues and must not delegate to #7687",
             findings,
         );
     }
@@ -323,7 +325,7 @@ fn validate_operation_row(
             || command.implementation_parity != parity
             || command.consumer_cutover != cutover
             || command.python_removal != removal
-            || !issues.contains(&command.migration_issue)
+            || !issues.contains(&command.planning_issue)
         {
             inventory_finding(
                 line_number,

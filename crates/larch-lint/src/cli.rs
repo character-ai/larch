@@ -42,9 +42,9 @@ enum Command {
 enum CommandRegistryCommand {
     /// Refresh Python command metadata and production caller inventory.
     Sync {
-        /// Responsible issue assigned only to newly discovered commands.
+        /// Roadmap planning issue assigned only to newly discovered commands.
         #[arg(long, value_name = "NUMBER", value_parser = clap::value_parser!(u64).range(1..))]
-        migration_issue: u64,
+        planning_issue: u64,
     },
     /// Render migration progress for the Chief migration issue.
     Report,
@@ -80,8 +80,8 @@ fn execute_command_registry(command: CommandRegistryCommand, root: Option<&Path>
         Err(exit) => return exit,
     };
     let result = match command {
-        CommandRegistryCommand::Sync { migration_issue } => {
-            crate::sync_command_registry(&repository, migration_issue).map(|summary| {
+        CommandRegistryCommand::Sync { planning_issue } => {
+            crate::sync_command_registry(&repository, planning_issue).map(|summary| {
                 print!("{summary}");
             })
         }

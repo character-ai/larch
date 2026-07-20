@@ -15,12 +15,20 @@ use chrono::DateTime;
 use http::header::LINK;
 use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
+use regex::Regex;
 use serde_json::{Map, Value, json};
-use std::{error::Error, fmt, future::Future};
+use std::{error::Error, fmt, future::Future, sync::LazyLock};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/";
 const DIAGNOSTIC_LIMIT: usize = 500;
 const RELEASE_PAGE_SIZE: usize = 100;
+
+static SECURITY_CONTENT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\b(?:credentials?|secrets?|api[ -]?key|auth(?:entication|orization)? bypass|remote code execution|\brce\b|sql injection|command injection|vulnerabilit(?:y|ies)|private key|token exposure)\b",
+    )
+    .expect("security-content expression is valid")
+});
 
 /// Fixed GraphQL document for merge and review state REST does not expose.
 const REVIEW_STATE_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision mergeStateStatus mergeable}}}";
@@ -53,6 +61,8 @@ pub enum GitHubOperationError {
     StaleDependencyTarget,
     /// A triage-controlled mutation's target is not safe for a public mutation.
     ProtectedDependencyTarget,
+    /// A triage-controlled mutation's target contains security-sensitive content.
+    SecuritySensitiveDependencyTarget,
 }
 
 impl fmt::Display for GitHubOperationError {
@@ -88,6 +98,8 @@ impl fmt::Display for GitHubOperationError {
             Self::ProtectedDependencyTarget => {
                 formatter.write_str("dependency target has protected lifecycle state")
             }
+            Self::SecuritySensitiveDependencyTarget => formatter
+                .write_str("security-sensitive target cannot receive a public dependency mutation"),
         }
     }
 }
@@ -1151,6 +1163,10 @@ impl OctocrabGitHubService {
         if target_has_protected_lifecycle_state(&target) {
             return Err(GitHubOperationError::ProtectedDependencyTarget);
         }
+        let comments = self.dependency_comments(cancellation, edge).await?;
+        if target_has_security_content(&target, &comments) {
+            return Err(GitHubOperationError::SecuritySensitiveDependencyTarget);
+        }
         Ok(Some(target))
     }
 
@@ -1198,6 +1214,43 @@ impl OctocrabGitHubService {
         }
         Err(GitHubOperationError::Malformed(
             "dependency pagination exceeds page bound",
+        ))
+    }
+
+    async fn dependency_comments(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        edge: DependencyEdge<'_>,
+    ) -> Result<Vec<String>, GitHubOperationError> {
+        let limits = self.policy.limits();
+        let mut route = format!(
+            "/repos/{}/{}/issues/{}/comments?per_page=100",
+            edge.owner, edge.repo, edge.client_issue
+        );
+        let mut comments = Vec::new();
+        for _ in 0..limits.pages() {
+            let (value, next) = self.dependency_json_page(cancellation, &route).await?;
+            let page = parse_dependency_comments(&value, limits)?;
+            if comments.len().saturating_add(page.len()) > limits.items() {
+                return Err(GitHubOperationError::Malformed(
+                    "dependency comments exceed item bound",
+                ));
+            }
+            comments.extend(page);
+            let Some(next) = next else {
+                return Ok(comments);
+            };
+            #[cfg(test)]
+            {
+                route = self.dependency_continuation(&next)?;
+            }
+            #[cfg(not(test))]
+            {
+                route = Self::dependency_continuation(&next)?;
+            }
+        }
+        Err(GitHubOperationError::Malformed(
+            "dependency comment pagination exceeds page bound",
         ))
     }
 
@@ -1595,6 +1648,49 @@ fn target_has_protected_lifecycle_state(target: &DependencyTarget) -> bool {
         .is_none_or(|body| body.to_ascii_lowercase().contains("<!-- larch:"))
 }
 
+fn parse_dependency_comments(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<Vec<String>, GitHubOperationError> {
+    let comments = value
+        .as_array()
+        .ok_or(GitHubOperationError::Malformed("dependency comments"))?;
+    if comments.len() > limits.items() {
+        return Err(GitHubOperationError::Malformed(
+            "dependency comments exceed item bound",
+        ));
+    }
+    comments
+        .iter()
+        .map(|comment| {
+            let object = as_object(comment)?;
+            match object.get("body") {
+                None | Some(Value::Null) => Ok(String::new()),
+                Some(Value::String(body)) => {
+                    bounded_string(body, limits, "dependency comment body")
+                }
+                Some(_) => Err(GitHubOperationError::Malformed("dependency comment body")),
+            }
+        })
+        .collect()
+}
+
+fn target_has_security_content(target: &DependencyTarget, comments: &[String]) -> bool {
+    target
+        .labels
+        .iter()
+        .any(|label| matches!(label.to_lowercase().as_str(), "security" | "vulnerability"))
+        || contains_security_term(&target.title)
+        || contains_security_term(&target.body)
+        || comments
+            .iter()
+            .any(|comment| contains_security_term(comment))
+}
+
+fn contains_security_term(text: &str) -> bool {
+    SECURITY_CONTENT.is_match(&text.to_lowercase())
+}
+
 fn protected_lifecycle_title(title: &str) -> bool {
     let Some((prefix, remainder)) = title
         .strip_prefix('[')
@@ -1941,13 +2037,14 @@ mod tests {
         CreatePlan, DependencyRef, DependencyTarget, GitHubOperationError, MergeStateStatus,
         Mergeable, PullRequestMerge, PullRequestMergeMethod, PullRequestState, ReviewDecision,
         classify_dependency_write, dependency_next_link, dependency_present, edit_body,
-        is_safe_segment, merge_body, parse_dependency_refs, parse_dependency_target,
-        parse_pull_request, parse_pull_requests, parse_release_candidate_pull_request,
-        parse_review_state, reconcile_create, target_has_protected_lifecycle_state, validate_repo,
+        is_safe_segment, merge_body, parse_dependency_comments, parse_dependency_refs,
+        parse_dependency_target, parse_pull_request, parse_pull_requests,
+        parse_release_candidate_pull_request, parse_review_state, reconcile_create,
+        target_has_protected_lifecycle_state, target_has_security_content, validate_repo,
     };
     use super::{DependencyWrite, PullRequestEdit};
     use larch_core::GitHubTransportPolicy;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     fn limits() -> larch_core::GitHubResponseLimits {
         GitHubTransportPolicy::github_com().limits()
@@ -2190,6 +2287,50 @@ mod tests {
             http::HeaderValue::from_static("bad; rel=next"),
         );
         assert!(dependency_next_link(&headers).is_err());
+    }
+
+    #[test]
+    fn dependency_security_content_matches_python_triage_contract() {
+        let mut target = DependencyTarget {
+            updated_at: String::from("2026-07-12T10:00:00Z"),
+            state: String::from("open"),
+            title: String::from("Regular issue"),
+            body: String::new(),
+            labels: Vec::new(),
+        };
+        assert!(!target_has_security_content(&target, &[]));
+        assert!(target_has_security_content(
+            &target,
+            &[String::from("Possible authentication bypass")]
+        ));
+        target.title = String::from("Credential exposure");
+        assert!(target_has_security_content(&target, &[]));
+        target.title = String::from("Regular issue");
+        target.body = String::from("Possible remote code execution");
+        assert!(target_has_security_content(&target, &[]));
+        target.body.clear();
+        target.labels.push(String::from("VULNERABILITY"));
+        assert!(target_has_security_content(&target, &[]));
+        assert_eq!(
+            parse_dependency_comments(&json!([{"body": null}, {"body": "safe"}]), limits())
+                .expect("valid comments"),
+            [String::new(), String::from("safe")]
+        );
+        assert_eq!(
+            parse_dependency_comments(&json!([{"body": 7}]), limits())
+                .expect_err("malformed body fails closed"),
+            GitHubOperationError::Malformed("dependency comment body")
+        );
+        let too_many = Value::Array(
+            (0..=limits().items())
+                .map(|_| json!({"body": "safe"}))
+                .collect(),
+        );
+        assert_eq!(
+            parse_dependency_comments(&too_many, limits())
+                .expect_err("aggregate item limit fails closed"),
+            GitHubOperationError::Malformed("dependency comments exceed item bound")
+        );
     }
 
     #[test]
@@ -3040,7 +3181,9 @@ mod service_tests {
         let (service, server) = stub_service(vec![
             (200, target("2026-07-12T10:00:00Z")),
             (200, String::from("[]")),
+            (200, String::from("[]")),
             (200, target("2026-07-12T10:00:00Z")),
+            (200, String::from("[]")),
             (201, String::from("{}")),
             (200, json!([{ "number": 12, "id": 222 }]).to_string()),
             (200, target("2026-07-12T10:00:01Z")),
@@ -3058,6 +3201,129 @@ mod service_tests {
             .expect("verified triage mutation");
         assert_eq!(receipt.outcome(), DependencyMutation::Applied);
         assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01Z"));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn triage_controlled_add_scans_every_comment_page_for_security_content() {
+        let target = json!({
+            "updated_at": "2026-07-12T10:00:00Z", "state": "open", "title": "Regular",
+            "body": "", "labels": [],
+        })
+        .to_string();
+        let (service, server) = stub_service_with_links(vec![
+            (200, target, None),
+            (
+                200,
+                json!([{"body": "ordinary discussion"}]).to_string(),
+                Some(String::from(
+                    "</repos/o/r/issues/5/comments?per_page=100&page=2>; rel=\"next\"",
+                )),
+            ),
+            (
+                200,
+                json!([{"body": "This exposes an API key"}]).to_string(),
+                None,
+            ),
+        ]);
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+            expected_updated_at: Some("2026-07-12T10:00:00Z"),
+        };
+        assert_eq!(
+            service
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("security-sensitive comment prevents write"),
+            GitHubOperationError::SecuritySensitiveDependencyTarget
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn triage_dependency_mutations_fail_closed_on_untrusted_comment_evidence() {
+        let target = json!({
+            "updated_at": "2026-07-12T10:00:00Z", "state": "open", "title": "Regular",
+            "body": "", "labels": [],
+        })
+        .to_string();
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+            expected_updated_at: Some("2026-07-12T10:00:00Z"),
+        };
+
+        let (malformed, server) =
+            stub_service(vec![(200, target.clone()), (200, String::from("{}"))]);
+        assert_eq!(
+            malformed
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("malformed comments prevent mutation"),
+            GitHubOperationError::Malformed("dependency comments")
+        );
+        server.join().expect("stub completed");
+
+        let (unavailable, server) = stub_service(vec![
+            (200, target.clone()),
+            (404, json!({"message": "missing"}).to_string()),
+        ]);
+        assert_eq!(
+            unavailable
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("unavailable comments prevent mutation"),
+            GitHubOperationError::DependencyFeatureUnavailable
+        );
+        server.join().expect("stub completed");
+
+        let (cross_origin, server) = stub_service_with_links(vec![
+            (200, target, None),
+            (
+                200,
+                json!([{"body": "safe"}]).to_string(),
+                Some(String::from(
+                    "<https://example.invalid/comments?page=2>; rel=\"next\"",
+                )),
+            ),
+        ]);
+        assert_eq!(
+            cross_origin
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("cross-origin comments prevent mutation"),
+            GitHubOperationError::Malformed("dependency pagination link")
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn triage_controlled_remove_rejects_security_label_before_mutation() {
+        let target = json!({
+            "updated_at": "2026-07-12T10:00:00Z", "state": "open", "title": "Regular",
+            "body": "", "labels": [{"name": "Security"}],
+        })
+        .to_string();
+        let (service, server) = stub_service(vec![(200, target), (200, String::from("[]"))]);
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+            expected_updated_at: Some("2026-07-12T10:00:00Z"),
+        };
+        assert_eq!(
+            service
+                .remove_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("security label prevents remove"),
+            GitHubOperationError::SecuritySensitiveDependencyTarget
+        );
         server.join().expect("stub completed");
     }
 
@@ -3142,6 +3408,7 @@ mod service_tests {
             GitHubOperationError::MutationRefused("unauthorized-mutation"),
             GitHubOperationError::StaleDependencyTarget,
             GitHubOperationError::ProtectedDependencyTarget,
+            GitHubOperationError::SecuritySensitiveDependencyTarget,
         ];
         for variant in &variants {
             assert!(!variant.to_string().is_empty());

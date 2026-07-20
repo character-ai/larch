@@ -4,7 +4,8 @@ This inventory separates Rust implementation parity, production consumer
 cutover, and Python removal. A Rust adapter does not transfer command ownership
 or authorize deletion of the Python path. It records every GitHub service
 operation, the adapter method that owns it, the command that owns it today, and
-the exact issue that will perform any later atomic cutover.
+the roadmap issues responsible for planning later cutovers. Exact atomic leaf
+ownership lives separately in the command registry.
 
 ## Checked scope
 
@@ -31,37 +32,38 @@ REST URLs, GraphQL documents, and the client. Only
 ## Adapter operation ownership
 
 The tab-separated matrix below is the linted ownership contract. Operation
-groups are unique. Adapter paths must exist, migration owners must be concrete
-domain or completed-leaf issues, and every listed command must match the
+groups are unique. Adapter paths must exist, planning owners must be concrete
+roadmap or completed-leaf issues, and every listed command must match the
 recorded owner and the three independent migration milestones. A command may
 appear in more than one row when it consumes several typed adapter operations.
-Issue-dependency adapter parity landed in #7841; #7682 owns the later atomic
-command cutover without changing the current Python ownership recorded below.
+Issue-dependency adapter parity landed in #7841; #7682 plans the later command
+cutover without pretending that an executable atomic leaf is already assigned.
 
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
-operation	adapter_owner	current_owner	migration_issues	implementation_parity	consumer_cutover	python_removal	commands
-actions	crates/larch-adapters/src/github_actions.rs	rust	#7765	complete	complete	complete	gh run-logs,gh workflow-path
-attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7747	complete	complete	complete	release validate-assets
-comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682,#7787	pending	pending	pending	clarify *,issue *,tracking-issue *
+operation	adapter_owner	current_owner	planning_issues	implementation_parity	consumer_cutover	python_removal	commands
+actions	crates/larch-adapters/src/github_actions.rs	rust	#7676	complete	complete	complete	gh run-logs,gh workflow-path
+attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
+comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify *,issue *,tracking-issue *
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	python	#7682	pending	pending	pending	deps *
 issue-dependencies	crates/larch-adapters/src/github/operations.rs	python	#7682	complete	pending	pending	block-issue *
-issues	crates/larch-adapters/src/github_rest.rs	python	#7682,#7787	pending	pending	pending	audit-runs *,combine-issues *,deps *,issue *,triage *
+issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pending	audit-runs *,combine-issues *,deps *,issue *,triage *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	python	#7682	complete	pending	pending	block-issue *
-labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682,#7787	pending	pending	pending	clarify label,issue *
+labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify label,issue *
 pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci *,design *,implement *,pr *,ship *
 release-consumers	crates/larch-adapters/src/github/release.rs	python	#7683	pending	pending	pending	gc-run-logs run
-releases	crates/larch-adapters/src/github/release.rs	rust	#7747,#7748,#7749,#7750,#7751,#7752	complete	complete	complete	release *
-repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7764	complete	complete	complete	gh remote-repo,gh resolve-repo
+releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
+repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
 ```
 <!-- github-service-ownership:end -->
 <!-- markdownlint-enable MD010 -->
 
 `crates/larch-lint/data/command-registry.toml` is the authoritative per-command
-ledger. Each later-domain command stays Python-owned until its domain migration
-owner files and lands the atomic command leaf. The registry must never delegate
-this responsibility to the #7687 chief umbrella. Each eventual leaf implements
+ledger. Its required `planning_issue` records roadmap placement, while optional
+`migration_issue` records only the exact executable leaf accountable for the
+atomic cutover. Pending rows without a filed leaf leave `migration_issue`
+absent instead of assigning a broad umbrella. Each eventual leaf implements
 Rust parity, switches every consumer, and removes the Python command in one PR.
 The `command-registry` rule rejects a Rust owner whose Python removal is
 incomplete, so a partial cutover cannot land.

@@ -2497,6 +2497,7 @@ dependencies = [
  "larch-test-support",
  "nix",
  "octocrab",
+ "regex",
  "serde",
  "serde_json",
  "sigstore-trust-root",
