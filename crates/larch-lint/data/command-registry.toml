@@ -5881,6 +5881,18 @@ migration_issue = 7687
 
 [[commands]]
 domain = "run-log"
+verb = "materialize"
+python_module = "larch.report.run_log_archive"
+python_function = "materialize_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7687
+
+[[commands]]
+domain = "run-log"
 verb = "append"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_append_main"

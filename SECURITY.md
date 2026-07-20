@@ -56,6 +56,16 @@ The `service-ownership` rule also rejects runtime `gcloud` execution and keeps
 this clean-install `gh` in `scripts/larch.sh` separate from runtime service
 access: bootstrap use of `gh` does not authorize a runtime adapter to shell out.
 
+## Run-log Archive Materialization
+
+Run-log archives are untrusted input. `python/cli.py run-log materialize`
+validates canonical paths, metadata, inventory, sizes, and SHA-256 digests. It
+rejects traversal, collisions, links, special files, corruption, and identity
+mismatches. Fixed limits bound member count, file size, expansion, and ratio.
+Extraction avoids `tarfile.extractall`, writes only no-follow regular files in
+a private temporary sibling, verifies before and after atomic promotion, and
+removes failed state. It never merges with or replaces an existing cache.
+
 ## Google ADC Trust Boundary
 
 Google credential configuration is trusted operator input. Larch accepts it

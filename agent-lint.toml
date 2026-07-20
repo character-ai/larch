@@ -1368,9 +1368,9 @@ root-max-content-tokens = 35301
 # issue #7783 adds shared-owner implementation-lease enforcement.
 # issue #7736 adds the final Git ownership boundary.
 # issue #7785 adds clean-install and issue-registry audit boundaries.
-closure-max-lines = 3858
-closure-max-tokens = 146295
-closure-max-content-tokens = 145987
+closure-max-lines = 3868
+closure-max-tokens = 146439
+closure-max-content-tokens = 146131
 conditional-max-lines = 591
 conditional-max-tokens = 18803
 conditional-max-content-tokens = 18756
@@ -1430,6 +1430,6 @@ roots = [
 # issue #7783 adds shared-owner implementation-lease enforcement.
 # issue #7736 adds the final Git ownership boundary.
 # issue #7785 adds clean-install and issue-registry audit boundaries.
-closure-max-lines = 6146
-closure-max-tokens = 171746
-closure-max-content-tokens = 171276
+closure-max-lines = 6156
+closure-max-tokens = 171890
+closure-max-content-tokens = 171420
