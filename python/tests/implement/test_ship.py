@@ -27,7 +27,7 @@ from larch.implement import ship_result
 from larch.issue import migration_governance
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
-from larch.core.proc import CommandResult, ProcRunner
+from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner, make_run_context, ok
 
@@ -1519,13 +1519,9 @@ def _prepare_recovered_stalled_log(
         _ = implement_tmpdir, run_id
         return {"cost_unavailable": True}
 
-    def fake_commit(*_args: object, **_kwargs: object) -> CommandResult:
-        return ok(("git", "commit"), "a" * 40 + "\n")
-
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_reconcile_terminal_manifest_from_ctx", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
@@ -1611,25 +1607,13 @@ def _init_git_repo(repo: Path) -> None:
         _ = subprocess.run(argv, cwd=repo, check=True, capture_output=True)
 
 
-def test_committed_summary_gate_reads_repo_not_corrected_tmpdir(
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
+def test_staged_summary_gate_reads_session_tree(tmp_path: Path) -> None:
     session = tmp_path / "session"
-    repo.mkdir()
     session.mkdir()
-    _init_git_repo(repo)
-    run_dir = repo / "larch-logs" / "implement" / "run-abc"
-    run_dir.mkdir(parents=True)
-    stalled = "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n"
-    _ = (run_dir / "final-summary.md").write_text(stalled, encoding="utf-8")
-    _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "stalled log"], cwd=repo, check=True, capture_output=True)
-
     session_run_dir = session / "larch-logs" / "implement" / "run-abc"
     session_run_dir.mkdir(parents=True)
-    corrected = "## /implement run run-abc: pr-created\n\n- **PR**: #7\n"
-    _ = (session_run_dir / "final-summary.md").write_text(corrected, encoding="utf-8")
+    stalled = "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n"
+    _ = (session_run_dir / "final-summary.md").write_text(stalled, encoding="utf-8")
 
     ctx = make_run_context(
         run_id="run-abc",
@@ -1637,33 +1621,27 @@ def test_committed_summary_gate_reads_repo_not_corrected_tmpdir(
         manifest_path=str(session / "manifest.json"),
     )
 
-    assert ship_pr._committed_summary_heading_is_stalled(runner=ProcRunner(), ctx=ctx, cwd=str(repo))
+    assert ship_pr._staged_summary_heading_is_stalled(ctx=ctx)
 
 
-def test_committed_summary_heading_scans_prelude() -> None:
+def test_staged_summary_heading_scans_prelude(tmp_path: Path) -> None:
     summary = "Prelude line\n\n## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n"
-    runner = RecordingRunner(
-        responses=[
-            ok(("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"), summary),
-        ],
-        strict=True,
-    )
-    ctx = make_run_context(run_id="run-abc", branch="")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "final-summary.md").write_text(summary, encoding="utf-8")
+    ctx = make_run_context(run_id="run-abc", tmpdir=str(tmp_path))
 
-    assert ship_pr._committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd="/tmp/repo")
+    assert ship_pr._staged_summary_heading_is_stalled(ctx=ctx)
 
 
-def test_committed_summary_heading_outcome_bullet_without_heading_is_not_stalled() -> None:
+def test_staged_summary_heading_outcome_bullet_without_heading_is_not_stalled(tmp_path: Path) -> None:
     summary = "Prelude line\n\n- **Outcome**: stalled\n"
-    runner = RecordingRunner(
-        responses=[
-            ok(("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"), summary),
-        ],
-        strict=True,
-    )
-    ctx = make_run_context(run_id="run-abc", branch="")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "final-summary.md").write_text(summary, encoding="utf-8")
+    ctx = make_run_context(run_id="run-abc", tmpdir=str(tmp_path))
 
-    assert not ship_pr._committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd="/tmp/repo")
+    assert not ship_pr._staged_summary_heading_is_stalled(ctx=ctx)
 
 
 def test_recovered_stalled_summary_does_not_push_log_snapshot(
@@ -3839,7 +3817,7 @@ def test_done_merged_resume_preserves_postmerge_cleanup_failure(
     )
     monkeypatch.setattr(  # lint-monkeypatch-binding: ok _resume_done_result resolves ship's imported binding
         ship,
-        "reconcile_committed_stalled_summary_if_recovered",
+        "reconcile_staged_stalled_summary_if_recovered",
         lambda *_a, **_k: None,
     )
 
@@ -3852,7 +3830,7 @@ def test_done_merged_resume_preserves_postmerge_cleanup_failure(
 def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
     flush_calls: list[bool] = []
 
-    def fake_committed_summary_heading_is_stalled(**_kwargs: object) -> bool:
+    def fake_staged_summary_heading_is_stalled(**_kwargs: object) -> bool:
         return True
 
     def fake_live_recovered_outcome(_ctx: RunContext) -> str:
@@ -3864,8 +3842,8 @@ def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(
         ship_pr,
-        "_committed_summary_heading_is_stalled",
-        fake_committed_summary_heading_is_stalled,
+        "_staged_summary_heading_is_stalled",
+        fake_staged_summary_heading_is_stalled,
     )
     monkeypatch.setattr(ship_pr, "_live_recovered_outcome", fake_live_recovered_outcome)
     monkeypatch.setattr(ship_pr.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
@@ -7614,7 +7592,7 @@ def test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body(
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "reconcile_staged_stalled_summary_if_recovered", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: git("rev-parse", "HEAD"))
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
@@ -7762,7 +7740,7 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", lambda *_a, **_k: run_log_manifest.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.run_log_flush, "write_final_report_comment", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "reconcile_staged_stalled_summary_if_recovered", lambda *_a, **_k: None)
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: git("rev-parse", "HEAD"))
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
@@ -7885,7 +7863,7 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     if merge:
         monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"))
     else:
-        monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+        monkeypatch.setattr(ship, "reconcile_staged_stalled_summary_if_recovered", lambda *_a, **_k: None)
 
     result = ship.run_ship(_ctx(tmp_path, merge=merge), runner=RecordingRunner(), cwd=str(tmp_path))
 
@@ -7893,7 +7871,7 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     assert order.index("gate") < order.index("flush", order.index("gate")) < order.index("compose")
 
 
-def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcome(
+def test_guidelines_warning_volatile_only_refresh_uses_matching_staged_outcome(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -7916,7 +7894,7 @@ def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcom
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(ship, "_committed_outcome_matches", lambda **_kwargs: True)
+    monkeypatch.setattr(ship, "_staged_outcome_matches", lambda **_kwargs: True)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
 
     result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -7955,7 +7933,7 @@ def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcom
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(ship, "_committed_outcome_matches", lambda **_kwargs: False)
+    monkeypatch.setattr(ship, "_staged_outcome_matches", lambda **_kwargs: False)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
 

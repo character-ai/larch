@@ -268,13 +268,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-run-log-run-id
-        name: Reject non-unique placeholder run-log run-ids (run-N)
-        entry: cargo run --quiet --locked --package larch-lint -- rule run-log-run-id
-        language: system
-        pass_filenames: false
-        files: ^larch-logs/
-
       - id: lint-run-log-walkers
         name: Reject raw committed run-log corpus walkers
         entry: python3 python/cli.py lint run-log-walkers

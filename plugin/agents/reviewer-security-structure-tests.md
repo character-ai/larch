@@ -58,7 +58,6 @@ In-Scope only if omitting the finding leaves the feature incomplete, broken, unv
 - Pre-existing issues not introduced or amplified by this change; route to OOS. **Scope check**: In-Scope requires a modified file, plan-named file, or diff-caused regression. Otherwise OOS, even if adjacent or severe.
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
-- `larch-logs/implement/` from `chore(larch-logs)` flush commits. Intentional per `docs/run-logs.md`; do NOT flag PR noise. Review only directly relevant content quality.
 
 ## Output format
 

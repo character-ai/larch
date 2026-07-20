@@ -2319,24 +2319,8 @@ def local_cleanup_main(argv: list[str]) -> int:
             return 0
         current_branch = "main"
         print("🔄 Fetching origin main...", file=sys.stderr)
-        pre_fetch_sha = proc.run(["git", "rev-parse", "origin/main"]).stdout.strip() or "origin/main"
         if _transient_run(["git", "fetch", "origin", "main"]).returncode != 0:
             print("⚠ Failed to fetch origin main (continuing)", file=sys.stderr)
-        ahead_before = _numeric_stdout(proc.run(["git", "rev-list", "--count", "origin/main..HEAD"]))
-        if ahead_before > 0:
-            subjects = proc.run(["git", "log", "origin/main..HEAD", "--format=%s"])
-            subject_lines = [line for line in subjects.stdout.splitlines() if line]
-            all_flushes = subjects.returncode == 0 and (
-                not subject_lines or all(line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for line in subject_lines)
-            )
-            diff = proc.run(["git", "diff", "--name-only", pre_fetch_sha, "HEAD"])
-            diff_lines = [line for line in diff.stdout.splitlines() if line]
-            larch_only = diff.returncode == 0 and (
-                not diff_lines or all(line.startswith("larch-logs/") for line in diff_lines)
-            )
-            if all_flushes and larch_only:
-                print(f"⚠ Dropping {ahead_before} prior-run larch-log flush commit(s) before pull...", file=sys.stderr)
-                _ = proc.run(["git", "reset", "--hard", "origin/main"])
         print("🔄 Fast-forwarding local main from origin/main...", file=sys.stderr)
         if _transient_run(["git", "pull", "--ff-only", "origin", "main"]).returncode != 0:
             ahead_after = _numeric_stdout(proc.run(["git", "rev-list", "--count", "origin/main..HEAD"]))

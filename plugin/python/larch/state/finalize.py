@@ -27,7 +27,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
-from larch.report import run_log_commit, run_log_manifest
+from larch.report import run_log_manifest
 from larch.state import session_env
 from larch.issue import tracking_issue
 from larch.implement import scope_disposition
@@ -269,22 +269,7 @@ def _local_cleanup(
         current = git.try_current_branch(runner, cwd=cwd) or "unknown"
         return LocalCleanupResult(cleanup_success=False, current_branch=current, branch_deleted=False)
     current = "main"
-    pre_fetch_sha = git.try_rev_parse(runner, "origin/main", cwd=cwd) or "origin/main"
     _ = _retry_fetch(runner=runner, remote="origin", ref="main", cwd=cwd)
-    ahead = _numeric_stdout(runner.run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd))
-    if ahead > 0:
-        subjects = runner.run(["git", "log", "origin/main..HEAD", "--format=%s"], cwd=cwd)
-        subject_lines: list[str] = [line for line in subjects.stdout.splitlines() if line]
-        all_flushes = bool(subject_lines) and subjects.returncode == 0 and all(
-            line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for line in subject_lines
-        )
-        diff = runner.run(["git", "diff", "--name-only", pre_fetch_sha, "HEAD"], cwd=cwd)
-        diff_lines: list[str] = [line for line in diff.stdout.splitlines() if line]
-        larch_only = bool(diff_lines) and diff.returncode == 0 and all(
-            line.startswith("larch-logs/") for line in diff_lines
-        )
-        if all_flushes and larch_only:
-            _ = runner.run(["git", "reset", "--hard", "origin/main"], cwd=cwd)
     def pull_attempt() -> tuple[CommandResult, int, str]:
         result = runner.run(["git", "pull", "--ff-only", "origin", "main"], cwd=cwd)
         return result, result.returncode, result.stdout + result.stderr
@@ -604,6 +589,7 @@ def _write_stalled_sentinel(
 
 
 def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:
+    _ = runner, cwd
     run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id or ctx.repo_unavailable:
         return True
@@ -644,23 +630,6 @@ def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> 
         except (OSError, ShipError) as exc:
             writer.emit(f"teardown log flush: stalled manifest update failed: {exc}", quiet=False)
             recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
-    post_merge_sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
-    if not ctx.no_logs_commit and not post_merge_sentinel.exists():
-        branch = git.try_current_branch(runner, cwd=cwd) or ""
-        if branch not in {"main", "master"}:
-            try:
-                commit = run_log_commit.commit_larch_logs(
-                    runner=runner,
-                    ctx=ctx,
-                    log_root=Path(ctx.tmpdir) / "larch-logs",
-                    cwd=cwd,
-                )
-                if commit.returncode != 0:
-                    writer.emit("teardown log flush: larch-log commit failed", quiet=False)
-                    recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
-            except (OSError, ShipError) as exc:
-                writer.emit(f"teardown log flush: larch-log commit failed: {exc}", quiet=False)
-                recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
     return recovery.recovery_ok
 
 

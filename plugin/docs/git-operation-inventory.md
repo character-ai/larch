@@ -100,8 +100,8 @@ python/larch/review/snapshot.py	later-domain	#7679	apply,cat-file,checkout,diff,
 python/larch/state/admission.py	later-domain	#7677	fetch,rebase,remote,rev-parse,stash,status,symbolic-ref
 python/larch/state/bootstrap.py	later-domain	#7677	status
 python/larch/state/dirty_tree.py	later-domain	#7677	diff,ls-files,status
-python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,diff,log,ls-remote,pull,reset,rev-list,rev-parse,show-ref,stash,symbolic-ref
-python/larch/state/session_env.py	later-domain	#7677	branch,checkout,diff,fetch,log,pull,reset,rev-list,rev-parse,show-ref,symbolic-ref
+python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
+python/larch/state/session_env.py	later-domain	#7677	branch,checkout,fetch,pull,rev-list,show-ref,symbolic-ref
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse
 scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checkout,stash,status

@@ -71,12 +71,17 @@ def test_dispatch_ship_pre_fix_rebase_calls_implement_dispatch() -> None:
     assert rc == 0
 
 
-def test_dispatch_ship_design_log_calls_design_log_main() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.design.design_log_ship": MagicMock(main=mock_main)}):
-        rc = cli.main(["ship", "design-log", "--pr-number", "1"])
-    mock_main.assert_called_once_with(["--pr-number", "1"])
-    assert rc == 0
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["ship", "design-log"],
+        ["ship", "design-log-sweep"],
+        ["gc-run-logs", "run"],
+        ["run-log", "commit"],
+    ],
+)
+def test_git_backed_run_log_commands_are_retired(argv: list[str]) -> None:
+    assert cli.main(argv) == 2
 
 
 def test_dispatch_report_tokens_analyze() -> None:

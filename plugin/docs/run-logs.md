@@ -2,7 +2,7 @@
 
 On a default `/implement --merge` run, Step 18 publishes one immutable `.tar.gz` archive and promotes the same sanitized tree into the unpacked local cache. The archive is the durable source of truth for voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. `/implement` does not add run-log files or commits to the business PR.
 
-Exceptions: `repo_unavailable=true` and `--no-logs-commit` produce no archive. Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat archives as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#committed-run-logs-and-breadcrumbs).
+Exceptions: `repo_unavailable=true` and `--no-logs-commit` produce no archive. Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat archives as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#run-logs-and-breadcrumbs).
 
 The deterministic, versioned archive representation of one sanitized run tree is
 defined in [Run-log archive format](run-log-archive.md).
@@ -23,9 +23,9 @@ identity to the target as parent metadata. The lifecycle lint rejects temporary
 migration markers and any skill whose declaration, name, or mandatory contract
 instruction is incomplete.
 
-## Plan scope and committed logs
+## Plan scope and historical logs
 
-Issue-anchored `larch:plan` blocks list the files that a `/implement` run is expected to touch. Retroactive maintenance across many runs under `larch-logs/design/` or `larch-logs/implement/` — for example URL normalization, typo fixes, or redaction-policy updates in historical committed logs — is not implied by plans that only target the **runtime plugin authority surface** defined in `AGENTS.md` (`skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`). Everything else in the repo (including `docs/`, `larch-logs/`, CI config, and `.claude/skills/`) is supplementary unless the tracking issue's `larch:plan` file list names it. Prefer a log-only PR for bulk `larch-logs/` edits so plan-to-diff review stays traceable; if bulk log edits ship on the same branch as changes under that runtime surface (or other paths not already listed in the plan), disclose the split in the PR title or body so reviewers can separate log churn from substantive work, and extend the issue `larch:plan` file list (or split the PR) when you add normative doc edits such as this file alongside unrelated implementation work.
+Issue-anchored `larch:plan` blocks list the files that a `/implement` run is expected to touch. The historical tracked `larch-logs/` corpus remains readable, but current workflows neither update it nor create log-only maintenance PRs. Historical migration and deletion are separate work.
 
 ## Directory structure
 
@@ -665,7 +665,7 @@ The tracking issue carries marker-keyed summary comments as the workflow progres
 
 Written during **Step 0** when the tracking issue is adopted or created.
 
-Content: run ID, log directory path (`larch-logs/implement/<RUN_ID>/`), agent (implementer coder), and larch plugin version.
+Content: storage provider, skill, run ID, agent (implementer coder), and larch plugin version. Public summaries do not expose repository log paths.
 
 ### `larch:plan`
 
@@ -716,44 +716,11 @@ unassessed PR (#7216).
 
 `ship reconcile-manual-merge` first verifies the nominated PR is merged in the trusted repository. It then converges `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh` on terminal `PHASE=done` state. Reconciliation clears `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, `IMPLEMENT_BAIL_REASON`, `BAIL_NEEDS_USER_INPUT`, `BAIL_FAILURE_DETAIL_LOG`, `FAILED_RUN_ID`, and nonzero `EXIT_CODE`. It re-reads all three layers, the post-merge sentinel, and the run manifest before emitting `RECONCILE_STATUS=ok`.
 
-The verb does not render or commit. Corrected run records are a local handoff. Publish them through a normal reviewable follow-up repair PR, not a post-merge commit to the already-merged implementation PR.
+The verb does not render or publish. Corrected run records remain a local handoff for a normal archive retry; reconciliation never creates a post-merge Git commit or repair PR.
 
 ## Retention
 
-By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-logs` skill implements an age-based retention policy to cap growth.
-
-**Default policy (slim)**:
-
-- Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
-- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `architectural-invariant-outcome.json`, `architectural-guideline-outcome.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
-- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-invariant-assessment.md`, `architectural-guideline-assessment.md`, `accepted-plan-findings-audit.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
-- The consumer-core keep set for `/review` dirs includes `manifest.json`, `final-summary.md`, `difficulty-rating.json`, and `checks-digest-sizes.tsv`, so digest savings telemetry survives default slimming before enough samples accrue.
-- All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
-- A `gc-slimmed` marker file is written into each slimmed dir.
-
-**Escalation (delete)**:
-
-- `--delete` fully removes qualifying run dirs. Content remains recoverable via `git show <sha>:<path>` from git history.
-
-**Guards**:
-
-- Dirs containing `pause-state.txt` (resumable design sessions) are skipped.
-- Dirs already carrying a `gc-slimmed` marker are skipped (idempotent).
-- Dirs with no resolvable run date are skipped with a warning.
-
-**Output**:
-
-GC changes are committed on a dedicated branch and surfaced as a log-only PR for operator review and merge. GC is never run implicitly — operator-invoked only via `/gc-run-logs`.
-
-**Audit interplay**:
-
-Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit scanners should treat such absences as `informational` rather than `fail`; see `docs/run-logs-required-files.tsv` for the GC note on this behavior.
-
-**Consumer safety**:
-
-- `/report-tokens` (both skills): full cost-trend history is preserved indefinitely because it reads exactly the keep-set files. For `/design`, runs that never finalized `token-report-final.json` are priced from the retained `larch-tokens-*.jsonl` ledger fallback (committed vendor lanes only; the main-agent Claude lane lives in the uncommitted transcript and is not recoverable).
-- `/difficulty-calibration`: reads `difficulty-rating.json`, classification TSVs, JSONL/NDJSON fallback findings, token/timing reports, and `rejected-analysis-verdicts.tsv`. It tolerates gc-slimmed dirs and pre-initiative gaps. Non-escalated runs without a parseable classification source report realized tier `unknown`. It is read-only and produces no run-log batches.
-- `audit-runs`: targets recent batches within the retention window; aged dirs carry the `gc-slimmed` marker for honest scan reporting.
+Cloud retention is append-only: publishers create one immutable object per run and never slim, overwrite, or delete an older archive. `/gc-run-logs` and its age-based Git retention policy are retired. The historical tracked corpus is unchanged by this policy.
 
 ## Authoritative sources
 

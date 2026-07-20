@@ -1209,7 +1209,7 @@ fn later_domain_issue(path: &str) -> u64 {
         7681
     } else if path.contains("/issue/") || path.contains("forked") || path.starts_with("skills/triage") {
         7682
-    } else if path.contains("/report/") || path.contains("/rendering/") || path.starts_with("skills/gc-run-logs") {
+    } else if path.contains("/report/") || path.contains("/rendering/") {
         7683
     } else if path.contains("/research/") || path.starts_with("skills/research")
         || path.contains("analyze-bugs") || path.contains("learn-from-bugs")

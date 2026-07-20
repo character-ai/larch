@@ -169,7 +169,7 @@ def _failure_see_phrase(*, failure_log: Path, review_tmpdir: Path, session_env_p
     cref = _committed_ref(failure_log=failure_log, review_tmpdir=review_tmpdir, session_env_path=session_env_path, round_dir=round_dir)
     if cref == str(failure_log):
         return f"See {cref}."
-    return f"See {cref} in the committed run log."
+    return f"See {cref} in the archived run log."
 
 
 def _strip_agent_frontmatter(path: Path) -> str:

@@ -114,9 +114,6 @@ fn rules_lists_registered_rules_in_name_order() {
             "retired-scripts\tReject references to retired script paths\n",
         ))
         .stdout(predicate::str::contains(
-            "run-log-run-id\tReject non-unique placeholder run-log run-ids\n",
-        ))
-        .stdout(predicate::str::contains(
             "topology-rule-paths\tValidate topology TSV runtime authorities\n",
         ))
         .stdout(predicate::str::contains(

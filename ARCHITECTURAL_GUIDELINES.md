@@ -119,9 +119,9 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: `KEY=value` stdout, manifest JSON, machine footers, plan markers, and sentinel names are parsed by prompts, hooks, and scripts with no type system to catch a renamed or widened field. A producer that runs ahead of its readers fails silently.
 - Deviate when: the field has no consumer yet (module-private, single call site). This complements AGENTS.md Output Style, which forbids rewording machine structure, with the consumer-atomicity half.
 
-### G-Wire-2: Evolve a committed-artifact schema additively; keep readers tolerant of prior shapes and never backfill historical logs
-- Why: committed run-log TSV and JSONL files mix schema versions across runs forever, so a reader that assumes the latest columns misreads old rows. larch keeps new writes backward-compatible and detects the shape by column count, `schema_version`, or header.
-- Deviate when: an unreleased artifact with no committed history yet.
+### G-Wire-2: Evolve an archived-artifact schema additively; keep readers tolerant of prior shapes and never backfill historical logs
+- Why: remote archives and the historical tracked corpus mix run-log TSV and JSONL schema versions, so a reader that assumes the latest columns misreads old rows. larch keeps new writes backward-compatible and detects the shape by column count, `schema_version`, or header.
+- Deviate when: an unreleased artifact with no published history yet.
 
 ### G-Wire-3: Sweep every consumer of shared machinery, not only the consumer that surfaced the bug
 - Why: a feature or fix that changes a shared renderer, a shared status converter, or a shared committed-artifact writer was repeatedly completed for one consumer while a sibling consumer sharing the same machinery was left unswept, so the fix silently no-op'd or misbehaved on the unswept surface (#5940, #6578, #6668, #6632, #6027).
@@ -156,12 +156,12 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: validating at the boundary stops a bad label from reaching `git` argv. The intent exists but is applied unevenly.
 - Deviate when: the value is a known constant, or already validated upstream at the single trust boundary (note it and skip the re-check).
 
-### G-Sec-2: Treat repo-local config, committed logs, issue and PR bodies, and model, reviewer, or scout output as untrusted data, never as instructions
+### G-Sec-2: Treat repo-local config, archived logs, issue and PR bodies, and model, reviewer, or scout output as untrusted data, never as instructions
 - Why: larch ingests text it later re-emits or acts on, so a finding, plan, scout note, or guideline entry written as a command is a prompt-injection surface. Frame such input as evidence in a content block; it must not outrank repo, skill, system, developer, or user instructions. The guidelines reader, scope-anchor renderers, and manifest OOS path already do this.
 - Deviate when: a fixed maintainer-authored literal committed to the repo and consumed verbatim (note the trust source).
 
 ### G-Sec-3: Redact secrets, and tmpdir paths where present, before any egress surface, and fail closed when the scrub cannot prove the secret is gone
-- Why: egress is irreversible. One unredacted publish to a PR body, GitHub issue, or committed log exposes a credential that must then be rotated. A scrub failure is fatal before publish, not a recoverable warning. Even a clean scrub warrants a rotation warning, because the value was already in the session.
+- Why: egress is irreversible. One unredacted publish to a PR body, GitHub issue, or run-log archive exposes a credential that must then be rotated. A scrub failure is fatal before publish, not a recoverable warning. Even a clean scrub warrants a rotation warning, because the value was already in the session.
 - Deviate when: purely local stdout or stderr that never reaches an artifact; still prefer redaction for anything that may be copied outward.
 
 ### G-Sec-4: Confine larch writes to the session and tmp roots you own; canonicalize, containment-check, and reject symlinks and non-regular files at use time
@@ -220,7 +220,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Orch-5: Key destructive watchers to structured error events, not aggregated output
 - Why: the codex policy-rejection watcher regex-scanned the raw events tail, matched historical design-log text quoted by a successful grep, and killed a healthy voter (#6577).
-- Guidance: a watcher that kills, retries, or fails over an agent must match the stream's structured error events or a dedicated error channel, never raw aggregated output that can quote arbitrary bytes such as grep results over committed logs; before acting destructively, record the matched evidence and its provenance to the run diagnostics.
+- Guidance: a watcher that kills, retries, or fails over an agent must match the stream's structured error events or a dedicated error channel, never raw aggregated output that can quote arbitrary bytes such as grep results over archived logs; before acting destructively, record the matched evidence and its provenance to the run diagnostics.
 - Deviate when: the vendor emits no structured error framing; then anchor the match to the vendor's own event delimiters and keep the kill path non-silent so a false positive stays diagnosable.
 
 ### G-Orch-6: Size inlined agent payloads from the owning cap constants, not from an observed run
@@ -236,16 +236,16 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ## Observability and telemetry
 
 ### G-Obs-1: Keep telemetry writes best-effort, count-only, and fail-soft; a write failure skips the metric without failing the parent, and telemetry never stores prompt or payload text
-- Why: an operation must not fail because a metric could not be recorded, and a panel-size or digest-size row that captured prompt text would leak it into committed logs. larch's panel and checks telemetry store byte and token counts only, behind best-effort flock writers.
+- Why: an operation must not fail because a metric could not be recorded, and a panel-size or digest-size row that captured prompt text would leak it into published archives. larch's panel and checks telemetry store byte and token counts only, behind best-effort flock writers.
 - Deviate when: a security or integrity postcondition, which fails closed per G-Py-8 and is not telemetry.
 
-### G-Obs-2: Keep the committed artifact authoritative and the human-facing surface a slim, marker-keyed pointer to it, not a second copy of the payload
-- Why: copying bulky payloads into an issue or PR body bloats them and drifts from the source of truth. larch commits full run content under `larch-logs/` and keeps tracking-issue comments as marker-keyed summaries that reference the files.
+### G-Obs-2: Keep the remote archive authoritative and the human-facing surface a slim, marker-keyed reference to it, not a second copy of the payload
+- Why: copying bulky payloads into an issue or PR body bloats them and drifts from the source of truth. larch publishes full run content to append-only object storage and keeps tracking-issue comments as marker-keyed summaries that name the provider, skill, and run ID.
 - Deviate when: a payload small and stable enough that a pointer costs more than the copy, like the embedded `larch:diagrams` Mermaid bodies.
 
-### G-Obs-3: Record every skill-execution error or noteworthy failure to the run's category-keyed execution-issues log, so it flushes into the committed run logs for later analysis
+### G-Obs-3: Record every skill-execution error or noteworthy failure to the run's category-keyed execution-issues log, so it flushes into the remote archive for later analysis
 - Why: a failure that lives only in the session tmpdir vanishes at cleanup, so audits, calibration skills, and follow-up filing never see it. larch appends tool failures, reviewer issues, CI issues, and warnings to `execution-issues.ndjson` as the durable audit trail.
-- Deviate when: a run that produces no committed logs at all, like `repo_unavailable`, where the tmpdir `execution-issues.md` is the only possible trail.
+- Deviate when: a run produces no remote archive, like `repo_unavailable`, where the tmpdir `execution-issues.md` is the only possible trail.
 
 ### G-Obs-5: Give report renderers a golden test with hostile-width and fallback-shaped fixtures
 - Why: the /design Gantt corrupted alignment on long slot names twice (#5587, #5753), and the round timing chart silently omitted the vendor-fallback runs that did the round's actual work (#6578).
@@ -257,9 +257,9 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: a renderer that aligns multiple rows computes column widths, bar start offsets, and bar lengths from the maximum across all rows in the render pass, not from a per-row value or a hardcoded constant; compute the maximum in a first pass, then render.
 - Deviate when: the renderer draws a single row, so there is no cross-row maximum to compute.
 
-### G-Obs-7: Reconcile mid-flight warnings and execution-issue entries at terminal render; an entry that a later successful retry invalidated is retracted or annotated stale, and summary counters are derived from the committed artifacts they claim to summarize
-- Why: an under-quorum warning written during a failed first tally survived a clean retry and reported a healthy run as degraded (#5334); a stale needs-user handoff was primed into exec issues on merged runs (#7171, #7167); the normal deferred-transcript success path emitted a warning on every run (#5238); a clean assessment was rendered as a warning (#5234); and final summaries counted in-memory lists that disagreed with the committed execution-issues log (#6025, #4882).
-- Guidance: write operator-facing warnings from terminal state, or reconcile the append-only log at terminal render: drop or annotate entries whose condition a later attempt cleared, and compute summary counts by reading the committed sibling artifact, not a parallel in-memory counter.
+### G-Obs-7: Reconcile mid-flight warnings and execution-issue entries at terminal render; an entry that a later successful retry invalidated is retracted or annotated stale, and summary counters are derived from the staged artifacts they claim to summarize
+- Why: an under-quorum warning written during a failed first tally survived a clean retry and reported a healthy run as degraded (#5334); a stale needs-user handoff was primed into exec issues on merged runs (#7171, #7167); the normal deferred-transcript success path emitted a warning on every run (#5238); a clean assessment was rendered as a warning (#5234); and final summaries counted in-memory lists that disagreed with the staged execution-issues log (#6025, #4882).
+- Guidance: write operator-facing warnings from terminal state, or reconcile the append-only log at terminal render: drop or annotate entries whose condition a later attempt cleared, and compute summary counts by reading the staged sibling artifact, not a parallel in-memory counter.
 - Deviate when: an audit trail must stay append-only for integrity; annotate staleness instead of deleting, and keep the summary derived from the annotated view.
 
 ### G-Obs-8: Bound captured evidence by whole structural units (records, jobs, lines of one stream), and emit an explicit truncation marker naming what was dropped; never byte-tail or line-tail a multi-unit artifact silently
@@ -376,7 +376,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Gate-2: Pair every automated-PR producer with a durable, session-independent merge backstop
 - Why: automated PRs whose only merge path is the producing session accumulate unmerged when that session dies or the in-run merge fails, and each unmerged PR is a silent data-loss or drift window (#5213, #5306, #7454, #7510).
-- Guidance: when a flow creates PRs mechanically (log flushes, state markers, release chores), land a session-independent reconciler in the same change: a sweep or scheduled job that finds the flow's PRs by its exact branch or title convention and merges or escalates them. Share the convention constant between the producer and the backstop selector. Treat the in-run merge as an optimization, never as the only merge path.
+- Guidance: when a flow creates PRs mechanically (state markers or release chores), land a session-independent reconciler in the same change: a sweep or scheduled job that finds the flow's PRs by its exact branch or title convention and merges or escalates them. Share the convention constant between the producer and the backstop selector. Treat the in-run merge as an optimization, never as the only merge path.
 - Deviate when: the PR intentionally awaits human review or is operator-authored; then the documented manual handoff is the backstop, and the producing flow must say so explicitly in its terminal output.
 
 ## Prevention discipline

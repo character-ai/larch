@@ -1351,7 +1351,7 @@ def test_committed_ref_round_dir_stamps_design_path(tmp_path: Path) -> None:
     ref = review_aggregate._committed_ref(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="", round_dir=round_dir)
     assert ref == "plan-review/round-1/aggregator-validate.stderr"
     phrase = review_aggregate._failure_see_phrase(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="", round_dir=round_dir)
-    assert phrase == "See plan-review/round-1/aggregator-validate.stderr in the committed run log."
+    assert phrase == "See plan-review/round-1/aggregator-validate.stderr in the archived run log."
 
     # No round_dir and a non-round-prefixed tmpdir keep the legacy bare-path pointer.
     assert review_aggregate._committed_ref(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="") == str(validate_log)
@@ -1435,7 +1435,7 @@ def test_aggregate_round_dir_stamps_failure_pointer(tmp_path: Path) -> None:
     # round-stamped committed pointer is still emitted on that degrade path.
     assert "REASON=validation-failed" in result.stdout
     issues_text = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
-    assert "See plan-review/round-1/aggregator-validate.stderr in the committed run log." in issues_text
+    assert "See plan-review/round-1/aggregator-validate.stderr in the archived run log." in issues_text
 
 
 def test_aggregate_code_mode_accepts_major_severity(tmp_path: Path) -> None:

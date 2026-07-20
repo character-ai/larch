@@ -127,9 +127,7 @@ def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-parse", "origin/main"), 0, "base\n", "", 0.01),
             CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "0\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "show-ref", "--verify", "--quiet", "refs/heads/feat"), 0, "", "", 0.01),
@@ -147,9 +145,7 @@ def test_postmerge_stalls_when_local_branch_delete_fails(tmp_path: Path) -> None
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-parse", "origin/main"), 0, "base\n", "", 0.01),
             CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "0\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "show-ref", "--verify", "--quiet", "refs/heads/feat"), 0, "", "", 0.01),
@@ -377,11 +373,7 @@ def test_local_cleanup_partial_on_pull_failure(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-parse", "origin/main"), 0, "base\n", "", 0.01),
             CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "2\n", "", 0.01),
-            CommandResult(("git", "log", "origin/main..HEAD", "--format=%s"), 0, "other\n", "", 0.01),
-            CommandResult(("git", "diff", "--name-only", "base", "HEAD"), 0, "src/a.py\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 1, "", "error", 0.01),
             CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "2\n", "", 0.01),
         ],
@@ -394,11 +386,7 @@ def test_local_cleanup_does_not_reset_on_empty_orphan_evidence(tmp_path: Path) -
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-parse", "origin/main"), 0, "base\n", "", 0.01),
             CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
-            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "1\n", "", 0.01),
-            CommandResult(("git", "log", "origin/main..HEAD", "--format=%s"), 0, "", "", 0.01),
-            CommandResult(("git", "diff", "--name-only", "base", "HEAD"), 0, "", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "show-ref", "--verify", "--quiet", "refs/heads/feat"), 0, "", "", 0.01),

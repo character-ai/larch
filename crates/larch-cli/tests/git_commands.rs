@@ -541,7 +541,7 @@ fn check_main_sync_covers_in_sync_non_main_and_missing_remote_ref() {
 }
 
 #[test]
-fn check_main_sync_blocks_non_log_commits_and_resets_flush_only_commits() {
+fn check_main_sync_blocks_all_ahead_commits() {
     let temp = TempDir::new().expect("tempdir");
     let bare = temp.path().join("origin.git");
     let repo = init_repo(temp.path());
@@ -563,34 +563,10 @@ fn check_main_sync_blocks_non_log_commits_and_resets_flush_only_commits() {
             "SYNC_STATUS=blocked\nAHEAD_COUNT=1\n",
         ))
         .stderr("");
-
-    git(&repo, &["reset", "--hard", "origin/main"]);
-    fs::create_dir_all(repo.join("larch-logs")).expect("logs directory");
-    fs::write(repo.join("larch-logs/run.md"), "flush\n").expect("write flush log");
-    git(&repo, &["add", "larch-logs/run.md"]);
-    git(&repo, &["commit", "-m", "chore(larch-logs): flush run"]);
-
-    larch()
-        .args(["git", "check-main-sync"])
-        .current_dir(&repo)
-        .assert()
-        .code(0)
-        .stdout("SYNC_STATUS=reset\nAHEAD_COUNT=1\n")
-        .stderr("");
-    git(&repo, &["fsck", "--full", "--no-dangling"]);
-    assert_eq!(
-        StdCommand::new("git")
-            .args(["rev-list", "--count", "origin/main..HEAD"])
-            .current_dir(&repo)
-            .output()
-            .expect("count ahead")
-            .stdout,
-        b"0\n"
-    );
 }
 
 #[test]
-fn check_main_sync_refuses_a_dirty_flush_reset_and_sync_local_main_updates_a_feature_checkout() {
+fn sync_local_main_updates_a_feature_checkout() {
     let temp = TempDir::new().expect("tempdir");
     let bare = temp.path().join("origin.git");
     let repo = init_repo(temp.path());
@@ -599,22 +575,6 @@ fn check_main_sync_refuses_a_dirty_flush_reset_and_sync_local_main_updates_a_fea
         &["init", "--bare", bare.to_str().expect("bare path")],
     );
     attach_origin(&repo, &bare);
-    fs::create_dir_all(repo.join("larch-logs")).expect("logs directory");
-    fs::write(repo.join("larch-logs/run.md"), "flush\n").expect("write flush log");
-    git(&repo, &["add", "larch-logs/run.md"]);
-    git(&repo, &["commit", "-m", "chore(larch-logs): flush run"]);
-    fs::write(repo.join("untracked.txt"), "dirty\n").expect("write untracked");
-
-    larch()
-        .args(["git", "check-main-sync"])
-        .current_dir(&repo)
-        .assert()
-        .code(2)
-        .stdout(predicates::str::contains("SYNC_STATUS=probe-error\nAHEAD_COUNT=1\nERROR=refusing reset: working tree is not clean"))
-        .stderr("");
-    fs::remove_file(repo.join("untracked.txt")).expect("remove untracked");
-    git(&repo, &["reset", "--hard", "origin/main"]);
-
     let updater = temp.path().join("updater");
     git(
         temp.path(),

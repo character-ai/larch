@@ -757,8 +757,12 @@ def test_published_run_logs_path_requires_completed_log_publication(tmp_path: Pa
     result = tmp_path / ".design-publish-result.env"
     _ = result.write_text("LOG_PUBLISH_COMPLETED=false\n", encoding="utf-8")
     assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "N/A"  # pyright: ignore[reportPrivateUsage]
+    repo = tmp_path / "repo"
+    (repo / ".larch").mkdir(parents=True)
+    _ = (repo / ".larch" / "config.toml").write_text('[logs]\nuri = "s3://bucket/root"\n', encoding="utf-8")
+    _ = (tmp_path / "source-env.sh").write_text(f"REPO_ROOT={repo}\n", encoding="utf-8")
     _ = result.write_text("LOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
-    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "run-logs/design/run-1.tar.gz"  # pyright: ignore[reportPrivateUsage]
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "provider `s3`, skill `design`, run ID `run-1`"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_render_final_summary_redacts_spliced_detail(

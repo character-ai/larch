@@ -25,7 +25,6 @@ from larch.errors import ShipError
 from larch.git import pr_body
 from larch.issue import execution_issues
 from larch.report import final_report
-from larch.report import run_log_commit
 from larch.report import timing
 from larch.report import tokens
 
@@ -56,11 +55,7 @@ from larch.report.run_log_manifest import (
     update_manifest,
     validate_run_id_slug,
 )
-from larch.report.run_log_commit import _commit_run as _commit_run_impl
-
-_commit_run = _commit_run_impl
 _write_batch = _write_batch_impl
-prepare_run_tree_for_publication = run_log_commit.prepare_run_tree_for_publication
 
 
 def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
@@ -554,7 +549,7 @@ def _check_preterminal_outcome_label(outcome: str) -> None:
     label = outcome.strip().lower()
     if label in config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS:
         msg = (
-            "refusing pre-terminal run-log commit with terminal outcome "
+            "refusing pre-terminal run-log staging with terminal outcome "
             f"label {label!r}"
         )
         raise ShipError(msg)
@@ -924,32 +919,6 @@ def capture_transcript_main(argv: list[str]) -> int:
             step_label=args.warning_step_label,
             status="suppressed-no-logs-commit",
             message="--no-logs-commit was set; transcript was written under the staging log root but not published.",
-        )
-    if args.defer_commit == "true":
-        print("SESSION_TRANSCRIPT_STATUS=captured")
-        return 0
-    commit = (
-        prepare_run_tree_for_publication(
-            log_root=log_root,
-            skill=args.skill,
-            run_id=args.run_id,
-            repo_root=Path.cwd(),
-        )
-        if args.skill == "implement"
-        else _commit_run(
-            log_root=log_root,
-            skill=args.skill,
-            run_id=args.run_id,
-            cwd=str(Path.cwd()),
-        )
-    )
-    if commit.returncode != 0:
-        err = (commit.stderr or "run-log publication preparation failed").strip().replace("\n", " ")
-        return _capture_transcript_emit(
-            issues_log=issues_log,
-            step_label=args.warning_step_label,
-            status="commit-failed",
-            message=err,
         )
     print("SESSION_TRANSCRIPT_STATUS=captured")
     return 0

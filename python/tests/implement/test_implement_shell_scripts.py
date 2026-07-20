@@ -174,9 +174,6 @@ def main() -> int:
     if args[:2] == ["run-log", "append-failure"]:
         log("append-failure " + " ".join(args[2:]))
         return 0
-    if args[:2] == ["run-log", "commit"]:
-        log("run-log commit " + " ".join(args[2:]))
-        return int(os.environ.get("STEP18_STUB_PREPARE_RC") or "0")
     if args[:2] == ["run-log", "publish"]:
         log("run-log publish " + " ".join(args[2:]))
         publish_rc = int(os.environ.get("STEP18_STUB_PUBLISH_RC") or "0")

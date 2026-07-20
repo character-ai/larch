@@ -23,12 +23,9 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `ci_monitor.py` — live on the default Python Step 8+ path; `python/ship.py` calls it from
   the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
   run the fixer waterfall, and return the GOTO-Rebase signal.
-- `design_log_ship.py` — CI-wait (required checks, checks-only) plus bounded failed-run
-  rerun and transient-retried squash-admin-merge for design-log PRs; invoked via
-  `python/cli.py ship design-log`.
 - **Phase 5** (live via default Python ship driver): residual `run_logs.py` plus its `run_log_batch.py`,
   `run_log_manifest.py`, `run_log_commit.py`, and `run_log_flush.py` owners, `tokens.py`, `tracking_issue.py`,
-  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with mutable
+  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with session-local
   implement staging in `flush_logs_pre` and terminal archive publication from Step 18. `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
@@ -104,10 +101,6 @@ The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, an
 ## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
 
 `ci_monitor.py` deliberately omits the retired shell driver's `CI_FIX_REBASE_PENDING` pending-retry fast path: a verified-but-unpushed CI fix that fails `git push` terminates as `Outcome.STALLED` by design (stateless monitor, rebase limited to merge-conflict-only, shell driver retired). See issue #3405.
-
-## Orphan flush-reset parity note
-
-`finalize._local_cleanup` intentionally requires non-empty `git log` subject evidence before dropping local flush-only commits. Bash's empty-loop shape could reset with empty or malformed log output, but the Python port keeps the safer fail-closed behavior and pins it in `test_local_cleanup_does_not_reset_on_empty_orphan_evidence`.
 
 ## Migration status
 

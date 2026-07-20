@@ -30,6 +30,7 @@ from larch.core import proc
 from larch.core import redact
 from larch.report import report_tokens_cost
 from larch.report import tokens
+from larch.report import storage_config
 from larch.issue import tracking_issue
 from larch.implement import scope_disposition
 from larch.errors import ShipError
@@ -721,9 +722,9 @@ def render_run_summary(**kwargs: object) -> str:
     oos_count = str(kwargs.get("oos_count") or "0")
     oos_urls = str(kwargs.get("oos_urls") or "")
     oos_disp = oos_count if not oos_urls or oos_urls == "N/A" or oos_count == "0" else f"{oos_count}: {oos_urls}"
-    run_logs_path = str(kwargs.get("run_logs_path") or "")
-    if not run_logs_path and run_id != "unknown" and outcome not in {"failed-publish", "publish-skipped"}:
-        run_logs_path = f"larch-logs/{skill}/{run_id}/"
+    run_logs_reference = str(kwargs.get("run_logs_path") or "")
+    if not run_logs_reference and run_id != "unknown" and outcome not in {"failed-publish", "publish-skipped"}:
+        run_logs_reference = f"provider `unknown`, skill `{skill}`, run ID `{run_id}`"
     lines = [f"## /{skill} run {run_id}: {outcome}", ""]
     # #7074: a terminal needs-user ship handoff (merge + CI watch skipped) must not
     # render as ✅ DONE. _summary_outcome_display picks the needs-user display when
@@ -759,7 +760,7 @@ def render_run_summary(**kwargs: object) -> str:
         f"- **OOS filed**: {oos_disp}",
         f"- **Exec issues**: {kwargs.get('exec_issues') or 0}",
         f"- **Warnings**: {kwargs.get('warnings') or 0}",
-        f"- **Run logs**: `{run_logs_path or 'N/A'}`",
+        f"- **Run log**: {run_logs_reference or 'N/A'}",
         *_identity_lines(kwargs),
         "",
         "<!-- larch:run-summary v=1 -->",
@@ -1035,7 +1036,13 @@ def post_tracking_issue(
         )
     version = _installed_plugin_version()
     summary = implement_tmpdir / "summary-metadata.md"
-    lines = [f"Run ID: `{run}`", f"Logs: `larch-logs/implement/{run}/`", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
+    repo_root_raw = _read_kv(path=session, key="REPO_ROOT")
+    log_reference = storage_config.run_log_reference(
+        repo_root=Path(repo_root_raw) if repo_root_raw else None,
+        skill="implement",
+        run_id=run,
+    )
+    lines = [f"Run ID: `{run}`", f"Run log: {log_reference}", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
     if force_requested == "true":
         lines.append("Force: true")
     lines.append(f"Larch version: `{version}`")

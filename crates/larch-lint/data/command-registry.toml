@@ -2521,18 +2521,6 @@ python_removal = "pending"
 planning_issue = 7680
 
 [[commands]]
-domain = "gc-run-logs"
-verb = "run"
-python_module = "larch.report.gc_run_logs"
-python_function = "run_main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7683
-
-[[commands]]
 domain = "generate"
 verb = "check"
 python_module = "larch.rendering.rendering"
@@ -6009,18 +5997,6 @@ planning_issue = 7683
 
 [[commands]]
 domain = "run-log"
-verb = "commit"
-python_module = "larch.report.run_log_commit"
-python_function = "larch_log_commit_main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7683
-
-[[commands]]
-domain = "run-log"
 verb = "exists"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_exists_main"
@@ -6606,30 +6582,6 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7677
-
-[[commands]]
-domain = "ship"
-verb = "design-log"
-python_module = "larch.design.design_log_ship"
-python_function = "main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7681
-
-[[commands]]
-domain = "ship"
-verb = "design-log-sweep"
-python_module = "larch.design.design_log_ship"
-python_function = "sweep_main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7681
 
 [[commands]]
 domain = "ship"
@@ -8278,7 +8230,7 @@ rust = ["object-store gcs"]
 [[callers]]
 path = "python/larch/report/run_log_commit.py"
 kind = "python-runtime"
-python = ["redact scrub-log-secrets", "run-log commit"]
+python = ["redact scrub-log-secrets"]
 rust = []
 
 [[callers]]
@@ -8405,12 +8357,6 @@ rust = []
 path = "scripts/sessionstart-statusline.sh"
 kind = "hook"
 python = ["progress install-statusline", "progress session-reset"]
-rust = []
-
-[[callers]]
-path = "scripts/sweep-design-logs.sh"
-kind = "hook"
-python = ["ship design-log-sweep"]
 rust = []
 
 [[callers]]
@@ -8681,12 +8627,6 @@ rust = []
 path = "skills/difficulty-calibration/SKILL.md"
 kind = "skill"
 python = ["difficulty-calibration analyze"]
-rust = []
-
-[[callers]]
-path = "skills/gc-run-logs/SKILL.md"
-kind = "skill"
-python = ["gc-run-logs run"]
 rust = []
 
 [[callers]]

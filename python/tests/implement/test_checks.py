@@ -4004,7 +4004,6 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
         "cargo-fmt",
         "cargo-clippy",
         "larch-lint",
-        "lint-run-log-run-id",
         "check-topology-rule-paths",
         "lint-em-dash-output",
         "lint-codex-exec-auth",

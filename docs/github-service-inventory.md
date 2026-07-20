@@ -52,7 +52,6 @@ issues	crates/larch-adapters/src/github_rest.rs	python	#7682	pending	pending	pen
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	python	#7682	complete	pending	pending	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682	pending	pending	pending	clarify label,issue *
 pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci *,design *,implement *,pr *,ship *
-release-consumers	crates/larch-adapters/src/github/release.rs	python	#7683	pending	pending	pending	gc-run-logs run
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
 ```

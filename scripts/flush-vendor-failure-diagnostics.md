@@ -29,17 +29,15 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 ## Behavior
 
 1. **Clear-after-success**: when the parts directory has no `part.*` files,
-   nothing is flushed and no batch is written — a successful run with no
-   vendor-agent failures commits nothing (preserves #3534 intent).
+   nothing is flushed and no batch is written. A successful run with no
+   vendor-agent failures publishes nothing for this batch (preserves #3534 intent).
 2. **Idempotent derive**: the canonical `$tmpdir/vendor-failure-diagnostics.txt`
    is overwritten from the full sorted parts set on every flush, so repeated
-   pre-commit flushes converge. The batch slug is `replace` mode
+   repeated flushes converge. The batch slug is `replace` mode
    (`docs/run-log-batches.md`) for the same reason.
-3. **Stage only — never commit**: `python3 python/cli.py run-log write` stages the batch under the
-   log root; the surrounding flush/refresh sites own the commit, and
-   `python3 python/cli.py run-log commit` enforces the post-merge sentinel guard (NEVER #16). This
-   helper makes no git commit, so it is safe to call post-merge (it becomes a
-   no-op stage).
+3. **Stage only**: `python3 python/cli.py run-log write` stages the batch under
+   the log root. The archive publisher owns final validation, sanitization, and
+   publication. This helper never mutates Git.
 
 ## Output
 
@@ -48,10 +46,10 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 
 ## Callers
 
-Called best-effort before each log commit / push:
+Called best-effort before run-log staging refreshes:
 - `skills/implement/scripts/step-7a.sh` (pre-ship flush)
-- `python3 python/cli.py run-log flush` (commit-tail flush)
-- `python3 python/cli.py run-log refresh` (CI-retry / rebase pre-push refresh)
+- `python3 python/cli.py run-log flush`
+- `python3 python/cli.py run-log refresh`
 - `python3 python/cli.py implement-finalize` teardown (safety net, mirrors
   `flush_execution_issues_safety_net`, F13)
 

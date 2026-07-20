@@ -26,6 +26,7 @@ from larch.issue import execution_issues
 from larch.git import pr_body
 from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
+from larch.report import storage_config
 from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
 from larch.state import stall_recovery
 from larch.report import tokens
@@ -976,6 +977,17 @@ def _resolve_stale_needs_user_handoff(
     )
 
 
+def _run_log_reference(*, session: Path, run_id: str) -> str:
+    if not run_id:
+        return "N/A"
+    repo_root_raw = _read_kv(path=session, key="REPO_ROOT")
+    return storage_config.run_log_reference(
+        repo_root=Path(repo_root_raw) if repo_root_raw else None,
+        skill="implement",
+        run_id=run_id,
+    )
+
+
 def write_final_report(
     implement_tmpdir: Path,
     *,
@@ -1057,7 +1069,7 @@ def write_final_report(
         oos_urls=derived["oos_urls"],
         exec_issues=exec_count,
         warnings=warn_count,
-        run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
+        run_logs_path=_run_log_reference(session=session, run_id=run_id),
         force_requested=_read_kv(path=run_flags, key="FORCE_REQUESTED", default="false"),
         merge_downgraded=outcome_values.get("IMPLEMENT_MERGE_DOWNGRADED", "false"),
         needs_user_reason=needs_user_reason,

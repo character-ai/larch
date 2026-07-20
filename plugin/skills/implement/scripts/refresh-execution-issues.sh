@@ -77,14 +77,18 @@ count=0
 
 {
     if [ -n "$existing_summary" ]; then
-        printf '%s\n' "$existing_summary" | awk '!/^Execution issues pending flush: `[^`]*`$/'
+        printf '%s\n' "$existing_summary" | awk -v run_id="$RUN_ID" '
+            /^Execution issues pending flush: `[^`]*`$/ || /^Logs:/ || /^Run log:/ { next }
+            { print }
+            /^Run ID:/ { printf "Run log: provider `unknown`, skill `implement`, run ID `%s`\n", run_id }
+        '
     else
         version="$(read_plugin_version)"
         [ -n "$version" ] || version="unknown"
         agent="$(read_kv AGENT "$SESSION_ENV")"; [ -n "$agent" ] || agent="claude"
         coder="$(read_kv CODER "$SESSION_ENV")"; [ -n "$coder" ] || coder="claude"
         printf 'Run ID: `%s`\n' "$RUN_ID"
-        printf 'Logs: `larch-logs/implement/%s/`\n' "$RUN_ID"
+        printf 'Run log: provider `unknown`, skill `implement`, run ID `%s`\n' "$RUN_ID"
         printf 'Tracking issue: #%s\n' "$ISSUE"
         printf 'Agent: `%s`\n' "$agent"
         printf 'Coder: `%s`\n' "$coder"

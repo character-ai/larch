@@ -1978,16 +1978,9 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
     def noop(*_args: object, **_kwargs: object) -> None:
         return None
 
-    def fake_commit(
-        *_args: object,
-        **_kwargs: object,
-    ) -> CommandResult:
-        return ok(("git", "commit"))
-
     def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
         return True
 
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)

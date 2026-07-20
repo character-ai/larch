@@ -90,12 +90,12 @@ drift. Evidence of violation: every post-migration /implement run recorded
 completed green (#6263), and rejected and neutral finding bodies were absent
 from durable logs with nothing recorded anywhere (#6027). Mechanical backing:
 a post-flush manifest completeness check that asserts the expected artifact set,
-or its recorded execution-issue entries, before Git or archive publication, with
+or its recorded execution-issue entries, before archive publication, with
 regression tests in `python/tests/report/test_run_log_flush.py`.
 
 ### I-Commit-1: A durable run-log field embeds its content, never a pointer into a session-tmpdir file
 
-A field written into a durable run-log artifact either embeds the redacted content it needs downstream or omits the field. It never stores a path into the session or system tmpdir (for example `$TMPDIR`, `IMPLEMENT_TMPDIR`, or `/var/folders/...`). A reader must be able to adjudicate the run from the Git snapshot or remote archive alone, without reaching into a session tmpdir that no longer exists. Evidence of violation: rejected and neutral finding bodies were absent from durable logs and survived only as pointers into session-tmpdir files that were never staged, so post-hoc adjudication could not evaluate whether a rejection was sound (#6027). Mechanical backing: a publication-time scan of the sanitized staging tree for session- and system-tmpdir path prefixes, with a failing check that rejects Git or archive publication; extend the run-log flush path that already stages redacted bodies so every voted finding publishes its body through the existing redaction pipeline.
+A field written into a durable run-log artifact either embeds the redacted content it needs downstream or omits the field. It never stores a path into the session or system tmpdir (for example `$TMPDIR`, `IMPLEMENT_TMPDIR`, or `/var/folders/...`). A reader must be able to adjudicate the run from the remote archive alone, without reaching into a session tmpdir that no longer exists. Evidence of violation: rejected and neutral finding bodies were absent from durable logs and survived only as pointers into session-tmpdir files that were never staged, so post-hoc adjudication could not evaluate whether a rejection was sound (#6027). Mechanical backing: a publication-time scan of the sanitized staging tree for session- and system-tmpdir path prefixes, with a failing check that rejects archive publication; extend the run-log flush path that already stages redacted bodies so every voted finding publishes its body through the existing redaction pipeline.
 
 ### I-Outcome-1: A durably published outcome label for an in-flight run is neutral
 
@@ -107,8 +107,7 @@ allowed publication window. Evidence of violation: pre-terminal snapshots froze
 merged runs as bailed or stalled in durable logs, corrupting every downstream
 outcome census (#5646, #5676, #5970, #4900). Mechanical backing: `/implement`
 keeps refreshes mutable and publishes only from Step 18 after terminal
-reconciliation; uncut-over Git publishers retain their pre-terminal label
-guards. Regression coverage lives in `python/tests/report/test_run_log_flush.py`,
+reconciliation. Regression coverage lives in `python/tests/report/test_run_log_flush.py`,
 `python/tests/report/test_run_logs.py`, and
 `python/tests/implement/test_implement_shell_scripts.py`.
 

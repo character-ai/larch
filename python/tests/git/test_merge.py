@@ -699,7 +699,7 @@ def test_merge_does_not_call_pre_flush_on_clean_green_path(
     assert pre_calls["count"] == 0
 
 
-def test_merge_flush_recovery_success_emits_admin_merged(
+def test_merge_rejects_head_mismatch_without_flush_recovery(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -746,10 +746,11 @@ def test_merge_flush_recovery_success_emits_admin_merged(
     monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
-    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "does not match PR head OID" in out.error
 
 
-def test_merge_flush_recovery_polls_lagged_pr_head_oid(
+def test_merge_does_not_poll_lagged_pr_head_oid_for_flush_recovery(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -793,8 +794,8 @@ def test_merge_flush_recovery_polls_lagged_pr_head_oid(
     monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx, sleeper=sleeps.append)
-    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
-    assert sleeps == [5.0]
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert not sleeps
 
 
 def test_merge_flush_recovery_oid_poll_exhaustion_errors(
@@ -835,8 +836,8 @@ def test_merge_flush_recovery_oid_poll_exhaustion_errors(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx, sleeper=sleeps.append)
     assert out.result == config.MERGE_RESULT_ERROR
-    assert "after force-push recovery" in out.error
-    assert len(sleeps) == config.MERGE_PR_POST_PUSH_UNKNOWN_RETRIES - 1
+    assert "does not match PR head OID" in out.error
+    assert not sleeps
 
 
 def test_merge_post_recovery_ci_pending(
@@ -886,8 +887,8 @@ def test_merge_post_recovery_ci_pending(
     monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
-    assert out.result == config.MERGE_RESULT_CI_NOT_READY
-    assert "after force-push recovery" in out.error
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "does not match PR head OID" in out.error
 
 
 def test_flush_recoverable_rejects_non_larch_log_paths(
