@@ -66,16 +66,18 @@ def test_environment_storage_uri_overrides_repository_config(tmp_path: Path) -> 
     assert storage_root.uri == "s3://environment-root/override"
 
 
-def test_discover_storage_root_uses_the_git_toplevel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discover_storage_root_uses_the_git_toplevel(tmp_path: Path) -> None:
     _write_config(tmp_path, "s3://zhupanov/larch")
 
     def fake_consumer_repo_root(start: Path | None = None) -> Path:
         assert start == tmp_path / "nested"
         return tmp_path
 
-    monkeypatch.setattr(storage_config, "consumer_repo_root", fake_consumer_repo_root)
-
-    storage_root = storage_config.discover_storage_root(start=tmp_path / "nested", environ={})
+    storage_root = storage_config.discover_storage_root(
+        start=tmp_path / "nested",
+        environ={},
+        root_resolver=fake_consumer_repo_root,
+    )
 
     assert storage_root.uri == "s3://zhupanov/larch"
 

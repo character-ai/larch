@@ -6049,6 +6049,18 @@ migration_issue = 7687
 
 [[commands]]
 domain = "run-log"
+verb = "storage-preflight"
+python_module = "larch.report.storage_config"
+python_function = "storage_preflight_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7814
+
+[[commands]]
+domain = "run-log"
 verb = "validate-run-id"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_validate_run_id_main"
