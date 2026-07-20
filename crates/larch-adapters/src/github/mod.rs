@@ -13,11 +13,11 @@ pub use attestation::{
 
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
-    CreatedPullRequest, DependencyMutation, DependencyRef, GitHubOperationError, MergeStateStatus,
-    Mergeable, PullRequest, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod,
-    PullRequestMergeResult, PullRequestReviewState, PullRequestSpec, PullRequestState,
-    ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState, ReleasePlanningService,
-    ReleasePullRequest, ReviewDecision,
+    CreatedPullRequest, DependencyMutation, DependencyMutationReceipt, DependencyRef,
+    GitHubOperationError, MergeStateStatus, Mergeable, PullRequest, PullRequestEdit,
+    PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult, PullRequestReviewState,
+    PullRequestSpec, PullRequestState, ReleaseCandidatePullRequest,
+    ReleaseCandidatePullRequestState, ReleasePlanningService, ReleasePullRequest, ReviewDecision,
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,
@@ -189,6 +189,8 @@ pub struct OctocrabGitHubService {
     pub(crate) policy: GitHubTransportPolicy,
     redactor: RuntimeRedactor,
     pub(crate) mutation_lock: Mutex<()>,
+    #[cfg(test)]
+    test_continuation_base: Option<Url>,
 }
 
 impl OctocrabGitHubService {
@@ -199,6 +201,7 @@ impl OctocrabGitHubService {
             policy: GitHubTransportPolicy::github_com(),
             redactor: RuntimeRedactor::default(),
             mutation_lock: Mutex::new(()),
+            test_continuation_base: None,
         }
     }
 
@@ -230,6 +233,8 @@ impl OctocrabGitHubService {
             policy,
             redactor,
             mutation_lock: Mutex::new(()),
+            #[cfg(test)]
+            test_continuation_base: None,
         })
     }
 
@@ -265,6 +270,12 @@ impl OctocrabGitHubService {
 
     pub(crate) const fn client(&self) -> &Octocrab {
         &self.client
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_continuation_base(mut self, base: &str) -> Self {
+        self.test_continuation_base = Some(Url::parse(base).expect("test continuation base"));
+        self
     }
 
     /// Resolve a response-supplied pagination or redirect continuation and

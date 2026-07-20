@@ -187,7 +187,7 @@ then promotes it. Ambiguous promotion reads back Latest before a retry, and the
 final Latest state is verified. The release commands expose no raw Git, `gh`,
 URL, GraphQL, or Python fallback.
 
-Issue-dependency add and remove stay behind the live-mutation authorization gate
+Issue-dependency list, add, and remove stay behind the live-mutation authorization gate
 ported from the Python boundary: operator mode, or a regular, non-symlink session
 context file directly under a canonical larch session root that carries
 `LARCH_LIVE_MUTATION_OK=true` with a matching run id. A test denial overrides
@@ -195,7 +195,14 @@ session-inherited authorization but not operator mode. Each mutation reads the
 current edges first for freshness and idempotency, treats an already-satisfied
 edge as a no-op, and confirms the exact edge by read-back after the write. An
 unavailable dependency API and transport failures surface as typed, length-
-bounded, redacted diagnostics.
+bounded, redacted diagnostics. Dependency lists follow only parsed `Link`
+continuations that remain HTTPS on the approved API origin, and enforce the
+shared response-byte, page, item, deadline, and cancellation limits. A
+triage-controlled mutation supplies an exact expected `updated_at`; immediately
+before mutation the adapter re-reads the client issue and refuses a stale
+timestamp or protected lifecycle state. After an applied mutation, it verifies
+the exact edge and returns a fresh non-empty `updated_at`. It never writes when
+either precondition fails.
 
 ## Rust Repository Metadata Read Boundary
 

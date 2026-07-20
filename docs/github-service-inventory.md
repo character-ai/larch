@@ -34,7 +34,7 @@ imports Octocrab, names a GitHub service host, or embeds a GraphQL document.
 | Comment list, create, edit, delete | `github_rest.rs` (`GitHubService`) | Python issue, clarify, tracking-issue commands | #7687 chief umbrella (per-domain leaf) |
 | Label list, create, add, remove | `github_rest.rs` (`GitHubService`) | Python issue, block-issue commands | #7687 chief umbrella (per-domain leaf) |
 | Pull request, review, merge state, merge mutation | `github/operations.rs` (fixed GraphQL document and typed merge request) | Python ci, design, release commands | #7687 chief umbrella (per-domain leaf; merge consumer cutover) |
-| Issue-dependency add, remove | `github/operations.rs`, `github/mutation_auth.rs` gate | Python `block-issue`, `deps` commands | #7687 chief umbrella (per-domain leaf) |
+| Issue-dependency list, add, remove | `github/operations.rs`, `github/mutation_auth.rs` gate | Python `block-issue`, `deps` commands | #7682 issue-workflow umbrella; its named command-migration leaf performs the atomic cutover. Adapter parity: #7841 |
 | Release listing, draft, publish, Latest promotion, asset upload, asset download | `github/release.rs` (`OctocrabReleaseTransport`) | Rust release commands; Python gc-run-logs commands | Release cutover complete (#7752); remaining domains under #7687 |
 | Artifact and immutable-release attestation verification | `github/attestation.rs` (`OctocrabAttestationTransport`) | Rust bootstrap and release commands | Complete (#7752) |
 
