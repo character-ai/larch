@@ -31,58 +31,45 @@ If you discover a security vulnerability in larch, please report it responsibly:
 2. **Do not** open a public GitHub issue for security vulnerabilities
 3. Include steps to reproduce the issue and any relevant context
 
-You should receive an acknowledgment within 72 hours. We will work with you to understand the issue and coordinate a fix before any public disclosure. Rust dependencies are reproducible through the tracked `Cargo.lock` and pinned `rust-toolchain.toml`; CI's required `rust-gate` runs a full-SHA-pinned `cargo-deny` action against `deny.toml` to reject known advisories, unapproved licenses, duplicate versions, wildcard requirements, and unapproved registries or Git sources.
+You should receive an acknowledgment within 72 hours. We will work with you to
+understand the issue and coordinate a fix before any public disclosure.
 
 ## Security Overview
 
 Larch runs with the operator's permissions inside Claude Code. It treats
 repository content, GitHub content, model output, and external-tool output as
 untrusted data at workflow boundaries. Mutation and publication paths use
-explicit authorization, bounded inputs, validation, and redaction. Larch is not
-a sandbox against hostile processes running as the same operating-system user,
-and delegated tools may receive workspace access when a workflow permits it.
-The detailed trust boundaries and known limitations remain in this file until
-their focused references take ownership, as tracked by the
-[security reference index](docs/security/README.md).
+explicit authorization, bounded inputs, validation, and redaction.
+
+Larch verifies release provenance, dependency policy, archives, executable
+identity, and atomic installation before it runs a downloaded binary. Operators
+provide credentials through documented environment variables or standard
+Application Default Credentials. Typed service adapters constrain credentials,
+hosts, operations, redirects, retries, response sizes, and diagnostics. See
+[Supply Chain, Credentials, and Services](docs/security/supply-chain-credentials-and-services.md)
+for the canonical technical contracts.
+
+These controls do not make larch a sandbox against hostile processes running as
+the same operating-system user. Provenance proves how release bytes were built,
+not that the source or build infrastructure is trustworthy. Checksums prove
+integrity, not trust. Delegated tools may receive workspace access when a
+workflow permits it. The [security reference index](docs/security/README.md)
+maps the remaining trust boundaries and known limitations.
 
 ## Rust Release Build Provenance
 
-The tag-triggered Rust asset workflow checks out the exact tag commit and requires the tag, `.claude-plugin/plugin.json`, and Cargo workspace version to agree. It builds and runs each supported target natively. Linux builds run inside digest-pinned `manylinux2014` images and reject symbols newer than glibc 2.17. The workflow packages only `larch` and `LICENSE` with normalized archive metadata.
-
-Each matrix job attests its archive through GitHub artifact attestations. The collector accepts only one archive and one metadata fragment for each required target. It rejects missing, duplicate, empty, unexpected, mismatched, or non-deterministic inputs. It recomputes archive sizes and SHA-256 digests, emits the schema-v1 manifest and checksum file, attests both, verifies all six attestations through the typed Rust GitHub attestation capability, and revalidates the final six-file allowlist before upload.
-
-GitHub provenance ties bytes to a commit and workflow, not source or infrastructure trust. Checksums index integrity, not trust. `/release` uploads only the validated six-file set to a mutable draft, gates merge on its digests and attestations, and preserves the tagged candidate through a merge commit. It rechecks ancestry and versions, publishes without Latest, verifies every immutable asset, then promotes. Failures resume the same draft or release; published tags and assets never change. Installation verifies separately.
+Release builds bind immutable source, versions, supported targets, normalized
+archives, checksums, and attestations before publication. Publication preserves
+the prior Latest release until immutable assets verify. See the
+[canonical release provenance and attestation contract](docs/security/supply-chain-credentials-and-services.md#release-provenance-and-attestations).
 
 ## Rust Bootstrap and Atomic Installation
 
-`scripts/larch.sh` is the only clean-install exec shim and uses no Python. It
-maps four targets and verifies the exact immutable release, tag commit, asset
-allowlist, build attestations, strict manifest and checksums, sizes, digests,
-platform identity, and raw USTAR layout. It rejects symlinks, special files,
-traversal, extra members, malformed archives, and trailing data before
-extracting only `larch`.
-
-The staged binary must pass `--version` and compact-JSON
-`larch bootstrap self-check`. A same-directory rename installs it atomically;
-an existing regular binary retains a hard-link rollback through post-install
-verification. A bounded `CLAUDE_PLUGIN_DATA/bootstrap.lock` serializes first
-use, reclaims revalidated dead-owner locks, and makes waiters re-check before
-downloading. Cleanup removes only process-owned state. Local `.git` checkouts
-require an explicit matching `LARCH_BINARY`. These controls do not defend
-against a hostile same-UID process that can rewrite plugin cache or data files.
-Runtime lints reject production Cargo, `bin/larch`, and
-`target/{debug,release}/larch`; only verified bootstrap owners may execute them.
-The command registry also requires each live Rust-owned selector to name a
-unique shared clean-install fixture. Those fixtures start without `bin/larch`,
-verify version and target before dispatch, and invoke the selector only through
-`scripts/larch.sh`. Issue-registry audit input is typed JSON derived from the
-canonical owner and plan parsers. It is validation evidence, not executable
-input.
-The `service-ownership` rule also rejects runtime `gcloud` execution and keeps
-this clean-install `gh` in `scripts/larch.sh` separate from runtime service
-access: bootstrap use of `gh` does not authorize a runtime adapter to shell out.
-Its GitHub operation matrix fails on ownership or migration-state drift,
-including chief-issue placeholders, inventory gaps, and generic-token fallback.
+The verified bootstrap rejects unsafe archives, validates the staged executable,
+installs atomically, and preserves the prior executable on failure. Upgrade
+failures leave the prior plugin cache intact. See the canonical
+[bootstrap and atomic-installation contract](docs/security/supply-chain-credentials-and-services.md#bootstrap-and-atomic-installation)
+and [upgrade and rollback contract](docs/security/supply-chain-credentials-and-services.md#upgrade-and-rollback-boundaries).
 
 ## Run-log Archive Materialization
 
@@ -96,216 +83,50 @@ removes failed state. It never merges with or replaces an existing cache.
 
 ## Google ADC Trust Boundary
 
-Google credential configuration is trusted operator input. Larch accepts it
-only through the standard Application Default Credentials search order:
-`GOOGLE_APPLICATION_CREDENTIALS`, the well-known local ADC file, then the
-attached-service-account metadata service. Repository content, issue text,
-workflow data, API responses, and agent output cannot supply credential JSON,
-paths, quota projects, scopes, endpoints, or universe domains.
-
-Before the official Google authentication builder reads a selected ADC file,
-larch bounds and parses it. External-account token exchange must use
-`https://sts.googleapis.com/v1/token`. Impersonation must use the documented
-`iamcredentials.googleapis.com` access-token path. AWS and Azure subject-token
-URLs must match their documented metadata endpoints. Executable subject-token
-sources and custom universe domains fail closed. Production rejects the
-test-only `GCE_METADATA_HOST` override, so an inherited emulator setting cannot
-redirect attached-service-account authentication.
-
-`google-cloud-auth` owns access-token exchange, caching, and refresh. Larch does
-not shell out to `gcloud`, copy ADC files, expose authorization headers, persist
-tokens, or create a credential store. Errors retain only a stable failure class,
-not credential values or credential paths. Concrete Google service clients are
-added only for operations recorded in `docs/google-service-inventory.md`, with
-explicit least-privilege scopes and IAM permissions. Offline tests use local
-fixtures. Live ADC tests are ignored by default, require explicit opt-in, and do
-not render credential headers.
+Only trusted operator configuration can select Google ADC. Larch does not shell
+out to `gcloud`, persist tokens, or accept credential configuration from
+repository, GitHub, workflow, or model data. See the
+[canonical Google ADC contract](docs/security/supply-chain-credentials-and-services.md#google-application-default-credentials).
 
 ## Rust GitHub Credential and Transport Boundary
 
-The Rust GitHub service reads exactly one non-empty `LARCH_GH_TOKEN` from the
-environment. It never falls back to `GH_TOKEN`, `GITHUB_TOKEN`, GitHub CLI
-configuration, keychain state, argv, stdin, repository content, issue text, or
-session files. Missing, whitespace-only, and non-Unicode values fail before
-network access. The credential is held by a non-`Debug` wrapper, registered by
-exact value with an invocation-owned redactor, and omitted from the typed child
-environment allowlist. Authorization diagnostics pass through that redactor;
-the Octocrab build excludes its tracing feature.
-
-The adapter constructs one private Octocrab client inside the larch Tokio
-runtime. Octocrab is pinned with default features disabled and only its
-rustls AWS-LC client, timeout, and required JWT support enabled. Octocrab 0.54
-requires a JWT backend even though this adapter exposes token authentication
-only; larch selects AWS-LC because the alternative RustCrypto RSA graph carries
-an unpatched advisory. `aws-lc-sys` builds its bundled C and assembly with CMake
-and a platform C compiler; it adds no dynamic system-library requirement and
-is built by the existing four-target release matrix. Redirects and retries are
-disabled. Larch sets `User-Agent` and `Accept`; pinned Octocrab supplies one
-API-version header. Both bases are pinned to
-`https://api.github.com/`; response-supplied
-continuations must remain HTTPS on the same approved origin. The host policy
-also recognizes `https://github.com` for later typed download boundaries but
-does not permit a continuation to cross between the two origins.
-
-Connect, read, write, and overall deadlines are fixed. Overall execution is
-cooperatively cancellable, response bodies and pagination are bounded, and
-only reviewed transient failures from idempotent reads are retry inputs.
-Uncertain mutations route to typed reconciliation instead of automatic retry.
-The core service port exposes policy and typed transport classifications, not
-raw URLs, arbitrary GraphQL documents, or the concrete client. Operation
-leaves must add typed paths and DTOs behind this same adapter. The
-`service-ownership` repository rule mechanically confines the Octocrab client,
-GitHub request hosts, and GraphQL documents to the adapter crate and requires
-`docs/github-service-inventory.md` to name client and operation owners. Parity
-fixtures independently block all GitHub credential variables.
-
-Repository, issue, comment, label, and search responses are untrusted data.
-The Rust operation adapter converts Octocrab models immediately into
-larch-owned DTOs, rejects missing required fields and unknown states, and
-enforces response-byte, page, item, string, and JSON-nesting limits before it
-returns data to a caller. Pagination follows only parsed same-origin HTTPS
-continuations. Issue titles, bodies, comments, labels, authors, URLs, and search
-results must never become shell text, paths, format strings, or prompt
-instructions.
-
-Idempotent reads have bounded retry and honor a structured `retry_after` value
-when GitHub supplies one. Mutations are serialized by their caller and are not
-blindly retried. Issue edits and closes, comment edits and deletes, and label
-changes read back the owning resource after an ambiguous transport outcome.
-They return success only when the requested postcondition is present. Creates,
-which lack a collision-free request identity, return a typed ambiguous-outcome
-error instead of risking a duplicate issue, comment, or label.
+The Rust GitHub service reads only `LARCH_GH_TOKEN`. Typed adapters constrain
+credential propagation, hosts, transport, pagination, retries, mutations,
+response data, and diagnostics. GitHub content remains untrusted data. See the
+[canonical GitHub credential and transport contract](docs/security/supply-chain-credentials-and-services.md#github-credential-and-transport-boundary).
 
 ### Release and asset service operations
 
-The release leaf adds typed methods for bounded listing, duplicate-safe tag
-selection, policy reads and writes, draft create and update, publish, upload,
-and bounded download. Draft validation binds version, PR head, tag, exact run,
-mutable draft, six assets, digests, `LICENSE`, and attestations before merge.
-Tags use the closed typed Git adapter. Callers use `scripts/larch.sh`; none use
-Python, `gh`, raw Git, arbitrary HTTP, or a fallback. Publication and
-installation stay with their owning callers.
-
-Ambiguous create, upload, edit, publish, and Latest-promotion outcomes read back
-the owning resource. A landed effect succeeds without another write; only
-proven absence permits an idempotent retry. Publication explicitly preserves
-the prior Latest release. Promotion occurs only after immutable asset and
-attestation verification, and verifies the final Latest postcondition. Policy
-and draft edits always read back their state.
-
-Asset download uses an operation-specific host policy that differs from the
-same-origin API continuation policy: a download may leave the API origin for a
-signed content host, but each redirect hop must stay HTTPS (no downgrade),
-carry no embedded credentials, and never revisit a prior URL, and the hop count
-is bounded. The credential is withheld on every cross-origin hop. The streamed
-body is bounded by a per-asset byte cap, must advertise the binary
-octet-stream content type, and is rejected if it ends before its declared
-length. Downloads are deadline-bounded and cancellable.
+Release and asset calls use typed operations, reconcile ambiguous writes, and
+withhold credentials from bounded cross-origin downloads. See the
+[canonical release and asset service contract](docs/security/supply-chain-credentials-and-services.md#release-and-asset-operations).
 
 ## Rust GitHub Pull-Request, Review, and Dependency Operations
 
-Pull-request, review, and dependency operations expose typed inputs only; the fixed review-state GraphQL query fails closed on any `errors` member, including partial data.
-Create reconciles ambiguity before retry. Merge uses the live-mutation gate and validated repository, PR, exact lowercase 40- or 64-byte head, and closed method inputs.
-Merge sends at most one request, then uses bounded exact-head read-back after uncertainty; result classes are fixed and untrusted response text never egresses.
-
-Release preparation uses typed, bounded reads for the Latest release, PRs, and
-companion issue titles. Publication fetches through the typed Git CLI adapter,
-checks ancestry through gix, and uses typed release and attestation services.
-It publishes without changing Latest, verifies the immutable release, and only
-then promotes it. Ambiguous promotion reads back Latest before a retry, and the
-final Latest state is verified. The release commands expose no raw Git, `gh`,
-URL, GraphQL, or Python fallback.
-
-Issue-dependency list, add, and remove use the Python live-mutation gate:
-operator mode, or a regular non-symlink session file directly under a canonical
-root that carries `LARCH_LIVE_MUTATION_OK=true` and the matching run id. Writes
-are idempotent and exact-read-back verified. Triage calls require expected
-`updated_at`, re-read the client before writing, reject stale or protected
-targets, and return a new non-empty timestamp. Lists follow parsed same-origin
-HTTPS `Link` continuations under shared byte, page, item, deadline, and
-cancellation bounds; unavailable APIs and transport errors are typed and redacted.
+Pull-request, review, and dependency operations use typed inputs, explicit
+mutation authorization, bounded reads, and exact read-back after uncertainty.
+The current owner for each operation remains in the service inventory. See the
+[canonical operation contract](docs/security/supply-chain-credentials-and-services.md#pull-request-review-and-dependency-operations).
 
 ## Rust Repository Metadata Read Boundary
 
-`larch_adapters::git::GixRepository` is the sole production implementation of
-the core `RepositoryRead` port. It opens and discovers repositories with `gix`
-ownership checks enabled, rejects reduced-trust ownership, and parses config in
-strict mode. Each mutable-state query reopens through the same checks so later
-ownership or config changes cannot reuse an earlier trusted handle. The
-location method returns the immutable repository identity captured by the
-trusted constructor.
-
-The adapter performs local reads only. It exposes no mutation, network,
-credential, or arbitrary Git command surface. Results preserve object IDs,
-paths, config values, and remote URLs as bytes. Errors use fixed classes and do
-not include repository paths, config values, remote credentials, or upstream
-library diagnostics.
-
-Status and typed tree changes follow the same reopen rule. Status uses the full
-configured `gix` iterator and never writes its optional index-stat refreshes.
-Repository and worktree config that defines an external clean, process,
-textconv, or diff command returns `UnsupportedSemantics` before iteration.
-Callers must route those byte-sensitive cases through the closed exact-diff Git
-CLI operation. User and system filter definitions remain operator-owned config;
-status rejects repository attributes that select them before `gix` can launch a
-filter. Effective conversion attributes are queried through the configured
-attribute stack. Discovery does not follow symlinks and fails closed when the
-worktree traversal exceeds its entry cap.
-Typed results contain paths, modes, IDs, and flags, but no file content or
-upstream diagnostic text.
+Repository reads use one ownership-checking, strict, local-only adapter. It
+exposes no mutation, network, credential, or arbitrary Git command surface. See
+the [canonical repository-read contract](docs/security/supply-chain-credentials-and-services.md#repository-metadata-reads).
 
 ## Rust Git Mutation Compatibility Boundary
 
-`git stage`, `git commit`, and `git amend-add` run through
-`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The script is the sole production
-bootstrap and version-validation entrypoint. Remaining Python callers resolve
-that script. They do not select an implementation, execute `bin/larch`
-directly, invoke Cargo, or fall back to Python command behavior.
-
-Rust composes closed `AddRequest`, `CommitRequest`, and
-`InterpretTrailersRequest` operations. The installed Git executable remains the
-compatibility backend. Git therefore keeps ownership of hooks, clean and
-process filters, signing programs, helpers, commit message cleanup, index
-updates, refs, reflogs, diagnostics, and exit status. Arguments are typed and
-byte-preserving. There is no arbitrary Git argument surface. The process
-adapter clears ambient Git repository overrides, inherits only its reviewed
-environment allowlist, sets `GIT_TERMINAL_PROMPT=0`, bounds captured output,
-and terminates and reaps the Git process group on timeout or cancellation.
-
-Commit messages use a private temporary file. The command removes that file on
-success, Git failure, hook rejection, signing failure, filter failure, and
-cancellation. The default co-author trailer is prepared through Git's
-`interpret-trailers` operation. `--no-trailer` skips only that operation.
-Pathspec files may be absolute because recovery files live outside the
-repository. Their paths reject empty, option-like, and NUL values. Repository
-paths still reject absolute paths, parent traversal, options, and NUL bytes.
-
-Index-lock recovery is narrow. Larch removes only a regular, zero-byte
-`.git/index.lock` after the repository's trusted Git directory is resolved and
-no holder is found by `/proc` or the typed, bounded `lsof` host-utility probe.
-It verifies removal, retries the
-failed Git operation once, and reports the decision. Non-empty, held,
-unreadable, symlink, or unverifiable locks remain untouched. Branch-write
-protection is checked before staging or committing, including the persisted
-original-branch prohibition used by the ship workflow.
+Git mutations use the verified runtime entrypoint and closed typed operations.
+The installed Git executable retains compatibility behavior for hooks, filters,
+signing, helpers, index and ref updates, and diagnostics. See the
+[canonical Git mutation contract](docs/security/supply-chain-credentials-and-services.md#git-mutation-compatibility).
 
 ## Rust GitHub Actions Operation Boundary
 
-The Actions operation port builds repository, workflow, run, job, and check
-paths only from validated typed inputs. Reads retry a bounded transient set
-within the overall deadline and cap pages, items, body bytes, strings, and JSON
-nesting. Rerun and dispatch mutations are serialized. They honor numeric
-`Retry-After` pacing before read-back and report an ambiguous outcome when the
-read-back cannot prove the mutation happened.
-
-Workflow log archives have a 64 MiB and 60 second limit. The adapter follows at
-most three redirects, rejects loops, URL credentials, fragments, plaintext,
-unexpected content types, and oversize or incomplete streams. Redirect hosts
-are limited to the documented `*.actions.githubusercontent.com` suffix and the
-`productionresultssa<digits>.blob.core.windows.net` storage family. Octocrab
-adds authorization only for `api.github.com`, so cross-origin log requests do
-not carry `Authorization`. They preserve the signed query. A production-auth
-loopback test checks both hops. Failures return redacted errors.
+Actions operations use typed paths, bounded reads, serialized mutations, and
+read-back after uncertainty. Workflow log downloads constrain redirects,
+credentials, content, size, and time. See the
+[canonical GitHub Actions contract](docs/security/supply-chain-credentials-and-services.md#github-actions-operations).
 
 ## Scoped Live-Mutation Authorization Boundary
 
@@ -434,19 +255,7 @@ Larch runs inside Claude Code's permission boundary and does not bypass tool per
 
 **Rust runtime safety.** Verify process identity before signals; task sets abort on drop. `ExternalProcessRunner` owns product argv, environment allowlists, bounded redacted capture, shutdown, and reap. Direct-process lint permits its owner, lint bootstrap, and reasoned test oracles. Git fixtures own roots, use local doubles, normalize paths, redact credentials, and never authorize product Git argv. Retry telemetry is count-only.
 
-**Rust Git CLI compatibility boundary.** Product Git mutations and network porcelain use only the closed typed `GitCli` adapter. Each method fixes its subcommand and validates refs, paths, remotes, refspecs, config keys, and option combinations. The adapter creates `ProcessRequest` values, forces `GIT_TERMINAL_PROMPT=0`, and inherits only the production child environment, which excludes unrelated credentials. Treat Git-launched hooks, filters, signing tools, transports, credential helpers, merge drivers, and editors as hostile. Bound and redact their output, and never accept a repository-provided path as the `git` executable.
-
-`docs/git-operation-inventory.md` is the checked ownership boundary.
-`git-ownership` has no baseline or production suppression. It rejects inventory
-or `gix` drift, direct or aliased Git construction, bound executables, raw or
-generic argv, a widened typed surface, restored #7675 Python entrypoints or
-calls, and the retired `push rebase` state machine. Only `#[cfg(test)]` and
-`larch-test-support` fixture oracles plus the lint bootstrap are bounded
-non-production exceptions.
-
 **Python ship-pr and Rust text/I/O boundaries**: Python ship-pr treats model text as untrusted, emits one redacted JSON result envelope, rejects embedded line breaks in `KEY=value` state, uses exclusive same-directory temporary replacement, and fails closed on stale or invalid scope and report artifacts before GitHub mutations. The Rust foundation validates keys and rejects CR/LF record forgery; strict environment reads reject malformed rows, duplicates, and invalid names, while guarded updates allowlist keys before sorted atomic publication. Its filesystem adapter requires normalized absolute paths through existing non-symlink directories, rejects symlinked or special destinations, syncs temporary contents before rename, and distinguishes post-rename directory-sync failure. Descriptor-relative root confinement remains assigned to #7667. Until it lands, hostile same-UID parent replacement can race final pathname validation, so callers must supply trusted canonical parents and must not treat this adapter as a sandbox.
-
-**Rust release-version transaction**: `release set-version` accepts only one semantic version and a fixed repository-owned file inventory. It validates the current plugin, workspace, internal path dependency, member, lockfile, and optional runtime-projection versions before writing. Each write uses the confined atomic UTF-8 adapter and preserves file mode. Any write or postcondition failure restores every original file in reverse order and reports rollback failures. The command exposes no caller-selected rewrite path or content surface. A hard process termination between final-file publications can still leave a partial update; replay fails closed on inconsistent old versions instead of continuing from mixed state.
 
 ### Plan-review scope-anchor pipeline
 
@@ -578,10 +387,6 @@ The aggregator input-containment relaxation is default-off: `--allow-findings-ou
 
 **Relevant-checks captured logs**: `/implement` and `/review` run project-local relevant checks through `python/cli.py checks run-relevant`. Raw check output is captured under the session tmpdir in a mode-`700` `relevant-checks/` directory with mode-`600` logs. Successful runs expose only a bounded `RELEVANT_CHECKS_OK=true` machine line. The default path no longer skips when a shell helper is absent; structural failures emit `STATUS=fail FAILURE_REASON=<token>`, and `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. Failed runs write a redacted companion log through `python/cli.py redact tmpdir-paths | python/cli.py redact secrets`, then write a mode-`600` `DIGEST_FILE` derived only from that redacted log when digest construction succeeds. Orchestrators read `DIGEST_FILE` first when present and readable, fall back to `REDACTED_LOG_FILE` when the digest is absent or insufficient, and never read raw `LOG_FILE`. If redaction fails, the helper emits `STATUS=fail FAILURE_REASON=redaction-failed` without publishing the raw log path or a digest. The scrubber covers tmpdir paths and known secret token families only; internal URLs, private hostnames, and PII still require prompt-level/operator discipline. **Python CI-fix vendor launch**: the collector redacts the `gh --log-failed` output into a tmpdir sibling before any `--failure-log` path is passed to `python/cli.py agent launch-cursor-ci`, `python/cli.py agent launch-codex-ci`, or `python/cli.py agent launch-claude-ci`; if redaction fails or the redacted file is empty, `--failure-log` is omitted (fail-closed). Treat those captures like other model-facing argv: they can contain CI secrets until scrubbed.
 
-**Rust Actions log boundary**: `bin/larch gh run-logs` emits the selected failed-job log bytes unchanged so its stdout retains the legacy diagnostic contract. A caller must redact that stdout before writing it to a model prompt, committed artifact, or other egress surface. The command uses the typed GitHub Actions adapter, which limits archive download and decompressed output to 64 MiB, limits archive entries to 1,024, rejects malformed archives and oversized entries, and never treats archive paths as local filesystem paths.
-
-**Rust repository-resolution boundary**: `bin/larch gh remote-repo` and `bin/larch gh resolve-repo` parse remote names and URLs through the typed gix repository read port and optional `GitHubService` metadata. Malformed or hostile remote strings never become subprocess argv: they fail closed with the legacy stderr contract. Service setup and metadata failures are retained for origin fallback diagnostics and are never treated as instructions. These commands do not invoke `gh` or an untyped Git subprocess.
-
 **CI failed-job diagnostics**: `python/cli.py ci failed-jobs` treats `gh run view` stderr and successful job-name rows as untrusted GitHub API output. It strips C0 control bytes and DEL through `sanitize_diagnostic_line()` before caller-visible stderr, TSV rows, KV fields, and fixable/unfixable classification; job names that sanitize to empty are dropped before `FAILED_JOBS_COUNT` increments. This is control-byte hardening only, not semantic validation of arbitrary workflow names; the existing job-name allowlist and malformed-name classification still decide local replay eligibility.
 
 **Committed run-log manifests**: `python/cli.py run-log init` preserves the `operator_cwd` and `operator_repo_root` manifest keys only as stable placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"` or `null` outside git). Committed `larch-logs/*/manifest.json` files must not carry operator-local absolute paths.
@@ -702,11 +507,11 @@ The Python driver's `ship-pr-state.sh` merge path fails closed before reading or
 **`/design` Step 0 `CLAUDE_PLUGIN_ROOT` export**: The first Bash block in `skills/design/SKILL.md` exports `CLAUDE_PLUGIN_ROOT` from a skill-loader-expanded template line (`export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'`). If expansion fails and the value is empty, Step 0 exits immediately with stderr — invoking `${CLAUDE_PLUGIN_ROOT}/scripts/...` with an empty root would otherwise resolve helpers under the wrong directory.
 **Session writer guard**: session/state content files are written through `python/larch/state/session_env.py` approved verbs. The runtime validates each writer's key allowlist, rejects CR/LF in persisted values before rendering, writes atomically, refuses symlinked targets, and limits session-content destinations to temp/cache session roots. `/dev/null`, plugin-root-only rehydration, and the `/design` current-env symlink use explicit carve-outs with their own validators. These checks reduce prompt-side line-injection and accidental path-clobber risk; they do not protect against a hostile same-UID process that can mutate files in the operator's temp/cache directories.
 
-**`/upgrade-larch` cache ownership and release verification**: `/upgrade-larch` never writes install stamps or recursively deletes, prunes, or edits Claude-managed plugin version directories. Claude Code owns orphan retention so active sessions keep their original roots. The installed Rust driver invokes only Claude, validated larch executables, and the bounded `scripts/larch.sh` bootstrap exception from #7670. It never invokes Python. Only bootstrap children inherit the GitHub CLI auth/config allowlist; Claude and self-check children do not. Before any marketplace mutation, the current root's bootstrap verifies the exact immutable stable release, complete asset allowlist, attestations, manifest, checksums, archive, target, and staged binary identity in confined `${CLAUDE_PLUGIN_DATA}` staging. The driver then uses supported Claude plugin commands and resolves exactly one new cache root through `claude plugin list --json`. Success requires the new root's manifest and executable to report the expected version. A failure leaves the prior cache root untouched and prints retry commands. Bootstrap cleanup removes only its own current staging directory and lock under `${CLAUDE_PLUGIN_DATA}` or its current same-filesystem binary stage. The dev-only `/release` Step 7 builds the released working-tree binary and routes it through `scripts/larch.sh` with the validated `LARCH_BINARY` override. Its internal `--plugin-root` argument keeps upgrade state bound to the separately validated installed cache root. The `release-python-free` rule pins the final command set and rejects Python, direct-binary, and direct-`gh` fallback drift.
-
-**Rust GitHub attestation trust boundary**: The additive Rust service verifies only `character-ai/larch` artifact provenance and immutable-release attestations. Domain callers cannot set a repository, workflow, issuer, signer identity, trust root, API path, or absolute URL. Artifact verification requires a valid Sigstore chain, SCT and Rekor evidence, GitHub Actions OIDC issuer, exact release-workflow identity, repository, tag ref, source commit, `github-hosted` runner evidence, and one matching named SHA-256 subject. Immutable-release verification uses GitHub's separate embedded trust root and release identity, verifies the signed timestamp and signature, and requires the release tag, source commit, repository, and complete unique asset name and digest set. Missing fields fail closed. API bodies, bundle counts, compressed and decompressed bundle bytes, redirects, and deadlines are bounded. A response-supplied bundle URL is accepted only on the exact HTTPS `tmaproduction.blob.core.windows.net/attestations/` path family; cross-host redirects, URL credentials, fragments, loops, and hop overruns fail. Authorization stays on `api.github.com` and is not attached to the bundle-store request. Errors retain only a fixed class and optional HTTP status, so tokens, authorization headers, signed query strings, certificate paths, and bundle content do not enter diagnostics. Release publication consumes this service directly in Rust. It has no Python or `gh` fallback.
-
-**Runtime-only plugin projection**: `.claude-plugin/marketplace.json` uses a `git-subdir` source that fetches only `plugin/`, a generated byte-for-byte runtime projection. The projection includes public skills, agents, hooks, required scripts, runtime Python modules, and required data files. It excludes Rust sources and manifests, `larch-lint`, all custom Python repository linters, tests, release automation, and CI support. `larch release plugin-runtime --check` fails on missing, unexpected, changed, or symlinked projection files. The recommended raw-URL marketplace registration avoids retaining a repository checkout on the client. `/upgrade-larch` migrates legacy sparse GitHub registrations to that source before reinstalling.
+**Runtime-only plugin projection**: The
+[security reference index](docs/security/README.md#runtime-packaging-contract)
+owns the projection's security packaging contract. Installation and upgrade
+instructions remain in
+[`docs/installation-and-setup.md`](docs/installation-and-setup.md).
 
 **`/cleanup` session-tmpdir retention**: The cleanup skill prunes stale entries under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` and matching `/tmp` larch patterns by age, not by whether a skill run is still active. `pgrep -x claude` populates `SESSION_COUNT` for operator visibility only; multiple concurrent Claude sessions do not block or abort cleanup (there is no singleton gate). Retention is controlled by `LARCH_CLEANUP_RETENTION_DAYS` (default 7); non-positive or non-numeric values warn on stderr and fall back to 7. Age checks use `find -mtime` 24-hour blocks (platform rounding applies at block boundaries). The cache pass enumerates all non-symlink top-level entries (no age pre-filter, never delete through a symlink); the `/tmp` pass uses top-level `-mtime +N` plus larch name patterns and may remove stale files as well as directories. Directory deletion is gated by a bounded `find -maxdepth 5 -mtime -N` nested-activity scan, so a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old; activity deeper than five levels does not protect it (depth-bound tradeoff). Matching loose `/tmp` files do not receive nested-scan protection; they are removed by top-level age plus pattern match. A failed scan `find` warns and skips deletion for that directory entry (fail-safe); a failed top-level enumeration `find` or failure to allocate the temp list for enumeration warns via `larch_err` and skips that pass (count 0), while cleanup still exits 0 and still emits removal-count KVs. Dangling `current-design-env-*.sh` symlinks in the sessions parent are reaped separately (age-independent). Session tmpdirs are session-scoped private state and may hold secrets, prompts, and raw `.meta` `CMD_JSON` argv (see the Cursor API key section above); `/cleanup` permanently deletes stale directories that pass the age gate without redaction. Operators should not run `/cleanup` expecting keepalive alone to block deletion — retention and bounded nested-activity bound cache removal.
 

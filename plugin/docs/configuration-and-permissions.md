@@ -201,6 +201,9 @@ universe domains are not supported. Larch requests operation-specific scopes,
 keeps tokens inside the official authentication layer, and does not persist
 them.
 
+See the [Google ADC security contract](security/supply-chain-credentials-and-services.md#google-application-default-credentials)
+for the canonical trust boundary.
+
 ### `LARCH_GH_TOKEN`
 
 `LARCH_GH_TOKEN` is the sole credential input for Rust GitHub service calls.
@@ -222,6 +225,9 @@ self-exec, and the `service-ownership` repository rule rejects `gcloud` and
 service-credential child environments in production surfaces. The clean-install
 `gh` in `scripts/larch.sh` runs before any runtime and is a separate installer
 surface.
+
+See the [GitHub credential and transport security contract](security/supply-chain-credentials-and-services.md#github-credential-and-transport-boundary)
+for the canonical trust boundary.
 
 ### `LARCH_BINARY`
 

@@ -10,11 +10,15 @@ use larch_adapters::{GixRepository, PathIntent, RepositoryRoot, read_utf8};
 
 const DIRECT_FILES: &[&str] = &[
     ".claude-plugin/plugin.json",
+    "ARCHITECTURE.md",
     "LICENSE",
     "SECURITY.md",
     "docs/configuration-and-permissions.md",
     "docs/difficulty-floor-globs.tsv",
     "docs/external-reviewers.md",
+    "docs/git-operation-inventory.md",
+    "docs/github-service-inventory.md",
+    "docs/google-service-inventory.md",
     "docs/installation-and-setup.md",
     "docs/issue-anchored-plan.md",
     "docs/linting.md",
@@ -414,7 +418,11 @@ mod tests {
                 .is_empty()
         );
         assert!(paths.contains("agents/reviewer.md"));
+        assert!(paths.contains("ARCHITECTURE.md"));
         assert!(paths.contains("SECURITY.md"));
+        assert!(paths.contains("docs/git-operation-inventory.md"));
+        assert!(paths.contains("docs/github-service-inventory.md"));
+        assert!(paths.contains("docs/google-service-inventory.md"));
         assert!(paths.contains("docs/security/README.md"));
         assert!(paths.contains("docs/security/workflow.md"));
         assert!(paths.contains("hooks/hooks.json"));
