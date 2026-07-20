@@ -13,7 +13,11 @@ import os
 import stat
 import subprocess
 import sys
+from contextlib import chdir, nullcontext, redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest import mock
+
 import pytest
 
 from larch.calibration import difficulty
@@ -61,6 +65,38 @@ def _install_log_publish_stub(
 
     monkeypatch.setattr(design_log_publish_flow, "run_log_publish", stub)
     return calls
+
+
+def _run_publish_in_process(
+    command: list[str],
+    *,
+    capture_output: bool,
+    text: bool,
+    check: bool,
+    env: dict[str, str] | None = None,
+    cwd: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run the publish CLI boundary while retaining pytest's publisher stub."""
+    assert command[2:4] == ["design", "publish"]
+    assert capture_output
+    assert text
+    assert not check
+    stdout = StringIO()
+    stderr = StringIO()
+    environment = os.environ.copy() if env is None else env
+    with (
+        mock.patch.dict(os.environ, environment, clear=True),
+        chdir(cwd) if cwd is not None else nullcontext(),
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+    ):
+        rc = design_publish.publish_main(command[4:])
+    return subprocess.CompletedProcess(
+        command,
+        rc,
+        stdout=stdout.getvalue(),
+        stderr=stderr.getvalue(),
+    )
 
 
 
@@ -937,7 +973,7 @@ def test_publish_main_completes_step5b5_with_missing_candidate(tmp_path: Path) -
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -974,7 +1010,7 @@ def test_publish_requires_composed_plan(tmp_path: Path) -> None:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1018,7 +1054,7 @@ def test_publish_rejects_missing_difficulty_when_validation_enforces_it(tmp_path
     env["FAKE_CLI_REQUIRE_DIFFICULTY"] = "1"
     env["RECORD_FILE"] = str(record_file)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1109,7 +1145,7 @@ diff_lines: 12
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
     env["FAKE_CLI_REQUIRE_DIFFICULTY"] = "1"
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1181,7 +1217,7 @@ def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path:
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1226,7 +1262,7 @@ def test_publish_rejects_invalid_raw_sidecar_before_label_or_record_writes(tmp_p
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1285,7 +1321,7 @@ def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: P
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["RECORD_FILE"] = str(recorder)
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1331,7 +1367,7 @@ def test_publish_reports_missing_script_count_from_validate_log(tmp_path: Path) 
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["VALIDATE_LOG"] = str(log)
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1442,7 +1478,7 @@ def test_publish_present_empty_session_id_skips_log_publish(tmp_path: Path) -> N
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1484,7 +1520,7 @@ def test_publish_omitted_session_id_fails_closed_before_plan_write(tmp_path: Pat
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1524,7 +1560,7 @@ def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
         },
     )
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1562,7 +1598,7 @@ def test_publish_refuses_complete_without_step3_sentinel(tmp_path: Path) -> None
         },
     )
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1601,7 +1637,7 @@ def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1646,7 +1682,7 @@ def test_publish_upserts_architecture_diagram_when_present(tmp_path: Path) -> No
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1701,7 +1737,7 @@ def test_publish_promotes_valid_candidate_before_upsert(tmp_path: Path) -> None:
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1753,7 +1789,7 @@ def test_publish_rejected_candidate_skips_and_sanitizes_logs(tmp_path: Path) -> 
     env["FAKE_CLI_MERMAID_REJECT"] = "1"
     env["FAKE_CLI_MERMAID_LEAK"] = "1"
 
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1806,7 +1842,7 @@ def test_publish_clears_architecture_when_skipped(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1847,7 +1883,7 @@ def test_publish_skips_upsert_when_no_diagram(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -1890,7 +1926,7 @@ def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_FAIL"] = "1"
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [
             sys.executable,
             str(cli_py),
@@ -2468,7 +2504,7 @@ def test_publish_capture_does_not_read_session_env(tmp_path: Path) -> None:
     (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
     (design / "session-env.sh").mkdir()
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
-    result = subprocess.run(
+    result = _run_publish_in_process(
         [sys.executable, str(cli_py), "design", "publish", "--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"],
         capture_output=True,
         text=True,
