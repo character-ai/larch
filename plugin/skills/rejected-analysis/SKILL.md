@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=rejected-analysis
 name: rejected-analysis
 description: "Use when recovering verified real rejected code-review findings from synchronized larch run logs and filing GitHub issues for findings that remain unfixed."
 argument-hint: "--n DAYS"
 allowed-tools: Bash, Read, Write, Agent, Skill
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `rejected-analysis`.**
 
 # rejected-analysis
 

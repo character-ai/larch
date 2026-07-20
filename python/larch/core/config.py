@@ -49,6 +49,14 @@ RUN_LOG_ARCHIVE_MAX_MEMBERS: Final = 10_000
 RUN_LOG_ARCHIVE_MAX_MEMBER_BYTES: Final = 256 * 1024 * 1024
 RUN_LOG_ARCHIVE_MAX_EXPANDED_BYTES: Final = 1024 * 1024 * 1024
 RUN_LOG_ARCHIVE_MAX_COMPRESSION_RATIO: Final = 1_000
+SKILL_LIFECYCLE_MARKER_TEMPLATE: Final = (
+    "# larch-run-lifecycle: shared-v1 skill={skill}"
+)
+SKILL_LIFECYCLE_INSTRUCTION_TEMPLATE: Final = (
+    "**MANDATORY: Follow the complete shared lifecycle contract in "
+    "`${{CLAUDE_PLUGIN_ROOT}}/skills/shared/run-lifecycle.md` with declared skill "
+    "`{skill}`.**"
+)
 ENV_LARCH_R2_ACCOUNT_ID: Final = "LARCH_R2_ACCOUNT_ID"
 ENV_LARCH_R2_ENDPOINT: Final = "LARCH_R2_ENDPOINT"
 # Aggregate migration-governance report contract.

@@ -30,3 +30,8 @@ For a nested child invocation, give the child the parent skill and run ID. The
 child passes them to start as `--parent-skill "<parent-name>" --parent-run-id
 "<parent-run-id>"`. Parent and child keep distinct `RUN_ID` values and distinct
 archives.
+
+Aliases are parent invocations, not alternate names for the target run. Start
+and finish the alias under its alias name. When invoking its target through the
+Skill tool, keep the alias `SKILL` and `RUN_ID` in context so the target starts
+as a distinct child. Apply the same handoff to every other child Skill call.

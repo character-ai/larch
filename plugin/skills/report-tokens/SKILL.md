@@ -1,10 +1,12 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=report-tokens
 name: report-tokens
 description: "Use when analyzing token costs from synchronized larch run logs for `--skill=design|implement`: price token reports, optionally plot trends, and print cost-reduction suggestions."
 allowed-tools: Bash, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `report-tokens`.**
 
 # Report Tokens
 

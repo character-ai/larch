@@ -265,6 +265,10 @@ are create-only and identity-checked. Retained retry state and local archive
 caches remain private operator state. Moving an archive to object storage does
 not broaden who should receive it.
 
+This boundary applies to every public, alias, internal child, and dev-only skill
+archive. Parent-child metadata identifies run relationships but does not change
+the classification, redaction, or publication rules for either archive.
+
 `python/cli.py run-log sync` treats the remote inventory and downloaded archives
 as untrusted. It accepts only the exact `run-logs/<skill>/<run-id>.tar.gz`
 layout, rejects invalid or colliding local names, checks listed and downloaded

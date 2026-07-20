@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=alias
 name: alias
 description: "Use when creating shortcut aliases for existing larch skills with preset flags. Routes plugin-source aliases to skills/ unless --private forces .claude/skills/."
 argument-hint: "[--merge] [--private] <alias-name> <target-skill> [preset-flags...]"
 allowed-tools: Bash, Skill
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `alias`.**
 
 # Alias Skill
 

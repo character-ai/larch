@@ -1,10 +1,12 @@
 ---
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=review
 name: review
 description: "Use when reviewing code changes (--diff for branch diff, or positional text for existing code review). Description mode records accepted OOS items in local artifacts for manual `/issue` follow-up."
 argument-hint: "[--diff] [--subagent] [--dynamic-archetypes <N>] [--session-env <path>] [--step-prefix <prefix>] [--difficulty <TRIVIAL|MODERATE|HARD>] [<description>]"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, Skill
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `review`.**
 # Code Review Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**

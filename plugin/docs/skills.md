@@ -8,6 +8,10 @@ Reference for every larch skill, split by distribution tier:
 
 The skill set documented here matches the skills in the repository. Each entry lists invocation arguments, the canonical `SKILL.md` source, and behavior.
 
+Every listed public, alias, internal, and dev-only skill uses the shared run
+lifecycle under its declared name. A nested Skill-tool call creates a distinct
+child run whose manifest records the parent skill and run ID.
+
 ## Public skills
 
 - [`/alias`](#alias)

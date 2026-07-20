@@ -1,10 +1,12 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=upgrade-larch
 name: upgrade-larch
 description: "Use when upgrading larch to the latest stable plugin and matching verified executable."
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `upgrade-larch`.**
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 

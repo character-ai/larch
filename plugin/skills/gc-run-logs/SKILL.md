@@ -1,10 +1,12 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=gc-run-logs
 name: gc-run-logs
 description: "Use when slimming or deleting aged larch run-log directories to cap repo growth. Applies age retention and creates a log-only PR for operator merge."
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `gc-run-logs`.**
 
 # gc-run-logs
 

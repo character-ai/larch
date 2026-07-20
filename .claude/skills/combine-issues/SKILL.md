@@ -1,8 +1,11 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=combine-issues
 name: combine-issues
 description: "Use when combining open issues to reduce issue count and token cost. Use /combine-issues --oos for OOS issues; checks actuality and merit before aggressive combinations."
 allowed-tools: Bash, Read, Write
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `combine-issues`.**
 
 # Combine Issues
 

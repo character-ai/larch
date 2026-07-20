@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=f
 name: f
 description: "Use when forcing an implementation with Claude subagent implement + self-review. Shortcut for /implement --force --self-review --self-implement."
 argument-hint: "<arguments>"
-allowed-tools: Skill, Read
+allowed-tools: Bash(python3:*), Skill, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `f`.**
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 

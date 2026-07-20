@@ -112,8 +112,9 @@ def test_reference_skill_publishes_every_terminal_outcome(
     assert run_lifecycle.UNIVERSAL_SESSION_TRANSCRIPT in issues
 
 
-def test_nested_child_records_both_run_ids_without_merging_archives(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot]
+@pytest.mark.parametrize("child_outcome", ["success", "failure"])
+def test_alias_and_target_record_declared_names_and_parent_child_ids(
+    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot], child_outcome: str
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
 
@@ -122,7 +123,7 @@ def test_nested_child_records_both_run_ids_without_merging_archives(
 
     parent = run_lifecycle.start_run(
         repo_root=repo,
-        skill="status",
+        skill="f",
         run_id="parent-run",
         environ=environment,
         storage_root=storage_root,
@@ -130,7 +131,7 @@ def test_nested_child_records_both_run_ids_without_merging_archives(
     )
     child = run_lifecycle.start_run(
         repo_root=repo,
-        skill="cleanup",
+        skill="implement",
         run_id="child-run",
         parent_skill=parent.skill,
         parent_run_id=parent.run_id,
@@ -144,7 +145,7 @@ def test_nested_child_records_both_run_ids_without_merging_archives(
         repo_root=repo,
         skill=child.skill,
         run_id=child.run_id,
-        outcome="success",
+        outcome=child_outcome,
         environ=environment,
         storage_root=storage_root,
         store=store,
@@ -164,6 +165,14 @@ def test_nested_child_records_both_run_ids_without_merging_archives(
             encoding="utf-8"
         )
     )
+    parent_manifest = json.loads(
+        (parent_terminal.publication.cache_dir / "manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert parent_manifest["skill"] == "f"
+    assert child_manifest["skill"] == "implement"
+    assert child_manifest["terminal_outcome"] == child_outcome
     assert child_manifest["run_id"] == child.run_id
     assert child_manifest["parent_skill"] == parent.skill
     assert child_manifest["parent_run_id"] == parent.run_id

@@ -1,10 +1,12 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=cleanup
 name: cleanup
 description: "Use when cleaning up stale larch session temp directories by age and reaping dangling /design session-env symlinks."
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `cleanup`.**
 
 # cleanup
 

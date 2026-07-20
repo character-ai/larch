@@ -1,9 +1,11 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=pause
 name: pause
 description: Use when the operator wants to pause a live /design session and save resumable state to the issue.
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `pause`.**
 
 # /larch:pause
 

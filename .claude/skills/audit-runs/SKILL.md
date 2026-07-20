@@ -1,8 +1,11 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=audit-runs
 name: audit-runs
 description: "Use when auditing recently merged larch run logs for anomalies, filing the chain-of-history audit issue, and proposing user-approved bug follow-ups."
 allowed-tools: Bash, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `audit-runs`.**
 
 # audit-runs
 

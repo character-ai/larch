@@ -1,10 +1,12 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=fluff-analysis
 name: fluff-analysis
 description: "Use when analyzing review fluff in synchronized larch run logs: rejected, OOS, or accepted-low-value findings, plus tuning recommendations."
 allowed-tools: Bash, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `fluff-analysis`.**
 
 # fluff-analysis
 
