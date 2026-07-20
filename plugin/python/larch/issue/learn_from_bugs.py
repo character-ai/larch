@@ -1,6 +1,5 @@
 # argparse add_argument() and file write_text()/write() results are intentionally discarded.
-# Git-only publisher helpers remain private and dormant until their owner is retired in #7824.
-# pyright: reportUnusedCallResult=false, reportUnusedFunction=false
+# pyright: reportUnusedCallResult=false
 """Mine closed issues for recurring root causes and propose preventions.
 
 Backs the ``/learn-from-bugs`` skill. GitHub access goes through the
@@ -2064,6 +2063,9 @@ def run_state_publish(runner: Runner, request: StatePublishRequest) -> StatePubl
     if parsed is None or not Path(parsed["STATE_PATH"]).is_absolute():
         raise StatePublishError(STATE_PUBLISH_WRITE_STATE_FAILED, "write-state did not return one absolute STATE_PATH")
     return StatePublishResult(STATE_PUBLISH_SAVED, 0, "", parsed["STATE_PATH"])
+
+
+_DORMANT_GIT_PUBLISHERS = (_preflight, _resolve_default_branch, _state_branch_name, _reserve_branch, _publish_in_checkout, _restore_default_branch)
 
 
 def state_publish_main(argv: list[str]) -> int:

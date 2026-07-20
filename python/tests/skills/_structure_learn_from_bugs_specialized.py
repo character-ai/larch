@@ -200,12 +200,12 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(N.1) filed guideline bodies must include complete append-ready text")
     if "**New invariants-file entry:** complete normative statement and complete append-ready invariants-file entry" not in text:
         failures.append("(N.2) filed invariant bodies must include complete append-ready text")
-    if "larch-logs/shared/learn-from-bugs-filing/" not in text:
-        failures.append("(O.1) filing mode must persist durable artifacts under learn-from-bugs-filing/")
+    if "<STATE_PATH parent>/filing/" not in text:
+        failures.append("(O.1) filing mode must persist durable artifacts beside the state marker")
     if "pending-state.json" not in text:
         failures.append("(O.2) durable pending filing state must be documented")
-    if "before any scan-marker commit" not in text:
-        failures.append("(O.3) durable artifacts must precede scan-marker commit")
+    if "before any marker write" not in text:
+        failures.append("(O.3) durable artifacts must precede the marker write")
     if "retain the durable artifacts and pending state, surface the failure, and stop without advancing the scan marker" not in text:
         failures.append("(O.4) dry-run/create failures must retain retry artifacts and block marker advancement")
     if "Only after a successful create pass" not in text:
@@ -214,8 +214,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(P.1) default mode must preserve state-publication-before-Step-5 ordering")
     if "Then continue to Step 5 (approval-gated follow-ups)" not in text:
         failures.append("(P.2) default mode must continue to approval-gated Step 5 after publication resolution")
-    if "`ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote" not in text:
-        failures.append("(Q.1) publication must accept detached repository checkouts with origin")
+    if "with private permissions and no Git mutation" not in text:
+        failures.append("(Q.1) publication must be private local state without Git mutation")
     if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish' not in text:
         failures.append("(Q.2) publication must delegate the whole flow to learn-from-bugs state-publish")
     state_publish_args = (
@@ -231,28 +231,24 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(Q.3) state-publish must forward the checkout, run, and proposal inputs")
     if "set -euo pipefail" not in text:
         failures.append("(S.2) publication fence must use strict mode")
-    if "Parse exactly one whole-line `STATE_PUBLISH_STATUS`, `PR_NUMBER`, and `PR_URL`" not in text:
-        failures.append("(T.10) publication consumers must parse one complete state-publish result")
-    if "Accept only `merged` or `handoff-pending`, a positive PR number, and a non-empty URL" not in text:
-        failures.append("(T.9) publication must accept only merged or handoff-pending outcomes")
-    if "`STATE_PUBLISH_RECOVERY_BRANCH`" not in text:
-        failures.append("(T.11) committed PR-less failure must surface STATE_PUBLISH_RECOVERY_BRANCH")
+    if "Parse exactly one whole-line `STATE_PUBLISH_STATUS` and `STATE_PATH`" not in text:
+        failures.append("(T.10) publication consumers must parse one complete local-state result")
+    if "Require `STATE_PUBLISH_STATUS=saved` and an absolute `STATE_PATH`" not in text:
+        failures.append("(T.9) publication must accept only a saved absolute state path")
+    if "A write failure leaves `${RUN_DIR}/reconciled-proposals.jsonl` available for retry" not in text:
+        failures.append("(T.11) write failure must preserve reconciled proposals for retry")
     if text.count("run the shared state-publication fragment now") != 3:
         failures.append("(U.1) all three marker-producing paths must invoke the shared fragment")
     default_publication = text.find("### Default mode (FILE_MODE=false): state publication before Step 5")
     step_five = text.find("## Step 5 - Follow-up gates")
     if default_publication < 0 or step_five < 0 or default_publication >= step_five:
         failures.append("(U.2) default state publication must remain before Step 5")
-    if "Do not rerun `/issue` merely because marker publication awaits manual merge" not in text:
-        failures.append("(U.3) filing handoff must not retry successful issue creation")
-    if "status `handoff-pending` plus the validated PR number and URL" not in text:
-        failures.append("(U.4) filing handoff must persist PR identity in pending state")
-    if "requires a clean current checkout on the synced default branch" not in text:
-        failures.append("(U.5) publication must require a clean synced current checkout")
-    if "On a committed but PR-less failure it preserves and reports the recovery branch" not in text:
-        failures.append("(U.6) PR-less failure must preserve its recovery branch")
-    if "Once a valid PR exists, the PR is the recovery surface" not in text:
-        failures.append("(U.7) valid PR must become the recovery surface")
+    if "Do not rerun `/issue` merely because the marker write needs retry" not in text:
+        failures.append("(U.3) marker retry must not repeat successful issue creation")
+    if "Keep `pending-state.json` through publication" not in text:
+        failures.append("(U.4) filing must keep pending state through marker publication")
+    if "Reject symlinked or non-regular destinations" not in text:
+        failures.append("(U.5) durable state must reject unsafe destinations")
     migrated_out = (
         'git -C "$ANALYSIS_ROOT" worktree add --detach',
         'git switch -c "$STATE_BRANCH"',
