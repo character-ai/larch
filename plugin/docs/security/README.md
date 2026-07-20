@@ -21,12 +21,13 @@ high-level trust statement.
 | Area | Canonical owner now | Focused owner | Status |
 |------|---------------------|---------------|--------|
 | Public policy, supported versions, disclosure, scope, and high-level trust | [`SECURITY.md`](../../SECURITY.md) | Root policy | Current |
-| Release provenance, bootstrap, dependencies, credentials, and external service boundaries | Named sections in [`SECURITY.md`](../../SECURITY.md) | `docs/security/supply-chain-credentials-and-services.md` | Planned in #7854; root sections remain canonical |
+| Release provenance, bootstrap, dependencies, credentials, and external service boundaries | [`docs/security/supply-chain-credentials-and-services.md`](supply-chain-credentials-and-services.md) | Focused reference | Current; root headings are compatibility pointers |
 | Workflow trust, untrusted input, agent access, authorization, and mutation controls | Named sections in [`SECURITY.md`](../../SECURITY.md) | `docs/security/workflow-trust-and-mutations.md` | Planned in #7855; root sections remain canonical |
 | Temporary and committed artifacts, redaction, retention, and public publication | Named sections in [`SECURITY.md`](../../SECURITY.md) | `docs/security/artifacts-redaction-and-publication.md` | Planned in #7856; root sections remain canonical |
 
-The final reference cleanup in #7857 will remove obsolete detail only after
-all live callers point to the correct canonical owner.
+The final reference cleanup in #7857 will remove obsolete detail only after all
+live callers point to the correct canonical owner. Root compatibility headings
+remain until that cleanup.
 
 ## Runtime Packaging Contract
 
@@ -35,6 +36,10 @@ index, and every tracked Markdown file under `docs/security/`. Projection
 generation also scans shipped skill Markdown for `docs/security/*.md`
 references and fails if a target is absent. The same validation runs when CI
 generates the projection and checks it for byte-for-byte drift.
+
+The projection also includes `ARCHITECTURE.md` and the Git, GitHub, and Google
+service inventories linked by the focused supply-chain reference. Those links
+therefore resolve in both a source checkout and an installed plugin.
 
 `crates/larch-cli/src/release_plugin_runtime.rs` is the single implementation
 owner. The old Python projection command is retired, and no Bash projection

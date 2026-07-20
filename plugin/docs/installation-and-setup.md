@@ -54,6 +54,9 @@ authenticates to GitHub. The explicit `GH_TOKEN=` assignment is only for this
 manual GitHub CLI verification command. Larch does not make that conversion or
 invoke `gh auth token` during service calls.
 
+See the [GitHub credential and transport security contract](security/supply-chain-credentials-and-services.md#github-credential-and-transport-boundary)
+for the runtime guarantees and residual limits.
+
 #### Google Application Default Credentials
 
 Google-backed larch features require [Application Default Credentials (ADC)](https://cloud.google.com/docs/authentication/provide-credentials-adc).
@@ -97,6 +100,9 @@ persist access tokens, or provide a separate credential store.
 External-account ADC must use Google's documented token and provider endpoints.
 Executable subject-token sources, custom impersonation endpoints, custom cloud
 universes, and `GCE_METADATA_HOST` overrides fail closed in production.
+
+See the [Google ADC security contract](security/supply-chain-credentials-and-services.md#google-application-default-credentials)
+for the runtime guarantees and residual limits.
 
 ### Install
 - **Anthropic / Claude Code**: `curl -fsSL https://claude.ai/install.sh | bash`
@@ -193,6 +199,9 @@ LARCH_BINARY="$PWD/target/release/larch" \
 `LARCH_BINARY` must be an absolute, regular executable. Its version and target
 self-check must match the active plugin and host.
 
+See the [bootstrap and atomic-installation security contract](security/supply-chain-credentials-and-services.md#bootstrap-and-atomic-installation)
+for archive validation, rollback, and same-UID limitations.
+
 ### Configure Claude
 Edit `~/.claude/settings.json` and add a `permissions`/`allow` section (if it does not have one yet) with this entry. NOTE: replace `<your-user-name>`!
 
@@ -244,6 +253,9 @@ A failure leaves the prior cache root untouched and safe for the running
 session. Restart `claude` after a successful install or marketplace repair.
 The first upgrade from the old sparse GitHub marketplace registration replaces
 that registration with the runtime-only remote source.
+
+See the [upgrade and rollback security contract](security/supply-chain-credentials-and-services.md#upgrade-and-rollback-boundaries)
+for verification and cache-ownership guarantees.
 
 ## Uninstalling
 
