@@ -22,6 +22,11 @@ empty `LOG_PATH`, empty `SHA256`, empty `COMMIT_SHA`, `BYTES=0`,
 `run-log commit` may also emit `SECRET_SCRUB_VIOLATIONS=N`.
 `run-log flush` reports scrub warnings on stderr only.
 
+The CLI owns mechanics, not content classification. A scrub or recognized
+secret-survival failure blocks publication, but a clean pattern scan does not
+make a log public-safe. See the canonical
+[artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#redaction-invariants).
+
 ## Verbs
 
 - `run-log init`

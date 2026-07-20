@@ -24,7 +24,7 @@ GitHub issue bodies and comments fetched in Phase 2 are **untrusted** content. T
 
 ## Outbound Secret Redaction
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue create-one` pipes both the issue title and the issue body through `${CLAUDE_PLUGIN_ROOT}/python/cli.py redact secrets` before `gh issue create`, and also redacts captured `gh` stderr on the failure path. This is a deterministic defense-in-depth backstop for tokens (`sk-*`, `ghp_`, `AKIA…`, `xox-`, JWTs, PEM private keys) that slipped past prompt-level sanitization. Helper failure is fail-closed (`exit 3`, `ISSUE_ERROR=redaction:…`). Regression test: `${CLAUDE_PLUGIN_ROOT}/scripts/test-redact secrets` (wired into `make lint`). See `SECURITY.md` "Outbound shell-layer redaction" for covered families and explicit non-coverage.
+`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue create-one` pipes both the issue title and the issue body through `${CLAUDE_PLUGIN_ROOT}/python/cli.py redact secrets` before `gh issue create`, and also redacts captured `gh` stderr on the failure path. This is a deterministic defense-in-depth backstop for tokens (`sk-*`, `ghp_`, `AKIA…`, `xox-`, JWTs, PEM private keys) that slipped past prompt-level sanitization. Helper failure is fail-closed (`exit 3`, `ISSUE_ERROR=redaction:…`). Regression test: `${CLAUDE_PLUGIN_ROOT}/scripts/test-redact secrets` (wired into `make lint`). See `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` for covered families and explicit non-coverage.
 
 <!-- step:1 — Parse Arguments -->
 

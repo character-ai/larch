@@ -104,7 +104,7 @@ If investigation reveals a security vulnerability rather than ordinary functiona
 <!-- step:4 - Compose issue body -->
 ## Step 4 - Compose issue body
 
-**Sanitize before writing.** The body will be filed as a **public** GitHub issue. Before `Write`, apply compose-time redaction to every section (especially **Evidence** and **Original report**): secrets / API keys / OAuth / JWT / passwords / certificates → `<REDACTED-TOKEN>`; internal hostnames / URLs / private IPs → `<INTERNAL-URL>`; PII (emails, names, account IDs linked to a real user) → `<REDACTED-PII>`. Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` and `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` outbound-redaction rules. `/issue`'s shell scrubber covers token-shaped secrets only; prompt-level sanitization is required and `/issue` redaction is defense-in-depth, not sufficient alone.
+**Sanitize before writing.** The body will be filed as a **public** GitHub issue. Before `Write`, apply compose-time redaction to every section (especially **Evidence** and **Original report**): secrets / API keys / OAuth / JWT / passwords / certificates → `<REDACTED-TOKEN>`; internal hostnames / URLs / private IPs → `<INTERNAL-URL>`; PII (emails, names, account IDs linked to a real user) → `<REDACTED-PII>`. Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` and `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md`. `/issue`'s shell scrubber covers token-shaped secrets only; prompt-level sanitization is required and `/issue` redaction is defense-in-depth, not sufficient alone.
 
 Use `Write` to create `$BUG_TMPDIR/bug-issue-body.md` with exactly these ten `##` headings, in this order:
 

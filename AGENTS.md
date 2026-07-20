@@ -40,7 +40,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - `skills/triage/SKILL.md`; `python/cli.py triage {inspect,probe,apply}`: pre-design issue verification, immutable-main evidence, bounded probes, and fail-closed issue mutation
 - `.claude/skills/release/scripts/classify-bump.md`: release classification rules
 - `skills/shared/subskill-invocation.md`; `skills/shared/skill-design-principles.md`; `skills/shared/reviewer-templates.md`: shared skill and reviewer authorities
-- `SECURITY.md`: public security policy and compatibility pointers; `docs/security/README.md`: document taxonomy, ownership, and runtime packaging contract; `docs/security/supply-chain-credentials-and-services.md`: release, credential, transport, and service security contracts; `docs/security/workflow-trust-and-mutations.md`: workflow trust, mutation, and private-finding contracts
+- `SECURITY.md`: public security policy and compatibility pointers; `docs/security/README.md`: document taxonomy, ownership, and runtime packaging contract; `docs/security/supply-chain-credentials-and-services.md`: release, credential, transport, and service security contracts; `docs/security/workflow-trust-and-mutations.md`: workflow trust, mutation, and private-finding contracts; `docs/security/artifacts-redaction-and-publication.md`: artifact classification, redaction, diagnostics, scanning, retention, and publication contracts
 - `docs/python-migration.md`: sh-to-py playbook, decision log, manifest, and `lint-retired-scripts`
 
 ## Output Style
