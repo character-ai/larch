@@ -1,6 +1,6 @@
 # python/retro_v3_sweep.py contract
 
-`python3 python/cli.py run-log retro-v3-sweep` transforms committed rendered transcripts to schema v3.
+`python3 python/cli.py run-log retro-v3-sweep` transforms historical Git-corpus transcripts to schema v3.
 
 ## CLI
 

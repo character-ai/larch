@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::{Args, ValueEnum};
-use larch_core::{ObjectStore, ObjectStoreError, RemoteObject};
+use larch_core::{ObjectPage, ObjectStore, ObjectStoreError, RemoteObject};
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -86,12 +86,7 @@ async fn execute(arguments: &GcsArguments, store: &dyn ObjectStore) -> ExitCode 
                 arguments.page_token.as_deref(),
             )
             .await
-            .map(|page| {
-                json!({
-                    "next_page_token": page.next_page_token,
-                    "objects": page.objects.iter().map(object_json).collect::<Vec<_>>(),
-                })
-            }),
+            .map(|page| page_json(&page)),
         GcsOperation::UploadCreate => store
             .upload_create(&arguments.bucket, key, source)
             .await
@@ -131,12 +126,23 @@ pub async fn exercise(operation: GcsOperation, store: &dyn ObjectStore) -> ExitC
     .await
 }
 
-fn object_json(object: &RemoteObject) -> Value {
+#[doc(hidden)]
+#[must_use]
+pub fn object_json(object: &RemoteObject) -> Value {
     json!({
         "etag": object.etag,
         "key": object.key,
         "size": object.size,
         "version": object.version,
+    })
+}
+
+#[doc(hidden)]
+#[must_use]
+pub fn page_json(page: &ObjectPage) -> Value {
+    json!({
+        "next_page_token": page.next_page_token,
+        "objects": page.objects.iter().map(object_json).collect::<Vec<_>>(),
     })
 }
 
@@ -158,14 +164,20 @@ fn valid_object_text(value: &str, allow_empty: bool) -> bool {
 #[doc(hidden)]
 #[must_use]
 pub fn report_error(error: ObjectStoreError) -> ExitCode {
-    let (label, code) = match error {
+    let (label, code) = error_contract(error);
+    eprintln!("GCS object transport failed: {label}");
+    ExitCode::from(code)
+}
+
+#[doc(hidden)]
+#[must_use]
+pub const fn error_contract(error: ObjectStoreError) -> (&'static str, u8) {
+    match error {
         ObjectStoreError::Authentication => ("authentication", 3),
         ObjectStoreError::AlreadyExists => ("already-exists", 4),
         ObjectStoreError::NotFound => ("not-found", 5),
         ObjectStoreError::LocalIo => ("local-io", 6),
         ObjectStoreError::InvalidResponse => ("invalid-request-or-response", 2),
         ObjectStoreError::Transport => ("transport", 1),
-    };
-    eprintln!("GCS object transport failed: {label}");
-    ExitCode::from(code)
+    }
 }

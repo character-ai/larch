@@ -126,7 +126,7 @@ Re-derive these paths from `PR_LIST_FILE` in each later Bash fence that consumes
 
 On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `main-status-failed`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
 
-**Narrate the prepared window** before Step 3: state that `PR_COUNT` PRs merged since `BASELINE_TAG`, then that you are reading the PR list for release notes. When `IGNORED_LARCHLOG_PR_COUNT` is greater than `0`, add that `IGNORED_LARCHLOG_PR_COUNT` larch run-log PRs (`chore(larch-logs): …`) were excluded from the count and notes. `release prepare` already drops those PRs from both `PR_COUNT` and `PR_LIST_FILE`, so the count reflects substantive PRs only.
+**Narrate the prepared window** before Step 3: state that `PR_COUNT` PRs merged since `BASELINE_TAG`, then that you are reading the PR list for release notes. When `IGNORED_LARCHLOG_PR_COUNT` is greater than `0`, add that `IGNORED_LARCHLOG_PR_COUNT` legacy larch run-log PRs (`chore(larch-logs): …`) were excluded from the count and notes. `release prepare` already drops those PRs from both `PR_COUNT` and `PR_LIST_FILE`, so the count reflects substantive PRs only.
 
 When `PR_COUNT=0`, warn that no PRs merged since the last Latest release. At Step 4 confirm, **default to Cancel** unless the operator explicitly chooses Confirm to proceed with an empty release window.
 

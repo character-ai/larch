@@ -34,7 +34,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - `docs/workflow-lifecycle.md`; `docs/voting-process.md`; `docs/point-competition.md`: workflow and voting process
 - `docs/agents.md`; `docs/review-agents.md`; `docs/external-reviewers.md`; `docs/collaborative-sketches.md`: orchestration and external tools
 - `docs/topology.md`; `skills/shared/topology.tsv`: generated projection and source rows
-- `docs/run-logs.md`; `docs/run-log-cli.md`; `docs/run-log-batches.md`: committed run-log contracts
+- `docs/run-logs.md`; `docs/run-log-cli.md`; `docs/run-log-batches.md`: published run-log contracts
 - `docs/issue-anchored-plan.md`: **LIVE** /design ↔ /implement wire format, clarification round-trip, and pause pointer
 - `python/larch/issue/tracking_issue.py`, `python/tests/issue/test_tracking_issue.py`, `python/cli.py tracking-issue ...`: tracking issue lifecycle
 - `python/cli.py plan-block read`, `python/cli.py named-block write --marker plan`, `python/cli.py clarify {state,comment-post,label}`, `python/tests/issue/test_issue_wire.py`, `python/tests/design/test_clarify.py`: issue wire helpers and tests

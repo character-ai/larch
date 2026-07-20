@@ -92,5 +92,5 @@ to `gh`.
 The credential is held by a non-`Debug` wrapper and omitted from the typed child
 environment allowlist. Authorization diagnostics pass through an
 invocation-owned redactor, and errors retain only stable failure classes.
-Diagnostics, session files, committed logs, and snapshots contain no tokens,
+Diagnostics, session files, published logs, and snapshots contain no tokens,
 authorization headers, or access tokens.

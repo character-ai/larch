@@ -18,7 +18,7 @@ When `--base` / `--head` are omitted, the classifier uses the merge-base against
 
 ## Idempotency
 
-The classifier treats the branch as already versioned when the idempotency head is a `Bump version to X.Y.Z` commit. Before checking that subject, it walks past up to three transparent `Update CHANGELOG for ...` commits that touch only `CHANGELOG.md` or `chore(larch-logs): ...` commits that touch only `larch-logs/**`. Subject matches alone are not trusted.
+The classifier treats the branch as already versioned when the idempotency head is a `Bump version to X.Y.Z` commit. Before checking that subject, it walks past up to three transparent `Update CHANGELOG for ...` commits that touch only `CHANGELOG.md` or historical `chore(larch-logs): ...` commits that touch only `larch-logs/**`. Subject matches alone are not trusted.
 
 ## Edit-in-sync
 

@@ -35,7 +35,7 @@ Invariants:
 - Empty or absent `--issue-log` is a successful skip.
 - Default Step 7a calls create `$IMPLEMENT_TMPDIR/.execution-issues-step7a-reached`
   (or the issue-log directory equivalent) even when the flush is a skip, so
-  later commit-tail / pre-push helpers know the pre-ship checkpoint already ran.
+  later archive-tail helpers know the pre-publication checkpoint already ran.
 - Idempotency uses both `$IMPLEMENT_TMPDIR/.execution-issues-flushed.sha` and an
   existing batch `source_sha256` probe. When the sentinel is missing, the batch
   probe matches the normalized per-section hashes that `write_execution_issues_records`

@@ -23,3 +23,9 @@ On first access, migrated owners import their former Git or cache file when the
 new state file is absent. A warm access never rereads or overwrites from the
 legacy path. Run-log cloud sync never lists, downloads, uploads, or interprets
 this mutable state tree.
+
+`/rejected-analysis` owns `rejected-analysis/ledger.tsv` and
+`rejected-analysis/verdicts.tsv`. `/difficulty-calibration` reads the verdict
+sidecar from that owner after one run-log sync. It does not copy mutable state
+into the cache or a run archive. An explicit `--log-root DIR` is an offline
+fixture boundary and may keep a fixture-local legacy sidecar for compatibility.

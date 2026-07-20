@@ -6,8 +6,8 @@
 # python/cli.py checks run-relevant uses: pre-commit run --files <changed-files> (scoped)
 # Developers use: pre-commit install (opt-in git hook)
 
-# larch-logs/ holds committed run-log artifacts (redacted reviewer prompts,
-# voter outputs, transcripts) — runtime data, not authored source. Exclude it
+# Legacy larch-logs/ fixtures can hold redacted reviewer prompts, voter outputs,
+# and transcripts. They are runtime data, not authored source. Exclude them
 # from every file-passing hook so linters never scan it: jsonlint alone spent
 # ~80s/run validating ~9.6k larch-logs JSON files, and the larch-logs file
 # list (~62k paths) inflated per-hook matching across the whole config.
@@ -155,7 +155,7 @@ repos:
             skills/research/scripts/test\-synthesis\-subagent\.sh|
             skills/voter\-calibration/scripts/test\-voter\-calibration\.sh
           )$
-        # larch-logs/ holds committed run artifacts (e.g. source-env.sh files
+        # Legacy larch-logs/ fixtures can hold run artifacts (e.g. source-env.sh files
         # whose absolute paths have been replaced with <TMPDIR> /
         # <OPERATOR_REPO_PATH> placeholders by redact tmpdir-paths).
         # Those redacted artifacts are not valid shell and must not be
@@ -269,7 +269,7 @@ repos:
   - repo: local
     hooks:
       - id: lint-run-log-walkers
-        name: Reject raw committed run-log corpus walkers
+        name: Reject raw run-log cache walkers
         entry: python3 python/cli.py lint run-log-walkers
         language: system
         pass_filenames: false

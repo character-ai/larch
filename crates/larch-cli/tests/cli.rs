@@ -6,9 +6,13 @@ use std::{
 };
 
 use assert_cmd::Command;
-use larch_cli::object_store_commands::{GcsOperation, exercise, report_error};
+use larch_cli::object_store_commands::{
+    GcsOperation, error_contract, exercise, object_json, page_json, report_error,
+};
 use larch_core::{ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject};
 use predicates::prelude::*;
+use serde::Deserialize;
+use serde_json::Value;
 
 const ROOT_HELP: &str = "\
 Larch workflow automation
@@ -81,12 +85,34 @@ fn larch() -> Command {
 #[derive(Debug)]
 struct ObjectStoreFixture;
 
+#[derive(Deserialize)]
+struct ObjectStoreContract {
+    schema_version: u8,
+    remote_object: Value,
+    list_page: Value,
+    transport_errors: Vec<TransportErrorContract>,
+}
+
+#[derive(Deserialize)]
+struct TransportErrorContract {
+    kind: String,
+    rust_label: Option<String>,
+    exit_code: u8,
+}
+
+fn object_store_contract() -> ObjectStoreContract {
+    serde_json::from_str(include_str!(
+        "../../../tests/fixtures/run-log-object-store-contract-v1.json"
+    ))
+    .expect("shared object-store contract fixture should parse")
+}
+
 fn remote_object() -> RemoteObject {
     RemoteObject {
-        key: "larch/run".into(),
+        key: "larch/run-logs/design/fixture-run.tar.gz".into(),
         size: 7,
-        etag: Some("tag".into()),
-        version: Some("2".into()),
+        etag: Some("fixture-etag".into()),
+        version: Some("fixture-version".into()),
     }
 }
 
@@ -141,6 +167,38 @@ async fn object_store_gcs_formats_every_successful_operation() {
         )
         .assert()
         .code(3);
+}
+
+#[test]
+fn object_store_gcs_matches_shared_machine_contract() {
+    let contract = object_store_contract();
+    assert_eq!(contract.schema_version, 1);
+    assert_eq!(object_json(&remote_object()), contract.remote_object);
+    assert_eq!(
+        page_json(&ObjectPage {
+            objects: vec![remote_object()],
+            next_page_token: None,
+        }),
+        contract.list_page
+    );
+
+    for fixture in contract.transport_errors {
+        let error = match fixture.kind.as_str() {
+            "authentication" => ObjectStoreError::Authentication,
+            "already-exists" => ObjectStoreError::AlreadyExists,
+            "not-found" => ObjectStoreError::NotFound,
+            "local-io" => ObjectStoreError::LocalIo,
+            "invalid-response" => ObjectStoreError::InvalidResponse,
+            "transport" => ObjectStoreError::Transport,
+            other => panic!("unknown fixture error kind {other}"),
+        };
+        let (label, exit_code) = error_contract(error);
+        assert_eq!(exit_code, fixture.exit_code);
+        assert_eq!(
+            label,
+            fixture.rust_label.as_deref().unwrap_or(&fixture.kind)
+        );
+    }
 }
 
 fn git_output<I, S>(root: &Path, arguments: I) -> Output

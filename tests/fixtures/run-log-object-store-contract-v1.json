@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "remote_object": {
+    "etag": "fixture-etag",
+    "key": "larch/run-logs/design/fixture-run.tar.gz",
+    "size": 7,
+    "version": "fixture-version"
+  },
+  "list_page": {
+    "next_page_token": null,
+    "objects": [
+      {
+        "etag": "fixture-etag",
+        "key": "larch/run-logs/design/fixture-run.tar.gz",
+        "size": 7,
+        "version": "fixture-version"
+      }
+    ]
+  },
+  "transport_errors": [
+    {
+      "kind": "transport",
+      "exit_code": 1
+    },
+    {
+      "kind": "invalid-response",
+      "rust_label": "invalid-request-or-response",
+      "exit_code": 2
+    },
+    {
+      "kind": "authentication",
+      "exit_code": 3
+    },
+    {
+      "kind": "already-exists",
+      "exit_code": 4
+    },
+    {
+      "kind": "not-found",
+      "exit_code": 5
+    },
+    {
+      "kind": "local-io",
+      "exit_code": 6
+    }
+  ]
+}

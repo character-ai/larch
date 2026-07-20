@@ -104,6 +104,28 @@ universes, and `GCE_METADATA_HOST` overrides fail closed in production.
 See the [Google ADC security contract](security/supply-chain-credentials-and-services.md#google-application-default-credentials)
 for the runtime guarantees and residual limits.
 
+#### S3 and R2 credentials
+
+S3 and Cloudflare R2 run-log storage use the AWS CLI and its standard
+credential discovery. Install and configure `aws` before starting larch. For
+S3, a profile, environment credentials, or an attached role may supply access.
+Verify the exact bucket-root operation without printing object names:
+
+```bash
+aws s3 ls s3://<bucket> >/dev/null
+```
+
+R2 uses S3-compatible credentials. Set `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` through your normal secret-management path. Also set:
+
+```bash
+export LARCH_R2_ACCOUNT_ID="<32-lowercase-hex-account-id>"
+export LARCH_R2_ENDPOINT="https://${LARCH_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+```
+
+Do not place credentials in `.larch/config.toml` or `LARCH_LOGS_URI`. See the
+[object-storage credential contract](security/supply-chain-credentials-and-services.md#object-storage-credentials-and-transport).
+
 ### Install
 - **Anthropic / Claude Code**: `curl -fsSL https://claude.ai/install.sh | bash`
 - **OpenAI / Codex**: `npm install -g @openai/codex`
@@ -230,6 +252,25 @@ If you need stricter permissions instead (no `bypassPermissions`), drop that lin
 - **GUI popup suppression (issue #5797).** larch exports `NO_OPEN_BROWSER=1` into every Cursor child's environment so `cursor agent` does not open the Cursor.app "Composer" GUI window (via a `cursor://` deeplink) during headless lanes. Auth is unaffected: larch authenticates via `CURSOR_API_KEY` / keychain, never interactive login.
 
 - **macOS keychain auth.** If `CURSOR_API_KEY` is unset and Cursor's keychain entry is missing or stale, larch fails with a specific, actionable error instead of Cursor's cryptic `Security process exited with code: 45`. See [macOS keychain interactions](macos-keychain-interactions.md) for the full mechanism and the fix.
+
+### Configure run-log storage
+
+Create `.larch/config.toml` at the consumer repository root:
+
+```toml
+[logs]
+uri = "s3://zhupanov/larch"
+```
+
+The URI is the larch storage root. Larch writes archives below
+`run-logs/<skill>/<run-id>.tar.gz`, so the example does not end in
+`run-logs/`. Set `LARCH_LOGS_URI` before starting larch to replace the file
+value for that process. Accepted schemes are `s3://`, `gs://`, and `r2://`.
+
+At skill startup, larch lists only the bucket root and ignores the listing
+output. It does not probe the configured prefix or attempt a write. See
+[Configuration and Permissions](configuration-and-permissions.md#run-log-object-storage)
+and the [language-neutral storage contract](run-log-archive.md).
 
 ### Validate
 Run `/status` in a `claude` session. Expect a report like this:

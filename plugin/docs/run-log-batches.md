@@ -16,10 +16,10 @@ Replace-mode batches must use `run-log write`.
 The registry includes the durable implement, review, design, token, timing,
 execution-issue, transcript, vendor-diagnostic, and checks-digest telemetry carriers.
 
-Registration defines the allowed committed shape. Every session-derived batch
+Registration defines the allowed published shape. Every session-derived batch
 still passes through the run-log trim, temporary-path redaction, secret scrub,
 and publication checks described in the canonical
-[committed run-log security contract](security/artifacts-redaction-and-publication.md#committed-run-logs-and-breadcrumbs).
+[run-log security contract](security/artifacts-redaction-and-publication.md#run-logs-and-breadcrumbs).
 
 `architectural-invariant-outcome` is a replace-mode `.json` batch with the
 `json-object` sanitizer. It writes

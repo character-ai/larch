@@ -192,6 +192,13 @@ classes. The [Google service inventory](../google-service-inventory.md) records
 the Cloud Storage client, scope, permissions, operations, and mixed-runtime
 consumer path.
 
+Python currently owns run-log orchestration, S3 and R2 CLI transport, archive
+publication, cache promotion, and sync. Rust owns only the narrow GCS
+authentication transport. Both sides pass the shared provider fixture and use
+the same machine error mapping. The complete mixed-runtime and future hard
+cutover boundary lives in
+[Run-log storage contracts](../run-log-archive.md#rust-handoff).
+
 ### GitHub credential and transport boundary
 
 The Rust GitHub service reads exactly one non-empty `LARCH_GH_TOKEN` from the

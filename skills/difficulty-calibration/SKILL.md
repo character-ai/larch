@@ -45,7 +45,10 @@ Flags:
 
 ## Data Model
 
-The analyzer joins `difficulty-rating.json`, review classification TSVs, JSONL or NDJSON fallback findings, token and timing reports, and `larch-logs/rejected-analysis-verdicts.tsv` when present.
+The analyzer joins `difficulty-rating.json`, review classification TSVs, JSONL
+or NDJSON fallback findings, token and timing reports from the synchronized
+cache, and `rejected-analysis/verdicts.tsv` from repository-scoped analyzer
+state when present.
 
 Classification source order is fixed:
 

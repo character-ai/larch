@@ -1,6 +1,8 @@
 # Run-log Python CLI contract
 
 `python3 python/cli.py run-log ...` owns run-log staging, validation, and publication.
+The language-neutral URI, provider, archive, cache, sync, and error rules live
+in [Run-log storage contracts](run-log-archive.md).
 
 ## Envelope
 
@@ -18,6 +20,9 @@ UNCHANGED=true|false
 Validation and I/O failures use the same envelope with `LOG_WRITTEN=false`,
 empty `LOG_PATH`, empty `SHA256`, empty `COMMIT_SHA`, `BYTES=0`,
 `UNCHANGED=false`, and `ERROR=<message>`.
+
+`COMMIT_SHA` is a legacy compatibility field and remains empty for current
+run-log operations. It does not imply a Git write.
 
 The CLI owns mechanics, not content classification. A scrub or recognized
 secret-survival failure blocks publication, but a clean pattern scan does not
@@ -49,10 +54,11 @@ make a log public-safe. See the canonical
 - `run-log lifecycle-cancel`
 - `run-log lifecycle-early-return`
 
-The archive lifecycle verbs use their own machine envelopes. `run-log sync`
+The archive lifecycle verbs use their own machine envelopes. Provider failures
+use the normalized error set in the storage contract. `run-log sync`
 lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and
-`SYNC_OK=true`. See [Run-log archive format](run-log-archive.md).
+`SYNC_OK=true`. See [Run-log storage contracts](run-log-archive.md).
 
 The universal lifecycle starts each invocation with a UUID and declared skill
 name after the configured bucket preflight succeeds. Child runs also record the
@@ -118,9 +124,7 @@ call creates one immutable remote object and one validated unpacked cache
 directory. A failed upload returns nonzero, retains the durable pending archive,
 and stops teardown. Re-entry retries the content-pinned pending archive.
 
-## Post-merge Git history
+## Git isolation
 
-Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`).
-
-Run-log publication does not mutate Git. The post-merge commit prohibition
-still applies to every repository mutation.
+Run-log staging, archive publication, cache promotion, and sync do not create
+branches, commits, pushes, pull requests, or merges.

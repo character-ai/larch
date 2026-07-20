@@ -103,7 +103,7 @@ Implement currently uses the full table below. Design currently uses `cache-fres
 | Codex generalist waste | `reviewer_signals` entry for `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s (`result:"skip"` when carrier missing) | `round-1/round-meta.json` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |
 | Cache freshness | `manifest.json::larch_version` vs latest plugin version (`result: informational` when the run lags current; empty `larch_version` remains `fail`; other rows may emit `skip`/`error`) | `manifest.json` |
-| Guideline assessment | committed Gate C guideline assessment is present and non-empty when the artifact exists (`result:"informational"` when absent) | `architectural-guideline-assessment.md` |
+| Guideline assessment | published Gate C guideline assessment is present and non-empty when the artifact exists (`result:"informational"` when absent) | `architectural-guideline-assessment.md` |
 | Changelog rebase/conflicts (heuristic) | `execution-issues.ndjson` bodies mentioning changelog + rebase/conflict | `execution-issues.ndjson` |
 | Coder tool | `CODER_TOOL` field | `round-*/coder.env` |
 | Trailing-content NO_ISSUES_FOUND | `reviewer_signals[].first_pass_trailing_content == true` (`result:"skip"` when carrier missing; legacy `*-first-pass.txt` no longer primary) | `round-*/round-meta.json` |
@@ -374,7 +374,7 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 - Working tree must be a clone of `--repo`
 - `audit-report` label must exist in the target repo (created by the bootstrap audit report — treat its existence as a precondition assertion, not something to create on each invocation)
 - `docs/run-logs-required-files.tsv` must exist in the repo root (for the Required-file presence scan)
-- `larch-logs/<skill>/` directory must exist in the repo root (for all scans; `<skill>` is the `--skill` argv value)
+- parsed `CORPUS_ROOT/<skill>/` must exist after the one synchronization pass
 
 ## Revised Orchestrator Flow
 

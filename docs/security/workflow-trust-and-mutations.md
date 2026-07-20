@@ -319,7 +319,7 @@ reduce prompt-injection risk but do not create a parser-enforced sandbox.
 
 ### Rejected analysis
 
-`/rejected-analysis` treats committed findings and run-log prose as untrusted.
+`/rejected-analysis` treats published findings and run-log prose as untrusted.
 Verifier prompts wrap the candidate, pin the expected file location, and demand
 the closed verdict format. Launchers use their read-only posture and dirty-tree
 backstop. Replies must bind to the candidate path. Ledger, sidecar, and issue
@@ -372,7 +372,7 @@ required checks.
 
 Security-sensitive or uncertain findings are private. Never file them through
 `/issue`, copy them into a public issue or pull request, include them in
-committed run logs, or fold them into an unrelated implementation. Follow the
+published run logs, or fold them into an unrelated implementation. Follow the
 responsible disclosure instructions in [`SECURITY.md`](../../SECURITY.md).
 
 Review and design tally paths route security-tagged OOS blocks to the

@@ -23,7 +23,7 @@ high-level trust statement.
 | Public policy, supported versions, disclosure, scope, and high-level trust | [`SECURITY.md`](../../SECURITY.md) |
 | Release provenance, bootstrap, dependencies, credentials, and external service boundaries | [Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md) |
 | Workflow trust, untrusted input, agent access, authorization, and mutation controls | [Workflow Trust, Mutation, and Private Findings](workflow-trust-and-mutations.md) |
-| Temporary and committed artifacts, redaction, retention, and public publication | [Artifacts, Redaction, and Publication](artifacts-redaction-and-publication.md) |
+| Temporary and published artifacts, redaction, retention, and public publication | [Artifacts, Redaction, and Publication](artifacts-redaction-and-publication.md) |
 
 ## Runtime Packaging Contract
 

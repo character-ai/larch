@@ -46,7 +46,7 @@ contains_file "$SKILL" '`INGEST_STATUS_FILE`' 'INGEST_STATUS_FILE binding listed
 contains_file "$SKILL" '`ISSUE_SENTINEL`' 'ISSUE_SENTINEL binding listed'
 contains_file "$SKILL" '`ISSUE_BATCH_FILE`' 'ISSUE_BATCH_FILE binding listed'
 contains_file "$SKILL" '`ISSUE_CLUSTER_MAP_FILE`' 'ISSUE_CLUSTER_MAP_FILE binding listed'
-contains_file "$SKILL" 'Still run Step 6 `finalize` and Step 8 `record` so prepare-owned `ledger-pending.tsv` rows merge into the committed ledger.' 'VERIFY_COUNT=0 still finalizes and records'
+contains_file "$SKILL" '`ledger-pending.tsv` rows merge into repository-scoped analyzer state.' 'VERIFY_COUNT=0 still finalizes and records'
 contains_file "$SKILL" '`finalize` re-runs the security-sensitive classifier before issue rendering.' 'security refilter documented'
 contains_file "$SKILL" 'Never file `scope=oos`, `scope=out_of_scope`, or `OOS_*` deferred findings.' 'OOS deferred skip documented'
 contains_file "$SKILL" 'rm -f "<parsed ISSUE_SENTINEL>"' 'sentinel cleared before issue'

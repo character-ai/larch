@@ -137,7 +137,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
 The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-cursor PGID=<n>`.
 Do not call `bgjob wait` unless the launch printed that exact marker; if it did not, route directly to the lane's existing launch-class failure branch instead of waiting.
 
-> **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
+> **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not published in run logs.
 
 **Cursor fallback** (if `cursor_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
 

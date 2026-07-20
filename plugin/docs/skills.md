@@ -113,11 +113,11 @@ Characterize review **fluff** — suggestions that are *not accepted* (rejected 
 
 Recover verified rejected code-review findings from the synchronized implement and review run-log cache. `/design` plan-review rows are excluded in v1.
 
-The inclusion rule is deliberately narrow: keep rejected in-scope code-review rows with at least one YES vote, drop 0-YES rows, and exclude `OOS_*` or `scope=oos` rows as already deferred. Verification is capped at 100 candidates by default. Cap drops and deterministic pre-verification drops are written to `larch-logs/rejected-analysis-ledger.tsv`.
+The inclusion rule is deliberately narrow: keep rejected in-scope code-review rows with at least one YES vote, drop 0-YES rows, and exclude `OOS_*` or `scope=oos` rows as already deferred. Verification is capped at 100 candidates by default. Cap drops and deterministic pre-verification drops are written to repository-scoped analyzer state at `rejected-analysis/ledger.tsv`.
 
 The stable `finding_hash` hashes only normalized `file_path` plus normalized `concern`. `FINDING_N`, `line_hint`, run id, round, voter slots, and filesystem existence are ledger diagnostics only. Near-duplicate siblings are ledgered with `alias_of`, and every verification attempt writes durable `ingest-status.jsonl` staging so `launch-failed` remains retryable while terminal stale, already-fixed, dirty-tree, and verification-failed dispositions are not repeated.
 
-Verifier replies must bind back to the candidate path, with a small line slack when a line hint exists. Fields are TSV-sanitized before committed ledger, sidecar, or issue-batch output. Confirmed non-security findings are clustered and filed through `/issue`; `issue-cluster-map.json` maps batch indexes back to finding hashes, including dedup outcomes. Security-sensitive findings are skipped in prepare and re-filtered in finalize, then routed to `SECURITY.md` disclosure guidance instead of public filing. The verdict sidecar feeds `/voter-calibration` and `/difficulty-calibration`; this skill does not score voters.
+Verifier replies must bind back to the candidate path, with a small line slack when a line hint exists. Fields are TSV-sanitized before durable analyzer state, sidecar, or issue-batch output. Confirmed non-security findings are clustered and filed through `/issue`; `issue-cluster-map.json` maps batch indexes back to finding hashes, including dedup outcomes. Security-sensitive findings are skipped in prepare and re-filtered in finalize, then routed to `SECURITY.md` disclosure guidance instead of public filing. The verdict sidecar feeds `/voter-calibration` and `/difficulty-calibration`; this skill does not score voters.
 
 ### `/difficulty-calibration`
 
@@ -127,17 +127,17 @@ Verifier replies must bind back to the candidate path, with a small line slack w
 
 Compare predicted and realized difficulty tiers from the synchronized run-log cache. The analyzer is read-only unless `--out FILE` is provided.
 
-The analyzer joins `difficulty-rating.json`, classification artifacts, token reports, timing reports, and `larch-logs/rejected-analysis-verdicts.tsv` when present. Classification precedence is fixed by skill:
+The analyzer joins `difficulty-rating.json`, classification artifacts, token reports, timing reports from the synchronized cache, and `rejected-analysis/verdicts.tsv` from analyzer state when present. Classification precedence is fixed by skill:
 
 - `/implement`: `round-*/findings-classification.tsv`, then run-root `review-findings-full.jsonl`.
 - `/review`: `review-findings-classification-round-*.tsv`, then `review-findings.ndjson`, then run-root `review-findings-full.jsonl`.
 - `/design`: `plan-review/round-*/findings-classification.tsv` only.
 
-The realized-difficulty formula is fixed and severity-safe: committed escalation evidence makes the run `HARD` first; otherwise the deduped in-scope accepted finding count maps to `TRIVIAL` for 0, `MODERATE` for 1-2, and `HARD` for 3 or more. Substantiality evidence is committed-only; the analyzer does not reconstruct it from stdout, LOC snapshots, or severity labels.
+The realized-difficulty formula is fixed and severity-safe: published escalation evidence makes the run `HARD` first; otherwise the deduped in-scope accepted finding count maps to `TRIVIAL` for 0, `MODERATE` for 1-2, and `HARD` for 3 or more. Substantiality evidence comes only from the published archive; the analyzer does not reconstruct it from stdout, LOC snapshots, or severity labels.
 
 Audit pairing and drift tables bucket runs by `manifest.started_at` in UTC. Audited runs match only unaudited peers with the same skill, same pre-audit tier, and same calendar month. Missing timestamps or pre-audit tiers render `n/a`; peers are never synthesized.
 
-The report includes corpus and degraded-input counters, confusion matrices by skill and rater, under-rating misses with run-log links and false-negative sidecar annotations, per-tier token/cost/latency summaries, audit-run deltas, escalation statistics, and tier-distribution drift. Missing pre-initiative or gc-slimmed artifacts degrade to counters or `n/a`; non-escalated runs without a parseable classification source report realized tier `unknown` and do not enter matrix denominators.
+The report includes corpus and degraded-input counters, confusion matrices by skill and rater, under-rating misses with run-log links and false-negative sidecar annotations, per-tier token/cost/latency summaries, audit-run deltas, escalation statistics, and tier-distribution drift. Missing pre-initiative artifacts degrade to counters or `n/a`; non-escalated runs without a parseable classification source report realized tier `unknown` and do not enter matrix denominators.
 
 ### `/voter-calibration`
 
@@ -181,7 +181,7 @@ Mine a repository's closed bug reports for recurring root-cause patterns, then p
 
 Pause a live `/design` session on the current Claude PID. The skill sources the
 current design session env, publishes the tmpdir with
-`design-log-publish.sh --reason pause`, writes a `larch:design-pause` marker in
+`python/cli.py design pause-save`, writes a `larch:design-pause` marker in
 the issue body, and exits. Re-running `/design <issue>` detects that marker in
 Step 0b, restores the tmpdir, deletes the marker, and resumes at the first
 incomplete step. If no live `/design` env is present, it reports that there is
@@ -201,7 +201,7 @@ Analyze structured token reports from the synchronized repository-scoped run-log
 
 **Source**: [`skills/triage/SKILL.md`](../skills/triage/SKILL.md)
 
-Verify, root-cause, and prepare an existing issue for `/design` without editing code or authoring a plan. `/triage` records one immutable `refs/heads/main` SHA from the fixed checkout origin and reads cited code or `larch-logs/` evidence only with validated `git show <sha>:<path>` requests. Full-SHA and `refs/pull/<N>/head` citations are allowed within the same fixed-remote boundary. Reads are capped; missing refs, rejected paths, unavailable objects, truncation, moved lines, and unflushed logs remain explicit evidence gaps.
+Verify, root-cause, and prepare an existing issue for `/design` without editing code or authoring a plan. `/triage` records one immutable `refs/heads/main` SHA from the fixed checkout origin and reads cited repository evidence only with validated `git show <sha>:<path>` requests. Full-SHA and `refs/pull/<N>/head` citations are allowed within the same fixed-remote boundary. Reads are capped; missing refs, rejected paths, unavailable objects, truncation, and moved lines remain explicit evidence gaps.
 
 Verdicts are `valid`, `already-fixed`, `duplicate`, `invalid`, or `inconclusive`. A valid result appends or replaces only the helper-owned triage body section while preserving the original report and every other body byte. Verified close verdicts post a marker-keyed verification comment, restore only a permitted title-only stale lifecycle prefix, and close as `NOT_PLANNED`. Active lifecycle labels, valid or malformed control blocks, and other `larch:` markers fail closed. A foreign `--repo` may use issue-linked metadata but cannot use the local checkout as repository evidence and ends inconclusive.
 
