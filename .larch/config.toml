@@ -1,0 +1,2 @@
+[logs]
+uri = "s3://zhupanov/larch"
