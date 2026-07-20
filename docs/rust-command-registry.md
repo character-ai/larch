@@ -47,7 +47,10 @@ unexecuted string literals.
 The rule fails for missing or duplicate command rows, stale Python target or
 machine-stdout metadata, invalid status combinations, caller drift, unknown
 caller selectors, incomplete Python retirement evidence, and missing
-clean-install coverage. Every Rust-owned command with a production caller must
+clean-install coverage. A pending command names its domain migration owner;
+the #7687 chief umbrella is too broad and fails lint. Completed commands retain
+the exact leaf that landed their atomic cutover. Every Rust-owned command with
+a production caller must
 name one unique fixture from `CLEAN_INSTALL_CASES` in
 `crates/larch-cli/tests/parity.rs`. The shared matrix starts without
 `bin/larch`, validates the local binary version and target through

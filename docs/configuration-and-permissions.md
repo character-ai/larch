@@ -211,8 +211,10 @@ Larch does not consult `GH_TOKEN`, `GITHUB_TOKEN`, `gh` configuration,
 keychain state, argv, stdin, repository configuration, issue text, or session
 files as fallbacks. The value stays in a non-`Debug` secret wrapper, is
 registered exactly with the runtime redactor, and is excluded from child
-process environments. The initial transport supports only GitHub.com over
-HTTPS; GitHub Enterprise needs a separate reviewed host policy.
+process environments. The same child boundary excludes generic GitHub tokens,
+Google credential paths, and discovered access-token variables. The initial
+transport supports only GitHub.com over HTTPS; GitHub Enterprise needs a
+separate reviewed host policy.
 
 Larch never executes the `gh` or `gcloud` service CLI at runtime. The Rust
 process allowlist permits only the vendor agents, Git, and the larch bootstrap

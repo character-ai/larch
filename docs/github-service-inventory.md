@@ -13,6 +13,10 @@ configuration. It excluded documentation, fixtures, historical run logs, and the
 generated `plugin/` projection. `service-ownership` in `crates/larch-lint`
 mechanically holds the boundary this inventory records: concrete clients,
 service request surfaces, and `gcloud` stay inside `crates/larch-adapters`.
+The #7843 refresh ran after the Actions-log, pull-request merge,
+issue-dependency, and credential-contract repairs. It explicitly covered `gh`,
+`gh api`, `gh auth token`, GitHub and Google service hosts, GraphQL documents,
+concrete clients, `gcloud`, and service-credential propagation.
 
 ## Concrete client owner
 
@@ -26,23 +30,41 @@ REST URLs, GraphQL documents, and the client. Only
 
 ## Adapter operation ownership
 
-| Operation group | Adapter owner | Current command owner | Later atomic cutover |
-|---|---|---|---|
-| Repository metadata | `github/mod.rs` (`OctocrabGitHubService`) | Rust `gh remote-repo`, `gh resolve-repo` | Complete (#7764) |
-| Actions run status, cancel, logs, workflow path | `github_actions.rs` (`GitHubActionsService`) | Rust `gh run-logs`, `gh workflow-path` | Complete (#7765) |
-| Issue get, list, search, create, edit, close | `github_rest.rs` (`GitHubService`) | Python issue, deps, triage, audit-runs, combine-issues commands | #7687 chief umbrella (per-domain leaf) |
-| Comment list, create, edit, delete | `github_rest.rs` (`GitHubService`) | Python issue, clarify, tracking-issue commands | #7687 chief umbrella (per-domain leaf) |
-| Label list, create, add, remove | `github_rest.rs` (`GitHubService`) | Python issue, block-issue commands | #7687 chief umbrella (per-domain leaf) |
-| Pull request, review, merge state, merge mutation | `github/operations.rs` (fixed GraphQL document and typed merge request) | Python ci, design, release commands | #7687 chief umbrella (per-domain leaf; merge consumer cutover) |
-| Issue-dependency list, add, remove | `github/operations.rs`, `github/mutation_auth.rs` gate | Python `block-issue`, `deps` commands | #7682 issue-workflow umbrella; its named command-migration leaf performs the atomic cutover. Adapter parity: #7841 |
-| Release listing, draft, publish, Latest promotion, asset upload, asset download | `github/release.rs` (`OctocrabReleaseTransport`) | Rust release commands; Python gc-run-logs commands | Release cutover complete (#7752); remaining domains under #7687 |
-| Artifact and immutable-release attestation verification | `github/attestation.rs` (`OctocrabAttestationTransport`) | Rust bootstrap and release commands | Complete (#7752) |
+The tab-separated matrix below is the linted ownership contract. Operation
+groups are unique. Adapter paths must exist, migration owners must be concrete
+domain or completed-leaf issues, and every listed command must match the
+recorded owner and the three independent migration milestones. A command may
+appear in more than one row when it consumes several typed adapter operations.
+Issue-dependency adapter parity landed in #7841; #7682 owns the later atomic
+command cutover without changing the current Python ownership recorded below.
+
+<!-- markdownlint-disable MD010 -->
+<!-- github-service-ownership:start -->
+```text
+operation	adapter_owner	current_owner	migration_issues	implementation_parity	consumer_cutover	python_removal	commands
+actions	crates/larch-adapters/src/github_actions.rs	rust	#7765	complete	complete	complete	gh run-logs,gh workflow-path
+attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7747	complete	complete	complete	release validate-assets
+comments	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682,#7787	pending	pending	pending	clarify *,issue *,tracking-issue *
+dependency-consumers	crates/larch-adapters/src/github/operations.rs	python	#7682	pending	pending	pending	deps *
+issue-dependencies	crates/larch-adapters/src/github/operations.rs	python	#7682	complete	pending	pending	block-issue *
+issues	crates/larch-adapters/src/github_rest.rs	python	#7682,#7787	pending	pending	pending	audit-runs *,combine-issues *,deps *,issue *,triage *
+label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	python	#7682	complete	pending	pending	block-issue *
+labels	crates/larch-adapters/src/github_rest.rs	python	#7680,#7682,#7787	pending	pending	pending	clarify label,issue *
+pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci *,design *,implement *,pr *,ship *
+release-consumers	crates/larch-adapters/src/github/release.rs	python	#7683	pending	pending	pending	gc-run-logs run
+releases	crates/larch-adapters/src/github/release.rs	rust	#7747,#7748,#7749,#7750,#7751,#7752	complete	complete	complete	release *
+repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7764	complete	complete	complete	gh remote-repo,gh resolve-repo
+```
+<!-- github-service-ownership:end -->
+<!-- markdownlint-enable MD010 -->
 
 `crates/larch-lint/data/command-registry.toml` is the authoritative per-command
-ledger. Each later-domain command stays Python-owned until its named leaf
-implements Rust parity, switches every consumer, and removes the Python command
-in one PR. The `command-registry` rule rejects a Rust owner whose Python removal
-is incomplete, so a partial cutover cannot land.
+ledger. Each later-domain command stays Python-owned until its domain migration
+owner files and lands the atomic command leaf. The registry must never delegate
+this responsibility to the #7687 chief umbrella. Each eventual leaf implements
+Rust parity, switches every consumer, and removes the Python command in one PR.
+The `command-registry` rule rejects a Rust owner whose Python removal is
+incomplete, so a partial cutover cannot land.
 
 ## Completed shared cutovers
 

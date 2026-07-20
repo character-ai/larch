@@ -6,7 +6,7 @@ for every operation found by the scan.
 
 ## Checked scope
 
-The inventory was checked against main commit `5ad844c03` and the issue branch.
+The inventory was refreshed for #7843 after the service repair leaves landed.
 The scan covered production Rust, Python, skills, agents, hooks, scripts, and CI
 configuration. It excluded documentation, fixtures, historical run logs, and
 the generated `plugin/` projection from caller classification.

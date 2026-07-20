@@ -63,7 +63,14 @@ mod tests {
         let environment = TestEnvironment::isolated(&workspace).expect("test environment");
 
         assert_eq!(environment.get("LANG"), Some(std::ffi::OsStr::new("C")));
-        assert_eq!(environment.get("GH_TOKEN"), None);
+        for credential in [
+            "LARCH_GH_TOKEN",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+        ] {
+            assert_eq!(environment.get(credential), None);
+        }
         assert!(
             environment
                 .get("HOME")
