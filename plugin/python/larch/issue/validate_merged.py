@@ -18,6 +18,7 @@ from typing import Final, cast
 
 from larch.core import config
 from larch.issue import analyze_bugs as funnel
+from larch.report import analysis_state
 
 DEFAULT_MAX_MERGES: Final = 20
 STATE_SCHEMA_VERSION: Final = 1
@@ -68,7 +69,13 @@ def _timestamp(value: object, *, label: str) -> str:
 
 
 def state_path(root: Path) -> Path:
-    return root.expanduser().resolve() / STATE_RELPATH
+    repo_root = root.expanduser().resolve()
+    target = analysis_state.repository_state_root(repo_root=repo_root) / STATE_RELPATH
+    try:
+        _ = analysis_state.import_legacy_file(path=target, legacy_path=repo_root / config.LEGACY_VALIDATE_MERGED_STATE_RELPATH)
+    except analysis_state.AnalysisStateError as exc:
+        raise ValidateMergedError(str(exc)) from exc
+    return target
 
 
 def _candidate_from_raw(raw: object) -> dict[str, str]:
@@ -163,7 +170,8 @@ def _resolve_repo(explicit: str) -> str:
 def prepare(*, root: Path, run_dir: Path, repo: str, max_merges: int) -> dict[str, object]:
     if max_merges <= 0:
         raise ValidateMergedError("--max-merges must be a positive integer")
-    durable = load_state(state_path(root), repo=repo)
+    durable_path = state_path(root)
+    durable = load_state(durable_path, repo=repo)
     ledger = _local_funnel_state(run_dir, durable)
     try:
         payload = funnel.sweep_prepare(
@@ -172,8 +180,9 @@ def prepare(*, root: Path, run_dir: Path, repo: str, max_merges: int) -> dict[st
         )
     except funnel.AnalyzeBugsError as exc:
         raise ValidateMergedError(str(exc)) from exc
-    payload["STATE_PATH"] = str(state_path(root))
+    payload["STATE_PATH"] = str(durable_path)
     payload["STATE_SOURCE"] = "committed" if durable else "first-run-48-hours"
+    payload["STATE_DIGEST"] = analysis_state.read_snapshot(durable_path).digest
     return payload
 
 
@@ -317,13 +326,17 @@ def write_state_main(argv: Sequence[str]) -> int:
     _ = parser.add_argument("--root", default=".")
     _ = parser.add_argument("--repo", required=True)
     _ = parser.add_argument("--state-input", required=True)
+    _ = parser.add_argument("--expected-digest", default="")
     args = parser.parse_args(argv)
     try:
         state = load_state(Path(args.state_input), repo=args.repo)
         if state is None:
             raise ValidateMergedError("state input is missing")
-        write_state(state_path(Path(args.root)), state)
-    except ValidateMergedError as exc:
+        target = state_path(Path(args.root))
+        expected = args.expected_digest or analysis_state.read_snapshot(target).digest
+        payload = json.dumps(asdict(state), indent=2, sort_keys=True) + "\n"
+        digest = analysis_state.write_bytes(target, payload.encode("utf-8"), expected_digest=expected)
+    except (ValidateMergedError, analysis_state.AnalysisStateError, ValueError) as exc:
         return _fail(str(exc))
-    _emit({"STATE_RELPATH": STATE_RELPATH})
+    _emit({"STATE_RELPATH": STATE_RELPATH, "STATE_PATH": target, "STATE_DIGEST": digest})
     return 0

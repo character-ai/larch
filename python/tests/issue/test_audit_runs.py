@@ -13,8 +13,15 @@ import pytest
 
 from larch.core import architectural_guidelines as ag
 from larch.core import config
-from larch.issue import audit_runs
+from larch.issue import audit_runs, learn_from_bugs
 from larch.core.proc import CommandResult
+
+
+@pytest.fixture(autouse=True)
+def _isolated_analysis_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
 
 
 
@@ -90,8 +97,7 @@ def _write_learn_from_bugs_state(
     run_date: str = "2026-07-09T00:00:00Z",
     scan_started_at: str | None = "2026-07-09T01:00:00Z",
 ) -> None:
-    marker = root / config.LEARN_FROM_BUGS_STATE_RELPATH
-    marker.parent.mkdir(parents=True)
+    marker = learn_from_bugs.state_path(root)
     payload: dict[str, object] = {
         "schema_version": 1,
         "run_date": run_date,
@@ -126,8 +132,7 @@ def test_bugs_backlog_nudge_missing_marker_prints_never_run_without_gh(
 def test_bugs_backlog_nudge_symlink_marker_is_unusable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
-    marker.parent.mkdir(parents=True)
+    marker = learn_from_bugs.state_path(tmp_path)
     marker.symlink_to(tmp_path / "target.json")
 
     def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:

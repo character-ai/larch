@@ -33,6 +33,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Aliases](#aliases)
   - [Review Agents](docs/review-agents.md) — the unified `code-reviewer` archetype
   - [Run Logs](docs/run-logs.md) — remote run archives, local cache copies, manifests, and tracking-issue comments
+  - [Analyzer State](docs/analysis-state.md) — mutable analyzer markers, ledgers, measurements, locking, and legacy import
   - [Security References](docs/security/README.md): security document taxonomy, ownership, and runtime packaging contract
   - [Topology Projection](docs/topology.md) — stable anchors for cross-doc topology counts
   - [Linting](docs/linting.md) — linters, Makefile targets, halt-rate regression harness
@@ -228,13 +229,13 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><a href="docs/skills.md#analyze-bugs"><code>/analyze-bugs</code></a></td>
       <td><code>[-n COUNT] [--deep-max M] [--deep-model sonnet|opus|fable] [--refresh] [--sample K] [--repo owner/name]</code></td>
     </tr>
-    <tr><td colspan="2">Dev-only verification of recent filed <code>[BUG]</code> issues. Defaults to <code>-n 200</code>, keeps compact durable state under <code>larch-logs/shared/analyze-bugs-state.json</code>, prints a report by default, and offers one combined follow-up issue only after approval.</td></tr>
+    <tr><td colspan="2">Dev-only verification of recent filed <code>[BUG]</code> issues. Defaults to <code>-n 200</code>, keeps compact durable state under the local XDG state directory, prints a report by default, and offers one combined follow-up issue only after approval.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#validate-merged"><code>/validate-merged</code></a></td>
       <td><code>[--max-merges N] [--repo owner/name]</code></td>
     </tr>
-    <tr><td colspan="2">Dev-only validation of recent merged changes for possible unfiled bugs. Defaults to the previous 48 hours and at most 20 merges; durable state is <code>larch-logs/shared/validate-merged-state.json</code>.</td></tr>
+    <tr><td colspan="2">Dev-only validation of recent merged changes for possible unfiled bugs. Defaults to the previous 48 hours and at most 20 merges; durable state stays under the local XDG state directory.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#analyze-issues"><code>/analyze-issues</code></a></td>

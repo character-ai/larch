@@ -576,13 +576,13 @@ def larch_log_write_round_main(argv: list[str]) -> int:
             if name.startswith("reviewer-dyn-") and name.endswith(".md"):
                 redacted = run_log_batch._normalize_run_log_text(redact.redact(item.read_text(encoding="utf-8", errors="replace")))
                 digest = hashlib.sha256(redacted.encode("utf-8")).hexdigest()[:12]
-                shared = args.log_root_path / "shared" / "archetypes"
-                shared.mkdir(parents=True, exist_ok=True)
-                pool_path = shared / f"{digest}.md"
+                pool = dest / "archetypes"
+                pool.mkdir(parents=True, exist_ok=True)
+                pool_path = pool / f"{digest}.md"
                 if not pool_path.is_file():
                     run_log_batch._atomic_write(path=pool_path, content=redacted)
                 slot = "dyn-" + name.removeprefix("reviewer-dyn-").removesuffix(".md")
-                archetype_refs[slot] = digest
+                archetype_refs[slot] = f"archetypes/{digest}.md"
                 written = True
                 continue
             if not run_log_batch._round_artifact_included(name):

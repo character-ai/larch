@@ -38,6 +38,7 @@ from larch.git import gh, git
 from larch.issue import issue_wire
 from larch.issue.analyze_bugs import resolve_repo
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
+from larch.report import analysis_state
 
 DEFAULT_SEARCH: Final = f"{BUG_PREFIX} in:title"
 DEFAULT_STATE: Final = "closed"
@@ -255,11 +256,15 @@ def _utc_now_iso() -> str:
 
 
 def state_path(root: Path) -> Path:
-    """Return the fixed marker path under ``root``."""
+    """Return the repository-scoped mutable marker outside the run-log tree."""
     root_path: Path = root.expanduser()
     if not root_path.is_absolute():
         root_path = Path.cwd() / root_path
-    return root_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    root_path = root_path.resolve()
+    target = analysis_state.repository_state_root(repo_root=root_path) / config.LEARN_FROM_BUGS_STATE_RELPATH
+    if not target.exists() and not target.is_symlink():
+        _ = analysis_state.import_legacy_file(path=target, legacy_path=root_path / config.LEGACY_LEARN_FROM_BUGS_STATE_RELPATH)
+    return target
 
 
 def _int_field(payload: Mapping[str, object], key: str, default: int) -> int:
@@ -1522,6 +1527,10 @@ def write_state_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
     path = state_path(root)
+    try:
+        snapshot = analysis_state.read_snapshot(path)
+    except analysis_state.AnalysisStateError as exc:
+        raise LearnFromBugsError(str(exc)) from exc
     existing = _read_existing_state(path)
     if args.proposals_file:
         proposals = load_proposals_jsonl(Path(args.proposals_file), root=root)
@@ -1552,7 +1561,13 @@ def write_state_main(argv: list[str]) -> int:
         selected_count=args.selected_count,
         proposals=proposals,
     )
-    write_state(path, state)
+    payload = json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n"
+    try:
+        digest = analysis_state.write_bytes(
+            path, payload.encode("utf-8"), expected_digest=snapshot.digest
+        )
+    except analysis_state.AnalysisStateError as exc:
+        raise LearnFromBugsError(str(exc)) from exc
     _print_kv(
         {
             "STATE_RELPATH": config.LEARN_FROM_BUGS_STATE_RELPATH,
@@ -1562,6 +1577,7 @@ def write_state_main(argv: list[str]) -> int:
             "HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED": state.highest_closed_issue_number_scanned,
             "SCHEMA_VERSION": state.schema_version,
             "PROPOSAL_COUNT": len(state.proposals),
+            "STATE_DIGEST": digest,
         }
     )
     return 0
@@ -1657,15 +1673,9 @@ def validate_report_main(argv: list[str]) -> int:
     return 0
 
 
-# --- State publication (offline-testable port of the SKILL.md fence) ---------
-#
-# ``learn-from-bugs state-publish`` owns the whole marker-publication flow that
-# used to live as a ~232-line inline Bash fence in the skill (G-Skill-2: keep
-# logic in Python behind cli.py; SKILL.md and Bash stay thin). It publishes from
-# the clean current checkout so the marker has one normal branch-and-PR recovery
-# surface, and it drives git, gh,
-# ``learn-from-bugs write-state`` / ``verify-origin``, and the file-backed
-# ``pr create`` verb through the Runner seam so every branch is testable offline.
+# --- State publication ------------------------------------------------------
+# ``state-publish`` now delegates one local state write. The private Git
+# publisher helpers below are dormant compatibility code owned by #7824.
 
 STATE_PUBLISH_BRANCH_PREFIX: Final = "chore/learn-from-bugs-state-"
 _STATE_MARKER_SUBJECT: Final = "chore(larch-logs): update learn-from-bugs state"
@@ -1679,6 +1689,7 @@ _STATE_PR_ENV_STRIP: Final = ("IMPLEMENT_TMPDIR", "SHIP_PR_STATE_FILE")
 # STATE_PUBLISH_STATUS success values.
 STATE_PUBLISH_MERGED: Final = "merged"
 STATE_PUBLISH_HANDOFF_PENDING: Final = "handoff-pending"
+STATE_PUBLISH_SAVED: Final = "saved"
 
 # STATE_PUBLISH_STATUS failure reason tokens (G-Cfg-1: each token defined once).
 STATE_PUBLISH_NOT_A_CHECKOUT: Final = "not-a-checkout"
@@ -1728,6 +1739,7 @@ class StatePublishResult:
     status: str
     pr_number: int
     pr_url: str
+    state_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -2040,25 +2052,20 @@ def _restore_default_branch(runner: Runner, ctx: _PublishContext) -> None:
 
 
 def run_state_publish(runner: Runner, request: StatePublishRequest) -> StatePublishResult:
-    """Publish the learn-from-bugs marker from the clean current checkout."""
-    _preflight(runner, request)
-    default_branch, _default_ref = _resolve_default_branch(runner, request)
-    branch = _state_branch_name(request)
-    _reserve_branch(runner, request.root, branch)
-    ctx = _PublishContext(
-        request=request, root=request.root, branch=branch, default_branch=default_branch
-    )
-    progress = _PublishProgress()
-    try:
-        result = _publish_in_checkout(runner, ctx, progress)
-    except StatePublishError as exc:
-        if progress.committed and not progress.pr_created:
-            exc.recovery_branch = branch
-        if progress.pr_created:
-            _restore_default_branch(runner, ctx)
-        raise
-    _restore_default_branch(runner, ctx)
-    return result
+    """Persist the marker through the non-Git mutable-state contract."""
+    argv = _cli_argv("learn-from-bugs", "write-state", "--root", str(request.root), "--repo", request.repo, "--search", request.search, "--state", request.state, "--selected-count", str(request.selected_count), "--highest-closed-issue-number-scanned", str(request.highest_closed_issue_number_scanned), "--run-date", request.run_date, "--scan-started-at", request.scan_started_at, "--proposals-file", request.proposals_file)
+    if request.base_proposals_file:
+        argv.extend(["--base-proposals-file", request.base_proposals_file])
+    result = runner.run(argv, cwd=str(request.root))
+    if result.returncode != 0:
+        raise StatePublishError(STATE_PUBLISH_WRITE_STATE_FAILED, "learn-from-bugs write-state failed during state publication")
+    parsed = _unique_kv(result.stdout, ("STATE_PATH",))
+    if parsed is None or not Path(parsed["STATE_PATH"]).is_absolute():
+        raise StatePublishError(STATE_PUBLISH_WRITE_STATE_FAILED, "write-state did not return one absolute STATE_PATH")
+    return StatePublishResult(STATE_PUBLISH_SAVED, 0, "", parsed["STATE_PATH"])
+
+
+_DORMANT_GIT_PUBLISHERS = (_preflight, _resolve_default_branch, _state_branch_name, _reserve_branch, _publish_in_checkout, _restore_default_branch)
 
 
 def state_publish_main(argv: list[str]) -> int:
@@ -2100,8 +2107,7 @@ def state_publish_main(argv: list[str]) -> int:
     _print_kv(
         {
             "STATE_PUBLISH_STATUS": result.status,
-            "PR_NUMBER": result.pr_number,
-            "PR_URL": result.pr_url,
+            "STATE_PATH": result.state_path,
         }
     )
     return 0

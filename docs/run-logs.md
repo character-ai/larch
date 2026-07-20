@@ -272,7 +272,7 @@ Committed locations are:
 - Implement Step 5: `larch-logs/implement/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv`.
 - Standalone review: `larch-logs/review/<RUN_ID>/panel-prompt-sizes.tsv`, or `larch-logs/review/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv` when the dispatch is round-local.
 
-`python3 python/cli.py token measure-panel-cost` synchronizes once, then aggregates cached panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes repository-owned measurement state under `larch-logs/measure-panel-cost/`. Rows rank by scaffold bytes so fixed prompt surface stays visible even when payload-heavy runs dominate realized bytes.
+`python3 python/cli.py token measure-panel-cost` synchronizes once, then aggregates cached panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a TSV under the `measure-panel-cost` owner in the [analyzer state tree](analysis-state.md) with dispatch counts, runs observed, loads per run, prompt counts, scaffold and payload counts, agent counts, and total realized counts. Rows rank by scaffold bytes so fixed prompt surface stays visible even when payload-heavy runs dominate realized bytes.
 
 ### checks digest-size telemetry
 
@@ -285,7 +285,7 @@ Committed locations are:
 
 Writes are best-effort. A telemetry lock or write failure prints a warning and does not change the checks result or the `DIGEST_FILE=` failure envelope. The writer skips telemetry unless exactly one active implement or review run directory exists under the session `larch-logs/` tree.
 
-`python3 python/cli.py token measure-checks-digest-savings` synchronizes once, then aggregates cached checks-digest TSVs into repository-owned state at `larch-logs/measure-checks-digest-savings/<DATE>.tsv`. It reports `status=insufficient-data` until at least 5 valid rows exist. With 5 or more rows, positive aggregate signed token savings yields `recommendation=go-design-validator-extension`; zero or negative aggregate token savings yields `recommendation=no-go-design-validator-extension`. The design-validator digest extension remains gated on a future positive measurement.
+`python3 python/cli.py token measure-checks-digest-savings` synchronizes once, then aggregates cached checks-digest TSVs into the `measure-checks-digest-savings` owner in the [analyzer state tree](analysis-state.md). It reports `status=insufficient-data` until at least 5 valid rows exist. With 5 or more rows, positive aggregate signed token savings yields `recommendation=go-design-validator-extension`; zero or negative aggregate token savings yields `recommendation=no-go-design-validator-extension`. The design-validator digest extension remains gated on a future positive measurement.
 
 ### design plan-review `findings-classification.tsv`
 
@@ -644,13 +644,12 @@ Absent sections are omitted except `difficulty`, which may carry `tier_in_effect
 as the primary source (`.coder.CODER_TOOL` via jq), falling back to `coder.env`
 for rounds predating Phase 3c.
 
-**Archetype pool** (Phase 3c) — `reviewer-dyn-*.md` archetype definitions are
-no longer committed per-round. Each unique definition is written once to
-`larch-logs/shared/archetypes/<sha256-12>.md` (content-addressed, idempotent).
+**Archetype pool** (Phase 3c): `reviewer-dyn-*.md` archetype definitions are
+stored content-addressed in the owning run at
+`round-<N>/archetypes/<sha256-12>.md`.
 Entries in `panel-manifest.ndjson` carry `vendor` and `resolved_model` for each slot. Entries for `dyn-*` slots also carry an `archetype_ref`
-field (the SHA256-12 identifier). To resolve an archetype: look up
-`archetype_ref` in `panel-manifest.ndjson`, then read
-`larch-logs/shared/archetypes/<archetype_ref>.md`. The pool grows monotonically.
+field containing that round-relative path. Resolve the definition inside the
+same immutable run archive. No top-level shared run-log pool exists.
 
 ## Tracking issue comments
 

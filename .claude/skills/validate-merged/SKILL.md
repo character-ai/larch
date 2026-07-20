@@ -18,18 +18,18 @@ bug-fix triage or deep verification, or execute fix-SHA runtime checks.
 Parse `$ARGUMENTS` before any command or Task dispatch.
 
 The default and maximum selected work for one invocation is 20 merges. On a
-first run without a trustworthy committed marker, inspect only the previous 48
+first run without a trustworthy state marker, inspect only the previous 48
 hours and select at most 20 eligible merges. `--max-merges N` is the explicit
-cost cap; every eligible merge over that cap stays in the committed pending
+cost cap; every eligible merge over that cap stays in the pending
 frontier. Do not accept `-n`, `--count`, or an unbounded history mode.
 
 This is generally more expensive per selected merge than filed-bug verification:
 it launches one finder per selected merge and one refuter per candidate. The
 recommended first run is the default 48-hour, 20-merge window.
 
-Read `larch-logs/shared/validate-merged-state.json` from a clean checkout on
-the synced default branch before optional local artifacts. State contains only
-compact merge frontier and unresolved candidate identities—never issue bodies,
+Read the `STATE_PATH` returned by `validate-merged prepare`. It lives under
+`$XDG_STATE_HOME/larch/analysis-state/<repo>/validate-merged/`. State contains only
+compact merge frontier and unresolved candidate identities, never issue bodies,
 diffs, transcripts, temporary paths, or raw agent output. Do not advance state
 until every enabled stage and the final report pass.
 
@@ -45,13 +45,7 @@ Run `validate-merged report` with a temporary `--state-output`. It retains
 unresolved candidates across runs. The report is the only user-facing result.
 Offer one combined follow-up issue only after explicit approval.
 
-To publish the marker, require a clean, synced default branch. Create a unique
-state branch in the current checkout, run `validate-merged write-state` for the
-generated state, stage and commit only
-`larch-logs/shared/validate-merged-state.json`, push, open a state-only PR,
-attempt an immediate `gh pr merge --squash --admin`, and restore/sync the
-default branch. Never use `git worktree` or `git add -A`. If the marker changed
-remotely after it was read, reconcile safely or stop without overwriting it.
-Before PR creation, retain and report the recovery branch; after creation, the
-PR is the recovery surface. State advances only when the merged default branch
-contains the marker.
+After the report succeeds, run `validate-merged write-state` with the generated
+state and the `STATE_DIGEST` returned by prepare as `--expected-digest`. A
+concurrent update fails without overwriting either result. Never commit, push,
+or open a PR for this marker.

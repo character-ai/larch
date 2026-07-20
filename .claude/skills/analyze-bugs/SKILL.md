@@ -24,16 +24,11 @@ Accept only `-n` / `--count`, `--deep-max`, `--runtime-max`, `--deep-model`,
 backfills older issues absent from a valid cache record.
 
 Before dispatch, require a clean checkout on `main` synchronized with
-`origin/main`. The committed marker is
-`larch-logs/shared/analyze-bugs-state.json`; load and validate that marker from
-the synced default branch before optional local cache artifacts. Publish a
-normalized marker only after every enabled stage and the final report succeeds.
-Use a clean current checkout, a unique state branch, path-limited staging and a
-marker-only commit, then a state-only PR and immediate admin squash attempt.
-Never use `git worktree`, `git add -A`, or raw cache artifacts for publication.
-On pre-PR failure retain the named branch; after PR creation report the PR as
-the recovery surface. Do not claim state advanced until default branch contains
-the marker.
+`origin/main`. `analyze-bugs prefetch` keeps immutable evidence bundles under
+`$XDG_CACHE_HOME` and returns a mutable `LEDGER_PATH` under
+`$XDG_STATE_HOME/larch/analysis-state/<repo>/analyze-bugs/`. Use only that
+printed ledger path in later stages. The first run imports the legacy cache
+ledger when present. Never commit, push, or open a PR for analyzer state.
 
 ## Workflow
 

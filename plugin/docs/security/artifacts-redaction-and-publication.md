@@ -274,6 +274,12 @@ invalid entry, restores it on failure, and removes stale private transfer and
 repair state under the same lock. See
 [Run-log archive format](../run-log-archive.md).
 
+Mutable analyzer state is not an archive and never appears under `run-logs/`.
+It stays under the private XDG state home with owner-scoped paths, `0600`
+files, atomic replacement, per-file locks, and stale-writer detection. Treat
+its ledgers, retry bundles, and generated reports as untrusted private operator
+state. See [Analyzer state](../analysis-state.md).
+
 `/design` and standalone `/review` require storage preflight before session
 work. Their terminal paths preserve the existing design allowlists, review
 round artifacts, breadcrumbs, completeness checks, and secret scrub before

@@ -394,26 +394,6 @@ def _copy_tree_to_repo(
                 if replace_error:
                     return [], dest, scrub_violations, replace_error
         rels.append(f"larch-logs/{skill}/{run_id}")
-    shared_src = log_root / "shared"
-    shared_dest = repo_root / "larch-logs" / "shared"
-    if shared_src.is_dir():
-        if shared_src.resolve() != shared_dest.resolve():
-            shared_dest.mkdir(parents=True, exist_ok=True)
-            for item in sorted(shared_src.iterdir()):
-                if not item.exists() or item.is_symlink():
-                    continue
-                dest_item = shared_dest / item.name
-                if item.is_dir():
-                    _safe_copy_run_tree(src=item, dest=dest_item)
-                elif item.is_file():
-                    dest_item.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(item, dest_item)
-            try:
-                count, _files_scrubbed = _scrub_run_tree(shared_dest)
-            except ShipError as exc:
-                return [], dest, scrub_violations, str(exc)
-            scrub_violations += count
-        rels.append("larch-logs/shared")
     return rels, dest, scrub_violations, None
 
 
