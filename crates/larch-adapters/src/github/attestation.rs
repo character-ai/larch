@@ -5,9 +5,7 @@
 //! Callers provide only validated larch release identities and cannot replace
 //! the repository, workflow, issuer, signer identity, host, or trust root.
 
-use super::{GitHubCompletionError, OctocrabGitHubService};
-use bytes::Bytes;
-use http_body_util::{BodyExt, Limited};
+use super::{GitHubCompletionError, OctocrabGitHubService, collect_bounded_response};
 use larch_core::{
     ArtifactAttestationRequest, ImmutableReleaseAttestationRequest, ProcessCancellation, SafeText,
     VerifiedArtifactAttestation, VerifiedReleaseAttestation,
@@ -627,7 +625,9 @@ impl<'a> OctocrabAttestationTransport<'a> {
         if has_next_page(response.headers()) {
             return Err(limit_failure());
         }
-        let body = collect_response(response, MAX_BUNDLE_BYTES).await?;
+        let body = collect_bounded_response(response, MAX_BUNDLE_BYTES)
+            .await
+            .map_err(|()| limit_failure())?;
         let response: AttestationResponse =
             serde_json::from_slice(&body).map_err(|_| malformed())?;
         if response.attestations.len() > MAX_BUNDLES {
@@ -688,7 +688,9 @@ impl<'a> OctocrabAttestationTransport<'a> {
             if response.status() != http::StatusCode::OK {
                 return Err(status_failure(response.status().as_u16()));
             }
-            let compressed = collect_response(response, MAX_BUNDLE_BYTES).await?;
+            let compressed = collect_bounded_response(response, MAX_BUNDLE_BYTES)
+                .await
+                .map_err(|()| limit_failure())?;
             let size = decompress_len(&compressed).map_err(|_| malformed())?;
             if size > MAX_BUNDLE_BYTES {
                 return Err(limit_failure());
@@ -705,28 +707,6 @@ impl AttestationTransport for OctocrabAttestationTransport<'_> {
     fn fetch_bundles<'a>(&'a self, query: &'a AttestationQuery) -> AttestationFuture<'a> {
         Box::pin(self.guarded_fetch(query))
     }
-}
-
-type OctoResponse = http::Response<http_body_util::combinators::BoxBody<Bytes, octocrab::Error>>;
-
-async fn collect_response(
-    response: OctoResponse,
-    cap: usize,
-) -> Result<Vec<u8>, AttestationServiceError> {
-    if response
-        .headers()
-        .get(http::header::CONTENT_LENGTH)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok())
-        .is_some_and(|length| length > cap)
-    {
-        return Err(limit_failure());
-    }
-    Limited::new(response.into_body(), cap)
-        .collect()
-        .await
-        .map(|body| body.to_bytes().to_vec())
-        .map_err(|_| limit_failure())
 }
 
 fn validate_bundle_url(value: &str, base: Option<&Url>) -> Result<Url, AttestationServiceError> {

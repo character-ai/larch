@@ -13,11 +13,11 @@ pub use attestation::{
 
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
-    CreatedPullRequest, DependencyMutation, DependencyRef, GitHubOperationError, MergeStateStatus,
-    Mergeable, PullRequest, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod,
-    PullRequestMergeResult, PullRequestReviewState, PullRequestSpec, PullRequestState,
-    ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState, ReleasePlanningService,
-    ReleasePullRequest, ReviewDecision,
+    CreatedPullRequest, DependencyMutation, DependencyMutationReceipt, DependencyRef,
+    GitHubOperationError, MergeStateStatus, Mergeable, PullRequest, PullRequestEdit,
+    PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult, PullRequestReviewState,
+    PullRequestSpec, PullRequestState, ReleaseCandidatePullRequest,
+    ReleaseCandidatePullRequestState, ReleasePlanningService, ReleasePullRequest, ReviewDecision,
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,
@@ -25,7 +25,9 @@ pub use release::{
     validate_download_redirect,
 };
 
-use http::header::HeaderName;
+use bytes::Bytes;
+use http::header::{CONTENT_LENGTH, HeaderName};
+use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env};
 use octocrab::Octocrab;
 use std::{error::Error, ffi::OsString, fmt, future::Future};
@@ -192,6 +194,8 @@ pub struct OctocrabGitHubService {
     pub(crate) test_log_redirect_origin: Option<url::Origin>,
     redactor: RuntimeRedactor,
     pub(crate) mutation_lock: Mutex<()>,
+    #[cfg(test)]
+    test_continuation_base: Option<Url>,
 }
 
 impl OctocrabGitHubService {
@@ -204,6 +208,7 @@ impl OctocrabGitHubService {
             test_log_redirect_origin: None,
             redactor: RuntimeRedactor::default(),
             mutation_lock: Mutex::new(()),
+            test_continuation_base: None,
         }
     }
 
@@ -243,6 +248,8 @@ impl OctocrabGitHubService {
             test_log_redirect_origin: None,
             redactor,
             mutation_lock: Mutex::new(()),
+            #[cfg(test)]
+            test_continuation_base: None,
         })
     }
 
@@ -299,6 +306,12 @@ impl OctocrabGitHubService {
 
     pub(crate) const fn client(&self) -> &Octocrab {
         &self.client
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_continuation_base(mut self, base: &str) -> Self {
+        self.test_continuation_base = Some(Url::parse(base).expect("test continuation base"));
+        self
     }
 
     /// Resolve a response-supplied pagination or redirect continuation and
@@ -395,6 +408,30 @@ pub(crate) fn octocrab_status(error: &octocrab::Error) -> Option<u16> {
         octocrab::Error::GitHub { source, .. } => Some(source.status_code.as_u16()),
         _ => None,
     }
+}
+
+pub(crate) type GitHubRawResponse =
+    http::Response<http_body_util::combinators::BoxBody<Bytes, octocrab::Error>>;
+
+/// Collect a GitHub response without exceeding the caller's byte bound.
+pub(crate) async fn collect_bounded_response(
+    response: GitHubRawResponse,
+    cap: usize,
+) -> Result<Vec<u8>, ()> {
+    if response
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .is_some_and(|length| length > cap)
+    {
+        return Err(());
+    }
+    Limited::new(response.into_body(), cap)
+        .collect()
+        .await
+        .map(|body| body.to_bytes().to_vec())
+        .map_err(|_| ())
 }
 
 #[cfg(test)]

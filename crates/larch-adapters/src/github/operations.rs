@@ -9,8 +9,10 @@
 
 use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
-    check_live_mutation_auth, octocrab_status,
+    check_live_mutation_auth, collect_bounded_response, octocrab_status,
 };
+use chrono::DateTime;
+use http::header::LINK;
 use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
 use serde_json::{Map, Value, json};
@@ -47,6 +49,10 @@ pub enum GitHubOperationError {
     DependencyFeatureUnavailable,
     /// The live-mutation authorization gate refused the request.
     MutationRefused(&'static str),
+    /// A triage-controlled mutation's target no longer has its expected timestamp.
+    StaleDependencyTarget,
+    /// A triage-controlled mutation's target is not safe for a public mutation.
+    ProtectedDependencyTarget,
 }
 
 impl fmt::Display for GitHubOperationError {
@@ -75,6 +81,12 @@ impl fmt::Display for GitHubOperationError {
                 .write_str("GitHub issue-dependency API is unavailable for this repository"),
             Self::MutationRefused(reason) => {
                 write!(formatter, "live GitHub mutation refused: {reason}")
+            }
+            Self::StaleDependencyTarget => {
+                formatter.write_str("dependency target changed since the expected triage snapshot")
+            }
+            Self::ProtectedDependencyTarget => {
+                formatter.write_str("dependency target has protected lifecycle state")
             }
         }
     }
@@ -389,6 +401,26 @@ pub enum DependencyMutation {
     AlreadyInDesiredState,
 }
 
+/// Receipt for a dependency mutation and its optional triage freshness proof.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DependencyMutationReceipt {
+    outcome: DependencyMutation,
+    updated_at: Option<String>,
+}
+
+impl DependencyMutationReceipt {
+    #[must_use]
+    pub const fn outcome(&self) -> DependencyMutation {
+        self.outcome
+    }
+
+    /// Fresh target timestamp returned only for triage-controlled mutations.
+    #[must_use]
+    pub fn updated_at(&self) -> Option<&str> {
+        self.updated_at.as_deref()
+    }
+}
+
 /// Immutable inputs for a reconciled pull-request creation.
 pub struct PullRequestSpec<'a> {
     pub owner: &'a str,
@@ -429,6 +461,17 @@ pub struct DependencyEdge<'a> {
     pub repo: &'a str,
     pub client_issue: u64,
     pub blocker_id: u64,
+    /// Exact target timestamp required for a triage-controlled mutation.
+    pub expected_updated_at: Option<&'a str>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DependencyTarget {
+    updated_at: String,
+    state: String,
+    title: String,
+    body: String,
+    labels: Vec<String>,
 }
 
 enum CreatePlan {
@@ -822,10 +865,7 @@ impl OctocrabGitHubService {
     ) -> Result<Vec<DependencyRef>, GitHubOperationError> {
         validate_repo(owner, repo)?;
         let route = format!("/repos/{owner}/{repo}/issues/{issue}/dependencies/blocked_by");
-        let value = self
-            .fetch_json(cancellation, self.client.get(route.as_str(), None::<&()>))
-            .await?;
-        parse_dependency_refs(&value, self.policy.limits())
+        self.dependency_pages(cancellation, &route).await
     }
 
     /// Add one blocked-by dependency edge behind the live-mutation gate, with a
@@ -840,24 +880,35 @@ impl OctocrabGitHubService {
         cancellation: &dyn ProcessCancellation,
         authorization: &LiveMutationRequest<'_>,
         edge: DependencyEdge<'_>,
-    ) -> Result<DependencyMutation, GitHubOperationError> {
+    ) -> Result<DependencyMutationReceipt, GitHubOperationError> {
         authorize_mutation(authorization)?;
         validate_repo(edge.owner, edge.repo)?;
+        self.dependency_target_precondition(cancellation, edge)
+            .await?;
         let before = self
             .list_blocked_by(cancellation, edge.owner, edge.repo, edge.client_issue)
             .await?;
         if dependency_present(&before, edge.blocker_id) {
-            return Ok(DependencyMutation::AlreadyInDesiredState);
+            let current_target = self
+                .dependency_target_precondition(cancellation, edge)
+                .await?;
+            return Ok(DependencyMutationReceipt {
+                outcome: DependencyMutation::AlreadyInDesiredState,
+                updated_at: current_target.map(|target| target.updated_at),
+            });
         }
+        let before_target = self
+            .dependency_target_precondition(cancellation, edge)
+            .await?;
         let uri = format!(
-            "{GITHUB_API_BASE}repos/{}/{}/issues/{}/dependencies/blocked_by",
+            "/repos/{}/{}/issues/{}/dependencies/blocked_by",
             edge.owner, edge.repo, edge.client_issue,
         );
         let body = json!({ "issue_id": edge.blocker_id });
         let status = self
             .send_status(cancellation, false, &uri, Some(&body))
             .await?;
-        self.settle_dependency(cancellation, edge, status, true)
+        self.settle_dependency(cancellation, edge, status, true, before_target)
             .await
     }
 
@@ -873,21 +924,32 @@ impl OctocrabGitHubService {
         cancellation: &dyn ProcessCancellation,
         authorization: &LiveMutationRequest<'_>,
         edge: DependencyEdge<'_>,
-    ) -> Result<DependencyMutation, GitHubOperationError> {
+    ) -> Result<DependencyMutationReceipt, GitHubOperationError> {
         authorize_mutation(authorization)?;
         validate_repo(edge.owner, edge.repo)?;
+        self.dependency_target_precondition(cancellation, edge)
+            .await?;
         let before = self
             .list_blocked_by(cancellation, edge.owner, edge.repo, edge.client_issue)
             .await?;
         if !dependency_present(&before, edge.blocker_id) {
-            return Ok(DependencyMutation::AlreadyInDesiredState);
+            let current_target = self
+                .dependency_target_precondition(cancellation, edge)
+                .await?;
+            return Ok(DependencyMutationReceipt {
+                outcome: DependencyMutation::AlreadyInDesiredState,
+                updated_at: current_target.map(|target| target.updated_at),
+            });
         }
+        let before_target = self
+            .dependency_target_precondition(cancellation, edge)
+            .await?;
         let uri = format!(
-            "{GITHUB_API_BASE}repos/{}/{}/issues/{}/dependencies/blocked_by/{}",
+            "/repos/{}/{}/issues/{}/dependencies/blocked_by/{}",
             edge.owner, edge.repo, edge.client_issue, edge.blocker_id,
         );
         let status = self.send_status(cancellation, true, &uri, None).await?;
-        self.settle_dependency(cancellation, edge, status, false)
+        self.settle_dependency(cancellation, edge, status, false, before_target)
             .await
     }
 
@@ -1028,7 +1090,8 @@ impl OctocrabGitHubService {
         edge: DependencyEdge<'_>,
         status: u16,
         adding: bool,
-    ) -> Result<DependencyMutation, GitHubOperationError> {
+        before_target: Option<DependencyTarget>,
+    ) -> Result<DependencyMutationReceipt, GitHubOperationError> {
         match classify_dependency_write(status) {
             DependencyWrite::FeatureUnavailable => {
                 return Err(GitHubOperationError::DependencyFeatureUnavailable);
@@ -1045,12 +1108,167 @@ impl OctocrabGitHubService {
             .list_blocked_by(cancellation, edge.owner, edge.repo, edge.client_issue)
             .await?;
         if dependency_present(&after, edge.blocker_id) == adding {
-            Ok(DependencyMutation::Applied)
+            let updated_at = match before_target {
+                Some(target) => {
+                    let current = self.dependency_target(cancellation, edge).await?;
+                    if current.updated_at == target.updated_at {
+                        return Err(GitHubOperationError::Malformed(
+                            "dependency mutation did not advance target updated_at",
+                        ));
+                    }
+                    Some(current.updated_at)
+                }
+                None => None,
+            };
+            Ok(DependencyMutationReceipt {
+                outcome: DependencyMutation::Applied,
+                updated_at,
+            })
         } else {
             Err(GitHubOperationError::Malformed(
                 "dependency mutation not reflected in read-back",
             ))
         }
+    }
+
+    async fn dependency_target_precondition(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        edge: DependencyEdge<'_>,
+    ) -> Result<Option<DependencyTarget>, GitHubOperationError> {
+        let Some(expected_updated_at) = edge.expected_updated_at else {
+            return Ok(None);
+        };
+        if !is_rfc3339_timestamp(expected_updated_at) {
+            return Err(GitHubOperationError::Malformed(
+                "expected dependency updated_at",
+            ));
+        }
+        let target = self.dependency_target(cancellation, edge).await?;
+        if target.updated_at != expected_updated_at {
+            return Err(GitHubOperationError::StaleDependencyTarget);
+        }
+        if target_has_protected_lifecycle_state(&target) {
+            return Err(GitHubOperationError::ProtectedDependencyTarget);
+        }
+        Ok(Some(target))
+    }
+
+    async fn dependency_target(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        edge: DependencyEdge<'_>,
+    ) -> Result<DependencyTarget, GitHubOperationError> {
+        let route = format!(
+            "/repos/{}/{}/issues/{}",
+            edge.owner, edge.repo, edge.client_issue
+        );
+        let value = self.dependency_json(cancellation, &route).await?;
+        parse_dependency_target(&value, self.policy.limits())
+    }
+
+    async fn dependency_pages(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        initial_route: &str,
+    ) -> Result<Vec<DependencyRef>, GitHubOperationError> {
+        let limits = self.policy.limits();
+        let mut route = initial_route.to_owned();
+        let mut dependencies = Vec::new();
+        for _ in 0..limits.pages() {
+            let (value, next) = self.dependency_json_page(cancellation, &route).await?;
+            let page = parse_dependency_refs(&value, limits)?;
+            if dependencies.len().saturating_add(page.len()) > limits.items() {
+                return Err(GitHubOperationError::Malformed(
+                    "dependency list exceeds item bound",
+                ));
+            }
+            dependencies.extend(page);
+            let Some(next) = next else {
+                return Ok(dependencies);
+            };
+            #[cfg(test)]
+            {
+                route = self.dependency_continuation(&next)?;
+            }
+            #[cfg(not(test))]
+            {
+                route = Self::dependency_continuation(&next)?;
+            }
+        }
+        Err(GitHubOperationError::Malformed(
+            "dependency pagination exceeds page bound",
+        ))
+    }
+
+    async fn dependency_json(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        route: &str,
+    ) -> Result<Value, GitHubOperationError> {
+        self.dependency_json_page(cancellation, route)
+            .await
+            .map(|(value, _)| value)
+    }
+
+    async fn dependency_json_page(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        route: &str,
+    ) -> Result<(Value, Option<String>), GitHubOperationError> {
+        let result = self
+            .guard_operation(cancellation, self.client._get(route))
+            .await;
+        let response = match result {
+            Ok(Ok(response)) => response,
+            Ok(Err(error)) => return Err(self.transport_error(&error)),
+            Err(completion) => return Err(completion_error(completion)),
+        };
+        match response.status().as_u16() {
+            200 => {}
+            401 | 403 => return Err(GitHubOperationError::Unauthorized),
+            404 => return Err(GitHubOperationError::DependencyFeatureUnavailable),
+            status => {
+                return Err(GitHubOperationError::Transport(
+                    self.redactor
+                        .safe_text(format!("dependency read returned status {status}")),
+                ));
+            }
+        }
+        let next = dependency_next_link(response.headers())?;
+        let body = collect_bounded_response(response, self.policy.limits().body_bytes())
+            .await
+            .map_err(|()| {
+                GitHubOperationError::Malformed("dependency response exceeds body bound")
+            })?;
+        let value = serde_json::from_slice(&body)
+            .map_err(|_| GitHubOperationError::Malformed("dependency JSON response"))?;
+        Ok((value, next))
+    }
+
+    #[cfg(test)]
+    fn dependency_continuation(&self, continuation: &str) -> Result<String, GitHubOperationError> {
+        if let Some(base) = &self.test_continuation_base {
+            let next = base
+                .join(continuation)
+                .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))?;
+            if next.origin() != base.origin() {
+                return Err(GitHubOperationError::Malformed(
+                    "dependency pagination link",
+                ));
+            }
+            return Ok(next.to_string());
+        }
+        Self::continuation_url(GITHUB_API_BASE, continuation)
+            .map(|url| url.to_string())
+            .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))
+    }
+
+    #[cfg(not(test))]
+    fn dependency_continuation(continuation: &str) -> Result<String, GitHubOperationError> {
+        Self::continuation_url(GITHUB_API_BASE, continuation)
+            .map(|url| url.to_string())
+            .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))
     }
 
     async fn fetch_json(
@@ -1278,6 +1496,141 @@ const fn classify_dependency_write(status: u16) -> DependencyWrite {
 
 fn dependency_present(edges: &[DependencyRef], blocker_id: u64) -> bool {
     edges.iter().any(|edge| edge.issue_id == blocker_id)
+}
+
+fn dependency_next_link(headers: &http::HeaderMap) -> Result<Option<String>, GitHubOperationError> {
+    let mut next = None;
+    for raw in headers.get_all(LINK) {
+        let raw = raw
+            .to_str()
+            .map_err(|_| GitHubOperationError::Malformed("dependency pagination link"))?;
+        for entry in raw.split(',') {
+            let mut parts = entry.trim().split(';');
+            let target = parts.next().unwrap_or_default().trim();
+            let is_next = parts.any(|parameter| {
+                let parameter = parameter.trim();
+                parameter.strip_prefix("rel=").is_some_and(|value| {
+                    value
+                        .trim_matches('"')
+                        .split_ascii_whitespace()
+                        .any(|rel| rel.eq_ignore_ascii_case("next"))
+                })
+            });
+            if !is_next {
+                continue;
+            }
+            let target = target
+                .strip_prefix('<')
+                .and_then(|value| value.strip_suffix('>'))
+                .filter(|value| !value.is_empty())
+                .ok_or(GitHubOperationError::Malformed(
+                    "dependency pagination link",
+                ))?;
+            if next.replace(target.to_owned()).is_some() {
+                return Err(GitHubOperationError::Malformed(
+                    "dependency pagination has multiple next links",
+                ));
+            }
+        }
+    }
+    Ok(next)
+}
+
+fn parse_dependency_target(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<DependencyTarget, GitHubOperationError> {
+    let object = as_object(value)?;
+    let updated_at = required_str(object, "updated_at", limits, "dependency target updated_at")?;
+    if !is_rfc3339_timestamp(&updated_at) {
+        return Err(GitHubOperationError::Malformed(
+            "dependency target updated_at",
+        ));
+    }
+    let state = required_str(object, "state", limits, "dependency target state")?;
+    let title = required_str(object, "title", limits, "dependency target title")?;
+    let body = object
+        .get("body")
+        .and_then(Value::as_str)
+        .map(|body| bounded_string(body, limits, "dependency target body"))
+        .transpose()?
+        .unwrap_or_default();
+    let labels = object
+        .get("labels")
+        .and_then(Value::as_array)
+        .ok_or(GitHubOperationError::Malformed("dependency target labels"))?;
+    if labels.len() > limits.items() {
+        return Err(GitHubOperationError::Malformed(
+            "dependency target labels exceed item bound",
+        ));
+    }
+    let labels = labels
+        .iter()
+        .map(|label| {
+            let label = as_object(label)?;
+            required_str(label, "name", limits, "dependency target label")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(DependencyTarget {
+        updated_at,
+        state,
+        title,
+        body,
+        labels,
+    })
+}
+
+fn target_has_protected_lifecycle_state(target: &DependencyTarget) -> bool {
+    if !target.state.eq_ignore_ascii_case("open")
+        || target
+            .labels
+            .iter()
+            .any(|label| label.to_ascii_lowercase().contains("clarif"))
+        || protected_lifecycle_title(&target.title)
+    {
+        return true;
+    }
+    let body = without_triage_block(&target.body);
+    body.as_deref()
+        .is_none_or(|body| body.to_ascii_lowercase().contains("<!-- larch:"))
+}
+
+fn protected_lifecycle_title(title: &str) -> bool {
+    let Some((prefix, remainder)) = title
+        .strip_prefix('[')
+        .and_then(|text| text.split_once("] "))
+    else {
+        return false;
+    };
+    !remainder.is_empty()
+        && matches!(
+            prefix.to_ascii_uppercase().as_str(),
+            "IMPLEMENTING"
+                | "DONE"
+                | "DESIGNING"
+                | "DESIGNED"
+                | "STALLED"
+                | "IN PROGRESS"
+                | "PLANNED"
+        )
+}
+
+fn without_triage_block(body: &str) -> Option<String> {
+    const START: &str = "<!-- larch:triage:start -->";
+    const END: &str = "<!-- larch:triage:end -->";
+    let starts = body.match_indices(START).collect::<Vec<_>>();
+    let ends = body.match_indices(END).collect::<Vec<_>>();
+    match (starts.as_slice(), ends.as_slice()) {
+        ([], []) => Some(body.to_owned()),
+        ([(start, _)], [(end, _)]) if start < end => {
+            Some(format!("{}{}", &body[..*start], &body[end + END.len()..]))
+        }
+        _ => None,
+    }
+}
+
+fn is_rfc3339_timestamp(value: &str) -> bool {
+    !value.is_empty() && value.ends_with('Z') && DateTime::parse_from_rfc3339(value).is_ok()
 }
 
 fn parse_pull_request(
@@ -1585,11 +1938,12 @@ fn bounded_string(
 #[cfg(test)]
 mod tests {
     use super::{
-        CreatePlan, DependencyRef, GitHubOperationError, MergeStateStatus, Mergeable,
-        PullRequestMerge, PullRequestMergeMethod, PullRequestState, ReviewDecision,
-        classify_dependency_write, dependency_present, edit_body, is_safe_segment, merge_body,
-        parse_dependency_refs, parse_pull_request, parse_pull_requests,
-        parse_release_candidate_pull_request, parse_review_state, reconcile_create, validate_repo,
+        CreatePlan, DependencyRef, DependencyTarget, GitHubOperationError, MergeStateStatus,
+        Mergeable, PullRequestMerge, PullRequestMergeMethod, PullRequestState, ReviewDecision,
+        classify_dependency_write, dependency_next_link, dependency_present, edit_body,
+        is_safe_segment, merge_body, parse_dependency_refs, parse_dependency_target,
+        parse_pull_request, parse_pull_requests, parse_release_candidate_pull_request,
+        parse_review_state, reconcile_create, target_has_protected_lifecycle_state, validate_repo,
     };
     use super::{DependencyWrite, PullRequestEdit};
     use larch_core::GitHubTransportPolicy;
@@ -1793,6 +2147,52 @@ mod tests {
     }
 
     #[test]
+    fn dependency_target_and_pagination_inputs_fail_closed() {
+        let target = json!({
+            "updated_at": "2026-07-12T10:00:00Z",
+            "state": "open",
+            "title": "Regular issue",
+            "body": "body",
+            "labels": [{"name": "bug"}],
+        });
+        assert!(!target_has_protected_lifecycle_state(
+            &parse_dependency_target(&target, limits()).expect("valid target")
+        ));
+        assert!(target_has_protected_lifecycle_state(&DependencyTarget {
+            updated_at: String::from("2026-07-12T10:00:00Z"),
+            state: String::from("open"),
+            title: String::from("[IMPLEMENTING] issue"),
+            body: String::new(),
+            labels: Vec::new(),
+        }));
+        assert_eq!(
+            parse_dependency_target(&json!({"updated_at": "nope"}), limits())
+                .expect_err("malformed target fails closed"),
+            GitHubOperationError::Malformed("dependency target updated_at")
+        );
+
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::LINK,
+            http::HeaderValue::from_str(
+                "</repos/o/r/issues/5/dependencies/blocked_by?page=2>; rel=\"next\"",
+            )
+            .expect("valid header"),
+        );
+        assert_eq!(
+            dependency_next_link(&headers).expect("next link"),
+            Some(String::from(
+                "/repos/o/r/issues/5/dependencies/blocked_by?page=2"
+            ))
+        );
+        headers.insert(
+            http::header::LINK,
+            http::HeaderValue::from_static("bad; rel=next"),
+        );
+        assert!(dependency_next_link(&headers).is_err());
+    }
+
+    #[test]
     fn dependency_write_classification_covers_the_status_contract() {
         assert_eq!(classify_dependency_write(201), DependencyWrite::Accepted);
         assert_eq!(classify_dependency_write(204), DependencyWrite::Accepted);
@@ -1863,10 +2263,11 @@ mod tests {
 #[cfg(test)]
 mod service_tests {
     use super::{
-        DependencyEdge, DependencyMutation, GitHubOperationError, LiveMutationRequest,
-        MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestMerge,
-        PullRequestMergeMethod, PullRequestMergeResult, PullRequestSpec, PullRequestState,
-        ReleasePlanningService, ReviewDecision,
+        DependencyEdge, DependencyMutation, DependencyMutationReceipt, DependencyRef,
+        GitHubOperationError, LiveMutationRequest, MergeStateStatus, Mergeable,
+        OctocrabGitHubService, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod,
+        PullRequestMergeResult, PullRequestSpec, PullRequestState, ReleasePlanningService,
+        ReviewDecision,
     };
     use crate::runtime::Cancellation;
     use serde_json::json;
@@ -1903,7 +2304,44 @@ mod service_tests {
             .expect("upload URI")
             .build()
             .expect("stub client");
-        (OctocrabGitHubService::with_test_client(client), server)
+        (
+            OctocrabGitHubService::with_test_client(client).with_test_continuation_base(&base),
+            server,
+        )
+    }
+
+    fn stub_service_with_links(
+        responses: Vec<(u16, String, Option<String>)>,
+    ) -> (OctocrabGitHubService, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub");
+        let base = format!("http://{}/", listener.local_addr().expect("stub address"));
+        let server = thread::spawn(move || {
+            for (status, body, link) in responses {
+                let (mut socket, _) = listener.accept().expect("accept request");
+                let mut request = [0_u8; 16_384];
+                let bytes_read = socket.read(&mut request).expect("read request");
+                assert!(bytes_read > 0, "request must not be empty");
+                let link = link.map_or_else(String::new, |value| format!("Link: {value}\r\n"));
+                write!(
+                    socket,
+                    "HTTP/1.1 {status} Stub\r\nContent-Type: application/json\r\n{link}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .expect("write response");
+            }
+        });
+        let client = octocrab::Octocrab::builder()
+            .personal_token(String::from("test-token"))
+            .base_uri(&base)
+            .expect("base URI")
+            .upload_uri(&base)
+            .expect("upload URI")
+            .build()
+            .expect("stub client");
+        (
+            OctocrabGitHubService::with_test_client(client).with_test_continuation_base(&base),
+            server,
+        )
     }
 
     fn pull_request_json(number: u64, state: &str, head: &str) -> String {
@@ -2525,6 +2963,29 @@ mod service_tests {
     }
 
     #[tokio::test]
+    async fn list_blocked_by_follows_a_bounded_same_origin_next_link() {
+        let (service, server) = stub_service_with_links(vec![
+            (
+                200,
+                json!([{ "number": 10, "id": 111 }]).to_string(),
+                Some(String::from(
+                    "</repos/o/r/issues/5/dependencies/blocked_by?page=2>; rel=\"next\"",
+                )),
+            ),
+            (200, json!([{ "number": 12, "id": 222 }]).to_string(), None),
+        ]);
+        let refs = service
+            .list_blocked_by(&Cancellation::new(), "o", "r", 5)
+            .await
+            .expect("later page is included");
+        assert_eq!(
+            refs.iter().map(DependencyRef::issue_id).collect::<Vec<_>>(),
+            [111, 222]
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
     async fn add_blocked_by_is_idempotent_and_gated() {
         let cancellation = Cancellation::new();
         let edge = DependencyEdge {
@@ -2532,6 +2993,7 @@ mod service_tests {
             repo: "r",
             client_issue: 5,
             blocker_id: 222,
+            expected_updated_at: None,
         };
 
         let (present, server) = stub_service(vec![(
@@ -2544,7 +3006,10 @@ mod service_tests {
                 .add_blocked_by(&cancellation, &authorized, edge)
                 .await
                 .expect("idempotent add reconciles without mutating"),
-            DependencyMutation::AlreadyInDesiredState
+            DependencyMutationReceipt {
+                outcome: DependencyMutation::AlreadyInDesiredState,
+                updated_at: None,
+            }
         );
         server.join().expect("stub completed");
 
@@ -2561,6 +3026,82 @@ mod service_tests {
     }
 
     #[tokio::test]
+    async fn triage_controlled_add_rechecks_and_returns_fresh_timestamp() {
+        let target = |updated_at: &str| {
+            json!({
+                "updated_at": updated_at,
+                "state": "open",
+                "title": "Regular issue",
+                "body": "",
+                "labels": [],
+            })
+            .to_string()
+        };
+        let (service, server) = stub_service(vec![
+            (200, target("2026-07-12T10:00:00Z")),
+            (200, String::from("[]")),
+            (200, target("2026-07-12T10:00:00Z")),
+            (201, String::from("{}")),
+            (200, json!([{ "number": 12, "id": 222 }]).to_string()),
+            (200, target("2026-07-12T10:00:01Z")),
+        ]);
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+            expected_updated_at: Some("2026-07-12T10:00:00Z"),
+        };
+        let receipt = service
+            .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+            .await
+            .expect("verified triage mutation");
+        assert_eq!(receipt.outcome(), DependencyMutation::Applied);
+        assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01Z"));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn triage_controlled_add_refuses_stale_or_protected_target_before_write() {
+        let stale = json!({
+            "updated_at": "2026-07-12T10:00:01Z", "state": "open", "title": "Regular",
+            "body": "", "labels": [],
+        })
+        .to_string();
+        let (service, server) = stub_service(vec![(200, stale)]);
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+            expected_updated_at: Some("2026-07-12T10:00:00Z"),
+        };
+        assert_eq!(
+            service
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("stale target prevents write"),
+            GitHubOperationError::StaleDependencyTarget
+        );
+        server.join().expect("stub completed");
+
+        let protected = json!({
+            "updated_at": "2026-07-12T10:00:00Z", "state": "open", "title": "[DONE] Regular",
+            "body": "", "labels": [],
+        })
+        .to_string();
+        let (service, server) = stub_service(vec![(200, protected)]);
+        assert_eq!(
+            service
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("protected target prevents write"),
+            GitHubOperationError::ProtectedDependencyTarget
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
     async fn remove_blocked_by_is_idempotent_when_absent() {
         let cancellation = Cancellation::new();
         let edge = DependencyEdge {
@@ -2568,6 +3109,7 @@ mod service_tests {
             repo: "r",
             client_issue: 5,
             blocker_id: 222,
+            expected_updated_at: None,
         };
         let (service, server) = stub_service(vec![(200, String::from("[]"))]);
         let authorized = operator_request();
@@ -2576,7 +3118,10 @@ mod service_tests {
                 .remove_blocked_by(&cancellation, &authorized, edge)
                 .await
                 .expect("idempotent remove reconciles without mutating"),
-            DependencyMutation::AlreadyInDesiredState
+            DependencyMutationReceipt {
+                outcome: DependencyMutation::AlreadyInDesiredState,
+                updated_at: None,
+            }
         );
         server.join().expect("stub completed");
     }
@@ -2595,6 +3140,8 @@ mod service_tests {
             GitHubOperationError::GraphqlErrors,
             GitHubOperationError::DependencyFeatureUnavailable,
             GitHubOperationError::MutationRefused("unauthorized-mutation"),
+            GitHubOperationError::StaleDependencyTarget,
+            GitHubOperationError::ProtectedDependencyTarget,
         ];
         for variant in &variants {
             assert!(!variant.to_string().is_empty());
