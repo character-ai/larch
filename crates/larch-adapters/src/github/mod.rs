@@ -187,6 +187,9 @@ impl GitHubCredential {
 pub struct OctocrabGitHubService {
     pub(crate) client: Octocrab,
     pub(crate) policy: GitHubTransportPolicy,
+    pub(crate) api_base: Url,
+    #[cfg(test)]
+    pub(crate) test_log_redirect_origin: Option<url::Origin>,
     redactor: RuntimeRedactor,
     pub(crate) mutation_lock: Mutex<()>,
 }
@@ -197,6 +200,8 @@ impl OctocrabGitHubService {
         Self {
             client,
             policy: GitHubTransportPolicy::github_com(),
+            api_base: Url::parse(API_BASE).expect("fixed API base must be valid"),
+            test_log_redirect_origin: None,
             redactor: RuntimeRedactor::default(),
             mutation_lock: Mutex::new(()),
         }
@@ -222,12 +227,20 @@ impl OctocrabGitHubService {
                 "GitHub transport must be constructed inside the larch Tokio runtime",
             )));
         }
-        let client = build_client(&credential, policy).map_err(|error| {
+        if !octocrab_api_version_is_exact() {
+            return Err(GitHubClientError::Configuration(redactor.safe_text(
+                "Octocrab GitHub API version does not match larch policy",
+            )));
+        }
+        let client = build_client(&credential, policy, API_BASE).map_err(|error| {
             GitHubClientError::Configuration(redactor.safe_text(error.to_string()))
         })?;
         Ok(Self {
             client,
             policy,
+            api_base: Url::parse(API_BASE).expect("fixed API base must be valid"),
+            #[cfg(test)]
+            test_log_redirect_origin: None,
             redactor,
             mutation_lock: Mutex::new(()),
         })
@@ -247,14 +260,35 @@ impl OctocrabGitHubService {
             .expect("test token and active runtime must construct the client")
     }
 
-    /// Fixed request headers applied to every GitHub API request.
+    #[cfg(test)]
+    pub(crate) fn from_test_token_with_base(
+        token: &str,
+        api_base: &Url,
+        log_redirect_origin: url::Origin,
+    ) -> Self {
+        let credential = GitHubCredential(token.to_owned());
+        let policy = GitHubTransportPolicy::github_com();
+        let mut redactor = RuntimeRedactor::default();
+        assert!(
+            redactor.register_exact_secret(credential.expose().to_owned()),
+            "test credential must register"
+        );
+        let client = build_client(&credential, policy, api_base.as_str())
+            .expect("test API base and token must construct the client");
+        Self {
+            client,
+            policy,
+            api_base: api_base.clone(),
+            test_log_redirect_origin: Some(log_redirect_origin),
+            redactor,
+            mutation_lock: Mutex::new(()),
+        }
+    }
+
+    /// Larch-owned headers added beside Octocrab's verified API-version header.
     #[must_use]
-    pub const fn required_headers() -> [(&'static str, &'static str); 3] {
-        [
-            ("user-agent", USER_AGENT_VALUE),
-            ("accept", ACCEPT_VALUE),
-            (API_VERSION_HEADER, API_VERSION),
-        ]
+    pub const fn required_headers() -> [(&'static str, &'static str); 2] {
+        [("user-agent", USER_AGENT_VALUE), ("accept", ACCEPT_VALUE)]
     }
 
     /// Remove the exact runtime credential and standard secret families.
@@ -312,18 +346,27 @@ impl OctocrabGitHubService {
 fn build_client(
     credential: &GitHubCredential,
     policy: GitHubTransportPolicy,
+    api_base: &str,
 ) -> octocrab::Result<Octocrab> {
     let mut builder = Octocrab::builder()
         .personal_token(credential.expose().to_owned())
         .set_connect_timeout(Some(policy.connect_timeout()))
         .set_read_timeout(Some(policy.read_timeout()))
         .set_write_timeout(Some(policy.write_timeout()))
-        .base_uri(API_BASE)?
-        .upload_uri(API_BASE)?;
+        .base_uri(api_base)?
+        .upload_uri(api_base)?;
     for (name, value) in OctocrabGitHubService::required_headers() {
         builder = builder.add_header(HeaderName::from_static(name), value.to_owned());
     }
     builder.build()
+}
+
+fn octocrab_api_version_is_exact() -> bool {
+    let mut versions = octocrab::_SET_HEADERS_MAP
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case(API_VERSION_HEADER))
+        .map(|(_, value)| *value);
+    versions.next() == Some(API_VERSION) && versions.next().is_none()
 }
 
 fn parse_approved_url(value: &str) -> Result<Url, GitHubHostError> {
@@ -470,8 +513,11 @@ mod tests {
             [
                 ("user-agent", "larch"),
                 ("accept", "application/vnd.github+json"),
-                ("x-github-api-version", "2022-11-28"),
             ]
+        );
+        assert!(
+            octocrab_api_version_is_exact(),
+            "the pinned Octocrab request header must supply the API version exactly once"
         );
         let safe = service.redact_diagnostic(
             "Authorization: Bearer opaque test credential; body=opaque test credential",

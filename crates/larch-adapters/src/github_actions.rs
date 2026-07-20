@@ -494,8 +494,10 @@ impl OctocrabGitHubService {
             self.client()._get(&route).await.map_err(|error| {
                 self.error(GitHubActionsErrorKind::Transport, error.to_string())
             })?;
-        let mut current = Url::parse(&format!("https://api.github.com{route}"))
-            .expect("repository route is a valid fixed API URL");
+        let mut current = self
+            .api_base
+            .join(&route)
+            .expect("repository route is a valid API URL");
         let mut visited = BTreeSet::from([current.as_str().to_owned()]);
         for redirects in 0..=LOG_REDIRECTS {
             if !response.status().is_redirection() {
@@ -550,7 +552,16 @@ impl OctocrabGitHubService {
                         "GitHub workflow log redirect Location is invalid",
                     )
                 })?;
-            let next = validate_log_redirect(&current, location, &visited)?;
+            #[cfg(test)]
+            let redirect_override = self.test_log_redirect_origin.as_ref();
+            #[cfg(not(test))]
+            let redirect_override: Option<&url::Origin> = None;
+            let next = validate_log_redirect_with_override(
+                &current,
+                location,
+                &visited,
+                redirect_override,
+            )?;
             visited.insert(next.as_str().to_owned());
             current = next;
             response = self
@@ -876,10 +887,20 @@ fn content_length(headers: &http::HeaderMap) -> Result<Option<usize>, GitHubActi
         .transpose()
 }
 
+#[cfg(test)]
 fn validate_log_redirect(
     current: &Url,
     location: &str,
     visited: &BTreeSet<String>,
+) -> Result<Url, GitHubActionsError> {
+    validate_log_redirect_with_override(current, location, visited, None)
+}
+
+fn validate_log_redirect_with_override(
+    current: &Url,
+    location: &str,
+    visited: &BTreeSet<String>,
+    test_origin: Option<&url::Origin>,
 ) -> Result<Url, GitHubActionsError> {
     let next = current.join(location).map_err(|_| {
         GitHubActionsError::new(
@@ -888,12 +909,19 @@ fn validate_log_redirect(
         )
     })?;
     let host = next.host_str().unwrap_or_default();
-    let approved = next.scheme() == "https"
+    let production_approved = next.scheme() == "https"
         && next.port_or_known_default() == Some(443)
         && next.username().is_empty()
         && next.password().is_none()
         && next.fragment().is_none()
         && approved_log_host(host);
+    let test_approved = test_origin.is_some_and(|origin| {
+        next.username().is_empty()
+            && next.password().is_none()
+            && next.fragment().is_none()
+            && next.origin() == *origin
+    });
+    let approved = production_approved || test_approved;
     if !approved {
         return Err(GitHubActionsError::new(
             GitHubActionsErrorKind::Redirect,
@@ -929,7 +957,10 @@ mod tests {
     use http_body_util::Full;
     use std::collections::VecDeque;
     use std::convert::Infallible;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
     use std::sync::{Arc, Mutex as StdMutex};
+    use std::thread;
     use tower::service_fn;
 
     fn repository() -> GitHubRepositoryRef {
@@ -961,6 +992,40 @@ mod tests {
             .header(header::CONTENT_TYPE, content_type)
             .body(Full::new(bytes::Bytes::from_static(body.as_bytes())))
             .expect("response")
+    }
+
+    fn recording_server(response: String) -> (Url, thread::JoinHandle<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback server");
+        let base = Url::parse(&format!(
+            "http://{}/",
+            listener.local_addr().expect("loopback address")
+        ))
+        .expect("loopback URL");
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().expect("accept request");
+            let mut request = Vec::with_capacity(1_024);
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let mut chunk = [0_u8; 1_024];
+                let bytes_read = socket.read(&mut chunk).expect("read request");
+                assert!(bytes_read > 0, "request headers must be complete");
+                request.extend_from_slice(&chunk[..bytes_read]);
+                assert!(request.len() <= 16_384, "request headers exceed test limit");
+            }
+            socket
+                .write_all(response.as_bytes())
+                .expect("write response");
+            request
+        });
+        (base, server)
+    }
+
+    fn header_values<'request>(request: &'request str, name: &str) -> Vec<&'request str> {
+        request
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .filter(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.trim())
+            .collect()
     }
 
     #[test]
@@ -1123,6 +1188,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn production_auth_transport_authenticates_api_only_and_preserves_archive_query() {
+        const TOKEN: &str = "loopback-production-auth-token";
+        let archive_response = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: application/zip\r\n",
+            "Content-Length: 3\r\n",
+            "Connection: close\r\n\r\n",
+            "ZIP"
+        );
+        let (archive_base, archive_server) = recording_server(String::from(archive_response));
+        let archive_url = archive_base
+            .join("archive?sig=server-supplied")
+            .expect("archive URL");
+        let api_response = format!(
+            "HTTP/1.1 302 Found\r\nLocation: {archive_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let (api_base, api_server) = recording_server(api_response);
+
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        runtime.block_on(async {
+            let service = OctocrabGitHubService::from_test_token_with_base(
+                TOKEN,
+                &api_base,
+                archive_base.origin(),
+            );
+            let cancellation = crate::runtime::Cancellation::new();
+            let archive = service
+                .download_workflow_logs(&repository(), 1, &cancellation)
+                .await
+                .expect("loopback archive download");
+            assert_eq!(archive.as_bytes(), b"ZIP");
+        });
+
+        let api_request =
+            String::from_utf8(api_server.join().expect("API server")).expect("ASCII API request");
+        let archive_request = String::from_utf8(archive_server.join().expect("archive server"))
+            .expect("ASCII archive request");
+        let expected_authorization = format!("Bearer {TOKEN}");
+        assert_eq!(
+            header_values(&api_request, "authorization"),
+            [expected_authorization.as_str()]
+        );
+        assert_eq!(
+            header_values(&api_request, "x-github-api-version"),
+            ["2022-11-28"]
+        );
+        assert!(
+            header_values(&archive_request, "authorization").is_empty(),
+            "cross-origin archive request must not carry authorization"
+        );
+        let archive_target = archive_request.lines().next().unwrap_or_default();
+        assert_eq!(archive_target, "GET /archive?sig=server-supplied HTTP/1.1");
+        assert!(!archive_target.contains(TOKEN));
+    }
+
     #[tokio::test]
     async fn bounded_stream_fails_instead_of_returning_truncated_bytes() {
         let body = Full::new(bytes::Bytes::from_static(b"12345"));
@@ -1219,6 +1340,32 @@ mod tests {
         assert_eq!(
             read_backoff(1, retry_delay(response.headers())),
             LOG_TIMEOUT
+        );
+    }
+
+    #[test]
+    #[ignore = "requires LARCH_LIVE_GITHUB_ACTIONS=1, LARCH_LIVE_GITHUB_ACTIONS_RUN_ID, and LARCH_GH_TOKEN"]
+    fn live_completed_public_run_logs_succeeds_without_exposing_token() {
+        if std::env::var("LARCH_LIVE_GITHUB_ACTIONS").as_deref() != Ok("1") {
+            return;
+        }
+        let run_id = std::env::var("LARCH_LIVE_GITHUB_ACTIONS_RUN_ID")
+            .expect("set a completed public Actions run ID")
+            .parse::<u64>()
+            .expect("run ID must be an unsigned integer");
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        let output = runtime.block_on(async {
+            let service = OctocrabGitHubService::from_environment()
+                .expect("live GitHub service must construct");
+            let cancellation = crate::runtime::Cancellation::new();
+            let repository =
+                GitHubRepositoryRef::new("character-ai", "larch").expect("fixed public repository");
+            larch_core::run_logs(&service, &repository, run_id, &cancellation).await
+        });
+        assert_eq!(
+            output.exit_code(),
+            0,
+            "completed public run must download and render logs"
         );
     }
 }
