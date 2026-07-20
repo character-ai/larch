@@ -32,7 +32,7 @@ class CommandObjectStore:
     def _key(self, relative: str, *, empty: bool = False) -> str:
         parts = relative.split("/") if relative else []
         invalid = relative.startswith("/") or (not relative and not empty)
-        invalid = invalid or any(not part or part in {".", ".."} or any(ord(char) < 32 or ord(char) == 127 for char in part) for part in parts)  # noqa: PLR2004
+        invalid = invalid or any(not part or part in {".", ".."} or any(ord(char) < 32 or ord(char) == 127 for char in part) for part in parts)  # noqa: PLR2004 - ASCII control bounds
         if invalid:
             raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, self.root.scheme, "key")
         return f"{self.root.prefix}/{relative}" if relative else f"{self.root.prefix}/"
@@ -146,7 +146,7 @@ def object_store_for(root: Any, *, environ: Mapping[str, str] | None = None, run
     raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, root.scheme, "configure")
 def _valid_r2_endpoint(account: str, endpoint: str) -> bool:
     parsed = urlsplit(endpoint)
-    return len(account) == 32 and all(char in "0123456789abcdef" for char in account) and parsed.scheme == "https" and parsed.netloc == f"{account}.r2.cloudflarestorage.com" and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment and parsed.username is None and parsed.password is None  # noqa: PLR2004
+    return len(account) == 32 and all(char in "0123456789abcdef" for char in account) and parsed.scheme == "https" and parsed.netloc == f"{account}.r2.cloudflarestorage.com" and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment and parsed.username is None and parsed.password is None  # noqa: PLR2004 - fixed R2 account length
 def _command_error(provider: str, operation: str, result: proc.CommandResult) -> ObjectStoreError:
     if provider == "gs":
         kind = ObjectStoreErrorKind(_GCS_ERRORS.get(result.returncode, "transport"))
