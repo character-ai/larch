@@ -1,4 +1,4 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
+# pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false, reportUnusedFunction=false
 """Offline tests for learn_from_bugs.py."""
 
 from __future__ import annotations
@@ -12,10 +12,16 @@ import pytest
 from larch.core import config
 from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
-from larch.design import design_log_ship
 from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX
 from test_support import RecordingRunner, RunCall
+
+
+@pytest.fixture(autouse=True)
+def _isolated_analysis_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
 
 
 def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
@@ -488,7 +494,7 @@ def test_write_state_cli_creates_parent_and_prints_kv(tmp_path: Path, capsys: py
     ) == 0
 
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     assert marker.is_file()
     assert out["STATE_RELPATH"] == config.LEARN_FROM_BUGS_STATE_RELPATH
     assert out["RUN_DATE"] == "2026-07-09T12:00:00Z"
@@ -497,8 +503,8 @@ def test_write_state_cli_creates_parent_and_prints_kv(tmp_path: Path, capsys: py
 
 
 def test_write_state_cli_rejects_invalid_existing_marker(tmp_path: Path) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
-    marker.parent.mkdir(parents=True)
+    marker = learn_from_bugs.state_path(tmp_path)
+    marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text('{"schema_version": 99}\n', encoding="utf-8")
 
     with pytest.raises(learn_from_bugs.LearnFromBugsError, match="invalid or unsupported"):
@@ -510,7 +516,7 @@ def test_write_state_cli_rejects_invalid_existing_marker(tmp_path: Path) -> None
 
 
 def test_write_state_cli_requires_proposals_file_for_existing_history(tmp_path: Path) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     learn_from_bugs.write_state(marker, learn_from_bugs.LearnFromBugsState(
         run_date="2026-07-09T12:00:00Z", repo="o/r", search="x", state="closed",
         selected_count=1, highest_closed_issue_number_scanned=3, proposals=(_proposal(status="pending"),),
@@ -525,7 +531,7 @@ def test_write_state_cli_requires_proposals_file_for_existing_history(tmp_path: 
 
 
 def test_write_state_cli_preserves_newer_existing_proposals(tmp_path: Path) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     remote_proposal = _proposal(status="adopted")
     remote_only = _proposal(
         "remote-only", target="registration:remote-only", status="pending"
@@ -561,7 +567,7 @@ def test_write_state_cli_preserves_newer_existing_proposals(tmp_path: Path) -> N
 
 
 def test_write_state_cli_applies_refresh_when_base_matches_published(tmp_path: Path) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     # Fetched default branch still shows the pre-refresh pending status.
     learn_from_bugs.write_state(
         marker,
@@ -598,7 +604,7 @@ def test_write_state_cli_applies_refresh_when_base_matches_published(tmp_path: P
 
 
 def test_write_state_cli_keeps_concurrent_publication_over_stale_refresh(tmp_path: Path) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     # A concurrent run already published adopted on the default branch.
     learn_from_bugs.write_state(
         marker,
@@ -1331,7 +1337,7 @@ def test_pending_proposal_lookup_only_returns_unresolved() -> None:
 def test_check_proposals_main_does_not_write_outputs_after_failed_issue_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     learn_from_bugs.write_state(
         marker,
         learn_from_bugs.LearnFromBugsState(
@@ -1371,7 +1377,7 @@ def test_check_proposals_main_does_not_write_outputs_after_failed_issue_check(
 
 
 def test_check_proposals_main_rejects_repository_mismatch(tmp_path: Path) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     learn_from_bugs.write_state(
         marker,
         learn_from_bugs.LearnFromBugsState(
@@ -1403,7 +1409,7 @@ def test_check_proposals_main_rejects_repository_mismatch(tmp_path: Path) -> Non
 def test_check_proposals_main_writes_pre_refresh_base_proposals(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker = learn_from_bugs.state_path(tmp_path)
     learn_from_bugs.write_state(
         marker,
         learn_from_bugs.LearnFromBugsState(
@@ -2029,204 +2035,36 @@ def test_run_prepare_writes_origin_headline_and_digest_origin(tmp_path: Path) ->
     assert int(str(stats["DIGEST_CHARS"])) == len(json.dumps(first))
 
 
-# --- state-publish (offline port of the SKILL.md publication fence) ----------
+# --- state-publish ----------------------------------------------------------
 
-_STATE_MARKER_REL = config.LEARN_FROM_BUGS_STATE_RELPATH
-_STATE_PR_STDOUT = "PR_NUMBER=7\nPR_URL=https://github.com/o/r/pull/7\nPR_STATUS=created\n"
-
-
-def _publish_ok_responses() -> list[CommandResult]:
-    """Ordered runner responses for a full merged state-publish flow."""
-    return [
-        _result("true\n"),                                # 1  rev-parse --is-inside-work-tree
-        _result(),                                        # 2  remote get-url origin
-        _result(),                                        # 3  verify-origin
-        _result(),                                        # 4  clean status
-        _result("main\n"),                                # 5  gh repo view defaultBranchRef
-        _result(),                                        # 6  check-ref-format refs/heads/main
-        _result(),                                        # 7  git.fetch
-        _result(),                                        # 8  rev-parse --verify default ref
-        _result("main\n"),                                # 9  current branch
-        _result("a" * 40 + "\n"),                         # 10 HEAD
-        _result("a" * 40 + "\n"),                         # 11 origin/main
-        _result(),                                        # 12 check-ref-format --branch
-        _result(rc=1),                                    # 13 local branch absent
-        _result(rc=2),                                    # 14 remote branch absent
-        _result(),                                        # 15 switch -c
-        _result(f"STATE_RELPATH={_STATE_MARKER_REL}\n"),  # 16 write-state
-        _result(),                                        # 17 git.add
-        _result(),                                        # 18 git.commit
-        _result(f"{_STATE_MARKER_REL}\n"),                # 19 git.diff_tree_name_only
-        _result(),                                        # 20 push
-        _result(_STATE_PR_STDOUT),                        # 21 pr create
-        _result("OPEN\n"),                                # 22 pr view state
-        _result("MERGED\n"),                              # 23 pr view state
-        _result("2026-07-14T00:00:00Z\n"),                # 24 pr view mergedAt
-        _result(),                                        # 25 switch main
-        _result(),                                        # 26 pull --ff-only
-    ]
-
-
-def _run_publish(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-    responses: list[CommandResult],
-    *,
-    runner: RecordingRunner | None = None,
-    ci_merge_result: design_log_ship.DesignLogMergeResult | None = None,
-    ci_merge_calls: list[tuple[int, str, str | None, str | None]] | None = None,
-) -> tuple[int, dict[str, str]]:
+def _state_publish_args(tmp_path: Path) -> list[str]:
     run_dir = tmp_path / "run"
     run_dir.mkdir(exist_ok=True)
-    # The typed git.add/git.commit seam runs _assert_branch_write_allowed, which
-    # probes the current branch only when a ship/implement handoff state file is
-    # present. Clear those vars so the offline call sequence stays hermetic.
-    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
-    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
-    active_runner = runner if runner is not None else RecordingRunner.strict_queue(*responses)
-    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: active_runner)
+    return [
+        "--root", str(tmp_path), "--repo", "o/r", "--run-dir", str(run_dir),
+        "--search", "[BUG] in:title", "--state", "closed", "--selected-count", "3",
+        "--highest-closed-issue-number-scanned", "10", "--run-date", "2026-07-14T12:00:00Z",
+        "--scan-started-at", "2026-07-14T11:00:00Z", "--proposals-file", str(run_dir / "reconciled.jsonl"),
+        "--base-proposals-file", str(run_dir / "base.jsonl"),
+    ]
 
-    def fake_ci_merge(
-        received_runner: RecordingRunner,
-        *,
-        pr: int,
-        repo: str,
-        cwd: str | None,
-        merge_cwd: str | None,
-    ) -> design_log_ship.DesignLogMergeResult:
-        assert received_runner is active_runner
-        if ci_merge_calls is not None:
-            ci_merge_calls.append((pr, repo, cwd, merge_cwd))
-        return ci_merge_result or design_log_ship.DesignLogMergeResult(ok=True)
-
-    monkeypatch.setattr(design_log_ship, "run_design_log_ci_merge", fake_ci_merge)
-    rc = learn_from_bugs.state_publish_main(
-        [
-            "--root", str(tmp_path),
-            "--repo", "o/r",
-            "--run-dir", str(run_dir),
-            "--search", "[BUG] in:title",
-            "--state", "closed",
-            "--selected-count", "3",
-            "--highest-closed-issue-number-scanned", "10",
-            "--run-date", "2026-07-14T12:00:00Z",
-            "--scan-started-at", "2026-07-14T11:00:00Z",
-            "--proposals-file", str(run_dir / "reconciled.jsonl"),
-            "--base-proposals-file", str(run_dir / "base.jsonl"),
-        ]
-    )
-    out = dict(
-        line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line
-    )
-    return rc, out
-
-
-def test_state_publish_fresh_success_merges(
+def test_state_publish_writes_local_state_without_git(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, _publish_ok_responses())
-    assert rc == 0
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
-    assert out["PR_NUMBER"] == "7"
-    assert out["PR_URL"] == "https://github.com/o/r/pull/7"
+    state_path = tmp_path / "state/learn-from-bugs/state.json"
+    runner = RecordingRunner.strict_queue(_result(f"STATE_PATH={state_path}\n"))
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+    assert learn_from_bugs.state_publish_main(_state_publish_args(tmp_path)) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out == {"STATE_PUBLISH_STATUS": "saved", "STATE_PATH": str(state_path)}
+    assert len(runner.calls) == 1
+    assert runner.calls[0][2:4] == ["learn-from-bugs", "write-state"]
+    assert all(token not in runner.calls[0] for token in ("git", "gh", "pr"))
 
-
-def test_state_publish_waits_for_required_ci_then_admin_squash_merges(
+def test_state_publish_write_failure_has_no_recovery_branch(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    responses = _publish_ok_responses()
-    runner = RecordingRunner.strict_queue(*responses)
-    calls: list[tuple[int, str, str | None, str | None]] = []
-
-    rc, out = _run_publish(
-        monkeypatch,
-        capsys,
-        tmp_path,
-        responses,
-        runner=runner,
-        ci_merge_calls=calls,
-    )
-
-    assert rc == 0
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_MERGED
-    assert calls == [(7, "o/r", str(tmp_path), str(tmp_path))]
-
-
-def test_state_publish_invalid_branch_name(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    responses = [*_publish_ok_responses()[:11], _result(rc=1)]
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
-    assert rc == 2
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_INVALID_BRANCH
-    assert "STATE_PUBLISH_RECOVERY_BRANCH" not in out
-
-
-def test_state_publish_refuses_existing_local_branch(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    responses = [*_publish_ok_responses()[:12], _result()]
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
-    assert rc == 2
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_EXISTING_LOCAL_BRANCH
-
-
-def test_state_publish_refuses_existing_remote_branch(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    responses = [*_publish_ok_responses()[:13], _result()]
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
-    assert rc == 2
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_EXISTING_REMOTE_BRANCH
-
-
-def test_state_publish_remote_check_failure(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    responses = [*_publish_ok_responses()[:13], _result(rc=128)]
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
-    assert rc == 2
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_REMOTE_CHECK_FAILED
-
-
-def test_state_publish_uses_current_checkout_not_worktree(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    runner = RecordingRunner.strict_queue(*_publish_ok_responses())
-    rc, _out = _run_publish(monkeypatch, capsys, tmp_path, _publish_ok_responses(), runner=runner)
-    assert rc == 0
-    assert all("worktree" not in " ".join(call) for call in runner.calls)
-
-
-def test_state_publish_pr_create_failure_reports_recovery_branch(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    responses = [*_publish_ok_responses()[:20], _result(rc=1)]
-    rc, out = _run_publish(monkeypatch, capsys, tmp_path, responses)
-    assert rc == 2
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_PR_CREATE_FAILED
-    assert out["STATE_PUBLISH_RECOVERY_BRANCH"].startswith(
-        learn_from_bugs.STATE_PUBLISH_BRANCH_PREFIX
-    )
-
-
-def test_state_publish_unmerged_pr_handoff(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    responses = _publish_ok_responses()
-    responses[22] = _result("OPEN\n")   # PR still open, not merged
-    responses[23] = _result()           # no mergedAt timestamp
-    rc, out = _run_publish(
-        monkeypatch,
-        capsys,
-        tmp_path,
-        responses,
-        ci_merge_result=design_log_ship.DesignLogMergeResult(
-            ok=False, detail="required checks failed"
-        ),
-    )
-    assert rc == 0
-    assert out["STATE_PUBLISH_STATUS"] == learn_from_bugs.STATE_PUBLISH_HANDOFF_PENDING
-    assert out["PR_NUMBER"] == "7"
-    assert out["PR_URL"] == "https://github.com/o/r/pull/7"
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: RecordingRunner.strict_queue(_result(rc=1)))
+    assert learn_from_bugs.state_publish_main(_state_publish_args(tmp_path)) == 2
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line)
+    assert out == {"STATE_PUBLISH_STATUS": learn_from_bugs.STATE_PUBLISH_WRITE_STATE_FAILED}

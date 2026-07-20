@@ -91,12 +91,12 @@ Output is measurement only. It does not change token capture, report JSON
 shapes, or CI gates.
 
 The consumer repo root is resolved once before synchronization, not from the
-plugin checkout. The command writes
-`larch-logs/measure-cache-efficiency/<date>.tsv` under that consumer repo and
-prints:
+plugin checkout. The command writes under
+the `measure-cache-efficiency` owner in the [analyzer state tree](analysis-state.md)
+and prints its absolute path:
 
 ```text
-WROTE<TAB>larch-logs/measure-cache-efficiency/<date>.tsv
+WROTE<TAB><absolute-analysis-state-path>
 ```
 
 The TSV has a `# per_run` section and a `# per_step` section. The command scans

@@ -25,7 +25,7 @@ from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.git import gh
 from larch.errors import ShipError
-from larch.report import markdown_block
+from larch.report import analysis_state, markdown_block
 from larch.report import run_log_corpus
 from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
 from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
@@ -2032,6 +2032,9 @@ def _ngram_source_files(repo: Path) -> list[str]:
 def _measure_stamp() -> str:
     return os.environ.get("LARCH_MEASURE_DATE", datetime.now().strftime("%Y-%m-%d"))
 
+def _measurement_output(*, repo: Path, owner: str, suffix: str) -> Path:
+    return analysis_state.output_path(repo_root=repo, owner=owner, name=f"{_measure_stamp()}.{suffix}")
+
 
 # Subprocess-isolated tiktoken encoder: the string literal below is not an AST Import
 # node, so test_stdlib_only.py does not flag tokens.py for a tiktoken dependency.
@@ -2058,7 +2061,7 @@ def _tiktoken_count_texts(texts: list[str]) -> list[int]:
 
 def measure_md_cost() -> Path:
     repo = _repo_root()
-    out_path = repo / "larch-logs" / "measure-md-cost" / f"{_measure_stamp()}.tsv"
+    out_path = _measurement_output(repo=repo, owner="measure-md-cost", suffix="tsv")
     files = proc.run(["git", "-C", str(repo), "ls-files", "-z", "*.md"], stderr=subprocess.DEVNULL, check=True).stdout.split("\x00")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tier1_imports = _claude_root_imports(repo)
@@ -2089,7 +2092,7 @@ def measure_md_cost() -> Path:
 
 def measure_ngram_duplication() -> Path:
     repo = _repo_root()
-    out_path = repo / "larch-logs" / "measure-ngram-duplication" / f"{_measure_stamp()}.txt"
+    out_path = _measurement_output(repo=repo, owner="measure-ngram-duplication", suffix="txt")
     size = int(os.environ.get("LARCH_MEASURE_NGRAM_SIZE", "6"))
     min_files = int(os.environ.get("LARCH_MEASURE_NGRAM_MIN_FILES", "3"))
     limit = int(os.environ.get("LARCH_MEASURE_NGRAM_LIMIT", "50"))
@@ -2111,7 +2114,7 @@ def measure_ngram_duplication() -> Path:
 
 def measure_references_heatmap() -> Path:
     repo = _repo_root()
-    out_path = repo / "larch-logs" / "measure-references-heatmap" / f"{_measure_stamp()}.tsv"
+    out_path = _measurement_output(repo=repo, owner="measure-references-heatmap", suffix="tsv")
     log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
     run_dirs_by_skill = _skill_run_dirs(log_root)
     reads: list[ObservedReferenceRead] = []
@@ -2157,7 +2160,7 @@ def measure_references_heatmap() -> Path:
 
 def measure_realized_cost() -> Path:
     repo = _repo_root()
-    out_path = repo / "larch-logs" / "measure-realized-cost" / f"{_measure_stamp()}.tsv"
+    out_path = _measurement_output(repo=repo, owner="measure-realized-cost", suffix="tsv")
     log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
     run_dirs_by_skill = _skill_run_dirs(log_root)
     skill_paths: dict[str, str] = {}
@@ -2514,7 +2517,7 @@ def measure_cache_efficiency() -> Path:
             corpus_root=log_root,
         )
         tagged_records.extend((skill, record) for record in scan_result.records)
-    out_path = repo_root / "larch-logs" / "measure-cache-efficiency" / f"{_measure_stamp()}.tsv"
+    out_path = _measurement_output(repo=repo_root, owner="measure-cache-efficiency", suffix="tsv")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     per_run, per_step = _measure_cache_efficiency_records(tagged_records=tagged_records)
     _atomic_text(path=out_path, text=_render_cache_efficiency_tsv(per_run=per_run, per_step=per_step))
@@ -2721,7 +2724,7 @@ def _render_checks_digest_savings_report(aggregate: ChecksDigestSavingsAggregate
 
 def measure_checks_digest_savings() -> Path:
     repo = _repo_root()
-    out_path = repo / "larch-logs" / "measure-checks-digest-savings" / f"{_measure_stamp()}.tsv"
+    out_path = _measurement_output(repo=repo, owner="measure-checks-digest-savings", suffix="tsv")
     log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
     aggregate = ChecksDigestSavingsAggregate()
     for tsv in _iter_checks_digest_size_files(repo, corpus_root=log_root):
@@ -2739,7 +2742,7 @@ def measure_checks_digest_savings() -> Path:
 
 def measure_panel_cost() -> Path:
     repo = _repo_root()
-    out_path = repo / "larch-logs" / "measure-panel-cost" / f"{_measure_stamp()}.tsv"
+    out_path = _measurement_output(repo=repo, owner="measure-panel-cost", suffix="tsv")
     log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
     aggregates: dict[tuple[str, str, str], _PanelCostAggregate] = {}
     for tsv in _iter_panel_prompt_size_files(repo, corpus_root=log_root):
@@ -3097,7 +3100,7 @@ def measure_checks_digest_savings_main(argv: list[str] | None = None) -> int:
     except run_log_corpus.RunLogCorpusError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return config.EXIT_BAIL
-    print(f"WROTE\t{path.relative_to(_repo_root())}")
+    print(f"WROTE\t{path}")
     return 0
 
 
@@ -3119,14 +3122,14 @@ def measure_panel_cost_main(argv: list[str] | None = None) -> int:
 def measure_md_cost_main(argv: list[str] | None = None) -> int:
     _ = argv
     path = measure_md_cost()
-    print(f"WROTE\t{path.relative_to(_repo_root())}")
+    print(f"WROTE\t{path}")
     return 0
 
 
 def measure_ngram_duplication_main(argv: list[str] | None = None) -> int:
     _ = argv
     path = measure_ngram_duplication()
-    print(f"WROTE\t{path.relative_to(_repo_root())}")
+    print(f"WROTE\t{path}")
     return 0
 
 
@@ -3137,7 +3140,7 @@ def measure_references_heatmap_main(argv: list[str] | None = None) -> int:
     except run_log_corpus.RunLogCorpusError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return config.EXIT_BAIL
-    print(f"WROTE\t{path.relative_to(_repo_root())}")
+    print(f"WROTE\t{path}")
     return 0
 
 
@@ -3148,7 +3151,7 @@ def measure_realized_cost_main(argv: list[str] | None = None) -> int:
     except run_log_corpus.RunLogCorpusError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return config.EXIT_BAIL
-    print(f"WROTE\t{path.relative_to(_repo_root())}")
+    print(f"WROTE\t{path}")
     return 0
 
 
@@ -3159,8 +3162,7 @@ def measure_cache_efficiency_main(argv: list[str] | None = None) -> int:
     except (ShipError, run_log_corpus.RunLogCorpusError) as exc:
         print(str(exc), file=sys.stderr)
         return config.EXIT_BAIL
-    repo_root = _measure_repo_root_from_larch_logs_path(path)
-    print(f"WROTE\t{path.relative_to(repo_root)}")
+    print(f"WROTE\t{path}")
     return 0
 
 

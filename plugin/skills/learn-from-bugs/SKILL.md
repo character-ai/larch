@@ -25,7 +25,7 @@ The engine keeps this cheap. It never reads full issue bodies into context: `lea
 - Parse `--file` and `-s` as Boolean flags. Continue to validate recognized value-taking flags (`-n`, `--state`, `--repo`, `--search`, `--zones`) using the existing argument-validation style, but preserve every other token—including `-f` and flag-looking words—as verbal GitHub-search text. Do not document or recognize `-f` as an alias for `--file`.
 - `--search`, `--zones`, and verbal description are mutually exclusive search sources. Reject `--zones` plus `--search`, and reject `--zones` plus verbal search text, before preparation. Preserve existing explicit-search, verbal-search, and default-search behavior when zones are absent.
 - Everything else in `$ARGUMENTS` is a **verbal description** of which issues to mine. Translate it into a `gh` search expression. With no description and no `--search`, mine `[BUG] in:title`.
-- Report-only by default. Every repository or GitHub mutation is gated behind an explicit operator approval in Step 5, except (a) automatic state publication after a successful default-mode Step 4 report, and (b) automatic `/issue` filing plus state publication under `--file` / `-s` after a successful create pass (including legitimate full deduplication). The local marker commit is not durable until its state PR is confirmed merged. A valid unmerged state PR is a manual-merge handoff.
+- Report-only by default. Every repository or GitHub mutation is gated behind an explicit operator approval in Step 5, except automatic `/issue` filing under `--file` / `-s`. Mutable analyzer state persists locally after a successful report or create pass.
 - File issues only through `/issue` (never `gh issue create` directly).
 - Cite issues by number and refer to code by symbol, not line number. Do not paste machine-local absolute paths or hardcode counts that will drift; read live counts from the prepared stats and coverage index.
 
@@ -179,11 +179,11 @@ Abort on non-zero exit. On success, print the report to the operator and the `RU
 
 ### Shared state-publication fragment
 
-Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote whose slug identifies `$REPO`; `learn-from-bugs state-publish` verifies this mechanically before creating any branch.
+Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary.
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
-Run the whole fragment as one Bash call. `learn-from-bugs state-publish` owns the entire flow behind `python/cli.py`: it requires a clean current checkout on the synced default branch, validates the checkout and origin, resolves and fetches the repository default branch, derives and reserves a collision-free state branch, writes the marker in that branch, commits only the marker with `--only`, pushes it, opens the state PR, waits for required CI checks, admin-squash-merges it when the operator has permission, then restores and syncs the default branch:
+Run the whole fragment as one Bash call. `learn-from-bugs state-publish` writes the reconciled marker under `$XDG_STATE_HOME/larch/analysis-state/<repo>/learn-from-bugs/` with private permissions and no Git mutation:
 
 ```bash
 set -euo pipefail
@@ -206,13 +206,11 @@ if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish
 fi
 ```
 
-The verb never publishes with `git add -A`, a bare commit without `--only`, `--auto` merge, or a Git worktree. It preserves the ISO `RUN_DATE` as marker metadata but removes unsafe characters only from the branch components. On a committed but PR-less failure it preserves and reports the recovery branch as `STATE_PUBLISH_RECOVERY_BRANCH`. Once a valid PR exists, the PR is the recovery surface; the verb restores the default branch without rolling back the marker commit.
-
-Parse exactly one whole-line `STATE_PUBLISH_STATUS`, `PR_NUMBER`, and `PR_URL` from `$STATE_PUBLISH_RESULT`. Accept only `merged` or `handoff-pending`, a positive PR number, and a non-empty URL. `merged` is durable publication. For `handoff-pending`, show the PR number and URL, ask the operator to merge it manually, and describe the state as pending publication. Never claim durable completion for an unmerged PR.
+Parse exactly one whole-line `STATE_PUBLISH_STATUS` and `STATE_PATH` from `$STATE_PUBLISH_RESULT`. Require `STATE_PUBLISH_STATUS=saved` and an absolute `STATE_PATH`. A write failure leaves `${RUN_DIR}/reconciled-proposals.jsonl` available for retry.
 
 ### Default mode (FILE_MODE=false): state publication before Step 5
 
-After `${RUN_DIR}/report.md` and `RECONCILED_PROPOSALS_PATH` are complete, run the shared state-publication fragment now. Continue to Step 5 after either confirmed merge or the explicit manual-merge handoff. The handoff remains pending publication; it does not block approval-gated follow-ups.
+After `${RUN_DIR}/report.md` and `RECONCILED_PROPOSALS_PATH` are complete, run the shared state-publication fragment now. Continue to Step 5 only after it reports `saved`.
 
 Then continue to Step 5 (approval-gated follow-ups).
 
@@ -220,7 +218,7 @@ Then continue to Step 5 (approval-gated follow-ups).
 
 Skip all default Step 5 apply gates. Do not append guidelines, create invariants, update hooks, scaffold lints, add tests, or edit still-broken code.
 
-If no genuinely new residual proposals remain after dedup, report that there is nothing new to file, retain no unnecessary pending filing state, and do not call `/issue`. Keep checked history in `RECONCILED_PROPOSALS_PATH`, then run the shared state-publication fragment now so refreshed adoption statuses and the scan boundary reach a state PR. Report confirmed merge or the manual-merge handoff accurately.
+If no genuinely new residual proposals remain after dedup, report that there is nothing new to file, retain no unnecessary pending filing state, and do not call `/issue`. Keep checked history in `RECONCILED_PROPOSALS_PATH`, then run the shared state-publication fragment now.
 
 Otherwise continue:
 
@@ -270,11 +268,14 @@ Before filing, require every issue to be decision-complete. Separately validate 
 
 #### Durable filing artifacts (before dry-run / create)
 
-Persist the report, parser-safe batch input, and pending filing state to the durable retry location `larch-logs/shared/learn-from-bugs-filing/` before any scan-marker commit:
+Resolve `STATE_PATH` with `learn-from-bugs read-state --root "$ANALYSIS_ROOT"`, then persist the report, parser-safe batch input, and pending filing state beside that marker under `<STATE_PATH parent>/filing/` before any marker write:
 
-- `larch-logs/shared/learn-from-bugs-filing/report.md`
-- `larch-logs/shared/learn-from-bugs-filing/batch-issues.md`
-- `larch-logs/shared/learn-from-bugs-filing/pending-state.json` (status `pending`, run metadata, expected titles/count)
+- `<STATE_PATH parent>/filing/report.md`
+- `<STATE_PATH parent>/filing/batch-issues.md`
+- `<STATE_PATH parent>/filing/pending-state.json` (status `pending`, run metadata, expected titles/count)
+
+Reject symlinked or non-regular destinations. Create private directories and
+write each file atomically with mode `0600`.
 
 Keep `${RUN_DIR}/batch-issues.md` as the working artifact; the durable path is the retry copy. If durable artifact creation or pending-state persistence fails, stop before dry-run validation and filing (fail-closed). Do not advance the scan marker.
 
@@ -294,7 +295,7 @@ Treat legitimate full deduplication as a valid handled create outcome only with 
 
 #### State publication after successful create
 
-Only after a successful create pass, including legitimate fully deduplicated results with complete mapping, run the shared state-publication fragment now. Keep `pending-state.json` through publication. On `STATE_PUBLISH_STATUS=merged`, mark it complete. On `STATE_PUBLISH_STATUS=handoff-pending`, retain it with status `handoff-pending` plus the validated PR number and URL. Do not rerun `/issue` merely because marker publication awaits manual merge. On write, commit, or PR failure, stop accurately and retain the filing artifacts and pending state. Durable filing artifacts still precede state publication and remain available after every dry-run, create, marker-write, commit, PR, or merge failure.
+Only after a successful create pass, including legitimate fully deduplicated results with complete mapping, run the shared state-publication fragment now. Keep `pending-state.json` through publication. On `STATE_PUBLISH_STATUS=saved`, mark it complete. On write failure, stop accurately and retain the filing artifacts and pending state. Do not rerun `/issue` merely because the marker write needs retry.
 
 <!-- step:5 - Follow-up gates -->
 ## Step 5 - Follow-up gates

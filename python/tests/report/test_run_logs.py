@@ -2337,6 +2337,30 @@ def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
     assert (round_dir / "review-core-threshold.env").read_text(encoding="utf-8") == "THRESHOLD_OK=true\n"
 
 
+def test_write_round_owns_dynamic_archetype_inside_round(tmp_path: Path) -> None:
+    source = tmp_path / "source-round"
+    dynamic = source / "dynamic-archetypes"
+    dynamic.mkdir(parents=True)
+    _ = (source / "panel-manifest.ndjson").write_text(
+        '{"slot":"dyn-contract"}\n', encoding="utf-8"
+    )
+    _ = (dynamic / "reviewer-dyn-contract.md").write_text(
+        "Review contracts.\n", encoding="utf-8"
+    )
+
+    rc = run_logs.larch_log_write_round_main([
+        "--log-root", str(tmp_path / "larch-logs"), "--skill", "implement",
+        "--run-id", "run-abc", "--round", "1", "--source-dir", str(source),
+    ])
+
+    assert rc == 0
+    round_dir = tmp_path / "larch-logs" / "implement" / "run-abc" / "round-1"
+    row = json.loads((round_dir / "panel-manifest.ndjson").read_text(encoding="utf-8"))
+    archetype = round_dir / row["archetype_ref"]
+    assert archetype.read_text(encoding="utf-8") == "Review contracts.\n"
+    assert not (tmp_path / "larch-logs" / "shared").exists()
+
+
 
 def test_write_round_commits_panel_prompt_sizes(tmp_path: Path) -> None:
     source = tmp_path / "source-round"

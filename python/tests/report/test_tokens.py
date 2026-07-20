@@ -1212,7 +1212,7 @@ def test_measure_cache_efficiency_separates_homonymous_steps_across_skills(tmp_p
     assert ("implement", "3", "claude") in keys
 
 
-def test_measure_cache_efficiency_main_prints_relative_path(
+def test_measure_cache_efficiency_main_prints_state_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1227,7 +1227,7 @@ def test_measure_cache_efficiency_main_prints_relative_path(
     rc = tokens.measure_cache_efficiency_main([])
 
     assert rc == 0
-    assert capsys.readouterr().out == "WROTE\tlarch-logs/measure-cache-efficiency/fixture-day.tsv\n"
+    assert capsys.readouterr().out == f"WROTE\t{out}\n"
 
 
 def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1699,7 +1699,7 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
 
 
-def test_measure_panel_cost_reads_synced_cache_and_writes_repository_state(
+def test_measure_panel_cost_reads_synced_cache_and_writes_analyzer_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1724,10 +1724,11 @@ def test_measure_panel_cost_reads_synced_cache_and_writes_repository_state(
     monkeypatch.setattr(tokens, "_repo_root", lambda: repo)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-20")  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _sync)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
 
     out = tokens.measure_panel_cost()
 
-    assert out == repo / "larch-logs" / "measure-panel-cost" / "2026-07-20.tsv"
+    assert out == tmp_path / "state/larch/analysis-state/consumer/measure-panel-cost/2026-07-20.tsv"
     assert "agents/orchestrator-aggregator.md" in out.read_text(encoding="utf-8")
     assert sync_calls == 1
 

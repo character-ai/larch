@@ -28,13 +28,15 @@ from larch.errors import ShipError
 
 from larch.git import gh
 from larch.issue import issue_wire
-from larch.report import run_log_corpus
+from larch.report import analysis_state, run_log_corpus
 from larch.review import voting
 from larch.review.review_types import parse_canonical_heading
 
 DEFAULT_VERIFY_CAP = 100
-LEDGER_PATH = Path("larch-logs/rejected-analysis-ledger.tsv")
-VERDICT_SIDECAR = Path("larch-logs/rejected-analysis-verdicts.tsv")
+LEDGER_PATH = Path("rejected-analysis/ledger.tsv")
+VERDICT_SIDECAR = Path("rejected-analysis/verdicts.tsv")
+LEGACY_LEDGER_PATH = Path("larch-logs/rejected-analysis-ledger.tsv")
+LEGACY_VERDICT_SIDECAR = Path("larch-logs/rejected-analysis-verdicts.tsv")
 INGEST_STATUS_FILE = "ingest-status.jsonl"
 FINDING_HASH_FIELDS = ("file_path", "concern")
 LEDGER_SCHEMA_VERSION = "1"
@@ -998,6 +1000,7 @@ def prepare(
     work_dir: Path | str | None = None,
     verify_cap: int = DEFAULT_VERIFY_CAP,
     repo_root: Path | str | None = None,
+    state_root: Path | str | None = None,
     runner: proc.Runner | None = None,
     open_issues: Sequence[OpenIssue] | None = (),
 ) -> PrepareResult:
@@ -1021,11 +1024,15 @@ def prepare(
     else:
         requested_logs = Path(log_root)
         logs = (root / requested_logs).resolve() if not requested_logs.is_absolute() else requested_logs
+    mutable_root = Path(state_root).resolve() if state_root is not None else root
     wd = Path(work_dir) if work_dir is not None else Path(tempfile.mkdtemp(prefix="rejected-analysis-", dir=tempfile.gettempdir()))
     wd.mkdir(parents=True, exist_ok=True)
     active_runner = runner or proc.ProcRunner()
     issues = _query_open_issues(active_runner, repo_root=root) if open_issues is None else list(open_issues)
-    committed_hashes = _read_ledger_hashes(root / LEDGER_PATH)
+    ledger_path = mutable_root / LEDGER_PATH
+    if state_root is not None:
+        _ = analysis_state.import_legacy_file(path=ledger_path, legacy_path=root / LEGACY_LEDGER_PATH)
+    committed_hashes = _read_ledger_hashes(ledger_path)
     all_findings: list[RejectedFinding] = []
     ledger_entries: list[LedgerEntry] = []
     runs_seen = 0
@@ -1467,10 +1474,15 @@ def record(
     issues_failed: int = 0,
     launch_failures: int = 0,
     repo_root: Path | str | None = None,
+    state_root: Path | str | None = None,
 ) -> RecordResult:
     wd = Path(work_dir)
     root = Path(repo_root or Path.cwd()).resolve()
-    ledger_path = root / LEDGER_PATH
+    mutable_root = Path(state_root).resolve() if state_root is not None else root
+    ledger_path = mutable_root / LEDGER_PATH
+    if state_root is not None:
+        _ = analysis_state.import_legacy_file(path=ledger_path, legacy_path=root / LEGACY_LEDGER_PATH)
+        _ = analysis_state.import_legacy_file(path=mutable_root / VERDICT_SIDECAR, legacy_path=root / LEGACY_VERDICT_SIDECAR)
     pending_rows = _merge_ledger_rows(_read_ledger_entries(wd / "ledger-pending.tsv"))
     status_map = _load_ingest_status_map(wd)
     candidate_list = _load_candidates(wd)
@@ -1506,9 +1518,15 @@ def record(
                 filed_rows.append(_ledger_entry(candidate.finding, verdict="confirmed", disposition=disposition, issue_number=number, issue_url=url).to_row())
     elif issue_text.strip() and (created > 0 or deduped > 0):
         unmapped = True
-    all_rows = _merge_ledger_rows(_read_ledger_entries(ledger_path) + safe_rows + filed_rows)
-    _write_ledger_atomic(ledger_path, all_rows)
-    _write_sidecar_atomic(root / VERDICT_SIDECAR, wd, candidates)
+    sidecar_path = mutable_root / VERDICT_SIDECAR
+    try:
+        with analysis_state.state_lock(ledger_path):
+            all_rows = _merge_ledger_rows(_read_ledger_entries(ledger_path) + safe_rows + filed_rows)
+            _write_ledger_atomic(ledger_path, all_rows)
+        with analysis_state.state_lock(sidecar_path):
+            _write_sidecar_atomic(sidecar_path, wd, candidates)
+    except analysis_state.AnalysisStateError as exc:
+        raise RejectedAnalysisError(str(exc)) from exc
     rc = 0
     if unmapped or issues_failed > 0 or issue_verified is False or launch_failures > 0:
         rc = 1
@@ -1592,11 +1610,16 @@ def prepare_main(argv: list[str]) -> int:
     parser.add_argument("--verify-cap", type=int, default=DEFAULT_VERIFY_CAP)
     args = parser.parse_args(argv)
     try:
+        repo_root = repo_roots.consumer_repo_root(Path.cwd().resolve())
+        if repo_root is None:
+            raise RejectedAnalysisError("could not discover a Git repository root")
         result = prepare(
             days=args.days,
             log_root=args.log_root or None,
             work_dir=args.work_dir or None,
             verify_cap=args.verify_cap,
+            repo_root=repo_root,
+            state_root=analysis_state.repository_state_root(repo_root=repo_root),
             open_issues=None,
         )
     except (RejectedAnalysisError, ValueError) as exc:
@@ -1674,6 +1697,7 @@ def record_main(argv: list[str]) -> int:
             issues_failed=args.issues_failed,
             launch_failures=args.launch_failures,
             repo_root=repo_root,
+            state_root=analysis_state.repository_state_root(repo_root=repo_root) if repo_root else None,
         )
     except RejectedAnalysisError as exc:
         logging_util.diagnostic(f"rejected-analysis record: {exc}")

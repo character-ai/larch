@@ -44,6 +44,16 @@ PREFLIGHT_OUT=$(python3 "$PWD/python/cli.py" audit-runs preflight \
 
 Read `PREFLIGHT_OK` and `REASON` from stdout. Fail-fast when `PREFLIGHT_OK=false`; print `REASON` to the user. Contract: `python/cli.py audit-runs preflight`.
 
+After preflight, synchronize immutable inputs exactly once:
+
+```bash
+SYNC_OUT=$(python3 "$PWD/python/cli.py" run-log sync --repo-root "$PWD")
+```
+
+Require `SYNC_OK=true` and parse exactly one whole-line `CORPUS_ROOT`. Retain
+that root for mapping and every scan. Do not contact cloud storage again during
+the invocation.
+
 ## Bugs-backlog advisory
 
 After `PREFLIGHT_OK=true` and before `resolve-prs`, run the advisory once:
@@ -102,7 +112,8 @@ Implement currently uses the full table below. Design currently uses `cache-fres
 # lint-consecutive-bash: ok map output feeds per-run scan loop
 # Map each PR to its run-log directory
 RUN_MAP_TSV=$(python3 "$PWD/python/cli.py" audit-runs map-runs \
-  --skill "$SKILL" --pr-list "$PR_LIST" --repo "<owner/name>")
+  --skill "$SKILL" --pr-list "$PR_LIST" --repo "<owner/name>" \
+  --log-root "$CORPUS_ROOT/$SKILL")
 # TSV: pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
 ```
 
@@ -111,7 +122,7 @@ Then for each PR row in the TSV:
 ```bash
 python3 "$PWD/python/cli.py" audit-runs scan-run \
   --skill "$SKILL" \
-  --run-dir "larch-logs/$SKILL/<RUN_ID>" \
+  --run-dir "$CORPUS_ROOT/$SKILL/<RUN_ID>" \
   --pr <PR_NUM> \
   --scans-tsv "$SCANS_TSV" \
   --required-files-tsv "$PWD/docs/run-logs-required-files.tsv" \

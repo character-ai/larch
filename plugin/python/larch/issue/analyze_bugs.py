@@ -27,12 +27,13 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Final, cast
 
-from larch.core import config, proc
+from larch.core import config, proc, repo_roots
 from larch.core.proc import Runner
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue.title_match import bug_title_match
 from larch.issue.issue_wire import strip_named_block
+from larch.report import analysis_state
 from larch.report.report_tokens_cost import rate_row
 
 DEFAULT_DIFF_CAP: Final = 60_000
@@ -563,16 +564,11 @@ def _atomic_write_text(path: Path, text: str, *, mode: int = 0o600) -> None:
 
 
 def _append_private_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
-    _private_mkdir(path.parent)
-    old_umask = os.umask(0o177)
+    payload = "".join(json.dumps(dict(row), sort_keys=True) + "\n" for row in rows)
     try:
-        with path.open("a", encoding="utf-8") as handle:
-            for row in rows:
-                handle.write(json.dumps(dict(row), sort_keys=True) + "\n")
-    finally:
-        os.umask(old_umask)
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
+        analysis_state.append_bytes(path, payload.encode("utf-8"))
+    except analysis_state.AnalysisStateError as exc:
+        raise AnalyzeBugsError(str(exc)) from exc
 
 
 def _json_default(value: object) -> object:
@@ -1331,6 +1327,7 @@ def prefetch(
     repo_arg: str = "",
     count: int = config.ANALYZE_BUGS_DEFAULT_COUNT,
     cache_root_arg: str = "",
+    state_root_arg: str = "",
     batch_size: int = config.ANALYZE_BUGS_DEFAULT_BATCH_SIZE,
     diff_cap: int = DEFAULT_DIFF_CAP,
     body_cap: int = DEFAULT_BODY_CAP,
@@ -1342,7 +1339,10 @@ def prefetch(
     run_id = str(int(time.time()))
     run_dir = repo_root / "runs" / run_id
     _private_mkdir(run_dir)
-    ledger_path = repo_root / "ledger.jsonl"
+    checkout = repo_roots.consumer_repo_root() or Path.cwd().resolve()
+    state_root = Path(state_root_arg).expanduser().resolve() if state_root_arg else analysis_state.repository_state_root(repo_root=checkout)
+    ledger_path = state_root / "analyze-bugs" / _sanitize_repo_slug(repo) / "ledger.jsonl"
+    _ = analysis_state.import_legacy_file(path=ledger_path, legacy_path=repo_root / "ledger.jsonl")
     rows = [
         build_bundle_record(runner=runner, issue=issue, repo=repo, evidence_ref=evidence_ref, run_dir=run_dir, diff_cap=diff_cap, body_cap=body_cap)
         for issue in issues
@@ -1373,11 +1373,12 @@ def prefetch_main(argv: list[str]) -> int:
     parser.add_argument("--repo", default="")
     parser.add_argument("-n", "--count", type=lambda value: _positive_int(value, name="--count"), default=config.ANALYZE_BUGS_DEFAULT_COUNT)
     parser.add_argument("--cache-root", default="")
+    parser.add_argument("--state-root", default="")
     parser.add_argument("--batch-size", type=lambda value: _positive_int(value, name="--batch-size"), default=config.ANALYZE_BUGS_DEFAULT_BATCH_SIZE)
     parser.add_argument("--diff-cap", type=lambda value: _positive_int(value, name="--diff-cap"), default=DEFAULT_DIFF_CAP)
     args = parser.parse_args(argv)
     try:
-        manifest = prefetch(runner=_runner(), repo_arg=args.repo, count=args.count, cache_root_arg=args.cache_root, batch_size=args.batch_size, diff_cap=args.diff_cap)
+        manifest = prefetch(runner=_runner(), repo_arg=args.repo, count=args.count, cache_root_arg=args.cache_root, state_root_arg=args.state_root, batch_size=args.batch_size, diff_cap=args.diff_cap)
     except AnalyzeBugsError as exc:
         return _fail(str(exc))
     _emit_kvs(

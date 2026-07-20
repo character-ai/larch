@@ -293,11 +293,15 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
     "all-vendors-failed",
 )))
 
-# Shared state for /learn-from-bugs backlog nudges.
+# Repository-scoped mutable analyzer state. Paths are relative to
+# $XDG_STATE_HOME/larch/analysis-state/<repo>/, never larch-logs/.
 LEARN_FROM_BUGS_NUDGE_THRESHOLD: Final = 25
-LEARN_FROM_BUGS_STATE_RELPATH: Final = "larch-logs/shared/learn-from-bugs-state.json"
-ANALYZE_BUGS_STATE_RELPATH: Final = "larch-logs/shared/analyze-bugs-state.json"
-VALIDATE_MERGED_STATE_RELPATH: Final = "larch-logs/shared/validate-merged-state.json"
+LEARN_FROM_BUGS_STATE_RELPATH: Final = "learn-from-bugs/state.json"
+ANALYZE_BUGS_STATE_RELPATH: Final = "analyze-bugs/state.json"
+VALIDATE_MERGED_STATE_RELPATH: Final = "validate-merged/state.json"
+LEGACY_LEARN_FROM_BUGS_STATE_RELPATH: Final = "larch-logs/shared/learn-from-bugs-state.json"
+LEGACY_ANALYZE_BUGS_STATE_RELPATH: Final = "larch-logs/shared/analyze-bugs-state.json"
+LEGACY_VALIDATE_MERGED_STATE_RELPATH: Final = "larch-logs/shared/validate-merged-state.json"
 
 # Transient retry defaults shared with python/retry.py.
 TRANSIENT_RETRY_MAX_ATTEMPTS: Final = 3
