@@ -33,9 +33,10 @@ generation also scans shipped skill Markdown for `docs/security/*.md`
 references and fails if a target is absent. The same validation runs when CI
 generates the projection and checks it for byte-for-byte drift.
 
-The projection also includes `ARCHITECTURE.md` and the Git, GitHub, and Google
-service inventories linked by the focused supply-chain reference. Those links
-therefore resolve in both a source checkout and an installed plugin.
+The projection also includes `ARCHITECTURE.md`, its linked Rust references, the
+Git, GitHub, and Google service inventories, and the operator documents linked
+by the focused security references. Those links therefore resolve in both a
+source checkout and an installed plugin.
 
 `crates/larch-cli/src/release_plugin_runtime.rs` is the single implementation
 owner.

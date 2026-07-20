@@ -2,8 +2,8 @@
 
 This document is the canonical security reference for larch artifacts,
 redaction, diagnostics, secret scanning, retention, and publication. Root
-[`SECURITY.md`](../../SECURITY.md) keeps the public summary and stable
-compatibility headings. [Larch Run Logs](../run-logs.md) owns the detailed
+[`SECURITY.md`](../../SECURITY.md) keeps the public summary. [Larch Run
+Logs](../run-logs.md) owns the detailed
 committed-file selection and batch contracts.
 
 The rules here classify data by where it may go. Redaction and scanning are

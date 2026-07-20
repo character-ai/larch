@@ -3,8 +3,7 @@
 This document is the canonical security reference for larch release provenance,
 dependency controls, bootstrap and upgrade verification, credential handling,
 transport policy, and typed external service boundaries. The root
-[`SECURITY.md`](../../SECURITY.md) keeps the public summary and stable
-compatibility headings.
+[`SECURITY.md`](../../SECURITY.md) keeps the public summary.
 
 Use the existing operational and architecture documents with this reference:
 
