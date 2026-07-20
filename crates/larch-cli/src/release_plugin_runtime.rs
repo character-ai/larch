@@ -15,6 +15,7 @@ const DIRECT_FILES: &[&str] = &[
     "SECURITY.md",
     "docs/analysis-state.md",
     "docs/configuration-and-permissions.md",
+    "docs/dev-hook-audit.md",
     "docs/difficulty-floor-globs.tsv",
     "docs/external-reviewers.md",
     "docs/git-operation-inventory.md",
@@ -23,6 +24,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/installation-and-setup.md",
     "docs/issue-anchored-plan.md",
     "docs/linting.md",
+    "docs/progress-reporting.md",
     "docs/python-migration.md",
     "docs/review-agents.md",
     "docs/run-log-archive.md",
@@ -30,6 +32,9 @@ const DIRECT_FILES: &[&str] = &[
     "docs/run-log-cli.md",
     "docs/run-logs-required-files.tsv",
     "docs/run-logs.md",
+    "docs/rust-async-runtime.md",
+    "docs/rust-parity-harness.md",
+    "docs/rust-testing.md",
     "docs/security/README.md",
     "docs/skills.md",
     "python/cli.py",
@@ -424,6 +429,11 @@ mod tests {
         assert!(paths.contains("docs/git-operation-inventory.md"));
         assert!(paths.contains("docs/github-service-inventory.md"));
         assert!(paths.contains("docs/google-service-inventory.md"));
+        assert!(paths.contains("docs/dev-hook-audit.md"));
+        assert!(paths.contains("docs/progress-reporting.md"));
+        assert!(paths.contains("docs/rust-async-runtime.md"));
+        assert!(paths.contains("docs/rust-parity-harness.md"));
+        assert!(paths.contains("docs/rust-testing.md"));
         assert!(paths.contains("docs/security/README.md"));
         assert!(paths.contains("docs/security/workflow.md"));
         assert!(paths.contains("hooks/hooks.json"));
@@ -533,6 +543,32 @@ mod tests {
             runtime_paths(&root),
             Err(
                 "plugin runtime projection inputs are missing: SECURITY.md, docs/security/README.md"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn rejects_missing_required_security_supporting_documents() {
+        let fixture = fixture();
+        run_git(
+            fixture.path(),
+            [
+                "rm",
+                "--cached",
+                "docs/dev-hook-audit.md",
+                "docs/progress-reporting.md",
+                "docs/rust-async-runtime.md",
+                "docs/rust-parity-harness.md",
+                "docs/rust-testing.md",
+            ],
+        );
+        let root = repository_root(fixture.path());
+
+        assert_eq!(
+            runtime_paths(&root),
+            Err(
+                "plugin runtime projection inputs are missing: docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-testing.md"
                     .to_owned()
             )
         );
