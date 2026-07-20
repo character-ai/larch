@@ -224,6 +224,12 @@ repository trust registry.
 The full URI, provider, archive, cache, sync, and error rules live in
 [Run-log storage contracts](run-log-archive.md).
 
+This repository's `.larch/config.toml` also contains a
+`[logs.legacy_migration]` table. It pins the verified one-time larch migration
+inventory and applies only to this repository and its exact configured storage
+root. Do not copy it into unrelated consumer repositories. Normal archives do
+not use it.
+
 ### Google Application Default Credentials
 
 Google-backed Rust adapters use standard ADC. Operators may set
