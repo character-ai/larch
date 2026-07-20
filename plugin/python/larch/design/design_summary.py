@@ -180,7 +180,7 @@ def _published_run_logs_path(*, design_tmpdir: Path, run_id: str) -> str:
         return "N/A"
     if values.get("LOG_PUBLISH_COMPLETED") != "true":
         return "N/A"
-    return f"larch-logs/design/{run_id}/"
+    return f"run-logs/design/{run_id}.tar.gz"
 
 
 def _duration(design_tmpdir: Path) -> str:

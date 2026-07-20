@@ -758,7 +758,7 @@ def test_published_run_logs_path_requires_completed_log_publication(tmp_path: Pa
     _ = result.write_text("LOG_PUBLISH_COMPLETED=false\n", encoding="utf-8")
     assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "N/A"  # pyright: ignore[reportPrivateUsage]
     _ = result.write_text("LOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
-    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "larch-logs/design/run-1/"  # pyright: ignore[reportPrivateUsage]
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "run-logs/design/run-1.tar.gz"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_render_final_summary_redacts_spliced_detail(

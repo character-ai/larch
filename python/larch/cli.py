@@ -373,7 +373,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("forked-repo", "setup"): ("larch.core.forked_repo", "setup_main", False),
     ("design", "parse-flags"): ("larch.design.design_argv", "parse_flags_main", True),
     ("design", "step0-parse"): ("larch.design.design_step0_env", "step0_parse_main", True),
-    ("design", "step0-session"): ("larch.design.design_step0", "step0_session_main", True),
+    ("design", "step0-session"): ("larch.design.design_step0", "step0_session_entry_main", True),
     ("design", "step0-route"): ("larch.design.design_step0", "step0_route_main", True),
     ("design", "step0-clarify-hard-halt"): ("larch.design.design_step0", "step0_clarify_hard_halt_main", True),
     ("design", "step0-init"): ("larch.design.design_step0", "step0_init_main", True),

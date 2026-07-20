@@ -37,6 +37,7 @@ PUBLISH_RESULT_ENV_ALLOW = frozenset({
     "ARCH_INVARIANT_ASSESSMENT_PRESENT",
     "ARCH_INVARIANT_ASSESSMENT_REQUIRED",
     "ARCH_INVARIANT_ASSESSMENT_STATUS",
+    "CACHE_DIR",
     "DESIGNED_ADMISSION_READY",
     "FINAL_SUMMARY_PATH",
     "LATEST_PHASE",
@@ -52,6 +53,7 @@ PUBLISH_RESULT_ENV_ALLOW = frozenset({
     "PUBLISH_RC_SOURCE",
     "PUBLISH_REFUSE_REASON",
     "RECOVERY_BRANCH",
+    "REMOTE_KEY",
     "RENAMED",
     "UPSERT_STATUS",
     "VALIDATE_DEFECT_COUNT",
@@ -1042,6 +1044,11 @@ def _run_log_publish_after_capture(
     if result.recovery_branch:
         kvs.append(("RECOVERY_BRANCH", result.recovery_branch))
         kvs.append(("LOG_RECOVERY_BRANCH", result.recovery_branch))
+    _append_archive_publication_fields(
+        kvs=kvs,
+        remote_key=result.remote_key,
+        cache_dir=result.cache_dir,
+    )
     if result.exit_code != 0 and not result.recovery_branch:
         _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
         if write_result_env_on_publish_failure:
@@ -1066,6 +1073,18 @@ def _run_log_publish_after_capture(
             return 0 if _write_result_env(path=result_env, rows=kvs) else 3
         return 0
     return None
+
+
+def _append_archive_publication_fields(
+    *,
+    kvs: list[tuple[str, str]],
+    remote_key: str,
+    cache_dir: str,
+) -> None:
+    """Append non-empty additive archive-publication result fields."""
+    for key, value in (("REMOTE_KEY", remote_key), ("CACHE_DIR", cache_dir)):
+        if value:
+            kvs.append((key, value))
 
 
 def _stage_failed_plan_write(

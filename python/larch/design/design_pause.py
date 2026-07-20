@@ -19,7 +19,7 @@ from larch.git import gh
 from larch.core import proc
 from larch.core import redact
 from larch.core.repo_roots import repo_root_probe
-from larch.report import progress_file
+from larch.report import progress_file, run_log_archive, run_log_publish, storage_config
 from larch.state.session_env import validate_design_tmpdir
 
 
@@ -317,87 +317,39 @@ def pause_load_main(argv: Sequence[str]) -> int:
     if not repo_top:
         _emit([("LOAD_OK", "false"), ("ERROR", "not-git-worktree")])
         return 0
-    recovery_branch = payload.get("LOG_RECOVERY_BRANCH", "")
-    if recovery_branch:
-        # The design-log publisher only ever emits this exact recovery-branch name for a run
-        # (python/design_log_publish_flow.py). Pin to that exact value: it binds the snapshot to
-        # the marker's run and closes the argument-injection vector of feeding an unvalidated
-        # marker field into `git fetch origin <value>`. This supersedes the historical
-        # prefix + check-ref-format guard because the emitted name is fully determined by run_id.
-        if recovery_branch != f"larch-logs/design-{run_id}":
-            return _load_fail_clear(issue=issue, repo=repo, error="invalid-recovery-branch")
-        fetch = subprocess.run(["git", "-C", repo_top, "fetch", "origin", recovery_branch], check=False)  # noqa: S607
-        if fetch.returncode != 0:
-            _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
-            return 0
-        snapshot_ref = "FETCH_HEAD"
-    else:
-        default = subprocess.run(
-            ["git", "-C", repo_top, "symbolic-ref", "refs/remotes/origin/HEAD"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.strip().replace("refs/remotes/origin/", "") or "main"
-        if subprocess.run(["git", "-C", repo_top, "fetch", "origin", default], check=False).returncode != 0:  # noqa: S607
-            _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
-            return 0
-        snapshot_ref = f"origin/{default}"
-
-    # Pin the fetched ref to an immutable commit SHA before extraction so a mutable ref
-    # (FETCH_HEAD / origin/<default>) cannot be swapped between enumeration and per-file `git show`.
-    pinned = subprocess.run(
-        ["git", "-C", repo_top, "rev-parse", "--verify", f"{snapshot_ref}^{{commit}}"],  # noqa: S607
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    snapshot_sha = pinned.stdout.strip()
-    if pinned.returncode != 0 or not snapshot_sha:
+    if payload.get("LOG_RECOVERY_BRANCH", ""):
+        return _load_fail_clear(issue=issue, repo=repo, error="legacy-git-snapshot")
+    try:
+        repo_root = Path(repo_top)
+        storage_root = storage_config.discover_storage_root(start=repo_root)
+        publication_paths = run_log_publish.publication_paths(
+            request=run_log_publish.PublicationRequest(
+                repo_root=repo_root,
+                storage_root=storage_root,
+                skill="design",
+                run_id=run_id,
+                staging_root=None,
+            )
+        )
+        cached_run = run_log_archive.verify_materialized_run_directory(
+            run_dir=publication_paths.cache_dir,
+            expected_skill="design",
+            expected_run_id=run_id,
+        ).run_dir
+    except (OSError, TypeError, ValueError, storage_config.StorageConfigurationError):
         _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
         return 0
 
     restore_tmp = Path(tempfile.mkdtemp(prefix="design-pause-load-restore.", dir=design_tmpdir))
     try:
-        prefix = f"larch-logs/design/{run_id}/"
-        # NUL-delimited enumeration (-z) so a snapshot path containing a newline cannot be
-        # mis-split into a spoofed second entry; export-ignore-independent vs `git archive`.
-        ls = subprocess.run(
-            ["git", "-C", repo_top, "ls-tree", "-r", "--name-only", "-z", snapshot_sha, "--", prefix],  # noqa: S607
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if ls.returncode != 0:
-            _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-extract-failed")])
-            return 0
-        files: list[str] = [entry for entry in ls.stdout.split("\x00") if entry]
-        if not files:
-            _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
-            return 0
-        restore_root = restore_tmp.resolve()
-        for full_path in files:
-            rel = full_path[len(prefix):]
-            # Reject paths that would escape the snapshot subtree before any write. git tree paths
-            # cannot normally contain '..', so this is defense-in-depth against a tampered listing.
-            if not rel or rel.startswith("/") or ".." in Path(rel).parts:
-                _emit([("LOAD_OK", "false"), ("ERROR", "unsafe-restored-path")])
-                return 0
-            dest = restore_tmp / rel
-            resolved_dest = dest.resolve()
-            if resolved_dest != restore_root and restore_root not in resolved_dest.parents:
-                _emit([("LOAD_OK", "false"), ("ERROR", "unsafe-restored-path")])
-                return 0
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            blob = subprocess.run(
-                ["git", "-C", repo_top, "show", f"{snapshot_sha}:{full_path}"],  # noqa: S607
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if blob.returncode != 0:
-                _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-extract-failed")])
-                return 0
-            _ = dest.write_text(blob.stdout, encoding="utf-8")
+        for child in cached_run.iterdir():
+            if child.name == run_log_archive.ARCHIVE_MANIFEST_NAME:
+                continue
+            target = restore_tmp / child.name
+            if child.is_dir():
+                _ = shutil.copytree(child, target)
+            else:
+                _ = shutil.copy2(child, target)
         for required in ("manifest.json", "run-params.json", "pause-state.txt"):
             if not (restore_tmp / required).is_file():
                 _emit([("LOAD_OK", "false"), ("ERROR", "missing-restored-artifact")])

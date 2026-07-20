@@ -1996,7 +1996,7 @@ migration_issue = 7680
 domain = "design"
 verb = "step0-session"
 python_module = "larch.design.design_step0"
-python_function = "step0_session_main"
+python_function = "step0_session_entry_main"
 machine_stdout = true
 owner = "python"
 implementation_parity = "pending"
@@ -9054,7 +9054,7 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log commit", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
+python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log init", "run-log publish", "run-log storage-preflight", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
 rust = []
 
 [[callers]]

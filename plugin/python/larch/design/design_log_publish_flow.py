@@ -1,4 +1,4 @@
-"""Python CLI entrypoint for committed /design run-log publishing."""
+"""Python CLI entrypoint for immutable /design run-log archive publishing."""
 
 from __future__ import annotations
 
@@ -9,22 +9,20 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import config, proc, redact, repo_roots
+from larch.core import config, redact, repo_roots
 from larch.design import design_publish
-from larch.git import gh
 from larch.design.design_summary import resolve_summary_mode
+from larch.errors import ShipError
+from larch.report import run_log_publish as run_log_publisher, storage_config
+from larch.report.object_store import ObjectStoreError
 from larch.report.run_log_batch import append_execution_issue
-
-_RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
-    r"(secret survived scrubbing|scrub_log_secrets|scrub-log-secrets|scrubber|scrub_error)",
-    re.IGNORECASE,
-)
 
 
 class SecretScrubFailure(RuntimeError):
@@ -33,7 +31,7 @@ class SecretScrubFailure(RuntimeError):
 
 @dataclass(frozen=True)
 class PublishDesignLogsRequest:
-    """Inputs for committing a design run tree onto a dedicated log branch."""
+    """Inputs for publishing one sanitized design run archive."""
 
     plugin_root: Path
     design_tmpdir: Path
@@ -45,7 +43,7 @@ class PublishDesignLogsRequest:
 
 @dataclass(frozen=True)
 class LogPublishRequest:
-    """Typed inputs for committed /design log-publish (CLI and in-process)."""
+    """Typed inputs for /design log-publish (CLI and in-process)."""
 
     design_tmpdir: Path
     run_id: str
@@ -66,6 +64,8 @@ class LogPublishResult:
     pr_number: str = ""
     pr_url: str = ""
     recovery_branch: str = ""
+    remote_key: str = ""
+    cache_dir: str = ""
     secret_scrub_violations: str | None = None
 
 
@@ -78,6 +78,10 @@ def emit_log_publish_result(result: LogPublishResult) -> None:
     _emit(k="PUBLISH_OK", v="true" if result.publish_ok else "false")
     _emit(k="PR_NUMBER", v=result.pr_number)
     _emit(k="PR_URL", v=result.pr_url)
+    if result.remote_key:
+        _emit(k="REMOTE_KEY", v=result.remote_key)
+    if result.cache_dir:
+        _emit(k="CACHE_DIR", v=result.cache_dir)
     if result.recovery_branch:
         _emit(k="RECOVERY_BRANCH", v=result.recovery_branch)
     if result.secret_scrub_violations is not None:
@@ -92,12 +96,34 @@ def _validate_slug(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+", value))
 
 
-def _persist_metadata(
-    *, design_tmpdir: Path, pr_number: str, pr_url: str, recovery_branch: str
+def _scrub_violations(stdout: str) -> str:  # pyright: ignore[reportUnusedFunction]  # compatibility seam pinned by codec migration tests
+    """Preserve the legacy design publisher's normalized scrub-count seam."""
+    value = larch_io.kv_value(
+        text=stdout.replace("\r", "\n"),
+        key="SECRET_SCRUB_VIOLATIONS",
+        default="0",
+        duplicate_policy="last",
+        cr_strip="strip",
+    ).strip()
+    return value if value.isdigit() else "0"
+
+
+def _persist_metadata(  # noqa: PLR0913 - additive metadata preserves the legacy publish-result wire fields
+    *,
+    design_tmpdir: Path,
+    pr_number: str,
+    pr_url: str,
+    recovery_branch: str,
+    remote_key: str = "",
+    cache_dir: str = "",
 ) -> None:
     with contextlib.suppress(OSError):
         _ = (design_tmpdir / ".design-log-publish-metadata.env").write_text(
-            f"DESIGN_LOG_PR_NUMBER={pr_number}\nDESIGN_LOG_PR_URL={pr_url}\nDESIGN_LOG_RECOVERY_BRANCH={recovery_branch}\n",
+            f"DESIGN_LOG_PR_NUMBER={pr_number}\n"
+            f"DESIGN_LOG_PR_URL={pr_url}\n"
+            f"DESIGN_LOG_RECOVERY_BRANCH={recovery_branch}\n"
+            f"DESIGN_LOG_REMOTE_KEY={remote_key}\n"
+            f"DESIGN_LOG_CACHE_DIR={cache_dir}\n",
             encoding="utf-8",
         )
 
@@ -304,113 +330,20 @@ def _run(
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
 
 
-def _default_base_ref(repo_root: str) -> str:
-    head = _run(
-        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_root
-    )
-    target = head.stdout.strip()
-    if head.returncode == 0 and target.startswith("origin/"):
-        return target.split("/", 1)[1]
-    return "main"
-
-
-def _spawn_detached_admin_merge(
-    *, cli: str, pr_number: str, repo: str, repo_root: str
-) -> None:
-    """Launch the design-log admin-merge waiter as a detached background process.
-
-    Routes the automated log PR through the existing ``ship design-log`` path
-    (``design_log_ship.run_design_log_ci_merge``): it polls required CI checks to
-    green, then runs ``gh pr merge --admin --squash --delete-branch`` -- bypassing
-    the review gate that GitHub-native ``--auto`` can never satisfy for an
-    unreviewed automated PR (issue #4524). Detached via ``start_new_session`` so
-    the /design orchestrator is not blocked on CI (issue #4404). Best-effort: a
-    launch failure leaves the PR open for manual/CI merge.
-    """
-    argv = [sys.executable, cli, "ship", "design-log", "--pr-number", pr_number]
-    if repo:
-        argv += ["--repo", repo]
-    try:
-        _ = subprocess.Popen(  # pylint: disable=consider-using-with
-            argv,
-            cwd=repo_root,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        print(
-            f"design log-publish: detached admin-merge launch failed; "
-            f"PR #{pr_number} left open for manual/CI merge: {exc}",
-            file=sys.stderr,
-        )
-
-
-def _scrub_violations(commit_stdout: str) -> str:
-    """Return the SECRET_SCRUB_VIOLATIONS count from ``run-log commit`` stdout.
-
-    Mirrors the retired design-publish.sh parse: the last occurrence wins and a
-    missing or non-numeric value defaults to ``"0"``. The committed design log is
-    scrubbed before commit, so a non-zero count means a secret-shaped value was
-    redacted from the logs and the operator must rotate the exposed credential.
-    """
-    candidate = larch_io.kv_value(
-        text="\n".join(commit_stdout.splitlines()),
-        key="SECRET_SCRUB_VIOLATIONS",
-        default="",
-        duplicate_policy="last",
-    ).strip()
-    return candidate if candidate.isdigit() else "0"
-
-
-def _run_log_commit_scrub_failed(commit: subprocess.CompletedProcess[str]) -> bool:
-    text = f"{commit.stdout}\n{commit.stderr}"
-    return bool(_RUN_LOG_COMMIT_SCRUB_FAILURE_RE.search(text))
-
-
-def _design_log_worktree_parent(design_tmpdir: Path) -> Path:
-    wt_scratch = design_tmpdir.parent / f".{design_tmpdir.name}-worktrees"
-    wt_scratch.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="larch-design-log-", dir=wt_scratch))
-
-
 def _publish_design_logs(
     *, request: PublishDesignLogsRequest
-) -> tuple[bool, str, str, str, str]:
-    """Commit the design run tree on a dedicated branch via a disposable worktree, push it, and open a PR.
-
-    Returns ``(publish_ok, pr_number, pr_url, recovery_branch, scrub_violations)``. The operator
-    working tree is never touched: every write lands inside the worktree, so the
-    next ``/implement`` preflight stays clean even if this fails (issue #4395).
-    ``recovery_branch`` is set only when a commit exists but could not be turned
-    into a PR, so the operator can finish it manually. Final design logs drop
-    ``.completed/`` sentinels; pause snapshots retain the top-level sentinel
-    directory so resume can restore provenance evidence without synthesizing it.
-    """
+) -> tuple[bool, str, str, str]:
+    """Sanitize, finalize, and publish one immutable design run archive."""
     top = repo_roots.repo_root_probe(run=_run)
     repo_root = top.stdout.strip()
     if top.returncode != 0 or not repo_root:
-        return (False, "", "", "", "0")
-    branch = f"larch-logs/design-{request.run_id}"
+        return (False, "", "", "0")
     cli = str(request.plugin_root / "python" / "cli.py")
-    wt_parent = _design_log_worktree_parent(request.design_tmpdir)
-    worktree = wt_parent / "wt"
-    branch_created = False
-    keep_branch_for_recovery = False
-    try:
-        add = _run(
-            ["git", "worktree", "add", "-b", branch, str(worktree), "HEAD"],
-            cwd=repo_root,
-        )
-        if add.returncode != 0:
-            print(
-                f"design log-publish: worktree add failed: {add.stderr.strip()}",
-                file=sys.stderr,
-            )
-            return (False, "", "", "", "0")
-        branch_created = True
-        wt_log_root = worktree / "larch-logs"
+    with tempfile.TemporaryDirectory(
+        prefix="larch-design-log-publish-",
+        dir=request.design_tmpdir.parent,
+    ) as staging_dir:
+        wt_log_root = Path(staging_dir) / "larch-logs"
         run_dest = wt_log_root / "design" / request.run_id
         run_dest.mkdir(parents=True, exist_ok=True)
         init = _run(
@@ -430,7 +363,8 @@ def _publish_design_logs(
             ],
         )
         if init.returncode != 0:
-            return (False, "", "", "", "0")
+            print(f"design log-publish: run-log init failed: {init.stderr.strip()}", file=sys.stderr)
+            return (False, "", "", "0")
         if not request.include_completed:
             completed = run_dest / ".completed"
             if completed.is_symlink() or completed.is_file():
@@ -456,89 +390,42 @@ def _publish_design_logs(
                 dest=run_dest / child.name,
             )
             if not ok:
-                return (False, "", "", "", "0")
+                return (False, "", "", "0")
             pre_scrub_violations += scrub_count
-        base_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
-        commit = _run(
-            [
-                sys.executable,
-                cli,
-                "run-log",
-                "commit",
-                "--log-root",
-                str(wt_log_root),
-                "--skill",
-                "design",
-                "--run-id",
-                request.run_id,
-                "--pre-scrub-violations",
-                str(pre_scrub_violations),
-            ],
-            cwd=str(worktree),
-        )
-        head_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
-        if commit.returncode != 0 or not head_sha or head_sha == base_sha:
-            if commit.returncode != 0 and _run_log_commit_scrub_failed(commit):
-                raise SecretScrubFailure("run-log commit scrub failure")
-            print(
-                f"design log-publish: run-log commit produced no commit: {commit.stderr.strip()}",
-                file=sys.stderr,
-            )
-            return (False, "", "", "", "0")
-        scrub_violations = _scrub_violations(commit.stdout)
-        push = _run(["git", "push", "-u", "origin", branch], cwd=str(worktree))
-        if push.returncode != 0:
-            print(
-                f"design log-publish: push failed; local branch {branch} kept for recovery: {push.stderr.strip()}",
-                file=sys.stderr,
-            )
-            keep_branch_for_recovery = True
-            return (False, "", "", branch, scrub_violations)
         try:
-            pr, _ = gh.pr_create(
-                proc,
-                repo=request.repo or None,
-                branch=branch,
-                base=_default_base_ref(repo_root),
-                title=(
-                    f"chore(larch-logs): design run {request.run_id} "
-                    f"(issue #{request.issue})"
+            publication, scrub_violations = run_log_publisher.publish_log_run(
+                request=run_log_publisher.PublicationRequest(
+                    repo_root=Path(repo_root),
+                    storage_root=storage_config.discover_storage_root(start=Path(repo_root)),
+                    skill="design",
+                    run_id=request.run_id,
+                    staging_root=None,
                 ),
-                body=(
-                    f"Automated design log directory for run {request.run_id}. "
-                    f"Merged once required CI checks pass (issue #{request.issue}).\n"
-                ),
-                assignee=None,
-                cwd=repo_root,
+                log_root=wt_log_root,
+                pre_scrub_violations=pre_scrub_violations,
             )
-        except gh.ShipError as exc:
+        except (
+            EOFError,
+            ObjectStoreError,
+            OSError,
+            run_log_publisher.PublicationError,
+            ShipError,
+            storage_config.StorageConfigurationError,
+            tarfile.TarError,
+            TypeError,
+            ValueError,
+        ) as exc:
             print(
-                f"design log-publish: gh pr create failed; pushed branch {branch} "
-                f"kept for recovery: {exc}",
+                f"design log-publish: archive publication failed: {exc}",
                 file=sys.stderr,
             )
-            return (False, "", "", branch, scrub_violations)
-        pr_number = str(pr.number)
-        pr_url = pr.url
-        # Launch the wait-then-admin-merge waiter detached so the log PR squashes
-        # in once required CI checks pass, without stalling the /design orchestrator
-        # on CI (preserving the non-blocking goal of #4404). GitHub-native --auto
-        # cannot satisfy the active "Code review" ruleset's required-review gate
-        # that an unreviewed automated PR never receives, so the log PR is routed
-        # through the existing ship design-log path (run_design_log_ci_merge), which
-        # waits for required checks then merges with --admin --delete-branch,
-        # bypassing only the review gate (#4524). Best-effort: a launch failure
-        # leaves the PR open for manual/CI merge and the working tree is already
-        # clean either way.
-        _spawn_detached_admin_merge(
-            cli=cli, pr_number=pr_number, repo=request.repo, repo_root=repo_root
+            return (False, "", "", str(pre_scrub_violations))
+        return (
+            True,
+            publication.remote_key,
+            str(publication.cache_dir),
+            str(scrub_violations),
         )
-        return (True, pr_number, pr_url, "", scrub_violations)
-    finally:
-        _ = _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo_root)
-        if branch_created and not keep_branch_for_recovery:
-            _ = _run(["git", "branch", "-D", branch], cwd=repo_root)
-        shutil.rmtree(wt_parent, ignore_errors=True)
 
 
 def _default_outcome_for_reason(reason: str) -> str:
@@ -743,7 +630,7 @@ def run_log_publish(request: LogPublishRequest) -> LogPublishResult:
         )
 
     try:
-        publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = (
+        publish_ok, remote_key, cache_dir, scrub_violations = (
             _publish_design_logs(
                 request=PublishDesignLogsRequest(
                     plugin_root=plugin_root,
@@ -760,16 +647,17 @@ def run_log_publish(request: LogPublishRequest) -> LogPublishResult:
         return _failed_publish_result(exit_code=1, scrub="0")
     _persist_metadata(
         design_tmpdir=design_tmpdir,
-        pr_number=pr_number,
-        pr_url=pr_url,
-        recovery_branch=recovery_branch,
+        pr_number="",
+        pr_url="",
+        recovery_branch="",
+        remote_key=remote_key,
+        cache_dir=cache_dir,
     )
     return LogPublishResult(
         publish_ok=publish_ok,
-        exit_code=0,
-        pr_number=pr_number,
-        pr_url=pr_url,
-        recovery_branch=recovery_branch,
+        exit_code=0 if publish_ok else 1,
+        remote_key=remote_key,
+        cache_dir=cache_dir,
         secret_scrub_violations=scrub_violations,
     )
 

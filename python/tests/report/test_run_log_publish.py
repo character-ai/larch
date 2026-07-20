@@ -11,7 +11,7 @@ from typing import cast
 import pytest
 
 from larch.core import repo_roots
-from larch.report import run_log_archive, run_log_publish, storage_config
+from larch.report import run_log_archive, run_log_publish, run_logs, storage_config
 from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, RemoteObject
 from larch.report.storage_config import StorageRoot
 
@@ -144,6 +144,44 @@ def test_publish_uses_exact_key_and_promotes_staging_without_download(
     assert not _paths(repo=repo, cache_home=cache_home, state_home=state_home).pending_dir.exists()
 
 
+def test_publish_log_run_finalizes_review_staging_without_git(
+    tmp_path: Path,
+) -> None:
+    repo, _staging, cache_home, state_home, storage_root = _fixture(tmp_path)
+    log_root = tmp_path / "review-logs"
+    run_id = "review-run-7818"
+    _ = run_logs.log_init(log_root=log_root, skill="review", run_id=run_id)
+    run_dir = log_root / "review" / run_id
+    raw_token = "xoxb-1234567890abcdef"
+    _ = (run_dir / "review-round-summary.md").write_text(
+        f"token={raw_token}\n",
+        encoding="utf-8",
+    )
+    store = MemoryObjectStore()
+
+    result, scrub_violations = run_log_publish.publish_log_run(
+        request=run_log_publish.PublicationRequest(
+            repo_root=repo,
+            storage_root=storage_root,
+            skill="review",
+            run_id=run_id,
+            staging_root=None,
+            cache_home=cache_home,
+            state_home=state_home,
+        ),
+        log_root=log_root,
+        store=store,
+    )
+
+    assert result.remote_key == f"run-logs/review/{run_id}.tar.gz"
+    assert result.cache_dir == cache_home / "larch/run-logs/literal repo/review" / run_id
+    assert scrub_violations == 1
+    cached = (result.cache_dir / "review-round-summary.md").read_text(encoding="utf-8")
+    assert raw_token not in cached
+    assert "<REDACTED-TOKEN>" in cached
+    assert not (repo / "larch-logs").exists()
+
+
 def test_failed_upload_retains_content_pinned_pending_archive_and_retry_metadata(
     tmp_path: Path,
 ) -> None:
@@ -182,6 +220,35 @@ def test_failed_upload_retains_content_pinned_pending_archive_and_retry_metadata
     assert result.cache_status is run_log_publish.CachePublicationStatus.MATERIALIZED
     assert paths.cache_dir.is_dir()
     assert not paths.pending_dir.exists()
+
+
+def test_retry_materializes_pending_archive_when_live_staging_changed(
+    tmp_path: Path,
+) -> None:
+    repo, staging, cache_home, state_home, storage_root = _fixture(tmp_path)
+    store = MemoryObjectStore(fail_uploads=1)
+    with pytest.raises(ObjectStoreError):
+        _ = _publish(
+            repo=repo,
+            staging=staging,
+            cache_home=cache_home,
+            state_home=state_home,
+            storage_root=storage_root,
+            store=store,
+        )
+    _ = (staging / "nested/result.txt").write_text("new terminal state\n", encoding="utf-8")
+
+    result = _publish(
+        repo=repo,
+        staging=staging,
+        cache_home=cache_home,
+        state_home=state_home,
+        storage_root=storage_root,
+        store=store,
+    )
+
+    assert result.cache_status is run_log_publish.CachePublicationStatus.MATERIALIZED
+    assert (result.cache_dir / "nested/result.txt").read_text(encoding="utf-8") == "published\n"
 
 
 def test_matching_remote_collision_is_idempotent_but_different_content_fails(

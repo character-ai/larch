@@ -31,6 +31,7 @@ from larch.report.object_store import (
 from larch.report.run_log_archive import RunArchiveMaterializationResult
 from larch.report.run_log_batch import validate_run_id_slug
 from larch.report.storage_config import StorageConfigurationError, StorageRoot
+from larch.errors import ShipError
 
 _PENDING_SCHEMA_VERSION: Final = 1
 _PENDING_ARCHIVE_NAME: Final = "archive.tar.gz"
@@ -588,14 +589,18 @@ def _cache_result(
             raise PublicationError("existing cache directory contains different run content")
         return existing, CachePublicationStatus.PRESENT
     if staging_root is not None:
-        promoted: RunArchiveMaterializationResult = run_log_archive.promote_staging_run_directory(
-            staging_root=staging_root,
-            run_dir=paths.cache_dir,
-            expected_skill=pending.skill,
-            expected_run_id=pending.run_id,
-            expected_manifest_sha256=pending.manifest_sha256,
-        )
-        return promoted, CachePublicationStatus.PROMOTED
+        try:
+            promoted: RunArchiveMaterializationResult = run_log_archive.promote_staging_run_directory(
+                staging_root=staging_root,
+                run_dir=paths.cache_dir,
+                expected_skill=pending.skill,
+                expected_run_id=pending.run_id,
+                expected_manifest_sha256=pending.manifest_sha256,
+            )
+        except run_log_archive.StagingManifestMismatchError:
+            pass
+        else:
+            return promoted, CachePublicationStatus.PROMOTED
     materialized: RunArchiveMaterializationResult = run_log_archive.materialize_run_archive(
         archive_path=paths.pending_archive,
         run_dir=paths.cache_dir,
@@ -693,6 +698,34 @@ def publish_run(
     )
 
 
+def publish_log_run(
+    *,
+    request: PublicationRequest,
+    log_root: Path,
+    pre_scrub_violations: int = 0,
+    store: ObjectStore | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[PublicationResult, int]:
+    """Finalize and publish one run-log lifecycle staging directory."""
+    # Import lazily because manifest loading reaches this publisher through the
+    # token corpus, while the legacy commit module itself imports the manifest.
+    from larch.report import run_log_commit  # noqa: PLC0415 - break manifest/token publisher cycle
+
+    prepared = run_log_commit.prepare_run_for_archive(
+        log_root=log_root,
+        skill=request.skill,
+        run_id=request.run_id,
+        repo_root=request.repo_root,
+        pre_scrub_violations=pre_scrub_violations,
+    )
+    result: PublicationResult = publish_run(
+        request=replace(request, staging_root=prepared.run_dir),
+        store=store,
+        environ=environ,
+    )
+    return result, prepared.secret_scrub_violations
+
+
 def main(argv: Sequence[str]) -> int:
     """Publish or retry one run and emit its machine-readable postconditions."""
     parser = argparse.ArgumentParser(prog="cli.py run-log publish")
@@ -700,11 +733,17 @@ def main(argv: Sequence[str]) -> int:
     _ = parser.add_argument("--skill", required=True)
     _ = parser.add_argument("--run-id", required=True)
     _ = parser.add_argument("--staging-root")
+    _ = parser.add_argument("--log-root")
+    _ = parser.add_argument("--pre-scrub-violations", default="0")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
     try:
+        if args.staging_root and args.log_root:
+            raise ValueError("--staging-root and --log-root are mutually exclusive")
+        if not str(args.pre_scrub_violations).isdigit():
+            raise ValueError("--pre-scrub-violations must be a non-negative integer")
         requested_root: Path = Path(args.repo_root)
         repo_root: Path | None = repo_roots.consumer_repo_root(requested_root)
         if repo_root is None:
@@ -714,15 +753,22 @@ def main(argv: Sequence[str]) -> int:
         storage_root: StorageRoot = storage_config.discover_storage_root(
             start=repo_root
         )
-        result: PublicationResult = publish_run(
-            request=PublicationRequest(
-                repo_root=repo_root,
-                storage_root=storage_root,
-                skill=args.skill,
-                run_id=args.run_id,
-                staging_root=Path(args.staging_root) if args.staging_root else None,
-            ),
+        request = PublicationRequest(
+            repo_root=repo_root,
+            storage_root=storage_root,
+            skill=args.skill,
+            run_id=args.run_id,
+            staging_root=Path(args.staging_root) if args.staging_root else None,
         )
+        scrub_violations = 0
+        if args.log_root:
+            result, scrub_violations = publish_log_run(
+                request=request,
+                log_root=Path(args.log_root),
+                pre_scrub_violations=int(args.pre_scrub_violations),
+            )
+        else:
+            result = publish_run(request=request)
     except StorageConfigurationError as exc:
         print(f"publication failed: {exc}", file=sys.stderr)
         return config.EXIT_STORAGE_CONFIG
@@ -734,6 +780,7 @@ def main(argv: Sequence[str]) -> int:
         tarfile.TarError,
         TypeError,
         ValueError,
+        ShipError,
     ) as exc:
         print(f"publication failed: {exc}", file=sys.stderr)
         return config.EXIT_INTERNAL_ERROR
@@ -742,5 +789,6 @@ def main(argv: Sequence[str]) -> int:
     print(f"CACHE_DIR={result.cache_dir}")
     print(f"REMOTE_STATUS={result.remote_status.value}")
     print(f"CACHE_STATUS={result.cache_status.value}")
+    print(f"SECRET_SCRUB_VIOLATIONS={scrub_violations}")
     print("PUBLISH_OK=true")
     return config.EXIT_OK

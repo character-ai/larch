@@ -41,6 +41,10 @@ _MANIFEST_KEYS: frozenset[str] = frozenset(
 _MANIFEST_MEMBER_KEYS: frozenset[str] = frozenset({"kind", "path", "sha256", "size"})
 
 
+class StagingManifestMismatchError(ValueError):
+    """The live staging tree differs from an already pinned pending archive."""
+
+
 @dataclass(frozen=True)
 class ArchiveMember:
     """One normalized source-tree member represented in the archive."""
@@ -913,7 +917,9 @@ def promote_staging_run_directory(
     manifest = RunArchiveManifest(skill=expected_skill, run_id=expected_run_id, members=members)
     manifest_sha256: str = hashlib.sha256(manifest.to_bytes()).hexdigest()
     if manifest_sha256 != expected_manifest_sha256:
-        raise ValueError("staging tree no longer matches the pending archive manifest")
+        raise StagingManifestMismatchError(
+            "staging tree no longer matches the pending archive manifest"
+        )
     temporary_root: Path | None = None
     try:
         temporary_root = Path(

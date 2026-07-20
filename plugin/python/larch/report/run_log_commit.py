@@ -70,6 +70,14 @@ class _CommitTailResult:
     committed: bool = False
 
 
+@dataclass(frozen=True)
+class PreparedArchiveRun:
+    """Final sanitized run directory ready for immutable archive publication."""
+
+    run_dir: Path
+    secret_scrub_violations: int
+
+
 def _status_line_path(line: str) -> str:
     if len(line) <= _PORCELAIN_PATH_OFFSET:
         return ""
@@ -455,6 +463,48 @@ def _update_commit_manifest_with_warning(manifest: Path) -> None:
         _update_manifest_v2(path=manifest, updates={})
     except (OSError, json.JSONDecodeError, TypeError, ValueError, UnicodeError) as exc:
         print(f"WARN: larch-log commit manifest update failed: {exc}", file=sys.stderr)
+
+
+def prepare_run_for_archive(
+    *,
+    log_root: Path,
+    skill: str,
+    run_id: str,
+    repo_root: Path,
+    pre_scrub_violations: int = 0,
+) -> PreparedArchiveRun:
+    """Finalize one staged run without copying to or mutating a Git worktree."""
+    if pre_scrub_violations < 0:
+        raise ValueError("pre-scrub violations must be non-negative")
+    _validate_slug(label="skill", value=skill)
+    _validate_slug(label="run-id", value=run_id)
+    run_dir: Path = _run_dir(log_root=log_root, skill=skill, run_id=run_id)
+    if not run_dir.is_dir() or run_dir.is_symlink():
+        raise ShipError(f"run-log staging directory is missing or unsafe: {run_dir}")
+    manifest: Path = _manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
+    try:
+        _update_manifest_v2(path=manifest, updates={})
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, UnicodeError) as exc:
+        raise ShipError(f"run-log manifest finalization failed: {exc}") from exc
+    complete, missing = verify_run_log_completeness(
+        run_dir=run_dir,
+        skill=skill,
+        repo_root=repo_root,
+    )
+    if not complete:
+        raise ShipError(f"run-log incomplete: {', '.join(missing)}")
+    _publish_breadcrumbs_with_warning(log_root=log_root, dest=run_dir)
+    violations, files_scrubbed = _scrub_run_tree(run_dir)
+    if violations > 0:
+        _warn_secret_scrub(
+            violations=violations,
+            files_scrubbed=files_scrubbed,
+            directory=run_dir,
+        )
+    return PreparedArchiveRun(
+        run_dir=run_dir,
+        secret_scrub_violations=pre_scrub_violations + violations,
+    )
 
 
 def _commit_tail(*, repo_root: Path, rels: list[str], subject: str) -> _CommitTailResult:

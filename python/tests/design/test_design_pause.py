@@ -7,8 +7,11 @@ import contextlib
 import json
 import io
 import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from larch.design import design_pause
@@ -118,9 +121,41 @@ def _patch_load(
     def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
         return body
 
+    cache_dir = Path(tempfile.mkdtemp(prefix="larch-test-pause-cache-"))
+    unsafe = any(".." in Path(path).parts for path in fake.files)
+    for full_path, content in fake.blobs.items():
+        marker = "/design/"
+        relative = full_path.partition(marker)[2].partition("/")[2]
+        if not relative or ".." in Path(relative).parts:
+            unsafe = True
+            continue
+        destination = cache_dir / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        _ = destination.write_text(content, encoding="utf-8")
+
+    def fake_verify(**_kwargs: object) -> SimpleNamespace:
+        if unsafe or fake.verify_rc != 0:
+            raise ValueError("invalid cached archive")
+        return SimpleNamespace(run_dir=cache_dir)
+
+    def fake_storage_root(**_kwargs: object) -> object:
+        return object()
+
+    def fake_publication_paths(**_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(cache_dir=cache_dir)
+
     monkeypatch.setattr(design_pause.gh, "resolve_repo", fake_resolve_repo)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_pause.subprocess, "run", fake.run)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        design_pause.storage_config, "discover_storage_root", fake_storage_root
+    )
+    monkeypatch.setattr(
+        design_pause.run_log_publish,
+        "publication_paths",
+        fake_publication_paths,
+    )
+    monkeypatch.setattr(design_pause.run_log_archive, "verify_materialized_run_directory", fake_verify)
 
 
 def _restore_blobs(
@@ -289,20 +324,36 @@ def test_pause_save_uses_real_log_publish_path(
             _ = (design_tmpdir / "session-transcript.jsonl").write_bytes(b"")
         return True
 
-    def fake_spawn_detached_admin_merge(**_kwargs: object) -> None:
-        return None
-
     monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
         "capture_design_transcript",
         fake_capture_design_transcript,
     )  # type: ignore[attr-defined]
+    cache_dir = tmp_path / "pause-cache"
+
+    def fake_publish_log_run(**kwargs: object) -> tuple[object, int]:
+        log_root = kwargs["log_root"]
+        assert isinstance(log_root, Path)
+        _ = shutil.copytree(log_root / "design" / "RUN1", cache_dir)
+        result = design_log_publish_flow.run_log_publisher.PublicationResult(
+            remote_key="run-logs/design/RUN1.tar.gz",
+            archive_sha256="a" * 64,
+            cache_dir=cache_dir,
+            remote_status=design_log_publish_flow.run_log_publisher.RemotePublicationStatus.CREATED,
+            cache_status=design_log_publish_flow.run_log_publisher.CachePublicationStatus.PROMOTED,
+        )
+        return result, 0
+
+    def fake_storage_root(**_kwargs: object) -> object:
+        return object()
+
     monkeypatch.setattr(
-        design_log_publish_flow,
-        "_spawn_detached_admin_merge",
-        fake_spawn_detached_admin_merge,
-    )  # type: ignore[attr-defined]
+        design_log_publish_flow.storage_config,
+        "discover_storage_root",
+        fake_storage_root,
+    )
+    monkeypatch.setattr(design_log_publish_flow.run_log_publisher, "publish_log_run", fake_publish_log_run)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
@@ -316,21 +367,7 @@ def test_pause_save_uses_real_log_publish_path(
     assert "PAUSE_OK=true" in out
     assert not upsert_calls
     assert (design / ".design-log-publish-metadata.env").is_file()
-    blob = subprocess.run(
-        [
-            "git",
-            "show",
-            "larch-logs/design-RUN1:larch-logs/design/RUN1/final-summary.md",
-        ],
-        cwd=tmp_path / "origin.git",
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert blob.returncode == 0, blob.stderr
-    summary_body = blob.stdout or (design / "final-summary.md").read_text(
-        encoding="utf-8"
-    )
+    summary_body = (cache_dir / "final-summary.md").read_text(encoding="utf-8")
     assert "## /design run" in summary_body
     assert "<!-- larch:run-summary v=1 -->" in summary_body
     assert "## /design run RUN1: paused" in summary_body
@@ -408,7 +445,7 @@ def test_pause_load_repo_mismatch_clears_marker(
 def test_pause_load_invalid_recovery_branch_clears_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
-    # Guard 2: only the exact publisher branch name is accepted; anything else fails before fetch.
+    # A legacy Git recovery pointer cannot override the archive cache contract.
     body = _pause_marker_body(
         run_id="RUN1",
         issue="9",
@@ -423,7 +460,7 @@ def test_pause_load_invalid_recovery_branch_clears_marker(
     )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
-    assert "ERROR=invalid-recovery-branch" in out
+    assert "ERROR=legacy-git-snapshot" in out
     assert fake.delete_called
     assert not fake.fetched
 
@@ -431,7 +468,7 @@ def test_pause_load_invalid_recovery_branch_clears_marker(
 def test_pause_load_rev_parse_pin_failure_keeps_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
-    # Guard 1: when the ref cannot be pinned to a commit SHA, fail closed but keep the marker (retryable).
+    # An absent or invalid cached archive fails closed but keeps the marker for retry.
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
     fake = _FakeGit(verify_rc=1)
     _patch_load(monkeypatch, body, fake)
@@ -447,7 +484,7 @@ def test_pause_load_rev_parse_pin_failure_keeps_marker(
 def test_pause_load_unsafe_restored_path_keeps_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
-    # Guard 4: an enumerated path that escapes the snapshot subtree is rejected before any write.
+    # The verified cache boundary rejects an unsafe archive before any restore write.
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
     fake = _FakeGit(files=["larch-logs/design/RUN1/../escape.txt"])
     _patch_load(monkeypatch, body, fake)
@@ -456,7 +493,7 @@ def test_pause_load_unsafe_restored_path_keeps_marker(
     )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
-    assert "ERROR=unsafe-restored-path" in out
+    assert "ERROR=snapshot-not-found" in out
     assert not fake.delete_called
 
 
@@ -480,13 +517,12 @@ def test_pause_load_manifest_mismatch_clears_marker(
 def test_pause_load_success_deletes_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
-    # Guard 5 + guard 1/2 happy path: valid recovery branch, pinned SHA, full restore, marker deleted.
+    # A verified cached pause archive restores fully, then clears the marker.
     body = _pause_marker_body(
         run_id="RUN1",
         issue="9",
         step="3",
         repo="owner/repo",
-        recovery_branch="larch-logs/design-RUN1",
     )
     files, blobs = _restore_blobs("RUN1", issue_number=9, manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs)
@@ -500,7 +536,7 @@ def test_pause_load_success_deletes_marker(
     assert "LOAD_OK=true" in out
     assert "MARKER_CLEARED=true" in out
     assert fake.delete_called
-    assert fake.fetched
+    assert not fake.fetched
     assert (dest / "manifest.json").is_file()
 
 
