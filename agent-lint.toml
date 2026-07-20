@@ -1371,8 +1371,8 @@ root-max-content-tokens = 35301
 # issue #7853 packages the current root policy and adds its scope and overview.
 # issue #7815 adds the provider-neutral object-storage trust boundary.
 closure-max-lines = 3893
-closure-max-tokens = 146783
-closure-max-content-tokens = 146474
+closure-max-tokens = 146785
+closure-max-content-tokens = 146475
 conditional-max-lines = 591
 conditional-max-tokens = 18803
 conditional-max-content-tokens = 18756
@@ -1435,5 +1435,5 @@ roots = [
 # issue #7853 packages the current root policy and adds its scope and overview.
 # issue #7815 adds the provider-neutral object-storage trust boundary.
 closure-max-lines = 6181
-closure-max-tokens = 172234
-closure-max-content-tokens = 171763
+closure-max-tokens = 172236
+closure-max-content-tokens = 171764

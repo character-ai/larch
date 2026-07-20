@@ -57,8 +57,7 @@ pub use github::{
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use logging_util::emit_kv;
 pub use object_store::{
-    ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreErrorKind, ObjectStoreFuture,
-    RemoteObject,
+    ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
 };
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{

@@ -1,91 +1,47 @@
 """Provider-neutral object transport for larch run archives."""
-
 from __future__ import annotations
-
 import json
 import os
-import re
 import tempfile
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, Protocol, cast
+from typing import Any, Final, NamedTuple, cast
 from urllib.parse import urlsplit
-
 from larch.core import config, proc
 from larch.core.repo_roots import larch_entrypoint
-
-_R2_ACCOUNT_RE: Final = re.compile(r"^[0-9a-f]{32}$")
-_CONTROL_MAX: Final = 32
-_DELETE: Final = 127
-_TIMEOUT: Final = 300
 _GCS_ERRORS: Final = {2: "invalid-response", 3: "authentication", 4: "already-exists", 5: "not-found", 6: "local-io"}
-_EXISTS: Final = ("preconditionfailed", "status code: 412", "(412)")
-_MISSING: Final = ("nosuchkey", "not found", "status code: 404", "(404)")
-_AUTH: Final = ("accessdenied", "access denied", "expiredtoken", "invalidaccesskeyid", "no credentials", "unable to locate credentials")
-
-class ObjectStoreErrorKind(StrEnum):
-    CONFIGURATION = "configuration"
-    AUTHENTICATION = "authentication"
-    ALREADY_EXISTS = "already-exists"
-    NOT_FOUND = "not-found"
-    LOCAL_IO = "local-io"
-    INVALID_RESPONSE = "invalid-response"
-    TRANSPORT = "transport"
-
+ObjectStoreErrorKind: Any = StrEnum("ObjectStoreErrorKind", {"CONFIGURATION": "configuration", "AUTHENTICATION": "authentication", "ALREADY_EXISTS": "already-exists", "NOT_FOUND": "not-found", "LOCAL_IO": "local-io", "INVALID_RESPONSE": "invalid-response", "TRANSPORT": "transport"})
 class ObjectStoreError(RuntimeError):
     """A normalized provider failure containing no provider diagnostics."""
 
-    def __init__(self, kind: ObjectStoreErrorKind, provider: str, operation: str, *, exit_code: int | None = None) -> None:
-        self.kind, self.provider, self.operation, self.exit_code = kind, provider, operation, exit_code
+    def __init__(self, kind: Any, provider: str, operation: str) -> None:
+        self.kind, self.provider, self.operation = kind, provider, operation
         super().__init__(f"{provider} object {operation} failed ({kind.value})")
-
-class StorageRootLike(Protocol):
-    @property
-    def scheme(self) -> str: ...
-
-    @property
-    def bucket(self) -> str: ...
-    @property
-    def prefix(self) -> str: ...
-
-@dataclass(frozen=True)
-class RemoteObject:
+class RemoteObject(NamedTuple):
     key: str
     size: int
     etag: str | None
     version: str | None
-
-class ObjectStore(Protocol):
-    def preflight_bucket(self) -> None: ...
-    def list_objects(self, prefix: str = "") -> tuple[RemoteObject, ...]: ...
-    def upload_create(self, key: str, source: Path) -> RemoteObject: ...
-    def download(self, key: str, destination: Path) -> None: ...
-    def metadata(self, key: str) -> RemoteObject: ...
-
 class CommandObjectStore:
     """S3/R2 CLI and verified GCS Rust-command adapter."""
 
-    def __init__(self, root: StorageRootLike, runner: proc.Runner, endpoint: str | None = None) -> None:
+    def __init__(self, root: Any, runner: proc.Runner, endpoint: str | None = None) -> None:
         self.root, self.runner, self.endpoint = root, runner, endpoint
     def _key(self, relative: str, *, empty: bool = False) -> str:
         parts = relative.split("/") if relative else []
         invalid = relative.startswith("/") or (not relative and not empty)
-        invalid = invalid or any(not part or part in {".", ".."} or _control(part) for part in parts)
+        invalid = invalid or any(not part or part in {".", ".."} or any(ord(char) < 32 or ord(char) == 127 for char in part) for part in parts)  # noqa: PLR2004
         if invalid:
             raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, self.root.scheme, "key")
         return f"{self.root.prefix}/{relative}" if relative else f"{self.root.prefix}/"
     def _aws(self, *args: str) -> list[str]:
-        command = [config.AWS_CLI, *args]
-        if self.endpoint:
-            command.extend(["--endpoint-url", self.endpoint])
-        return command
+        return [config.AWS_CLI, *args, *(["--endpoint-url", self.endpoint] if self.endpoint else [])]
     def _gcs(self, operation: str, *args: str) -> list[str]:
         return [str(larch_entrypoint()), "object-store", "gcs", "--operation", operation, "--bucket", self.root.bucket, *args]
     def _run(self, command: Sequence[str], operation: str) -> proc.CommandResult:
-        result = self.runner.run(command, timeout=_TIMEOUT, check=False)
+        result = self.runner.run(command, timeout=300, check=False)
         if result.returncode:
             raise _command_error(self.root.scheme, operation, result)
         return result
@@ -115,14 +71,12 @@ class CommandObjectStore:
                     args.extend(["--continuation-token", token])
                 page = self._json(self._aws(*args), "list")
                 raw, token_value = page.get("Contents", []), page.get("NextContinuationToken")
-            if not isinstance(raw, list):
+            token = token_value if isinstance(token_value, str) and token_value else None
+            if not isinstance(raw, list) or token in seen:
                 raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, self.root.scheme, "list")
             objects.extend(self._object(item, listed=True) for item in cast("list[object]", raw))
-            token = token_value if isinstance(token_value, str) and token_value else None
             if token is None:
                 return tuple(objects)
-            if token in seen:
-                raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, self.root.scheme, "list")
             seen.add(token)
     def upload_create(self, key: str, source: Path) -> RemoteObject:
         try:
@@ -168,15 +122,18 @@ class CommandObjectStore:
         lower = self.root.scheme == "gs"
         remote = data.get("key" if lower else "Key") if listed or lower else None
         if key is None:
-            remote_key, root_prefix = _required_string(remote, self.root.scheme), f"{self.root.prefix}/"
-            if not remote_key.startswith(root_prefix) or remote_key == root_prefix:
+            root_prefix = f"{self.root.prefix}/"
+            if not isinstance(remote, str) or not remote.startswith(root_prefix) or remote == root_prefix:
                 raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, self.root.scheme, "response")
-            key = remote_key.removeprefix(root_prefix)
+            key = remote.removeprefix(root_prefix)
+            _ = self._key(key)
         size_field = "size" if lower else ("Size" if listed else "ContentLength")
         raw_size = data.get(size_field) if size is None else size
-        return RemoteObject(key, _required_size(raw_size, self.root.scheme), _optional(data.get("etag" if lower else "ETag")), _optional(data.get("version" if lower else "VersionId")))
-
-def object_store_for(root: StorageRootLike, *, environ: Mapping[str, str] | None = None, runner: proc.Runner | None = None) -> ObjectStore:
+        if not isinstance(raw_size, int) or isinstance(raw_size, bool) or raw_size < 0:
+            raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, self.root.scheme, "response")
+        etag, version = data.get("etag" if lower else "ETag"), data.get("version" if lower else "VersionId")
+        return RemoteObject(key, raw_size, etag if isinstance(etag, str) and etag else None, version if isinstance(version, str) and version else None)
+def object_store_for(root: Any, *, environ: Mapping[str, str] | None = None, runner: proc.Runner | None = None) -> CommandObjectStore:
     active = proc.ProcRunner() if runner is None else runner
     if root.scheme in {"s3", "gs"}:
         return CommandObjectStore(root, active)
@@ -187,43 +144,14 @@ def object_store_for(root: StorageRootLike, *, environ: Mapping[str, str] | None
         if _valid_r2_endpoint(account, endpoint):
             return CommandObjectStore(root, active, endpoint)
     raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, root.scheme, "configure")
-
 def _valid_r2_endpoint(account: str, endpoint: str) -> bool:
     parsed = urlsplit(endpoint)
-    return _R2_ACCOUNT_RE.fullmatch(account) is not None and parsed.scheme == "https" and parsed.netloc == f"{account}.r2.cloudflarestorage.com" and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment and parsed.username is None and parsed.password is None
-
+    return len(account) == 32 and all(char in "0123456789abcdef" for char in account) and parsed.scheme == "https" and parsed.netloc == f"{account}.r2.cloudflarestorage.com" and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment and parsed.username is None and parsed.password is None  # noqa: PLR2004
 def _command_error(provider: str, operation: str, result: proc.CommandResult) -> ObjectStoreError:
     if provider == "gs":
         kind = ObjectStoreErrorKind(_GCS_ERRORS.get(result.returncode, "transport"))
     else:
         diagnostic = result.stderr.casefold()
-        if result.returncode == config.AWS_CLI_NOT_FOUND_EXIT_CODE:
-            kind = ObjectStoreErrorKind.CONFIGURATION
-        elif operation == "upload" and any(marker in diagnostic for marker in _EXISTS):
-            kind = ObjectStoreErrorKind.ALREADY_EXISTS
-        elif any(marker in diagnostic for marker in _MISSING):
-            kind = ObjectStoreErrorKind.NOT_FOUND
-        elif any(marker in diagnostic for marker in _AUTH):
-            kind = ObjectStoreErrorKind.AUTHENTICATION
-        else:
-            kind = ObjectStoreErrorKind.TRANSPORT
-    return ObjectStoreError(kind, provider, operation, exit_code=result.returncode)
-
-def _required_string(value: object, provider: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, provider, "response")
-    return value
-
-
-def _required_size(value: object, provider: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, provider, "response")
-    return value
-
-
-def _optional(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def _control(value: str) -> bool:
-    return any(ord(character) < _CONTROL_MAX or ord(character) == _DELETE for character in value)
+        checks = ((ObjectStoreErrorKind.ALREADY_EXISTS, ("preconditionfailed", "status code: 412", "(412)") if operation == "upload" else ()), (ObjectStoreErrorKind.NOT_FOUND, ("nosuchkey", "not found", "status code: 404", "(404)")), (ObjectStoreErrorKind.AUTHENTICATION, ("accessdenied", "access denied", "expiredtoken", "invalidaccesskeyid", "no credentials", "unable to locate credentials")))
+        kind = ObjectStoreErrorKind.CONFIGURATION if result.returncode == config.AWS_CLI_NOT_FOUND_EXIT_CODE else next((error for error, markers in checks if any(marker in diagnostic for marker in markers)), ObjectStoreErrorKind.TRANSPORT)
+    return ObjectStoreError(kind, provider, operation)

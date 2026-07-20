@@ -1,7 +1,10 @@
-use std::{path::PathBuf, process::ExitCode};
+use std::{
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use clap::{Args, ValueEnum};
-use larch_core::{ObjectStore, ObjectStoreError, ObjectStoreErrorKind, RemoteObject};
+use larch_core::{ObjectStore, ObjectStoreError, RemoteObject};
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -19,31 +22,34 @@ pub struct GcsArguments {
     operation: GcsOperation,
     #[arg(long)]
     bucket: String,
-    #[arg(long, default_value = "")]
-    prefix: String,
-    #[arg(long, default_value = "")]
-    page_token: String,
-    #[arg(long, default_value = "")]
-    key: String,
-    #[arg(long, default_value = "")]
-    source: PathBuf,
-    #[arg(long, default_value = "")]
-    destination: PathBuf,
+    #[arg(long)]
+    prefix: Option<String>,
+    #[arg(long)]
+    page_token: Option<String>,
+    #[arg(long)]
+    key: Option<String>,
+    #[arg(long)]
+    source: Option<PathBuf>,
+    #[arg(long)]
+    destination: Option<PathBuf>,
 }
 
+#[must_use]
 pub fn run(arguments: &GcsArguments) -> ExitCode {
     if !valid_bucket(&arguments.bucket)
-        || !valid_object_text(&arguments.prefix, true)
-        || !valid_object_text(&arguments.key, true)
-        || arguments.page_token.contains(['\n', '\r', '\0'])
+        || !valid_object_text(arguments.prefix.as_deref().unwrap_or(""), true)
+        || !valid_object_text(arguments.key.as_deref().unwrap_or(""), true)
+        || arguments
+            .page_token
+            .as_deref()
+            .is_some_and(|token| token.contains(['\n', '\r', '\0']))
         || (matches!(
             arguments.operation,
             GcsOperation::UploadCreate | GcsOperation::Download | GcsOperation::Metadata
-        ) && !valid_object_text(&arguments.key, false))
-        || (matches!(arguments.operation, GcsOperation::UploadCreate)
-            && arguments.source.as_os_str().is_empty())
+        ) && !valid_object_text(arguments.key.as_deref().unwrap_or(""), false))
+        || (matches!(arguments.operation, GcsOperation::UploadCreate) && arguments.source.is_none())
         || (matches!(arguments.operation, GcsOperation::Download)
-            && arguments.destination.as_os_str().is_empty())
+            && arguments.destination.is_none())
     {
         eprintln!("GCS object transport rejected invalid arguments");
         return ExitCode::from(2);
@@ -62,6 +68,12 @@ pub fn run(arguments: &GcsArguments) -> ExitCode {
 }
 
 async fn execute(arguments: &GcsArguments, store: &dyn ObjectStore) -> ExitCode {
+    let key = arguments.key.as_deref().unwrap_or("");
+    let source = arguments.source.as_deref().unwrap_or_else(|| Path::new(""));
+    let destination = arguments
+        .destination
+        .as_deref()
+        .unwrap_or_else(|| Path::new(""));
     let result = match arguments.operation {
         GcsOperation::Preflight => store
             .preflight_bucket(&arguments.bucket)
@@ -70,8 +82,8 @@ async fn execute(arguments: &GcsArguments, store: &dyn ObjectStore) -> ExitCode 
         GcsOperation::List => store
             .list_page(
                 &arguments.bucket,
-                &arguments.prefix,
-                nonempty(&arguments.page_token),
+                arguments.prefix.as_deref().unwrap_or(""),
+                arguments.page_token.as_deref(),
             )
             .await
             .map(|page| {
@@ -81,15 +93,15 @@ async fn execute(arguments: &GcsArguments, store: &dyn ObjectStore) -> ExitCode 
                 })
             }),
         GcsOperation::UploadCreate => store
-            .upload_create(&arguments.bucket, &arguments.key, &arguments.source)
+            .upload_create(&arguments.bucket, key, source)
             .await
             .map(|object| object_json(&object)),
         GcsOperation::Download => store
-            .download(&arguments.bucket, &arguments.key, &arguments.destination)
+            .download(&arguments.bucket, key, destination)
             .await
             .map(|()| json!({})),
         GcsOperation::Metadata => store
-            .metadata(&arguments.bucket, &arguments.key)
+            .metadata(&arguments.bucket, key)
             .await
             .map(|object| object_json(&object)),
     };
@@ -102,6 +114,23 @@ async fn execute(arguments: &GcsArguments, store: &dyn ObjectStore) -> ExitCode 
     }
 }
 
+#[doc(hidden)]
+pub async fn exercise(operation: GcsOperation, store: &dyn ObjectStore) -> ExitCode {
+    execute(
+        &GcsArguments {
+            operation,
+            bucket: "bucket".into(),
+            prefix: Some("larch/".into()),
+            page_token: Some("page".into()),
+            key: Some("larch/run".into()),
+            source: Some("source".into()),
+            destination: Some("destination".into()),
+        },
+        store,
+    )
+    .await
+}
+
 fn object_json(object: &RemoteObject) -> Value {
     json!({
         "etag": object.etag,
@@ -109,10 +138,6 @@ fn object_json(object: &RemoteObject) -> Value {
         "size": object.size,
         "version": object.version,
     })
-}
-
-fn nonempty(value: &str) -> Option<&str> {
-    (!value.is_empty()).then_some(value)
 }
 
 fn valid_bucket(value: &str) -> bool {
@@ -130,14 +155,16 @@ fn valid_object_text(value: &str, allow_empty: bool) -> bool {
         && !value.bytes().any(|byte| byte < 32 || byte == 127)
 }
 
-fn report_error(error: ObjectStoreError) -> ExitCode {
+#[doc(hidden)]
+#[must_use]
+pub fn report_error(error: ObjectStoreError) -> ExitCode {
     let (label, code) = match error {
-        ObjectStoreErrorKind::Authentication => ("authentication", 3),
-        ObjectStoreErrorKind::AlreadyExists => ("already-exists", 4),
-        ObjectStoreErrorKind::NotFound => ("not-found", 5),
-        ObjectStoreErrorKind::LocalIo => ("local-io", 6),
-        ObjectStoreErrorKind::InvalidResponse => ("invalid-request-or-response", 2),
-        ObjectStoreErrorKind::Transport => ("transport", 1),
+        ObjectStoreError::Authentication => ("authentication", 3),
+        ObjectStoreError::AlreadyExists => ("already-exists", 4),
+        ObjectStoreError::NotFound => ("not-found", 5),
+        ObjectStoreError::LocalIo => ("local-io", 6),
+        ObjectStoreError::InvalidResponse => ("invalid-request-or-response", 2),
+        ObjectStoreError::Transport => ("transport", 1),
     };
     eprintln!("GCS object transport failed: {label}");
     ExitCode::from(code)

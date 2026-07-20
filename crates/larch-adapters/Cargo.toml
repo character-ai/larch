@@ -35,6 +35,7 @@ x509-cert.workspace = true
 nix.workspace = true
 
 [dev-dependencies]
+google-cloud-gax.workspace = true
 http.workspace = true
 larch-test-support.workspace = true
 tower.workspace = true

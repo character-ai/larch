@@ -2488,6 +2488,7 @@ dependencies = [
  "chrono",
  "gix",
  "google-cloud-auth",
+ "google-cloud-gax",
  "google-cloud-storage",
  "http",
  "http-body",

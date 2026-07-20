@@ -13,11 +13,11 @@ use std::{
 };
 
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
+use larch_cli::object_store_commands::{self, GcsArguments};
 use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
 mod git_commands;
 mod github_repository_resolution;
-mod object_store_commands;
 mod push_network;
 mod push_rebase;
 mod release_assets;
@@ -29,7 +29,6 @@ mod release_stage;
 mod release_version;
 
 use git_commands::GitCommand;
-use object_store_commands::GcsArguments;
 
 #[derive(Parser)]
 #[command(
