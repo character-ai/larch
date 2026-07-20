@@ -33,6 +33,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Aliases](#aliases)
   - [Review Agents](docs/review-agents.md) — the unified `code-reviewer` archetype
   - [Run Logs](docs/run-logs.md) — committed `larch-logs/` batch files, manifest, and tracking-issue comments
+  - [Security References](docs/security/README.md): security document taxonomy, ownership, and runtime packaging contract
   - [Topology Projection](docs/topology.md) — stable anchors for cross-doc topology counts
   - [Linting](docs/linting.md) — linters, Makefile targets, halt-rate regression harness
   - [Issue-Anchored Plan](docs/issue-anchored-plan.md) — **live** wire format for the /design ↔ /implement plan handoff and clarification round-trip

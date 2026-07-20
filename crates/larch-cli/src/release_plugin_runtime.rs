@@ -11,6 +11,7 @@ use larch_adapters::{GixRepository, PathIntent, RepositoryRoot, read_utf8};
 const DIRECT_FILES: &[&str] = &[
     ".claude-plugin/plugin.json",
     "LICENSE",
+    "SECURITY.md",
     "docs/configuration-and-permissions.md",
     "docs/difficulty-floor-globs.tsv",
     "docs/external-reviewers.md",
@@ -24,6 +25,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/run-log-cli.md",
     "docs/run-logs-required-files.tsv",
     "docs/run-logs.md",
+    "docs/security/README.md",
     "docs/skills.md",
     "python/cli.py",
     "python/stall-recovery-report.md",
@@ -94,6 +96,7 @@ fn runtime_paths(root: &RepositoryRoot) -> Result<BTreeSet<String>, String> {
         }
         if DIRECT_FILES.contains(&path.as_str())
             || path.starts_with("agents/")
+            || (path.starts_with("docs/security/") && is_markdown_path(&path))
             || path.starts_with("hooks/")
             || (path.starts_with("skills/") && !is_test_path(&path))
             || is_runtime_python_path(&path)
@@ -125,7 +128,63 @@ fn runtime_paths(root: &RepositoryRoot) -> Result<BTreeSet<String>, String> {
             unsafe_paths.join(", ")
         ));
     }
+    validate_skill_security_references(root, &selected)?;
     Ok(selected)
+}
+
+fn validate_skill_security_references(
+    root: &RepositoryRoot,
+    selected: &BTreeSet<String>,
+) -> Result<(), String> {
+    let mut missing = BTreeSet::new();
+    for skill in selected
+        .iter()
+        .filter(|path| path.starts_with("skills/") && is_markdown_path(path))
+    {
+        let source = root
+            .confine(skill, PathIntent::Read)
+            .map_err(|_| format!("plugin runtime projection inputs are unsafe: {skill}"))?;
+        let contents = read_utf8(&source)
+            .map_err(|_| format!("plugin runtime projection inputs are unreadable: {skill}"))?;
+        for reference in focused_security_references(&contents) {
+            if !selected.contains(&reference) {
+                missing.insert(format!("{skill} -> {reference}"));
+            }
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "shipped skill security references are missing: {}",
+        missing.into_iter().collect::<Vec<_>>().join(", ")
+    ))
+}
+
+fn focused_security_references(contents: &str) -> BTreeSet<String> {
+    const PREFIX: &str = "docs/security/";
+    let mut references = BTreeSet::new();
+    let mut remainder = contents;
+    while let Some(offset) = remainder.find(PREFIX) {
+        let candidate = &remainder[offset..];
+        let end = candidate
+            .find(|character: char| {
+                !character.is_ascii_alphanumeric() && !matches!(character, '/' | '-' | '_' | '.')
+            })
+            .unwrap_or(candidate.len());
+        let candidate = candidate[..end].trim_end_matches('.');
+        if candidate.len() > PREFIX.len() {
+            references.insert(candidate.to_owned());
+        }
+        remainder = &remainder[offset + PREFIX.len()..];
+    }
+    references
+}
+
+fn is_markdown_path(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
 }
 
 fn is_test_path(path: &str) -> bool {
@@ -334,11 +393,11 @@ fn create_real_directories(root: &Path, destination: &Path) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::{
-        DEV_ONLY_PYTHON, DIRECT_FILES, ROOT_ERROR, projection_errors, runtime_paths, sync,
-        validate_root,
+        DEV_ONLY_PYTHON, DIRECT_FILES, ROOT_ERROR, focused_security_references, projection_errors,
+        runtime_paths, sync, validate_root,
     };
     use larch_adapters::RepositoryRoot;
-    use std::{fs, path::Path, process::Command};
+    use std::{collections::BTreeSet, fs, path::Path, process::Command};
     use tempfile::TempDir;
 
     #[test]
@@ -355,6 +414,9 @@ mod tests {
                 .is_empty()
         );
         assert!(paths.contains("agents/reviewer.md"));
+        assert!(paths.contains("SECURITY.md"));
+        assert!(paths.contains("docs/security/README.md"));
+        assert!(paths.contains("docs/security/workflow.md"));
         assert!(paths.contains("hooks/hooks.json"));
         assert!(paths.contains("skills/implement/SKILL.md"));
         assert!(paths.contains("python/larch/core/runtime.py"));
@@ -449,6 +511,65 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rejects_missing_required_security_entry_points() {
+        let fixture = fixture();
+        run_git(
+            fixture.path(),
+            ["rm", "--cached", "SECURITY.md", "docs/security/README.md"],
+        );
+        let root = repository_root(fixture.path());
+
+        assert_eq!(
+            runtime_paths(&root),
+            Err(
+                "plugin runtime projection inputs are missing: SECURITY.md, docs/security/README.md"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn rejects_missing_focused_security_references_from_shipped_skills() {
+        let fixture = fixture();
+        fs::write(
+            fixture.path().join("skills/implement/SKILL.md"),
+            "Read `${CLAUDE_PLUGIN_ROOT}/docs/security/missing.md` first.\n",
+        )
+        .expect("write missing security reference");
+        let root = repository_root(fixture.path());
+
+        assert_eq!(
+            runtime_paths(&root),
+            Err(
+                "shipped skill security references are missing: skills/implement/SKILL.md -> docs/security/missing.md"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn extracts_focused_security_references_with_links_and_anchors() {
+        assert_eq!(
+            focused_security_references(
+                "Read [the policy](../../docs/security/workflow.md#agents), docs/security/artifacts.md, and docs/security/case.MD."
+            ),
+            BTreeSet::from([
+                "docs/security/artifacts.md".to_owned(),
+                "docs/security/case.MD".to_owned(),
+                "docs/security/workflow.md".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn preserves_invalid_suffixes_for_missing_reference_validation() {
+        assert_eq!(
+            focused_security_references("Read docs/security/workflow.md.backup."),
+            BTreeSet::from(["docs/security/workflow.md.backup".to_owned()])
+        );
+    }
+
     fn fixture() -> TempDir {
         let fixture = tempfile::tempdir().expect("fixture directory");
         for path in DIRECT_FILES {
@@ -464,6 +585,7 @@ mod tests {
             ("hooks/hooks.json", "{}\n"),
             ("skills/implement/SKILL.md", "skill\n"),
             ("skills/implement/test-helper.md", "test\n"),
+            ("docs/security/workflow.md", "focused security\n"),
             ("python/larch/core/runtime.py", "runtime\n"),
             ("python/larch/release/runtime.py", "release\n"),
             ("python/larch/lint/runtime.py", "lint\n"),
