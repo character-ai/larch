@@ -19,3 +19,12 @@ entries record size `0` and no digest. The manifest does not describe itself,
 avoiding a recursive digest. The command emits SHA-256 digests for both the
 complete archive and its manifest so later publication can use the archive
 digest for idempotence.
+
+`python3 python/cli.py run-log materialize` validates an archive before it
+writes run files. It rejects unsafe paths, collisions, links, special files,
+malformed contents, and integrity mismatches. Defaults limit archives to
+10,000 members, 256 MiB per member, 1 GiB expanded, and a 1,000:1 ratio.
+
+Materialization writes into a private temporary sibling, verifies the complete
+tree, renames it into place, and verifies it again. Failures remove the staged
+tree. It never merges with or replaces a destination. Cache entries contain ordinary files and the manifest.
