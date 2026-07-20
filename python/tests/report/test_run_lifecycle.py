@@ -63,6 +63,15 @@ def lifecycle_fixture(tmp_path: Path) -> tuple[Path, dict[str, str], StorageRoot
     return repo, environment, StorageRoot("s3", "bucket", "larch")
 
 
+def test_final_report_renderer_names_terminal_identity() -> None:
+    report = run_lifecycle._render_final_report(  # pyright: ignore[reportPrivateUsage]  # Golden-test lint requires direct renderer coverage.
+        skill="status", run_id="reference-success", outcome="success"
+    )
+    assert "Skill: `status`" in report
+    assert "Run ID: `reference-success`" in report
+    assert "Outcome: `success`" in report
+
+
 @pytest.mark.parametrize("outcome", ["success", "failure", "cancelled", "early-return"])
 def test_reference_skill_publishes_every_terminal_outcome(
     lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot], outcome: str

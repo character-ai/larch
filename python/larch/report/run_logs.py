@@ -76,6 +76,14 @@ class LogInitResult:
 
 
 @dataclass(frozen=True)
+class RunParent:
+    """Optional parent identity for a nested run-log invocation."""
+
+    skill: str
+    run_id: str
+
+
+@dataclass(frozen=True)
 class LogWriteResult:
     """Result of :func:`log_write`: batch path and idempotent write state."""
 
@@ -114,8 +122,7 @@ def log_init(
     log_root: Path,
     skill: str,
     run_id: str,
-    parent_skill: str = "",
-    parent_run_id: str = "",
+    parent: RunParent | None = None,
     issue: str = "",
 ) -> LogInitResult:
     """Idempotently synthesize a v2 manifest for ``skill``/``run_id``.
@@ -123,20 +130,17 @@ def log_init(
     Raises ``ValueError`` for an invalid ``parent_skill`` slug or non-numeric
     ``issue``. Returns an unchanged result when the manifest already exists.
     """
-    if parent_skill:
-        run_log_batch._validate_slug(label="parent-skill", value=parent_skill)
-    if parent_run_id:
-        run_log_batch._validate_slug(label="parent-run-id", value=parent_run_id)
-    if bool(parent_skill) != bool(parent_run_id):
-        raise ValueError("parent-skill and parent-run-id must be provided together")
+    if parent is not None:
+        run_log_batch._validate_slug(label="parent-skill", value=parent.skill)
+        run_log_batch._validate_slug(label="parent-run-id", value=parent.run_id)
     if issue and not str(issue).isdigit():
         raise ValueError(f"invalid issue: {issue}")
     path = run_log_manifest._manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
     if path.is_file():
         return LogInitResult(path=path, written=False, unchanged=True)
     extra: dict[str, Any] = {
-        "parent_skill": parent_skill or None,
-        "parent_run_id": parent_run_id or None,
+        "parent_skill": parent.skill if parent is not None else None,
+        "parent_run_id": parent.run_id if parent is not None else None,
         "issue_number": int(issue) if issue else None,
     }
     manifest = run_log_manifest.Manifest.synthesize_v2(skill=skill, run_id=run_id, extra=extra)
@@ -196,13 +200,20 @@ def larch_log_init_main(argv: list[str]) -> int:
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
         return run_log_batch._larch_log_fail(code=1, message="invalid init arguments")
+    if bool(args.parent_skill) != bool(args.parent_run_id):
+        return run_log_batch._larch_log_fail(
+            code=1, message="parent-skill and parent-run-id must be provided together"
+        )
     try:
         result = log_init(
             log_root=args.log_root_path,
             skill=args.skill,
             run_id=args.run_id,
-            parent_skill=args.parent_skill,
-            parent_run_id=args.parent_run_id,
+            parent=(
+                RunParent(skill=args.parent_skill, run_id=args.parent_run_id)
+                if args.parent_skill and args.parent_run_id
+                else None
+            ),
             issue=args.issue,
         )
     except ValueError as exc:

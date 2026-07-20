@@ -144,8 +144,11 @@ def start_run(  # noqa: PLR0913 - lifecycle boundary keeps injected storage and 
         log_root=log_root,
         skill=skill_name,
         run_id=run_name,
-        parent_skill=parent_skill,
-        parent_run_id=parent_run_id,
+        parent=(
+            run_logs.RunParent(skill=parent_skill, run_id=parent_run_id)
+            if parent_skill and parent_run_id
+            else None
+        ),
     )
     if init.unchanged:
         raise RunLifecycleError(f"run ID already exists: {run_name}")
