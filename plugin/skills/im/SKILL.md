@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: im
 description: "Use when implementing a feature with auto-merge. Shortcut for /implement --merge."
 argument-hint: "<arguments>"

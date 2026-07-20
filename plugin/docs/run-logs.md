@@ -7,6 +7,16 @@ Exceptions: `repo_unavailable=true` and `--no-logs-commit` produce no archive. F
 The deterministic, versioned archive representation of one sanitized run tree is
 defined in [Run-log archive format](run-log-archive.md).
 
+## Universal skill lifecycle
+
+`skills/shared/run-lifecycle.md` defines the shared start and terminal contract.
+Each invocation owns a UUID under its declared skill. A nested invocation stores
+its parent's skill and run ID in its manifest without sharing the parent's run
+directory or archive. The universal minimum is `manifest.json`,
+`final-report.md`, and `execution-issues.ndjson`. When session transcript
+capture is unavailable, the execution-issues record names that omission before
+terminal publication, as required by I-Flush-1.
+
 ## Plan scope and committed logs
 
 Issue-anchored `larch:plan` blocks list the files that a `/implement` run is expected to touch. Retroactive maintenance across many runs under `larch-logs/design/` or `larch-logs/implement/` — for example URL normalization, typo fixes, or redaction-policy updates in historical committed logs — is not implied by plans that only target the **runtime plugin authority surface** defined in `AGENTS.md` (`skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`). Everything else in the repo (including `docs/`, `larch-logs/`, CI config, and `.claude/skills/`) is supplementary unless the tracking issue's `larch:plan` file list names it. Prefer a log-only PR for bulk `larch-logs/` edits so plan-to-diff review stays traceable; if bulk log edits ship on the same branch as changes under that runtime surface (or other paths not already listed in the plan), disclose the split in the PR title or body so reviewers can separate log churn from substantive work, and extend the issue `larch:plan` file list (or split the PR) when you add normative doc edits such as this file alongside unrelated implementation work.

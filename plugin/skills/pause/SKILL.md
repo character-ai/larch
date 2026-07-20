@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: pause
 description: Use when the operator wants to pause a live /design session and save resumable state to the issue.
 ---

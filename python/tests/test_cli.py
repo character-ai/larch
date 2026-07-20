@@ -191,6 +191,25 @@ def test_run_log_sync_entrypoint_is_machine_stdout() -> None:
     assert ("run-log", "sync") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize(
+    ("verb", "target"),
+    [
+        ("lifecycle-start", "start_main"),
+        ("lifecycle-finalize", "finalize_main"),
+        ("lifecycle-failure", "failure_main"),
+        ("lifecycle-cancel", "cancel_main"),
+        ("lifecycle-early-return", "early_return_main"),
+    ],
+)
+def test_run_lifecycle_entrypoints_are_machine_stdout(verb: str, target: str) -> None:
+    assert cli._REGISTRY[("run-log", verb)] == (  # pyright: ignore[reportPrivateUsage]
+        "larch.report.run_lifecycle",
+        target,
+        True,
+    )
+    assert ("run-log", verb) in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+
+
 def test_dispatch_oos_serialize() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"larch.issue.oos": MagicMock(oos_serialize_main=mock_main)}):

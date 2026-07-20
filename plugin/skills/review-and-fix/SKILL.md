@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: review-and-fix
 description: Use when applying accepted review findings as code fixes. Internal skill invoked by /review in diff mode; not a standalone user entry point.
 argument-hint: "--findings-file <path> [--session-env <path>] [--review-tmpdir <path>]"

@@ -317,6 +317,11 @@ def _atomic_write(*, path: Path, content: str) -> None:
     larch_io.atomic_write(path, content, prefix=".manifest-", nofollow=True)
 
 
+def atomic_write_text(*, path: Path, content: str) -> None:
+    """Atomically write one lifecycle-owned run-log text artifact."""
+    _atomic_write(path=path, content=content)
+
+
 def _normalize_run_log_text(content: str) -> str:
     if not content:
         return content

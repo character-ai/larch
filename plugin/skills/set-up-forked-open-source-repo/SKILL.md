@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: set-up-forked-open-source-repo
 description: "Use when configuring a clone for upstream-fork OSS work: set origin/upstream remotes, disable upstream pushes, and optionally mirror-sync the fork."
 argument-hint: "--upstream <owner/repo> --fork <owner/repo> [--mirror-confirmed] [--init-submodules]"

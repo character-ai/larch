@@ -4121,8 +4121,24 @@ def test_log_init_rejects_invalid_parent_skill(tmp_path: Path) -> None:
             log_root=tmp_path / "larch-logs",
             skill="implement",
             run_id="run-abc",
-            parent_skill="Bad Skill",
+            parent=run_logs.RunParent(skill="Bad Skill", run_id="parent-run"),
         )
+
+
+def test_log_init_main_rejects_partial_parent_identity(tmp_path: Path) -> None:
+    rc = run_logs.larch_log_init_main(
+        [
+            "--log-root",
+            str(tmp_path),
+            "--skill",
+            "status",
+            "--run-id",
+            "run-abc",
+            "--parent-skill",
+            "design",
+        ]
+    )
+    assert rc == 1
 
 
 def test_log_write_creates_then_reports_unchanged(

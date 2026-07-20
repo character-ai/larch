@@ -25,6 +25,7 @@
     {"module": "lint_run_log_walkers.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_self_disarmable_gate.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_shared_convention_regex.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
+    {"module": "lint_skill_run_lifecycle.py", "host_decision": "new-module-justified", "justification": "The universal run lifecycle needs a complete shipped-skill inventory rule that validates shared declarations and the temporary #7827 migration marker; existing Python and Rust lints do not own SKILL.md lifecycle coverage (#7826).", "source_issue": 7826},
     {"module": "lint_status_routing_truthiness.py", "host_decision": "new-module-justified", "justification": "unreachable_branch_detector.py proves later path contradiction after a return, while this rule classifies the first reachable boolean decision using same-scope status semantics (#7434).", "source_issue": 7434},
     {"module": "lint_subprocess_via_runner.py", "host_decision": "legacy", "justification": "", "source_issue": 0},
     {"module": "lint_suppression_reason.py", "host_decision": "legacy", "justification": "", "source_issue": 0},

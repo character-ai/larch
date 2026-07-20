@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: upgrade-larch
 description: "Use when upgrading larch to the latest stable plugin and matching verified executable."
 allowed-tools: Bash

@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: report-tokens
 description: "Use when analyzing token costs from synchronized larch run logs for `--skill=design|implement`: price token reports, optionally plot trends, and print cost-reduction suggestions."
 allowed-tools: Bash, Read

@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: voter-calibration
 description: "Use when analyzing voter agreement, severity calibration, and chronic outliers from synchronized larch run logs. Diagnostic only; changes no thresholds or points."
 allowed-tools: Bash, Read

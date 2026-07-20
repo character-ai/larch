@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: bug
 description: "Use when filing, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled."
 argument-hint: "[--urgent] <bug description>"

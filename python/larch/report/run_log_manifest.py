@@ -41,6 +41,7 @@ _V2_RESERVED_KEYS = frozenset({
     "operator_cwd",
     "operator_repo_root",
     "parent_skill",
+    "parent_run_id",
     "issue_number",
     "larch_version",
     "model_roster",
@@ -123,6 +124,7 @@ class Manifest:
             "operator_cwd": "<OPERATOR_CWD>",
             "operator_repo_root": "<REPO_ROOT>",
             "parent_skill": None,
+            "parent_run_id": None,
             "issue_number": None,
             "larch_version": _plugin_version(),
             "model_roster": {
@@ -228,7 +230,16 @@ class DurableFlags:
 
 
 _MANIFEST_IMMUTABLE = frozenset(
-    {"schema_version", "skill", "run_id", "started_at", "operator_cwd", "operator_repo_root"},
+    {
+        "schema_version",
+        "skill",
+        "run_id",
+        "started_at",
+        "operator_cwd",
+        "operator_repo_root",
+        "parent_skill",
+        "parent_run_id",
+    },
 )
 
 
@@ -580,14 +591,34 @@ def required_artifacts_for_run(
     manifest: Manifest,
     repo_root: Path | None = None,
 ) -> list[RequiredArtifact]:
+    artifacts: list[RequiredArtifact] = []
+    if manifest.extra and manifest.extra.get("lifecycle_schema_version") == 1:
+        artifacts.extend([
+            RequiredArtifact(
+                slug="final-report",
+                relative_path="final-report.md",
+                skill=skill,
+                condition="universal-terminal",
+            ),
+            RequiredArtifact(
+                slug=config.RUN_LOG_BATCH_SESSION_TRANSCRIPT,
+                relative_path="session-transcript.jsonl",
+                skill=skill,
+                condition="universal-terminal",
+            ),
+        ])
     if skill == "implement":
-        return _required_implement_artifacts(run_dir=run_dir, manifest=manifest)
-    if skill == "design":
-        return _required_design_artifacts(run_dir, repo_root=repo_root)
-    return []
+        artifacts.extend(_required_implement_artifacts(run_dir=run_dir, manifest=manifest))
+    elif skill == "design":
+        artifacts.extend(_required_design_artifacts(run_dir, repo_root=repo_root))
+    return artifacts
 
 
-def _committed_execution_issues_path(run_dir: Path, skill: str) -> Path:
+def _committed_execution_issues_path(
+    run_dir: Path, skill: str, *, universal: bool = False
+) -> Path:
+    if universal:
+        return run_dir / "execution-issues.ndjson"
     if skill == "design":
         return run_dir / "execution-issues.md"
     return run_dir / "execution-issues.ndjson"
@@ -638,11 +669,10 @@ def _load_committed_ndjson_execution_issues(path: Path) -> tuple[_CommittedIssue
     return tuple(issues)
 
 
-def _load_committed_execution_issues(run_dir: Path, skill: str) -> tuple[_CommittedIssue, ...]:
-    path = _committed_execution_issues_path(run_dir, skill)
+def _load_committed_execution_issues(path: Path) -> tuple[_CommittedIssue, ...]:
     if not path.is_file():
         return ()
-    if skill == "design":
+    if path.suffix == ".md":
         return _load_committed_markdown_execution_issues(path)
     return _load_committed_ndjson_execution_issues(path)
 
@@ -670,10 +700,11 @@ def _issue_body_names_artifact(*, category: str, body: str, artifact: RequiredAr
 def artifact_present_or_waived(*, run_dir: Path, artifact: RequiredArtifact, execution_issues_path: Path) -> bool:
     if _verify_has_file(run_dir=run_dir, relative_path=artifact.relative_path):
         return True
-    expected_path = _committed_execution_issues_path(run_dir, artifact.skill)
-    if execution_issues_path.resolve(strict=False) != expected_path.resolve(strict=False):
+    if execution_issues_path.parent.resolve(strict=False) != run_dir.resolve(strict=False):
         return False
-    for issue in _load_committed_execution_issues(run_dir, artifact.skill):
+    if execution_issues_path.name not in {"execution-issues.md", "execution-issues.ndjson"}:
+        return False
+    for issue in _load_committed_execution_issues(execution_issues_path):
         if issue.category not in _EXECUTION_ISSUE_CATEGORIES:
             continue
         if _issue_body_names_artifact(category=issue.category, body=issue.body, artifact=artifact):
@@ -690,7 +721,12 @@ def verify_run_log_completeness(
     manifest = _load_run_manifest(run_dir)
     if manifest is None:
         return False, ["manifest.json"]
-    execution_issues_path = _committed_execution_issues_path(run_dir, skill)
+    universal = bool(
+        manifest.extra and manifest.extra.get("lifecycle_schema_version") == 1
+    )
+    execution_issues_path = _committed_execution_issues_path(
+        run_dir, skill, universal=universal
+    )
     missing = [
         f"{artifact.slug}:{artifact.relative_path}"
         for artifact in required_artifacts_for_run(

@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: fm
 description: "Use when forcing an implementation with Claude subagent implement + self-review and auto-merge. Shortcut for /implement --force --self-review --self-implement --merge (same as /f --merge)."
 argument-hint: "<arguments>"
