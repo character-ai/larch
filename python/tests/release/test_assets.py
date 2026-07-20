@@ -33,11 +33,19 @@ def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
 
     sign = 'codesign --force --sign - --timestamp=none "$binary"'
     verify = 'codesign --verify --verbose=2 "$binary"'
-    cargo_test = 'cargo test --locked --package larch-cli --target "$TARGET"'
+    cargo_test = (
+        "cargo test --locked --package larch-test-support --package larch-adapters "
+        '--package larch-cli --target "$TARGET"'
+    )
+    cli_only_test = 'cargo test --locked --package larch-cli --target "$TARGET"'
+    cargo_build = 'cargo build --locked --release --package larch-cli --target "$TARGET"'
     linux_path = 'export PATH="/root/.cargo/bin:$PATH"'
     assert macos_step.index(sign) < macos_step.index(verify)
     assert linux_path in linux_step
-    assert cargo_test in linux_step
+    assert macos_step.index(cargo_test) < macos_step.index(cargo_build)
+    assert linux_step.index(cargo_test) < linux_step.index(cargo_build)
+    assert cli_only_test not in macos_step
+    assert cli_only_test not in linux_step
 
 
 def test_release_workflow_verifies_draft_assets_by_release_id() -> None:
