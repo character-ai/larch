@@ -88,10 +88,9 @@ out to `gcloud`, persist tokens, or accept credential configuration from
 repository, GitHub, workflow, or model data. See the
 [canonical Google ADC contract](docs/security/supply-chain-credentials-and-services.md#google-application-default-credentials).
 
-Cloud Storage sits behind the larch-owned object-store port. GCS uses the
-official Rust client with hardened ADC; S3 and R2 use standard AWS credentials.
-R2 requires its matching account ID and HTTPS endpoint. Uploads are create-only,
-downloads are atomic, and only fixed failure classes cross the adapter.
+Cloud Storage uses the larch-owned port, official Rust client, and hardened ADC.
+S3 and R2 use standard AWS credentials; R2 also requires its matching account ID
+and HTTPS endpoint. Uploads are create-only, downloads atomic, and errors fixed.
 
 ## Rust GitHub Credential and Transport Boundary
 
