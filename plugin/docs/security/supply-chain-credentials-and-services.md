@@ -300,15 +300,18 @@ then promotes it. Ambiguous promotion reads back Latest before a retry. The
 final Latest state is verified. The release commands expose no raw Git, `gh`,
 URL, GraphQL, or Python fallback.
 
-Issue-dependency list, add, and remove use the Python live-mutation gate:
+Issue-dependency list, add, and remove use the shared live-mutation gate:
 operator mode, or a regular non-symlink session file directly under a canonical
 root that carries `LARCH_LIVE_MUTATION_OK=true` and the matching run ID. Writes
 are idempotent and exact-read-back verified. Triage calls require expected
 `updated_at`, re-read the client before writing, reject stale or protected
-targets, and return a new non-empty timestamp. Lists follow parsed same-origin
-HTTPS `Link` continuations under shared byte, page, item, deadline, and
-cancellation bounds. Unavailable APIs and transport errors are typed and
-redacted.
+targets, and return a new non-empty timestamp. Before each Rust dependency
+write, the triage-controlled path also rejects exact `security` or
+`vulnerability` labels and security-sensitive terms in the title, body, or any
+comment. Comment and dependency lists follow parsed same-origin HTTPS `Link`
+continuations under shared byte, page, item, deadline, and cancellation bounds.
+Malformed or incomplete comment evidence fails closed. Unavailable APIs and
+transport errors are typed and redacted.
 
 ### Repository metadata reads
 

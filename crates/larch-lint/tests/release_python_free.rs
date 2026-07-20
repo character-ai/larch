@@ -88,7 +88,7 @@ const COMMANDS: [(&str, &str, u64, Option<&str>); 19] = [
 ];
 
 fn registry() -> String {
-    let mut output = String::from("schema_version = 1\n");
+    let mut output = String::from("schema_version = 2\n");
     for (domain, verb, issue, fixture) in COMMANDS {
         let (python_module, python_function) = python_target(domain, verb);
         let fixture = fixture
@@ -107,6 +107,7 @@ owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
+planning_issue = 7674
 migration_issue = {issue}
 {fixture}"#,
         );
@@ -302,7 +303,7 @@ fn rejects_removal_of_the_complete_command_set() {
     prepare(&repository);
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
-        b"schema_version = 1\ncommands = []\n",
+        b"schema_version = 2\ncommands = []\n",
     );
     repository.commit_all();
 

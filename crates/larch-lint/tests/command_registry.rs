@@ -25,7 +25,7 @@ fn command_row_for(
     removal: &str,
 ) -> String {
     format!(
-        "schema_version = 1\n\n[[commands]]\ndomain = \"{domain}\"\nverb = \"{verb}\"\npython_module = \"{module}\"\npython_function = \"{function}\"\nmachine_stdout = false\nowner = \"{owner}\"\nimplementation_parity = \"{parity}\"\nconsumer_cutover = \"{cutover}\"\npython_removal = \"{removal}\"\nmigration_issue = 7661\n"
+        "schema_version = 2\n\n[[commands]]\ndomain = \"{domain}\"\nverb = \"{verb}\"\npython_module = \"{module}\"\npython_function = \"{function}\"\nmachine_stdout = false\nowner = \"{owner}\"\nimplementation_parity = \"{parity}\"\nconsumer_cutover = \"{cutover}\"\npython_removal = \"{removal}\"\nplanning_issue = 7661\nmigration_issue = 7661\n"
     )
 }
 
@@ -65,6 +65,9 @@ fn live_fixture_registry_is_clean_and_reports_separate_milestones() {
         ))
         .stdout(predicate::str::contains("| Consumer cutover | 0 | 1 |"))
         .stdout(predicate::str::contains("| Python removal | 0 | 1 |"))
+        .stdout(predicate::str::contains(
+            "| Exact migration-leaf assignments | 1 | 1 |",
+        ))
         .stdout(predicate::str::contains("| #7661 | 1 | 0 | 0 |"))
         .stderr("");
 }
@@ -72,7 +75,7 @@ fn live_fixture_registry_is_clean_and_reports_separate_milestones() {
 #[test]
 fn missing_and_duplicate_command_rows_fail_closed() {
     let missing = TempRepo::new();
-    prepare(&missing, "schema_version = 1\n");
+    prepare(&missing, "schema_version = 2\n");
     missing.commit_all();
     TempRepo::command_from(missing.path())
         .args(["rule", "command-registry"])
@@ -92,7 +95,7 @@ fn missing_and_duplicate_command_rows_fail_closed() {
     prepare(&duplicate, &format!("{row}\n[[commands]]{duplicate_row}"));
     duplicate.commit_all();
     TempRepo::command_from(duplicate.path())
-        .args(["command-registry", "sync", "--migration-issue", "7661"])
+        .args(["command-registry", "sync", "--planning-issue", "7661"])
         .assert()
         .code(2)
         .stdout("")
@@ -110,10 +113,32 @@ fn missing_and_duplicate_command_rows_fail_closed() {
 }
 
 #[test]
+fn sync_assigns_only_planning_ownership_to_a_new_python_command() {
+    let repository = TempRepo::new();
+    prepare(&repository, "schema_version = 2\n");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["command-registry", "sync", "--planning-issue", "7682"])
+        .assert()
+        .success()
+        .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=0\n");
+
+    let ledger = fs::read_to_string(
+        repository
+            .path()
+            .join("crates/larch-lint/data/command-registry.toml"),
+    )
+    .expect("read synced registry");
+    assert!(ledger.contains("planning_issue = 7682"));
+    assert!(!ledger.contains("migration_issue ="));
+}
+
+#[test]
 fn chief_umbrella_migration_ownership_fails_closed() {
     let repository = TempRepo::new();
     let ledger = command_row("python", "pending", "pending", "pending")
-        .replace("migration_issue = 7661", "migration_issue = 7687");
+        .replace("planning_issue = 7661", "planning_issue = 7687");
     prepare(&repository, &ledger);
     repository.commit_all();
 
@@ -123,7 +148,72 @@ fn chief_umbrella_migration_ownership_fails_closed() {
         .code(2)
         .stdout("")
         .stderr(predicate::str::contains(
-            "fixture run delegates migration ownership to chief umbrella #7687",
+            "fixture run delegates planning ownership to chief umbrella #7687",
+        ));
+}
+
+#[test]
+fn planning_umbrella_is_not_accepted_as_an_atomic_migration_leaf() {
+    let repository = TempRepo::new();
+    let ledger = command_row("python", "pending", "pending", "pending")
+        .replace("migration_issue = 7661", "migration_issue = 7682");
+    prepare(&repository, &ledger);
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "fixture run assigns atomic migration ownership to umbrella #7682",
+        ));
+}
+
+#[test]
+fn pending_python_command_may_leave_atomic_migration_unassigned() {
+    let repository = TempRepo::new();
+    let ledger = command_row("python", "pending", "pending", "pending")
+        .replace("migration_issue = 7661\n", "");
+    prepare(&repository, &ledger);
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn progress_groups_by_planning_owner_not_exact_leaf() {
+    let repository = TempRepo::new();
+    let ledger = command_row("python", "pending", "pending", "pending")
+        .replace("planning_issue = 7661", "planning_issue = 7675")
+        .replace("migration_issue = 7661", "migration_issue = 7734");
+    prepare(&repository, &ledger);
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["command-registry", "report"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("| #7675 | 1 | 0 | 0 |"))
+        .stdout(predicate::str::contains("| #7734 |").not());
+}
+
+#[test]
+fn completed_migration_requires_an_exact_leaf() {
+    let repository = TempRepo::new();
+    let ledger = command_row("rust", "complete", "complete", "complete")
+        .replace("migration_issue = 7661\n", "");
+    prepare(&repository, &ledger);
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "fixture run completed migration state without an exact migration leaf",
         ));
 }
 
@@ -194,7 +284,7 @@ fn caller_inventory_recognizes_the_verified_runtime_entrypoint() {
     repository.commit_all();
 
     TempRepo::command_from(repository.path())
-        .args(["command-registry", "sync", "--migration-issue", "7661"])
+        .args(["command-registry", "sync", "--planning-issue", "7661"])
         .assert()
         .success()
         .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=1\n")
@@ -230,7 +320,7 @@ fn sync_refreshes_callers_and_preserves_human_migration_state() {
     repository.commit_all();
 
     TempRepo::command_from(repository.path())
-        .args(["command-registry", "sync", "--migration-issue", "9999"])
+        .args(["command-registry", "sync", "--planning-issue", "9999"])
         .assert()
         .success()
         .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=2\n")
@@ -243,6 +333,7 @@ fn sync_refreshes_callers_and_preserves_human_migration_state() {
     )
     .expect("read synced registry");
     assert!(ledger.contains("implementation_parity = \"complete\""));
+    assert!(ledger.contains("planning_issue = 7661"));
     assert!(ledger.contains("migration_issue = 7661"));
     assert!(ledger.contains("path = \"scripts/runtime.sh\""));
     assert!(ledger.contains("kind = \"hook\""));
@@ -306,7 +397,7 @@ DIRECT = ["scripts/larch.sh", "fixture", "run"]
     repository.commit_all();
 
     TempRepo::command_from(repository.path())
-        .args(["command-registry", "sync", "--migration-issue", "7661"])
+        .args(["command-registry", "sync", "--planning-issue", "7661"])
         .assert()
         .success()
         .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=7\n")
