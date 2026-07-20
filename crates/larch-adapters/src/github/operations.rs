@@ -13,6 +13,7 @@ use super::{
 };
 use chrono::DateTime;
 use http::header::LINK;
+use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
 use serde_json::{Map, Value, json};
 use std::{error::Error, fmt, future::Future};
