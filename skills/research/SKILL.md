@@ -47,7 +47,7 @@ When the env var `LARCH_TOKEN_RATE_PER_M` is set to a positive number (USD per m
 
 The research question is described by `RESEARCH_QUESTION` (not raw `$ARGUMENTS`). Use `RESEARCH_QUESTION` wherever human-readable topic text is needed (e.g., agent prompts, report headers, temp file content).
 
-**Read-only-repo contract (best-effort)**: This skill does not create branches, make commits, or modify tracked repo files via Claude's `Edit | Write | NotebookEdit` tool surface. The contract is enforced as two distinct tiers: only the first is mechanical. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` for the full residual-risk framing.
+**Read-only-repo contract (best-effort)**: This skill does not create branches, make commits, or modify tracked repo files via Claude's `Edit | Write | NotebookEdit` tool surface. The contract is enforced as two distinct tiers: only the first is mechanical. See `${CLAUDE_PLUGIN_ROOT}/docs/security/workflow-trust-and-mutations.md` for the full residual-risk framing.
 
 - **Mechanically enforced while active (Claude `Edit | Write | NotebookEdit` surface)**: the skill-scoped PreToolUse hook `${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh research` matches `Edit|Write|NotebookEdit` and permits the call only when a fresh `research-*` activation sentinel exists and the target `tool_input.file_path` (or `tool_input.notebook_path`) resolves to an absolute path under canonical `/tmp`; any other active path outcome denies. A leaked hook registration without a fresh `research-*` sentinel allows with empty stdout. The hook is the **sole** mechanical enforcer of the `/tmp`-only policy. The hook's matcher does **not** include `Bash` or `Skill`.
 

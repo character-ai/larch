@@ -19,4 +19,4 @@ TSV with header row:
 
 1. Declare the dry-run contract in the script’s sibling `.md`.
 2. Add a row to `dry-runnable-scripts.tsv`.
-3. Keep Tier 3 behavior safe: argv-array execution only, cwd pinned to repo root, 10s timeout, metacharacter rejection (see `SECURITY.md`).
+3. Keep Tier 3 behavior safe: argv-array execution only, cwd pinned to repo root, 10s timeout, metacharacter rejection (see `docs/security/workflow-trust-and-mutations.md`).
