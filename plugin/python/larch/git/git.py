@@ -942,21 +942,6 @@ def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[Confl
         return ()
     return _parse_conflict_file_rows(result.stdout)
 
-def resolve_branch_push_remote(
-    runner: Runner,
-    branch: str,
-    *,
-    cwd: str | None = None,
-) -> str:
-    """Resolve topic-branch push remote (push rebase parity)."""
-    for key in (f"branch.{branch}.pushRemote", f"branch.{branch}.remote"):
-        result = _run(runner, ["git", "config", "--get", key], cwd=cwd)
-        if result.returncode == 0:
-            candidate = result.stdout.strip()
-            if candidate and _GIT_REF_LABEL_RE.fullmatch(candidate):
-                return candidate
-    return "origin"
-
 def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
     """True when git reports an active rebase (push rebase --continue guard)."""
     git_dir = _run(runner, ["git", "rev-parse", "--git-dir"], cwd=cwd)

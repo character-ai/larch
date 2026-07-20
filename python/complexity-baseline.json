@@ -3041,22 +3041,6 @@
   },
   {
     "file": "larch/git/rebase.py",
-    "code": "C901",
-    "qualified_symbol": "rebase_push",
-    "metric": 23,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/rebase.py",
-    "code": "PLR0911",
-    "qualified_symbol": "rebase_push",
-    "metric": 16,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/rebase.py",
     "code": "PLR0912",
     "qualified_symbol": "_resolve_conflicts",
     "metric": 17,
@@ -3073,22 +3057,6 @@
   },
   {
     "file": "larch/git/rebase.py",
-    "code": "PLR0912",
-    "qualified_symbol": "rebase_push",
-    "metric": 23,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/rebase.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_rebase_push_force_with_lease",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/rebase.py",
     "code": "PLR0913",
     "qualified_symbol": "_resolve_conflicts",
     "metric": 7,
@@ -3100,14 +3068,6 @@
     "code": "PLR0913",
     "qualified_symbol": "rebase_and_push",
     "metric": 13,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/git/rebase.py",
-    "code": "PLR0913",
-    "qualified_symbol": "rebase_push",
-    "metric": 8,
     "added_at": "legacy",
     "history": []
   },

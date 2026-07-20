@@ -26,6 +26,18 @@ from test_support import make_run_context, ok
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 _RUST_GIT = str(ci_monitor.larch_entrypoint(ci_monitor._REPO_ROOT))
+_RUST_REBASE = (
+    _RUST_GIT,
+    "push",
+    "rebase",
+    "--no-push",
+    "--keep-on-conflict",
+    "--base-remote",
+    "origin",
+    "--base-ref",
+    "main",
+)
+_RUST_REBASE_ABORT = (_RUST_GIT, "git", "rebase-abort")
 
 
 def _new_response_map() -> dict[tuple[str, ...], CommandResult]:
@@ -1751,7 +1763,7 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
     assert not launch_calls
 
 
-def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> None:
+def test_stage_and_push_defer_rebase_uses_verified_rust_entrypoint(tmp_path: Any) -> None:
     commit_script = "cli.py git commit"
     responses = {
         ("git", "add", "--", "fixed.py"): ok(("git", "add")),
@@ -1760,8 +1772,7 @@ def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> No
         ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
         ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "1\n"),
         ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
-        ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"): _cr(("git", "merge-base"), rc=1),
-        ("git", "rebase", "origin/main"): ok(("git", "rebase")),
+        _RUST_REBASE: ok(_RUST_REBASE),
         ("make", "py-lint-main"): ok(("make", "py-lint-main")),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): ok(("git", "ls-remote"), "remote\trefs/heads/feature\n"),
         ("git", "fetch", "origin", "feature", "--quiet"): ok(("git", "fetch")),
@@ -1788,7 +1799,72 @@ def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> No
     assert pushed is True
     assert did_rebase is True
     assert pending is False
-    assert ("git", "rebase", "origin/main") in runner.calls
+    assert _RUST_REBASE in runner.calls
+    assert not any(call[:2] == ("git", "rebase") for call in runner.calls)
+
+
+def test_stage_and_push_defer_rebase_preserves_rust_conflict_for_retry(tmp_path: Any) -> None:
+    commit_script = "cli.py git commit"
+    responses = {
+        ("git", "add", "--", "fixed.py"): ok(("git", "add")),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): ok((commit_script,)),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "1\n"),
+        _RUST_REBASE: _cr(_RUST_REBASE, rc=1, stdout="CONFLICT_FILES=fixed.py\n"),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+
+    pushed, _head, _delta, did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="codex",
+        delta_paths=("fixed.py",),
+        context=ci_monitor.StagePushContext(classified=classified),
+    )
+
+    assert pushed is False
+    assert did_rebase is False
+    assert pending is True
+    assert _RUST_REBASE in runner.calls
+    assert _RUST_REBASE_ABORT not in runner.calls
+
+
+def test_stage_and_push_defer_rebase_aborts_rust_failure(tmp_path: Any) -> None:
+    commit_script = "cli.py git commit"
+    responses = {
+        ("git", "add", "--", "fixed.py"): ok(("git", "add")),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): ok((commit_script,)),
+        ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): ok(("git", "symbolic-ref"), "feature\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): ok(("git", "fetch")),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): ok(("git", "rev-list"), "1\n"),
+        _RUST_REBASE: _cr(_RUST_REBASE, rc=3, stdout="REBASE_ERROR=git fetch origin main failed (network/auth issue)\n"),
+        _RUST_REBASE_ABORT: ok(_RUST_REBASE_ABORT),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+
+    pushed, _head, _delta, did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="codex",
+        delta_paths=("fixed.py",),
+        context=ci_monitor.StagePushContext(classified=classified),
+    )
+
+    assert pushed is False
+    assert did_rebase is False
+    assert pending is False
+    assert _RUST_REBASE in runner.calls
+    assert _RUST_REBASE_ABORT in runner.calls
+    assert not any(call[:2] == ("git", "rebase") for call in runner.calls)
 
 
 def test_stage_and_push_warning_refreshes_before_normal_push(

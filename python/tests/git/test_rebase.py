@@ -4,7 +4,6 @@ from __future__ import annotations
 
 # pyright: reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false
 
-import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,8 +15,7 @@ from larch.core import external_defaults
 from larch.git import rebase
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
-from larch.core.proc import CommandResult, ProcRunner
-from tests.support.foundation import make_adverse_push_repo
+from larch.core.proc import CommandResult
 
 
 def _empty_argv_log() -> list[tuple[str, ...]]:
@@ -351,37 +349,6 @@ def test_force_push_oid_and_retry(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert not sleeps
-
-
-def _run_git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-
-
-def _make_adverse_push_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
-    return make_adverse_push_repo(tmp_path)
-
-
-def test_rebase_force_push_ignores_adverse_tracking(tmp_path: Path) -> None:
-    repo, origin, expected_oid, main_before = _make_adverse_push_repo(tmp_path)
-
-    pushed, error = rebase._rebase_push_force_with_lease(  # pyright: ignore[reportPrivateUsage]
-        ProcRunner(),
-        push_remote="origin",
-        branch="feature-x",
-        expected_remote_oid=expected_oid,
-        cwd=str(repo),
-        sleep_fn=lambda _seconds: None,
-    )
-
-    assert pushed
-    assert not error
-    assert _run_git(origin, "rev-parse", "refs/heads/feature-x") == _run_git(repo, "rev-parse", "HEAD")
-    assert _run_git(origin, "rev-parse", "refs/heads/main") == main_before
 
 
 def test_launch_fn_receives_conflict_csv_and_handoff_flag(tmp_path: Path) -> None:
@@ -761,152 +728,6 @@ def test_larch_version_files_is_canonical_for_bump_paths(
     assert rebase._retired_is_version_path("pkg/version.txt")  # pyright: ignore[reportPrivateUsage]
     assert not rebase._retired_is_version_path("vendor/not-version.txt")  # pyright: ignore[reportPrivateUsage]
     assert not rebase._retired_conflicts_are_ordinary_only(("pkg/version.txt",))  # pyright: ignore[reportPrivateUsage]
-
-
-def test_rebase_push_conflict_returns_exit_1(tmp_path: Path) -> None:
-    runner = ScriptRunner(
-        [
-            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
-            (("git", "fetch", "origin", "main", "--quiet"), _ok(("git", "fetch", "origin", "main", "--quiet"))),
-            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _fail(
-                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
-            )),
-            (("git", "rebase", "origin/main"), _fail(("git", "rebase", "origin/main"))),
-            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
-                ("git", "diff", "--name-only", "--diff-filter=U"),
-                "README.md\n",
-            )),
-        ],
-        permissive=False,
-    )
-    result = rebase.rebase_push(runner, cwd=str(tmp_path))
-    assert result.exit_code == 1
-    assert result.conflict_files == "README.md"
-
-
-def test_rebase_push_force_push_same_ref_recovery(tmp_path: Path) -> None:
-    runner = ScriptRunner(
-        [
-            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
-            (("git", "fetch", "origin", "main", "--quiet"), _ok(("git", "fetch", "origin", "main", "--quiet"))),
-            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _fail(
-                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
-            )),
-            (("git", "rebase", "origin/main"), _ok(("git", "rebase", "origin/main"))),
-            (("git", "config", "--get", "branch.feat.pushRemote"), _ok(("git", "config"), "")),
-            (("git", "config", "--get", "branch.feat.remote"), _ok(("git", "config"), "")),
-            (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
-            (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
-            (("git", "ls-remote", "--heads", "origin", "refs/heads/feat"), _ok(
-                ("git", "ls-remote", "--heads", "origin", "refs/heads/feat"),
-                "",
-            )),
-            (("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "HEAD:refs/heads/feat"), _fail(
-                ("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "HEAD:refs/heads/feat"),
-            )),
-            (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
-            (("git", "rev-parse", "HEAD"), _ok(("git", "rev-parse", "HEAD"), "abc\n")),
-            (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
-        ],
-        permissive=False,
-    )
-    result = rebase.rebase_push(runner, cwd=str(tmp_path))
-    assert result.exit_code == 0
-
-
-def test_rebase_push_retries_transient_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
-    fetch_calls = 0
-
-    def fetch_once_then_ok(argv: tuple[str, ...]) -> CommandResult:
-        nonlocal fetch_calls
-        fetch_calls += 1
-        if fetch_calls == 1:
-            return _fail(argv, "fatal: Could not resolve host")
-        return _ok(argv)
-
-    runner = ScriptRunner(
-        [
-            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
-            (("git", "fetch", "origin", "main", "--quiet"), fetch_once_then_ok),
-            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _ok(
-                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
-            )),
-        ],
-        permissive=False,
-    )
-    result = rebase.rebase_push(runner, no_push=True, cwd=str(tmp_path))
-    assert result.exit_code == 0
-    assert fetch_calls == 2
-
-
-def test_rebase_push_retries_skip_if_pushed_ls_remote(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
-    probe_calls = 0
-
-    def ls_remote_once_then_ok(argv: tuple[str, ...]) -> CommandResult:
-        nonlocal probe_calls
-        probe_calls += 1
-        if probe_calls == 1:
-            return _fail(argv, "fatal: Could not resolve host")
-        return _ok(argv, "abc\trefs/heads/feat\n")
-
-    runner = ScriptRunner(
-        [
-            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
-            (("git", "ls-remote", "--heads", "origin", "refs/heads/feat"), ls_remote_once_then_ok),
-        ],
-        permissive=False,
-    )
-    result = rebase.rebase_push(runner, skip_if_pushed=True, no_push=True, cwd=str(tmp_path))
-    assert result.exit_code == 0
-    assert result.skipped_already_pushed
-    assert probe_calls == 2
-
-
-def test_rebase_push_retries_transient_force_push(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
-    push_calls = 0
-
-    def push_once_then_ok(argv: tuple[str, ...]) -> CommandResult:
-        nonlocal push_calls
-        push_calls += 1
-        if push_calls == 1:
-            return _fail(argv, "fatal: Could not resolve host")
-        return _ok(argv)
-
-    runner = ScriptRunner(
-        [
-            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
-            (("git", "fetch", "origin", "main", "--quiet"), _ok(("git", "fetch", "origin", "main", "--quiet"))),
-            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _fail(
-                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
-            )),
-            (("git", "rebase", "origin/main"), _ok(("git", "rebase", "origin/main"))),
-            (("git", "config", "--get", "branch.feat.pushRemote"), _ok(("git", "config"), "")),
-            (("git", "config", "--get", "branch.feat.remote"), _ok(("git", "config"), "")),
-            (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
-            (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
-            (("git", "push", "--force-with-lease=refs/heads/feat:abc", "origin", "HEAD:refs/heads/feat"), push_once_then_ok),
-        ],
-        permissive=False,
-    )
-    result = rebase.rebase_push(runner, cwd=str(tmp_path))
-    assert result.exit_code == 0
-    assert push_calls == 2
-
-
-def test_rebase_push_invalid_flag_combo_exit_3() -> None:
-    runner = ScriptRunner([], permissive=True)
-    result = rebase.rebase_push(runner, skip_if_pushed=True, no_push=False)
-    assert result.exit_code == 3
-    assert "only valid with --no-push" in result.rebase_error
 
 
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")

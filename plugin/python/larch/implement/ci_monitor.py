@@ -13,13 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from larch import io as larch_io
 from larch.agents import agents
 from larch.core import config
 from larch.core import external_defaults
 from larch.git import gh
 from larch.git import git
 from larch.core import logging_util
-from larch.git import rebase
 from larch.core import redact
 from larch.core import retry
 from larch.core.repo_roots import larch_entrypoint
@@ -1401,6 +1401,43 @@ def _make_default_launch_fn(  # pyright: ignore[reportUnusedFunction]
     return launch_fn
 
 
+def _run_deferred_rebase(
+    runner: Runner,
+    *,
+    base_remote: str,
+    base_ref: str,
+    cwd: str | None,
+) -> tuple[bool, bool]:
+    rebased = runner.run(
+        [
+            str(larch_entrypoint(_REPO_ROOT)),
+            "push",
+            "rebase",
+            "--no-push",
+            "--keep-on-conflict",
+            "--base-remote",
+            base_remote,
+            "--base-ref",
+            base_ref,
+        ],
+        cwd=cwd,
+    )
+    if rebased.returncode == 0:
+        return True, False
+    rebase_fields = larch_io.parse_kv(
+        rebased.stdout,
+        duplicate_policy="last",
+        allowed_keys={"CONFLICT_FILES"},
+    )
+    if rebased.returncode == 1 and rebase_fields.get("CONFLICT_FILES", ""):
+        return False, True
+    _ = runner.run(
+        [str(larch_entrypoint(_REPO_ROOT)), "git", "rebase-abort"],
+        cwd=cwd,
+    )
+    return False, False
+
+
 def stage_and_push(
     runner: Runner,
     *,
@@ -1464,20 +1501,14 @@ def stage_and_push(
             if not known_failed_jobs:
                 _warn_stderr("ship-pr: behind main but failed-jobs unknown; skipping defer-rebase")
             else:
-                rebased = rebase.rebase_push(
+                did_rebase, rebase_pending = _run_deferred_rebase(
                     runner,
-                    no_push=True,
-                    keep_on_conflict=True,
                     base_remote=base_remote,
                     base_ref=base_ref,
                     cwd=cwd,
                 )
-                did_rebase = rebased.exit_code == 0
                 if not did_rebase:
-                    if rebased.conflict_files:
-                        return False, head, delta_paths, False, True
-                    _ = git.rebase(runner, "--abort", cwd=cwd)
-                    return False, head, delta_paths, False, False
+                    return False, head, delta_paths, False, rebase_pending
     if did_rebase or ci_fix_rebase_pending:
         if ci_fix_rebase_pending and not (classified and classified.fixable):
             _warn_stderr("ship-pr: pending CI-fix rebase lacks local verification targets; preserving pending retry")
