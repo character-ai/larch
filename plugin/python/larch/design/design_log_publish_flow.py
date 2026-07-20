@@ -135,7 +135,8 @@ def _persist_metadata(  # noqa: PLR0913 - additive metadata preserves the legacy
 # the publish copied them. The pre-port bash publisher (`design-log-publish.sh`,
 # `design_artifact_excluded`) excluded exactly this class; the Python port
 # (#3681 / #4404) dropped the filter and copied the whole tmpdir, regressing the
-# behavior SECURITY.md still documents. This restores that exclusion.
+# behavior the artifact security reference documents. This restores that
+# exclusion.
 #
 # The filter is applied by basename at every tree depth (top level and inside
 # `plan-review/round-N/`), so it intentionally lists ONLY universal-crud carriers
@@ -187,7 +188,8 @@ _PUBLISH_EXCLUDE_GLOBS = (
 )
 
 # Exact basenames: the aggregate plan-review collector stderr, the dropped-slot
-# diagnostic sidecar (both documented in SECURITY.md), and the pre-redaction
+# diagnostic sidecar (both documented in the artifact security reference), and
+# the pre-redaction
 # duplicate of composed-plan.md (the publish redacts on copy, so the `.redacted`
 # twin adds nothing).
 _PUBLISH_EXCLUDE_NAMES = frozenset(

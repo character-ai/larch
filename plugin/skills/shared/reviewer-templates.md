@@ -246,7 +246,7 @@ A numbered list of pre-existing issues or concerns beyond the scope of this PR t
 - **Focus area**: same five-option tag (`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`)
 - {OUTPUT_INSTRUCTION}
 - Note why this is out of scope (pre-existing, unrelated to PR, etc.)
-- When referencing repo files, include affected repo-relative paths and line ranges like `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1 can emit serialization edges. Accepted OOS observations become PUBLIC GitHub issues, so follow `SECURITY.md`: do not name high-risk paths or paste secret-adjacent material. Machine ordering uses a numeric-only TSV, so sanitized prose does not reduce conflict-detection fidelity.
+- When referencing repo files, include affected repo-relative paths and line ranges like `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1 can emit serialization edges. Accepted OOS observations become PUBLIC GitHub issues, so follow `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md`: do not name high-risk paths or paste secret-adjacent material. Machine ordering uses a numeric-only TSV, so sanitized prose does not reduce conflict-detection fidelity.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section entirely. Do NOT edit any files.
 ```

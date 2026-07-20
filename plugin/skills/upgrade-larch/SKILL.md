@@ -24,4 +24,4 @@ Upgrade the larch plugin to the latest stable version. This skill is for the run
 
 See the Rust `upgrade-larch` command for the driver contract and failure recovery. `/release` Step 7 runs both `upgrade-larch release-step7-root` and `upgrade-larch run` from the release working tree.
 
-Edit-in-sync: marketplace-source changes also touch `.claude-plugin/marketplace.json`, the Rust `upgrade-larch` command, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, and `SECURITY.md`.
+Edit-in-sync: marketplace-source changes also touch `.claude-plugin/marketplace.json`, the Rust `upgrade-larch` command, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, and `docs/security/supply-chain-credentials-and-services.md`.

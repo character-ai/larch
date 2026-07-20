@@ -646,7 +646,7 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
         _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint", tool="oos-disposition-gate", rc=rc, output="")
         return rc
     if security_sidecar_present:
-        msg = "implement: security sidecar present; non-security OOS disposition cleared, private SECURITY.md disposition still required"
+        msg = "implement: security sidecar present; non-security OOS disposition cleared, private security disposition still required"
         (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
         _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-security-sidecar", tool="oos-disposition-checkpoint", rc=3, output=msg)
         return 3

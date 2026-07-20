@@ -263,7 +263,15 @@ sanitized run tree. Materialization validates identity, paths, types, sizes,
 digests, expansion, and collision limits before atomic promotion. Remote writes
 are create-only and identity-checked. Retained retry state and local archive
 caches remain private operator state. Moving an archive to object storage does
-not broaden who should receive it. See
+not broaden who should receive it.
+
+`python/cli.py run-log sync` treats the remote inventory and downloaded archives
+as untrusted. It accepts only the exact `run-logs/<skill>/<run-id>.tar.gz`
+layout, rejects invalid or colliding local names, checks listed and downloaded
+sizes, and routes content through bounded materialization under the publisher's
+per-run lock. It does not replace a valid cache entry. Repair quarantines an
+invalid entry, restores it on failure, and removes stale private transfer and
+repair state under the same lock. See
 [Run-log archive format](../run-log-archive.md).
 
 `/design` and standalone `/review` require storage preflight before session
@@ -363,7 +371,7 @@ egress contract.
 | Python redaction and scanner wrapper | `python/larch/core/redact.py`, `python/larch/lint/gitleaks.py` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Run-log selection, trim, scrub, and commit | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
-| Run-log archive and object publication | `python/larch/report/run_log_archive.py`, `object_store.py`, and their CLI owners |
+| Run-log archive, sync, and object publication | `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI owners |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tracking, plan, diagram, and public-report publication | The typed Python CLI owners named by each workflow; service calls use the current typed GitHub adapter where migrated |

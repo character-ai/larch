@@ -73,8 +73,9 @@ grace period.
 The process adapter must implement `ChildProcess` for an owned child process
 group. It must capture group identity at spawn time. On cancellation it asks
 the group to stop, waits for the caller's grace period, kills the group if
-needed, and reaps the child. Persisted process identities require the separate
-identity re-verification rules in `SECURITY.md` before any signal. The generic
+needed, and reaps the child. Persisted process identities require the
+[local mutation safety](security/workflow-trust-and-mutations.md#local-mutation-safety)
+re-verification rules before any signal. The generic
 `shutdown_child` helper owns only the graceful, deadline, force, and reap
 sequence. It does not choose platform signals or accept arbitrary process IDs.
 

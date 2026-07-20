@@ -56,7 +56,7 @@ The rule is mechanically enforced ONLY when the pre-pass exits 0 with a non-empt
 
 Caller TSV edges are merged (unioned) with `/issue` Phase-2 LLM dep-analysis when `--no-dep-llm` is not set; neither source has precedence. Acyclicity is delegated to `/issue`'s SCC cycle resolution: "For any SCC with more than one node, drop the lowest-priority outbound edge to break the cycle: among the SCC's nodes, pick the one with the lowest input index, and within its `BLOCKED_BY` list pick the lexically-earliest entry; remove that single entry, then re-run SCC detection." Known limitation: file-conflict TSV edges are silently dropped on `/issue`'s Step-5-skip paths (`LIST_STATUS=failed`, allocator failure, empty-CANDIDATES + `N<2`); track that as a follow-up issue if it matters for the current batch.
 
-**Privacy guardrail.** OOS Descriptions are filed as PUBLIC GitHub issues by `/issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; machine ordering relies on the numeric-only TSV, so sanitizing prose costs nothing in conflict-detection fidelity.
+**Privacy guardrail.** OOS Descriptions are filed as PUBLIC GitHub issues by `/issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `${CLAUDE_PLUGIN_ROOT}/docs/security/artifacts-redaction-and-publication.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; machine ordering relies on the numeric-only TSV, so sanitizing prose costs nothing in conflict-detection fidelity.
 
 ## OOS triage policy
 

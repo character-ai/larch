@@ -398,18 +398,20 @@ is not: one source of instructions, many tools reading it.
 
 You already did the work in §1. This section is the reason it pays off.
 
-### 14. Keep `SECURITY.md` in sync
+### 14. Keep security documentation in sync
 
-*Larch source: `SECURITY.md`, AGENTS.md editing rule. Disposition: **Pattern**.*
+*Larch source: `SECURITY.md`, `docs/security/README.md`, AGENTS.md editing rule. Disposition: **Pattern**.*
 
-Keep a `SECURITY.md`, and make updating it a required step when security-relevant
-behavior changes. larch's `AGENTS.md` carries the rule outright: update
-`SECURITY.md` when security-relevant behavior changes. That turns a good intention
-into a step the agent follows.
+Keep a `SECURITY.md`, and give detailed security contracts clear canonical
+owners. Make updating the appropriate security document a required step when
+security-relevant behavior changes. larch's `AGENTS.md` points contributors to
+the ownership map in `docs/security/README.md`. That turns a good intention into
+a step the agent follows without making the root policy own every detail.
 
 Agents need this stated. An agent will change auth, secret handling, or input
-validation to satisfy a task and never notice the policy doc fell behind. A written
-editing rule catches the gap. Add the sync requirement to your `AGENTS.md` editing rules or enforce it with a hook, lint, or test (§6).
+validation to satisfy a task and never notice the security docs fell behind. A
+written editing rule catches the gap. Add the sync requirement to your
+`AGENTS.md` editing rules or enforce it with a hook, lint, or test (§6).
 
 ---
 
