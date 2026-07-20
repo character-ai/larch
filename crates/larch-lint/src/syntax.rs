@@ -1,5 +1,6 @@
 //! Shared Rust and Markdown syntax support for rule implementations.
 
+use std::path::Path;
 use std::sync::LazyLock;
 
 use pulldown_cmark::Parser;
@@ -7,6 +8,15 @@ use regex::Regex;
 use tree_sitter::Parser as TreeSitterParser;
 
 use crate::LintError;
+
+/// Return whether a repository path is a production Python module.
+#[must_use]
+pub fn is_production_python_path(path: &str) -> bool {
+    path.starts_with("python/larch/")
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+}
 
 static INLINE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:run|execute|invoke|call|use)\s*:?\s*$")

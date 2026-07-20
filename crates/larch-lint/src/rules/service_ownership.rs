@@ -12,7 +12,7 @@ use std::{path::Path as StdPath, sync::LazyLock};
 
 use proc_macro2::{TokenStream, TokenTree};
 use regex::Regex;
-use syn::{Attribute, ItemFn, ItemImpl, ItemMod, ItemUse, LitStr, Macro, Meta, UseTree, visit};
+use syn::{Attribute, ItemFn, ItemImpl, ItemMod, ItemUse, LitStr, Macro, UseTree, visit};
 use tree_sitter::Node;
 
 use crate::{
@@ -21,7 +21,7 @@ use crate::{
     syntax::{FenceState, MarkdownDocument, RustSyntax, parse_bash},
 };
 
-use super::larch_runtime_entrypoint::is_production_surface;
+use super::{larch_runtime_entrypoint::is_production_surface, syn_helpers};
 
 const NAME: &str = "service-ownership";
 const DESCRIPTION: &str = "Confine service clients, request surfaces, and CLIs to the adapter boundary";
@@ -312,21 +312,21 @@ impl<'ast> visit::Visit<'ast> for OwnerVisitor {
     fn visit_item_mod(&mut self, item: &'ast ItemMod) {
         // Construction inside a `#[cfg(test)]` module builds a fake client, not
         // the production owner, so it does not create a second owner.
-        if has_cfg_test(&item.attrs) {
+        if syn_helpers::has_cfg_test(&item.attrs) {
             return;
         }
         visit::visit_item_mod(self, item);
     }
 
     fn visit_item_fn(&mut self, item: &'ast ItemFn) {
-        if has_cfg_test(&item.attrs) {
+        if syn_helpers::has_cfg_test(&item.attrs) {
             return;
         }
         visit::visit_item_fn(self, item);
     }
 
     fn visit_item_impl(&mut self, item: &'ast ItemImpl) {
-        if has_cfg_test(&item.attrs) {
+        if syn_helpers::has_cfg_test(&item.attrs) {
             return;
         }
         visit::visit_item_impl(self, item);
@@ -369,23 +369,6 @@ fn octocrab_builder_line(path: &syn::Path) -> Option<usize> {
         .any(|pair| pair[0] == "Octocrab" && pair[1] == "builder")
         || idents.iter().any(|ident| ident == "OctocrabBuilder");
     constructs.then(|| path.segments.first().map_or(0, |segment| segment.ident.span().start().line))
-}
-
-fn has_cfg_test(attributes: &[Attribute]) -> bool {
-    attributes.iter().any(|attribute| {
-        attribute.path().is_ident("cfg")
-            && matches!(&attribute.meta, Meta::List(list) if tokens_have_test_ident(&list.tokens))
-    })
-}
-
-// Match the `test` configuration predicate as an identifier token, not a
-// substring, so `feature = "latest"` is not mistaken for test-only code.
-fn tokens_have_test_ident(tokens: &TokenStream) -> bool {
-    tokens.clone().into_iter().any(|tree| match tree {
-        TokenTree::Ident(ident) => ident == "test",
-        TokenTree::Group(group) => tokens_have_test_ident(&group.stream()),
-        _ => false,
-    })
 }
 
 // ---------------------------------------------------------------------------

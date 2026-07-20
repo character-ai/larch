@@ -1,11 +1,29 @@
 //! Enforce the final local-Git ownership and compatibility boundary.
 
-use std::{collections::{BTreeMap, BTreeSet}, path::Path, sync::LazyLock};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    sync::LazyLock,
+};
 
 use regex::Regex;
+use syn::{
+    Expr, ExprCall, FnArg, ImplItem, ImplItemFn, ItemConst, ItemFn, ItemImpl, ItemMod, ItemStatic,
+    ItemUse, Pat, Signature, Type, Visibility,
+    parse::Parser as _,
+    punctuated::Punctuated,
+    spanned::Spanned,
+    visit::{self, Visit},
+};
 use toml::Value;
+use tree_sitter::Node;
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{
+    Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, command_registry,
+    syntax,
+};
+
+use super::syn_helpers;
 
 const NAME: &str = "git-ownership";
 const DESCRIPTION: &str =
@@ -17,6 +35,7 @@ const CLI_OWNER: &str = "crates/larch-adapters/src/git/mod.rs";
 const CLI_REQUESTS_PATH: &str = "crates/larch-adapters/src/git/ops.rs";
 const CLI_OPERATIONS_PATH: &str = "crates/larch-core/src/process.rs";
 const LINT_BOOTSTRAP: &str = "crates/larch-lint/src/repository.rs";
+const TEST_SUPPORT_PREFIX: &str = "crates/larch-test-support/";
 const MATRIX_START: &str = "<!-- git-ownership-matrix:start -->";
 const MATRIX_END: &str = "<!-- git-ownership-matrix:end -->";
 
@@ -57,6 +76,35 @@ const CLOSED_CLI_REQUESTS: [&str; 27] = [
     "WorktreeRequest",
 ];
 
+const CLOSED_CLI_METHODS: [(&str, &str); 26] = [
+    ("add", "AddRequest"),
+    ("apply", "ApplyRequest"),
+    ("branch_mutation", "BranchMutationRequest"),
+    ("checkout", "CheckoutRequest"),
+    ("clean", "CleanRequest"),
+    ("clone_repository", "CloneRequest"),
+    ("commit", "CommitRequest"),
+    ("config_mutation", "ConfigMutationRequest"),
+    ("exact_diff", "ExactDiffRequest"),
+    ("fetch", "FetchRequest"),
+    ("init", "InitRequest"),
+    ("interpret_trailers", "InterpretTrailersRequest"),
+    ("ls_remote", "LsRemoteRequest"),
+    ("merge", "MergeRequest"),
+    ("pull", "PullRequest"),
+    ("push", "PushRequest"),
+    ("rebase", "RebaseRequest"),
+    ("remote_mutation", "RemoteMutationRequest"),
+    ("reset", "ResetRequest"),
+    ("restore", "RestoreRequest"),
+    ("rm", "RmRequest"),
+    ("sparse_checkout", "SparseCheckoutRequest"),
+    ("stash", "StashRequest"),
+    ("submodule", "SubmoduleRequest"),
+    ("tag_mutation", "TagMutationRequest"),
+    ("worktree", "WorktreeRequest"),
+];
+
 const GIT_UMBRELLA_COMMANDS: [&str; 22] = [
     "git amend-add", "git branch-info", "git check-main-sync", "git check-phantom-dirty",
     "git check-remote-branch", "git checkout-ours", "git clean-tree", "git commit",
@@ -66,9 +114,17 @@ const GIT_UMBRELLA_COMMANDS: [&str; 22] = [
     "push rebase",
 ];
 
-const GIT_UMBRELLA_ISSUES: [i64; 8] = [7734, 7735, 7756, 7757, 7758, 7759, 7760, 7762];
+const GIT_UMBRELLA_ISSUES: [u64; 8] = [7734, 7735, 7756, 7757, 7758, 7759, 7760, 7762];
 const LATER_DOMAIN_ISSUES: [u64; 12] = [
     7674, 7676, 7677, 7678, 7679, 7680, 7681, 7682, 7683, 7684, 7685, 7686,
+];
+
+const RETIRED_PUSH_REBASE_SYMBOLS: [&str; 5] = [
+    "RebasePushResult",
+    "_rebase_push_force_with_lease",
+    "_rebase_push_jitter_sleep",
+    "_transient_retry_git_result",
+    "rebase_push",
 ];
 
 static SHELL_GIT: LazyLock<Regex> = LazyLock::new(|| {
@@ -94,6 +150,10 @@ static CLI_REQUEST_MACRO: LazyLock<Regex> = LazyLock::new(|| {
 static CLI_REQUEST_IMPL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"impl GitOperation for (?P<name>[A-Z][A-Za-z0-9]+)[[:space:]]*\{")
         .expect("Git CLI request implementation expression is valid")
+});
+static CLI_METHOD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^        (?P<name>[a-z][a-z0-9_]*)\((?P<request>[A-Z][A-Za-z0-9]+)\),?$")
+        .expect("Git CLI method expression is valid")
 });
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
@@ -138,6 +198,11 @@ impl Rule for GitOwnershipRule {
         check_concrete_gix_boundary(repository, &mut findings)?;
         check_closed_cli_operations(repository, &mut findings)?;
         check_atomic_command_rows(repository, &mut findings)?;
+        findings.extend(command_registry::python_retirement_findings_for_issues(
+            repository,
+            &GIT_UMBRELLA_ISSUES,
+        )?);
+        check_retired_push_rebase_symbols(repository, &mut findings)?;
         check_inventory(repository, &mut findings)?;
         findings.sort();
         findings.dedup();
@@ -159,13 +224,14 @@ fn check_concrete_gix_boundary(
     for path in repository.paths() {
         let path_text = path.as_str();
         if !is_rust_source_or_manifest(path_text)
-            || path_text.starts_with("crates/larch-adapters/")
             || path_text == "crates/larch-lint/src/rules/git_ownership.rs"
         {
             continue;
         }
         let source = repository.read_utf8(path)?;
-        if source.contains("gix::") || manifest_depends_on_gix(path_text, &source) {
+        if !path_text.starts_with("crates/larch-adapters/")
+            && (source.contains("gix::") || manifest_depends_on_gix(path_text, &source))
+        {
             findings.push(Finding::new(
                 path_text,
                 1,
@@ -173,6 +239,7 @@ fn check_concrete_gix_boundary(
             ));
         }
         if path_text != LINT_BOOTSTRAP
+            && !matches!(path_text, GIX_OWNER | CLI_OWNER)
             && (source.contains("struct GixRepository") || source.contains("struct GitCli"))
         {
             findings.push(Finding::new(
@@ -181,7 +248,7 @@ fn check_concrete_gix_boundary(
                 "duplicate Git implementation outside crates/larch-adapters",
             ));
         }
-        if source.contains("impl GitOperation for") || source.contains("pub fn run_git(") {
+        if path_text != CLI_REQUESTS_PATH && source.contains("impl GitOperation for") {
             findings.push(Finding::new(
                 path_text,
                 1,
@@ -189,11 +256,11 @@ fn check_concrete_gix_boundary(
             ));
         }
     }
-    check_direct_rust_git(repository, findings)?;
+    check_rust_git_process_boundary(repository, findings)?;
     Ok(())
 }
 
-fn check_direct_rust_git(
+fn check_rust_git_process_boundary(
     repository: &Repository,
     findings: &mut Vec<Finding>,
 ) -> Result<(), LintError> {
@@ -201,24 +268,389 @@ fn check_direct_rust_git(
         let path_text = path.as_str();
         if !is_rust_production(path_text)
             || path_text == LINT_BOOTSTRAP
-            || path_text.starts_with("crates/larch-lint/src/rules/")
+            || path_text.starts_with(TEST_SUPPORT_PREFIX)
         {
             continue;
         }
         let source = repository.read_utf8(path)?;
-        for (index, line) in source.lines().enumerate() {
-            if line.contains("Command::new(\"git\")")
-                && !line.contains("lint-subprocess-via-runner:")
-            {
-                findings.push(Finding::new(
-                    path_text,
-                    u32::try_from(index + 1).unwrap_or(u32::MAX),
-                    "direct production Git process; use the typed Git adapter",
-                ));
-            }
+        let syntax = syntax::RustSyntax::parse(path_text, &source)?;
+        let mut imports = ProcessImports::default();
+        imports.visit_file(syntax.file());
+        let mut visitor = RustGitBoundaryVisitor::new(path_text, imports);
+        visitor.visit_file(syntax.file());
+        for (line, message) in visitor.hits {
+            findings.push(Finding::new(path_text, to_u32(line), message));
         }
     }
     Ok(())
+}
+
+#[derive(Clone, Default)]
+struct ProcessImports {
+    aliases: syn_helpers::ProcessCommandAliases,
+    git_programs: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for ProcessImports {
+    fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+        if !syn_helpers::has_cfg_test(&item.attrs) {
+            visit::visit_item_mod(self, item);
+        }
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+        if !syn_helpers::has_cfg_test(&item.attrs) {
+            visit::visit_item_fn(self, item);
+        }
+    }
+
+    fn visit_item_use(&mut self, item: &'ast ItemUse) {
+        self.aliases.collect_use(&item.tree);
+        visit::visit_item_use(self, item);
+    }
+
+    fn visit_item_const(&mut self, item: &'ast ItemConst) {
+        if expression_is_git_program(&item.expr, &self.git_programs) {
+            let _ = self.git_programs.insert(item.ident.to_string());
+        }
+        visit::visit_item_const(self, item);
+    }
+
+    fn visit_item_static(&mut self, item: &'ast ItemStatic) {
+        if expression_is_git_program(&item.expr, &self.git_programs) {
+            let _ = self.git_programs.insert(item.ident.to_string());
+        }
+        visit::visit_item_static(self, item);
+    }
+}
+
+struct RustGitBoundaryVisitor<'path> {
+    path: &'path str,
+    imports: ProcessImports,
+    hits: Vec<(usize, &'static str)>,
+}
+
+impl<'path> RustGitBoundaryVisitor<'path> {
+    const fn new(path: &'path str, imports: ProcessImports) -> Self {
+        Self {
+            path,
+            imports,
+            hits: Vec::new(),
+        }
+    }
+
+    fn scan_function(&mut self, function: &ImplItemFn) {
+        self.scan_signature_and_block(&function.vis, &function.sig, &function.block);
+    }
+
+    fn scan_signature_and_block(
+        &mut self,
+        visibility: &Visibility,
+        signature: &Signature,
+        block: &syn::Block,
+    ) {
+        let is_adapter = matches!(self.path, CLI_OWNER | CLI_REQUESTS_PATH);
+        let has_raw_argv = has_raw_argv_parameter(signature);
+        if (signature.ident == "run_git"
+            && (matches!(visibility, Visibility::Public(_)) || has_raw_argv))
+            || (is_adapter && has_raw_argv)
+        {
+            self.hits.push((
+                signature.ident.span().start().line,
+                "arbitrary Git operation surface outside the closed typed request families",
+            ));
+        }
+        let allow_typed_request = self.path == CLI_OWNER
+            && signature.ident == "run"
+            && matches!(visibility, Visibility::Inherited)
+            && signature_has_git_operation_bound(signature);
+        let mut bindings = FunctionBindings::new(self.imports.clone());
+        bindings.visit_block(block);
+        bindings.visit_block(block);
+        let mut scanner = FunctionGitScanner {
+            bindings,
+            allow_typed_request,
+            hits: Vec::new(),
+        };
+        scanner.visit_block(block);
+        self.hits.extend(scanner.hits);
+    }
+}
+
+impl<'ast> Visit<'ast> for RustGitBoundaryVisitor<'_> {
+    fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+        if !syn_helpers::has_cfg_test(&item.attrs) {
+            visit::visit_item_mod(self, item);
+        }
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+        if !syn_helpers::has_cfg_test(&item.attrs) {
+            self.scan_signature_and_block(&item.vis, &item.sig, &item.block);
+        }
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast ImplItemFn) {
+        if !syn_helpers::has_cfg_test(&item.attrs) {
+            self.scan_function(item);
+        }
+    }
+}
+
+struct FunctionBindings {
+    imports: ProcessImports,
+    constructor_aliases: BTreeSet<String>,
+    git_commands: BTreeSet<String>,
+}
+
+impl FunctionBindings {
+    const fn new(imports: ProcessImports) -> Self {
+        Self {
+            imports,
+            constructor_aliases: BTreeSet::new(),
+            git_commands: BTreeSet::new(),
+        }
+    }
+
+    fn record_local(&mut self, local: &syn::Local) {
+        let Some(name) = syn_helpers::pattern_name(&local.pat) else {
+            return;
+        };
+        let Some(initializer) = &local.init else {
+            return;
+        };
+        if expression_is_git_program(&initializer.expr, &self.imports.git_programs) {
+            let _ = self.imports.git_programs.insert(name.clone());
+        }
+        if expression_is_command_constructor(&initializer.expr, &self.imports) {
+            let _ = self.constructor_aliases.insert(name.clone());
+        }
+        if expression_constructs_git(
+            &initializer.expr,
+            &self.imports,
+            &self.constructor_aliases,
+        ) {
+            let _ = self.git_commands.insert(name);
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for FunctionBindings {
+    fn visit_local(&mut self, local: &'ast syn::Local) {
+        self.record_local(local);
+        visit::visit_local(self, local);
+    }
+}
+
+struct FunctionGitScanner {
+    bindings: FunctionBindings,
+    allow_typed_request: bool,
+    hits: Vec<(usize, &'static str)>,
+}
+
+impl FunctionGitScanner {
+    fn record_direct_process(&mut self, call: &ExprCall) {
+        if call_constructs_git(
+            call,
+            &self.bindings.imports,
+            &self.bindings.constructor_aliases,
+        ) {
+            self.hits.push((
+                call.func.span().start().line,
+                "direct production Git process; use the typed Git adapter",
+            ));
+        }
+        if is_process_request_constructor(call)
+            && call
+                .args
+                .first()
+                .is_some_and(expression_selects_git_program)
+            && !self.allow_typed_request
+        {
+            self.hits.push((
+                call.func.span().start().line,
+                "raw Git process request outside the one typed adapter runner",
+            ));
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for FunctionGitScanner {
+    fn visit_expr_call(&mut self, call: &'ast ExprCall) {
+        self.record_direct_process(call);
+        visit::visit_expr_call(self, call);
+    }
+
+    fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
+        let forwards_generic_argv = call.method == "args"
+            && matches!(&*call.receiver, Expr::Path(path) if path.path.segments.last().is_some_and(|segment| self.bindings.git_commands.contains(&segment.ident.to_string())))
+            && call.args.first().is_some_and(|argument| {
+                !matches!(argument, Expr::Array(_) | Expr::Lit(_))
+            });
+        if forwards_generic_argv {
+            self.hits.push((
+                call.method.span().start().line,
+                "generic argv forwarding to Git; use a closed typed request family",
+            ));
+        }
+        visit::visit_expr_method_call(self, call);
+    }
+
+    fn visit_expr_array(&mut self, array: &'ast syn::ExprArray) {
+        if array
+            .elems
+            .first()
+            .is_some_and(|value| expression_is_git_program(value, &self.bindings.imports.git_programs))
+        {
+            self.hits.push((
+                array.bracket_token.span.open().start().line,
+                "raw production Git argv; use a closed typed request family",
+            ));
+        }
+        visit::visit_expr_array(self, array);
+    }
+
+    fn visit_macro(&mut self, macro_call: &'ast syn::Macro) {
+        if macro_call.path.is_ident("vec")
+            && let Ok(arguments) =
+                Punctuated::<Expr, syn::Token![,]>::parse_terminated.parse2(macro_call.tokens.clone())
+            && arguments.first().is_some_and(|value| {
+                expression_is_git_program(value, &self.bindings.imports.git_programs)
+            })
+        {
+            self.hits.push((
+                macro_call.path.span().start().line,
+                "raw production Git argv; use a closed typed request family",
+            ));
+        }
+        visit::visit_macro(self, macro_call);
+    }
+}
+
+fn expression_is_command_constructor(expression: &Expr, imports: &ProcessImports) -> bool {
+    let Expr::Path(path) = expression else {
+        return false;
+    };
+    is_command_constructor_path(&path.path, imports)
+}
+
+fn expression_constructs_git(
+    expression: &Expr,
+    imports: &ProcessImports,
+    constructor_aliases: &BTreeSet<String>,
+) -> bool {
+    matches!(expression, Expr::Call(call) if call_constructs_git(call, imports, constructor_aliases))
+}
+
+fn call_constructs_git(
+    call: &ExprCall,
+    imports: &ProcessImports,
+    constructor_aliases: &BTreeSet<String>,
+) -> bool {
+    let Expr::Path(function) = &*call.func else {
+        return false;
+    };
+    let is_constructor = is_command_constructor_path(&function.path, imports)
+        || (function.path.segments.len() == 1
+            && constructor_aliases.contains(&function.path.segments[0].ident.to_string()));
+    is_constructor
+        && call
+            .args
+            .first()
+            .is_some_and(|value| expression_is_git_program(value, &imports.git_programs))
+}
+
+fn is_command_constructor_path(path: &syn::Path, imports: &ProcessImports) -> bool {
+    imports.aliases.is_constructor_path(path)
+}
+
+fn expression_is_git_program(expression: &Expr, bindings: &BTreeSet<String>) -> bool {
+    match expression {
+        Expr::Lit(literal) => {
+            matches!(&literal.lit, syn::Lit::Str(value) if value.value() == "git")
+        }
+        Expr::Path(path) => path.path.segments.last().is_some_and(|segment| {
+            bindings.contains(&segment.ident.to_string())
+        }),
+        Expr::Call(call) => call
+            .args
+            .first()
+            .is_some_and(|value| expression_is_git_program(value, bindings)),
+        Expr::Group(group) => expression_is_git_program(&group.expr, bindings),
+        Expr::Paren(paren) => expression_is_git_program(&paren.expr, bindings),
+        Expr::Reference(reference) => expression_is_git_program(&reference.expr, bindings),
+        _ => false,
+    }
+}
+
+fn expression_selects_git_program(expression: &Expr) -> bool {
+    match expression {
+        Expr::Call(call) => {
+            let Expr::Path(path) = &*call.func else {
+                return false;
+            };
+            let segments: Vec<String> = path
+                .path
+                .segments
+                .iter()
+                .map(|segment| segment.ident.to_string())
+                .collect();
+            segments.ends_with(&["ExternalProgram".to_owned(), "Git".to_owned()])
+        }
+        Expr::Group(group) => expression_selects_git_program(&group.expr),
+        Expr::Paren(paren) => expression_selects_git_program(&paren.expr),
+        _ => false,
+    }
+}
+
+fn is_process_request_constructor(call: &ExprCall) -> bool {
+    let Expr::Path(path) = &*call.func else {
+        return false;
+    };
+    let segments: Vec<String> = path
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    segments.ends_with(&["ProcessRequest".to_owned(), "new".to_owned()])
+}
+
+fn has_raw_argv_parameter(signature: &Signature) -> bool {
+    signature.inputs.iter().any(|argument| {
+        let FnArg::Typed(argument) = argument else {
+            return false;
+        };
+        let Pat::Ident(pattern) = &*argument.pat else {
+            return false;
+        };
+        matches!(pattern.ident.to_string().as_str(), "args" | "argv" | "arguments")
+    })
+}
+
+fn signature_has_git_operation_bound(signature: &Signature) -> bool {
+    let direct = signature.generics.params.iter().any(|parameter| {
+        let syn::GenericParam::Type(parameter) = parameter else {
+            return false;
+        };
+        parameter.bounds.iter().any(|bound| {
+            matches!(bound, syn::TypeParamBound::Trait(bound) if bound.path.is_ident("GitOperation"))
+        })
+    });
+    direct
+        || signature
+            .generics
+            .where_clause
+            .as_ref()
+            .is_some_and(|clause| {
+                clause.predicates.iter().any(|predicate| {
+                    matches!(predicate, syn::WherePredicate::Type(predicate) if predicate.bounds.iter().any(|bound| matches!(bound, syn::TypeParamBound::Trait(bound) if bound.path.is_ident("GitOperation"))))
+                })
+            })
+}
+
+fn to_u32(line: usize) -> u32 {
+    u32::try_from(line).unwrap_or(u32::MAX)
 }
 
 fn is_rust_source_or_manifest(path: &str) -> bool {
@@ -280,7 +712,129 @@ fn check_closed_cli_operations(
             ),
         ));
     }
+    check_closed_cli_public_surface(repository, &requests, findings)?;
     Ok(())
+}
+
+fn check_closed_cli_public_surface(
+    repository: &Repository,
+    requests: &str,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    let owner = required_utf8(repository, CLI_OWNER)?;
+    let actual_methods: BTreeSet<(String, String)> = CLI_METHOD
+        .captures_iter(&owner)
+        .map(|capture| {
+            (
+                capture.name("name").expect("named capture").as_str().to_owned(),
+                capture
+                    .name("request")
+                    .expect("named capture")
+                    .as_str()
+                    .to_owned(),
+            )
+        })
+        .collect();
+    let expected_methods: BTreeSet<(String, String)> = CLOSED_CLI_METHODS
+        .into_iter()
+        .map(|(name, request)| (name.to_owned(), request.to_owned()))
+        .collect();
+    if actual_methods != expected_methods {
+        findings.push(Finding::new(
+            CLI_OWNER,
+            1,
+            format!(
+                "GitCli public methods drifted from the closed typed request families: expected {expected_methods:?}, found {actual_methods:?}"
+            ),
+        ));
+    }
+    let syntax = syntax::RustSyntax::parse(CLI_OWNER, &owner)?;
+    let mut public_methods = GitCliPublicMethodVisitor::default();
+    public_methods.visit_file(syntax.file());
+    let expected_explicit: BTreeSet<String> = ["new", "version", "working_directory"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if public_methods.names != expected_explicit {
+        findings.push(Finding::new(
+            CLI_OWNER,
+            1,
+            format!(
+                "GitCli explicit public surface drifted: expected {expected_explicit:?}, found {:?}",
+                public_methods.names
+            ),
+        ));
+    }
+    if !owner.contains("pub async fn $name(") {
+        findings.push(Finding::new(
+            CLI_OWNER,
+            1,
+            "GitCli typed request methods must remain public",
+        ));
+    }
+    if !requests.contains("pub(super) trait GitOperation") {
+        findings.push(Finding::new(
+            CLI_REQUESTS_PATH,
+            1,
+            "GitOperation must remain private to the adapter module",
+        ));
+    }
+    let request_syntax = syntax::RustSyntax::parse(CLI_REQUESTS_PATH, requests)?;
+    let mut public_functions = PublicFreeFunctionVisitor::default();
+    public_functions.visit_file(request_syntax.file());
+    if !public_functions.names.is_empty() {
+        findings.push(Finding::new(
+            CLI_REQUESTS_PATH,
+            1,
+            format!(
+                "public free functions bypass the closed Git request surface: {:?}",
+                public_functions.names
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct GitCliPublicMethodVisitor {
+    names: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for GitCliPublicMethodVisitor {
+    fn visit_item_impl(&mut self, item: &'ast ItemImpl) {
+        let Type::Path(self_type) = &*item.self_ty else {
+            return;
+        };
+        if self_type.path.segments.last().is_none_or(|segment| segment.ident != "GitCli") {
+            return;
+        }
+        for child in &item.items {
+            if let ImplItem::Fn(function) = child
+                && matches!(function.vis, Visibility::Public(_))
+            {
+                let _ = self.names.insert(function.sig.ident.to_string());
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct PublicFreeFunctionVisitor {
+    names: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for PublicFreeFunctionVisitor {
+    fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+        if !syn_helpers::has_cfg_test(&item.attrs) {
+            visit::visit_item_mod(self, item);
+        }
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+        if !syn_helpers::has_cfg_test(&item.attrs) && matches!(item.vis, Visibility::Public(_)) {
+            let _ = self.names.insert(item.sig.ident.to_string());
+        }
+    }
 }
 
 fn check_atomic_command_rows(
@@ -301,7 +855,10 @@ fn check_atomic_command_rows(
         let Some(table) = command.as_table() else {
             continue;
         };
-        let issue = table.get("migration_issue").and_then(Value::as_integer);
+        let issue = table
+            .get("migration_issue")
+            .and_then(Value::as_integer)
+            .and_then(|value| u64::try_from(value).ok());
         if !issue.is_some_and(|value| GIT_UMBRELLA_ISSUES.contains(&value)) {
             continue;
         }
@@ -332,6 +889,52 @@ fn check_atomic_command_rows(
         ));
     }
     Ok(())
+}
+
+fn check_retired_push_rebase_symbols(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    for path in repository.paths() {
+        let path_text = path.as_str();
+        if !syntax::is_production_python_path(path_text) {
+            continue;
+        }
+        let source = repository.read_utf8(path)?;
+        if !RETIRED_PUSH_REBASE_SYMBOLS
+            .iter()
+            .any(|symbol| source.contains(symbol))
+        {
+            continue;
+        }
+        let tree = syntax::parse_python(&source).map_err(|error| {
+            LintError::new(format!("{path_text}: invalid Python syntax: {error}"))
+        })?;
+        collect_retired_python_identifiers(tree.root_node(), &source, path_text, findings);
+    }
+    Ok(())
+}
+
+fn collect_retired_python_identifiers(
+    node: Node<'_>,
+    source: &str,
+    path: &str,
+    findings: &mut Vec<Finding>,
+) {
+    if node.kind() == "identifier"
+        && let Ok(identifier) = node.utf8_text(source.as_bytes())
+        && RETIRED_PUSH_REBASE_SYMBOLS.contains(&identifier)
+    {
+        findings.push(Finding::new(
+            path,
+            to_u32(node.start_position().row + 1),
+            format!("retired push rebase Python state-machine symbol: {identifier}"),
+        ));
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_retired_python_identifiers(child, source, path, findings);
+    }
 }
 
 fn check_inventory(repository: &Repository, findings: &mut Vec<Finding>) -> Result<(), LintError> {
@@ -577,7 +1180,6 @@ fn is_rust_production(path: &str) -> bool {
         && Path::new(path)
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
-        && !path.starts_with("crates/larch-lint/src/rules/")
         && !path.ends_with("/tests.rs")
 }
 

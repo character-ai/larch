@@ -1,9 +1,9 @@
 //! Enforce the Rust process and GitHub-command ownership seams.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use regex::Regex;
-use syn::{Expr, ExprCall, ItemUse, UseTree, visit::Visit};
+use syn::{Expr, ExprCall, ItemUse, visit::Visit};
 
 use crate::{
     Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
@@ -184,49 +184,11 @@ struct DetectedCall {
 
 #[derive(Default)]
 struct CommandVisitor {
-    command_aliases: BTreeSet<String>,
-    process_aliases: BTreeSet<String>,
+    aliases: syn_helpers::ProcessCommandAliases,
     calls: Vec<DetectedCall>,
 }
 
 impl CommandVisitor {
-    fn collect_use(&mut self, tree: &UseTree, prefix: &[String]) {
-        match tree {
-            UseTree::Path(path) => {
-                let mut next = prefix.to_vec();
-                next.push(path.ident.to_string());
-                self.collect_use(&path.tree, &next);
-            }
-            UseTree::Name(name) => self.record_import(prefix, &name.ident.to_string(), &name.ident.to_string()),
-            UseTree::Rename(rename) => {
-                let imported = rename.ident.to_string();
-                self.record_import(prefix, &imported, &rename.rename.to_string());
-            }
-            UseTree::Glob(_) if matches!(prefix, [root, process] if (root == "std" || root == "tokio") && process == "process") => {
-                self.command_aliases.insert("Command".to_owned());
-            }
-            UseTree::Group(group) => {
-                for tree in &group.items {
-                    self.collect_use(tree, prefix);
-                }
-            }
-            UseTree::Glob(_) => {}
-        }
-    }
-
-    fn record_import(&mut self, prefix: &[String], imported: &str, local: &str) {
-        let mut full = prefix.to_vec();
-        if imported != "self" {
-            full.push(imported.to_owned());
-        }
-        if matches!(full.as_slice(), [root, process, command] if (root == "std" || root == "tokio") && process == "process" && command == "Command") {
-            self.command_aliases.insert(local.to_owned());
-        }
-        if matches!(full.as_slice(), [root, process] if (root == "std" || root == "tokio") && process == "process") {
-            self.process_aliases.insert(local.to_owned());
-        }
-    }
-
     fn is_command_constructor(&self, call: &ExprCall) -> Option<String> {
         let Expr::Path(function) = &*call.func else {
             return None;
@@ -237,17 +199,9 @@ impl CommandVisitor {
             .iter()
             .map(|segment| segment.ident.to_string())
             .collect();
-        let constructor = segments.last().is_some_and(|segment| segment == "new");
-        if !constructor {
-            return None;
-        }
-        let prefix = &segments[..segments.len().saturating_sub(1)];
-        let standard_path = matches!(prefix, [root, process, command] if (root == "std" || root == "tokio") && process == "process" && command == "Command");
-        let command_alias = prefix.len() == 1 && self.command_aliases.contains(&prefix[0]);
-        let process_alias = prefix.len() == 2
-            && prefix[1] == "Command"
-            && self.process_aliases.contains(&prefix[0]);
-        (standard_path || command_alias || process_alias).then(|| segments.join("::"))
+        self.aliases
+            .is_constructor_path(&function.path)
+            .then(|| segments.join("::"))
     }
 
     fn assign_lines(&mut self, source: &str, path: &str) -> Result<(), LintError> {
@@ -268,7 +222,7 @@ impl CommandVisitor {
 
 impl<'ast> Visit<'ast> for CommandVisitor {
     fn visit_item_use(&mut self, item: &'ast ItemUse) {
-        self.collect_use(&item.tree, &[]);
+        self.aliases.collect_use(&item.tree);
         syn::visit::visit_item_use(self, item);
     }
 

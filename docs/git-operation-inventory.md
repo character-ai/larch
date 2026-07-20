@@ -9,8 +9,11 @@ migration issue atomically switches their command consumers and removes the
 Python implementation.
 
 The rule `git-ownership` compares this block with live production Rust, Python,
-skill, agent, hook, script, Makefile, and workflow surfaces. Keep the block
-tab-separated and sort each row's operation names.
+skill, agent, hook, script, Makefile, and workflow surfaces. It also rejects
+direct installed-Git construction through aliases, qualified constructors, or
+constant and variable executable values. It pins the adapter's public methods
+to the closed typed request families and rejects generic argv forwarding.
+Keep the block tab-separated and sort each row's operation names.
 
 <!-- markdownlint-disable MD010 -->
 <!-- git-ownership-matrix:start -->
@@ -116,6 +119,10 @@ skills/voter-calibration/scripts/voter-calibration.py	later-domain	#7684	rev-par
 <!-- markdownlint-enable MD010 -->
 
 Tests and repository-only bootstrap code are not production exceptions.
-Fixture setup may execute Git as an independent oracle. The lint bootstrap row
-above is confined to repository discovery and tracked-path enumeration because
-`larch-lint` cannot depend on product crates while it validates them.
+`#[cfg(test)]` fixture setup and `larch-test-support` may execute Git as an
+independent oracle. The lint bootstrap row above is confined to repository
+discovery and tracked-path enumeration because `larch-lint` cannot depend on
+product crates while it validates them. Production suppression cannot widen
+either exception. The rule also re-runs the command registry's syntax-aware
+Python retirement proof for every #7675 command and rejects the retired
+`push rebase` state-machine symbols.

@@ -98,8 +98,12 @@ A Rust owner becomes valid only in the PR that completes all of those changes.
 Adapter parity alone does not transfer command ownership. For local Git, the
 `git-ownership` rule also pins the complete #7675 command set and compares
 [`docs/git-operation-inventory.md`](git-operation-inventory.md) with live
-production surfaces. Commands assigned to a later domain stay Python-owned
-until that domain's issue performs the same atomic transition.
+production surfaces. It calls this registry's syntax-aware Python retirement
+proof for those commands, so restored definitions, imports, references, and
+calls fail both ownership surfaces. It separately rejects the retired
+`push rebase` Python state-machine symbols. Commands assigned to a later domain
+stay Python-owned until that domain's issue performs the same atomic
+transition.
 
 The atomic-owner diagnostic is
 `non-atomic-rust-owner <domain> <verb>: python removal is not complete`.

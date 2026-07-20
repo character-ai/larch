@@ -83,6 +83,35 @@ impl Rule for CommandRegistryRule {
     }
 }
 
+/// Re-run the canonical Python-retirement proof for one migration family.
+///
+/// Rules that pin a completed migration call this helper instead of copying
+/// the syntax-aware import, reference, and call analysis owned here.
+pub fn python_retirement_findings_for_issues(
+    repository: &Repository,
+    migration_issues: &[u64],
+) -> Result<Vec<Finding>, LintError> {
+    let ledger = read_ledger(repository)?;
+    let python = read_python_registry(repository)?;
+    let python_sources = read_python_sources(repository, &ledger)?;
+    let mut findings = Vec::new();
+    for record in ledger
+        .commands
+        .iter()
+        .filter(|record| migration_issues.contains(&record.migration_issue))
+    {
+        let key = record.key();
+        validate_python_retirement(
+            &key,
+            record,
+            python.get(&key),
+            &python_sources,
+            &mut findings,
+        );
+    }
+    Ok(findings)
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct CommandKey {
     domain: String,
@@ -906,11 +935,7 @@ fn read_python_sources(
     let mut sources = Vec::new();
     for path in repository.paths() {
         let path_text = path.as_str();
-        if !path_text.starts_with("python/larch/")
-            || !Path::new(path_text)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
-        {
+        if !syntax::is_production_python_path(path_text) {
             continue;
         }
         let source = repository.read_utf8(path)?;
