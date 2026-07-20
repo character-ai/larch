@@ -139,7 +139,7 @@ class PublicationResult:
     cache_status: CachePublicationStatus
 
 
-def _validated_component(value: str, *, label: str, slug: bool) -> str:
+def validated_component(value: str, *, label: str, slug: bool) -> str:
     invalid_literal: bool = (
         not value
         or value in {".", ".."}
@@ -155,7 +155,7 @@ def _validated_component(value: str, *, label: str, slug: bool) -> str:
     return value
 
 
-def _xdg_home(
+def xdg_home(
     *,
     environ: Mapping[str, str],
     variable: str,
@@ -168,6 +168,26 @@ def _xdg_home(
     return selected
 
 
+def repository_cache_root(
+    *,
+    repo_root: Path,
+    cache_home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Return the literal per-repository root for unpacked run archives."""
+    root: Path = larch_io.validate_trusted_directory(repo_root)
+    repo_name: str = validated_component(root.name, label="repository name", slug=False)
+    environment: Mapping[str, str] = os.environ if environ is None else environ
+    resolved_cache_home: Path = cache_home or xdg_home(
+        environ=environment,
+        variable=_ENV_XDG_CACHE_HOME,
+        fallback=Path.home() / ".cache",
+    )
+    if not resolved_cache_home.is_absolute():
+        raise ValueError("publication cache home must be an absolute path")
+    return resolved_cache_home / "larch" / "run-logs" / repo_name
+
+
 def publication_paths(
     *,
     request: PublicationRequest,
@@ -175,25 +195,23 @@ def publication_paths(
 ) -> PublicationPaths:
     """Resolve the literal repository cache path and durable retry path."""
     root: Path = larch_io.validate_trusted_directory(request.repo_root)
-    repo_name: str = _validated_component(root.name, label="repository name", slug=False)
-    skill_name: str = _validated_component(request.skill, label="skill", slug=True)
-    run_name: str = _validated_component(request.run_id, label="run-id", slug=True)
+    repo_name: str = validated_component(root.name, label="repository name", slug=False)
+    skill_name: str = validated_component(request.skill, label="skill", slug=True)
+    run_name: str = validated_component(request.run_id, label="run-id", slug=True)
     environment: Mapping[str, str] = os.environ if environ is None else environ
-    resolved_cache_home: Path = request.cache_home or _xdg_home(
+    cache_root: Path = repository_cache_root(
+        repo_root=root,
+        cache_home=request.cache_home,
         environ=environment,
-        variable=_ENV_XDG_CACHE_HOME,
-        fallback=Path.home() / ".cache",
     )
-    resolved_state_home: Path = request.state_home or _xdg_home(
+    resolved_state_home: Path = request.state_home or xdg_home(
         environ=environment,
         variable=_ENV_XDG_STATE_HOME,
         fallback=Path.home() / ".local" / "state",
     )
-    if not resolved_cache_home.is_absolute() or not resolved_state_home.is_absolute():
-        raise ValueError("publication cache and state homes must be absolute paths")
-    cache_dir: Path = (
-        resolved_cache_home / "larch" / "run-logs" / repo_name / skill_name / run_name
-    )
+    if not resolved_state_home.is_absolute():
+        raise ValueError("publication state home must be an absolute path")
+    cache_dir: Path = cache_root / skill_name / run_name
     pending_dir: Path = (
         resolved_state_home
         / "larch"
@@ -219,7 +237,7 @@ def publication_paths(
     )
 
 
-def _ensure_concurrent_directory(path: Path) -> Path:
+def ensure_concurrent_directory(path: Path) -> Path:
     """Create a trusted directory while tolerating a same-path creator race."""
     directory: Path = path if path.is_absolute() else Path.cwd() / path
     try:
@@ -228,7 +246,7 @@ def _ensure_concurrent_directory(path: Path) -> Path:
         pass
     if directory == directory.parent:
         raise OSError(f"cannot create trusted publication directory: {directory}")
-    _ = _ensure_concurrent_directory(directory.parent)
+    _ = ensure_concurrent_directory(directory.parent)
     with suppress(FileExistsError):
         directory.mkdir(mode=0o700)
     return larch_io.validate_trusted_directory(directory)
@@ -237,7 +255,7 @@ def _ensure_concurrent_directory(path: Path) -> Path:
 @contextmanager
 def publication_lock(path: Path) -> Generator[None, None, None]:
     """Hold the blocking advisory lock shared by all operations for one run."""
-    parent: Path = _ensure_concurrent_directory(path.parent)
+    parent: Path = ensure_concurrent_directory(path.parent)
     lock_path: Path = parent / path.name
     if lock_path.is_symlink():
         raise OSError(f"refusing symlinked publication lock: {lock_path}")
@@ -435,7 +453,7 @@ def _create_pending(
     request: PublicationRequest,
     repo_name: str,
 ) -> PendingPublication:
-    parent: Path = _ensure_concurrent_directory(paths.pending_dir.parent)
+    parent: Path = ensure_concurrent_directory(paths.pending_dir.parent)
     temporary: Path | None = Path(
         tempfile.mkdtemp(dir=parent, prefix=f".{request.run_id}.pending-")
     )
@@ -559,7 +577,7 @@ def _cache_result(
     pending: PendingPublication,
     staging_root: Path | None,
 ) -> tuple[RunArchiveMaterializationResult, CachePublicationStatus]:
-    _ = _ensure_concurrent_directory(paths.cache_dir.parent)
+    _ = ensure_concurrent_directory(paths.cache_dir.parent)
     if paths.cache_dir.exists() or paths.cache_dir.is_symlink():
         existing: RunArchiveMaterializationResult = run_log_archive.verify_materialized_run_directory(
             run_dir=paths.cache_dir,
@@ -615,9 +633,9 @@ def publish_run(
 ) -> PublicationResult:
     """Publish one immutable archive and atomically populate its local cache."""
     root: Path = larch_io.validate_trusted_directory(request.repo_root)
-    repo_name: str = _validated_component(root.name, label="repository name", slug=False)
-    skill_name: str = _validated_component(request.skill, label="skill", slug=True)
-    run_name: str = _validated_component(request.run_id, label="run-id", slug=True)
+    repo_name: str = validated_component(root.name, label="repository name", slug=False)
+    skill_name: str = validated_component(request.skill, label="skill", slug=True)
+    run_name: str = validated_component(request.run_id, label="run-id", slug=True)
     normalized_request = replace(
         request,
         repo_root=root,

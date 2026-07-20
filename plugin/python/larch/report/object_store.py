@@ -36,6 +36,12 @@ class CommandObjectStore:
         if invalid:
             raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, self.root.scheme, "key")
         return f"{self.root.prefix}/{relative}" if relative else f"{self.root.prefix}/"
+    def _list_prefix(self, relative: str) -> str:
+        trailing = relative.endswith("/")
+        normalized = relative[:-1] if trailing else relative
+        if trailing and not normalized:
+            raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, self.root.scheme, "key")
+        return self._key(normalized, empty=True) + ("/" if trailing else "")
     def _aws(self, *args: str) -> list[str]:
         return [config.AWS_CLI, *args, *(["--endpoint-url", self.endpoint] if self.endpoint else [])]
     def _gcs(self, operation: str, *args: str) -> list[str]:
@@ -57,7 +63,7 @@ class CommandObjectStore:
         command = self._gcs("preflight") if self.root.scheme == "gs" else self._aws("s3", "ls", f"s3://{self.root.bucket}")
         _ = self._run(command, "preflight")
     def list_objects(self, prefix: str = "") -> tuple[RemoteObject, ...]:
-        remote_prefix, token = self._key(prefix, empty=True), None
+        remote_prefix, token = self._list_prefix(prefix), None
         objects: list[RemoteObject] = []
         seen: set[str] = set()
         while True:

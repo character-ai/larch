@@ -45,3 +45,17 @@ without downloading or decompressing the archive. Retry without staging safely
 materializes the durable archive instead. A per-run lock covers upload,
 collision verification, cache promotion, and atomic retirement of pending
 state.
+
+`python3 python/cli.py run-log sync --repo-root <root>` lists the complete
+`run-logs/` remote prefix once, including every provider pagination page. It
+downloads and safely materializes only runs without a valid local directory.
+Valid cached runs remain untouched. Invalid entries are quarantined under the
+per-run publication lock, replaced atomically after validation, and restored if
+repair fails. Interrupted download, materialization, promotion, and quarantine
+entries are removed before the next attempt.
+
+The command returns the unpacked repository corpus at
+`${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo>/`. The shared
+`run_log_corpus.synchronized_run_log_root` API performs the same one-time sync
+and returns that root. An analyzer must retain the returned path and use normal
+local file reads for all later files and waves in the same invocation.

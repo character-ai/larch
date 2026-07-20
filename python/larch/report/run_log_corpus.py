@@ -13,6 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from larch.report import run_log_sync
 from larch.report.report_tokens_models import safe_int
 
 DEFAULT_MANIFEST_CANDIDATES: tuple[str, ...] = ("manifest.json", "run-manifest.json")
@@ -230,6 +231,34 @@ def safe_child_run_dirs(
 def run_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:
     """Return symlink-safe, manifest-accepted child run directories."""
     return [path for path in safe_child_run_dirs(log_base, warn=warn) if is_valid_run_dir(path, warn=warn)]
+
+
+def synchronize_run_log_corpus(
+    *,
+    request: run_log_sync.RunLogSyncRequest,
+    store: run_log_sync.SyncObjectStore | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> run_log_sync.RepositorySyncResult:
+    """Synchronize once and return the repository's ordinary local-file corpus."""
+    return run_log_sync.sync_repository_run_logs(
+        request=request,
+        store=store,
+        environ=environ,
+    )
+
+
+def synchronized_run_log_root(
+    *,
+    request: run_log_sync.RunLogSyncRequest,
+    store: run_log_sync.SyncObjectStore | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Synchronize once and expose the unpacked root for all later read waves."""
+    return synchronize_run_log_corpus(
+        request=request,
+        store=store,
+        environ=environ,
+    ).corpus_root
 
 
 def review_transcript_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:
