@@ -7,7 +7,11 @@ allowed-tools: AskUserQuestion, Bash, Skill
 disable-model-invocation: true
 ---
 
-**MANDATORY: Follow the complete shared lifecycle contract in `$PWD/skills/shared/run-lifecycle.md` with declared skill `release`.**
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `release`.**
+
+This is a dev-only checkout skill. If `CLAUDE_PLUGIN_ROOT` is unset, substitute
+the repository root (`$PWD`) for that placeholder in the lifecycle command;
+the lifecycle start remains the first command.
 
 # Release
 
