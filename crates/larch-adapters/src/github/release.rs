@@ -136,7 +136,7 @@ impl fmt::Display for ReleaseServiceError {
             Self::MutationLost => formatter
                 .write_str("GitHub mutation could not be reconciled after an ambiguous outcome"),
             Self::RepositoryPolicyPermission => formatter.write_str(
-                "LARCH_GH_TOKEN requires repository Administration read permission for release policy checks and write permission to enable missing settings",
+                "the active gh credential requires repository Administration read permission for release policy checks and write permission to enable missing settings",
             ),
             Self::RepositoryPolicyStatus(status) => {
                 write!(formatter, "GitHub repository policy request returned status {status}")

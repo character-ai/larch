@@ -149,7 +149,9 @@ fn ordinary_upgrade_preflights_then_preserves_the_active_old_root() {
     fs::write(&marker, "old").expect("marker");
     harness
         .command()
-        .env("GH_TOKEN", "opaque-test-token")
+        .env("GH_TOKEN", "must-not-be-forwarded")
+        .env("GITHUB_TOKEN", "must-not-be-forwarded")
+        .env("GH_CONFIG_DIR", harness.home.join(".config/gh"))
         .arg("upgrade-larch")
         .arg("run")
         .assert()
@@ -167,7 +169,8 @@ fn ordinary_upgrade_preflights_then_preserves_the_active_old_root() {
         .find("claude plugin marketplace update larch-local")
         .expect("refresh");
     assert!(preflight < refresh);
-    assert!(log.contains("bootstrap-gh-token-present"));
+    assert!(!log.contains("bootstrap-gh-token-present"));
+    assert!(log.contains("bootstrap-gh-config-present"));
 }
 
 #[test]
@@ -338,6 +341,8 @@ fn bootstrap_script(root: &Path, version: &str, state: &Path, log: &Path) -> Str
         r#"#!/bin/sh
 printf 'bootstrap %s\n' "$*" >> '{log}'
 [ -z "${{GH_TOKEN:-}}" ] || printf 'bootstrap-gh-token-present\n' >> '{log}'
+[ -z "${{GITHUB_TOKEN:-}}" ] || printf 'bootstrap-gh-token-present\n' >> '{log}'
+[ -z "${{GH_CONFIG_DIR:-}}" ] || printf 'bootstrap-gh-config-present\n' >> '{log}'
 case "${{1:-}}" in
   --latest-stable-version) printf 'LARCH_STABLE_VERSION=2.0.0\n' ;;
   --preflight-release)

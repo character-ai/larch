@@ -276,7 +276,12 @@ jobs:
           SOURCE_COMMIT: ${{ needs.metadata.outputs.source_commit }}
         run: |
           set -euo pipefail
-          LARCH_GH_TOKEN="$GH_TOKEN" ./target/release/larch release validate-assets \
+          export GH_CONFIG_DIR="$RUNNER_TEMP/larch-gh"
+          mkdir -p "$GH_CONFIG_DIR"
+          chmod 700 "$GH_CONFIG_DIR"
+          printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$GH_CONFIG_DIR" gh auth login --hostname github.com --with-token
+          unset GH_TOKEN GITHUB_TOKEN
+          ./target/release/larch release validate-assets \
             --version "$VERSION" \
             --tag "$GITHUB_REF_NAME" \
             --source-commit "$SOURCE_COMMIT" \

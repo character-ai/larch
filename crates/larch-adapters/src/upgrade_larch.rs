@@ -122,8 +122,6 @@ impl Context {
         }
         if bootstrap_environment {
             for (key, name) in [
-                (ChildEnvironment::GhToken, env::GH_TOKEN),
-                (ChildEnvironment::GitHubToken, env::GITHUB_TOKEN),
                 (ChildEnvironment::GhConfigDir, env::GH_CONFIG_DIR),
                 (ChildEnvironment::XdgConfigHome, env::XDG_CONFIG_HOME),
             ] {

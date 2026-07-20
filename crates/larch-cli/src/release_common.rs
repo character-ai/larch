@@ -25,18 +25,20 @@ impl ProductionReleaseServices {
     pub fn new() -> Result<Self, String> {
         let cwd = env::current_dir().map_err(|error| error.to_string())?;
         let repository = GixRepository::discover(&cwd).map_err(|error| error.to_string())?;
-        let git_policy = GitCliPolicy::new(cwd).map_err(|error| error.to_string())?;
+        let git_policy = GitCliPolicy::new(cwd.clone()).map_err(|error| error.to_string())?;
         let runtime = LarchRuntime::new().map_err(|error| error.to_string())?;
+        let cancellation = Cancellation::new();
+        let runner = TokioProcessRunner::default();
         let github = runtime
-            .block_on(async { OctocrabGitHubService::from_environment() })
+            .block_on(OctocrabGitHubService::from_gh(&runner, &cwd, &cancellation))
             .map_err(|error| error.to_string())?;
         Ok(Self {
             runtime,
-            cancellation: Cancellation::new(),
+            cancellation,
             github,
             repository,
             git_policy,
-            runner: TokioProcessRunner::default(),
+            runner,
         })
     }
 

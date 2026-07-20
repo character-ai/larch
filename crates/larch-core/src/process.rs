@@ -30,6 +30,37 @@ pub enum HostUtilityProgram {
     Lsof,
 }
 
+/// Approved GitHub CLI operations used to acquire the active `gh` credential.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubCliOperation {
+    /// Read the token held by the authenticated GitHub CLI session.
+    AuthToken,
+}
+
+impl GitHubCliOperation {
+    /// Return the fixed arguments for this operation.
+    #[must_use]
+    pub const fn arguments(self) -> [&'static str; 4] {
+        match self {
+            Self::AuthToken => ["auth", "token", "--hostname", "github.com"],
+        }
+    }
+
+    /// Return the stable operation label.
+    #[must_use]
+    pub const fn operation(self) -> &'static str {
+        match self {
+            Self::AuthToken => "github.auth-token",
+        }
+    }
+
+    /// Return the allowlist rationale.
+    #[must_use]
+    pub const fn reason(self) -> &'static str {
+        "GitHub credential acquisition through the operator-authenticated gh session"
+    }
+}
+
 impl HostUtilityProgram {
     /// Return the fixed executable name.
     #[must_use]
@@ -151,6 +182,7 @@ impl GitCliOperation {
 pub enum ExternalProgram {
     Vendor(VendorProgram),
     Git(GitCliOperation),
+    GitHub(GitHubCliOperation),
     HostUtility(HostUtilityProgram),
     /// A fixed larch program derived from a validated plugin root.
     Larch(LarchProgram),
@@ -234,6 +266,7 @@ impl ExternalProgram {
         match self {
             Self::Vendor(program) => OsStr::new(program.executable()),
             Self::Git(_) => OsStr::new("git"),
+            Self::GitHub(_) => OsStr::new("gh"),
             Self::HostUtility(program) => OsStr::new(program.executable()),
             Self::Larch(program) => program.executable(),
         }
@@ -247,6 +280,7 @@ impl ExternalProgram {
             Self::Vendor(VendorProgram::Codex) => "vendor.codex",
             Self::Vendor(VendorProgram::Cursor) => "vendor.cursor",
             Self::Git(operation) => operation.subcommand(),
+            Self::GitHub(operation) => operation.operation(),
             Self::HostUtility(program) => program.operation(),
             Self::Larch(program) => program.operation(),
         }
@@ -258,6 +292,7 @@ impl ExternalProgram {
         match self {
             Self::Vendor(program) => program.reason(),
             Self::Git(operation) => operation.reason(),
+            Self::GitHub(operation) => operation.reason(),
             Self::HostUtility(program) => program.reason(),
             Self::Larch(program) => program.reason(),
         }
@@ -265,8 +300,14 @@ impl ExternalProgram {
 
     /// Append the fixed operation prefix before caller-owned arguments.
     pub fn append_fixed_arguments(&self, arguments: &mut Vec<OsString>) {
-        if let Self::Git(operation) = self {
-            arguments.insert(0, OsString::from(operation.subcommand()));
+        match self {
+            Self::Git(operation) => {
+                arguments.insert(0, OsString::from(operation.subcommand()));
+            }
+            Self::GitHub(operation) => {
+                arguments.splice(0..0, operation.arguments().into_iter().map(OsString::from));
+            }
+            Self::Vendor(_) | Self::HostUtility(_) | Self::Larch(_) => {}
         }
     }
 }
@@ -299,8 +340,6 @@ pub enum ChildEnvironment {
     CursorApiKey,
     ClaudePluginRoot,
     ClaudePluginData,
-    GhToken,
-    GitHubToken,
     GhConfigDir,
     XdgConfigHome,
 }
@@ -334,8 +373,6 @@ impl ChildEnvironment {
             Self::CursorApiKey => env::CURSOR_API_KEY,
             Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
             Self::ClaudePluginData => env::CLAUDE_PLUGIN_DATA,
-            Self::GhToken => env::GH_TOKEN,
-            Self::GitHubToken => env::GITHUB_TOKEN,
             Self::GhConfigDir => env::GH_CONFIG_DIR,
             Self::XdgConfigHome => env::XDG_CONFIG_HOME,
         }

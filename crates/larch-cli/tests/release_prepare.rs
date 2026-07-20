@@ -155,7 +155,12 @@ fn release_prepare_accepts_clean_main_with_conversion_attributes() {
 
     larch()
         .current_dir(repository.path())
-        .env_remove("LARCH_GH_TOKEN")
+        .env("HOME", repository.path())
+        .env_remove("GH_CONFIG_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("LARCH_GH_TOKEN", "must-not-authenticate")
+        .env("GH_TOKEN", "must-not-authenticate")
+        .env("GITHUB_TOKEN", "must-not-authenticate")
         .args([
             "release",
             "prepare",

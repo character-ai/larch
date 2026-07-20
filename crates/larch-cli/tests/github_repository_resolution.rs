@@ -119,7 +119,7 @@ fn remote_repo_absent_named_remote_fails() {
 }
 
 #[test]
-fn resolve_repo_uses_origin_when_service_credentials_are_absent() {
+fn resolve_repo_uses_origin_when_token_environment_is_ignored() {
     let temp = TempDir::new().expect("tempdir");
     let repo = init_repo(temp.path());
     git(
@@ -128,7 +128,12 @@ fn resolve_repo_uses_origin_when_service_credentials_are_absent() {
     );
 
     larch()
-        .env_remove("LARCH_GH_TOKEN")
+        .env("HOME", temp.path())
+        .env_remove("GH_CONFIG_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("LARCH_GH_TOKEN", "must-not-authenticate")
+        .env("GH_TOKEN", "must-not-authenticate")
+        .env("GITHUB_TOKEN", "must-not-authenticate")
         .args(["gh", "resolve-repo"])
         .current_dir(&repo)
         .assert()
@@ -163,7 +168,12 @@ fn resolve_repo_works_in_linked_worktree() {
     );
 
     larch()
-        .env_remove("LARCH_GH_TOKEN")
+        .env("HOME", temp.path())
+        .env_remove("GH_CONFIG_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("LARCH_GH_TOKEN", "must-not-authenticate")
+        .env("GH_TOKEN", "must-not-authenticate")
+        .env("GITHUB_TOKEN", "must-not-authenticate")
         .args(["gh", "resolve-repo"])
         .current_dir(&worktree)
         .assert()
@@ -177,7 +187,12 @@ fn resolve_repo_fails_without_repository() {
     let temp = TempDir::new().expect("tempdir");
 
     larch()
-        .env_remove("LARCH_GH_TOKEN")
+        .env("HOME", temp.path())
+        .env_remove("GH_CONFIG_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("LARCH_GH_TOKEN", "must-not-authenticate")
+        .env("GH_TOKEN", "must-not-authenticate")
+        .env("GITHUB_TOKEN", "must-not-authenticate")
         .args(["gh", "resolve-repo"])
         .current_dir(temp.path())
         .assert()
@@ -192,7 +207,12 @@ fn resolve_repo_fails_when_origin_absent() {
     let repo = init_repo(temp.path());
 
     larch()
-        .env_remove("LARCH_GH_TOKEN")
+        .env("HOME", temp.path())
+        .env_remove("GH_CONFIG_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("LARCH_GH_TOKEN", "must-not-authenticate")
+        .env("GH_TOKEN", "must-not-authenticate")
+        .env("GITHUB_TOKEN", "must-not-authenticate")
         .args(["gh", "resolve-repo"])
         .current_dir(&repo)
         .assert()
@@ -221,7 +241,12 @@ fn resolve_repo_rejects_malformed_origin() {
     );
 
     larch()
-        .env_remove("LARCH_GH_TOKEN")
+        .env("HOME", temp.path())
+        .env_remove("GH_CONFIG_DIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("LARCH_GH_TOKEN", "must-not-authenticate")
+        .env("GH_TOKEN", "must-not-authenticate")
+        .env("GITHUB_TOKEN", "must-not-authenticate")
         .args(["gh", "resolve-repo"])
         .current_dir(&repo)
         .assert()

@@ -131,17 +131,19 @@ work:
   non-atomic final rows for the #7675 commands. A later-domain row remains
   Python-owned until its named migration issue performs the atomic cutover.
 - Product child processes use the `ExternalProcessRunner` core port. Its closed
-  enum permits typed Claude, Codex, Cursor, Git, and #7670 larch bootstrap or
-  self-check operations. Larch program paths derive from validated plugin roots.
-  The adapter accepts argument arrays only, rebuilds child environments from an
-  allowlist, bounds output, and owns cancellation, timeout, termination, and reap.
+  enum permits typed Claude, Codex, Cursor, Git, the fixed GitHub credential
+  lookup, and #7670 larch bootstrap or self-check operations. Larch program
+  paths derive from validated plugin roots. The adapter accepts argument arrays
+  only, rebuilds child environments from an allowlist, bounds output, and owns
+  cancellation, timeout, termination, and reap.
   Repository-only lint bootstrap calls stay outside the product dependency
   graph and require reason-bearing lint suppressions.
-- GitHub code uses a larch-owned core service port. Its adapter uses a pinned
-  Octocrab client with native TLS disabled and `rustls` enabled. It accepts only
-  a non-empty `LARCH_GH_TOKEN`, never reads `GH_TOKEN`, `GITHUB_TOKEN`, or
-  GitHub CLI state, and does not expose an arbitrary REST URL or GraphQL
-  document to domain callers.
+- GitHub code uses a larch-owned core service port. A single core resolver
+  acquires the active GitHub CLI credential through the typed `gh auth token`
+  process operation. The clean child environment excludes `LARCH_GH_TOKEN`,
+  `GH_TOKEN`, and `GITHUB_TOKEN`. The adapter uses that result to build a pinned
+  Octocrab client with native TLS disabled and `rustls` enabled, and does not
+  expose an arbitrary REST URL or GraphQL document to domain callers.
 - Attestation domain inputs fix the repository to `character-ai/larch`, the
   release workflow to `.github/workflows/rust-release-assets.yaml`, GitHub's
   OIDC issuer and signer identities, and the trust roots. Callers provide only
@@ -202,5 +204,5 @@ targets without Python and must not introduce an undeclared native runtime
 library. The thin residual `scripts/larch.sh` bootstrap verifies and atomically
 installs the release-matched binary as specified by issue #7670. Its hidden
 `larch bootstrap self-check` command reports the compiled version and target
-for staged validation. Bootstrap use of `gh` does not authorize runtime service
-adapters to shell out to it.
+for staged validation. Runtime use of `gh` is confined to the fixed credential
+lookup. Service API operations remain owned by the typed Rust adapters.

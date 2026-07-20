@@ -1344,7 +1344,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires LARCH_LIVE_GITHUB_ACTIONS=1, LARCH_LIVE_GITHUB_ACTIONS_RUN_ID, and LARCH_GH_TOKEN"]
+    #[ignore = "requires LARCH_LIVE_GITHUB_ACTIONS=1, LARCH_LIVE_GITHUB_ACTIONS_RUN_ID, and authenticated gh"]
     fn live_completed_public_run_logs_succeeds_without_exposing_token() {
         if std::env::var("LARCH_LIVE_GITHUB_ACTIONS").as_deref() != Ok("1") {
             return;
@@ -1355,9 +1355,13 @@ mod tests {
             .expect("run ID must be an unsigned integer");
         let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
         let output = runtime.block_on(async {
-            let service = OctocrabGitHubService::from_environment()
-                .expect("live GitHub service must construct");
             let cancellation = crate::runtime::Cancellation::new();
+            let runner = crate::process::TokioProcessRunner::default();
+            let working_directory = std::env::current_dir().expect("cwd");
+            let service =
+                OctocrabGitHubService::from_gh(&runner, &working_directory, &cancellation)
+                    .await
+                    .expect("live GitHub service must construct");
             let repository =
                 GitHubRepositoryRef::new("character-ai", "larch").expect("fixed public repository");
             larch_core::run_logs(&service, &repository, run_id, &cancellation).await

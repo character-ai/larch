@@ -4,9 +4,9 @@
 //! the `gcloud` service CLI stay confined to `crates/larch-adapters`. Production
 //! skills and scripts must not invoke `gcloud` or leak a service credential into
 //! a child environment. The service inventories must name each concrete-client
-//! owner so ownership never drifts away from its documentation. The clean-install
-//! `gh` bootstrap in `scripts/larch.sh` is a separate installer surface and is
-//! not a runtime service caller; see `docs/github-service-inventory.md`.
+//! owner so ownership never drifts away from its documentation. Runtime `gh` use
+//! is confined to the core-owned typed credential lookup; see
+//! `docs/github-service-inventory.md`.
 
 use std::{
     collections::{BTreeMap, BTreeSet},

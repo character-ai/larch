@@ -20,7 +20,9 @@ def test_release_workflow_uses_staged_rust_executable_for_asset_commands() -> No
     assert "./target/release/larch release collect-assets" in workflow
     assert "./target/release/larch release validate-assets" in workflow
     assert "--verify-attestations" in workflow
-    assert "LARCH_GH_TOKEN=" in workflow
+    assert "gh auth login --hostname github.com --with-token" in workflow
+    assert "unset GH_TOKEN GITHUB_TOKEN" in workflow
+    assert "LARCH_GH_TOKEN=" not in workflow
     assert "actions/setup-python@" not in workflow
 
 

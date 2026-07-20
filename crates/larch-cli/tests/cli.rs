@@ -1,6 +1,7 @@
 use std::{
     ffi::{OsStr, OsString},
     fs,
+    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     process::{Command as ProcessCommand, Output},
 };
@@ -80,6 +81,20 @@ Options:
 
 fn larch() -> Command {
     Command::cargo_bin("larch").expect("larch binary should build")
+}
+
+fn authenticated_gh(token: &str) -> tempfile::TempDir {
+    let directory = tempfile::tempdir().expect("fake gh directory");
+    let executable = directory.path().join("gh");
+    fs::write(
+        &executable,
+        format!(
+            "#!/bin/sh\n[ -z \"${{LARCH_GH_TOKEN:-}}\" ] || exit 3\n[ -z \"${{GH_TOKEN:-}}\" ] || exit 3\n[ -z \"${{GITHUB_TOKEN:-}}\" ] || exit 3\n[ \"$1\" = auth ] && [ \"$2\" = token ] || exit 2\n[ \"$3\" = --hostname ] && [ \"$4\" = github.com ] || exit 2\nprintf '%s\\n' '{token}'\n"
+        ),
+    )
+    .expect("fake gh");
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).expect("fake gh mode");
+    directory
 }
 
 #[derive(Debug)]
@@ -414,10 +429,13 @@ fn workflow_path_preserves_its_legacy_stdout_contract() {
 }
 
 #[test]
-fn run_logs_reports_missing_rust_credential_without_fallback() {
-    for generic_credential in ["GH_TOKEN", "GITHUB_TOKEN"] {
+fn run_logs_ignores_token_environment_without_an_authenticated_gh_session() {
+    let home = tempfile::tempdir().expect("isolated home");
+    for generic_credential in ["LARCH_GH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
         larch()
-            .env_remove("LARCH_GH_TOKEN")
+            .env("HOME", home.path())
+            .env_remove("GH_CONFIG_DIR")
+            .env_remove("XDG_CONFIG_HOME")
             .env(generic_credential, "generic-token-must-not-authenticate")
             .args(["gh", "run-logs", "--run-id", "7", "--repo", "owner/repo"])
             .assert()
@@ -425,7 +443,7 @@ fn run_logs_reports_missing_rust_credential_without_fallback() {
             .stdout(predicate::str::contains(
                 "--- CI log (run 7, repo owner/repo): failed-job log shown.",
             ))
-            .stdout(predicate::str::contains("LARCH_GH_TOKEN is required"))
+            .stdout(predicate::str::contains("GitHub CLI"))
             .stderr("");
     }
 }
@@ -1238,11 +1256,16 @@ fn release_stage_commands_enter_the_rust_service_boundary() {
     for arguments in commands {
         larch()
             .current_dir(repository.path())
-            .env_remove("LARCH_GH_TOKEN")
+            .env("HOME", repository.path())
+            .env_remove("GH_CONFIG_DIR")
+            .env_remove("XDG_CONFIG_HOME")
+            .env("LARCH_GH_TOKEN", "must-not-authenticate")
+            .env("GH_TOKEN", "must-not-authenticate")
+            .env("GITHUB_TOKEN", "must-not-authenticate")
             .args(arguments)
             .assert()
             .failure()
-            .stderr(predicate::str::contains("LARCH_GH_TOKEN is required"));
+            .stderr(predicate::str::contains("GitHub CLI"));
     }
 }
 
@@ -1280,11 +1303,16 @@ fn release_publication_commands_enter_the_rust_service_boundary() {
     for arguments in commands {
         larch()
             .current_dir(repository.path())
-            .env_remove("LARCH_GH_TOKEN")
+            .env("HOME", repository.path())
+            .env_remove("GH_CONFIG_DIR")
+            .env_remove("XDG_CONFIG_HOME")
+            .env("LARCH_GH_TOKEN", "must-not-authenticate")
+            .env("GH_TOKEN", "must-not-authenticate")
+            .env("GITHUB_TOKEN", "must-not-authenticate")
             .args(arguments)
             .assert()
             .failure()
-            .stderr(predicate::str::contains("LARCH_GH_TOKEN is required"));
+            .stderr(predicate::str::contains("GitHub CLI"));
     }
 }
 
@@ -1300,7 +1328,7 @@ fn release_publication_constructs_production_services_before_validating_inputs()
             "https://github.com/character-ai/other.git",
         ],
     );
-    let token = "github_pat_000000000000000000000000000000000000";
+    let gh = authenticated_gh("github_pat_000000000000000000000000000000000000");
     command_at(
         repository.path(),
         &[
@@ -1316,7 +1344,10 @@ fn release_publication_constructs_production_services_before_validating_inputs()
             "1111111111111111111111111111111111111111",
         ],
     )
-    .env("LARCH_GH_TOKEN", token)
+    .env("PATH", gh.path())
+    .env("LARCH_GH_TOKEN", "must-not-authenticate")
+    .env("GH_TOKEN", "must-not-authenticate")
+    .env("GITHUB_TOKEN", "must-not-authenticate")
     .assert()
     .failure()
     .stderr(predicate::str::contains(

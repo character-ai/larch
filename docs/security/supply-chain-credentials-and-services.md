@@ -102,10 +102,11 @@ JSON derived from the canonical owner and plan parsers. It is validation
 evidence, not executable input.
 
 The `service-ownership` rule rejects runtime `gcloud` execution. It also keeps
-clean-install `gh` use in `scripts/larch.sh` separate from runtime service
-access. Bootstrap use of `gh` does not authorize a runtime adapter to shell out.
-Its GitHub operation matrix fails on ownership or migration-state drift,
-including chief-issue placeholders, inventory gaps, and generic-token fallback.
+clean-install `gh` use in `scripts/larch.sh` separate from the fixed runtime
+credential lookup. Neither path authorizes `gh` API calls from a runtime
+adapter. Its GitHub operation matrix fails on ownership or migration-state
+drift, including chief-issue placeholders, inventory gaps, and generic-token
+fallback.
 
 ### Upgrade and rollback boundaries
 
@@ -201,14 +202,15 @@ cutover boundary lives in
 
 ### GitHub credential and transport boundary
 
-The Rust GitHub service reads exactly one non-empty `LARCH_GH_TOKEN` from the
-environment. It never falls back to `GH_TOKEN`, `GITHUB_TOKEN`, GitHub CLI
-configuration, keychain state, argv, stdin, repository content, issue text, or
-session files. Missing, whitespace-only, and non-Unicode values fail before
-network access. The credential is held by a non-`Debug` wrapper, registered by
-exact value with an invocation-owned redactor, and omitted from the typed child
-environment allowlist. Authorization diagnostics pass through that redactor.
-The Octocrab build excludes its tracing feature.
+The Rust GitHub service acquires exactly one credential by invoking
+`gh auth token` through the core-owned typed process operation. The process
+runner uses a clean environment, permits the GitHub CLI configuration selectors,
+and excludes `LARCH_GH_TOKEN`, `GH_TOKEN`, and `GITHUB_TOKEN`. Missing `gh`, an
+inactive login, and empty, truncated, or non-Unicode output fail before network
+access with fixed guidance. The credential is held by a non-`Debug` wrapper,
+registered by exact value with an invocation-owned redactor, and omitted from
+child environments. Authorization diagnostics pass through that redactor. The
+Octocrab build excludes its tracing feature.
 
 The adapter constructs one private Octocrab client inside the larch Tokio
 runtime. Octocrab is pinned with default features disabled and only its rustls
@@ -310,8 +312,9 @@ URL, GraphQL, or Python fallback.
 Repository-policy setup reads the merge-commit and immutable-release settings
 before it writes. It mutates only a setting that is disabled, so an already
 compliant repository requires Administration read but not Administration write
-on `LARCH_GH_TOKEN`. Repairing a disabled setting requires Administration
-write. Missing permission returns a fixed, secret-free policy diagnostic. A
+on the active `gh` credential. Repairing a disabled setting requires
+Administration write. Missing permission returns a fixed, secret-free policy
+diagnostic. A
 required mutation remains fail-closed, and every successful setup performs a
 final read-back of both owning policy surfaces.
 
