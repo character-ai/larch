@@ -55,11 +55,11 @@ python/larch/design/design_pause.py	later-domain	#7680	fetch,ls-tree,rev-parse,s
 python/larch/design/design_step2b.py	later-domain	#7680	dynamic
 python/larch/design/plan_quality.py	later-domain	#7680	apply
 python/larch/git/gh.py	later-domain	#7676	remote
-python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,config,diff,diff-tree,fetch,log,ls-files,ls-remote,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
+python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
 python/larch/git/merge.py	later-domain	#7681	fetch,log,show
 python/larch/git/pr.py	later-domain	#7681	branch,checkout,config,push
 python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
-python/larch/git/rebase.py	later-domain	#7681	checkout,ls-remote,push,rebase
+python/larch/git/rebase.py	later-domain	#7681	checkout
 python/larch/implement/checks_lint_fix.py	later-domain	#7681	checkout,diff,merge-base,reset,rev-parse
 python/larch/implement/checks_result_identity.py	later-domain	#7681	dynamic
 python/larch/implement/checks_run_relevant.py	later-domain	#7681	diff,ls-files,rev-parse
