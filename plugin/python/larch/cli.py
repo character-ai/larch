@@ -355,6 +355,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("issue", "add-blocked-by"): ("larch.issue.issue_create", "add_blocked_by_main", False),
     ("issue", "fetch-issue-details"): ("larch.issue.issue_create", "fetch_issue_details_main", False),
     ("issue", "list-issues"): ("larch.issue.issue_create", "list_issues_main", False),
+    ("issue", "migration-audit"): (
+        "larch.issue.migration_governance",
+        "migration_audit_main",
+        True,
+    ),
     ("issue", "write-sentinel"): ("larch.issue.issue_create", "write_sentinel_main", False),
     ("issue", "cleanup-failed"): ("larch.issue.issue_create", "cleanup_failed_main", False),
     ("block-issue", "add-blocked-by"): ("larch.issue.issue_block", "add_blocked_by_main", False),

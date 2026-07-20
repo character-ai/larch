@@ -297,7 +297,7 @@ def test_snapshot_transport_has_no_mutation_path(tmp_path: Path) -> None:
         now=datetime(2026, 7, 19, 12, tzinfo=UTC),
     )
 
-    assert snapshot.open_issues == ()
+    assert not snapshot.open_issues
     flattened = "\n".join(" ".join(call) for call in runner.calls)
     assert " issue edit " not in f" {flattened} "
     assert " api graphql " not in f" {flattened} "
@@ -329,7 +329,7 @@ def test_repository_audit_invokes_installed_lint_binary(
         repo_root=repo,
     )
 
-    assert findings == ()
+    assert not findings
     assert runner.calls[0] == [
         "/opt/bin/larch-lint",
         "--root",
