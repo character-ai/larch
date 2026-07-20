@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already adds a self-review foreground telemetry-mark fence before the banner
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already updates EXPECTED_NEW and lists test-implement-fence-shape.sh in testing
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- cap precedence mismatch is pre-existing; folding fences does not require fixing it for acceptance
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- token-aware KV parsing already handles mixed stdout; no concrete breakage path

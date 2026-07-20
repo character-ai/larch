@@ -1,7 +1,0 @@
-Reviewing the branch diff and verifying glob patterns against real producer filenames.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** `scripts/lib-design-round-artifacts.sh:8` — The round-N exclude arm `dyn-*-output.txt` still does not match any real producer basename (`cursor-plan-dyn-<slug>-output.txt`, `codex-primary-plan-dyn-<slug>-output.txt`); dynamic transcripts are excluded only via the sibling `cursor-plan-*-output.txt` / `codex-primary-plan-*-output.txt` arms (and the default `*) return 1` deny for unmatched basenames). This dead pattern predates the branch; the branch fixes the analogous dead `codex-plan-*-output.txt` arm but leaves `dyn-*-output.txt` unchanged in code and docs.
-- **correctness** `scripts/lib-design-round-artifacts.sh:8` vs `scripts/design-log-publish.sh:310-320` — Top-level `design_artifact_excluded()` uses `*-output*.txt` (covers phased waterfall names like `codex-primary-plan-arch-output-phase2.txt` from `output_for_phase()` in `scripts/dispatch-with-waterfall.sh:191-200`), while round-N explicit excludes use the narrower `*-output.txt` suffix only; phased round snapshots rely on the default deny branch rather than an explicit phased pattern. Behavior is safe today but the two gates document different glob shapes for the same artifact family.

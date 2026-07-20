@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already fixes _round_diff_base since_committed fallback and adds the empty post-coder-head test (lines 22-33, 93-98)
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_1; plan already requires since_committed post-head-only _round_diff_base behavior
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already pins OOS_3 to full snapshot mode via _ensure_pre_coder_snapshot (lines 128-131)
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_3; plan already forbids head-only fixtures and targets _path_matches_pre_coder_snapshot
-FINDING_5: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already filters unioned_delta_paths by current repo state and adds reported-but-reverted test (lines 60-67, 117-119)
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already mandates empty post-coder-head since_committed validation test (lines 93-98)

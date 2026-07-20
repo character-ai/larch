@@ -1,3 +1,0 @@
-Gathering the diff and commit history for review.
-
-NO_ISSUES_FOUND

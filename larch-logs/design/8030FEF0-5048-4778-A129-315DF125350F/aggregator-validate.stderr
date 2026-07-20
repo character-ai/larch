@@ -1,2 +1,0 @@
-warning: unknown From slot label 'Cursor-Pragmatic, Cursor-Requirements' in FINDING_1 (not present on any input finding)
-warning: fix text for slot 'Cursor-dyn-oos-gate-auditor' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add ### UPDATED: skills/implement/scripts/step2-implement.sh calling python/cli.')

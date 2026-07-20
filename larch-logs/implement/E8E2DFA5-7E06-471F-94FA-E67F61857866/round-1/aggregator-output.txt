@@ -1,3 +1,0 @@
-Aggregating reviewer findings: verifying source files to normalize concerns and confirm merge groups.
-Confirming stale docs vs current `SKILL.md` Step 2b.5. Producing the aggregated finding list.
-

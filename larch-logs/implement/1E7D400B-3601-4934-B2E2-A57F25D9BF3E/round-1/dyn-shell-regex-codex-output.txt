@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **correctness** `skills/implement/scripts/stall-recovery-report.sh:819-824` — The new regex applies the optional suffix/hyphen grammar to every base alternative, so invalid non-production steps like `2a`, `3x`, `5-foo`, or `6a1` are preserved instead of normalized to `unknown`. The intended production family keeps `2`/`3`/`5`/`6` bare, while suffixes/hyphenated tokens belong to the `8`–`15` ship-pr family; the added fixtures in `skills/implement/scripts/test-stall-recovery-report.sh:697-725` do not include negative coverage for suffixed pre-ship steps, so this broadening would pass CI. **Suggested fix:** Split the matcher: allow `bump-branch-guard|2|3|5|6` exactly, then match only `^(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?$` for suffixed/hyphenated forms, and add negative fixtures for at least `2a` and `6-max-retries`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

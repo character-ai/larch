@@ -1,2 +1,0 @@
-Aggregating reviewer findings per merge rules: dropping commit-metadata/verification entries (FINDING_3–8), merging duplicates, and separating in-scope from `[OUT_OF_SCOPE]` items.
-

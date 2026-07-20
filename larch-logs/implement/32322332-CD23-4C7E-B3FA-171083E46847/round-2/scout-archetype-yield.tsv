@@ -1,8 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	2	1	1	0.500000
-edge-cases	correctness	1	4	2	2	0.500000
-testing	risk-integration	1	1	1	0	1.000000
-codex-generic	code-quality	1	1	1	0	1.000000
-dyn-migration-equivalence	correctness	2	0	0	0	n/a
-dyn-shell-callsite	risk-integration	1	4	2	1	0.500000
-dyn-docs-topology	architecture	1	5	0	5	0.000000

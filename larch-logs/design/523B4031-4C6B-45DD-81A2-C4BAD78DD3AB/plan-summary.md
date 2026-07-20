@@ -1,1 +1,0 @@
-Plan from direct inspection because approach synthesis is `NO_SKETCHES`. Scope is an atomic consumer cutover, parity audit, Bash deletion, manifest update, and lint/test gate for the 19 git/push/phantom helpers plus 6 Bash harnesses.

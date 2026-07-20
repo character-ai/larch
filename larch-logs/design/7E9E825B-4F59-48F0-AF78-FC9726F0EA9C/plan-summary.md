@@ -1,1 +1,0 @@
-Plan: harden review-fix staging and lint-fix commit path selection, plus add test-first cleanup verification coverage. Scope is limited to `python/review_and_fix.py` and `python/test_review_and_fix.py`.

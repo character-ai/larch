@@ -1,1 +1,0 @@
-Plan updates two parser modules and their existing tests. It keeps resolved float and duplicate behavior, adds warnings, fixes stale target deltas, and makes git subject parsing tolerate embedded NUL bytes.

@@ -1,4 +1,0 @@
-usage: decompose prepare --design-tmpdir DESIGN_TMPDIR --partition-file
-                         PARTITION_FILE [--issue-number ISSUE_NUMBER]
-decompose prepare: error: the following arguments are required: --design-tmpdir, --partition-file
-decompose prepare: 2

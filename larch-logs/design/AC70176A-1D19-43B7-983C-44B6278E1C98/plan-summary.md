@@ -1,1 +1,0 @@
-Plan: update role defaults and dispatch plumbing, remove the dead plan-revision waterfall, route /design accepted plan findings through prompt-side Gate B inline apply, and refresh targeted tests/docs.

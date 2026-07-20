@@ -1,2 +1,0 @@
-VOTING_TALLY_FILE=<TMPDIR>/voting-tally.md
-TALLY_PLAN_REVIEW_STATUS=tally-error

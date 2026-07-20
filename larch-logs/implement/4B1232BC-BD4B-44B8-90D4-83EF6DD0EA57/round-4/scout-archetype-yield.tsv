@@ -1,7 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	4	3	1	0.750000
-correctness	correctness	1	6	6	0	1.000000
-edge-cases	correctness	1	2	0	1	0.000000
-edge-cases	correctness	1	4	3	0	0.750000
-testing	risk-integration	1	6	5	1	0.833333
-testing	risk-integration	1	2	2	0	1.000000

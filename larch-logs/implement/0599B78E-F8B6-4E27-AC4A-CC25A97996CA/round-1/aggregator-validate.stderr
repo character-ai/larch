@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Re-encode both dispatcher blobs from raw decoded text that preserves retired wat')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Assert validate-before-quiet within each function/branch region for every `larch')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Restore raw blobs with retired shell tokens; keep substitution exclusively in `_')
-warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Parse STATUS=OK collector rows using their REVIEWER_FILE paths, or return the co')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add per-path ordering helpers only if similar multi-path assets grow beyond run-')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add targeted assertions if you want machine enforcement of plan acceptance bulle')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Keep feature commits isolated or call out unrelated hunks explicitly in PR descr')

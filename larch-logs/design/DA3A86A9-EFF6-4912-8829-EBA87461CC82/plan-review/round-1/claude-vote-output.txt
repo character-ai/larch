@@ -1,6 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the slice-wide check (`<!-- step:2a —` → `### 2a.5`) is genuinely broader than the entry fence, but pinning to the first fence via awk adds significant harness complexity; the risk of a sentinel drifting to a later step-2a fence without other signals is low enough that the slice-level check is an acceptable tradeoff.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- "convert" is ambiguous enough in practice that an implementer may add the fence alongside the existing prose at L1341, leaving both; the plan should explicitly state the prose is removed.
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- sketch-launch.md explicitly declares itself the "single normative source" and "binding convention" for the SIMPLE sentinel path; the conditional "touch only if" is insufficient and will leave a second normative write site.

@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Duplicates prior rejected ledger entries; it does not clear an in-scope necessity gate.

@@ -1,3 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `security` `scripts/redact-tmpdir-paths.sh:20` — The new operator-path redaction regex treats any punctuation as the end of the repo directory, so valid repo names containing punctuation are only partially redacted. Concrete scenario: `<OPERATOR_REPO_PATH>/scripts/foo.sh` now becomes `<OPERATOR_REPO_PATH>+repo/scripts/foo.sh`, while the previous slash-terminated rule redacted it to `<OPERATOR_REPO_PATH>/scripts/foo.sh`; committed logs can still expose operator repo-name fragments and suffix paths. Restore the broader component match for slash-terminated paths and add coverage for punctuation-bearing repo names, then handle root-before-punctuation as a separate case that does not split inside valid directory names.

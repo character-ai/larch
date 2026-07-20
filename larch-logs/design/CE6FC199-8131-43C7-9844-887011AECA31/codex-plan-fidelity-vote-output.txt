@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The plan requires committing the generated baseline; runtime rejection of a later missing empty baseline is additional robustness, not necessary feature behavior.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Alternate field spelling preserves the same occurrence identity; rule-specific schema restriction is not necessary to deliver the lint.

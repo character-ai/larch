@@ -1,3 +1,0 @@
-Surface final summaries at top chat (#2970)
-
-Replace the /design and /implement cost-line-only orchestrator exception with a verbatim full-body summary emission contract gated on non-empty persisted summary files. Update /implement Step 17/18 sentinels to track body emission and compare Step 18 renders against a pre-render snapshot. Align sibling docs, lint catalog, harness pins, and changelog coverage.

@@ -1,5 +1,0 @@
-Harden design pause and Gate-B bypass checks
-
-Thread explicit repo context through Step 3b and post-plan pause checkpoints, emit a synthetic WARN when classification fails silently, and expand design structure coverage across every Gate-B bypass branch.
-
-Tests: make test-design-structure test-design-postplan-emit; make lint-bash32; shellcheck -x skills/design/scripts/design-postplan-emit.sh scripts/test-design-structure.sh skills/design/scripts/test-design-postplan-emit.sh; bash scripts/relevant-checks.sh

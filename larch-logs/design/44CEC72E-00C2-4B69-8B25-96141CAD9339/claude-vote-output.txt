@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already guards this: "(not preview-only)", "retain unless fully ported", and "must perform above when wrapper shrinks" together prevent a preview-only landing; the escape hatch is a valid transition clause, not a gap
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same root concern as FINDING_4; plan's existing "(not preview-only)" and "retain side effects unless fully ported" safeguards already prevent the split-authority broken state; tightening is cleaner but not necessary

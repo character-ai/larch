@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the scenario (passing one flag without its paired key) does not occur in any current callsite; Step 0a always passes all four together, refreshes pass none; fix complexity exceeds actual risk

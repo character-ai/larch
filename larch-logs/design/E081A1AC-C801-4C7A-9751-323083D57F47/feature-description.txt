@@ -1,3 +1,0 @@
-[DESIGNING] stop shrinking judge panel -- all 3 judges (Claude+Codex+Cursor) should run on…
-
-stop shrinking judge panel -- all 3 judges (Claude+Codex+Cursor) should run on every code-review round in /implement Step 5, not just round 1. The current behavior shrinks to a 2-judge panel (Claude+Cursor) on rounds 2+, as visible in the Step 5 banner in skills/implement/SKILL.md and as configured in the panel waterfall.

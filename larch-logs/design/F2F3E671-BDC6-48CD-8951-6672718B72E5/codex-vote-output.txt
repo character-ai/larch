@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- design_lifecycle edits already route to focused step2b pytest coverage, and final py-test remains in the plan.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the stale LIB_COMMON risk is real, but the plan already requires replacing Bash parity tests and making retired-path lint clean.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bash redaction timing differs, but the plan already pins Python failure-diagnostic redaction, caps, and tests.
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

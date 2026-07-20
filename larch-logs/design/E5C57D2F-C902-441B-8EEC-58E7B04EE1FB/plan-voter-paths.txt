@@ -1,1 +1,0 @@
-<TMPDIR>/claude-vote-output.txt

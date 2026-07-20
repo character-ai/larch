@@ -1,5 +1,0 @@
-DECISION_1: VOTE_A — Defense A better preserves the existing read-only trust boundary and aligns with the current sibling CI launcher pattern; Defense B’s “prompt-level only” rebuttal does not fully answer the operational risk of making a reviewer-named path capable of mutation.
-
-DECISION_2: VOTE_B — Defense B is stronger because it anchors acceptance in independently executed script checks rather than vendor-authored proof text; Defense A identifies the reproduce-before-fix gap, but its own risk admits the KV envelope can be faked.
-
-DECISION_4: VOTE_B — Defense B better fits the current launcher contracts, which already perform direct worktree edits via role-based execution; Defense A’s patch-file model is cleaner conceptually but requires broader launcher semantics churn.

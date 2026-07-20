@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan directs "mirroring check-reviewers.sh:214-242" which includes trust_config_arg computation at line 236; the concern is real but the mirroring reference covers it for a competent implementer
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan intentionally cites range 214-242 (not 211-213); config.toml drop is latent and the plan may have deliberately scoped it out; severity is latent only
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- file-scope helper-presence check is a deliberate design tradeoff documented in the plan; invocation-scope tightening would substantially complicate the lint with marginal additional coverage for new-file violations (the primary target)
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

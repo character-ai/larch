@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `risk-integration` [skills/review/scripts/test-dispatch-panel.sh:192](<OPERATOR_REPO_PATH>/skills/review/scripts/test-dispatch-panel.sh:192): The new harness-path guard suppresses `append_scout_parse_issue` for any `REVIEW_TMPDIR` under `test-dispatch-panel.*`, but the existing core parse-failed test still expects the explicit `$issues_log` to be written. Concrete failing scenario: `make test-dispatch-panel-core` creates `TMP=$(mktemp -d .../test-dispatch-panel.XXXXXX)`, runs the parse-failed case with `--review-tmpdir "$TMP/dynamic-parse-failed"`, `dispatch-panel.sh:298` returns before appending, then `grep -Fq ... "$issues_log"` fails because the log was intentionally not written. Update this case to assert the new suppressed-harness behavior and local diag sidecar, or move any production append assertion to a temp root outside `test-dispatch-panel.*`; do the same for the append-failure/WARN assertion at `skills/review/scripts/test-dispatch-panel.sh:199-209`.
-
-### Out-of-Scope Observations
-
-I attempted to run `bash skills/review/scripts/test-dispatch-panel.sh --section core`, but this environment is read-only and `mktemp` was denied before the harness could execute.

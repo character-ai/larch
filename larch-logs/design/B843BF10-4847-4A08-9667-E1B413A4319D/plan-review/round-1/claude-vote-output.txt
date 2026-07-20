@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The static KV concern is real but the plan's ValueError→exit-2 spec doesn't break the feature; lint KV values are static so this path is dead but not harmful, and "remove dead defensive handling" is an out-of-scope simplification signal
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The quiet contract is exercised via --skill implement; design-path differences are in analysis output not in quiet routing, so this is coverage-completeness not a concrete gap worth a separate tracked issue

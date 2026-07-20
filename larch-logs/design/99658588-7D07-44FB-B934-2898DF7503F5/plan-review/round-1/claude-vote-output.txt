@@ -1,3 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- fork_fb does run compose_self_fallback with PR_NUMBER set, but its only assertion checks the fork-notes header, not the Lines bullet; the new fixture adds distinct LINES_DATA_OK=true assertions that are genuinely absent from fork_fb, making the fixture choice defensible rather than purely duplicative
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,7 +1,0 @@
-The background failures were from mid-fix runs, not the final state.
-
-**`py-test`** failed on two `test_oos_filer.py` cases: a `title_match` typo in `_ndjson_filed_evidence`, and a manifest-stamp mock that did not intercept `_run_cli` correctly. Both are fixed; `test_oos_filer.py` now passes (28/28).
-
-**`py-lint`** failed on pyright complaints about an untyped lambda in the new `test_run_logs.py` test. That was replaced with a typed helper; `make py-lint` is clean now.
-
-All six review findings are applied. The design autofix harness also passes.

@@ -1,5 +1,0 @@
-Harden Python ship resume state
-
-Restore persisted CI counters and durable mode flags before validated Python ship resumes, classify open/merged/done state with checkout and PR-head validation, and keep unsafe or unsupported resumes out of fresh work.
-
-Add focused acceptance coverage for resume counters, branch hydration, checkout refusal, forked-target PR-only resumes, postmerge completion, run-log resume readers, and CI monitor bail routing.

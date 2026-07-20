@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `scripts/relevant-checks.sh:82-253` — The branch adds/updates regression harnesses for `scripts/append-execution-issue.sh` and `scripts/lib-implement-round-cap.sh`, and wires them into `Makefile:105,136-137,271-272`, but `run_direct_relevant_targets` has no cases for those changed files, so the normal `bash scripts/relevant-checks.sh` path will only run pre-commit/agent-lint and will not execute `test-append-execution-issue` or `test-lib-implement-round-cap` when these helpers or harnesses change. That leaves the new semantic coverage dependent on full `make lint`/CI rather than the intended per-branch relevant-checks path. **Suggested fix:** Add direct-target cases for `scripts/append-execution-issue.sh`, `.md`, and `scripts/test-append-execution-issue.{sh,md}` to append `test-append-execution-issue`, and for `scripts/lib-implement-round-cap.sh`, `.md`, and `scripts/test-lib-implement-round-cap.{sh,md}` to append `test-lib-implement-round-cap`; update the relevant-checks harness/docs if they pin the direct-target routing set.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

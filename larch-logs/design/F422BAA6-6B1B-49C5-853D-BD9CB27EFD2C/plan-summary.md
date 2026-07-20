@@ -1,1 +1,0 @@
-Plan covers three scoped fixes: clarify `/implement` sentinel-probe prose, dedupe self-review tally fallback into one Python helper, and make design-log scrub failures abort while preserving successful scrub rotation warnings.

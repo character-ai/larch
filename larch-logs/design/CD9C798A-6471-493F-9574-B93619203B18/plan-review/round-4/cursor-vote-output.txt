@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan uses absolute `$PWD/implement/round-1`, so failed `cd` still yields an absolute `parent_abs` and the relocation branch; `mkdir` is good practice but not required for that case as written.

@@ -1,7 +1,0 @@
-Reading the ballot and verifying claims against the referenced context files.
-
-Verifying ballot claims against the repo and session `diff-context` / `plan-context`.
-
-Verified: `docs/workflow-lifecycle.md` Flags table (lines 148–160) has no `--no-logs-commit`; `plan-context.txt` Part 2 lists only `skills/implement/SKILL.md`, `README.md`, `docs/skills.md`. Makefile has duplicate “Shard-12 leads…” comments at lines 23 and 55. Alias skills use `argument-hint: "<arguments>"` with a Flags section stating full `/implement` pass-through. `.github/workflows/ci.yaml` runs `make test-harnesses-${{ matrix.shard }}` with no separate partition job. `scripts/test-harness-shards-coverage.sh` gates the misplaced-guard block on `GUARD_SHARD_COUNT == 1`. Diff repartitions shard lines only; plan Part 1 specifies measured LPT and a 15s spread goal. Shards 1–2 are single-harness in the current Makefile.
-
-

@@ -1,8 +1,0 @@
-Implemented the plan, ran targeted checks, and wrote the manifest atomically.
-
-Checks run:
-- `make test-stall-recovery-report`
-- `make test-implement-structure`
-- `make lint-bash32`
-- `pre-commit run markdownlint --files ...`
-- `pre-commit run shellcheck --files ...`

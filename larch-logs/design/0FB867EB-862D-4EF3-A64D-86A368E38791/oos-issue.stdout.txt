@@ -1,8 +1,0 @@
-ISSUE_1_NUMBER=3981
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/3981
-ISSUE_1_ID=4636732863
-ISSUE_1_TITLE=[OOS] Rich header tracks plan-review-slots only, not plan-voter-slots
-ISSUE_1_BLOCKER_LINKS_APPLIED=0
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0

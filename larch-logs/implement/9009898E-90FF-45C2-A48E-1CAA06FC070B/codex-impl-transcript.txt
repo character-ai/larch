@@ -1,7 +1,0 @@
-Implemented and wrote `manifest.json`.
-
-**Tests run:**
-- `pytest test_rebalance_script.py`
-- `python -m ruff check ...`
-- `python -m pyright python/test_rebalance_script.py`
-- `git diff --check`

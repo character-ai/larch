@@ -1,5 +1,0 @@
-Implemented Step 2 scout normalization changes.
-
-- **Status:** complete
-- **Manifest:** written atomically
-- **Tests passed:** `make test-step2-dispatch`, related harnesses, `bash scripts/relevant-checks.sh`

@@ -1,3 +1,0 @@
-Fix design run-params drift and renderer substitution safety
-
-Extend the /design run-params writer to schema v3, persist tier metadata, and make Step 0b fail loudly on script/prompt contract drift. Replace remaining prompt renderer variable substitutions with split joins and add regression linters for unsafe renderer substitutions plus SKILL.md script flag drift.

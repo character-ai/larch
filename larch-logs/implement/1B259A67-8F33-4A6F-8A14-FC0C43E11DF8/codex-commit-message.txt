@@ -1,7 +1,0 @@
-Fix vendor token pricing and sidecar ingestion
-
-Move rate defaults and display-rate helpers into report_tokens_cost.py, update Codex and Cursor defaults, and keep Claude aggregate fallback behavior unchanged.
-
-Thread optional model metadata through token sidecars and vendor ledger rows without changing per-record pricing. Ingest Codex/Cursor sidecars into run NDJSON and active ledgers across Step 2b, plan autofix, lint fix, ship-pr recovery, Python CI monitor, and conflict rebase flows.
-
-Update docs, golden fixtures, relevant-check wiring, and focused tests for pricing defaults, model-basis drift, and Step 2b stale-sidecar cleanup.

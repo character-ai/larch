@@ -1,5 +1,0 @@
-Record Claude subprocess timing rows
-
-Allow Claude vendor task kinds through the timing ledger with the same warning-only allow-list behavior as Codex and Cursor, and normalize Claude launcher status aliases before writing rows.
-
-Add active Claude review, voter, phase-3, plan/decomp, and scout task kinds to the allow-list, then cover ledger normalization plus report aggregation for Claude timing rows.

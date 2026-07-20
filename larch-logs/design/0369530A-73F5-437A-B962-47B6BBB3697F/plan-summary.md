@@ -1,1 +1,0 @@
-Fix the dynamic scout stale cap marker and Bash ship-pr launcher-exit fail-open bug. Add focused regression coverage for scout diff mode, scope-anchor guards, Cursor same-path scout dispatch, and ship-pr lint handoff wrapper behavior.

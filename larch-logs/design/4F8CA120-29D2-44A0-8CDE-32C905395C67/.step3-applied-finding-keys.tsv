@@ -1,6 +1,0 @@
-1	the coordinator does not source codex, cursor, and claude availability from `session-env.sh` before lane selection. this can skip available fallback lanes or attempt unavailable binaries.
-1	cursor may not be able to read assessment evidence stored under `implement_tmpdir` when its workspace is only the repository.
-1	replacing `claudelauncher` may silently drop the established `claude --print`, `--add-dir`, `--allowedtools read`, and `--permission-mode plan` contract needed for assessment evidence access and permissions.
-1	review-specific degraded-response heuristics can rewrite valid, compact assessment json as degraded or empty, incorrectly advancing to fallback or operator-bail.
-1	a cursor assessment could modify the repository while leaving `head` unchanged; accepting its verdict without dirty-tree validation risks persisting output from a mutating run.
-2	in assessment mode, codex is not granted read access to the validated evidence directory containing `diff_path` and `knowledge_path`. the backup lane may therefore produce empty or malformed output instead of a real assessment.

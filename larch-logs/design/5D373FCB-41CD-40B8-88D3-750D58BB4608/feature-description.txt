@@ -1,4 +1,0 @@
-[DESIGNING] [OOS] `ACTION=FINALIZE` still requires a non-empty `voting-tally.md`; any tally abort that skips
-
-`ACTION=FINALIZE` still requires a non-empty `voting-tally.md`; any tally abort that skips writing a populated tally file breaks Step 4 unchanged by this KV refactor. Scenario: Step 4 `FINALIZE` hard-fails when `voting-tally.md` is missing or zero bytes even if earlier steps already logged a tally failure
-- **Suggested fix**: Track as follow-up: relax finalize rules or guarantee `tally-plan-review.sh` always materializes `voting-tally.md` before non-zero exit

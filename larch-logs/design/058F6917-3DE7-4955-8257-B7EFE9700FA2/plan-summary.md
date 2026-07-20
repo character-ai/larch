@@ -1,1 +1,0 @@
-Plan: add failed-coder cleanup, make commit failures continue the Cursor -> Codex -> main-agent waterfall, preserve terminal submodule stalls, add regression tests, and fix one Step 5 branch doc order.

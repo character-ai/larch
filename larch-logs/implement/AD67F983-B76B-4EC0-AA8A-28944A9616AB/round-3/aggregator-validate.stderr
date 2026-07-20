@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Treat symlinked `round-start-s` as absent in `_read_epoch_file` (or at the call ')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Document fresh-tmpdir requirement or invalidate `round-start-s` on explicit resu')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Emit a WARN KV on non-zero `persist-round-start-s` exit when feasible.')

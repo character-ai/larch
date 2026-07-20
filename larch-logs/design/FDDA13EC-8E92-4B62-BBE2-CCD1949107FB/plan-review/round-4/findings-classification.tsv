@@ -1,8 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity
-FINDING_1	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-test-mock-precedence, Codex-dyn-test-mock-precedence	accepted	YES	true	minor	good	false	Claude	YES	true	major	good	false	Codex	NO	partially-true	minor	good	false	Cursor	important
-FINDING_2	Codex-Pragmatic	neutral	NO	partially-true	minor	weak	false	Claude	YES	true	minor	good	false	Codex	NO	partially-true	minor	adequate	false	Cursor	latent
-FINDING_3	Cursor-dyn-quiet-contract-fidelity	accepted	YES	true	minor	good	false	Claude	YES	true	major	good	false	Codex	NO	true	minor	good	false	Cursor	important
-FINDING_4	Codex-dyn-quiet-contract-fidelity	rejected	NO	partially-true	nit	good	false	Claude	NO	partially-true	minor	good	false	Codex	NO	partially-true	minor	excellent	false	Cursor	important
-FINDING_5	Cursor-dyn-stamp-caller-audit	accepted	YES	true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_6	Codex-dyn-test-mock-precedence	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	partially-true	nit	adequate	false	Cursor	latent
-OOS_1	Cursor-Arch	neutral	NO	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	good	false	Cursor	latent

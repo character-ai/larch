@@ -1,6 +1,0 @@
-### FINDING_1: SessionStart payload gating may never reset stale statusline progress
-- **Reviewer(s)**: Cursor-Innovation
-- **Severity**: major
-- **Concern**: The statusline reset logic appears to depend on `payload["source"]`, but the existing SessionStart hook paths described here do not appear to supply that field. If SessionStart events arrive without `source`, the reset becomes a no-op and stale `current` progress pointers can keep rendering old breadcrumbs at startup.
-- **Suggested revisions (informational for voters; coder decides)**:
-  - From Cursor-Innovation: `Split hooks/hooks.json statusline SessionStart into startup|clear vs resume|compact matchers (reset only on the first), or document and add a hook-harness fixture proving SessionStart stdin includes source before shipping.`

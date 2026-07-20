@@ -1,1 +1,0 @@
-Add `python/cli.py ship seed-initial-state` as the script-owned initial `ship-pr-state.sh` writer, route Step 8 and Step 5 stall seeding through it, and move the `8-pre-ship` phantom probe inside `step-8-ship.sh` without breaking JSON stdout.

@@ -1,1 +1,0 @@
-Collapse guideline and invariant lifecycle twins behind a frozen `AssessmentKind` descriptor. Preserve all current wire formats, CLI keys, public compatibility symbols, and kind-specific behavior. Refactor the core and ship gates together, remove the unused invariant flush, simplify both shell wrappers, and add parity tests for every descriptor-driven divergence.

@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step 0 uses default auth_retries=5 so transient retries apply; max_auth_retries==1 suppression is intentional health-gate fast-fail with launcher-level outer retries.

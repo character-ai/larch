@@ -1,7 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- Archived run-log snapshots are intentionally historical and already excluded from the live grep contract.
-FINDING_3: NO -- The implemented comment preserves the plan intent and removes the stale reference; exact wording is not worth raising.
-FINDING_4: YES
-FINDING_5: EXONERATE -- The stale comment is real but too minor to warrant a tracking issue by itself.
-FINDING_6: YES
-FINDING_7: EXONERATE -- Historical changelog references are expected archaeology and not issue-worthy.

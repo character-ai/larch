@@ -1,3 +1,0 @@
-Handle empty degraded-tool presence inputs
-
-Emit a conditional PRESENCE_INPUT_EMPTY signal and stderr diagnostics when Codex or Cursor presence values resolve empty, while preserving fail-safe degraded classification. Rehydrate /implement and /design gate inputs from durable session env, preserve design binary-found keys across refresh, and cover the contracts with regression harnesses.

@@ -1,5 +1,0 @@
-Rework implement stall recovery reporting
-
-File /implement stall reports only on terminal failure or escalation success, add canonical escalation ledger recording, and share final outcome normalization with the final-report path.
-
-Add Tier A and Tier B report composition contracts with mandatory root-cause artifacts, expand Tier B allowlist parity, and emit ledger-ready handoff data from lint, review, and ship-pr drivers.

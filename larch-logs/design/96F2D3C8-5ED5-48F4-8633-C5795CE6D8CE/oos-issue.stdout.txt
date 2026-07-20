@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=4920
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4920
-ISSUE_1_ID=4708263714
-ISSUE_1_TITLE=[OOS] Pre-rebase merge-loop flushes still treat `commit-failed` as warn-only via `REFRESH_SKIP_MERGE_OK`
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

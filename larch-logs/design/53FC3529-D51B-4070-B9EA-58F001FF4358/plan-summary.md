@@ -1,1 +1,0 @@
-Unify plan-review and code-review dispatch without changing their wire output or family-specific behavior. Centralize state, topology-driven row construction, model attribution, calibration snapshots, parse-rate retry, and final voter KVs. Keep tally and snapshot-family work out of scope.

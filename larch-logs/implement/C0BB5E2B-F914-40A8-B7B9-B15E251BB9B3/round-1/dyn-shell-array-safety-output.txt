@@ -1,9 +1,0 @@
-Reviewing branch changes for shell-array-safety in the Codex probe code.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** `scripts/agent-model-args.sh:10-13` — The header still says lightweight probe callers such as `check-reviewers.sh` do not pass `--with-effort`, but the branch now passes `--with-effort` for the Codex probe. That is documentation drift only; it does not affect the shell-array logic.
-- **correctness** `skills/design/scripts/plan-review-loop.sh:1045` — The sentinel guard uses `grep -qE '^[[:space:]]*\{"no_issues_found'`, which matches any line starting with that prefix (including malformed variants like `{"no_issues_found": false}`). That is acceptable given the prompt contract, but it is slightly looser than the dispatch first-line pattern in `dispatch-plan-review-panel.sh:112`, which also allows `schema_version`. Not introduced by the array-safety change and outside the scout’s `check-reviewers.sh` focus.
-
-**Shell-array-safety verdict (scout checklist):** The Codex block at `scripts/check-reviewers.sh:196-208` mirrors the existing Cursor probe (`152-167`). `MODEL_ARGS_TMP` is removed on every path where `mktemp` assigns a non-empty path, including when `agent-model-args.sh` fails after a successful `mktemp`. If `mktemp` fails, the assignment is empty and the cleanup guard correctly skips `rm`. `${_probe_model_args[@]+"${_probe_model_args[@]}"}` is the standard Bash 3.2-safe empty-array expansion (also used for Cursor). `agent-model-args.sh`’s `emit_arg` skips blank tokens (`123-127`), so the read loop should not accumulate empty argv elements under normal output.

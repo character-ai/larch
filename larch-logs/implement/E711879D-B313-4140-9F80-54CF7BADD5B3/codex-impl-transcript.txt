@@ -1,8 +1,0 @@
-Implemented the plan and wrote `manifest.json` with `status=complete`.
-
-Validated with:
-- `skills/implement/scripts/stall-recovery-report.sh lint`
-- `bash skills/implement/scripts/test-stall-recovery-report.sh`
-- `bash scripts/test-implement-structure.sh`
-- `bash scripts/relevant-checks.sh` (RC=0)
-- `git diff --check`

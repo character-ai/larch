@@ -1,7 +1,0 @@
-APPLIED: FINDING_3**FINDING_3 applied.** Traversal-looking paths (`../skills/foo.py`, `/../skills/foo/bar.sh`) were slipping through because normalization rewrote `../` before safety checks, and the file-line regex could match a suffix without the `..` prefix.
-
-**Changes:**
-- `python/file_oos.py`: preserve `..` during normalization; reject traversal in raw regex matches before cleaning
-- `python/test_file_oos.py`: regression tests for both traversal forms
-
-All `file_conflict_deps` tests passed; full `make py-lint py-test` completed successfully (4283 passed).

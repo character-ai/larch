@@ -1,5 +1,0 @@
-Fix Step 5 starting-round resume handling
-
-Reorder loop entry handling so cap-boundary MAV restarts can emit the non-stalled mav-resume-past-cap envelope when the prior round artifact exists. Add a bounded prior-artifact retry with diagnostics and preserve STALL_TRACKING=false for starting-round-invalid stalls.
-
-Cover the retry, anchored cap resume, inflated-cap, missing-artifact, and high starting-round paths in a dedicated review-and-fix shard.

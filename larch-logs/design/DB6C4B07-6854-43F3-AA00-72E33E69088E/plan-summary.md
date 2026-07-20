@@ -1,1 +1,0 @@
-Add a small typed `Ctx` and adopt it at the three hotspot boundaries. Convert only boundary-adjacent reads and pure in-process IPC writes in `design_lifecycle.py`; leave legacy deep reads and subprocess env behavior intact.

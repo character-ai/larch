@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The race is real, but rejoin-time identity validation still prevents reuse after drift; child-time revalidation exceeds the anchored stale-rejoin scope.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan already requires preserving immutable identity in each child’s final merge-result envelope.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan’s seeded-live-identity requirement can be implemented from the merge envelope; specifying lookup precedence is an implementation detail, not a necessary scope addition.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of prior OOS_1.
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- A live job lacking launch identity cannot be safely rejoined, so failing closed is not an erroneous block.

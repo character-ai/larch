@@ -1,7 +1,0 @@
-Port research and eval helpers to Python CLI
-
-Add python/research.py and python/research_eval.py with CLI verbs for citation validation, findings rendering, planner validation, banner computation, research-output validation, and eval runs.
-
-Wire /research, collector, launcher, design review, Makefile, docs, and SECURITY references to the Python CLI. Replace retired shell harnesses with pytest coverage and add the retired paths to python/migrated-scripts.tsv.
-
-Inline-triage rule 2: speed retired-script lint prefilter so the expanded migration manifest remains practical.

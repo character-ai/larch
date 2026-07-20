@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- startup `: >"$GROUP_LEDGER"` truncates a pre-invoke ledger seed so the regression never exercises cp-failure fallback
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `if reuse_slot_result` disables errexit for the whole function; guarding only `cp` can let later bookkeeping failures look like success
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- planned `if` call site disables errexit in the function, so `rm -f` failure before `return 1` is unlikely to abort there
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- first-match stale rows are real but the plan already accepts per-slot redundant relaunches; prefer-latest is out of scope for this fix
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `FALLBACK_COUNT` only counts phase-3 Claude launches, so phase-2 Codex relaunches from stale rows will not trip the cited threshold

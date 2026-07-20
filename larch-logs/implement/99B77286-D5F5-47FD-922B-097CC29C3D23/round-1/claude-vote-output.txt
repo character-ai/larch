@@ -1,8 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- behavior (auto-continue on drift) is the intended feature; baseline integrity gating is not in scope; latent finding not on the feature's own execution path
-FINDING_2: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer concluded asymmetry is intentional and no change is needed; no real problem exists
-FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer concluded all noted concerns match existing patterns and are not defects

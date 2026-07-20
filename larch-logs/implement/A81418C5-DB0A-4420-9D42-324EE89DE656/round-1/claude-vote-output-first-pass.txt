@@ -1,8 +1,0 @@
-OOS_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes correct implementation of the plan, not a problem worth filing
-OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes correct implementation of the plan, not a problem worth filing
-OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- speculative future-state concern, not a concrete problem worth filing
-OOS_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

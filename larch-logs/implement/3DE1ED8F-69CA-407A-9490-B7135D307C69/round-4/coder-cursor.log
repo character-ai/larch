@@ -1,8 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_2
-APPLIED: FINDING_3
-APPLIED: FINDING_4
-APPLIED: FINDING_5
-APPLIED: FINDING_6All six review findings were applied in `python/analyze_issues.py` with matching tests in `python/test_analyze_issues.py`.
-
-**Lint and tests:** `make py-lint` passed (ruff, pylint 10.00/10, pyright clean). `make py-test` passed: **4090 passed**, 52 skipped.

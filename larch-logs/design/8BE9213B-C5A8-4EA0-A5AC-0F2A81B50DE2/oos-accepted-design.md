@@ -1,8 +1,0 @@
-### OOS_1:
-- **Description**: Phantom-probe reference still documents a direct orchestrator 8-pre-ship call. Scenario: After the probe moves into `step-8-ship.sh`, this doc will misstate the call site; it does not block the feature but misleads future edits
-- **Reviewer**: Cursor-Requirements
-- **Severity**: nit
-- **Focus area**: architecture
-- **Location**: skills/implement/references/phantom-probe.md:12-21
-- **Phase**: design
-- **Filed URL**: https://github.com/character-ai/larch/issues/4544

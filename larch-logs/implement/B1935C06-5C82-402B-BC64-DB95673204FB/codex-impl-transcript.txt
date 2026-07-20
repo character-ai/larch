@@ -1,6 +1,0 @@
-**Complete.**
-
-- Wrote the working-tree implementation.
-- Wrote `manifest.json` with `status=complete`.
-- Wrote optional `scout-coder-manifest.json`.
-- Ran focused shell harnesses, `bash -n`, and `git diff --check`.

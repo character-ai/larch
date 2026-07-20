@@ -1,9 +1,0 @@
-FINDING_1: EXONERATE -- The table is already sparse and outside the implementation plan’s documented surfaces, so a cleanup issue is not worth filing.
-FINDING_2: EXONERATE -- Legitimate pre-existing readability nit, but not issue-worthy.
-FINDING_3: EXONERATE -- Alias frontmatter is generic by design and the body documents full `/implement` flag passthrough.
-FINDING_4: EXONERATE -- Legitimate theoretical CI-hardening concern, but not worth a separate issue for the current fixed 1-16 matrix.
-FINDING_5: NO -- Duplicate or missing guard cases already fail through existing report sections; this is diagnostic wording polish.
-FINDING_6: NO -- The implementation transcript records timing capture, LPT shard totals, coverage verification, and the 15s caveat.
-FINDING_7: NO -- The single-target shards are the longest measured indivisible harnesses, not very short under-utilized jobs.
-FINDING_8: NO -- Provided context includes shard totals and `make test-harness-shards-coverage`; max measured shard is far below 5 minutes.
-FINDING_9: EXONERATE -- Reorder risk is theoretically real, but no concrete flake or failing pair justifies changes now.

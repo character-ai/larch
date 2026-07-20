@@ -1,3 +1,0 @@
-Clean up release docs and title matching
-
-Update the release classifier docs to reference the Python CLI entry points. Extend retired-script lint with scoped dev-skill markdown basename detection and add coverage for lint-ignore, live-sibling, and contract-doc edges. Share title matching between finalize and verify-main while preserving their existing caller-specific behavior.

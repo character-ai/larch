@@ -1,4 +1,0 @@
-[OOS] New Claude voter subprocess surface
-
-New Claude voter subprocess surface. Scenario: launch-claude-review.sh on plan ballots changes trust and logging boundaries vs in-process Agent voter
-- **Suggested fix**: Note subprocess data paths and any secret-handling expectations in SECURITY.md when implementation lands

@@ -1,1 +1,0 @@
-{"phase":"review","step":"9a.1","category":"OOS","body":"### OOS_1: Add missing regression tests for attestation-only empty-merge edge cases in aggregate-findings harness\n- **Filed URL**: https://github.com/character-ai/larch/issues/3003\n- **Vote tally**: FINDING_2 YES=3 NO=0 EXON=0; FINDING_3 YES=3 NO=0 EXON=0"}

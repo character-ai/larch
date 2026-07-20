@@ -1,3 +1,0 @@
-Document Gate B plan dedup sweep
-
-Instructs /design Gate B revision paths to re-read the revised plan, remove semantically redundant duplicate content with LLM judgment, and emit the dedup-sweep breadcrumb before re-emitting the plan.

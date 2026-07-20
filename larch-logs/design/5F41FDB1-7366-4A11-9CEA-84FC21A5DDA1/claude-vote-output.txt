@@ -1,1 +1,0 @@
-The ballot file is empty (0 bytes). There are no items to vote on — FINDING_1 was already accepted in a prior round (3 YES votes, visible in voting-tally.md). The current ballot contains no pending items.

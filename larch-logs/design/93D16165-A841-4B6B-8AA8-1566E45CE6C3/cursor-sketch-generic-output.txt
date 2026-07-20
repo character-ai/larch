@@ -1,3 +1,0 @@
-Exploring the three script areas and the codex JSONL capture pattern used by the launchers.
-Creating the implementation plan from the codebase review.
-

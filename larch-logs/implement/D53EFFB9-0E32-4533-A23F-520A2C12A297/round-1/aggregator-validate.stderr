@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add a test forcing early wrapper exit with `_loop_pid` set and assert session ki')
-warning: fix text for slot 'dyn-tmpdir-validation-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Parse `DESIGN_TMPDIR` from `source-env.sh` and require it to equal `str(resolved')
-warning: fix text for slot 'dyn-tmpdir-validation-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add harness cases for symlinked leaf tmpdirs and prefix-collision kill scope (im')

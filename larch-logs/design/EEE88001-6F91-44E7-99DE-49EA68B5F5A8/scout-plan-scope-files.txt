@@ -1,4 +1,0 @@
-skills/design/scripts/test-dispatch-plan-review-panel.sh
-skills/review/scripts/review-core.sh
-skills/review/scripts/review-core.md
-skills/review/scripts/test-review-core.sh

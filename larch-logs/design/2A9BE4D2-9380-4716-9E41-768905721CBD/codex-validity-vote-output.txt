@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the prior-round emergency-repair skip concern; this extra recovery tweak is not required for this plan to ship.
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of the prior-round coverage concern; the suggested regression test is extra hardening, not a necessary acceptance condition for this fix.

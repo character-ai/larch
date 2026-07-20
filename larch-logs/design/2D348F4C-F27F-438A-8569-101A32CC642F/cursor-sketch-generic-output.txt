@@ -1,7 +1,0 @@
-Exploring the codebase to map `run_ci_fix_vendor`, `run_recovery_waterfall`, and test patterns before drafting the implementation approach.
-
-Confirming: `run_recovery_waterfall` isn't in the current `ship-pr.sh` (it's in design logs for #2395). Planning assumes it exists post-merge and we only consume its pattern. Checking `failure_capture_path` usage:
-
-Noting `failure_capture_path` increments a global sequence each call, so the parent's `gh-run-logs` output sits in a distinct file from per-tier vendor captures — enabling a future `--failure-log` only if we thread that path into `run_ci_fix_vendor` (out of current scope per your constraints).
-
-

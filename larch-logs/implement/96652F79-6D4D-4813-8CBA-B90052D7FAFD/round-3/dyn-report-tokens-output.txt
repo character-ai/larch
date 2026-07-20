@@ -1,7 +1,0 @@
-Reviewing the report-tokens changes for correctness: reading the diff, commit history, and the scanner/renderer/issue/CLI code paths.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- Plan acceptance called for `python/test_report_tokens_cli.py` to assert CLI forwards `skill="design"` to `post_issue`, but only the implement path is exercised in `test_main_success_posts_issue_and_keeps_single_cache_trailer` (lines 23–54). Production code in `python/report_tokens_cli.py` (lines 114–119) passes `skill=skill` for both skills, so this is a coverage gap rather than a runtime defect.
-- `python/test_report_tokens_scan.py`’s shared `_write_run` helper still writes `run-params.json` with `design_classification: SIMPLE` for implement fixtures, but no general implement scan test asserts `record.workflow == ""` outside the two dedicated legacy/malformed-artifact cases; behavior is correct via the early return in `python/report_tokens_scan.py` (lines 111–113).

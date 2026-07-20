@@ -1,7 +1,0 @@
-python/config.py
-python/ci_monitor.py
-python/design_log_ship.py
-python/logging_util.py
-scripts/design-log-publish.sh
-python/test_design_log_ship.py
-python/test_logging_util.py

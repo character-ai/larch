@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan intentionally adds a guideline rule rather than implementing a representative producer/gate path, so an additional regression test is not a required deliverable.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The lint condition is real, but the plan can satisfy it by authoring a substantive deviation clause; the conditional risk does not make the proposed scope expansion necessary.

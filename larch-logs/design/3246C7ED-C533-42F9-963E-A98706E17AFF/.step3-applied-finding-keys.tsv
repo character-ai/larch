@@ -1,4 +1,0 @@
-1	adding the new reviewer agent and regenerated prompt surfaces without updating `python/skill-closure-baseline.json` can make `lint skill-closure-growth` and ci fail.
-1	`static_reviewers` still lists only the existing three archetypes, so manifest-missing coverage recovery can pass without `architectural-compliance`.
-1	assertion (15) does not include `reviewer-architectural-compliance.md`, so its required dual-list headers are not ci-checked.
-2	shared review-core stubs remain three-slot, so updated pipeline tests cannot exercise the new compliance slot and may report false coverage failures.

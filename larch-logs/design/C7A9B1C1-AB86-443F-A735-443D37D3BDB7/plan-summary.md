@@ -1,1 +1,0 @@
-Port the implement tmpdir resolver into `python/session_env.py`, add a `session resolve-implement-tmpdir` CLI, repoint both bash hooks through a cheap bash pre-check plus fail-open Python call, delete the bash resolver and harness, and update retired-script/docs references.

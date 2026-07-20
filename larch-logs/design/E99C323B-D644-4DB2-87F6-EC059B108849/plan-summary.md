@@ -1,1 +1,0 @@
-Add a pre-commit run-log completeness gate. It blocks commits that omit required artifacts unless a committed execution-issues record explains the omission. Append `I-Flush-1` verbatim and cover green, recorded-omission, silent-omission, and status-only failure paths.

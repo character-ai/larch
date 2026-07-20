@@ -1,6 +1,0 @@
-DEFECT script=scripts/test-rebase-checkpoint-probe.sh kind=missing-script
-DEFECT script=scripts/test-merge-pr.sh kind=missing-script
-DEFECT script=scripts/test-create-pr.sh kind=missing-script
-DEFECT script=skills/implement/scripts/test-step-8-ship.sh kind=missing-script
-DEFECT script=scripts/test-implement-fence-shape.sh kind=missing-script
-VALIDATE_STATUS=defects-found	DEFECT_COUNT=5	SKIPPED_COUNT=0	UNSAFE_TOKEN_COUNT=0

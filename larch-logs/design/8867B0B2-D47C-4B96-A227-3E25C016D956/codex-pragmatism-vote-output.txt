@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- the payload may include source; the ballot doesn't establish it is absent.
-FINDING_2: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the clear-path regression is speculative and not shown to occur on the required feature path.
-FINDING_3: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- same clear-path speculation as FINDING_2; not enough evidence to clear the necessity gate.

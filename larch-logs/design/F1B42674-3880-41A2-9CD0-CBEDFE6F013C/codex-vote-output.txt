@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- the current plan already requires all three harnesses to bind CLI and preflight cli.py.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cwd pinning is defensive and speculative here because the plan already uses an absolute cli.py entrypoint and absolute input/output paths.

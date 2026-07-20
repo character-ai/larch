@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- same rationale as first-round exoneration; dev-only private script, minimal regression risk
-FINDING_4: EXONERATE -- legitimate structural concern but changes are already committed; a GitHub issue for a done PR is not actionable
-FINDING_5: NO -- pre-existing vacuous-true edge case not introduced by this PR; too theoretical to warrant a tracking issue

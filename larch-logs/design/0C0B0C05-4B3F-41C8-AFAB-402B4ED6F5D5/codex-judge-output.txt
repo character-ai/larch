@@ -1,5 +1,0 @@
-DECISION_1: ANTI_THESIS - Explicit mode makes the new state-creation boundary auditable and avoids future parser inference risks, while the implicit defense relies on extra naming/validation rules that weaken its simplicity claim.
-
-DECISION_2: THESIS - The inline-constant defense better distinguishes ship-pr’s single-owner key list from finalize-state’s shared-library precedent and directly addresses drift between emission and validation.
-
-DECISION_3: THESIS - The seven-flag defense is tightly scoped to demonstrated caller-varying inputs, while the all-38 side does not substantively justify exposing internal state-machine defaults as argv surface.

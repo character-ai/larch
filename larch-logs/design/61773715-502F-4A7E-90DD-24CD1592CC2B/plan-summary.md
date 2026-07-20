@@ -1,1 +1,0 @@
-Plan: widen the claude-ci lint-fix retry gate to cover exit 124 and missing or zero-byte output. Keep one retry. Update the retry warning text and add focused regression coverage in the existing CI fixer test file.

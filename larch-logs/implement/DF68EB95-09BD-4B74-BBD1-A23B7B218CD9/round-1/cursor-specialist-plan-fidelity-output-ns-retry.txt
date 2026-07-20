@@ -1,7 +1,0 @@
-Gathering the diff and commit list for plan-fidelity review.
-
-Checking whether `test-upgrade-larch.sh` or other plan-adjacent files reference floor-prune behavior (not shown in the diff).
-
-Checking the user-required opening: start with `### FINDING_1` or `NO_ISSUES_FOUND`, then include `### In-Scope Findings` with numbered items and focus-area tags. Combining into one coherent structure.
-
-

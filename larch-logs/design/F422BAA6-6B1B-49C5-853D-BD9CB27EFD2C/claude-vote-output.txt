@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scrub-fatal misclassification of argv-validation exit 1 is real but latent; the fail-closed safety behavior is preserved; feature goal met without this fix
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- NEVER #8 already documents the asymmetry explicitly; adding more bullets is redundant scope growth, not a necessity
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- trigger requires malformed or hand-edited tally JSON only; below materiality floor for issue overhead

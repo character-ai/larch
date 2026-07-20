@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- voting-tally.md is already asserted in test-design-log-publish.sh (lines 487, 498), test-lib-design-round-artifacts.sh, and test-larch-log.sh; adding another assertion in the new test case would be redundant
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- dead exclusions for unproduced artifacts are harmless; existing .sidecar exclusion covers the key Cursor/Codex diagnostic format; cleanup is not worth the plan complexity

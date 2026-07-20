@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already addresses the dataclass-truthiness trap explicitly: the blocking-fix section (plan.txt lines 112-139) mandates field-access branching at the call site, the edge-cases section (line 301) restates the invariant, and a dedicated test guards against it; the remaining concern is a tuple-vs-dataclass style preference, not a correctness defect in the plan as written.
-
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

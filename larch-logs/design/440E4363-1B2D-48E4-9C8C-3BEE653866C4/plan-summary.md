@@ -1,1 +1,0 @@
-Fix the shared rounds ledger without discarding cross-lineage history. Add a fail-closed crashed-lane finalizer that advances the tool waterfall and preserves a bounded, redacted diagnostic in the run log. Keep the bgjob daemon and fixer prompt unchanged.

@@ -1,9 +1,0 @@
-Reading the dialectic ballot and casting votes per your instructions.
-
-Checking for additional decisions beyond DECISION_1.
-
-The ballot file contains **only `DECISION_1`** (lines 1–37); there are no further `DECISION_N` blocks.
-
----
-
-DECISION_1: ANTI_THESIS — Defense B ties maintenance to the existing `check-phantom-dirty.sh` boundary, shows the remaining work is narrow parse-and-append glue with line-level citations, and rebuts drift with targeted dual-wrapper harnesses while naming real costs of a new sourced module (quiet FD/`set -e`/return contract coupling); Defense A’s strongest mechanics target subprocess/KV-merge hazards more than the inline half of ALTERNATIVE and under-weights proportionality when the probe is already centralized elsewhere.

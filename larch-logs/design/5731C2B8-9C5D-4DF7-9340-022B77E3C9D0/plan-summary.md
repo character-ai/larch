@@ -1,1 +1,0 @@
-Activate the existing Step 8 assessment adapter across the combined route and dormant single-kind aliases. Remove inline main-agent assessment work, validate the adapter result before one ship relaunch, update structural tests, and document the trust boundary.

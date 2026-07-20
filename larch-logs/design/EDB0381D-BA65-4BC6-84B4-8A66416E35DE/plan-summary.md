@@ -1,1 +1,0 @@
-Add a Python Markdown-fence linter for scoped skill docs. Wire it into `python/cli.py`, pre-commit, `make lint`, tests, and lint docs. Keep scope static and source-adjacent. Use carve-outs and reasoned suppressions instead of refactoring existing orchestrator flows.

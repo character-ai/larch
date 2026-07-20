@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The plan already requires literal canonical and legacy rejection plus focused canonical raw-heading tests; prescribing ERE escaping is implementation detail.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

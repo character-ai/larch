@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan already forbids file-stem -k tokens and ENFORCED guard validation would catch the overlap
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ambiguous target ownership is real but the feature can still be implemented and verified by the partition guard
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the mapping could be clearer but guard validation catches overlap or uncovered registry tests
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- this is a late test-proof request, and it does not clear the strict necessity gate
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale auxiliary .PHONY cleanup does not clear the backlog materiality and issue-overhead gates

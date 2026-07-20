@@ -1,5 +1,0 @@
-warning: fix text for slot 'dyn-signature-dedup-output.txt' in FINDING_27 not traceable to scoped input (first 80 chars: 'Wrap the `home_cache` normalization in `set +o pipefail` / `|| true` (mirroring ')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_27 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Unredacted SUBPROCESS_STDE')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_27 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] docs/linting.md missing te')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_27 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] hook-anti-read-poll #3217 ')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_27 not traceable to scoped input (first 80 chars: 'None for #3202; treat as separate change when merging.  ---  **Merge notes (diag')

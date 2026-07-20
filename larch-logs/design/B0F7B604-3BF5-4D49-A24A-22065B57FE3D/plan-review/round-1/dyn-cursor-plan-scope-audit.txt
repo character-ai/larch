@@ -1,7 +1,0 @@
-I'll read the plan and trace the sibling-command audit boundary in the codebase.
-**Tooling could not read `plan.txt` or the repository in this session**, so the sibling-command audit boundary and proposed file list could not be verified. Re-run this reviewer slot after read access is restored.
-
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	blocking	risk-integration	plan.txt	Plan artifact unreadable in this review slot	Without plan.txt and repo reads the sibling-command audit boundary quiet-contract scope and per-file change list cannot be validated	Re-run plan review after read access to <TMPDIR>/plan.txt and the repo is restored
-
-1. **risk-integration** `plan.txt` — Plan artifact unreadable in this review slot; sibling-command audit and minimum-change validation blocked. **Suggested revision:** Re-run this reviewer after `plan.txt` and codebase reads succeed.

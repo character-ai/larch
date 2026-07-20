@@ -1,6 +1,0 @@
-Both accepted findings were applied:
-
-- **FINDING_2:** Removed the redundant pre-teardown `flush-safety-net` call from `step-18.sh` that used incorrect `RUN_ID` resolution (parent-issue → session-id), which could append to the wrong run-log tree.
-- **FINDING_22:** Switched `_teardown_log_flush` in `finalize.py` to the canonical `execution_issues.flush_execution_issues_safety_net()` path and added `test_teardown_log_flush_uses_safety_net_not_render_batch` in `test_finalize.py`. Related harness expectations in `test-step-18.sh` and `test-implement-structure.sh` were updated.
-
-Tests passed: `test-step-18.sh`, the new finalize test, and the full `make py-test` run (3292 passed). No commit was made.

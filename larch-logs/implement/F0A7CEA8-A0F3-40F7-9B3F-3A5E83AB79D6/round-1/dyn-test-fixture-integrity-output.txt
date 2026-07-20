@@ -1,9 +1,0 @@
-Reviewing the branch diff and auditing `test_monitor_push_failed_stalls` stub integrity against the code paths it exercises.
-Verifying the test passes and tracing any edge cases.
-### In-Scope Findings
-
-- **correctness** `python/test_ci_monitor.py:1271-1279` — The sequential queues are sized for a single `run_ci_fix` (two `("git", "diff", "--name-only")` pops and three `("git", "rev-parse", "HEAD")` pops), but `monitor()` → `evaluate_failure()` can invoke `run_ci_fix` up to `CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS` (3) times when each attempt returns `waterfall-failed` (`python/ci_monitor.py:1169-1172`). After the first attempt, the diff queue is empty and further attempts fall back to the static empty diff in `_baseline_responses`, so `stage_and_push` returns early with no delta and never calls `("git", "push", "origin", "feature")` (`python/ci_monitor.py:873-874`, `865-890`). The test still passes `Outcome.STALLED` because empty-delta failures reuse `detail="push failed"` (`python/ci_monitor.py:1014-1023`), but only the first outer attempt exercises the vendor push-failure stub the test/docstring claim to pin. **Suggested fix:** For this test only, monkeypatch `CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS` to `1`, or multiply the sequential diff/rev-parse entries by the outer cap (and add `assert sum(1 for c in runner.calls if c == ("git", "push", "origin", "feature")) == 1` so a regression that skips push cannot still pass).
-
-### Out-of-Scope Observations
-
-- **correctness** `python/ci_monitor.py:1014-1023` — `run_ci_fix` reports `detail="push failed"` whenever `stage_and_push` returns `pushed=False`, including the empty-delta shortcut that never runs `git push`. That predates this branch; the new test’s outer retries rely on that wording but do not hit the push stub on attempts 2–3.

@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `security` — `scripts/hook-anti-read-poll.sh:28-60`: the hook writes a predictable state file under shared `${TMPDIR:-/tmp}` and continues even if `chmod 700 "$state_dir"` fails. Concrete scenario: on a multi-user machine, another local user pre-creates `/tmp/larch-read-poll` as writable and places `state-<cwd_hash>.tsv` as a symlink to a victim-writable file; the victim’s next `Read` hook invocation follows the symlink at line 60 and overwrites that file with the TSV state. Suggested fix: fail open unless the state directory is owned by the current user with private permissions, reject symlink state files, and write via a private temp file plus atomic rename.
-
-2. **Important** `security` — `scripts/hook-anti-read-poll.sh:65`: the hook injects `basename "$file_path"` directly into `additionalContext`, which is treated as a system-reminder-style message. Concrete scenario: a repo contains a filename with a newline and instruction-like text; after three repeated reads, the hook emits that attacker-controlled basename inside high-priority context, creating a prompt-injection path. Suggested fix: omit the filename from the reminder or sanitize it to a short printable allowlist before interpolation.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.

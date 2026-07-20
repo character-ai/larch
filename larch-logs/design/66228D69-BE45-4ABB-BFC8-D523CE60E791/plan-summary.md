@@ -1,1 +1,0 @@
-Restore the external implementer Step 2 token mark in Codex and Cursor launchers. Add raw-label fallback attribution so reports do not silently place implementer tokens in Step 0 if the mark is missing again.

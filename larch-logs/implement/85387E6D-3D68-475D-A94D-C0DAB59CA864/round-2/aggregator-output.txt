@@ -1,3 +1,0 @@
-Aggregating reviewer findings: checking workspace for source reviewer files with verbatim revision text.
-Producing the aggregated finding list from the 20 raw inputs, merging duplicates per first-seen order.
-

@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **correctness** `skills/design/scripts/render-final-summary.sh:259-262` — The summary now always prefers non-empty `accepted-plan-findings-all.md`, but that cumulative artifact is only appended inside `skills/design/scripts/plan-review-loop.sh:598-613` before later artifact mutations. If a later MainAgent re-tally writes new accepted findings via the Step 3 path in `skills/design/SKILL.md:1224`, or `--approve` one-by-one review moves skipped items out of `accepted-plan-findings.md` per `skills/design/references/approval-gates.md:141-145`, `accepted-plan-findings-all.md` is not reconciled. Final summary can therefore omit newly accepted re-tally findings or count findings the operator explicitly skipped. **Suggested fix:** Update/replace the current round’s entry in `accepted-plan-findings-all.md` after MainAgent re-tally and after explicit one-by-one Gate B rewrites, or make the renderer ignore the cumulative file when the final active artifact has been operator-filtered.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

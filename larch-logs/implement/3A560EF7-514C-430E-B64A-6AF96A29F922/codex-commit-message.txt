@@ -1,3 +1,0 @@
-Enforce monitor_rc propagation in Family B lint
-
-Require top-level Family B writer monitor pairs to initialize monitor_rc, capture breadcrumb-monitor.sh failures, and branch waits on the monitor result. Update regression fixtures and lint contract docs for the new diagnostics.

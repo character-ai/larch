@@ -1,9 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_3
-APPLIED: FINDING_13All three accepted findings were applied:
-
-- **FINDING_1:** `plan_review_round.py` now records prune-ledger rows on the `degraded-empty-collector` path when a classification TSV exists.
-- **FINDING_3:** Plan-mode attribution in `review_pipeline.py` splits reviewer labels on commas only, so labels like `Cursor-dyn-Api Contract` match correctly.
-- **FINDING_13:** Code-review no longer writes prune-ledger rows when `TALLY_STATUS` is `main-agent-vote-required`.
-
-Regression tests were added for each fix; all three pass, and `make py-lint` is clean. No commit was made.

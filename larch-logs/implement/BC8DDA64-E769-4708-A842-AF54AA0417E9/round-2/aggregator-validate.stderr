@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add MAV-only head snapshot helper (head + 0444, no `_snapshot_pre_coder_tracked_')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add a head-only snapshot helper for mav-apply (`pre-coder-head.txt` only) and py')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Validate in `_preflight_step5` or catch in loop and map to `STEP5_REVIEW_STATUS=')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add mechanical lint pattern banning review+core subprocess in `python/review_and')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Remove retired path; add `python/test_review_and_fix.py` if fixtures need it')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Add `@pytest.mark.record_timing` and `@pytest.mark.commit_fixes` tests (or renam')
-warning: fix text for slot 'dyn-coder-dispatch-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: 'Remove the `shutil.copyfile` fallback on failure; keep only the scrubbed writer ')

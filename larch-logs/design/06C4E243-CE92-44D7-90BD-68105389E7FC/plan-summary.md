@@ -1,1 +1,0 @@
-Update only `skills/design/SKILL.md`. Replace the Step 3 resume wait duplicate with a back-reference to the first-time Step 3 wait contract, and shorten the verbosity reviewer-table prose to point at `design-background-wait.md`.

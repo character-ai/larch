@@ -1,3 +1,0 @@
-warning: fix text for slot 'Codex-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: 'Use one small shared bullet-count helper that tracks Markdown fences and counts ')
-warning: fix text for slot 'Codex-Requirements' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add one focused `_refresh_issue_counts` test that forces the body_text fallback,')
-warning: fix text for slot 'Codex-Requirements' in FINDING_3 not traceable to scoped input (first 80 chars: 'Add optional size trailers to the materialization fixture and assert the provena')

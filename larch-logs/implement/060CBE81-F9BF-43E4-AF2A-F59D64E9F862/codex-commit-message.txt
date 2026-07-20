@@ -1,3 +1,0 @@
-Script /design Step 3b through Gate C tail
-
-Move Step 3b classification, sanitizer cleanup, and completion into wrapper-owned flows. Add a combined tail wrapper for rejected findings, Gate C preview, skip-approve state, pause-save early exit, and Step 4 completion. Route Gate C full-plan display through the allowlist-validated preview helper and retire obsolete split wrappers.

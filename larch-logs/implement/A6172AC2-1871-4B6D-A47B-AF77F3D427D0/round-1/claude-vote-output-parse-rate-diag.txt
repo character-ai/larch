@@ -1,9 +1,0 @@
-slot=1
-voter_tool=claude
-judge_error_count=48
-total_findings=48
-total_ballot_items=48
-voter_file=<TMPDIR>/round-1/claude-vote-output.txt
-voter_sha256=ccd68aacb7e67667bf69b517b621e8531f622f09755efc7cee570441ab0b3bf2
---- first 200 bytes of voter output ---
-I cannot read the ballot — every attempt to access `<TMPDIR>/round-1/findings.md` triggers a permission prompt that hasn't been approved y

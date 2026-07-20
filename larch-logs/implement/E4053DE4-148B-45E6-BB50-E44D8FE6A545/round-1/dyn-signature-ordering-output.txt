@@ -1,8 +1,0 @@
-Reviewing branch changes with emphasis on `is_transient_net_signature` case-pattern ordering.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** `scripts/lib-net.sh:15` — The ordering-sensitive `no such hosted` guard is implemented correctly: it is a separate first-wins `case` arm (`return 1`) at line 10, strictly before the positive `*"no such host"*` alternative at line 15. That ordering is necessary because `"repository has no such hosted …"` contains the substring `no such host`, so reversing the arms would misclassify that near-miss as transient. `scripts/test-lib-net.sh:102` exercises this path via `assert_not_transient "sig: no such hosted near-miss"`.
-- **correctness** `scripts/lib-net.sh:13` — The lowercase `*"connection reset"*` and capitalized `*"Connection reset by peer"*` patterns do not create harmful shadowing: Bash `case` matching is case-sensitive by default, so Go-style `Connection reset by peer` does not match the lowercase pattern and needs the explicit capitalized alternative. Both sit in the same `return 0` arm, so there is no first-wins competition between them—only complementary coverage. `scripts/test-lib-net.sh:101` and `:104` cover the positive reset case and a hyphenated near-miss that must not match.
-- **correctness** `scripts/lib-net.sh:15` — Beyond the guarded `hosted` near-miss, bare `*"no such host"*` still substring-matches other words such as `no such hosting` (not called out in the plan or tests). That is a broader false-positive risk from the new bare pattern, separate from the ordering issue the scout targeted. If that matters in production stderr, consider additional negative guards or tightening bare `no such host` to resolver-shaped context only.

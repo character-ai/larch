@@ -1,3 +1,0 @@
-scripts/write-run-params.sh
-scripts/test-write-run-params.sh
-scripts/write-run-params.md

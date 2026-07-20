@@ -1,3 +1,0 @@
-scripts/write-design-current-env.sh
-scripts/write-design-current-env.md
-skills/design/scripts/test-write-design-current-env.sh

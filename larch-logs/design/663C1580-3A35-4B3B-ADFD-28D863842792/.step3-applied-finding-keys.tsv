@@ -1,4 +1,0 @@
-1	strict loading requires metadata that the unchanged writer omits. regeneration can erase migration metadata and produce a baseline that immediately fails lint.
-1	testing only the already-migrated file can miss broken migration wiring or altered identity/metric projections.
-1	non-empty but malformed dates could later break repeat-bump date calculations.
-2	`_run_write` needs a raw-record probe that refuses regeneration for migrated or partially migrated data while still allowing an empty-array bootstrap file. strict `load_baseline` success/failure cannot distinguish these cases and may clobber extended rows.

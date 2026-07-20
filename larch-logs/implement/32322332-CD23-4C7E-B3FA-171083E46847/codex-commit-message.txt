@@ -1,3 +1,0 @@
-Port design decompose and scout helpers to Python
-
-Add Python implementations for design decomposition, dynamic scout manifests, scope-anchor handoff, and findings classification headers. Wire callers to direct python/cli.py verbs, retarget harnesses to pytest, update docs/topology/migration tracking, and remove the absorbed shell scripts.

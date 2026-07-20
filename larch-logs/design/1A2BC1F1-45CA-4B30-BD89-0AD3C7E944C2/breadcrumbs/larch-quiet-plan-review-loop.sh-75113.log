@@ -1,4 +1,0 @@
-timing-ledger.sh: WARNING: vendor must be codex or cursor
-SCOUT_STATUS=empty
-SCOUT_MANIFEST=<TMPDIR>/scout-plan-manifest.json
-SCOUT_ARCHETYPE_COUNT=0

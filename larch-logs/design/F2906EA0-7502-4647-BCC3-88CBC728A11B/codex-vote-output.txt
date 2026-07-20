@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already requires holding the first lock until after the contending acquire and cleaning up with direct rmdir in finally, so this failure mode is already covered.
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs/linting.md has stale wording, but it is a test-coverage description rather than a required user/operator contract, so it does not make the unified startup-lock feature incomplete.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the dataclass rename does fan out through tests, but the approved full startup-lock rename and cleanup make it acceptable scope, not a necessary scope reduction.

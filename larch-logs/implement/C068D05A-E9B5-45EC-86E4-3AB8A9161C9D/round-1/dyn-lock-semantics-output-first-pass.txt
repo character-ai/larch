@@ -1,9 +1,0 @@
-Gathering the diff and lock-implementation sources for a read-only risk-integration review.
-
-Checking reference launcher pattern and whether cursor auth runs inside or outside the lock.
-
-Confirming doc wording in the changed `.md` files:
-
-Findings: one in-scope documentation precision issue (risk-integration); library/pre-existing semantics documented as out-of-scope. Creating the plan record.
-
-

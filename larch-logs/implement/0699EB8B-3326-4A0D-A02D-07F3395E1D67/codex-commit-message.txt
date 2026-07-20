@@ -1,7 +1,0 @@
-Harden reviewer auth probes against transient misses
-
-Retry Darwin Cursor keychain preflight reads, add a one-shot live Cursor fallback after preflight exit 2, and route cached false reviewer stamps through a shared negative-TTL policy.
-
-Document the new probe stamp and fallback contracts, and cover retry sequencing, suppressed retry stderr, Cursor fallback, setup failure, and Codex/Cursor negative-stamp behavior in the harnesses.
-
-Inline-triage rule 1: Refresh sibling test contracts while extending the harnesses.

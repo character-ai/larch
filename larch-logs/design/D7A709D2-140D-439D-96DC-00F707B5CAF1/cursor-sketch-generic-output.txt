@@ -1,5 +1,0 @@
-Exploring the harness and docs to compare the documented inventory with the actual test cases.
-Checking for count-validation tooling and whether the issue's "10 vs 16" still matches the repo.
-Checking how similar harness rows document parameterized loop cases:
-Noting the issue was filed at 10 vs 16 during the Step 7a implement run; on current `main` the drift is different—`docs/linting.md` says 18 while the harness runs 19 logical scenarios (21 `new_case` invocations including the sanitizer loop).
-

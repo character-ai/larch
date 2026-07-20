@@ -1,1 +1,0 @@
-Extract the shared verbosity-control rules into `skills/shared/verbosity-control.md`. Replace duplicated core prose in `/design` and `/implement` with a lightweight pointer while keeping each skill's preserved/suppressed lists and `/design` Step 3 carve-outs intact.

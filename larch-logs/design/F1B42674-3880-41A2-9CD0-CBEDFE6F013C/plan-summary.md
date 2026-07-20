@@ -1,1 +1,0 @@
-Move the six Python utilities from `scripts/` to flat `python/` modules behind `python/cli.py`. Repoint callers, port the three bash harnesses to pytest, de-yaml topology parsing, delete retired script/docs/harness paths, and record them in `python/migrated-scripts.tsv`.

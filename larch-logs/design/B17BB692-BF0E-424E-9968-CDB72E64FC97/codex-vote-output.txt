@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- real drift risk, but shared imported constants are not necessary for this feature if the planned replay tuples are updated consistently and tested
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- copying pip retry env would preserve robustness, but the pyright job still installs dependencies and gates CI without it
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

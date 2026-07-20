@@ -1,6 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: YES
-FINDING_4: NO -- informational confirmation of correctness, not a defect finding
-FINDING_5: EXONERATE -- legitimate gap, but a mock-gh harness for a 6-line guard in a dev-only release script is more ceremony than the risk warrants
-FINDING_6: NO -- not actionable as a finding; CI status at merge time is the stated resolution and requires no code or issue

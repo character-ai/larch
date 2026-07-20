@@ -1,5 +1,0 @@
-FINDING_1: EXONERATE -- the added review fixtures in Case 15 serve as explicit bump-isolation state (review satisfied so only bump advisory fires); plan divergence is real but the change is defensible and correct
-FINDING_2: NO -- removing dead tests for a retired feature is intentional; the plan's acceptance grep provides the ongoing guard against reintroduction
-FINDING_3: NO -- empty `steps_ran` in a committed log artifact is a trivial observation, not an actionable issue
-FINDING_4: EXONERATE -- the doc accurately describes remaining active boundaries; adding a cross-reference to the plan/clarify flow is a legitimate gap but beyond this plan's scope
-FINDING_5: NO -- removing a `rm -f` on a file that `make_impl_tmpdir` never creates is a no-op cleanup; not issue-worthy

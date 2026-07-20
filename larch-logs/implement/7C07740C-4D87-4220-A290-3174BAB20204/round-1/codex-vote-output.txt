@@ -1,8 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- Formatting-only inconsistency is too minor to raise.
-FINDING_4: YES
-OOS_1: EXONERATE -- The drift risk is real but already tracked by #2753.
-OOS_2: NO -- No concrete bug is shown without a product path that should set DESIGN_ONLY_DONE in ship-pr.
-OOS_3: EXONERATE -- The review-noise concern is real but repo policy permits committed run logs.
-OOS_4: NO -- This is a pre-existing trusted local state-file model, not a concrete new issue.

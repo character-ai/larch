@@ -1,1 +1,0 @@
-Add a root `ARCHITECTURAL_GUIDELINES.md`, a small Python reader, and prompt/runtime wiring so `/design` and `/implement` consult it only when present. Surface clean notes or deviations at the agreed gates, PR body, and final run summary. Keep absent-file behavior byte-quiet and test-covered.

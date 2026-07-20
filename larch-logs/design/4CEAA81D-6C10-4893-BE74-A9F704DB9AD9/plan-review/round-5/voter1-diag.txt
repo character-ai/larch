@@ -1,5 +1,0 @@
-voter1_rc=1
-output_bytes=      70
---- first 200 bytes of voter output ---
-You've hit your session limit · resets 12:50am (America/Los_Angeles)
-

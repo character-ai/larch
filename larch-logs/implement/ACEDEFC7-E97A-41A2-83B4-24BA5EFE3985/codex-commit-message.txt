@@ -1,3 +1,0 @@
-Restore in-flight review Gantt progress
-
-Render active-round Gantt charts for design Step 3 and implement Step 5, including first-round and mixed completed-plus-active states. Mirror Bash and Python fallback labels for aggregator, scout, and bare vendor task-kind rows while keeping manifest labels authoritative. Record terminal Step 3 postplan-failed timing from the persisted round start and tag Codex/Cursor plan autofix launches with explicit timing task kinds.

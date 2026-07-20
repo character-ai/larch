@@ -1,4 +1,0 @@
-skills/upgrade-larch/scripts/upgrade-larch.sh
-skills/upgrade-larch/scripts/upgrade-larch.md
-SECURITY.md
-docs/installation-and-setup.md

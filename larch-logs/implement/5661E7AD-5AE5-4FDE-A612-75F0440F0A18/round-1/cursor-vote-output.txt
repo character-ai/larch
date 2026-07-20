@@ -1,9 +1,0 @@
-Reading the ballot and locating diff/plan context to verify each finding.
-
-Reading diff/plan context and the cited code sections in the repo.
-
-Verifying the codex suite exports `RUN_EXTERNAL_AGENT_POLL_INTERVAL` and checking line 64 context:
-
-Creating the plan document and delivering the required vote lines.
-
-

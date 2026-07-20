@@ -1,7 +1,0 @@
-Add per-review-round timing reports
-
-Record additive timing-ledger round rows for implement Step 5 and design Step 3 review rounds, including deferred handoff helpers for prompt-side adjudication paths.
-
-Attach matching round rows to timing-report JSON only, preserve markdown/summary/terse output, and refresh design timing JSON before publishing logs.
-
-Extend focused shell harnesses for row layout, JSON attachment, helper counts, and markdown compatibility.

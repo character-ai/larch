@@ -1,5 +1,0 @@
-Port plan-quality helpers to Python CLI
-
-Add python/plan_quality.py and register plan-domain verbs for command parsing, validation, size checks, revision, auto-fix, optional trailers, and plan-goals composition. Cut the design and Step 1 call sites to invoke the Python CLI directly, preserve stable validator log paths, and retarget focused plan-quality coverage to pytest.
-
-Validation: pytest -q python/test_plan_quality.py python/test_cli.py; make py-lint; focused plan-quality Makefile targets; make agent-lint; make lint-retired-scripts.

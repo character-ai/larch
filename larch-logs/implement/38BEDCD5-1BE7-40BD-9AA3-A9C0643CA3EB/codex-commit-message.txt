@@ -1,5 +1,0 @@
-Anchor design plan review to staged issue scope
-
-Materialize a plan-review scope anchor from the originating feature text with prior plan blocks stripped, route it to scout, reviewers, voters, revise, and MainAgent handoff, and keep brainstorm context non-binding.
-
-Add canonical scope-reduction marker detection and preserve tagged findings through dedup and plan-mode aggregation without changing vote thresholds. Register focused harness coverage for plan stripping, marker detection, voter anchoring, run-step3 result env, and plan-mode aggregation.

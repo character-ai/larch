@@ -1,1 +1,0 @@
-Fix shared no-issues salvage first, then thread caller site labels through reviewer launch paths. Keep findings parsing strict. Add focused regressions for validator, Cursor normalization, collector status, plan-review dispatch, review dispatch, and implement launch logging.

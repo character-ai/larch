@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan requires a guideline to prescribe regression tests, not an implementation regression test in this documentation-only change.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- A non-exception clause and targeted lint are sensible execution details, but the plan already requires a Deviate-when section and the conditional concern does not make the scoped guideline incomplete.

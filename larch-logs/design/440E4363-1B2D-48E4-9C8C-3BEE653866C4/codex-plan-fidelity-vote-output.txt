@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The scoped diagnostic requirement is for crashed lanes; extending it to clean no-progress outcomes is out of scope.

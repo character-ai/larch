@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=4371
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4371
-ISSUE_1_ID=4661202048
-ISSUE_1_TITLE=[OOS] Secondary implement reference docs name ship-pr.sh and lint-fix-loop.sh as live callers
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

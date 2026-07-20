@@ -1,3 +1,0 @@
-Collapse design fences behind session launcher
-
-Add the per-PID /design launcher emitted by write-design-env, require a valid plugin root for launcher-backed sessions, and fail closed when launcher creation is unsafe. Collapse post-Step-0a /design fences and references to the launcher form while keeping Step 0a explicit. Extend session, structure, and pause/resume coverage for the new contract.

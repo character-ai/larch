@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- tuple alternative works but dataclass plus explicit field branching is deliberate, documented, and not required to deliver the stale-lock fix
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- system-wide git probe misimplements the spec's not-held guard and can block auto-clear of genuinely stale 0-byte locks when unrelated git runs elsewhere

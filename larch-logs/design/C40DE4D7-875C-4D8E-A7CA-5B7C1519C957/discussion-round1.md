@@ -1,9 +1,0 @@
-## Decision 1: Work item C — how to satisfy the #6516 Section E decision-table record
-- **Question**: Work item C / acceptance criterion 4 asks the plan to append the Section E KEEP/REPOINT/DELETE decision table to the body of the already-merged PR #6706. Should the plan mutate that merged PR, or record the table another way?
-- **Resolution**: Do NOT edit already-merged PR #6706. All new work must ship in a new PR. Satisfy C's intent by durably recording the Section E decision table in a committed markdown doc that ships in this issue's new PR. The literal wording of acceptance criterion 4 ("PR #6706's description carries the table") is therefore intentionally not met; the equivalent durable committed record satisfies #6516's audit intent. The table's exact committed home is a file-placement decision deferred to Step 2b drafting / plan review.
-- **Source**: user
-
-## Decision 2: Hard constraints and non-goals to preserve
-- **Question**: What must the plan not break or expand beyond?
-- **Resolution**: (1) Production timing defaults unchanged — `BGJOB_OWNER_GRACE_S=120` and `BGJOB_DAEMON_POLL_INTERVAL_S=1.0` stay the runtime defaults; only a test-only env override is added. (2) `scripts/test-bgjob.sh` stays ONE Bash 3.2-compatible script; no new shared Bash libraries. (3) No changes to bgjob daemon lifecycle, wait, registry, or result-env semantics beyond the test-only timing override. (4) Keep `python/tests/bgjob` in `py-test`; the real-process harness does not replace or duplicate the pytest suite as the only bgjob coverage. (5) The real-process harness must skip loudly where the sandbox blocks `ps` process-identity probes. (6) The env-via-config-constant baseline is regenerated via `make regen-env-via-config-constant-baseline`, never hand-edited.
-- **Source**: issue / codebase

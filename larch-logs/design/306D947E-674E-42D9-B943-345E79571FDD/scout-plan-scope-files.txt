@@ -1,2 +1,0 @@
-scripts/lint-readability-preamble.sh
-scripts/test-lint-readability-preamble.sh

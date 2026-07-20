@@ -1,7 +1,0 @@
-Implement tracking issue lifecycle Python CLI
-
-Add tracking-issue read/write/summary verbs to python/cli.py, including read modes, lifecycle rename, false-positive marking, append/create, and summary upsert parity.
-
-Cut design, implement, finalize, and ship callers over to the Python CLI and retire the migrated shell helpers and harness targets.
-
-Refresh tests, migration manifests, lint allowlists, and lifecycle documentation for the new tracking issue surface.

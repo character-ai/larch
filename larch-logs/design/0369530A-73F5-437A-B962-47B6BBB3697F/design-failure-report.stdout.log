@@ -1,3 +1,0 @@
-DESIGN_FAILURE_REPORT_DECISION=fallback-print-required
-DESIGN_FAILURE_REPORT_REASON=compose-status-missing
-DESIGN_FAILURE_REPORT_ARTIFACT=<TMPDIR>/design-failure-chat-print.md

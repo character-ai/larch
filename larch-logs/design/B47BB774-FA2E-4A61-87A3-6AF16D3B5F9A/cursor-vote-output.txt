@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already bypasses the secondary gate via parseable output; reconciling SUCCEEDED_SLOTS is not necessary
-FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already skips emit_zero_findings_branch when collect-time oos_count > 0 at the post-aggregation sink

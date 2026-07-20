@@ -1,1 +1,0 @@
-Propose a high-level implementation approach for this feature: <FEATURE_DESCRIPTION>. Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.

@@ -1,9 +1,0 @@
-APPLIED: FINDING_2
-APPLIED: FINDING_5
-APPLIED: FINDING_9All three accepted findings were applied:
-
-- **FINDING_2** — `test_admission.py` now stubs `_run` and asserts `gh remote-repo` argv instead of mocking `_github_remote_repo`.
-- **FINDING_5** — Phase 4 commands in `conflict-resolution.md` use `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ...`; the structural harness pins that string.
-- **FINDING_9** — The `test-step-7a.sh` checkpoint-probe stub emits `ROUTE=` and the green/conflict/failed/unexpected-rc cases assert it.
-
-`pytest` fork_env tests and the new ROUTE assertions pass. `test-step-7a.sh` still has one pre-existing failure (`argv error exits nonzero`), unrelated to these changes.

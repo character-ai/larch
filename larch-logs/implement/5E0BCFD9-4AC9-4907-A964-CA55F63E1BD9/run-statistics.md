@@ -1,3 +1,0 @@
-Run 5E0BCFD9-4AC9-4907-A964-CA55F63E1BD9: 0 OOS issues filed.
-
-Accepted-OOS items present in this run (1) were all security-category observations (cursor-specialist-security reviewer) routed to SECURITY.md's private disclosure flow per the OOS triage policy "Security findings are NEVER filed via this OOS path regardless of size". Specifically: FINDING_20 — pre-existing `redact_gh_error` fallback gap in `scripts/tracking-issue-write.sh` that may emit partially-raw token-bearing stderr on redactor failure (already public in committed run logs; recommended for central hardening separate from this PR).

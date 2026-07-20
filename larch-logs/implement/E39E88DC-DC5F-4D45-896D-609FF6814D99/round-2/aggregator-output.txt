@@ -1,3 +1,0 @@
-Synthesizing reviewer inputs into a merged finding list with stable IDs and verbatim suggested revisions. Calling CreatePlan to record the structured output for confirmation.
-
-

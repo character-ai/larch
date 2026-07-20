@@ -1,1 +1,0 @@
-Plan: fix `scripts/design-log-publish.sh` so final design-log publishes rebuild their commit on freshly fetched default branch state immediately before push, publish newer snapshots as incremental deltas when the run directory is already on default, and keep `--admin` merge behavior unchanged. Add shell harness regressions and update the script contract doc.

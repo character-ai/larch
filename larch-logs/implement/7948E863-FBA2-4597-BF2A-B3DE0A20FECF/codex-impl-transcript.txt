@@ -1,9 +1,0 @@
-Implemented Step 2b drafter-wrapper changes.
-
-**Manifest:** written with `status=complete`.
-
-**Tests run:**
-- `bash skills/design/scripts/test-design-step2b-drafter.sh`
-- `bash skills/design/scripts/test-design-postplan-emit.sh`
-- `bash scripts/test-design-structure.sh`
-- `bash scripts/relevant-checks.sh`

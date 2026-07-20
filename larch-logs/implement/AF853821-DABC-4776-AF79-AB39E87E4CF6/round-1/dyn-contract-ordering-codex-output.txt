@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/design/scripts/file-design-oos.sh:327-331` — `cmd_annotate` now treats a missing/empty `--issue-stdout-file` as a successful graceful skip, but `/design` Step 5b only redirects annotate stderr and only reacts to non-zero annotate exit codes, so the new `FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout` / `WARN=` stdout is not captured or surfaced by the caller (`skills/design/SKILL.md:1551-1560`). This conflicts with the newly documented mandatory stdout-write/annotate ordering: a violated contract can complete Step 5b as success, leave `oos-issues-created.md` absent, and rely on the final-summary sentinel fallback (`skills/design/scripts/render-final-summary.sh:345-353`) without any execution-issue diagnostic or retry signal. **Suggested fix:** Make empty/missing stdout an annotate failure for the `ready` path, or at minimum emit the warning on stderr and update Step 5b to capture/parse annotate stdout/status and append a Tool Failure/Warning before marking Step 5b complete.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

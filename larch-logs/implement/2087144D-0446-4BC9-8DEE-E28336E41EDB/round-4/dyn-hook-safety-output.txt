@@ -1,8 +1,0 @@
-Reviewing the branch diff and SessionStart hook changes for hook-safety.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **risk-integration** `hooks/hooks.json:55` — SessionStart already runs under a 5s hook timeout; the new probe adds another `git -C … sparse-checkout list` plus `sed`/`sort` on every jq+git-available start. That is unlikely to bite on a normal marketplace clone, but it marginally increases timeout risk compared to main. Worth watching if operators report SessionStart hook failures on slow or damaged installs.
-- **correctness** `scripts/sessionstart-health.sh:67` — The probe treats the marketplace as present only when `$marketplace_clone/.git` is a **directory**. Install layouts where `.git` is a gitfile pointer are skipped silently (fail-open, no advisory). That predates this change in spirit but is now the gate for sparse drift detection.
-- **code-quality** `scripts/test-sessionstart-health.sh:262-271` — Case 4b checks that drift output mentions `/upgrade-larch` but does not assert that `additionalContext` omits `$HOME`, sparse-checkout paths, or git stderr. The implementation uses a fixed advisory at `scripts/sessionstart-health.sh:84`, so this is harness hardening only, not a product leak.

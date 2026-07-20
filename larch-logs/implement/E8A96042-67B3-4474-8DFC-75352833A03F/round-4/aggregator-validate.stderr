@@ -1,8 +1,0 @@
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_1: [OUT_OF_SCOPE] `docs/linting.md` harness ')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] `plugin-root.env` sourcing')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Heredoc `EOF` delimiter co')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Non-2 bootstrap rc lacks f')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_5: [OUT_OF_SCOPE] `implement-bootstrap.md` m')
-warning: fix text for slot 'dyn-missing-file-coverage-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_6: [OUT_OF_SCOPE] `test-implement-structure.')
-warning: fix text for slot 'dyn-envelope-key-completeness-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_7: [OUT_OF_SCOPE] Harness `mktemp` uses hard')
-warning: fix text for slot 'dyn-shell-portability-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.')

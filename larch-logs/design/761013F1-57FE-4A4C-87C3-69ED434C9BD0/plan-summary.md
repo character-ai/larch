@@ -1,1 +1,0 @@
-Add two custom Python lint ratchets: one baseline-backed renderer golden-test coverage lint, and one no-baseline guidelines-note wrapper bypass lint. Wire both into `cli.py`, `make py-lint-checks-fast`, docs, and focused unit tests.

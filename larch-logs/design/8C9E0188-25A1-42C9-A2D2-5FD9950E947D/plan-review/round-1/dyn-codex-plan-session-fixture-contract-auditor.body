@@ -1,1 +1,0 @@
-Verify that the shared builders match production session and run-params contracts without masking missing-key behavior. Check that malformed, duplicate, symlinked, and precedence-sensitive fixtures remain explicit raw inputs. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

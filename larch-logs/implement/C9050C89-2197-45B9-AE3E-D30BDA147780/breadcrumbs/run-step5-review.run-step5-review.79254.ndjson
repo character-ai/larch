@@ -1,5 +1,0 @@
-larch:bc t=2026-05-26T20:03:47Z d=0 p=87158 s=review-and-fix.sh c=progress text=→ Step 5 round 1/5
-larch:bc t=2026-05-26T20:03:47Z d=0 p=87158 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
-larch:bc t=2026-05-26T20:03:48Z d=0 p=88289 s=dispatch-panel.sh c=progress text=→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)
-larch:bc t=2026-05-26T20:05:46Z d=0 p=87923 s=review-core.sh c=progress text=→ review: consolidating findings
-larch:bc t=2026-05-26T20:11:11Z d=0 p=87158 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 9 rejected (4 exonerated)

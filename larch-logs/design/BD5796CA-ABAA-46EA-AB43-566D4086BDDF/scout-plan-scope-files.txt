@@ -1,7 +1,0 @@
-scripts/lib-design-reentry-guard.sh
-scripts/lib-design-reentry-guard.md
-scripts/test-design-reentry-guard.sh
-scripts/test-design-reentry-guard.md
-skills/design/SKILL.md
-scripts/test-design-structure.sh
-Makefile

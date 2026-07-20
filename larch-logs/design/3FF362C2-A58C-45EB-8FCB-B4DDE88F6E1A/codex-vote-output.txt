@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already derives counts from durable artifacts; moving that derivation into Python is extra robustness, not necessary for the scoped tally-only fix.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Python-side counting would reduce prompt-side error risk, but the plan already removes the hardcoded 0/0 and counts durable headings, so this does not clear the necessity gate.

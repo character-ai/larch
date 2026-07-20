@@ -1,3 +1,0 @@
-FINDING_12: EXONERATE -- Accurate scope note, but post-merge tracking issue would add little beyond existing changelog and plan coverage.
-FINDING_19: EXONERATE -- Pre-existing swallow behavior is plausible; the write-up is muddled and not distinct enough to warrant a separate tracking issue.
-FINDING_20: EXONERATE -- Minor test-comment clarity only; not worth filing or blocking on.

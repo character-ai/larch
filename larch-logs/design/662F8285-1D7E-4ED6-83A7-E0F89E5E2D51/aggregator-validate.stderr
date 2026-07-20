@@ -1,3 +1,0 @@
-warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: 'Wrap validation as `if ! jq -e \'.archetypes | type == "array"\' "$output"; then r')
-warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: 'Wire validation like `launch-codex-drafter.sh`: gate on `SCOUT_STATUS` first, th')
-warning: fix text for slot 'Cursor-Innovation' in FINDING_2 not traceable to scoped input (first 80 chars: 'Reject `parse-failed`, `missing`, `empty`, and `unknown` `SCOUT_STATUS` before a')

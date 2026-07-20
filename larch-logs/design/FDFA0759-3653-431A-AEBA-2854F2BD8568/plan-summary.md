@@ -1,1 +1,0 @@
-Unify repository slug discovery on `gh.resolve_repo` across design, issue, and state workflows. Preserve caller-specific validation and error contracts. Remove dead resolution code and update focused tests for canonical resolution, Git remote fallback, and unresolved-repository behavior.

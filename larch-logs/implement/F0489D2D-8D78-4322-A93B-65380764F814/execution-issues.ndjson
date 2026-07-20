@@ -1,1 +1,0 @@
-{"phase":"implement","step":"7a","category":"External Reviewer Issues","source":"execution-issues.md pre-bump","source_sha256":"da6886b6e388915aa512eee55b481050f81318151c6e48daf9b3d7ba0f772ded","body":"\n- **findings aggregator**: merged output failed validation; leaving <TMPDIR>/round-2/findings.md unchanged. See round-2/aggregator-validate.stderr in the committed run log.\n"}

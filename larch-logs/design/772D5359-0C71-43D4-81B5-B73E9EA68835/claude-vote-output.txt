@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan edge-cases line 158 explicitly states "Ledger missing: emit the raw rejected body, framed only when --report-framing is passed"; the no-ledger path is covered
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan line 68 and edge-case line 161 explicitly require printing heading/annotation before cat in the shell fallback; the concern is already addressed
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- flag-vs-wrapper-wrap is a design preference; the duplication is real but does not clear the impact floor for a tracked issue
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- substantively duplicates OOS_2; a separate issue fails the overhead test when OOS_2 covers the same root cause

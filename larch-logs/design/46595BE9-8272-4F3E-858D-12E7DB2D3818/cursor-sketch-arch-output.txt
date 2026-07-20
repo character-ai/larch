@@ -1,7 +1,0 @@
-Exploring the codebase to map current `/design` flow, title conventions, and log-commit patterns before drafting an architectural plan.
-
-Confirming: `strip_lifecycle_prefix` is implemented in `tracking-issue-write.sh` (not `lib-title-markers.sh`); we'll note both in the plan. Checking `larch_log_validate_slug` for allowed skill names:
-
-Architectural analysis complete. Creating the plan document.
-
-

@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The issue is real, but the approved scope explicitly excludes an unforgeable-secret/run-registry trust-model redesign; the planned containment and run-identity parity is the proportionate fix.

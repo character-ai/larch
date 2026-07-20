@@ -1,5 +1,0 @@
-{
-  "schema_version": "1",
-  "status": "bailed",
-  "bail_reason": "protected-path-edit-required-out-of-scope"
-}

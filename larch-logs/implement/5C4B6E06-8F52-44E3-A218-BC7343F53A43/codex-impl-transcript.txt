@@ -1,5 +1,0 @@
-Implemented the plan and wrote `manifest.json` with `status=complete`.
-
-Tests run:
-- `bash scripts/test-render-review-phase-detail.sh`
-- Relevant pre-commit hooks and `agent-lint` checks.

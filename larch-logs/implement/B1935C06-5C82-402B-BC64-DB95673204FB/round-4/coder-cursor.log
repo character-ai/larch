@@ -1,7 +1,0 @@
-**All eight findings are applied.** The review-fix pass covered clarify hard-halt staging, teardown-gate coverage, publish-tail and validator-autofix harnesses, Tier B create-path validation, Step 5c sidecar handoff, operator-sentinel scoping, and sensitive-corpus leak tests.
-
-**Tests verified:** `test-design-failure-report.sh`, `test-design-step5c.sh`, `test-design-step-validator-autofix.sh`, `test-file-failure-report-cross-repo.sh`, and `test-design-structure.sh` all pass.
-
-The earlier background run that exited 141 was a debug probe (`head` on a long pipeline), not a harness failure. Later runs confirmed the fixes.
-
-**Note:** Four temporary debug scripts under `skills/design/scripts/` (`_dbg*.sh`, `_debug-step5c.sh`) were left behind when deletion was blocked. You can remove them manually if you want a clean tree.

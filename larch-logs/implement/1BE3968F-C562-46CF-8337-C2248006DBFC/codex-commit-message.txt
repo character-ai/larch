@@ -1,3 +1,0 @@
-Normalize review round caps to five
-
-Set /design Step 3 and /implement Step 5 to a fixed hard ceiling of five rounds. Remove the vestigial /design round-cap flag/env chain, delete degraded-round cap inflation plumbing, and update the related docs and harnesses.

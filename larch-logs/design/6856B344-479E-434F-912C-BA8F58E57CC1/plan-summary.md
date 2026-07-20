@@ -1,1 +1,0 @@
-Plan: add one `/design` anti-pattern rule for `AskUserQuestion` no-response fallbacks, pin it in `scripts/test-design-structure.sh`, and keep the design skill closure ratchet green by trimming nearby prose if needed.

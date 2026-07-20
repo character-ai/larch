@@ -1,9 +1,0 @@
-APPLIED: FINDING_15
-APPLIED: FINDING_19Both review findings were applied:
-
-- **FINDING_15**: `step3_loop_persist_round_start_s` now delegates to `python/cli.py plan-review persist-round-start-s`, which writes with `O_CREAT|O_EXCL|O_NOFOLLOW`. A TOCTOU harness test was added.
-- **FINDING_19**: The live-loop harness now has an `EXIT` trap and a bounded 5s wait instead of an unbounded `wait`.
-
-**Targeted verification passed**: embedded parity tests, `test-design-step3-review.sh`, and `make py-lint`.
-
-**Full `make py-test`**: 5 failures, all in pre-existing waterfall dispatcher tests (`test_embedded_waterfall_dispatchers_*`, `test_plan_review_panel.py` voter dispatch). None are related to these changes.

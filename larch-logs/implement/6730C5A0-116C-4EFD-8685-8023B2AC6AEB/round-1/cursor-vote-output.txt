@@ -1,7 +1,0 @@
-Reading the ballot and verifying against provided context.
-
-FINDING_1: NO -- restates the implemented diff as a “concern” without identifying any defect or follow-up.
-FINDING_2: NO -- commit hashes and subjects match session `commit-log.txt`; enumeration is not an actionable review defect.
-FINDING_3: NO -- factual consistency check (direct `actions/cache@` uses at 54/101/109/155/198 are `@v5`; comment at line 24 still documents transitive `actions/cache@v4` per plan) and not a problem to fix.
-FINDING_4: EXONERATE -- transitive `actions/cache@v4` in the comment is accurate and matches `plan-context.txt`; a tracking issue would be churn for an optional doc nit.
-FINDING_5: EXONERATE -- allowlist/policy checks are environment-specific ops, not a proportionate code change or mandatory issue from this bump alone.

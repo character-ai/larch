@@ -1,6 +1,0 @@
-Reviewing the branch diff and commit history, focusing on JSON generation in the timing report renderer.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **`scripts/timing-report.sh:381-415`** — `emit_round_array` stores dedup/sort state in `match_idx` and `round_match_pos` without listing them in the awk function-local list, so they are global across calls. Cleanup at the end of each call makes current output correct, but a future early-return path could leave stale state and corrupt later `rounds` arrays. **Suggested fix:** add `match_idx` and `round_match_pos` to the function-local declaration list (or reset them at function entry) so round aggregation stays re-entrant-safe.

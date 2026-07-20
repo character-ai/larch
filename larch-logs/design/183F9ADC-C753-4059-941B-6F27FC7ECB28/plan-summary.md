@@ -1,1 +1,0 @@
-Plan: promote architectural heading regexes to shared constants, repoint `/learn-from-bugs` coverage indexing, add a hard-ban lint for duplicate convention regexes, and cover the reader/indexer parity with focused tests.

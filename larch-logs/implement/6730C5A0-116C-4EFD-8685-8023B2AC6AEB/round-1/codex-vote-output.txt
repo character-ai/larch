@@ -1,5 +1,0 @@
-FINDING_1: NO -- This is a change summary, not a defect or actionable review finding.
-FINDING_2: NO -- This only lists commits and does not identify a code issue.
-FINDING_3: NO -- This confirms the intended state rather than reporting a problem.
-FINDING_4: EXONERATE -- The wording could be mildly clearer, but the comment is accurate and not worth a tracking issue.
-FINDING_5: NO -- Speculative allowlist risk; the same workflow already contains multiple direct actions/cache@v5 uses.

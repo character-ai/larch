@@ -1,2 +1,0 @@
-warning: fix text for slot 'dyn-dyn-fixture-contract' in FINDING_4 not traceable to scoped input (first 80 chars: 'Validate session_id and any SESSION_ID override with the same `^[A-Za-z0-9_.-]{1')
-warning: fix text for slot 'dyn-dyn-fixture-contract' in FINDING_9 not traceable to scoped input (first 80 chars: 'After building omit_set, reject any omit key not present in baseline_order (or i')

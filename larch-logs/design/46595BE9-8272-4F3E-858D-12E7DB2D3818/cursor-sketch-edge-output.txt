@@ -1,5 +1,0 @@
-Exploring the codebase read-only to map the design flow, title markers, and log-commit patterns for an edge-case–focused implementation plan.
-
-Noting: `strip_lifecycle_prefix` and lifecycle stripping live in [`scripts/tracking-issue-write.sh`](scripts/tracking-issue-write.sh) (not [`scripts/lib-title-markers.sh`](scripts/lib-title-markers.sh)); the latter’s `insert_signal_marker` must handle `[PLANNED]` for false-positive / bracket insertion consistency.
-
-

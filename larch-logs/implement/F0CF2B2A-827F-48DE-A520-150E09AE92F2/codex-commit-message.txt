@@ -1,5 +1,0 @@
-Render rich design plan-review progress
-
-Add /design Step 3 progress reporting that reuses the review-detail renderer while respecting live plan-review artifacts and freshness anchors. Count fresh reviewer outputs from round or root manifests, handle retry sidecars, and keep non-Step 3 labels on generic progress.
-
-Cover design progress edge cases in python progress report tests.

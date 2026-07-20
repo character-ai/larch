@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Extract shared bump-from-type helper (e.g. apply-bump `_apply_bump_type`) and ca')
-warning: fix text for slot 'dyn-classify-bump-head-coordination-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Add a “Compare commit” line using `HEAD_COMPARE` (short OID + subject) when `--h')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Consolidate semver helpers in a follow-up.  ---  ### OOS_2: [OUT_OF_SCOPE] Legac')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Deprecate or clearly fence legacy script in docs only.  ---  ### OOS_3: [OUT_OF_')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Out of scope; optional follow-up retry in create-pr/ci-wait  ---  ### OOS_4: [OU')

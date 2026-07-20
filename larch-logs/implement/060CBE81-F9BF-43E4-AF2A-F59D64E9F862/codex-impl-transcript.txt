@@ -1,9 +1,0 @@
-Implemented and wrote the required manifest.
-
-**Verified:**
-- `bash scripts/test-design-structure.sh`
-- `bash skills/design/scripts/test-emit-design-plan-preview.sh`
-- `make lint-bash32`
-- `git diff --check`
-
-Manifest status: **complete**.

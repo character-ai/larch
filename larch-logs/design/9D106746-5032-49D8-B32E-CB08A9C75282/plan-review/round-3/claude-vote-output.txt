@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sub-step 4 exits showing N/A mode in final summary is pre-existing behavior (classification was never bound before run-params.json write even under the old tier gate); approach/implementation gap is real but the fix adds complexity disproportionate to the cosmetic impact

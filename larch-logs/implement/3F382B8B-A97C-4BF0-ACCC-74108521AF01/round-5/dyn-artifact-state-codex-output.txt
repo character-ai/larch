@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/design/scripts/persist-retally-step3-env.sh:162-195` — Successful MainAgent re-tally refreshes `LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, and scope-anchor state, but leaves `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `NIT_ACCEPTED_COUNT`, and `NON_NIT_ACCEPTED_COUNT` unchanged unless the re-tally failed. The pre-fallback `main-agent-vote-required` path commonly has these counts at `0`, while `tally-plan-review.sh` has just populated `accepted-plan-findings.md`, so both `.step3-plan-review-result.env` and `.step3-review-result.env` can report zero accepted findings after an accepted MainAgent adjudication. **Suggested fix:** On `--tally-plan-review-status ok`, recompute all accepted/severity counts from the refreshed `accepted-plan-findings.md` before `_rewrite_env_file`, write/replace those keys in both env files, and add a harness case where MainAgent re-tally produces accepted findings from an env that previously had zero counts.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

@@ -1,3 +1,0 @@
-Checking existing registry patterns in `python/cli.py` so the revised plan matches the codebase.
-## Plan
-

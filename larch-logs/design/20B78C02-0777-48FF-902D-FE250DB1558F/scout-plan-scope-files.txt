@@ -1,7 +1,0 @@
-scripts/write-session-env.sh
-scripts/write-session-env.md
-scripts/implement-bootstrap.sh
-skills/implement/SKILL.md
-scripts/test-implement-timing-rehydration.sh
-scripts/test-implement-timing-rehydration.md
-scripts/test-session-env-roundtrip.sh

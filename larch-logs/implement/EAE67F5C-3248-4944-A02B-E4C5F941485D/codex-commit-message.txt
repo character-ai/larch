@@ -1,5 +1,0 @@
-Normalize CI bail tokens and stall recovery
-
-Add config-backed CI wait and decide bail tokens, fail closed on missing launcher exit metadata, and prefer launcher .done sidecars before captured text. Normalize CI wait token output across shell and Python paths, preserve ci-status-stale transient classification, and harden stall recovery issue-env normalization plus durable clear-stall layers.
-
-Cover launcher resolution, CI wait tokens, transient classifiers, and stall recovery durable-layer behavior with focused Python and shell harnesses.

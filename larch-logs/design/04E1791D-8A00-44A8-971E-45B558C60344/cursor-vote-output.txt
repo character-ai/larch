@@ -1,6 +1,0 @@
-Reading the ballot and verifying cited code paths.
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already adds stderr_sink to _review_emit_launcher_result and forwards it at all six call sites; finding targets current code, not a missing plan change
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- current resolver ordering gap is real but plan already mandates per-candidate retry/NS-retry before .launch-stderr
-FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- implement sidecar-masking defect is real but plan already specifies compose-with-sidecar, resolver selection, and stderr-tail regeneration
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicates FINDING_1; plan already covers stderr_sink threading and _compose_failure_diag before classification
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already orders derived retry before NS-retry per candidate and pins primary retry-over-NS-retry in tests

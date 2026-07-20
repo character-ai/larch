@@ -1,1 +1,0 @@
-Compress `skills/shared/design-background-wait.md` in place, preserve all anchors and pinned literals, then regenerate `python/skill-closure-baseline.json`. Validate with the two pinned harnesses and the skill-closure ratchet.

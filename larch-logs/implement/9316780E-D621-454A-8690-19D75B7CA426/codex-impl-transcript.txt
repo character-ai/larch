@@ -1,7 +1,0 @@
-Implemented and wrote the manifest.
-
-**Verified:**
-- `300 passed` for focused pytest set.
-
-**Known failure:**
-- `make py-lint` fails on style diagnostics in the new migration modules. This is recorded in `todos_left`.

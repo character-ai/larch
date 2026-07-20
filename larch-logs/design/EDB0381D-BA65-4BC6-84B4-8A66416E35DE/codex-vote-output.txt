@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- suppression pair ergonomics are unspecified, but stricter per-fence suppression would still deliver the required lint and justified suppressions
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- exact carve-out signals need care, but removing required pause/recovery/task-notification carve-outs conflicts with the scoped acceptance criteria

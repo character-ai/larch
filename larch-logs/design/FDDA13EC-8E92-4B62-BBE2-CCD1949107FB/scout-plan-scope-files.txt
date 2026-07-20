@@ -1,7 +1,0 @@
-scripts/lib-cursor-auth.sh
-scripts/check-reviewers.sh
-scripts/test-lib-cursor-auth.sh
-scripts/test-check-reviewers.sh
-scripts/check-reviewers.md
-scripts/lib-cursor-auth.md
-docs/configuration-and-permissions.md

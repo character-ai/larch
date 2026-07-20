@@ -1,6 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/design/SKILL.md:1727-1743` — The new validator auto-fix path passes `"$CODEX_PRESENT"` / `"$CURSOR_PRESENT"` directly and only documents branches for `AUTOFIX_STATUS=ok|exhausted|unavailable`; if a resumed/legacy session lacks those env exports, `skills/design/scripts/auto-fix-plan-commands.sh:68-70` exits 2 with no `AUTOFIX_STATUS`, leaving the shared handler with no defined fallback prompt/log path. **Suggested fix:** Pass `${CODEX_PRESENT:-false}` and `${CURSOR_PRESENT:-false}`, and add an invalid/missing-status branch that logs a Warning and falls through to the existing Fix-and-retry / Override / Cancel prompt.
-- **risk-integration** `skills/design/scripts/snapshot-plan-round.sh:127-134` — `revert-round` mutates `plan.txt`, deletes `plan-after-round-N`, and then updates counters; any late failure can return nonzero after partially reverting state, while `skills/design/SKILL.md:1350-1355` tells the operator the applied plan was kept. That can leave plan/cursor/count/log state inconsistent after a failed Revert. **Suggested fix:** Make the revert transactional: prepare temp copies for plan/count/cursor first, atomically install them as a unit, delete the round snapshot last, and emit a distinct partial-failure status if rollback cannot be guaranteed.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

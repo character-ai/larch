@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicates prior neutral FINDING_5 without materially new evidence.
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- test request is tied to the same retry-path cap issue already neutral in prior FINDING_5.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate prompt text is at most token overhead and the proposed reduction would remove surfaces the scope explicitly includes.

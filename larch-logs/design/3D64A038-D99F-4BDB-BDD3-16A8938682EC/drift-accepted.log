@@ -1,1 +1,0 @@
-Plan-size drift accepted by operator at Gate B round 3: DIFF_LINES=2150 vs BASELINE_DIFF_LINES=890 (ratio 2.42, multiple 2); PLAN_LINES=134 vs 99 (1.35). Scope growth driven by issue #3713 "audit ALL vendor-agent sites" + review-panel correctness/security fixes across rounds 1-3.

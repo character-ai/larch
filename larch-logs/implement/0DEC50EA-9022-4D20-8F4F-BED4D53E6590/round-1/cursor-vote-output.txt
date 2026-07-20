@@ -1,6 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan acceptance defers PATCH bump and CHANGELOG to /implement Step 8; absent at Step 5 review is expected workflow sequencing
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Shared heading name is real but contracts differ by skill file; implement prose is scoped to implement rehydration only
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- No post-awk fail-closed halt predates this change across all inline sites; doc subsection mirrors existing executable pattern
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Same heading collision as FINDING_2; design prelude predates this PR and both contracts live in distinct skills
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan explicitly forbade touching 43 inline sites; Step 18 prose already references the shared rehydration pattern
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Adjacent duplicate awk blocks are an intentional plan tradeoff for worked example plus canonical reference

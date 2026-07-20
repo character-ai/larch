@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already requires distinct one-down and both-down status outcomes using available presence values
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already requires the python3 stub to record LARCH_TOKEN_SESSION_ID and assert the child sees it unset
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- status copy scoped to /implement is not a material backlog issue for this OOS host
-OOS_4: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- nit-level possible prose trimming does not clear the OOS issue-overhead gate
-OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates OOS_1 and OOS_2 rather than needing a separate tracked item

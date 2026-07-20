@@ -1,4 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan.txt:52 already mandates Step 0 awk retarget to wrapper modes; failure mode is implementer slip not a missing plan fix
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan.txt:52-53 pins ≥3 set+e fences while line 37 defines only two executable wrapper call sites
-OOS_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bootstrap-routing.env dual transport is an explicit #3298 design choice, not a defect warranting a follow-up issue
-OOS_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- When-to-load drift is real but already covered by the plan rider; a separate issue would duplicate #3298 scope

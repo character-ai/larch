@@ -1,1 +1,0 @@
-{"phase":"implement","step":"11","category":"execution-issues","source_sha256":"402f5881fd15a1ba7081a75f387e1cf01cab450f4577be83c5af3e9c28744260","body":"### Tool Failures⏎⏎- **Step bump — apply-bump.sh failed (exit 1)**:⏎  ```⏎APPLIED=false⏎ERROR=origin/main has already bumped to 27.6.8; re-classify needed⏎  ```⏎"}

@@ -1,3 +1,0 @@
-Add Step 3 MainAgent vote wrapper
-
-Move /design Step 3 MainAgent adjudication mechanics into a pre/post wrapper, delegate skill prose to the new contract, and cover pause handling, safe result-env reads, tally-error routing, and loop phase persistence with an offline harness.

@@ -1,1 +1,0 @@
-These computations should be done by script, not by skill .md text.

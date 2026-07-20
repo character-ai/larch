@@ -1,1 +1,0 @@
-Replace seven Bash structure harnesses with one parameterized pytest suite and shared pin tables. Preserve every assertion through stable IDs or named tests. Keep focused Make targets and shard membership stable. Remove all retired-path references so residual-Bash and retired-script lints pass.

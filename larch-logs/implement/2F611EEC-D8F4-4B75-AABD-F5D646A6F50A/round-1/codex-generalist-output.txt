@@ -1,3 +1,0 @@
-### In-Scope Findings
-
-1. **Nit** `code-quality` `docs/linting.md:22`, `docs/linting.md:167-257` — The docs still describe CI as running `make test-harnesses-1` through `make test-harnesses-13`, and many command-table rows still name old exact shard assignments after the Makefile rebalance. I found 54 exact `via test-harnesses-N` mismatches against the new Makefile shard map, for example `test-upgrade-larch` now lives in `test-harnesses-9` but the docs say `test-harnesses-13`. Suggested fix: update line 22 to `test-harnesses-16`, and either refresh all exact per-target shard references from the Makefile or replace them with the existing generic `test-harnesses-N shard partition` wording to avoid future drift.

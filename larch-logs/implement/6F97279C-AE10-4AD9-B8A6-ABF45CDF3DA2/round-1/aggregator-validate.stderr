@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_21 not traceable to scoped input (first 80 chars: 'Port test-parse-design-argv.sh cases into test_design_argv.py.  ### OOS_1: [OUT_')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_21 not traceable to scoped input (first 80 chars: 'Update user-visible strings to name Python CLI.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_21 not traceable to scoped input (first 80 chars: 'Update operator strings to python/cli.py design publish.  ### OOS_2: [OUT_OF_SCO')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_21 not traceable to scoped input (first 80 chars: 'Fix to python/cli.py design parse-argv.')

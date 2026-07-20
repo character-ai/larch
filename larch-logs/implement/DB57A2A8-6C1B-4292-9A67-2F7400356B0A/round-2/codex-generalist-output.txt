@@ -1,8 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `correctness` `scripts/test-launch-review.sh:1003`  
-   The new non-transient observability test expects the legacy header `retries=1`, but `append_launch_failure` now always receives `"$TRANSIENT_ATTEMPT"` and passes `--transient-retry-count` when it is non-empty (`scripts/launch-review.sh:548`, `scripts/launch-review.sh:958`). For a non-transient failure, `TRANSIENT_ATTEMPT=1`, so `append-tool-failure.sh:143-144` will emit `auth-retries=1, transient-retries=1`, making this assertion fail. Decide the contract: either only pass the transient count after an actual transient retry fired, or update this test to expect `auth-retries=1, transient-retries=1`.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.

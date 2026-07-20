@@ -1,1 +1,0 @@
-{"phase":"implement","step":"18","category":"Warnings","source":"execution-issues.md safety-net","source_sha256":"eb1ef127799f158f2a3c6c047ceb8d8fc2c8e0da9a19f9c7d25129c7cc000707","body":"\n- **Step 18 — session-transcript status=source-file-missing:** Claude source file was empty or not a regular file; transcript capture skipped.\n"}

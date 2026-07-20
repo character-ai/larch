@@ -1,3 +1,0 @@
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add explicit 100.64.0.0/10 checks in `_is_private_ip()` for literal hosts and re')
-warning: fix text for slot 'dyn-callsite-cutover-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Retarget both references to `python/research.py` (or inline the reason vocabular')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Update comment when touching that file.  ### OOS_2: [OUT_OF_SCOPE] Makefile budg')

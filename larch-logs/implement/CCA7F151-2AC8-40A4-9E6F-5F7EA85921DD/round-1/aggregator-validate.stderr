@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Forward subprocess stderr verbatim on success, or skip the purpose prefix when s')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Preserve the raw `TOOL` field in the NDJSON record while still skipping active-l')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: "Guard both token commands with `if ! ...; then printf 'WARNING: ...' >&2; fi` so")
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: "Guard both token commands with `if ! ...; then printf 'WARNING: ...' >&2; fi` so")
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Implement recovery ingestion in `python/ship.py` or update acceptance criteria t')

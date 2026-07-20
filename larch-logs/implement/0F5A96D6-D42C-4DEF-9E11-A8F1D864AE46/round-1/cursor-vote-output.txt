@@ -1,7 +1,0 @@
-Reading the ballot file to vote on each finding.
-
-Verifying key claims in the codebase so votes are grounded in the implementation.
-
-Verified `is_head_divergence_recoverable` matches any error containing both `local HEAD` and `does not match PR head OID`, which includes merge-pr’s refusal line (line 233) and the post–force-push recovery line (line 207). Submitting the required vote lines and a concise plan record.
-
-

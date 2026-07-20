@@ -1,4 +1,0 @@
-round	tool	slot	label	accepted_count	weighted_accepted_count	rejected_count	total_count
-1	cursor	correctness	cursor-specialist-correctness-output.txt	2	2	4	7
-1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	1	1	5	7
-1	cursor	testing	cursor-specialist-testing-output.txt	1	1	1	5

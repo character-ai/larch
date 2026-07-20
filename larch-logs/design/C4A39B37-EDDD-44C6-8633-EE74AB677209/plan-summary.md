@@ -1,1 +1,0 @@
-Port the 11 `/design` Step-0/1 wrapper bodies into `python/design_lifecycle.py`, keep the launcher transport, repoint SKILL fences to `python3 python/cli.py design <verb>`, delete retired shell/docs harness siblings, and move wrapper regression coverage into pytest.

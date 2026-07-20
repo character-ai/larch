@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- Legitimate regression-coverage tradeoff, but the plan intentionally removed dead manifest fixtures and extra guard complexity is not warranted here.
-FINDING_3: EXONERATE -- The empty log metadata is real but out of scope and not worth filing as a future issue from this feature review.
-FINDING_4: NO -- `sessionstart-health.md` is scoped to active SessionStart advisories, and omitting unrelated plan/clarify guidance is not a defect.
-FINDING_5: EXONERATE -- The unplanned cleanup removal is real but harmless because the helper does not create `manifest.env`, so it is not issue-worthy.

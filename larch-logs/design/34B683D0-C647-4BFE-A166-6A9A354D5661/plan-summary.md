@@ -1,1 +1,0 @@
-Port the three `/design` terminal/failure/final-summary shell helpers into `python/design_lifecycle.py`, wire the CLI and launcher mappings, cut real callers to in-process Python, then delete the retired shell/docs/harness/debug files while preserving output contracts.

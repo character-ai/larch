@@ -1,1 +1,0 @@
-Add `scripts/implement-preflight.sh`, add its offline harness, and shrink `/implement` Preflight items 1-3 plus emergency fallback prose to one Bash call. Keep audit and semantic judgment prompt-side.

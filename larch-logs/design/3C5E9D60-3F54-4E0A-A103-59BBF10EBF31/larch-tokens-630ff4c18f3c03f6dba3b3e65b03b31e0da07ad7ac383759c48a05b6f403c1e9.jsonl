@@ -1,6 +1,0 @@
-{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-06-13T04:02:08Z"}
-{"type":"vendor","vendor":"codex","input":67227,"output":5444,"cache_read":345728,"cache_create":0,"total":418399,"raw":"codex_plan_draft","ts":"2026-06-13T04:46:41Z","model":"gpt-5.5"}
-{"type":"vendor","vendor":"cursor","input":107605,"output":10126,"cache_read":972680,"cache_create":0,"total":1090411,"raw":"cursor_review","ts":"2026-06-13T04:50:23Z"}
-{"type":"vendor","vendor":"cursor","input":118817,"output":11958,"cache_read":1266664,"cache_create":0,"total":1397439,"raw":"cursor_review","ts":"2026-06-13T04:50:44Z"}
-{"type":"vendor","vendor":"cursor","input":120502,"output":14713,"cache_read":1159786,"cache_create":0,"total":1295001,"raw":"cursor_review","ts":"2026-06-13T04:51:31Z"}
-{"type":"vendor","vendor":"cursor","input":132448,"output":17903,"cache_read":1362020,"cache_create":0,"total":1512371,"raw":"cursor_review","ts":"2026-06-13T04:52:18Z"}

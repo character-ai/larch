@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly labels this "legacy env-key strip case" and sets OPENAI_API_KEY intentionally; reviewer misidentifies the intended auth branch
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `rm -rf "$codex_home"` at line 332 of review-and-fix.sh runs unconditionally before cursor fallback regardless of auth-prep failure; cleanup is guaranteed without a snapshot assertion
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the subshell explicitly unsets OPENAI_API_KEY, making the env-key path unreachable; negative assertion adds marginal confidence at the cost of test complexity
-FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `rm -rf "$codex_home"` at line 332 is unconditional and covers dispatch-failure cleanup; the coverage gap is real but cleanup is already guaranteed
-FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan step 2 adds new separate fixtures for new cases; existing multiline content in strip-edge-config.toml is not being moved, so the count-of-one assertion remains valid

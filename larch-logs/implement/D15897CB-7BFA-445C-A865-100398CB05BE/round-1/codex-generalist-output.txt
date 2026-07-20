@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/implement/scripts/generate-code-flow-diagram.sh:40-41` — Step 7a’s runtime token/timing marks still emit `Step 7a — code flow diagram`, so a run will show `7a: diagrams` in the breadcrumb but keep attributing the same step window to the old partial name in token/timing reports. That preserves the operator-facing inconsistency this rename is meant to remove, and `scripts/test-implement-structure.sh:202-203` currently pins the stale label. **Suggested fix:** Rename both ledger marks to `Step 7a — diagrams`, then update `scripts/test-implement-structure.sh:202-203` and `skills/implement/scripts/generate-code-flow-diagram.md:6` to match.
-
-### Out-of-Scope Observations
-No out-of-scope observations.

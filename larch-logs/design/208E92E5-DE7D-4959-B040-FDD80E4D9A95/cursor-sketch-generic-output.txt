@@ -1,4 +1,0 @@
-Exploring the codebase for the five follow-up items and related sanitization/SKIP_REASON patterns.
-Checking for an existing shared-token helper pattern and `step-7a` summary placeholder conventions.
-Creating the implementation plan from the codebase review.
-

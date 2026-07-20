@@ -1,9 +1,0 @@
-Gathering the branch diff and commit list for a read-only review.
-
-Tracing how finding bodies are built and what `extract_category` receives — the test fixtures may not include `## ` lines.
-
-Checking how `record_field_by_id` works and whether bold-link edge cases are covered:
-
-Confirming `flush_pending` prepends `## $pending_title`, so `extract_category` reads the banner-derived title (not raw `##` in the body). Validation matches the issue intent. Creating the plan document and delivering the full structured review.
-
-

@@ -1,3 +1,0 @@
-`findings.md` still has no `### FINDING_N:` headings (only the aggregator preamble and blank lines). `review-core-aggregate.env` records `MERGED_COUNT=0`, matching that empty in-scope merge.
-
-So there are **no vote lines** to print for the ballot path you gave. Out-of-scope items live in `oos.md` (`FINDING_9`, `15`, `21`, `23`, `35`, `36`); say if you want those voted the same way even though they were not in `findings.md`.

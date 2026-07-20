@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `.github/workflows/ci.yaml:49-59,150-160` — The branch changes the lint and shellcheck jobs from Python 3.12 to 3.11, but their shared pre-commit cache key is still only `pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}`. Existing default-branch caches built under Python 3.12 can be restored into these 3.11 jobs; depending on pre-commit’s env reuse, hooks may either keep running from a stale 3.12 virtualenv or rebuild 3.11 envs on every run without ever saving them on exact-key hits. That undermines the new 3.11 CI baseline and can also reintroduce timeout/cache churn in the 5-minute shellcheck job. **Suggested fix:** Include the resolved setup-python version in the pre-commit cache key for both jobs, e.g. give setup-python an `id` and key on `pre-commit-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('.pre-commit-config.yaml') }}` while keeping a broad restore key if desired.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

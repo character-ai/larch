@@ -1,4 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the explicit allow clause is genuinely redundant with the broad `*-output.txt` arm, but the plan's rationale (contract documentation + regression protection) has merit; a comment-only fix is simpler but the plan's approach isn't clearly harmful
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

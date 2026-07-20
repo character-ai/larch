@@ -1,8 +1,0 @@
-python/rebase.py
-python/test_rebase.py
-python/config.py
-python/git.py
-python/test_git.py
-python/agents.py
-python/test_agents.py
-python/README.md

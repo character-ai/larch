@@ -1,3 +1,0 @@
-**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**
-launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
-launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800

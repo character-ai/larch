@@ -1,1 +1,0 @@
-Add one always-eligible Cursor/auto plan-fidelity reviewer lane to the `/review` and `/implement` Step 5 panel for TRIVIAL, MODERATE, and HARD tiers. Preserve existing Cursor composer-2.5 lanes and Codex lanes, and add tests plus docs for the new panel shape.

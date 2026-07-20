@@ -1,3 +1,0 @@
-larch:bc t=2026-05-29T00:10:12Z d=0 p=90483 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
-larch:bc t=2026-05-29T00:10:12Z d=0 p=90939 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
-larch:bc t=2026-05-29T00:10:16Z d=0 p=90939 s=ci-wait.sh c=warn text=⚠ Bailing: fix-attempts-exhausted (4s, 0 polls)

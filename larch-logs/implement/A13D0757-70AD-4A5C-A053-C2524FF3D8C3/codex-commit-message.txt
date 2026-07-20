@@ -1,3 +1,0 @@
-Document breadcrumb stream redaction contract
-
-Move breadcrumb redaction policy into a dedicated SECURITY.md section and align run-log docs with the shared publication helper.

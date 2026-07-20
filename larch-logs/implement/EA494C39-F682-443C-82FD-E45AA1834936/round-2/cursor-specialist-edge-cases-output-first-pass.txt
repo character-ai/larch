@@ -1,7 +1,0 @@
-Gathering the branch diff and commit list for a read-only review.
-
-Searching the large diff for relevant file sections and reading key files for full context.
-
-Synthesizing findings from the cached diff, `git log` output, and targeted reads of the updated workspace files. Calling CreatePlan to record the review outcome.
-
-

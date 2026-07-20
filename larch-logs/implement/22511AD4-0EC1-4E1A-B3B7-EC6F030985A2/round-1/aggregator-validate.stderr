@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add a stub harness for design-step-final-summary.sh that asserts one marker pair')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Align acceptance wording or extend markers to route wrappers in a follow-up.  ##')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Extract a shared sourced helper when touch budget allows.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Extract shared helper or add structure test that both copies stay identical.  ##')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add assert_marked_summary_matches to the rc=1 stub case. *(Note: source text ref')
-warning: fix text for slot 'dyn-summary-marker-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Worth a negative assertion per the plan edge case for rc=4 when pre-existing `fi')

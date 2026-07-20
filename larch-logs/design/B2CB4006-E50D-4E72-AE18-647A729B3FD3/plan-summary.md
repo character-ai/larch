@@ -1,1 +1,0 @@
-Scope is Bucket 1 only. Update Makefile pytest harness targets so the 9 listed files no longer run as duplicate full-file targets, add those files to the strict-partition guard, and defer shard rebalance until fresh CI timings exist on main.

@@ -1,3 +1,0 @@
-/implement final report should report lines of code excluding larch run logs and lines of larch logs separately, merged in the PR
-
-These computations should be done by script, not by skill .md text.

@@ -1,7 +1,0 @@
-plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
-plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
-plan-dyn-xref-sweep	dyn-cursor-plan-xref-sweep	cursor	<TMPDIR>/cursor-plan-dyn-xref-sweep-output.txt	ok
-plan-arch	codex-plan-arch	cursor	<TMPDIR>/codex-primary-plan-arch-output.txt	reused	cursor-plan-arch
-plan-edge	codex-plan-edge	cursor	<TMPDIR>/codex-primary-plan-edge-output.txt	reused	cursor-plan-edge
-plan-innovation	codex-plan-innovation	cursor	<TMPDIR>/codex-primary-plan-innovation-output-phase2.txt	ok
-plan-dyn-xref-sweep	dyn-codex-plan-xref-sweep	cursor	<TMPDIR>/codex-primary-plan-dyn-xref-sweep-output.txt	reused	dyn-cursor-plan-xref-sweep

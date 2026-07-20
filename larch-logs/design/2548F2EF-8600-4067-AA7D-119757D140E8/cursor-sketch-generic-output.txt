@@ -1,7 +1,0 @@
-Exploring the design skill, plan-handling scripts, and similar validation patterns to draft an implementation plan.
-
-Checking how plans cite scripts and whether `composed-plan.md` includes fenced blocks from both sections.
-
-Gathering findings: Step 2b runs `design-driver.sh` with `EMIT_PLAN` immediately after writing `plan.txt`; Step 5c composes `composed-plan.md` then redacts and calls `plan-block-write.sh`. Trivial tier maps to `sketch_budget=0` + `review_budget=quick` in `run-params.json` ([flags.md](skills/design/references/flags.md)). Failure logging uses `append-tool-failure.sh` to `execution-issues.md` under `Warnings` — suitable for validator overrides.
-
-

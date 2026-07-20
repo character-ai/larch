@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already strips leading --urgent before the empty-description guard in the parser contract
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- step-7a.md doc drift is real but DIAGRAM_REASON ships without a contract-doc edit
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same stripping-before-empty-check rule is already in plan.txt; bare /bug --urgent is blocked post-strip
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- run-dir failure log is optional secondary; execution-issues tail is the primary durable diagnostic per plan
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- diagram failure plus 7a.r rebase skip leaves enriched warnings unflushed to committed logs
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- trivial contract-doc sync belongs in the same change, not a separate tracked issue

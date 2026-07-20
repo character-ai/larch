@@ -1,1 +1,0 @@
-Port `scripts/collect-agent-results.sh` into `python/collect_results.py`, register `python3 python/cli.py agent collect-results`, retarget callers/docs/tests, delete the old shell collector and three bash harnesses, and preserve the existing collector stdout record grammar.

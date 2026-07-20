@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- prompt-only Gate B preservation matches the plan; mechanical rejection is hardening beyond the core MAY_UPDATE coverage fix and the warn-only advisory path.

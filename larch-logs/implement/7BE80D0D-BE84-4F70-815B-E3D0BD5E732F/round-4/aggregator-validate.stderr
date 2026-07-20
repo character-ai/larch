@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Return separate codes for timeout vs launch failure; set `*_PROBE_TIMED_OUT` onl')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Replace `_invoke_health_gate_check_reviewers` with a direct `check_reviewers(ski')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add capsys assertions for `RESPONSE_FILE=<output>` on both tests, matching the e')

@@ -1,9 +1,0 @@
-**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**
-cp: <TMPDIR>/plan-review/round-1/revise/codex-output-candidate.patch and <TMPDIR>/plan-review/round-1/revise/codex-output-candidate.patch are identical (not copied).
-**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**
-launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
-cp: <TMPDIR>/plan-review/round-2/revise/claude-output-candidate.patch and <TMPDIR>/plan-review/round-2/revise/claude-output-candidate.patch are identical (not copied).
-launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
-launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
-**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**
-cp: <TMPDIR>/plan-review/round-4/revise/cursor-output-candidate.patch and <TMPDIR>/plan-review/round-4/revise/cursor-output-candidate.patch are identical (not copied).

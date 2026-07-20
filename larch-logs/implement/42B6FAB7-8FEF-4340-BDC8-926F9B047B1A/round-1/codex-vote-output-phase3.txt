@@ -1,1 +1,0 @@
-The ballot at `<TMPDIR>/round-1/findings.md` contains no `### FINDING_N:` items — only aggregator narrative text. There are no ballot items to vote on.

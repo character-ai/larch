@@ -1,8 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- real but latent baseline-integrity hardening is not required by the drift-advisory feature.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real edge-case robustness issue, but invalid/unwritable TMPDIR handling is not necessary for the feature path.
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- does not describe a concrete problem worth filing.
-FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the described scout-note concerns are explicitly not defects.

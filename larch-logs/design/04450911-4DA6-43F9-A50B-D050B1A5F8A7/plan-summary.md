@@ -1,1 +1,0 @@
-Tighten the Step 5 result-env classifier so `BGJOB_RC=0` only reuses cached results when `STEP5_REVIEW_STATUS=complete`. Add a regression case for `BGJOB_RC=0` plus `STEP5_REVIEW_STATUS=stall` that must clear the cache and fresh-start bgjob.

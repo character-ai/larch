@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-- **correctness** `scripts/check-reviewers.sh:134-136` — In `larch_poll_probe_pid`, after the timeout wall-clock threshold is reached, the code issues SIGTERM (`kill "$probe_pid" 2>/dev/null || true`) and then immediately calls `wait "$probe_pid" 2>/dev/null || true`. The `|| true` suppresses the non-zero exit code under `set -e` but does **not** prevent `wait` from blocking — `wait` always blocks until the child process terminates. If `cursor agent` or `codex exec` ignores SIGTERM (which is possible for processes that install their own signal handlers), `wait` hangs indefinitely and `_poll_rc=124` is never set. The timeout guarantee is therefore illusory when the probed binary is unresponsive to SIGTERM, defeating the stated purpose of `LARCH_PROBE_TIMEOUT_SECONDS`. **Suggested fix:** Escalate to SIGKILL after a brief grace window, or use a non-blocking reap: after `kill "$probe_pid"`, poll `kill -0 "$probe_pid"` for ~2 s with short sleeps; if the process is still alive, issue `kill -9 "$probe_pid" 2>/dev/null || true` before calling `wait`. For example: `kill "$probe_pid" 2>/dev/null || true; for _g in 1 2; do kill -0 "$probe_pid" 2>/dev/null || break; sleep 1; done; kill -9 "$probe_pid" 2>/dev/null || true; wait "$probe_pid" 2>/dev/null || true; _poll_rc=124`.
-
-### Out-of-Scope Observations
-
-NO_ISSUES_FOUND

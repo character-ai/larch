@@ -1,6 +1,0 @@
-Done. `manifest.json` was written with `status=complete`.
-
-Validation run notes:
-- `bash -n` passed for edited shell scripts.
-- `git diff --check` passed.
-- `scripts/relevant-checks.sh` started and showed shellcheck, markdownlint, and agent-lint passing before the tool capture timed out.

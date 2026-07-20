@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Add an offline harness that stubs `IMPLEMENT_TMPDIR`, exercises `manifest.json` ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Tighten post-driver predicate to require `PR_NUMBER` or verified OOS checkpoint ')

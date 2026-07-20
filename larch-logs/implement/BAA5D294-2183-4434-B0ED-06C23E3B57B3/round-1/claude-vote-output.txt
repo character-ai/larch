@@ -1,1 +1,0 @@
-The ballot file contains no `FINDING_N` items — it has only the aggregator's preamble with no structured findings. There are no items to vote on.

@@ -1,3 +1,0 @@
-Add structured See full plan approval option
-
-Update /design Gate A and Gate C approval contracts so Gate A uses the See full plan label and Gate C exposes See full plan as a structured primary option. Preserve the Gate C Other escape path without mutating its option set, update the large-plan summary note, and pin the new wording in the design structure and preview tests.

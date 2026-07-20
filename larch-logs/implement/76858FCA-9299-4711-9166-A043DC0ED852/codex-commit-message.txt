@@ -1,7 +1,0 @@
-Recover missing Step 5c composed plans
-
-Treat a missing or empty Step 5c composed plan as a recoverable validator defect, including the result-env and stdout fallback KVs that the orchestrator already understands.
-
-Update Step 5c recovery guidance so this file-precondition defect recomposes the plan before retrying and does not offer Override. Keep Override and --skip-validate limited to ordinary composed-plan validator defects.
-
-Cover the missing-composed-plan path and the --skip-validate ordering regression in the design-publish harness.

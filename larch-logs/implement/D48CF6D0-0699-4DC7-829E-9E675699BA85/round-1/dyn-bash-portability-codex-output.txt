@@ -1,6 +1,0 @@
-### In-Scope Findings
-- **code-quality** `skills/design/scripts/auto-fix-plan-commands.sh:162-167` — The Cursor auto-fix path sources `scripts/lib-cursor-launcher-common.sh` while the global `SCRIPT_DIR` still points at `skills/design/scripts` from `skills/design/scripts/auto-fix-plan-commands.sh:21-22`; that library resolves `agent-model-args.sh` and `lib-cursor-auth.sh` via `SCRIPT_DIR` in `scripts/lib-cursor-launcher-common.sh:16-36`, so real Cursor attempts will look for nonexistent design-script siblings and fail before dispatch. **Suggested fix:** Preserve a separate design script directory variable, set `SCRIPT_DIR="$PLUGIN_ROOT/scripts"` before sourcing/calling Cursor launcher helpers, or route through an existing Cursor launcher that owns that setup.
-- **code-quality** `skills/design/SKILL.md:1226-1231` — The new jq-missing fallback uses bare `grep` in an orchestrator Bash fence; repo guidance/lint exists because Claude Code’s grep wrapper can abort a Bash block even in conditional probes, so default Gate B mode detection can fail on systems without jq when the key is absent/false. **Suggested fix:** Change the probe to `elif command grep -Eq ... "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then` to bypass the wrapper, matching the repository’s safe-grep convention.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

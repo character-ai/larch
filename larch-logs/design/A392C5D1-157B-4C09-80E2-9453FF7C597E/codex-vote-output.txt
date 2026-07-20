@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- adding a new CLI review verb does not change the hard-coded shell array length, so this harness would not fail for the stated reason
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- legitimate implementation guidance, but the scoped feature explicitly includes porting reviewer-prune and does not require this exact lift strategy

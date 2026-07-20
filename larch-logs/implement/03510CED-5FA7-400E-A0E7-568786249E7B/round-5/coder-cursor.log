@@ -1,5 +1,0 @@
-All 15 review findings were applied across `ci_agentic_fix.py`, `ci_monitor.py`, `rebase.py`, and `checks.py`, with matching test updates.
-
-The earlier `make py-test` failures came from `claude_present=None` now probing for Claude on PATH, which broke tests that assumed Claude was skipped when the flag was omitted. Those tests were updated to pass `claude_present=False` where they target codex/cursor-only paths.
-
-**Current status:** `make py-test` passes — **3059 passed**, 49 skipped.

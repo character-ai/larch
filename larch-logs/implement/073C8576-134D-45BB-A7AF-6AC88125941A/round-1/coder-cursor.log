@@ -1,2 +1,0 @@
-APPLIED: FINDING_2
-SKIPPED: FINDING_3 - 55 split-module functions remain over complexity thresholds; baseline rows cannot be removed without decomposing those functions

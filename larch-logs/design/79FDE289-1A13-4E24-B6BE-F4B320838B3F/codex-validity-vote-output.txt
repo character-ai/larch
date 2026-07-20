@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already requires deterministic compact NDJSON, terminal newlines, path strings, ordering, and pinned output.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan already covers canonical finding/OOS blocks, label variants, optional fields, and explicit noncanonical literals.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- Optional framing, exact spacing, and representative full-string output are already planned.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Broader row-shape contracts exceed the canonical fixture migration required by this piece.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The four files are intentionally MAY_UPDATE rather than among the supplied plan's firm headings.

@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already says "Export LARCH_TIMING_LEDGER (and IMPLEMENT_TMPDIR / REVIEW_TMPDIR as appropriate) into the launch-codex-exec subprocess env"; since resolve_timing_ledger_path honors LARCH_TIMING_LEDGER first (timing.py:319-321), correctly exporting LARCH_TIMING_LEDGER makes stale IMPLEMENT_TMPDIR irrelevant; the finding adds defensive emphasis but not a missing plan requirement
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit-severity DRY concern does not clear the OOS materiality gate; impact floor (pure visual label drift on future renames) is too low for a tracked issue

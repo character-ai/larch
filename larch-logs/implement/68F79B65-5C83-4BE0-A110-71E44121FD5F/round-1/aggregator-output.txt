@@ -1,3 +1,0 @@
-Aggregating the supplied reviewer findings into a merged structured list. Verifying a few code references read-only to normalize concerns accurately.
-Producing the normalized aggregator output as the plan deliverable.
-

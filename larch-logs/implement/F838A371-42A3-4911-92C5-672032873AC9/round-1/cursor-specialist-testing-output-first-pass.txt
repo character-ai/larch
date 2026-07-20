@@ -1,7 +1,0 @@
-Gathering the precomputed diff and commit list for a read-only review focused on tests, CI, and regression risk.
-
-Searching the diff for test, script, and CI-relevant hunks; sampling key files.
-
-Having reviewed the precomputed diff and commit history: one commit (`e4ba3198`) removes `--auto` / `auto_mode` across skills, scripts, docs, and harnesses; tests were updated coherently. Calling CreatePlan to satisfy plan-mode with a concise review summary.
-
-

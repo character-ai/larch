@@ -1,1 +1,0 @@
-Add Step 3 cleanup at three layers: keep loop descendants in the wrapper-owned process group, kill active waterfall child PIDs on exit, and add a tmpdir-scoped Python cleanup command for residual descendants. Document the large-variable heredoc hazard.

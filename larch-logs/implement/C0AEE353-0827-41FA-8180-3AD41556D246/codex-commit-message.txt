@@ -1,3 +1,0 @@
-Reuse design scout filter in Step 2
-
-Delegate external coder scout sidecar normalization to the design scout wrapper so reserved static plan-review slugs are filtered consistently. Cover mixed, all-reserved, and invalid sidecar paths while keeping wrapper stdout out of the Step 2 dispatcher envelope.

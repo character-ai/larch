@@ -1,3 +1,0 @@
-# [BUG] larch skills should create [BUG] title prefix issues, not [Bug]
-
-Sometimes, larch skills auto-create issues with title prefix [Bug].  Instead, the one and only bug issue title prefix in larch must be [BUG], i.e., all caps.

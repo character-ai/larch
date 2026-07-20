@@ -1,2 +1,0 @@
-warning: fix text for slot 'codex-specialist-testing' in FINDING_6 not traceable to scoped input (first 80 chars: 'Re-read both original dependency sets before removal, compare them to the manife')
-warning: fix text for slot 'cursor-specialist-testing' in FINDING_14 not traceable to scoped input (first 80 chars: 'Add tests for stale sentinel rejection, changed-live-graph abort, and interrupte')

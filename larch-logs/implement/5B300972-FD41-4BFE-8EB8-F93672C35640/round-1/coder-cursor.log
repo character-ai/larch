@@ -1,7 +1,0 @@
-The background `make py-test` run finished with **1 failure** in `test_refresh_issue_counts_section_heading_inside_fence_is_boundary`. That was from an initial regression test shape that didn’t match the unclosed-fence scenario; the fixture was corrected afterward.
-
-Both review fixes are in place:
-- **FINDING_2**: `_strip_plan_provenance_headers` now skips optional size trailers first, then strips only the terminal provenance block.
-- **FINDING_6**: `_count_issue_sections` treats section headings as hard boundaries even inside fences.
-
-The targeted tests for both findings pass now. The full-suite failure reflects the earlier test version, not the current code.

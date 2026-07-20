@@ -1,3 +1,0 @@
-Prevent orphaned Step 3 review loops
-
-Run the Step 3 review loop in a job-control process group, trap wrapper exits to terminate the loop group, and perform final teardown after the wait. Fail closed before launch with a fresh panel-failed envelope when monitor mode cannot be verified, and pin the orphan-prevention invariants in the design structure test.

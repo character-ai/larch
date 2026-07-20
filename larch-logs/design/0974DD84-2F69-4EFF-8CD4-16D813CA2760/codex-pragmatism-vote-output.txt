@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan already requires rejecting patch-name collisions before trusting patch artifacts.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The testing strategy explicitly mandates the artifact-path regression test.

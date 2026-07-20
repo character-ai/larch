@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- EOF append satisfies the current feature because these call sites render the sentinel at EOF; note_lines/trailing-marker concerns are future-proofing, not necessary for this bug fix.

@@ -1,2 +1,0 @@
-{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-3/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.2/agents/code-reviewer.md"}
-{"slot": "dyn-retirement-cleanup", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-retirement-cleanup-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-retirement-cleanup-prompt.md", "weight": 1, "focus_area": "architecture", "archetype_ref": "4caa263f2a2d"}

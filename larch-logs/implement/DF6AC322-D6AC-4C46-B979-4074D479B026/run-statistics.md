@@ -1,1 +1,0 @@
-Run DF6AC322-D6AC-4C46-B979-4074D479B026 (issue #3504, surgical variant): 11 accepted [OUT_OF_SCOPE] review findings triaged manually against open issues — 4 added to #3552 §D (FINDING_8/22/23/6b), 2 latent recorded-not-filed (FINDING_15/6a, operator-directed), 5 moot discarded (reverted-scope artifacts). 0 new GitHub issues auto-filed.

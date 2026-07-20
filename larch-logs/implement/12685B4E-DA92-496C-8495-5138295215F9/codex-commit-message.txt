@@ -1,3 +1,0 @@
-Fix token sidecar ledger hygiene
-
-Clean active-ledger environments for Bash and Python sidecar ingestion, gate Codex drafter TOKEN_RECORD output on a real stable sidecar, and add fresh Codex/Cursor CI-fix fallback ingestion. Document validation-phase sidecar ingestion parity with research retry candidate expansion and cover the affected paths with focused harnesses.

@@ -1,9 +1,0 @@
-Reading the ballot and locating diff/plan context to verify each finding.
-
-Verifying ballot claims against the repo and session diff context.
-
-Checking `drop-bump-commit.md` for Guard 2 documentation and whether `redact-tmpdir-paths.sh` is invoked in `create-pr.sh`.
-
-Verified: `drop-bump-commit.sh` uses `case` with `[0-9]*` and `.` matching any character (lines 96–97); header and `drop-bump-commit.md` claim anchored semver regex. `Makefile` has no `test-step-8a-changelog` target. `create-pr.sh` sets `REDACT_TMPDIR_HELPER` but builds `GH_CREATE_ARGV` manually (lines 170–171) without piping through the helper. `apply-bump.sh` emits “rebase in progress” for any unmerged paths (lines 97–106). `implement-finalize.sh` uses `[ -n "$fallback_issue_num" ]` so `0` is treated as present (lines 697–699). `run_postbump` returns 0 after `postbump_tail changelog-failed` (lines 966–968). Test 19 uses `grep -q "2"`. Creating the required plan artifact with vote lines.
-
-

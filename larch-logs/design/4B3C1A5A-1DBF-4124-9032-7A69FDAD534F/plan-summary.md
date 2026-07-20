@@ -1,1 +1,0 @@
-Port dev-only release, audit-runs, combine-issues, and analyze-issues bash surfaces to stdlib Python CLI verbs. Hard-cut all callers, replace shell harnesses with pytest, delete retired scripts plus contract siblings except `classify-bump.md`, and append retired paths to `python/migrated-scripts.tsv`.

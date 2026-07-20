@@ -1,9 +1,0 @@
-scripts/ci-failed-jobs.sh
-scripts/ci-failed-jobs.md
-scripts/test-ci-failed-jobs.sh
-scripts/lint-fix-loop.sh
-scripts/lint-fix-loop.md
-scripts/ship-pr.sh
-scripts/ship-pr.md
-scripts/test-ship-pr.sh
-scripts/test-ship-pr-fix-loop-2632.inc.sh

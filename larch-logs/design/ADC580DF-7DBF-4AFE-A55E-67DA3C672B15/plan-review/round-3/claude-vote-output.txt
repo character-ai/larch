@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- WARN replay is not SKILL.md-gated on rc 4 per the plan; this gap is plausible but the plan's anti-halt carve-outs adequately constrain the continuation path without a dedicated WARN-replay bullet
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the stale-env quarantine is already enumerated in Edge cases and plan test-design-publish additions; a dedicated harness case adds coverage but the plan is not materially incomplete without it

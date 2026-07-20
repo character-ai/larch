@@ -1,4 +1,0 @@
-## Decision 1: Public consumer docs in scope
-- **Question**: Should the plan update the canonical consumer docs that describe the `/implement` Step 5 voter panel (`README.md`, `docs/review-agents.md`, `docs/skills.md`), which plan-review FINDING_7 flagged as stale?
-- **Resolution**: Yes. Add all three to the plan. Replace the `Claude opus + Codex + Cursor` + shrink-not-backfill Step 5 voter wording with the three Cursor archetype voters plus the single-Claude floor fallback. Preserve the `3-judge panel on every round` docs-sync anchor in each (all three are `test-quick-mode-docs-sync.sh` POS targets — together with `skills/implement/SKILL.md` and `step-5-review.sh`, the five POS targets the plan already references). Do not touch the unchanged `/design` plan-review, `/implement` conflict-review, or `/research` validation panel rows.
-- **Source**: user

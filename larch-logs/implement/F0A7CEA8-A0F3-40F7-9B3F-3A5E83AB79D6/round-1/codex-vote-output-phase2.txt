@@ -1,9 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- first outer attempt still hits git push; per-attempt pinning exceeds #3405 plan acceptance
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan only requires vendor launcher ran, not full tier sequence
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate stubs are maintainability polish outside this PR scope
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- new comment matches plan; dirty-tree line is optional Phase 7 nuance
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- post-commit HEAD advance is valid hardening but beyond plan’s STALLED pin
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- hypothetical breakage only if waterfall semantics change; not worth filing now
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- empty-delta and real push failure share detail="push failed"; worth a diagnostic follow-up issue
-OOS_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real pre-existing behavior already deferred to Phase 7, not #3405
-OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional non-port documented in plan/README; not an actionable defect

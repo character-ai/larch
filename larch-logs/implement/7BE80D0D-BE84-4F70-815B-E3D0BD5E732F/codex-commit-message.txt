@@ -1,7 +1,0 @@
-Port reviewer probes and negotiation to Python
-
-Add agent check-reviewers and agent run-negotiation-round, retarget live callers, and retire the migrated Bash scripts and harnesses.
-
-Move probe, health-gate, negotiation, retired-script, and auth-allowlist coverage into pytest and updated shell harness stubs.
-
-Inline-triage rule 2: Keep retired-script lint fast after the retired manifest grows.

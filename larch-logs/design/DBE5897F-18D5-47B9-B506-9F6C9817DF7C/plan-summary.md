@@ -1,1 +1,0 @@
-Add a small auto-resolution loop inside `scripts/rebase-checkpoint-probe.sh` for `larch-logs/*` conflicts only. Keep `rebase-push.sh` unchanged. Update the wrapper docs and harness to cover larch-log-only, mixed, nested, and failure cases.

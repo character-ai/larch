@@ -1,9 +1,0 @@
-Reading the ballot and verifying findings against the plan and repo.
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already mandates shared parse_violation_record normalization and consistent cwd=python for both generation and compare
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- copied global ignores are inert under explicit --select; minimal audit config is scope reduction not a necessity gate
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- extend-base refactor reduces drift risk but is not required for the ratchet to work with --select
-OOS_1: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- same-scan generation plus CI fail-closed already bounds desync; a generator is maintenance convenience not backlog-priority work
-OOS_2: NO CORRECTNESS=uncertain SEVERITY=latent QUALITY=weak UNCERTAIN=true -- hypothetical future ruff decorator-line reporting, not a plausible trigger on the current execution path
-OOS_3: NO CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- plan intentionally documents manual shrink cleanup; a regen CLI is helpful later but not necessary to ship the ratchet

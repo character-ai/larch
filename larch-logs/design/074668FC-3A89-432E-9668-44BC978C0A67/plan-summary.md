@@ -1,1 +1,0 @@
-Implement the 9-item tooling cleanup with local mappings, harnesses, parity checks, OOS checkpoint ordering, upgrade cleanup patterns, and `/bug` catalog entries. Keep `python/design_legacy.py` on the broad Python fallback because it has no dedicated test file. Item 6 is verify-only unless the live Step 5 literal drifts.

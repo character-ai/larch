@@ -1,2 +1,0 @@
-python/progress_report.py
-python/test_progress_report.py

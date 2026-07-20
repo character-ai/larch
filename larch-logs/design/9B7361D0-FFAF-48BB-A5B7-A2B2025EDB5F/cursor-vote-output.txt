@@ -1,8 +1,0 @@
-Reading the ballot and verifying referenced files against the repo.
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Item 4 already requires reconciling copy with the binding gate; status.sh presence KVs suffice without plan-level BOTH_DOWN render rules.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Item 5 already requires exercising line 192 outside env -i; stub assertion mechanics are implementer detail not plan necessity.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- legitimate polish but low materiality for a separate issue; fold into Item 4 copy edit.
-OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- bash-path wording cleanup belongs in the Item 2 NEVER #5 edit, not a standalone tracked issue.
-OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

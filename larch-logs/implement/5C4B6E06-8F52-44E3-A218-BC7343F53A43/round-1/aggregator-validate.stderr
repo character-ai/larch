@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add `if grep -Fq -- \'cursor-ci-test\' "$OUT"; then fail ...` (or assert absence o')
-warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Remove the hard-coded `.sh`/`.md` prefilter or derive it from all retired basena')

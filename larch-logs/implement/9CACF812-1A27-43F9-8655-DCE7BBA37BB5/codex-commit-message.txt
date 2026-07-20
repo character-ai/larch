@@ -1,5 +1,0 @@
-Harden PR finalization follow-ups
-
-Align ship-pr vendor verification with per-job unfixable bails, name merge-pr UNKNOWN retry budgets, and short-circuit post-force-push BEHIND recovery.
-
-Cover empty merge-state recovery, post-force-push UNKNOWN-to-BEHIND, vendor non-fixable verification, and lint-fix-loop same-branch parent mismatch.

@@ -1,4 +1,0 @@
-skills/design/scripts/render-final-summary.sh
-scripts/test-render-final-summary-bash32.sh
-scripts/test-render-final-summary-bash32.md
-Makefile

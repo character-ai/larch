@@ -1,9 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_3
-APPLIED: FINDING_7All three accepted findings were applied:
-
-- **FINDING_1**: Added a late `result_env_publish_ok_is_true` re-check in `design-publish.sh` immediately before `render-final-summary.sh`, so a concurrent success coerces `SUMMARY_OUTCOME=approved` instead of rendering `failed-publish`.
-- **FINDING_3**: Removed the `REMOTE_BRANCH_EXISTS` gate on the final-mode default-branch `ls-tree` idempotency probe in `design-log-publish.sh`, so retries succeed even with stale remote log-branch refs.
-- **FINDING_7**: Added dual-invocation lock regressions (`success-first/failure-second` and `failure-first/success-second`) to `test-design-publish.sh`.
-
-`test-design-publish.sh` and `test-design-log-publish.sh` both pass. The stale-excluded republish test was adjusted to match the new idempotent behavior when the run tree is already on `origin/main`.

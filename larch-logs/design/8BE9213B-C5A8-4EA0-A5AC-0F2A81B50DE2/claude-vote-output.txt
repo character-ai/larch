@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already requires "every key from that marker block" (which includes NO_ADMIN_FALLBACK) and adds it to _ALLOWED_SHIP_STATE_KEYS; test assertion is already covered by "assert the exact ordered key set"
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan cites step-2-entry.sh/step-5-review.sh patterns as canonical model; BRANCH_NAME/ISSUE_NUMBER are in session-env.sh per existing stall branch; session-env source order is derivable from established conventions
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- current plan.txt step-8-seed-initial.md says "Explicitly forbid scripts/read-session-env-key.sh"; both docs and structure-test say FORBID; no contradiction exists in the current plan revision
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

@@ -1,2 +1,0 @@
-scripts/design-log-publish.sh
-scripts/design-log-publish.md

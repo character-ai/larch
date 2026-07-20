@@ -1,7 +1,0 @@
-### FINDING_1: Plan should record the empirical PPID verification
-- **Concern**: The plan's core assumption — `$PPID` in a Bash-tool subshell = Claude's PID, stable across calls — was previously inferred from documentation. I empirically confirmed it during quick-mode self-review (PPID=870, parent_cmd=`claude`, identical across two calls). The plan should record this verification so the implementer and reviewers don't have to re-derive it.
-- **Proposed resolution**: Add a one-line note to the **Approach** section: "Empirically verified on Claude Code (Opus 4.7): from inside a Bash-tool subshell, `$PPID` resolves directly to Claude's PID (parent process name = `claude`) and is identical across separate Bash tool calls in the same session."
-
-### FINDING_2: Plan should explicitly cite the cross-skill audit result
-- **Concern**: Issue 2599 acceptance criterion 4 calls for auditing `/implement`, `/research`, `/review` for similar mechanisms. The Step 0c grep + `ls scripts/write-*-current-env.sh` already confirmed only `/design` uses this symlink, but the plan does not explicitly state that audit result.
-- **Proposed resolution**: Add one line under **Approach**: "Cross-skill audit (grep + ls): only `/design` uses a machine-wide env symlink; `/implement`, `/research`, `/review` use other handoff patterns (session-env files passed by absolute path via `SESSION_ENV_PATH`) and are unaffected."

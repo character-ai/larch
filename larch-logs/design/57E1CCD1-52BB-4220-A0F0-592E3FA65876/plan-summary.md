@@ -1,1 +1,0 @@
-Fold Step 2b prelude and drafter-success postplan handling into `design-step2b-drafter.sh`. Update `SKILL.md` so the drafter-success path skips the retained terminal postplan fence, while inline fallback still runs it exactly once.

@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan only requires truthy launch_calls, not tier-sequence proof
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate stubs are real but extracting a helper exceeds this PR's minimal scope
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- comment meets plan spec; dirty-tree detail belongs in Phase 7/OOS follow-up
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- frozen HEAD stub gap is real but tightening it adds fixture complexity beyond the plan's STALLED pin
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=true -- hypothetical break if waterfall semantics change; pre-existing test pattern, not a concrete issue to file now
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional non-port already documented in #3405, not a defect worth filing

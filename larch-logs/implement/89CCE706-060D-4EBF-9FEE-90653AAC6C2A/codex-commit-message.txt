@@ -1,7 +1,0 @@
-Collapse code-review panel to four both-vendor archetypes
-
-Emit four static review archetypes per available vendor, add Codex dynamic twins, and re-enable Codex phase-1 dispatch with no-fallback only when Cursor and Codex peers are both present.
-
-Count dropped no-fallback static peers in threshold math, enforce per-archetype coverage, and carry dropped dirty-tree sidecars through recovery. Fold structure into edge-cases and plan-fidelity into testing with regenerated pre-rendered prompts.
-
-Update plan injection, larch-log filtering, topology/public docs, and regression harnesses for the new 4 specialists per vendor panel shape.

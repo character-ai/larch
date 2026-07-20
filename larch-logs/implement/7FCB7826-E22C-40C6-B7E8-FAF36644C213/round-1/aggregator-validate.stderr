@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Update prose to compose/validate/redact + design-publish.sh  ### OOS_1: [OUT_OF_')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Split or note in PR summary (process, not code fix).  ### OOS_2: [OUT_OF_SCOPE] ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Assert call-log order on happy path across PLAN_BLOCK_LOG, UPSERT_LOG, PUBLISH_L')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Validate non-empty SESSION_ID with larch_log_slug_is_valid (or shared helper) be')
-warning: fix text for slot 'dyn-warn-replay-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add Step 5c post-parse prose mirroring item 5: emit each parsed WARN `_value` ve')
-warning: fix text for slot 'dyn-driver-exit-contract-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'No change required to the parse loop itself; document in `design-publish.md` / S')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Expand ordering section to match driver and plan  ### OOS_9: [OUT_OF_SCOPE] upgr')

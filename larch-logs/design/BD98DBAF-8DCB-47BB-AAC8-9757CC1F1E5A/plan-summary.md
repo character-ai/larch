@@ -1,1 +1,0 @@
-Add missing regression pins, remove stale ns-retry tail lookup, document the intentional voter-exclusion split, clean stale harness naming/stubs, and fix the linting table drift. No new runtime feature behavior is planned.

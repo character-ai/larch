@@ -1,9 +1,0 @@
-scripts/lint-gh-body-inline.sh
-scripts/lint-gh-body-inline.md
-scripts/test-lint-gh-body-inline.sh
-scripts/test-lint-gh-body-inline.md
-.pre-commit-config.yaml
-Makefile
-docs/linting.md
-scripts/test-design-log-publish.sh
-skills/report-tokens/scripts/test-report-tokens-recompute.sh

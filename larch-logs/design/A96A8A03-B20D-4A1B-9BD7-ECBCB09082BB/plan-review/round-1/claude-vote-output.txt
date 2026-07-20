@@ -1,1 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- post-write check (lines 118-120) already satisfies the plan's defined full-tuple (round+start+end); finding asks to add accepted+rejected beyond plan scope, and the stale-same-timestamps scenario is extremely unlikely in practice

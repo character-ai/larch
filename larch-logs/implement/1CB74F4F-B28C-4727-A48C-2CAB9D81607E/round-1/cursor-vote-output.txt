@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- same `head -c`/`set -e` hazard as existing diag/stderr heads; not worth a tracking issue.
-FINDING_3: EXONERATE -- same test-gap nit as FINDING_1; one extra assertion suffices if FINDING_1 is addressed.
-FINDING_4: EXONERATE -- duplicate of FINDING_1; no separate change needed beyond that assertion.
-FINDING_5: EXONERATE -- real in theory for arbitrary bytes, but escaping/stripping would be heavy for diagnostic-only content already mirrored for `.diag`/stderr heads.

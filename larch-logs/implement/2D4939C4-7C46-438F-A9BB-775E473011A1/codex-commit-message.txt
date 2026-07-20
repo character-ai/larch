@@ -1,8 +1,0 @@
-Tighten design-log ship rerun handling
-
-Share the transient failed-log predicate with ci_monitor, require design-log reruns to have a transient signature, and keep quiet diagnostics under DESIGN_TMPDIR. Separate the Python bridge stderr stream from stdout parsing and exclude that scratch log from staged design artifacts.
-
-Inline-triage rule 1: keep the design-log publish contract aligned with transient-only reruns and stderr scratch exclusion.
-Inline-triage rule 2: exclude the Python bridge stderr scratch log from staged design artifacts.
-
-Tests: make py-test; make py-lint; make lint-bash32; make test-design-log-publish; python3 python/cli.py ship design-log --help

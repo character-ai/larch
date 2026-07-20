@@ -1,1 +1,0 @@
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Sanitize wrapper warning values before `emit_kv`, or avoid interpolating raw inv')

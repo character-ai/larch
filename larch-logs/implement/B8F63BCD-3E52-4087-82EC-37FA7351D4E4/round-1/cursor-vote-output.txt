@@ -1,5 +1,0 @@
-Reading the ballot file to vote on each finding.
-
-There is only **FINDING_1** in the ballot. Vote:
-
-FINDING_1: EXONERATE -- stale TSV row is a real post-merge nit but harmless (no failing tests); opening an issue is more process than the one-line snapshot drift warrants; refresh on the next `measure-md-cost` run or a small hygiene pass is enough.

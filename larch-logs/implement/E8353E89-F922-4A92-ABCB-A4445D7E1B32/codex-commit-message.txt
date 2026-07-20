@@ -1,7 +1,0 @@
-Handle submodule edit bails and review scout filtering
-
-Classify submodule-edit-required-out-of-scope as a permanent Step 2 inline-recovery class with retry-policy and regression coverage.
-
-Clarify the rebase checkpoint macro now that 1.r routing arrives through the Step 0 bootstrap envelope.
-
-Generalize scout manifest filtering for review mode and delegate review pre-scout normalization to the shared Python helper.

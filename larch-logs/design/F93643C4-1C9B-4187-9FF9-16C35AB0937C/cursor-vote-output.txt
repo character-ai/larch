@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Plan already defines STEP17_RC as captured step-17.sh shell exit and documents post-persist handoff exit 0 with harness coverage; prose harmonization is clarity, not a missing contract.
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Reusing design marker literals would improve consistency but the feature delivers correctly with distinct whole-line markers; alignment is not required for completeness or correctness.

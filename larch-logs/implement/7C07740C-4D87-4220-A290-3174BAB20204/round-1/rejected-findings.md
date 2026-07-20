@@ -1,6 +1,0 @@
-# Rejected Findings
-
-6:FINDING_3_OUTCOME=rejected
-13:FINDING_OOS_2_OUTCOME=rejected
-16:FINDING_OOS_3_OUTCOME=rejected
-19:FINDING_OOS_4_OUTCOME=rejected

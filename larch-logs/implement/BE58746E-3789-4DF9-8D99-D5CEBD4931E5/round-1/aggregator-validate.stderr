@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Extend handoff for post-write Python failures even when bytes are unchanged, or ')
-warning: fix text for slot 'codex-specialist-edge-cases-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Use the git subject prefix to skip larch-log PR numbers before calling `gh pr vi')

@@ -1,2 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"**Accepted OOS #1**: Timing-harness gaps in record-implement-review-round-timing.sh (A1 scanner + idempotency). Filed as https://github.com/character-ai/larch/issues/3588."}
-{"phase":"implement","step":"9a.1","category":"OOS","body":"**Accepted OOS #2**: Implement lint-fix path reaches unpinned record-vendor-task via launch-codex-exec.sh. Filed as https://github.com/character-ai/larch/issues/3589."}

@@ -1,1 +1,0 @@
-Plan: make Step 5c publish capture quieter, harden final-summary freshness, add missing failure-path tests, make dynamic-slot render failures visible, preserve round dedup, and document the intentional 60s probe timeout.

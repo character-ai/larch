@@ -1,4 +1,0 @@
-warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: 'Pin explicitly: set the flag true before publish-tail entry and keep it true unt')
-warning: fix text for slot 'Cursor-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: 'Inside `write_result_env_and_emit` after a locked re-read decides to skip the di')
-warning: fix text for slot 'Cursor-Innovation' in FINDING_3 not traceable to scoped input (first 80 chars: 'Mirror `emit_publish_failure`: set `_PUBLISH_META_RECOVERY_BRANCH` before persis')
-warning: fix text for slot 'Cursor-Pragmatic' in FINDING_4 not traceable to scoped input (first 80 chars: 'Hold the result-env lock from the pre-summary re-check through `SUMMARY_OUTCOME`')

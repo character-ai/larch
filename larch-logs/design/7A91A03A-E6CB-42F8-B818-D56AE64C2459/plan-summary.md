@@ -1,1 +1,0 @@
-Remove the plan-review archetype matrix from `skills/design/SKILL.md`, keep Step 3 behavior instructions intact, and make `skills/design/references/plan-review.md` the prose authority for the panel topology.

@@ -1,1 +1,0 @@
-Implemented the plan and wrote the manifest at the requested path with `status=complete`.

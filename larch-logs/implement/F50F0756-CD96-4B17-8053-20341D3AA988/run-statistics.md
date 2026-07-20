@@ -1,1 +1,0 @@
-Run F50F0756-CD96-4B17-8053-20341D3AA988: 0 accepted OOS item(s) filed as issues, 1 rejected. The single accepted OOS block (OOS_1, parse-bootstrap-routing-envelope.sh set -e abort) was deduplicated by /issue Phase 2 against existing #3451 (consolidated into #3466; fix already on repo main via cf15e42c5) and recorded in the oos-issues batch Rejected sub-block.

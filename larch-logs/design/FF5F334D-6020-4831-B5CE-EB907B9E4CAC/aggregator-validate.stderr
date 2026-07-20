@@ -1,3 +1,0 @@
-warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add an explicit astroid parse step between `process_tokens` and `process_module`')
-warning: fix text for slot 'Codex-Generic' in FINDING_3 not traceable to scoped input (first 80 chars: 'Make LineSet construction through `process_tokens`/`process_module` the only per')
-warning: fix text for slot 'Codex-Generic' in FINDING_4 not traceable to scoped input (first 80 chars: 'Make ≤90s on the real GitHub Actions job a hard acceptance gate for this issue. ')

@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'OR in manifest `pr_number` empty/null probe alongside final-summary bail signal ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Verify Step 9a.1 write ordering; if impossible, comment why; if possible, refine')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Detect heading line (e.g. first `^## /implement run`) before suffix match.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Extend detection to scan the first few non-empty lines or add a regression fixtu')
-warning: fix text for slot 'dyn-test-fixture-coverage-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Add a verify-side regression (same minimal layout as Test `52e`: invalid JSON in')

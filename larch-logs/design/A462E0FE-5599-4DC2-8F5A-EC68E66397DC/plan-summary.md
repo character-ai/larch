@@ -1,1 +1,0 @@
-Fix Step 3 silent-envelope loss by emitting a visible `panel-failed` fallback, recording the write failure, adding a wrapper guard for empty statuses, and redirecting Codex/Cursor review launcher stdin from `/dev/null`.

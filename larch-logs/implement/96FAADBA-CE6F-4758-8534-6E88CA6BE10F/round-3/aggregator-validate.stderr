@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Port the bash allowlist filter, type ISSUES_FAILED=0 / ISSUE_1_FAILED truthy / d')
-warning: fix text for slot 'dyn-cutover-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Rewrite canonical-ledger append through the same tmp+`replace()` pattern used by')

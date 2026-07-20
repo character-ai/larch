@@ -1,4 +1,0 @@
-Exploring the Step 5 review loop, cap logic, and stall routing to draft a read-only implementation plan.
-Checking how `emit_kv` works in the loop context and whether structure tests cover stall routing:
-I have enough context on the loop guard ordering, cap math, and stall envelope contract. Creating the implementation plan.
-

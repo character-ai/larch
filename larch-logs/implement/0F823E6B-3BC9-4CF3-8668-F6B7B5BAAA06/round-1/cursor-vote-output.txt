@@ -1,5 +1,0 @@
-Reading the ballot and any referenced context files to verify findings.
-
-Checking aggregator output and related files — `findings.md` appears empty of ballot items.
-
-

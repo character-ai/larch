@@ -1,7 +1,0 @@
-Reviewing the branch diff and commit history for harness isolation and risk-integration issues.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **risk-integration** `skills/implement/scripts/test-write-final-report.sh:4,528-535` — The new `impl-lines-fb` case follows the same stub/save/restore pattern already used by the stage2 and `fork_fb` cases: a dedicated `$TMP_ROOT` fixture, a global `exit 1` renderer stub, assertions on fresh command-substitution output, and an unconditional restore of `render-run-summary.real` after assertions. Because `fail()` only increments `FAIL` and does not exit, assertion failures still reach the restore at lines 534–535; a non-zero `$HELPER` exit in the substitution would abort the whole harness under `set -e`, so later cases would not run against a leaked stub. The case also requires both `<!-- larch:final-summary-fallback v1 -->` and the degraded banner, which only `compose_self_fallback` emits after both renderer attempts fail, so the `+17/-3, +5/-1` bullet is tied to `LINES_DATA_OK=true` rather than stale renderer output.
-- The branch also includes committed `larch-logs/implement/...` run artifacts from the implement session; that is workflow noise separate from the harness isolation change under review.

@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `security` `SECURITY.md:46`: The branch adds SessionStart tmpdir resolution and boundary advisory behavior in `scripts/sessionstart-health.sh:116-149`, but `SECURITY.md` still documents only the PostToolUse/Stop hook trust model around this resolver. Concrete breakage: a consumer auditing shipped hooks before upgrade will not see that `SessionStart` now reads `cwd`/`session_id`, scans session roots through `lib-resolve-implement-tmpdir.sh`, and emits resolved tmpdir basenames into session context. Update `SECURITY.md:46-48` to cover the new SessionStart path, including fail-open behavior, session-id binding/TTL reuse, no file writes, and basename-only disclosure.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.

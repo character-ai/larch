@@ -1,1 +1,0 @@
-Deviation (G-IO-1): write_result_env should delegate to larch.io helpers rather than re-implementing KEY=value serialization inline. G-IO-2 is respected (newline/NUL rejection specified). G-Cfg-3 is respected (centralized heading text). Verdict: CLEAR.

@@ -1,4 +1,0 @@
-Implemented the plan and wrote the manifest atomically at the requested path.
-
-Status: `complete`  
-Manifest: `<TMPDIR>/codex-step2-out/manifest.json`

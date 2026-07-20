@@ -1,1 +1,0 @@
-{"phase":"review","step":"9a.1","category":"OOS","body":"- #2197: [OOS] larch-log.sh REPO_ROOT fallback may target plugin tree outside consumer worktree\nhttps://github.com/character-ai/larch/issues/2197"}

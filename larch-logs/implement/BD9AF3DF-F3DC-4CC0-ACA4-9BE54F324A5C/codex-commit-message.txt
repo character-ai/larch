@@ -1,7 +1,0 @@
-Protect design publish retries from stale failure clobbers
-
-Detect remote design-log branches for every publish reason while keeping final publishes based on origin default. Add final idempotent success for squash-merged logs when the remote log branch is gone.
-
-Serialize design publish result-env writes, preserve existing publish-tail success metadata, and avoid failed-publish summary rewrites after a success is recorded.
-
-Make Step 5c trust stdout for plan-write failures and validator defects so stale result env success cannot mask current failures.

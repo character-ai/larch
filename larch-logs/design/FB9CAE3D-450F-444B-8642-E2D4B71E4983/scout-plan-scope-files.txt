@@ -1,5 +1,0 @@
-python/gh.py
-python/combine_issues.py
-python/cli.py
-python/test_combine_issues.py
-.claude/skills/combine-issues/SKILL.md

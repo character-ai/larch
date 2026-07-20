@@ -1,3 +1,0 @@
-warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: 'Rephrase the rule to state that pyright strict mode is enforced by orchestrator/')
-warning: fix text for slot 'Cursor-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: 'Say CI/orchestrator runs `make test-implement-fence-shape`; implementers must up')
-warning: fix text for slot 'Cursor-Requirements' in FINDING_3 not traceable to scoped input (first 80 chars: 'Extend the `skill-editing-trace.md` update to explicitly require `/design` Step ')

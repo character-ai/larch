@@ -1,9 +1,0 @@
-Reading the ballot and verifying claims against referenced context files.
-
-Verifying ballot claims against the codebase and diff context.
-
-Verifying `review-core.sh` uses `set -e` at the top and checking the start of the script.
-
-Research complete: verified `main-agent-vote-required` skips `emit-tally.sh` (lines 523–540 vs 543–557), `heavy-worker.md` still documents schema 1, `ship-pr.sh` discards `write-final-report` (970–971), `emit-tally.sh` validates numeric slots (48–49) and passes `SCOUT_STATUS` via `--arg`, and `set -e` applies before status emission on the panel-failed/zero-findings paths.
-
-

@@ -1,3 +1,0 @@
-Hardening implement helper DX gaps
-
-Self-derive CLAUDE_PLUGIN_ROOT in the Step 0 bootstrap wrapper, add a usage synopsis for append-execution-issue failures, and expose a degraded-round count CLI for Step 5 banner calculations. Add focused harness coverage and Makefile wiring.

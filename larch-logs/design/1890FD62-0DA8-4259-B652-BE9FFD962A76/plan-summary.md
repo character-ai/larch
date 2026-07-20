@@ -1,1 +1,0 @@
-Fix the token-record gaps with small targeted changes: surface Codex drafter copy failures, warn on unknown sidecar tools, append lint-fix Codex sidecars to NDJSON, route lint-fix-loop checks, de-duplicate default rate assertions, and document research lane ingestion.

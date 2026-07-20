@@ -1,5 +1,0 @@
-Add safe result-env reader for design handoffs
-
-Add scripts/read-result-env.sh with a documented harness for allowlisted sourceable output, WARN/ERROR replay, symlink refusal, and fallback parsing. Extend parse-design-argv.sh with leading internal --output support while preserving the legacy uppercase stdout stream.
-
-Update /design Step 0-pre and Step 0b init to source generated env files instead of hand-parsing KV streams, and wire Makefile, relevant checks, structure pins, and agent-lint coverage for the new harness.

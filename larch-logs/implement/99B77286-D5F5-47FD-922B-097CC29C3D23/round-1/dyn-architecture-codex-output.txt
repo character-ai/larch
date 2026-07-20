@@ -1,9 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/design/scripts/test-review-design-step3-loop.sh:169-196` — The Step 3 loop harness still treats postplan rc `14` as `postplan-operator-required`, but `review-design-step3-loop.sh:421` now intentionally routes only `10|12|13` to that envelope. This stale test will fail under `make lint`/`make test-review-design-step3-loop` because a stubbed rc `14` now follows the default `postplan-failed` path. **Suggested fix:** Remove the `14:drift` case from the loop, rename the heading to `rc 10/13 envelopes`, and optionally add a separate assertion that stray rc `14` is treated as `postplan-failed` if that behavior should be pinned.
-
-- **architecture** `skills/design/references/flags.md:24-42` — The authoritative flags reference is internally inconsistent with the new contract: line 36 still lists `14` among merged post-plan thin-fence exit codes, and line 24 still describes “plan-size hard/drift brakes” as prompts not skipped by `--skip-approve`, while line 42 and the scripts now say drift is a logged rc `0` advisory. **Suggested fix:** Remove `14` from the exit-code list and reword the `--skip-approve` prompt list to mention only hard size, validator, decomposition, etc.; describe drift only as a non-interactive warning.
-
-- **architecture** `docs/configuration-and-permissions.md:276-278` — The consumer-facing `LARCH_DESIGN_DRIFT_MULTIPLE` docs still describe the removed behavior: `design-postplan-emit.sh --with-plan-size` exits `14`, prints `## Plan Size — Drift`, and asks Continue/Cancel. That contradicts the branch’s runtime and the updated skill references. **Suggested fix:** Update this section to say the variable now controls the logged drift-advisory threshold, the driver exits `0`, writes a warning to `execution-issues.md`, and does not prompt.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

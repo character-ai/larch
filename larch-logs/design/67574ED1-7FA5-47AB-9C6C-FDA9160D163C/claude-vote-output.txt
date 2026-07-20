@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The in-process `_capture_stdout_stderr` approach is the plan's explicit design choice, not an accidental over-build; the bash used a subprocess because it was the bash wrapper, while the Python port calling in-process is equally valid and the feature is neither incomplete nor broken either way. This is an architecture preference, not a correctness defect.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

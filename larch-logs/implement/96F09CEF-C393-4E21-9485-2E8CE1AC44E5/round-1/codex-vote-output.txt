@@ -1,7 +1,0 @@
-FINDING_1: EXONERATE -- legitimate edge case, but fail-file append failures are broader infrastructure failures and a special fallback here is not worth added handling.
-FINDING_2: YES
-FINDING_3: YES
-FINDING_4: YES
-FINDING_5: YES
-FINDING_6: YES
-FINDING_7: YES

@@ -1,9 +1,0 @@
-Reviewing branch changes for bash portability and routing-parse correctness.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- The routing split (`${_inv_line%%=*}` / `${_inv_line#*=}`) correctly preserves values with embedded `=` (e.g. a hypothetical `BRANCH_ACTION=created=extra`); bootstrap `emit_kv` forbids newlines in values, so the `while read` + `$(printf '%s\n' "$_inv_out")` heredoc pattern does not corrupt normal envelope lines.
-- `printf -v "$_inv_key"` is gated by the closed `_inv_routing_keys` whitelist (and by explicit `case` arms in `_inv_apply_routing_line_if_empty`), so pathological or builtin names are not assigned; this matches existing repo patterns (`run-step3-review.sh`, `ship-pr.sh`) and is appropriate for trusted bootstrap stdout.
-- Initial vs dirty-tree resume intentionally differ on `unset coder` / `coder_fallback` before re-parse (documented in `scripts/implement-bootstrap-invoke.md`); resume-mode empty `coder` omission in the wrapper is covered by `test-implement-bootstrap-invoke.sh`.
-- No harness case asserts a routing value containing `=`; current producers (`BRANCH_ACTION=created`, paths, `owner/repo`) do not emit `=`, so this is a coverage gap rather than a demonstrated defect.

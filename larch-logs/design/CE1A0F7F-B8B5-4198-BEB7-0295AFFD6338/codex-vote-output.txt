@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- sanitizer diagnostics are not diagram body, and the plan already requires bounded sanitizer logging; exclusion is not necessary for this feature.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale diagnostic step labeling does not make the post-approval diagram feature incomplete, broken, unverifiable, or regressed.

@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The concern is real in isolation, but the approved scope explicitly makes a skipped best-effort post-merge flush a silent success.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Narrowing skip handling conflicts with the specified all-skip post-merge success behavior and is not necessary for this fix.

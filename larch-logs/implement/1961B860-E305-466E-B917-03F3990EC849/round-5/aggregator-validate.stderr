@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Run bash scripts/relevant-checks.sh before merge.  ### OOS_1: [OUT_OF_SCOPE] Pre')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Consider broader fixture extraction separately from this PR.  ### OOS_2: [OUT_OF')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Monitor harness-timer; split section if duration regresses.  ### OOS_3: [OUT_OF_')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Align primary and follow-up staging policy in a separate change if desired.  ###')

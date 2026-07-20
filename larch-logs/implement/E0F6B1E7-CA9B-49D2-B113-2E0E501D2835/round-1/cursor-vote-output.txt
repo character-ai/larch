@@ -1,8 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan scoped Gate C literal pins; Gate A contract is updated in the same normative docs without separate structural tests
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Step 4b recap duplicates approval-gates.md by existing SKILL pattern where gates.md is normative
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing cross-section redundancy; new pins address drift risk without a consolidate refactor issue
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Gate A specifies missing-or-empty See-full-plan recovery but Gate C See-full-plan pick lacks an equivalent contract after the warning-only presentation path
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan explicitly accepts prose-only drop-on-re-fire with no in-repo AskUserQuestion behavioral tests
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Step 3 say-show-full-plan vs Gate C structured option is an intentional plan decision not a regression
-FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unrelated commits are branch hygiene, not a See-full-plan fidelity defect worth a product issue
-FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- prose-only AskUserQuestion compliance is pre-existing plugin architecture explicitly accepted by the plan

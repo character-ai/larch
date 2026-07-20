@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Invalid override handling is a pre-existing dispatcher/launcher inconsistency, not a required feature-path change.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The launcher precedence behavior is unchanged and already delegated to the established resolver; this additional test is not necessary.
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The resolver work is unnecessary, but removing plan churn is not required for the feature to ship correctly.

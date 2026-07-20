@@ -1,4 +1,0 @@
-# Review progress report should produce Gantt timing charts for each completed review round
-
-If no rounds have been completed, it should say so.
-This should apply to both /design and /implement reviews

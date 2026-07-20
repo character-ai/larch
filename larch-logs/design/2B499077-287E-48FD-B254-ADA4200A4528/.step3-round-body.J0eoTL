@@ -1,9 +1,0 @@
---- failed agent stderr tail ---
-⏳ cursor agent: still running (1m elapsed)
-⏳ cursor agent: still running (2m elapsed)
-✓ cursor agent: completed (exit code 0, output 2753 bytes)
---- end failed agent stderr tail ---
-Traceback (most recent call last):
-  File "<stdin>", line 37, in <module>
-  File "<stdin>", line 18, in prob
-NameError: name 'problem_text' is not defined

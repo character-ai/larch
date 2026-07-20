@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the current plan already incorporates module-level constants in test_ci_monitor.py; the remaining gap (import vs. copy) is a future-maintenance concern, not a present correctness gate for this feature
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rejected in rounds 1 and 2; missing pip retry env is a reliability concern but not a necessity gate; the new job works without it
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rejected in round 1; restricted-sandbox pylint-j0 failure is a speculative edge case that was partially-true before and does not clear gate 2 or 3 for this feature

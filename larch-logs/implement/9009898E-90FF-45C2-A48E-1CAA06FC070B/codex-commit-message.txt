@@ -1,3 +1,0 @@
-Fix rebalance shard spread reporting
-
-Compare baseline and verification spread against the new shard layout. Add a warning-only feasibility preflight over the exact packed workload, document the helper contract, and cover feasible, infeasible, empty, zero-shard, and orphan-median cases.

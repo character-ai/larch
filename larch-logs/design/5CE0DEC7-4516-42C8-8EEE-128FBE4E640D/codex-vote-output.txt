@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=blocker QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- real divergence, but it expands current canonical issue_cap behavior beyond the accepted fixture scope
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- exact ITEMS_TOTAL stderr wording is not required if migrated pytest asserts the current parity failure
-FINDING_4: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

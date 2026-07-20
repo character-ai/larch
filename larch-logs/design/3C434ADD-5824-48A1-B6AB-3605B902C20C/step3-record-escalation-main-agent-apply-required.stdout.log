@@ -1,2 +1,0 @@
-ESCALATION_RECORDED=true
-ESCALATION_LEDGER_FILE=<TMPDIR>/design-failure-escalation-ledger.tsv

@@ -1,8 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Codex-Arch, Codex-Edge, Codex-Requirements, Codex-Pragmatic, Codex-dyn-artifact-taxonomy, Codex-dyn-fixture-realism	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_2	Cursor-Edge	rejected	NO	false-positive	nit	weak	false	Claude	NO	false-positive	nit	weak	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_3	Codex-dyn-artifact-taxonomy	exonerated	EXONERATE	uncertain	nit	adequate	true	Claude	YES	true	minor	good	false	Codex	EXONERATE	true	minor	good	false	Cursor
-FINDING_4	Codex-dyn-publication-boundary	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_5	Codex-dyn-publication-boundary	accepted	YES	true	major	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_6	Cursor-dyn-fixture-realism	neutral	EXONERATE	partially-true	nit	adequate	false	Claude	NO	false-positive	nit	adequate	false	Codex	YES	true	major	good	false	Cursor
-FINDING_7	Codex-dyn-fixture-realism	accepted	YES	true	major	good	false	Claude	YES	true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor

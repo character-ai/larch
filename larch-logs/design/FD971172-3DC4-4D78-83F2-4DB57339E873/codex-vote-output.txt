@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already requires emitting the exact warning and appending Tool Failures, so specifying stderr is implementation detail rather than a necessary plan change.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The CLI-boundary concern is already covered by the plan, and the hypothetical in-process alternative lacks a concrete backlog-worthy trigger.

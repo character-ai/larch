@@ -1,3 +1,0 @@
-Validating merge decisions by reading the cited code paths (read-only).
-Confirming launch-review records usage without gating on `EXIT_CODE`. Producing the normalized aggregator output.
-

@@ -1,7 +1,0 @@
-larch:bc t=2026-05-26T06:26:33Z d=0 p=21149 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
-larch:bc t=2026-05-26T06:26:33Z d=0 p=21646 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
-larch:bc t=2026-05-26T06:26:36Z d=0 p=21646 s=ci-wait.sh c=wait-ci text=✓ CI passed (3s, 0 polls)
-larch:bc t=2026-05-26T06:26:36Z d=0 p=21149 s=ship-pr.sh c=progress text=→ ship-pr: CI green
-larch:bc t=2026-05-26T06:26:36Z d=0 p=21149 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
-larch:bc t=2026-05-26T06:26:36Z d=0 p=23680 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
-larch:bc t=2026-05-26T06:26:40Z d=0 p=23680 s=ci-wait.sh c=wait-ci text=✓ CI passed (4s, 0 polls)

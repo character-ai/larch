@@ -1,1 +1,0 @@
-Trace the review_pipeline site gating from /implement Step 5 and standalone /review callers. Confirm /implement never launches the separate scout without a producer manifest, while /review still does. Check tests prove both sides of the gate. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

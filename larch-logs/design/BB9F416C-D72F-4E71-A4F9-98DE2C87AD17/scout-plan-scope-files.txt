@@ -1,5 +1,0 @@
-scripts/lint-bash32.sh
-scripts/lint-bash32.md
-scripts/test-lint-bash32.sh
-.pre-commit-config.yaml
-Makefile

@@ -1,4 +1,0 @@
-SKIPPED script=scripts/implement-preflight.sh reason=new-script
-SKIPPED script=scripts/implement-preflight.sh reason=new-script
-SKIPPED script=scripts/test-implement-preflight.sh reason=new-script
-VALIDATE_STATUS=ok	DEFECT_COUNT=0	SKIPPED_COUNT=3	UNSAFE_TOKEN_COUNT=0

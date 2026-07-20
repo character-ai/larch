@@ -1,3 +1,0 @@
-Add ASCII reviewer timing Gantt charts
-
-Replace Mermaid reviewer timing output with a reusable generic ASCII Gantt renderer and CLI. Wire final report generation and live progress detail to the same absolute-time chart contract, with best-effort failure handling and updated harness coverage.

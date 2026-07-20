@@ -1,1 +1,0 @@
-Treat the intentional `preterminal-outcome` post-merge flush skip as a warning after a confirmed merge. Add a classifier backstop that forbids reship routing for the same state. Preserve real flush failures and the existing pre-push recovery path.

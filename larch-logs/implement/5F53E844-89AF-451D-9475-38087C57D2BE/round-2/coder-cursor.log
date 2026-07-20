@@ -1,8 +1,0 @@
-APPLIED: FINDING_1
-SKIPPED: FINDING_2 - requires full Python port of legacy review shell, not a smallest correct fix
-SKIPPED: FINDING_3 - requires porting extensive deleted bash harness scenarios beyond smallest correct fix scope
-APPLIED: FINDING_5
-APPLIED: FINDING_8
-APPLIED: FINDING_9
-APPLIED: FINDING_10
-APPLIED: FINDING_11

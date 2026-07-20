@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- completion-boundary fence at end of Step 3b is ordering-justified; folding FINALIZE into the entry fence would run it before diagram branches complete, which could break sequencing
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan's harness pins check fence-body presence without specifying verification that sentinel writes are inside the SIMPLE conditional, leaving a gap where unconditional sentinel writes would still pass CI
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

@@ -1,3 +1,0 @@
-warning: fix text for slot 'Cursor-Requirements' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add agents.py (`_read_text`, `_write`, `_append`, `_review_atomic_write_text`) t')
-warning: fix text for slot 'Codex-Generic' in FINDING_6 not traceable to scoped input (first 80 chars: 'Replace the stale-plugin stdout parse with `larch_io.parse_kv(..., skip_comments')
-warning: fix text for slot 'Codex-Generic' in FINDING_7 not traceable to scoped input (first 80 chars: 'Keep the local try/except OSError around `larch_io.read_text` for `_read_env_val')

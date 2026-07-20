@@ -1,1 +1,0 @@
-{"schema_version":1,"phase":"plan-review","batch":"plan-review-tally","mode":"hard","rounds":0,"accepted_count":0,"rejected_count":0,"exonerated_count":0,"neutral_count":0,"body":"Plan was read from the issue body's `larch:plan` block — no /design voting tally is replayed for issue-anchored runs.\n"}

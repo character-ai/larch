@@ -1,1 +1,0 @@
-Unify the Darwin external CLI startup mutex across Codex and Cursor. Rename helpers and env vars to startup-lock terminology, keep lock semantics unchanged, add Python and Bash cross-tool regression coverage, and update docs/rules.

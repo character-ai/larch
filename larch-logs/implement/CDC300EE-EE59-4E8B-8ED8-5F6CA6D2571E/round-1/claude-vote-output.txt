@@ -1,7 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- text-only substitution in SKILL.md; lint failure essentially impossible; CI serves as the gate
-FINDING_4: EXONERATE -- archival run-log metadata, no runtime impact, not issue-worthy
-FINDING_5: EXONERATE -- same underlying problem as FINDING_1; filing a separate OOS issue would be redundant with the in-scope fix
-FINDING_6: EXONERATE -- historical snapshot content with no runtime impact; not issue-worthy
-FINDING_7: EXONERATE -- archival plan-doc copy-paste error with no runtime impact; covered by FINDING_4 observation

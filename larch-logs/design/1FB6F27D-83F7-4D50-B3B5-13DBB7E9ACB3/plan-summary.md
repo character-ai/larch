@@ -1,1 +1,0 @@
-Plan a focused Python refactor: add shared review types and parser, move manifest JSON round-trips into `Manifest`, adopt named enums only, and pin byte-stable run-log and review artifact behavior with tests.

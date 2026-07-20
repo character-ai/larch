@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- edge-cases section explicitly says sentinel fires on both sub-branches; existing external-reviewers.md sentinel paragraph already covers all DEGRADED=true re-entry paths
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

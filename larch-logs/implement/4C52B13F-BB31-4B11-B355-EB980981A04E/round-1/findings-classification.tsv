@@ -1,4 +1,0 @@
-finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
-FINDING_1	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-testing-output.txt	rejected	NO	false-positive	nit	weak	false	NO	partially-true	nit	adequate	false	NO	true	nit	adequate	false
-FINDING_2	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt	rejected	NO	partially-true		adequate	true	NO	true	minor	adequate	false	NO	true	minor	adequate	false
-FINDING_3	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt	rejected	NO	partially-true		weak	true	NO	partially-true	nit	adequate	false	NO	true	minor	adequate	false

@@ -1,1 +1,0 @@
-Retire the orphaned OOS cap Bash/helper files. Keep `file_oos.issue_cap` canonical. Move remaining fixture coverage into `python/test_file_oos.py`, remove stale targets/docs, and record the retired paths in `python/migrated-scripts.tsv`.

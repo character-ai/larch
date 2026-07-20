@@ -1,8 +1,0 @@
-scripts/lib-quiet.sh
-scripts/ci-failed-jobs.sh
-scripts/sanitize-mermaid-fragment.sh
-skills/implement/scripts/step-7a.sh
-skills/implement/scripts/test-step-7a.md
-skills/implement/scripts/test-step-7a.sh
-scripts/test-lib-quiet.sh
-scripts/test-ci-failed-jobs.sh

@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **correctness** `python/test_ci_monitor.py:403-446` — The added monitor-level tests assert final outcomes but not the state-machine edges they claim to cover. `test_monitor_already_merged_short_circuit_ok` seeds successful downstream `_status()` stubs and never checks that `monitor()` stopped after `gh pr view`, so a regression that performs fetch/check/rev-list work before returning `already_merged` would still pass. `test_monitor_consecutive_status_errors_are_transient` likewise does not assert that exactly three consecutive status-gather failures occurred before bail. **Suggested fix:** Assert `runner.calls` in both tests: for the merged case, only the `gh pr view` call should occur; for the error case, count `gh pr view` calls against `config.CI_MONITOR_STATUS_FAILURE_BAIL` and assert no later `gh pr checks` / git status calls ran.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

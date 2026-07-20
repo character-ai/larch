@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already excludes scope=oos and preserves legacy OOS fallback; handling empty or drifted scope is a latent robustness issue, not necessary for the scoped feature.

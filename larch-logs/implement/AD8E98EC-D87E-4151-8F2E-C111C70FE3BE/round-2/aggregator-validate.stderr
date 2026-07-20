@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Hoist the retry-disable flag to a variable set once before the while loop.  ### ')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Have build_failure_reason prefer .diag for CURSOR_EMPTY_RESPONSE (likely in #339')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Call build_failure_reason when .diag exists or document sidecar-only visibility ')

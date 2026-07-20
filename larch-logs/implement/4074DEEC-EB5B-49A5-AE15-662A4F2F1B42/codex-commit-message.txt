@@ -1,3 +1,0 @@
-Fix Step 3 preview sentinel on missing plans
-
-Only mark the Step 3 entry preview sentinel after a real plan candidate header renders, leaving missing-plan warnings repeatable until plan.txt is repaired. Update the preview harness and sibling contract to cover the missing-to-repair re-render path.

@@ -1,8 +1,0 @@
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- The PATH backstop at `skills/design/scripts/test-plan-review-loop.sh:49-78` prepends `$TMP/bin` ahead of the host `PATH`, and production launchers invoke bare `codex`, `cursor`, and `claude` names via `run-external-agent.sh` / `launch-claude-subprocess.sh` (not cached absolute paths), so installed-but-unhealthy real binaries should not run. The only harness section that reaches real `dispatch-plan-review-panel.sh` + `collect-agent-results.sh` (`:1025-1062`) layers section-local `EXTSTUB` ahead of the global backstop; other `run_loop` cases keep script-level stubs for dispatch/collect/voters.
-- Global `STUB_BIN` `cursor`/`codex` stubs are intentionally minimal (stdout / optional `--output-last-message` only). The `real panel dispatch` case depends on `EXTSTUB`’s richer `cursor` stub (`:1035-1047`) to satisfy `dispatch-with-waterfall.sh`’s first-line pattern gate; that is documented in `skills/design/scripts/test-plan-review-loop.md:23-34`. A future test that enables real collect/dispatch without a similar section-local stub could still burn up to `--timeout` on sentinel/output validation, but would not call real externals.
-- There is no negative assertion (argv log, invocation counter, or `command -v` trap) proving stubs were used instead of real binaries; hermeticity is enforced by mechanism, not verified at runtime.
-- Pre-`STUB_BIN` `$PLR` smoke calls (`:35-39`, `:80-105`) only exercise argv validation and exit before any panel/revise work; they do not weaken the backstop for launch-capable sections.

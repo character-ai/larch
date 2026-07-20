@@ -1,3 +1,0 @@
-Pin live ancestor cleanup regression
-
-Assert the Python finalizer walks the live process ancestor chain before consulting the transient shell probe, so the regression covers the signal-safety path directly.

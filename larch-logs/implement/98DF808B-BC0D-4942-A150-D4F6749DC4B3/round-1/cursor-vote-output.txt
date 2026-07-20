@@ -1,5 +1,0 @@
-Reading the ballot and referenced context files.
-
-Checking aggregator output and related files — `findings.md` appears empty of ballot items.
-
-`findings.md` contains no `FINDING_*` headings (only the merge preamble), so there are no ballot lines to vote on.

@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires both canonical/legacy rejection and focused canonical tests; specifying ERE escaping is implementation detail, not a necessary plan change.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

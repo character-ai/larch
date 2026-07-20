@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Use `( unset OPENAI_API_KEY; ... )` subshell per plan')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Wrap invocations in `( unset OPENAI_API_KEY; export TMPDIR=…; … )` per plan')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Extract shared `assert_codex_auth_link_points_at` helper')

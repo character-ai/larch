@@ -1,9 +1,0 @@
-- Code-review voting (`/implement` Step 5 and `/review`) dispatches three Cursor archetype voters at fixed slots: slot 1 `cursor-validity`, slot 2 `cursor-plan-fidelity`, slot 3 `cursor-pragmatism`. The 2-of-3 majority threshold is unchanged.
-- When Cursor is unavailable, the panel falls back to a single Claude floor voter (binding-single tier). Codex never participates in the code-review voter panel.
-- `render voter` with no `--archetype` is byte-identical to today, so `/design` plan-review and main-agent-vote voters are unaffected. A test pins that byte-stability.
-- Each archetype voter renders its lens block via `render voter --archetype`. The plan-fidelity voter judges against the diff and ballot scope when no plan context is staged; a missing plan is not an automatic NO.
-- Per-archetype identity is recorded in the code-review classification TSV via `vN_tool` (21 columns: `reviewer_slots` plus `vN_tool`; no `body_severity`). The `/design` plan-review 22-column schema stays unchanged.
-- Backward compatibility holds: legacy 18-column logs still parse; main-agent-vote re-tally and zero-findings callers keep compacted semantics; `cursor-*` labels normalize to `cursor` for parse-rate retry launch.
-- `dispatch-waterfall --no-fallback` is preserved, so a failed Cursor slot never backfills to Codex, and canonical slot indexing never shifts votes across `v1`/`v2`/`v3` columns.
-- Operator and consumer docs describe the new code-review voter panel, and every `3-judge panel on every round` anchor is preserved verbatim.
-- `make py-test`, `make py-lint`, `make lint`, and `make test-fluff-analysis` pass.

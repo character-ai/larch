@@ -1,8 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan recovery-waterfall section already requires LAUNCHER_EXIT parse and surfacing when tier_rc, LAUNCHER_EXIT, or stderr-tail
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Step 3 cleanup drops transcript/sidecar but not stderr-tail while many emit_bailed paths run before line 606
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- PREFLIGHT_RC path fills SIDECAR_LOG and exits 0 but plan cursor section only adds producer write on MODEL_ARGS_RC
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- same PREFLIGHT_RC producer gap leaves step2 tail emit a no-op on auth failures
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan uniform producer rule is incomplete without PREFLIGHT_RC write mirroring MODEL_ARGS_RC
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already specifies explicit post-launcher LAUNCHER_EXIT and stderr-tail gates before verify
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- PREFLIGHT_RC branch violates plan Uniform pattern while MODEL_ARGS_RC is covered
-FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- launch-codex-implement.md is in UPDATED but launch-cursor-implement.md is omitted despite sibling parity rule

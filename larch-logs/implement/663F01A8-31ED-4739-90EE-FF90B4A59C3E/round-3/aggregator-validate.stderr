@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Use `run_dir / f"{log_name}.stderr-tail"` without stripping `.log`')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Replace examples with the full Python structural token enum from `checks.py`/`do')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Resolve repo root from session-env/implement pointer before cwd; optionally pass')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add end-to-end pytest for `checks_run_relevant_main` covering stdout byte budget')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add pytest that forces each branch and asserts `failure_reason` plus CLI envelop')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Port remaining validation matrix into parametrized pytest for `validate_tmpdir` ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Drive `_step5_post_round_gates` with monkeypatched `checks.run_relevant_checks`/')

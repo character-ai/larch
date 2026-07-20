@@ -1,1 +1,0 @@
-Create `larch.design.plan_grammar` as the single owner of plan headings and trailers. Migrate every in-scope parser and composer while preserving all accepted legacy forms, strict size-gate behavior, and marker ownership.

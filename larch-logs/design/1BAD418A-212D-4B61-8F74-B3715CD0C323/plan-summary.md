@@ -1,1 +1,0 @@
-Add upstream larch failure filing with signature dedup. Tier B `/implement` and `/design` file sanitized reports to the repo from `.claude-plugin/plugin.json`; failures fall back to chat. `/design` gains design-scoped failure state for plan-write, log-publish, and capped panel-collapse failures.

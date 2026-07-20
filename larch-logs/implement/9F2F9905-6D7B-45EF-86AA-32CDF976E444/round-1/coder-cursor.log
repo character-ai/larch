@@ -1,8 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_3Both accepted findings are in place.
-
-**FINDING_1:** `_salvage_structured_tsv_row` now tries space-to-tab re-split before trailing padding, gates ambiguous seven-field layouts, and has a regression test for the free-text double-space case.
-
-**FINDING_3:** `_space_resplit_confident` blocks space-to-tab salvage from fabricating columns from multi-space prose inside a field, with a negative test for the six-column fabrication case.
-
-All 39 `test_research_eval.py` tests and `make py-lint` pass. Changes are uncommitted, as requested.

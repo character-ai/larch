@@ -1,9 +1,0 @@
-Gathering the branch diff and commit history for a read-only correctness review.
-
-Reading the full `extract_category` implementation and scan-pattern semantics for a correctness review.
-
-Checking how `jsonl-field` patterns are evaluated and whether the scan's jq expression matches other rows.
-
-Confirming completeness: `extract_category` implements the triple-hash rule before the `##` rule; tests cover architecture, security, correctness, and title-only empty category. Primary issue: the new audit scan flags valid title-only `### FINDING_*` rows that intentionally have an empty category.
-
-

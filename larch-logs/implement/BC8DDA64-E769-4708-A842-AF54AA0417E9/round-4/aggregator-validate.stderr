@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'After `review_core_capture` parse scout KVs and best-effort run-log write `revie')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Rehydrate `CODEX_PRESENT` and `CURSOR_PRESENT` from `--session-env-path` in `app')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Flush batches best-effort on compose failure for `exit_code==0` rounds or use ta')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add pytest with all `RUN_ID` sources absent; assert `STEP5_REVIEW_STATUS=stall`,')
-warning: fix text for slot 'dyn-coder-dispatch-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Delete each `block_file` after successful classification, or write block text to')

@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:439-459` — The legacy fallback for `ns-retry-sidecars` now records every legacy `*-ns-retry*.txt` as `UNKNOWN` instead of reading `NS_RETRY_REASON=` from the adjacent `.meta` file. That regresses the previous behavior and corrupts the reason histogram for legacy runs, despite `.claude/skills/audit-runs/scripts/audit-scan-run.md:43` documenting that fallback reasons come from `*-ns-retry*.txt.meta`. **Suggested fix:** Restore per-sidecar meta parsing in the fallback branch before appending to `_reasons_list`, using the same normalization path as reviewer signals, and add a regression test where a legacy sidecar has `NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN`.
-
-- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:470-485` — The orphan dedup pass treats an invalid or failed `signaled_bases` aggregation the same as a valid empty array. `_audit_reviewer_signals_jq` masks jq failures with `|| true`, and this caller also ignores failure; if the second aggregation fails after signal reasons were already counted, the membership test fails and every legacy sidecar is counted again as `UNKNOWN`. **Suggested fix:** Derive `signaled_bases` from the already-parsed signal data, or explicitly check that the second helper returned a valid JSON array before running the orphan loop; on helper failure, emit an error/skip rather than continuing. Add tests for `[]`, `unavailable`, and empty/invalid helper output.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

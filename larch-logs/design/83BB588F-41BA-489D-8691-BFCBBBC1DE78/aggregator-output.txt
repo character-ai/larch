@@ -1,2 +1,0 @@
-Merging the 58 supplied reviewer findings into a normalized list: grouping by behavioral risk, applying severity merge rules, and preserving verbatim revision quotes per slot.
-

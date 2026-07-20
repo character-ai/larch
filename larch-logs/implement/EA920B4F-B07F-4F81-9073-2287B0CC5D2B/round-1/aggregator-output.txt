@@ -1,3 +1,0 @@
-Aggregating reviewer findings: checking for on-disk reviewer outputs and branch context to normalize duplicates and out-of-scope items.
-All substantive inputs are positive review notes or `[OUT_OF_SCOPE]` follow-ups; commit-subject lines are scaffolding. Producing the merged aggregator output with five OOS `### FINDING_N:` blocks (no empty-merge attestation).
-

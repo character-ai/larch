@@ -1,5 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `risk-integration` `docs/linting.md:104` — The branch protection migration docs still list only `test-harnesses (1)` through `(18)`, while CI now runs shards 19 and 20. If an admin follows this list, future PRs could merge even when `test-harnesses (19)` or `(20)` fails. The same stale section also says `make test-harnesses-1` through `make test-harnesses-18` at `docs/linting.md:23`, and the rebalance snippet still uses `range(18)` at `docs/linting.md:90`. Update these references to 20 and add `test-harnesses (19)` / `(20)` to the required-check list at `docs/linting.md:104-124`.
-
-I did not modify files. I also checked shell syntax with `bash -n` on the touched shell scripts and verified `scripts/test-dispatch-code-voters.sh` has 8 `if section_runs` guards.

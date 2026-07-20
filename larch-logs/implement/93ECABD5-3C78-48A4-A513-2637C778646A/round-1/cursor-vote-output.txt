@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate PLAN_LINE assignments are harmless dead code from trivial-branch removal
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate-tier rejection via SKILL prose matches plan acceptance; harness would be optional hardening
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan specifies manual rg verification commands, not Makefile CI registration
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan intentionally drops TRIVIAL_DOC_ONLY resume; generic invalid-tier tests already cover the behavior
-FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- review_budget=quick is pre-existing tmpdir trust surface, not introduced by this removal
-FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan deliberately makes --trivial an ordinary unrecognized token without early rejection
-FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

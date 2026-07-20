@@ -1,2 +1,0 @@
-warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add an UPDATED `scripts/render-review-phase-detail.md` section documenting table')
-warning: fix text for slot 'Cursor-dyn-ci-shard-coupling' in FINDING_3 not traceable to scoped input (first 80 chars: 'Gate npm ci on `make -pn` prereqs containing test-render-review-phase-detail for')

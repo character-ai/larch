@@ -1,6 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=4123
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4123
-ISSUE_1_TITLE=[OOS] scope-files.txt missing SECURITY.md entry for cross-repo filing documentation

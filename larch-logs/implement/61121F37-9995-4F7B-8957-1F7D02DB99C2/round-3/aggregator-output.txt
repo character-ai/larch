@@ -1,2 +1,0 @@
-Merging the supplied reviewer findings into a normalized list: grouping duplicates, applying severity rules, and keeping `[OUT_OF_SCOPE]` separate.
-

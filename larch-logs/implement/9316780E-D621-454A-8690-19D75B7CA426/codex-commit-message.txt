@@ -1,3 +1,0 @@
-Port implement back-half helpers to Python CLI
-
-Add Python entrypoints for OOS materialization and disposition, execution-issue flushing, stall recovery, Step 7a orchestration, final reports, and finalize cleanup. Cut over the primary ship, implement, design, and bootstrap call sites to direct python/cli.py verbs, and cover the new paths with focused pytest tests.

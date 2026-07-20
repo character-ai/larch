@@ -1,5 +1,0 @@
-Port external agent launchers to Python
-
-Move B4 external-agent launcher entrypoints into python/agents.py and route call sites through python/cli.py agent verbs. Retire the absorbed executable shell scripts, update retained sourced compatibility libraries, and replace launcher harness coverage with Python and retained integration tests.
-
-Inline-triage rule 2: Exclude the protected plugin manifest from retired-script lint because implement step 2 cannot edit .claude-plugin/plugin.json.

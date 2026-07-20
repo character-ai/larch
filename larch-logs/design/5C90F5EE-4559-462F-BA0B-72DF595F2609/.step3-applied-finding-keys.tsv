@@ -1,5 +1,0 @@
-1	the regression can pass without proving that the hook successfully replaced the symlinked state path, so a broken implementation that reads poisoned state but fails promotion can still satisfy the test.
-1	temporary state creation still trusts `$state_dir`, so a preplaced symlinked parent can redirect where the temp file lands and where the later move operates.
-1	the poison-row seed can be stale enough to reset the counter, so a symlink-reading implementation may still exit 0 and escape detection without proving the read guard worked.
-2	`state_dir` validation happens after `mkdir -p` and `chmod 700`, and one review also notes the read path is not pinned before `state_file` is accessed. that lets a symlinked `tmpdir` ancestor be mutated or trusted before the guard fires, so the hardening does not close the redirection path.
-2	the parent-directory symlink regression setup does not tear down the existing state directory first, so the symlink install can fail and the attack path is never exercised.

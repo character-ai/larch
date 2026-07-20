@@ -1,3 +1,0 @@
-Normalizing the supplied reviewer bullets: merging duplicates by shared behavioral risk, assigning stable IDs, and separating in-scope `### FINDING_N:` blocks from `### OOS_N:` blocks. Verbatim suggested text is identical across many slots (`Address the concern above.`); merging those into one bullet per merged finding when wording matches exactly.
-
-

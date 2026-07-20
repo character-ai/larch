@@ -1,1 +1,0 @@
-Add a baseline-backed AST lint, register it in the shared Python lint battery, and cover its exact syntax rules. Reconcile five additional live `Path(args.tmpdir)` matches while preserving their existing path policies. Keep only the documented normalized bgjob site in the baseline.

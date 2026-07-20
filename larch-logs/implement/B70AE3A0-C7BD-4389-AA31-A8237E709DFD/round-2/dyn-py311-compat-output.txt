@@ -1,9 +1,0 @@
-Reviewing the branch diff and commit history for Python 3.11 compatibility issues.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- The branch’s Python 3.11 floor work looks complete for the scoped surface: `python/pyproject.toml`, `python/ruff.toml`, `python/pyrightconfig.json`, and `python/.pylintrc` are all pinned to 3.11; runtime/docs guards in `skills/implement/SKILL.md`, `skills/report-tokens/scripts/run-analysis.sh`, and `skills/report-tokens/scripts/test-run-analysis-quiet.sh` were updated to `>= (3, 11)`; and CI runs `python-lint` / `python-tests` on both 3.11 and 3.12.
-- Every module under `python/` uses `from __future__ import annotations`, so pervasive `X | Y` annotations are not evaluated at import time and are safe on 3.11. I found no new 3.12-only syntax (`type` aliases, `@override`, `except*`, etc.) or 3.12-only stdlib imports in the changed `python/` files.
-- Pre-existing runtime code already depends on `datetime.UTC` in `python/logging_util.py:9`, `python/finalize.py:8`, and `python/report_tokens_cli.py:9`. That is a hard 3.11 stdlib floor, not 3.12; lowering the documented/runtime floor to 3.11 aligns with that latent requirement rather than introducing a new incompatibility.
-- Version enforcement remains outside the Python entrypoints (`ship.py` / `report_tokens_cli.py`): guards live in shell wrappers and the `/implement` skill prompt. That is pre-existing defense-in-depth shape, not a regression introduced by this diff.

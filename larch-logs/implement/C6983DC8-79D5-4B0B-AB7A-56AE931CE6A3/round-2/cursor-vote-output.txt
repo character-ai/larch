@@ -1,7 +1,0 @@
-Reading the ballot and verifying claims against provided context.
-
-FINDING_1: EXONERATE -- rare mktemp/arg failures vs broad non-fatal contract; no GitHub issue needed.
-FINDING_2: EXONERATE -- “before manifest evaluated” matches the non-zero scout_rc branch; optional clarity only.
-FINDING_3: YES
-FINDING_4: EXONERATE -- runtime doc matches emit_parse_failed_result exit 0; plan-template drift is optional.
-FINDING_5: YES

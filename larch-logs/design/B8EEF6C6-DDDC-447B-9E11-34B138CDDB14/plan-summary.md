@@ -1,1 +1,0 @@
-Implement the approved `NO_SKETCHES` design by moving Step 3b classification, sanitizer promotion/failure handling, Step 3b completion, Step 4 rejected-findings emit, and Step 4b preview/read into fewer wrappers. Keep the Gate C prompt logic unchanged, but replace raw full-plan display with `emit-design-plan-preview.sh --variant full`.

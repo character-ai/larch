@@ -1,5 +1,0 @@
-Implemented the plan and wrote the manifest at:
-
-`<TMPDIR>/codex-step2-out/manifest.json`
-
-Status: **complete**.

@@ -1,3 +1,0 @@
-ISSUE_1_NUMBER=6409
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/6409
-ISSUE_1_TITLE=[OOS] Aggregated rollup of 4 capped OOS items

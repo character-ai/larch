@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-1. **Nit** `code-quality` `scripts/test-harness-timer.sh:44-50`, `scripts/test-harness-timer.md:8` — The new `sleep 0.5` test does not match either the requested assertion (`^0\.[4-6][0-9]s$`) or its sibling doc: the script accepts up to `1.20s`, while the doc says `0.40s-0.79s`. This weakens the regression check and leaves the docs inconsistent. Tighten the assertion to the intended regex, or update both the harness and doc to the same deliberately widened CI range.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.

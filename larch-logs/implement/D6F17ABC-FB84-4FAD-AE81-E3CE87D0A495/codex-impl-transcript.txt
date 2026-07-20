@@ -1,6 +1,0 @@
-Implemented. Manifest written with `status=complete`.
-
-Tests passed:
-- `bash scripts/test-implement-timing-rehydration.sh`
-- `make test-implement-timing-rehydration`
-- `bash scripts/relevant-checks.sh`

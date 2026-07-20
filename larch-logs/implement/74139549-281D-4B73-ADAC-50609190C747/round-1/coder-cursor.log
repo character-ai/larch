@@ -1,8 +1,0 @@
-**Review fixes are in.** All 11 findings were applied: native Step 3 loop/panel port, retired bash scripts removed, `Makefile` test selector updated, and wrapper references repointed to Python CLI.
-
-**Follow-up from the background run:** `py-lint` initially failed and 2 panel tests were red. Those are fixed now:
-- Updated `test_plan_review_panel.py` for canonical slot names
-- Captured voter-launch stdout so key-order contract holds
-- Cleared ruff/pylint/pyright issues in `plan_review.py`, `plan_review_panel.py`, and `plan_review_round.py`
-
-**Current status:** `make py-lint` passes; `python/test_plan_review_panel.py` passes; `make lint-retired-scripts` passes; `test-design-step3-review.sh` passes.

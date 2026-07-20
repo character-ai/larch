@@ -1,3 +1,0 @@
-Pilot thin orchestrator fence for design Step 3.6
-
-Document the thin-fence contract, move Step 3.6 assessor rendering and trusted trailer handling into the driver, and collapse the SKILL.md handoff to rc-based routing. Gate assessor and snapshot behavior on canonical design_classification with HARD fail-closed semantics, and update the Step 3.6 registry and harness coverage.

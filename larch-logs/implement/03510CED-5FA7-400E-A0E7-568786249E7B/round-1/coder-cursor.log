@@ -1,1 +1,0 @@
-All 14 review findings were applied. The full `make py-test` run had one failure: `test_step5_checks_wiring_passes_repo_site_and_binary_presence` needed updating for the new `claude_present` threading in `_run_lint_fix_loop`. That test is fixed and passes now. `make py-lint` was already clean.

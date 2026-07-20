@@ -1,1 +1,0 @@
-Port `/implement` Step 2 dispatch and implement launchers to Python. Preserve current stdout KVs, recovery gates, launcher contracts, and commit behavior. Cut callers to `python/cli.py`, replace shell harnesses with pytest, delete retired shell surfaces, and sweep stale references.

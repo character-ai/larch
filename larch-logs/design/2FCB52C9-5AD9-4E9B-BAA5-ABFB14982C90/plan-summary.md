@@ -1,1 +1,0 @@
-Port the listed /review findings pipeline scripts to Python modules and CLI verbs. Cut live callers to `python3 python/cli.py review ...`, keep out-of-scope bash helpers only where approved, replace harness coverage with pytest, delete absorbed bash surfaces, and sweep retired-path references.

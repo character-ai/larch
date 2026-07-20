@@ -1,9 +1,0 @@
-Implemented the Gate B dedup-sweep instruction in [approval-gates.md](<OPERATOR_REPO_PATH>/skills/design/references/approval-gates.md:86). It now covers Apply all, Go through each batch revision, and one-by-one completion, with semantic LLM judgment, the distinct-context carve-out, and the unconditional `dedup-sweep: removed <N> duplicate line(s) from plan.txt` breadcrumb.
-
-Verification:
-- `bash scripts/test-design-structure.sh` passed.
-- `bash scripts/relevant-checks.sh` passed.
-- `git diff --check` passed.
-- `make lint` failed in existing `test-review-core` with `/dev/fd/62: Operation not permitted` at `skills/review/scripts/review-core.sh:506`, then `FAIL: aggregator validation-exhausted should exit 2`. This is outside the changed file; no review-core files were modified.
-
-Wrote the required session `manifest.json` atomically with `status: "complete"`. No `qa-pending.json` was written.

@@ -1,7 +1,0 @@
-Fix token sidecar ingestion gaps
-
-Warn on failed Codex drafter token-record copies, unsupported sidecar TOOL values, and failed lint-fix token subprocesses.
-
-Append Python lint-fix Codex sidecars to NDJSON and ingest them into the active ledger even when the launcher fails, with implementation tmpdir routing isolated from stale parent env.
-
-Document research Codex sidecar ingestion against the research ledger, add lint-fix-loop relevant-check routing, and refresh focused regression coverage.

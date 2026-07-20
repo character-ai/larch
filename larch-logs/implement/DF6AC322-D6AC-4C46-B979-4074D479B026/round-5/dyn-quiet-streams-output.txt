@@ -1,9 +1,0 @@
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **architecture** `python/logging_util.py:52-66` — `quiet_init()` resolves the quiet-log directory from `IMPLEMENT_TMPDIR`, then `TMPDIR`, then `/tmp`, while `scripts/lib-quiet.sh:22-37` also considers `REVIEW_TMPDIR`, `DESIGN_TMPDIR`, and `RESEARCH_TMPDIR`. That parity gap is harmless for the current `ship.py` entrypoint because `main()` always exports `IMPLEMENT_TMPDIR` before calling `quiet_init()`, but it would matter if `quiet_init()` were reused by another Python driver without that precondition.
-
-- **architecture** `python/ship.py:750-777` vs `skills/implement/SKILL.md:1019-1062` — the bash ship path emits machine output on fd 3 via `emit`/`emit_kv` after `larch_quiet_init`, while the Python path documents “parse stdout JSON.” That is intentional here: after self-init, `contract_stream()` writes through a dup of pre-redirect fd 3 (the original stdout pipe), so the orchestrator still captures contract JSON on stdout while breadcrumbs/diagnostics route to the quiet log and fd 4. The surfaces differ by name but stay separated in practice.
-
-- **architecture** `scripts/larch-log.sh:67-99` — the new explicit dynamic-Codex allow clause is contract/documentation layering on top of the existing broad `*-output*.txt` allow; phased dynamic Codex artifacts were already included at runtime. The meaningful architectural change is deny-order hardening (`*-vote-prompt.txt`, `*.events.jsonl`, retry-shaped names) ahead of the broad allow, which closes catch-all regressions without altering committed output for the fixtures exercised in `scripts/test-larch-log-write-round.sh`.

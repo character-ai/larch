@@ -1,3 +1,0 @@
-The background `make py-test` run failed on one test: `test_straight_merge_post_ensure_committed_snapshot`. That was fixed afterward (real `flush_logs_pre` binding, `state_file`, and assertion updates). That test passes now, and `make py-lint` is clean.
-
-All 10 review findings (1, 4, 9, 10, 12–17) were applied. No commit was made.

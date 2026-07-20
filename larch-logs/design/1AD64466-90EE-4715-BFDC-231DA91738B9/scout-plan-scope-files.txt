@@ -1,4 +1,0 @@
-skills/implement/SKILL.md
-scripts/rebase-checkpoint-probe.sh
-scripts/rebase-checkpoint-probe.md
-scripts/test-rebase-checkpoint-probe.sh

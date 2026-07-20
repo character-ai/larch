@@ -1,1 +1,0 @@
-Plan: make CI agentic-fix fail closed on stale/passive wait and later-cycle non-health failures, trim dead in-process CI waterfall code, add forbidden-path conflict guard, clarify conflict docs, and replace critical skipped coverage with stubbed tests only.

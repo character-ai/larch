@@ -1,3 +1,0 @@
-Require file-backed gh body payloads
-
-Add a path-triggered Claude rule for gh --body/--notes usage, migrate existing inline body callers to --body-file, and pin the disposable-worktree PR exception in docs and tests.

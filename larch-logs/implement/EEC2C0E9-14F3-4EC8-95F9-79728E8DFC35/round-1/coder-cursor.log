@@ -1,5 +1,0 @@
-The review fixes are in place. The full `make py-test` run had **3 failures**, all in `test_design_lifecycle.py` step2a subprocess tests.
-
-**Cause:** those tests spawn a subprocess with only `DESIGN_TMPDIR` and `CLAUDE_PLUGIN_ROOT`, so the new allowlist validation rejected pytest temp paths.
-
-**Fix:** pass `TMPDIR` through in those three tests. They pass now. The hook and Step 3 harness tests were already green.

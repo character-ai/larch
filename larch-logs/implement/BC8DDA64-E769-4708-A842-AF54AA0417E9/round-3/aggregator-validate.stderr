@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Mirror step5/commit_fixes: read session-env keys into `os.environ` before `apply')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add pytest stubs for `_run_relevant_checks_captured` and `_run_lint_fix_loop` co')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Capture `_run` argv and assert token mark and timing mark with `LARCH_TIMING_SKI')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Assert oct mode `0o444` on `pre-coder-head.txt` in MAV test.')

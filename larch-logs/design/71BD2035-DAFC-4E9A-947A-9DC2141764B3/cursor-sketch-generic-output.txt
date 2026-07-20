@@ -1,7 +1,0 @@
-Exploring the codebase read-only to map `ship-pr.sh`, `ci-decide.sh`, CI launchers, larch-log batches, and tests so we can propose an implementation approach.
-
-Checking `launch-codex-ci.sh` prompt structure and `scripts/larch-log-batches.md` for sibling updates.
-
-Identifying a design tension: `ci-decide.sh` currently emits a human-readable bail message for `FIX_ATTEMPTS >= 10`, which does not match `needs_user_bail_reason` — so that path already reaches `exit_stall` (exit 4). Emitting `BAIL_REASON=fix-attempts-exhausted` would match `needs_user_bail_reason` and flip the cap to exit 3 unless `ship-pr.sh` disambiguates (e.g. treat `fix-attempts-exhausted` as stall when `FIX_ATTEMPTS >= 10`, preserving the stub test with `FIX_ATTEMPTS=0`).
-
-

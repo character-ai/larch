@@ -1,5 +1,0 @@
-Guard design autofix for empty composed plans
-
-Skip plan-command auto-fix dispatch when the target plan file is empty, returning the no-dispatch KVs with an empty-target validator status.
-
-Clarify Step 5c recovery docs so Fix-and-retry reruns validation and --skip-validate only bypasses the plan-command validator, not the missing-or-empty guard.

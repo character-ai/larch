@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **correctness** `skills/design/scripts/render-final-summary.sh:259-288` — The guard treats `accepted-plan-findings.md` and `oos-accepted-design.md` as independently optional, but the awk invocation still passes both filenames; if one file is absent while the other contains accepted blocks, awk fatals before `END` and the fallback reports `0 findings`. The new fixtures always create both files, so this case is untested. **Suggested fix:** Build an argv array with only existing non-empty artifacts before invoking awk, or substitute `/dev/null` for missing artifacts; add one regression for APF-only and one for OOS-only.
-
-- **correctness** `skills/design/scripts/render-final-summary.sh:275` — The header matcher counts `^### (FINDING_|OOS_)[0-9]`, so malformed headings like `### FINDING_1oops` are counted as accepted blocks even though the repo’s canonical parsers require `### FINDING_N:` / `### OOS_N:`. **Suggested fix:** Tighten the regex to `^### (FINDING_|OOS_)[0-9]+:` and add a malformed-heading fixture that remains `0 findings`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

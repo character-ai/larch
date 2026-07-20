@@ -1,7 +1,0 @@
-Default implement ship driver to Python
-
-Flip Step 8+ documentation and selector pins so python/ship.py is the default driver and LARCH_SHIP_PR_IMPL=bash is the legacy opt-in.
-
-Merge Python ship state safely, gate tmpdir writes, narrow terminal finalize writes, preserve orchestrator keys, and refresh stall-shaped state for postmerge/outer failure paths.
-
-Update stall recovery, conflict handoff, operator docs, and regression harnesses for the Python-default routing contract.

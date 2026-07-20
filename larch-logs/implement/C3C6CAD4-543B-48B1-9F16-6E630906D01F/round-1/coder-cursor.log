@@ -1,3 +1,0 @@
-**FINDING_11 applied.** The design pause/resume carve-out in `python/lint_consecutive_bash.py` no longer matches generic `design-step` substrings; it now requires explicit pause/resume markers (`pause-save`, `pause-load`, `--action pause/resume`, etc.).
-
-The MainAgent vote pre/post launcher pair in `skills/design/SKILL.md` now has an explicit `# lint-consecutive-bash: ok` suppression instead of relying on the broad carve-out. A regression test was added, and `pytest` / `lint consecutive-bash` / `make py-lint` all pass.`make py-lint` finished cleanly: **0 errors, 0 warnings** from pyright. The FINDING_11 changes are lint-clean.

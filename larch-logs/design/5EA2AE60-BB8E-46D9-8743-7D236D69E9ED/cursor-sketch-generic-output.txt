@@ -1,4 +1,0 @@
-Exploring the CI-fix flow in `scripts/ship-pr.sh` and related helpers to draft a read-only implementation plan.
-Checking how `relevant-checks.sh` differs from CI job commands and whether a pre-push sweep hook exists.
-Creating the implementation plan from the codebase review.
-

@@ -1,4 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `risk-integration` `scripts/test-harness-timer.sh:1`  
-   The new Makefile-only harness is not added to `agent-lint.toml`’s dead-script exclusions, so `agent-lint` fails with `G004/dead-script` for `scripts/test-harness-timer.sh`. Concrete failing scenario: the branch adds `Makefile:449-450`, then CI’s `agent-lint` job runs and rejects the PR even though `make test-harness-timer` passes. Add `scripts/test-harness-timer.sh` to the existing Makefile-only harness exclusion block near `scripts/test-harness-shards-coverage.sh` / `scripts/harness-timer.sh`; include `scripts/test-harness-timer.md` too if you want to mirror the adjacent sibling-doc pattern.

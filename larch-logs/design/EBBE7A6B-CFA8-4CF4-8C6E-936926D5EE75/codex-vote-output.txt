@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real in the legacy helper, but the cited live flush paths use _commit_run, so this is latent and outside the issue’s necessary execution path.

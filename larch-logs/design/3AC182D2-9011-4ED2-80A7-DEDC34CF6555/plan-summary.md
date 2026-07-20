@@ -1,1 +1,0 @@
-Add `/rejected-analysis` as a narrow, filing-by-default recovery skill. Put deterministic collection, filtering, ledger, clustering, and issue-batch generation in Python, keep the skill and Bash wrapper thin, use Agent verification only for the expensive current-code judgment step, and wire tests/docs/security around the new mutating workflow.

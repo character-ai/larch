@@ -1,7 +1,0 @@
-scripts/design-log-publish.sh
-scripts/lib-design-round-artifacts.sh
-scripts/test-design-log-publish.sh
-scripts/test-lib-design-round-artifacts.sh
-SECURITY.md
-scripts/design-log-publish.md
-scripts/lib-design-round-artifacts.md

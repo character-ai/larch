@@ -1,1 +1,0 @@
-Fix Step 5c by sharing consumer-repo root resolution, passing the consumer repo as `--repo-root` while preserving `CLAUDE_PLUGIN_ROOT`, and adding a publish-tail regression test plus clearer Step 5c validator-defect guidance.

@@ -1,3 +1,0 @@
-Merging the 42 raw reviewer findings into a deduplicated list. Verifying key locations in the codebase to normalize concerns accurately.
-Confirming merge groups against the repo. Producing the aggregated structured finding list.
-

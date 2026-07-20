@@ -1,1 +1,0 @@
-Fix both classification replay score surfaces to add `LARCH_UNIQUE_FINDER_BONUS` only for accepted, in-scope, sole-finder rows. Preserve byte-identical output when the bonus is unset, zero, or invalid. Add regression tests for CLI scoreboard and progress Top reviewers, plus a short docs note.

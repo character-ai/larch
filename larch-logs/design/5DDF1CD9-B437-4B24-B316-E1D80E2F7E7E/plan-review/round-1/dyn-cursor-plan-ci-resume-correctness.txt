@@ -1,2 +1,0 @@
-Reviewing the plan against the codebase: reading the plan and tracing grace-selection logic in the ship driver and CI monitor.
-{"no_issues_found": true}

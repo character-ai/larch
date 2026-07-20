@@ -1,7 +1,0 @@
-1	reconciliation can mark `ship-pr-state.sh` as merged while stale stall/bail state remains in `finalize-state.sh`, `session-env.sh`, or orchestrator memory. step 18 can therefore route to stall recovery or render a non-terminal outcome despite a verified merged pr.
-1	the assessment-unavailable proceed branch is underspecified: it may route through `reship` and pre-fix-rebase or seed step 12d stall state before the resumed step 8 run.
-1	reconciliation may update only local state after the post-merge sentinel, while post-merge commits are forbidden, leaving committed shipping summaries and in-progress manifests inconsistent with the merged result.
-1	the new waiver and reconciliation verbs may have their machine-readable stdout suppressed under inherited quiet mode because they are absent from `_machine_stdout_keys`.
-1	preserving `forked_target=true` can cause a proven manual merge to normalize as forked dry-run because fork handling is evaluated before `merge_result=merged`.
-1	steps 16–18 may proceed after partial reconciliation, such as state and sentinel writes succeeding while manifest writing fails.
-2	reconciliation may leave stale bail-state keys, allowing a verified merged run to normalize back to `bailed-needs-user-input`.

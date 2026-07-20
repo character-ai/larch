@@ -1,1 +1,0 @@
-Fix the Step 2 scope-disposition gate so benign "full `make py-lint` / `make py-test` not run" manifest todos do not trigger a partial-coverage pause. Keep real implementation todos and high uncovered plan coverage blocking.

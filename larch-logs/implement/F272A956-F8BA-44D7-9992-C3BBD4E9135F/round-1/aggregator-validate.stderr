@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Propagate the actual failure return code into `_fetch_failure` and `stage_failed')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Read plan with strict UTF-8; on decode error return `redact-failed` like Bash.')
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Set `LARCH_QUIET_DISABLE=1` around the in-process `auto_fix_plan_commands_main` ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Catch write failures inside `_fetch_failure`; still stage `failed-clarify` and e')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Reword to describe warning-only behavior and `PUBLISH_OK=false` semantics.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Test `redact_secrets_only` raise and empty-output cases; assert `CLARIFY_PUBLISH')
-warning: fix text for slot 'dyn-wrapper-surface-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Add a harness case that unsets `CLAUDE_PLUGIN_ROOT`, invokes the wrapper with on')

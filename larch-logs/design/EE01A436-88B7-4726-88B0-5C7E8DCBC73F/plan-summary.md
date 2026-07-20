@@ -1,1 +1,0 @@
-Plan updates OOS proposal wording across templates, generated agents, hand-maintained reviewer prompts, and pre-rendered bodies. It also fixes design OOS rollup annotation and changes rejected-OOS audit outcome lookup to prefer `findings-classification.tsv`.

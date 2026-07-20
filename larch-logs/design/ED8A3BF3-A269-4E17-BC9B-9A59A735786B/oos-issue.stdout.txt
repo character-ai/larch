@@ -1,6 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=4374
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4374
-ISSUE_1_TITLE=[OOS] Add oos disposition-checkpoint to Python-path oos file subcommand

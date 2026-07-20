@@ -1,6 +1,0 @@
-Implemented the plan and wrote the manifest.
-
-- **Status:** `complete`
-- **Manifest:** `codex-step2-out/manifest.json`
-- **Scout sidecar:** `codex-step2-out/scout-coder-manifest.json`
-- **Note:** Manifest records one remaining validation todo for the long `make test-dispatch-with-waterfall` harness, which exceeded this tool’s 30s command-capture cap.

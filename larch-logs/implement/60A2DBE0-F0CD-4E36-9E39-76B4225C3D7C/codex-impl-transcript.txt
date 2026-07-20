@@ -1,7 +1,0 @@
-Implemented the plan and wrote `manifest.json`.
-
-**Tests run:**
-- `python3 -m pytest python/test_progress_report.py`
-- `bash scripts/test-render-review-phase-detail.sh`
-- `python3 -m ruff check python/progress_report.py python/test_progress_report.py`
-- `git diff --check`

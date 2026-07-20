@@ -1,1 +1,0 @@
-voter-2	codex	collector-failure	STATUS=FAILED ⏳ codex agent: still running (1m elapsed) ⏳ codex agent: still running (2m elapsed) ❌ codex agent: FAILED (exit code 1, output 0 bytes) 

@@ -1,1 +1,0 @@
-Implemented the plan and wrote the complete manifest at the requested path.

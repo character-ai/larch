@@ -1,1 +1,0 @@
-Fix forward with the approved neutral snapshot path. Reuse `pr-created`, reconcile manifest step/status after `final-summary.md` exists, and add audit tolerance for stale committed bails with PR evidence. Do not add post-merge commits or speculative `merged` writes.

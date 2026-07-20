@@ -1,8 +1,0 @@
---- /Users/zhupanov/larch8/larch-logs/design/E9150098-40B4-4D6D-81BB-AD5589831C7A//plan.txt	2026-05-28 13:23:28
-+++ /Users/zhupanov/larch8/larch-logs/design/E9150098-40B4-4D6D-81BB-AD5589831C7A//composed-plan.md	2026-05-28 13:23:28
-@@ -1,3 +1,5 @@
-+## Plan
-+
- ## Summary
- 
- Reconcile larch reference docs and contracts with the now-landed multi-round design plan-review loop (PR #3142 / INT-2871). Scope is narrowed to gaps that survived the integration: surface the structured `- **Severity**: important|latent|nit` field in Gate B presentation prose, document the patch-apply security surface introduced by `revise-plan-with-waterfall.sh`, enumerate per-round artifacts under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/` in `docs/run-logs.md`, document the new env vars to match actual script validation, register a missing test harness, and add two prose-presence structure-test assertions. Pure documentation/configuration; no behavior changes.

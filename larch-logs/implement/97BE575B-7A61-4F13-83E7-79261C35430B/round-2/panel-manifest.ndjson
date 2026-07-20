@@ -1,6 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.9/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.9/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.9/agents/reviewer-testing.md"}
-{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-2/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.9/agents/code-reviewer.md"}
-{"slot": "dyn-state-persistence", "tool": "cursor", "output": "<TMPDIR>/round-2/dyn-state-persistence-output.txt", "prompt_file": "<TMPDIR>/round-2/dynamic-archetypes/dyn-state-persistence-prompt.md", "weight": 1, "focus_area": "architecture", "archetype_ref": "9aacc5ad8f36"}
-{"slot": "dyn-seed-logic", "tool": "cursor", "output": "<TMPDIR>/round-2/dyn-seed-logic-output.txt", "prompt_file": "<TMPDIR>/round-2/dynamic-archetypes/dyn-seed-logic-prompt.md", "weight": 1, "focus_area": "correctness", "archetype_ref": "4c498f712617"}

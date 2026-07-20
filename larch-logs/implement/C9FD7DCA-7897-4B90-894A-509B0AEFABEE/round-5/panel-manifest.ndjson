@@ -1,8 +1,0 @@
-{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-security.md"}
-{"slot":"security","tool":"codex","output":"<TMPDIR>/round-5/codex-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-security.md"}
-{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-correctness.md"}
-{"slot":"correctness","tool":"codex","output":"<TMPDIR>/round-5/codex-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-correctness.md"}
-{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-edge-cases.md"}
-{"slot":"edge-cases","tool":"codex","output":"<TMPDIR>/round-5/codex-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-edge-cases.md"}
-{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-testing.md"}
-{"slot":"testing","tool":"codex","output":"<TMPDIR>/round-5/codex-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.3/agents/reviewer-testing.md"}

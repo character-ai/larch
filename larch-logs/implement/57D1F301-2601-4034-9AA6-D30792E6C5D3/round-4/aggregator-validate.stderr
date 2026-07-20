@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_1: [OUT_OF_SCOPE] Unused `snapshot_optional_')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] `LARCH_DEDUP_PLAN_LINES_PY')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] `check-plan-size` exit 2 s')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Address the concern above.')

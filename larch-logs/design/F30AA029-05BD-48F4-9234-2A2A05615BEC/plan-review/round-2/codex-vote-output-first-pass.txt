@@ -1,1 +1,0 @@
-Understood. I’ll act as a read-only voting-panel reviewer, not modify/commit/push anything, and apply the YES / EXONERATE / NO criteria as specified.

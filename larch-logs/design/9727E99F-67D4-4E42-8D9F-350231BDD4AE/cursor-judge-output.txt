@@ -1,5 +1,0 @@
-Reading the dialectic ballot and related defense materials to cast votes on each decision.
-Verifying repo state and contested-decision context to judge argument quality.
-DECISION_1: ANTI_THESIS — Defense B correctly anchors on the landed Codex→Cursor→Claude contract (#2756, SECURITY.md, SKILL.md, routing pins) and treats default-order reversal as a separate product change; Defense A’s opening misreads #2756 and overweights issue-body coherence against committed operator-visible behavior.
-
-DECISION_2: THESIS — Defense B shows a documented Phase 3/4 split where DEFERRED paths materialize plans but skip `phase_coder_select`, leaving empty `coder=` before mandatory `--coder` dispatch once the SKILL waterfall is removed; widening the guard fixes that regression in one owner without inventing a parallel orchestrator routing table.

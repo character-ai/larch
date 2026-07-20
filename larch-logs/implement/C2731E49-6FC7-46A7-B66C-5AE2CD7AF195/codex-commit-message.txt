@@ -1,3 +1,0 @@
-Stabilize implement bootstrap emergency flow
-
-Keep post-tracking issue argv order stable while forwarding --emergency-requested, and rename Branch 1 resumed tracking issues before larch-log init so failure paths preserve the visible in-progress state.

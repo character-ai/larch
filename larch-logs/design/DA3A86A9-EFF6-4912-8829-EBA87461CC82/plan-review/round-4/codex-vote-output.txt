@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- completion-boundary convergence is safer and not materially more complex than folding FINALIZE into Step 3b entry.
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already requires SIMPLE-guarded writes; extra harness scoping is reasonable but not worth blocking the plan over.
-OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=weak UNCERTAIN=false -- duplicate of FINDING_2 and should be handled in-scope rather than filed as a separate OOS issue.

@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
-FINDING_3: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- coalesce `${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}` already covers this path; safe_bail_reason_value("recovery-out-of-scope") returns "redacted" (non-empty), not "none"

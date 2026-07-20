@@ -1,3 +1,0 @@
-docs/linting.md
-skills/implement/SKILL.md
-skills/design/SKILL.md

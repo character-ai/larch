@@ -1,3 +1,0 @@
-docs(linting): refresh test-step-7a inventory row
-
-Rewrite the test-step-7a harness inventory entry to avoid drift-prone hardcoded case counts, describe sanitizer rejection behavior accurately, and include the missing coverage categories while preserving the shard-prerequisite sentence.

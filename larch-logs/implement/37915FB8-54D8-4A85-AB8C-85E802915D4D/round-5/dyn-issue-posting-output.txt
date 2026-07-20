@@ -1,6 +1,0 @@
-Reviewing the branch diff and issue-posting code for security findings.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **security** `python/report_tokens_render.py:200-216` — The NDJSON cache written under `larch-report-tokens.*` includes unredacted `manifest.json` titles (and other string fields) on local disk. Posted GitHub issue bodies do not include those titles, and stdout only prints a redacted `Cache JSON:` path, but anyone with access to the temp cache file could read secrets that `redact.redact()` would remove from a public issue. **Suggested fix:** Redact string values when writing cache rows, or document clearly in `run-analysis.md` / `SECURITY.md` that the cache file is sensitive local forensics and must not be shared.

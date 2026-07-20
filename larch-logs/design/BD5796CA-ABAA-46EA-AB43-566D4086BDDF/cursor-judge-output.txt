@@ -1,8 +1,0 @@
-Reading the dialectic ballot and defenses to cast votes on each decision.
-Checking for additional decisions in the ballot.
-Verifying key evidence cited in both defenses.
-Ballot has two decisions. Votes below, grounded in the cited repo text and the session’s round-1 note that run logs are flushed before any spurious re-fire.
-
-**DECISION_1: THESIS** — DEFER is better supported: anti-halt is explicitly subordinate to control-flow directives, only names `5c.8→6` (not post-cleanup re-entry), Step 6 has no “continue” line unlike Step 5, and prompt-only terminal prose does not address the likelier runtime re-invocation paths the audit and guard target.
-
-**DECISION_2: THESIS** — CODE-AUDIT-ONLY wins on fit to confirmed facts: committed `larch-logs/design/` manifests are flushed after a completed session, so the proposed in-repo telemetry mostly records run N while the failure is a second entry after publish/cleanup; boundary hooks plus a guard address control directly without expanding every `/design` run contrary to the reporter’s goal.

@@ -1,3 +1,0 @@
-Thin design Step 0b route/init fences
-
-Move cancel rendering, cancel reject diagnostics, and resume env refresh into design-route.sh, with result-env written before cancel side effects. Move init contract-drift and env-refresh diagnostics into design-init-runparams.sh and preserve quiet child stderr bridging. Thin the SKILL.md Step 0b route/init branches and update structural pins to assert the driver-owned behavior.

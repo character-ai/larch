@@ -1,1 +1,0 @@
-📊 Reviewers: | Cursor-Arch: ✅ | Codex-Arch: ✅ | Cursor-Innovation: ✅ | Codex-Innovation: ✅ | Cursor-Pragmatic: ✅ | Codex-Pragmatic: ✅ | Cursor-Requirements: ✅ | Codex-Requirements: ✅ | Cursor-dyn-Dyn Gatec Ladder: ✅ | Codex-dyn-Dyn Gatec Ladder: ✅ |

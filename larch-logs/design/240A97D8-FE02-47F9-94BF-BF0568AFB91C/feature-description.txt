@@ -1,9 +1,0 @@
-# eliminate completely HARD flow from /design, removing all machinery and tests…
-
-eliminate completely HARD flow from /design, removing all machinery and tests exclusive to it.  Remove --hard argument, and any mentions of HARD or differentiation by flow type from reports and documentation.  SIMPLE (which becomes the one and only now, and so SIMPLE mentions should also be eliminated as unnecessary, and reports of flow type should be removed entirely as well) retains all its existing characteristics.
-
-## Acceptance
-
-- Grepping the codebase for `SIMPLE` and `HARD` returns no results at the end, except in run logs (`larch-logs/`). Concretely, `git grep -nE 'SIMPLE|HARD' -- ':!larch-logs'` must produce no output (case-sensitive).
-- Note this includes the plan-size machine tokens (`HARD_TRIGGER_FIRED`, `HARD_TRIGGER` reason text) in `check-plan-size.sh`, `design-postplan-emit.sh`, and their docs/tests/consumers: those denote the hard size threshold, not the HARD tier. Rename those tokens and update their consumers and tests; the plan-size braking behavior itself is retained unchanged.
-

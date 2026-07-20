@@ -1,1 +1,0 @@
-Add a diagnostic `difficulty-calibration analyze` CLI plus `/difficulty-calibration` skill. The analyzer reads committed `larch-logs/`, joins difficulty ratings with review outcomes, token/timing data, and rejected-analysis verdict labels, then emits calibration markdown without mutating live behavior.

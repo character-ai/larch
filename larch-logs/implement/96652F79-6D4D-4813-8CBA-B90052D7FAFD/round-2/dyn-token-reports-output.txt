@@ -1,6 +1,0 @@
-Reviewing report-tokens changes for implement vs design correctness — reading the diff and relevant source files.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** `python/test_report_tokens_cli.py:23-54` — The plan called for asserting that `main(["--skill", "design"])` forwards `skill="design"` to `post_issue`, but the only posting test exercises the implement path. Production wiring is symmetric (`post_issue(..., skill=skill)` in `python/report_tokens_cli.py:114-119`), so this is a coverage gap rather than a demonstrated runtime defect. **Suggested fix:** Add a mirror of `test_main_success_posts_issue_and_keeps_single_cache_trailer` that invokes `--skill design` and asserts `posted == [("o/r", "design")]`.

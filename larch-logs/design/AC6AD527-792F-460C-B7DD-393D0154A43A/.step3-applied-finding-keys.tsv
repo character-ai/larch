@@ -1,8 +1,0 @@
-1	re-entry resets need a de-stalled in-memory `runcontext`, not just a rewritten `ship-pr-state.sh`; otherwise later non-terminal writes can re-persist `stall_tracking` / `stall_step` and keep the resumed drive looking terminal. the first post-reset write and the pre-refresh state both need to prove the stall overlay is gone.
-1	resetting too early can clear the stalled overlay before the merged/done recovery path has a chance to repair the committed summary, so the recovery branch loses the very signal it needs to reconcile.
-1	the new preterminal refresh-skip reason needs explicit classifier routing; otherwise it can fall through or be misrouted, and the resume hint / failure-class behavior becomes ambiguous.
-1	the retry should re-enter at the add/diff/commit tail only; re-running copy/scrub on the second attempt would wipe hook fixes from the worktree and reproduce the original stall.
-1	when the retried commit still fails, the surfaced detail needs the checking-only-hook workaround too, not just the fixer-hook shape.
-2	the re-entry reset around `finalize-state.sh` can leave terminal state behind or fail open on non-regular finalize files, so the resumed drive still normalizes to `stalled`/`bailed` and can loop back into the pre-terminal refresh deadlock.
-2	the new pre-terminal refresh skip can be routed by the bare `pre-commit` substring check in `_classify_text`, so remedy text mentioning `.pre-commit-config.yaml` may send the stall down the lint-failure recovery path instead of the ship-resume path.
-2	the plan places ship-state de-terminalization too early in `run_ship`, before later early-return recovery branches have finished, so the stalled overlay can be cleared before merged/done reconciliation reads it and the reship path can break.

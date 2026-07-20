@@ -1,3 +1,0 @@
-All eight accepted findings were applied in the prior round (hook hardening, wrapper `DESIGN_TMPDIR` guards, best-effort marker writes, SKILL post-notification round fallback, and expanded test coverage).
-
-`bash scripts/relevant-checks.sh` finished successfully (exit 0), including `test-hook-bg-poll-guard.sh` and `test-render-final-summary.sh`.

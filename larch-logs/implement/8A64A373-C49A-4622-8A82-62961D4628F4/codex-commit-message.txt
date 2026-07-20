@@ -1,6 +1,0 @@
-Cover review terminal ordering and blocking severity
-
-Add targeted Codex and Cursor terminal-artifact ordering tests, plus session background-process cleanup edge-case coverage.
-Pin the shared orchestrator premature-notification recovery carve-out in the anti-polling harness.
-Add blocking severity to reviewer prompt surfaces and high-severity matching, then regenerate reviewer artifacts.
-Inline-triage rule 1: Update anti-polling harness sibling docs to match the new shared orchestrator assertion.

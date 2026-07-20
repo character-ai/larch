@@ -1,3 +1,0 @@
-Aggregating reviewer findings: merging duplicates, preserving OOS tags, and applying severity rules. Verifying a few overlapping code areas in the repo for accurate titles.
-Producing the normalized aggregator output: merging duplicate findings while keeping OOS-tagged items separate from in-scope counterparts per aggregation rules.
-

@@ -1,3 +1,0 @@
-Fix design pause resume recovery paths
-
-Allow design pause publishes to stage the driver phase sentinels, restore paused snapshots with git ls-tree plus git show so export-ignore does not hide logs, and invert marker cleanup so retryable load failures keep the marker while successful loads delete it. Update the pause/resume docs, security notes, and regression harness coverage.

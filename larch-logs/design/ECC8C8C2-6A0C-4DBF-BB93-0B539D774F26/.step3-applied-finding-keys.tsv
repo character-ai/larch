@@ -1,3 +1,0 @@
-1	the plan adds a guard after `mkdir -p` and before `chmod`, but the proposed regression does not directly exercise that window, so removing or misplacing the new guard could still pass the suite.
-1	the `deep_guardless` variant can still keep an earlier standalone guard copy, so the variant may pass without actually proving the new pre-`mktemp` guard is load-bearing.
-2	the new guardless regression variants still leave state-dir validation in place in ways that can short-circuit before the intended pre-chmod and pre-mktemp toctou windows, so the negative-control cases may pass without proving attacker-controlled writes or failing when the new guard is removed.

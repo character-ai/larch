@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/implement/SKILL.md:776-788` — The new Step 5 banner/preflight derives `dynamic_archetypes_cap` from ambient `LARCH_DYNAMIC_ARCHETYPES_MAX` before reading `$IMPLEMENT_TMPDIR/session-env.sh`, but the actual loop path in `scripts/run-step5-review.sh:169,236` reads session-env and forwards it as `--dynamic-archetypes`, which wins over ambient env in `skills/review-and-fix/scripts/review-and-fix.sh:1219-1241`. A stale/invalid ambient value can now hard-fail Step 5 before review even though the real runtime would have used the validated session-env cap, or print a banner cap that does not match the run. **Suggested fix:** Make the banner derivation mirror the invoked path: prefer the session-env value that `run-step5-review.sh` will pass as CLI, then fall back to non-empty ambient env/default, or add a `run-step5-review.sh --print-banner-values` probe so there is only one precedence implementation.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

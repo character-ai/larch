@@ -1,3 +1,0 @@
-APPLIED: FINDING_5**FINDING_5 applied.** In `plan-review-loop.sh`, the `degraded-empty-collector` branch no longer runs when `LOOP_REASON` already matches `ballot-items-lost*`, so that reason is preserved and the round can fall through to `zero-findings-degraded-panel` for continuation.
-
-`test-plan-review-loop.sh` passed, including the ballot-items-lost cases. No commit was made.

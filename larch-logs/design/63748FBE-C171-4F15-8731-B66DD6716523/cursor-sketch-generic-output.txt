@@ -1,7 +1,0 @@
-Exploring the codebase for issue #2594: locating cost/token reporting, `/design` Step 5, `/implement` run summary, and related scripts.
-
-Checking for an existing design cost helper and how `fix-issue` uses the renderer.
-
-Having mapped the flow: `token-cost.sh` has no built-in defaults (docs state costs stay `N/A` until rates are set), while `render-run-summary.sh` already shells to `token-cost.sh` for the markdown bullets. `/design` Step 5 requires a new human-visible line ordered before the machine footer, with SKILL updates for every early-exit branch the issue calls out.
-
-

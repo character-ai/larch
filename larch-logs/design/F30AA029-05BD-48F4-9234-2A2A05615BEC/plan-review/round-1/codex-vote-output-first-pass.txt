@@ -1,8 +1,0 @@
-Understood. I’ll vote with these rules:
-
-- **YES**: problem is real and worth addressing in the current plan.
-- **EXONERATE**: concern is legitimate, but proposed change is too complex / not warranted, or doubt favors not accepting.
-- **NO**: stated problem is not real or not worth raising.
-- **OOS_N / [OUT_OF_SCOPE]**: judge whether the described problem is real, concrete, and worth filing, ignoring the suggested remedy.
-
-I will not modify files, commit, or push.

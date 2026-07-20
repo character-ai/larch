@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the plan already defines the shell-only handoff and post-persist nonzero Python path, so the remaining wording risk does not clear the necessity gate.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- reusing the design marker names is a consistency reduction, but new stable markers still satisfy the issue scope without breaking the feature.

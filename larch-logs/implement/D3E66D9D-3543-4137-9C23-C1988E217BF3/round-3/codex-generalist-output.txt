@@ -1,3 +1,0 @@
-NO_ISSUES_FOUND
-
-Test note: I attempted `make test-dispatch-code-voters-happy` and `make test-dispatch-code-voters-edge`, but this read-only sandbox blocked `mktemp`, so I could only complete static review.

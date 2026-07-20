@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan intentionally uses --stage-all at Step 7 because review-loop edits may touch unknown files; pathspec-from-file tracking would require significant additional mechanism outside the plan's "smallest preventive change" goal
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan says "parse the captured wrapper exit code and stdout" which implies capture; Claude Code background task stdout is captured by design after task-notification; explicit capture instruction is a nit
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor's approved design explicitly includes CI self-heal as one of five approaches; concern doesn't add new information beyond what the design already weighed; default-deny applies

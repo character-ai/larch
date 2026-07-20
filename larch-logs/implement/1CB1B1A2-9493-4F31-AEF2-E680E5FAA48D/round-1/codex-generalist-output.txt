@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Important** correctness `scripts/drop-bump-commit.sh:96-99` — The new walk-back matcher uses shell glob syntax, so `[0-9]*` means “one digit followed by anything,” not “one or more digits.” A commit like `Bump version to 1.x.3` that only touches `.claude-plugin/plugin.json` would pass Guard 2 and Guard 4 and be dropped, even though the documented contract requires strict `X.Y.Z` semver. Use the prior Bash regex check inside the loop: `[[ "$_subj" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]`.
-
-2. **Important** risk-integration `Makefile:4-64`, `docs/linting.md:225-230`, `skills/implement/scripts/test-step-8a-changelog.sh` — The new Step 8a changelog harness is added and referenced from `skills/implement/SKILL.md`, but there is no `test-step-8a-changelog` Makefile target and no shard entry under `test-harnesses-*`, so `make lint` / CI will never run it. A future regression in the new no-manifest fallback can land green because the only targeted harness is orphaned. Add the target, add it to one harness shard, update `.PHONY`, and document it in `docs/linting.md`.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.

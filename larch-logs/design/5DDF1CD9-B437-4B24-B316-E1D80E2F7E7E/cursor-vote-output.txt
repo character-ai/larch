@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already mandates text fallback in `_checks_rollup_empty` mirroring `_resolve_checks_status` (Approach lines 14-18).
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already arms a one-shot flag at merge-loop entry and clears it after every `monitor()` return, not from zero counters (lines 37-40, 85-89).
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

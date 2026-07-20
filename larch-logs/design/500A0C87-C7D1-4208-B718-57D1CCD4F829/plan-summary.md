@@ -1,1 +1,0 @@
-Port `design-clarify.sh` into `python/clarify.py` as `design_clarify_main`, keep the shell file as a thin launcher-compatible wrapper, register `python/cli.py design clarify`, and move parity coverage into Python tests plus wrapper-focused shell harness tests.

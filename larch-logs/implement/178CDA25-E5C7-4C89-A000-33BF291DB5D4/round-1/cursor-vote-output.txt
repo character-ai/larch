@@ -1,8 +1,0 @@
-Reading the ballot and session context files to verify findings.
-
-FINDING_1: YES
-FINDING_2: EXONERATE -- 44b mostly duplicates 44’s stubs but only [44b0] is unique and extracting shared heredocs would add churn for little gain
-FINDING_3: EXONERATE -- `$*`-style matching matches how these tests invoke `gh`; stricter argv parsing is optional hardening, not a defect
-FINDING_4: EXONERATE -- diff adds `larch-logs/implement/178CDA25-…` artifacts; intentional run-log packaging, not worth a tracking issue
-FINDING_5: EXONERATE -- strict stub targets the repo’s current `gh repo view` shape; hypothetical future global `-R` is speculative coupling, not a present bug
-FINDING_6: EXONERATE -- accurately flags pre-existing sed/jq edge behavior not introduced here; no GitHub issue warranted

@@ -1,1 +1,0 @@
-SKIPPED: FINDING_1 - fix already present in step-5-resume.sh (`END { exit found ? 0 : 1 }`)

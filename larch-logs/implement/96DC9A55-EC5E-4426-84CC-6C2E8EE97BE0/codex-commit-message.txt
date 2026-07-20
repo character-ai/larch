@@ -1,3 +1,0 @@
-Render review timing charts in final summaries
-
-Add reviewer timing Mermaid Gantt output to the shared review phase detail renderer, including no-completed-round messaging for valid roots. Wire /design final summaries to render the shared no-round section and keep terminal progress callers on plain text via --no-gantt. Update renderer, final-summary, final-report, and progress-report harness coverage.

@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly annotates design-step3-state.sh as "(gzip-embedded legacy asset in python/plan_review.py)", giving an implementer sufficient signal; unlike FINDING_1 where no such annotation exists, the omission of a separate UPDATED entry does not clear a necessity gate

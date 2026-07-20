@@ -1,1 +1,0 @@
-1	the generic parser's pass-1 fence scan still pairs opener/closer lines independently, so closing fence lines can be reinterpreted as new openers and later real `###` boundaries can be swallowed into fenced content, corrupting item splits.

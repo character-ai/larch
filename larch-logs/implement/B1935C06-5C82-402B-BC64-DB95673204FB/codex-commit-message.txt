@@ -1,7 +1,0 @@
-Port design failure reporting to shared core
-
-Add a generic stall-reporting profile and validation API for design-prefixed state, reports, dedup signatures, and cross-repo Tier B filing.
-
-Wire /design terminal-state staging, teardown gating, publish, final-summary, Step 3, and Split-path routing so failures and escalation-success reports are recorded once.
-
-Add docs and focused harness coverage for staging, teardown, prefixed filing, and KV-clean summary output.

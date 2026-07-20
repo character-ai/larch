@@ -1,9 +1,0 @@
-skills/design/SKILL.md
-skills/design/references/flags.md
-skills/design/scripts/check-plan-size.sh
-skills/design/scripts/check-plan-size.md
-skills/design/scripts/test-check-plan-size.sh
-skills/design/scripts/test-check-plan-size.md
-Makefile
-skills/design/scripts/render-plan-review-prompt.sh
-skills/design/scripts/test-plan-review-prompt.sh

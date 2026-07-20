@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test-implementation detail; plan correctly mandates the cross-tool assertion; how to hold the lock during the test is an implementer judgment call, not a plan completeness gap
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent severity per rubric defaults to NO; approved outline's "full rename" scope plausibly includes the SerialLockState dataclass, and renaming it introduces no correctness or regression concern either way

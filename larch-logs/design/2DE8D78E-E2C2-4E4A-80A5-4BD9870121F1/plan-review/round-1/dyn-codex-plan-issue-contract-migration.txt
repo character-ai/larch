@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	major	correctness	python/larch/issue/issue_create.py:831-844	Planned migration does not normalize gh issue list state enums	gh issue list returns OPEN/CLOSED, so lowercase comparisons skip every issue and emit an empty successful snapshot	Normalize state for comparisons and preserve lowercase state in the TSV output

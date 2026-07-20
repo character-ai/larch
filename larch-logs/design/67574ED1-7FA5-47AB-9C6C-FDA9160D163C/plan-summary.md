@@ -1,1 +1,0 @@
-Port Step 5b prepare and annotate orchestration into `python/design_lifecycle.py`, add CLI verbs, thin the three Step 5 wrappers, and add pytest coverage while leaving `design_oos.py` behavior unchanged.

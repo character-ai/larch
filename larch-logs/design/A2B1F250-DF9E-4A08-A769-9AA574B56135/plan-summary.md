@@ -1,1 +1,0 @@
-Fix two `/design` plan-processing defects with small script changes. Validate invalid `mechanical_churn` as exit 2. Detect non-empty ballots that produce header-only classification TSVs, mark the panel degraded, and continue with `ballot-items-lost`.

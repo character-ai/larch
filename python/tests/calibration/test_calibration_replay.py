@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+import shutil
 from typing import cast
 from unittest.mock import patch
 
@@ -360,25 +361,41 @@ def test_validate_manifest_fails_when_manifest_missing_cohort_rows(tmp_path: Pat
     assert any("missing labeled cohort rows" in error for error in errors)
 
 
-def test_committed_plan_fixtures_match_extractor() -> None:
+def test_plan_fixtures_match_explicit_sources() -> None:
     manifest = REPO_ROOT / calibration_replay.DEFAULT_MANIFEST
     rows = list(csv.DictReader(manifest.read_text(encoding="utf-8").splitlines(), delimiter="\t"))
     for row in rows:
         run_id = (row.get("run_id") or "").strip()
         plan_fixture = REPO_ROOT / (row.get("fixture_plan") or "")
-        source = REPO_ROOT / "larch-logs" / "implement" / run_id / "plan-goals-test.md"
+        source = (
+            REPO_ROOT
+            / "python/test_fixtures/plan-fidelity-calibration/plans"
+            / f"{run_id}.source.txt"
+        )
         assert plan_fixture.is_file(), f"missing fixture_plan: {plan_fixture}"
-        assert source.is_file(), f"missing plan-goals-test.md for {run_id}"
+        assert source.is_file(), f"missing source fixture for {run_id}"
         expected = calibration_replay.extract_implementation_plan_from_plan_goals_test(source)
         assert plan_fixture.read_text(encoding="utf-8") == expected
 
 
 def test_run_replay_dry_run(tmp_path: Path) -> None:
+    fixture_root = REPO_ROOT / "python/test_fixtures/plan-fidelity-calibration"
+    repo_root = tmp_path / "repo"
+    copied_fixture_root = repo_root / calibration_replay.DEFAULT_MANIFEST.parent
+    shutil.copytree(fixture_root, copied_fixture_root)
+    rows = csv.DictReader((copied_fixture_root / "manifest.tsv").read_text(encoding="utf-8").splitlines(), delimiter="\t")
+    for row in rows:
+        run_id = row["run_id"]
+        round_num = row["round_num"]
+        destination = repo_root / "larch-logs" / "implement" / run_id / f"round-{round_num}" / "findings-classification.tsv"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(copied_fixture_root / "classifications" / f"{run_id}-round-{round_num}.tsv", destination)
+
     results = calibration_replay.run_replay(
-        repo_root=REPO_ROOT,
+        repo_root=repo_root,
         work_dir=tmp_path / "replay",
-        manifest_path=REPO_ROOT / calibration_replay.DEFAULT_MANIFEST,
-        cohort_path=REPO_ROOT / calibration_replay.DEFAULT_COHORT,
+        manifest_path=repo_root / calibration_replay.DEFAULT_MANIFEST,
+        cohort_path=repo_root / calibration_replay.DEFAULT_COHORT,
         dry_run=True,
     )
 

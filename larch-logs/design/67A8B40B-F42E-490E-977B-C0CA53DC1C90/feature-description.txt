@@ -1,3 +1,0 @@
-# Do not install test infrastructure (Python tests and bash test harnesses) in larch plugin
-
-They are only used for local testing (of larch during development of larch) and in CI, they are dead weight to clients.  Also, audit for other files of this nature that should be excluded since the client has no need for them.

@@ -1,2 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already mandates replacing Step 0b **Tier gate** with **Tier resolution** in SKILL.md; an absent harness pin is optional defense in depth
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan edits SUMMARY_OUTCOME enum but omits updating the Final summary **When** clause stale tier-flag mutual-exclusion skip label

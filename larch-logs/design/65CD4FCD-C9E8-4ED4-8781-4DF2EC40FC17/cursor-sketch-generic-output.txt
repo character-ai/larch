@@ -1,4 +1,0 @@
-Investigating how `/implement` and `/design` build their final summaries and where the cost report is included or dropped.
-Checking Step 18 ordering and whether `implement-finalize` emits any summary:
-Confirming issue #2837: the example is agent-improvised prose, not the scripted `## /implement run` block. Creating the implementation plan.
-

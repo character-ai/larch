@@ -1,5 +1,0 @@
-Classify merge-time conflicts as main advanced
-
-Detect merge-conflict wording on admin plus fallback merge failures before consulting reviewDecision. Return MAIN_ADVANCED so ship can rebase and retry when GitHub reports merge conflicts, not mergeable, or cannot be cleanly created.
-
-Add regression coverage for mixed review/conflict diagnostics, bare not-mergeable failures, and the review-only negative path.

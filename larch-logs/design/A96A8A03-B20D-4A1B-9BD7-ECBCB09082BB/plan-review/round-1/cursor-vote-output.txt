@@ -1,1 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Post-write tally mismatch is a real latent edge case but verifying accepted/rejected exceeds this issue's round+start+end idempotency scope and even the design-helper post-write pattern.

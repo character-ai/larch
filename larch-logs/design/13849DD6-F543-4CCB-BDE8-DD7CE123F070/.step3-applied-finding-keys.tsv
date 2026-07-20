@@ -1,2 +1,0 @@
-1	the planned reaper builds `step0-parsed-{pid}.env` under `cleanup_cache_sessions_root()`, but the write path hardcodes `path.home() / ".cache" / "larch" / "sessions"`. with `xdg_cache_home` set, the abort/cleanup flow can remove the symlink and launcher while leaving the parsed env behind, so one pid residual survives.
-1	the new `--reason`/`--tool` plumbing never reaches the only documented abort caller, so `step0-abort-cleanup` still falls back to the degraded-tools banner and log. that leaves the operator-postpone / non-degraded abort path misleading.

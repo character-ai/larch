@@ -1,1 +1,0 @@
-Add a retroactive `/analyze-issues` OOS scoreboard. Keep live voting points unchanged. Record future `/combine-issues` source closures with a machine-readable combined-away comment so the analyzer can dock those filed OOS points to zero.

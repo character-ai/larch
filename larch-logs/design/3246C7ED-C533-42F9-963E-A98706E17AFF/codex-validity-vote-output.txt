@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Mislabels telemetry but does not impair the requested reviewer behavior.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
-OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicates OOS_1's timing-allowlist observation.

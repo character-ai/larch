@@ -1,6 +1,0 @@
-warning: fix text for slot 'dyn-ship-cutover-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Replace `--resume-phase pr-create` with “re-invoke `step-8-ship.sh` without resu')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Remove run-relevant-checks-captured pattern; pin run-step-checks.sh / Python CLI')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Update is_invocation_site to match Python CLI or run-step-checks only  ### OOS_2')
-warning: fix text for slot 'codex-specialist-edge-cases-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Remove the stale allowlist entry')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Remove dead allowlist path  ### OOS_3: [OUT_OF_SCOPE] misleading test_codex_add_')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Rename test to reflect output-parent validation  ### OOS_4: [OUT_OF_SCOPE] pre-e')

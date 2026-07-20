@@ -1,1 +1,0 @@
-Port external-agent launcher executables into `python/agents.py` and `python/cli.py`, keep sourced bash libs alive for C-phase consumers, update direct callers to `python3 .../cli.py agent ...`, delete retired executable scripts and harness/docs siblings, refresh docs/security references, and test via pytest plus lint-retired-scripts.

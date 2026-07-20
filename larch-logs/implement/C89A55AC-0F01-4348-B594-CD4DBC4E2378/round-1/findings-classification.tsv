@@ -1,9 +1,0 @@
-finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
-FINDING_1	codex-specialist-correctness-output.txt|codex-specialist-edge-cases-output.txt|codex-specialist-testing-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	adequate	false					
-FINDING_2	codex-specialist-correctness-output.txt|codex-specialist-edge-cases-output.txt|codex-specialist-testing-output.txt	accepted	YES	true	blocker	adequate	false	YES	true	major	good	false					
-FINDING_3	codex-specialist-correctness-output.txt|codex-specialist-edge-cases-output.txt|codex-specialist-testing-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	adequate	false					
-FINDING_4	codex-specialist-correctness-output.txt|codex-specialist-edge-cases-output.txt|codex-specialist-testing-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	adequate	false					
-FINDING_5	codex-specialist-correctness-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	adequate	false					
-FINDING_6	codex-specialist-correctness-output.txt	neutral	YES	true	minor	adequate	false	NO	true	minor	adequate	false					
-FINDING_7	codex-specialist-correctness-output.txt	neutral	YES	true	nit	adequate	false	NO	true	nit	adequate	false					
-FINDING_8	codex-specialist-edge-cases-output.txt	neutral	YES	true	nit	adequate	false	NO	true	nit	adequate	false					

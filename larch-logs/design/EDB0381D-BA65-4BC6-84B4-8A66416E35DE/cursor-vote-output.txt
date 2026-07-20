@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Either-fence suppression is a reasonable default; explicit pairing rules are clarifying but not required for a working linter.
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Approved outline deliberately limits scan to three glob patterns; shared/ omission matches that scoped surface, not a deliverable gap.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Automatic boundary carve-outs are approved scope; suppression-only is simpler but not necessary to ship the lint.

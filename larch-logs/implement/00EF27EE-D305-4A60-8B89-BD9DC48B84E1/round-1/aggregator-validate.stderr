@@ -1,8 +1,0 @@
-warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_2 (not present on any input finding)
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  ### OOS_1: [OUT_OF_SCOPE] Large `larch-logs/**`')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'None for this review lens')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'No action required for this review scope.  ---  ### OOS_2: [OUT_OF_SCOPE] `desig')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Consider printf %q-based argv encoding if ARGS ever needs spaces (future hardeni')

@@ -1,1 +1,0 @@
-Add an additive `bgjob adapt` command with one locked start-or-re-attach state machine. Use child-or-daemon liveness, fail closed on valid dead entries, clear only invalid or expired-dead state, and preserve existing step scripts.

@@ -1,1 +1,0 @@
-OOS filing deps pre-pass unavailable (FILE_DESIGN_OOS_DEPS_AVAILABLE=false); intra-batch dependency edges skipped. Single OOS item, so no intra-batch deps apply. Filing via graceful-degrade /larch:issue without --intra-batch-deps-file / --no-dep-llm (mirrors /implement Step 9a.1 degraded-mode).

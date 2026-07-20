@@ -1,9 +1,0 @@
-scripts/ship-pr.sh
-scripts/ship-pr.md
-skills/implement/SKILL.md
-skills/implement/references/rebase-rebump-subprocedure.md
-skills/implement/references/bump-verification.md
-skills/implement/references/conflict-resolution.md
-scripts/test-ship-pr.sh
-scripts/test-ship-pr-rebase-phase14.sh
-scripts/test-implement-rebase-macro.sh

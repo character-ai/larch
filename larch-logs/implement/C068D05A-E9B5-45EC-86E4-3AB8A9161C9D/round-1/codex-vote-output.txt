@@ -1,9 +1,0 @@
-FINDING_1: EXONERATE -- Legitimate design limitation, but a shared cross-tool lock is broader hardening than this accepted per-tool serial-lock pattern warrants.
-FINDING_2: EXONERATE -- The fail-open behavior is real, but changing lock policy to strict failure would be a larger behavioral tradeoff.
-FINDING_3: EXONERATE -- The timed release only staggers launches, but that matches the branch's Path B scope.
-FINDING_4: EXONERATE -- Preflight remains outside the lock, but moving it would diverge from existing launchers for marginal benefit.
-FINDING_5: YES
-FINDING_6: YES
-FINDING_7: NO -- Lack of pasted local check output in a code diff is not itself a review finding.
-FINDING_8: YES
-FINDING_9: YES

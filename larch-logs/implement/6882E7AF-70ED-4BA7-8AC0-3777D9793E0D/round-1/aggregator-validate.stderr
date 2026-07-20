@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add the same pinned recovery literal check for `orchestrator-never.md` in `scrip')
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Capture pause-save output, print it, and exit 11 on `PAUSE_OK=true` or `.pause-s')
-warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Include 12 in the operator-brake phase branch or write `awaiting-postplan-operat')

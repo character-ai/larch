@@ -1,7 +1,0 @@
-Gathering the branch diff and commit list, then verifying cross-file shard-count consistency (ci-lockstep focus).
-
-Verifying the Required Checks section in `docs/linting.md` — the diff hunk was ambiguous about whether bullets (19) and (20) were added.
-
-Summarizing: `Makefile`, `ci.yaml`, and the "Changing the shard count" section align on 20 shards; `docs/linting.md` still has three inconsistencies (Usage bullet, branch-protection list, LPT `range(18)`). Verifying `.github/workflows/ci.yaml` shard line and preparing the final report.
-
-

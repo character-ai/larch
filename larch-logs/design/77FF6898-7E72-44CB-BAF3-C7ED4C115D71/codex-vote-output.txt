@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- the plan already routes structured NDJSON rows by category and scopes body parsing under that category.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=blocker QUALITY=good UNCERTAIN=false -- the plan already loads exec/warning data after the design failure report gate and before render.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the cost/dependency concern is real, but approved scope explicitly requires LLM-generated materiality assessments.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- the plan already skips assessment calls on header-only degraded output.
-OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- unused dataclass fields are cleanup-only and do not clear the OOS issue-overhead gate.

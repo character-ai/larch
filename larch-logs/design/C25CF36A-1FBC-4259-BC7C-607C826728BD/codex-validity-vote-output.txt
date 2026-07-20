@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the plan already requires the activation/timing ordering that matters; the extra full-sequence assertions are useful coverage but not necessary to ship the feature.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- nested-clone repo-root normalization is already handled by the repo-root resolution path, so separately pinning progress activate’s argv is defensive test hardening, not a required fix.

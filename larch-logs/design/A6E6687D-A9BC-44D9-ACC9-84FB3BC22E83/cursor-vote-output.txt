@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Plan already mandates shared agreement math and live-vs-TSV parity tests; a shared vote-assembly helper reduces drift risk but is not required for the feature to work on the primary multi-voter path.

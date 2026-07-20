@@ -1,7 +1,0 @@
-Gathering the diff, commit log, and C.4 session-summary sections from SKILL.md and tests.
-
-Verifying line numbers in `SKILL.md` for the orchestrator-flow vs. step-4 mismatch and the discuss-first wording.
-
-Confirming evaluation order: step 2 runs after the report is filed (post-report section follows filing). Creating a short plan that records the review outcome.
-
-

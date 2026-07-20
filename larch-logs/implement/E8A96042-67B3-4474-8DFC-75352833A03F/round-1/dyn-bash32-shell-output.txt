@@ -1,9 +1,0 @@
-Reviewing the branch diff and key files for Bash 3.2 correctness.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **Pre-existing orchestrator gap (not introduced here):** `skills/implement/SKILL.md` (e.g. 313–319, 399–405) captures `_inv_rc` but only branches on `exit 2`; for wrapper/bootstrap failures with other exit codes it still parses `_inv_out` / `bootstrap-routing.env` instead of propagating `_inv_rc`. That matches the old `_ib_run_bootstrap` pattern, which also never aborted on non-2 return codes before parsing.
-- **Intentional semantic fix (not a regression):** Resume now consistently uses `--up-to-phase plan --resume-plan-tail` via `--mode resume`, replacing stale routing prose that pointed at `_ib_run_bootstrap --resume-plan-tail` (which would have been `--up-to-phase coder` plus `--resume-plan-tail`). Dirty-tree recovery already used the plan-phase tail; the wrapper aligns the documented path with that behavior.
-- **Bash 3.2 / shell semantics (verified sound in new code):** `scripts/implement-bootstrap-invoke.sh` uses the repo’s empty-array idiom `${arr[@]+"${arr[@]}"}` (line 82), `set +e` / `set -e` around the bootstrap capture (81–84), `mktemp` templates with six `X` suffixes (106, 118, 157), exit-2 operator text on stderr inside `if`/`case` guards (86–132), and quoted envelope emission via `printf '%s=%s\n'` (147). `skills/implement/SKILL.md` preserves the same `set +e` fences and stderr-safe exit-2 contract (wrapper owns messages; callers only `exit 2`).
-- **Harness coverage note:** `skills/implement/scripts/test-implement-bootstrap-invoke.sh` exercises argv assembly, resume `IMPLEMENT_TMPDIR` pass-through, exit-2 stderr/empty-stdout, and NEVER #14 greps; it does not assert every `STEP_FAILED` branch or `gh-issue-view` redaction output (only `copy-plan` gets a redaction exercise). That is a test gap, not a demonstrated runtime defect in the wrapper source reviewed.

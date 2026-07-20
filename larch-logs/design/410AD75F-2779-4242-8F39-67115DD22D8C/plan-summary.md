@@ -1,1 +1,0 @@
-Port completion plan for G7: keep the existing native `python/stall_recovery.py` report composer, close path and parity gaps, cut remaining bash consumers to `python/cli.py stall-recovery`, move the report contract files into `python/`, retire the shell harnesses into pytest, and delete the old bash report body.

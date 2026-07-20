@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/design/SKILL.md:1274-1277` — The automatic continuation path bypasses the normal Step 3 entry fence at `skills/design/SKILL.md:1124-1129`: it clears sentinels via `skills/design/scripts/design-step3-state.sh:78-81` and directly re-invokes `run-step3-review.sh --no-preview`, so a `.pause-requested` created after Gate B can be ignored before launching another long reviewer panel. **Suggested fix:** Route automatic continuation through the same Step 3 entry prelude, or add an equivalent auto-continuation fence that sources env, runs `design-step3-state.sh --auto-continuation-entry`, honors `design-pause-save.sh`, records timing, then launches the driver.
-
-- **architecture** `skills/design/scripts/run-step3-review.sh:212-228` — The driver still deletes every existing `plan-review/round-*` directory on each Step 3 entry, but the new loop in `skills/design/SKILL.md:1276` re-enters Step 3 automatically before Gate C as part of one review sequence. That means round 2 deletes round 1 forensic artifacts (`round-summary.env`, `findings-classification.tsv`, timing start files) even though `skills/design/scripts/plan-review-loop.md:16-24,63-65` now describes cumulative/per-round artifacts for automatic rounds. **Suggested fix:** Preserve prior round directories during automatic continuation and delete only the next/current stale round directory; keep full cleanup for explicit manual Gate C re-runs, and update the cap/driver harness expectations accordingly.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

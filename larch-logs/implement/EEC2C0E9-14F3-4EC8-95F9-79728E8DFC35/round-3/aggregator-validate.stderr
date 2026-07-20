@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add the same prefix guidance for foreground probes in `skills/design/SKILL.md`, ')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Document both files as release preconditions, or reference `design-step3-review.')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Scope recovery sentinel text to `/design` (or `orchestrator-never.md`); update i')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Add a live-marker fixture: regular `step-3-terminal` plus `ln -s` sidecar; asser')

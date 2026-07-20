@@ -1,1 +1,0 @@
-Switch `/design` Step 2b's unset drafter default to Claude, set its Claude model default to `claude-opus-4-8`, and update the matching script docs and user config docs. Keep explicit `LARCH_DESIGN_DRAFTER=codex` working. Keep fallback behavior inline-only.

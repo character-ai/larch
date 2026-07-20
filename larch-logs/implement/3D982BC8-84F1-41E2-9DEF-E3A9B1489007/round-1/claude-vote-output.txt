@@ -1,1 +1,0 @@
-The ballot file contains no FINDING_N items — it has only a single status line with no vote items to adjudicate. There is nothing to vote on.

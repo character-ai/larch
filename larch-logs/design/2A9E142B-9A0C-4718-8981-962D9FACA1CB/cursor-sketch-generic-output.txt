@@ -1,5 +1,0 @@
-Exploring the codebase to map the design skill, plan-review machinery, and issue-filing patterns for a read-only implementation approach.
-
-Noting a critical nuance: Step 1c/1d invoke Split-path before `plan.txt` exists — the implementation must supply prompts from feature/discussion artifacts when the plan is absent. Creating the plan.
-
-

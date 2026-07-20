@@ -1,2 +1,0 @@
-Aggregating the supplied reviewer findings: merging duplicates, separating in-scope from `[OUT_OF_SCOPE]`, and applying the severity merge rule.
-

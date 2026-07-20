@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan requires plan-only sidecar behavior but does not mandate the helper boundary; implementation can keep persistence in compute_coverage without a plan revision.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A recovered live base attributes the dispatcher commit through the trustworthy committed diff, so clean porcelain does not erase coverage.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The concern assumes an untrusted actor can pre-seed a file in the plan’s trusted tmpdir; no such feature-path threat or contract is established.
-FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The mandated regression can use distinct runners or a local sequential test runner; expanding FakeRunner’s contract is not necessary.
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

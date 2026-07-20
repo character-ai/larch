@@ -1,1 +1,0 @@
-Plan fixes the Step 5 false `panel-failed` gate for parseable zero-success output, preserves threshold diagnostics in run logs, and adds a visible `--merge` downgrade warning for recovered panel failures.

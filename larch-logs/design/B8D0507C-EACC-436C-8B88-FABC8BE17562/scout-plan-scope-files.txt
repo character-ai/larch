@@ -1,1 +1,0 @@
-scripts/render-review-phase-detail.sh

@@ -1,1 +1,0 @@
-Harden the checks lint-fix waterfall to give every configured tier 1800 seconds, continue after failed or no-op tiers, preserve per-tier evidence, rerun checks after useful edits, and stall after exhaustion. Keep structural failures fail-closed and leave Step 8 unchanged.

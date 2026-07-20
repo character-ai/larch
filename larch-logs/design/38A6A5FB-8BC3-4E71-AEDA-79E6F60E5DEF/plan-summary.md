@@ -1,1 +1,0 @@
-Hard-stop `/design` when no plan reviewers launched, publish review provenance in new plan blocks, and make `/implement` refuse explicit zero-review provenance. Also harden scope-anchor creation, mechanical churn parsing, replace-path init, stale log worktrees, and failure reporting.

@@ -1,5 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `risk-integration` `docs/linting.md:104` — The shard-count docs still describe the old CI shape in several operational places: `docs/linting.md:23-131` says the matrix runs through `test-harnesses-16`, uses `range(14)` in the rebalance snippet, lists branch protection checks only through `test-harnesses (14)`, and says the current hard-coded count is `16`; `scripts/test-harness-shards-coverage.md:26-27` still says the guard is currently in shard 12 and the umbrella runs through shard 16. Concrete breakage path: an admin following the branch-protection migration list after this PR would require only shards 1-14, so a later PR with a failing `test-harnesses-15` through `test-harnesses-18` job could still satisfy required checks. Update these docs to the current 18-shard matrix, including checks 15-18 and the current Makefile guard/shard inventory.
-
-### Out-of-Scope Observations

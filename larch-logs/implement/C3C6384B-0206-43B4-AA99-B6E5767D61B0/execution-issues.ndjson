@@ -1,9 +1,0 @@
-{"phase": "implement", "step": "11", "category": "execution-issues", "body": "# Execution Issues"}
-{
-  "phase": "implement",
-  "step": "18",
-  "category": "Tool Failures",
-  "source": "execution-issues.md safety-net",
-  "source_sha256": "d93908e45eb0707fd5b6dda34f957c32b1f0783802735647b839bd04ef0bf12c",
-  "body": "# Execution Issues\n\n### Warnings\n\n- **Step 18 — session-transcript status=captured:** session transcript was written and committed.\n"
-}

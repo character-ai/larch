@@ -1,5 +1,0 @@
-warning: unknown From slot label 'cursor-specialist-structure-output-output.txt' in FINDING_1 (not present on any input finding)
-warning: fix text for slot 'dyn-prune-retention-logic-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: '**Suggested fix:** Restrict post-install `write_install_stamp` to the verified-s')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Split PRs or isolate commits when possible.  ### OOS_2: [OUT_OF_SCOPE] Makefile ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Consider shard split in a follow-up (not introduced solely by design-publish).  ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'fix only if init driver gains exit 3.')

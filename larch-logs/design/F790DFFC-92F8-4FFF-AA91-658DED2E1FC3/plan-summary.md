@@ -1,1 +1,0 @@
-Fix one Step 5 ledger omission and add runtime coverage for ship-pr lint handoffs plus the `larch-run.sh` launcher contract. Keep scope to the three approved files. Do not touch the generic artifact profile or Python-side KV parsing.

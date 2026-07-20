@@ -1,4 +1,0 @@
-warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt' in FINDING_2 (not present on any input finding)
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_1: [OUT_OF_SCOPE] `design-pause-load.sh` lis')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Branch diff includes non–P')

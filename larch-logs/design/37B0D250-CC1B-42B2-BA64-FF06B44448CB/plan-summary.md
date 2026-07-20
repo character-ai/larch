@@ -1,1 +1,0 @@
-Port Step 3 plan-review core into `python/plan_review.py` and `python/plan_review_panel.py`, cut live callers to `python3 python/cli.py plan-review ...`, preserve all Step 3 env/status/artifact contracts, replace absorbed shell harnesses with pytest, and retire stale bash/script docs through `python/migrated-scripts.tsv`.

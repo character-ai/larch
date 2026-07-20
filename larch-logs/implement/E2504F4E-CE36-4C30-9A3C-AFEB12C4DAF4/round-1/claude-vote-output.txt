@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- divergence in either direction is caught naturally by the compliant test assertion which would fail if manifest count and fixture count disagree
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- over-count is correctly rejected by the existing exact string equality check; an explicit test adds minimal confidence for a two-character comparison
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the implementation ran successfully against the target files, meaning PR #3051 was already merged before this branch landed; the operational dependency is resolved
-FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the updated lint-readability-preamble.md explicitly says "orchestrator-inline" in the new count-mismatch failure line, accurately scoping it to that variant only

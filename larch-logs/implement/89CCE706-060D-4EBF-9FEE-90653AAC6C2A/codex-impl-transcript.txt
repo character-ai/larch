@@ -1,1 +1,0 @@
-Implemented the plan and wrote `manifest.json` atomically at the requested path.

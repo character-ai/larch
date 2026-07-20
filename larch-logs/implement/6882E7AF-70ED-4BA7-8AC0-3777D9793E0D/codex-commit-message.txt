@@ -1,5 +1,0 @@
-Implement OOS orchestrator and validation fixes
-
-Clarify the sanctioned premature-notification recovery carve-out in shared orchestrator guidance and correct the AGENTS.md NEVER reference.
-
-Document submodule-restricted stall recovery as non-resumable, add blocking severity support for structured reviewer validation, and replace rebalance feasibility warnings with a direct packed-spread check.

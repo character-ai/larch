@@ -1,9 +1,0 @@
-Gathering the diff, commit list, and full `extract_category` implementation for correctness review.
-
-Checking how `jsonl-field` scans evaluate expressions and whether the new scan row is syntactically valid.
-
-Verifying jq precedence for the scan expression (quick mental check: `and` binds tighter than `|` in jq). Checking for a `###FINDING` variant in the codebase.
-
-Confirming a scan/parser mismatch for tab-separated headers. Calling CreatePlan to satisfy plan-mode while the chat response uses your required review format.
-
-

@@ -1,1 +1,0 @@
-Fix closed blocker handling in `/combine-issues --oos` by resolving missing blocker state in `plan-inherited`, classifying closed blockers as `satisfied`, and excluding those edges from writes and close-blocking reasons. Add the scoped `close-stale` verb and deferred apply mapping fragment, then update the combine-issues skill prose and tests.

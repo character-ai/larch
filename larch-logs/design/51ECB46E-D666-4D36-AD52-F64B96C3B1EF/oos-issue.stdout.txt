@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=5083
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/5083
-ISSUE_1_ID=4719893245
-ISSUE_1_TITLE=[OOS] [SCOPE-REDUCTION] Ship helper extraction does not add a pure KEY=value decision core for `run_ship`
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

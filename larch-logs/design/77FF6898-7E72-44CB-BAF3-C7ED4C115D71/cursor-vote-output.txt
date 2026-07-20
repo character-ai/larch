@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Pinning a default Haiku slug improves determinism but assessments can still work without it; not a necessity gate.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Plan already routes structured NDJSON by category field with scoped bullet parsing, not per-row markdown heading aggregation.
-FINDING_4: NO CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false -- Plan already requires loading after the failure-report gate and removing the pre-gate count call.
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- LLM materiality assessments are an explicit issue goal; scope reduction would under-deliver the spec.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Plan already skips assessment on the header-only degraded path; latency-only harm.
-OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Unused dataclass fields are minor cleanup, not backlog-worthy.

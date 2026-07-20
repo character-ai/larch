@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Item 4 scope is a surgical prose fix (replace "Claude-only fallback" with "hard-fail" language); the finding proposes adding conditional CODEX_PRESENT/CURSOR_PRESENT render-branching logic that exceeds the stated scope anchor and non-goals (no new abstractions/flags).
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan already specifies "exercise line 192, not under env -i"; how to implement the assertion (temp file vs env check) is implementation detail for the coder, not a plan-level incompleteness.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_4: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- concern is speculative ("may be stale"), severity is nit, and the finding doesn't confirm the bash-fallback carve-out is actually stale; doesn't clear the materiality gate for a standalone tracked issue.
-OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- substantially duplicates OOS_1 (docs/skills.md:173-179) and OOS_2 (docs/external-reviewers.md:3-10) with overlapping locations; filing a separate issue creates unnecessary overhead without incremental value.

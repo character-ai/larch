@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the earlier test-coverage concern; positive write-through assertions are useful but not necessary for the feature to ship correctly.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the simpler append path may work, but the proposed extra clone-fd/subdir machinery is a scope-reduction, not a required fix for the TOCTOU issue.

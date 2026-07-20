@@ -1,7 +1,0 @@
-SKIPPED_FLAG_CHECK script=skills/design/scripts/test-plan-review-loop.sh reason=no-help
-SKIPPED_FLAG_CHECK script=skills/review/scripts/test-dispatch-panel.sh reason=no-help
-SKIPPED_FLAG_CHECK script=skills/review/scripts/test-review-core.sh reason=no-help
-SKIPPED_FLAG_CHECK script=skills/implement/scripts/test-step2-dispatch.sh reason=no-help
-SKIPPED_FLAG_CHECK script=skills/implement/scripts/test-codex-implementer.sh reason=no-help
-SKIPPED_FLAG_CHECK script=skills/implement/scripts/test-cursor-implementer.sh reason=no-help
-VALIDATE_STATUS=ok	DEFECT_COUNT=0	SKIPPED_COUNT=6	UNSAFE_TOKEN_COUNT=0

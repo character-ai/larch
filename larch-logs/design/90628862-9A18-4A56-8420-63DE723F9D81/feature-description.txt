@@ -1,3 +1,0 @@
-Issue #3068: /audit-runs and /report-tokens should take required --skill=<skill-name> argument that determines which skill's larch run logs are analyzed
-
-The two valid starting values are design and implement.

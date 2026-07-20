@@ -1,7 +1,0 @@
-warning: unknown From slot label 'Cursor-dyn-option-arithmetic, Codex-dyn-option-arithmetic' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Edge, Codex-Edge' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Requirements, Codex-Requirements' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-label-sweep, Codex-dyn-label-sweep' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-test-pin-completeness, Codex-dyn-test-pin-completeness' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-test-pin-completeness, Codex-dyn-test-pin-completeness' in FINDING_3 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-test-pin-completeness, Codex-dyn-test-pin-completeness' in FINDING_4 (not present on any input finding)

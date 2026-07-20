@@ -1,8 +1,0 @@
-Make dynamic Codex log retention explicit
-
-Add a narrow dynamic Codex allow clause after the write-round deny clauses so the existing retention behavior is documented in code without introducing catch-all suffix matching. Extend the write-round harness and docs for phased dynamic Codex outputs, cap-hit sidecars, prompt/vote/telemetry exclusions, and the static Codex raw transcript boundary.
-
-Tests:
-- bash scripts/test-larch-log-write-round.sh
-- bash scripts/test-larch-log.sh
-- bash scripts/relevant-checks.sh

@@ -1,4 +1,0 @@
-warning: fix text for slot 'dyn-design-wait-contract-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Add the same `[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec ... design-pause-')
-warning: fix text for slot 'dyn-hook-enforcement-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'dyn-design-wait-contract-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] SECURITY.md documents ackn')
-warning: fix text for slot 'dyn-hook-enforcement-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.')

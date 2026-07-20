@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Plan says "emit [string]; append Tool Failures via `_append_tool_failure`" — two distinct operations; the finding mischaracterizes branch 3 as naming only `_append_tool_failure`
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Plan already explicitly prohibits in-process calls; OOS description itself acknowledges they bypass the required boundary; no actionable issue to track

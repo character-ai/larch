@@ -1,5 +1,0 @@
-### In-Scope Findings
-
-1. **Important** — correctness — `skills/review/scripts/collect-findings.sh:281-285`: The new catch-all `^##` skip state drops legitimate fail-open findings under common noncanonical headings like `## Findings`, contradicting the existing diff-mode contract that output without canonical headers is treated as in-scope. Concrete failing scenario: reviewer output `## Findings` followed by `- Real parser issue...` in diff mode now produces zero parser rows and can be recorded as non-substantive, so a real finding is silently lost. Narrow the skip rule to the known preamble headings, such as `## Commits since merge-base`, or skip only commit-hash bullets in that preamble; add a regression test for `## Findings` plus a bullet still producing `FINDINGS_COUNT=1`.
-
-I ran the requested `git log` command and checked the parser behavior with the changed awk rules.

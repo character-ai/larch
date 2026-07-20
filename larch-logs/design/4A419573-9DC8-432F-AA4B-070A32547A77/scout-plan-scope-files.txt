@@ -1,4 +1,0 @@
-python/rebase.py
-python/version_bump.py
-python/test_rebase.py
-python/test_version_bump.py

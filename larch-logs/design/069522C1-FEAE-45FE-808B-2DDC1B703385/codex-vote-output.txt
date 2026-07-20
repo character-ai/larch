@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan already requires porting harness coverage and sentinel behavior; the exact fake-root entrypoint note is not necessary.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already renders and validates all three voter prompts before launching any voter.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- This is not material enough for a tracked OOS issue; the plan's conditional stale-reference wording can no-op if no reference exists.

@@ -1,3 +1,0 @@
-warning: fix text for slot 'codex-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Regenerate the baseline from the final scanner semantics or change scanner ident')
-warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Commit an aligned baseline in this PR or teach _records_for_write to split legac')
-warning: fix text for slot 'dyn-dyn-suppression-parser' in FINDING_9 not traceable to scoped input (first 80 chars: 'Propagate a shared trailing # reason to every split pyright clause before strict')

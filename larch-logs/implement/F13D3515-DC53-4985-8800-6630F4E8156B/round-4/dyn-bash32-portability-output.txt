@@ -1,9 +1,0 @@
-Reviewing the branch diff for Bash 3.2 portability in the changed scripts.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- Audited [scripts/implement-bootstrap.sh](scripts/implement-bootstrap.sh), [scripts/write-session-env.sh](scripts/write-session-env.sh), and [skills/implement/scripts/test-implement-bootstrap.sh](skills/implement/scripts/test-implement-bootstrap.sh) for BASH_AUTHORING.md §3 forbidden constructs (`declare -A`, `declare -n`, `mapfile`/`readarray`, `${var^^}`/`${var,,}`, `&>>`, `coproc`): none present in the branch diff.
-- New or extended patterns called out in the scout brief are Bash 3.2–safe here: `[[ … =~ … ]]` at `scripts/implement-bootstrap.sh:633` matches existing posture in `write-session-env.sh`; `setup_cmd+=()` / `session_env_args+=()` and `done < <(printf …)` in `ingest_kv_block` use indexed-array append and process substitution supported on macOS Bash 3.2.57; mid-function `local upstream_context_rc` at `scripts/implement-bootstrap.sh:390` is valid in 3.2.
-- Read-only checks on this machine (GNU Bash 3.2.57): `bash scripts/lint-bash32.sh` reported no violations for these files; `bash skills/implement/scripts/test-implement-bootstrap.sh` finished `PASS=119 FAIL=0`.
-- Branch commits since `main`: `fc4d783b` (phase tracking), `6d635cd2` (run log), `438ab338` / `5a435db1` / `b0d211a5` (review rounds).

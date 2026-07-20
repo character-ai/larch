@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Misleading stderr does not block ranking parity or correct symlink removal; operator wording is not a necessity-gate fix.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Approved outline explicitly requires cleanup stale/live alignment; discovery already ignoring dead tmpdirs does not make that goal optional.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Cleanup reaper alignment is a stated goal in the scope anchor, not removable scope creep for the ranking fix alone.
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real test gap but low backlog materiality; per-run max-mtime logic is already covered by separate design and implement ranking tests.

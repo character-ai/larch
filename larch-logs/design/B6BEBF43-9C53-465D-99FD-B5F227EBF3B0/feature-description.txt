@@ -1,4 +1,0 @@
-Title: delete completely, including their tests and documentation, the following larch…
-
-Body:
-delete completely, including their tests and documentation, the following larch skills: skill-evolver, simplify-skill, show-skill, compress-skill, create-skill, umbrella

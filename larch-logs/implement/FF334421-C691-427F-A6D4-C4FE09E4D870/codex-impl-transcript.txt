@@ -1,1 +1,0 @@
-Implementation complete; manifest written with `status=complete`.

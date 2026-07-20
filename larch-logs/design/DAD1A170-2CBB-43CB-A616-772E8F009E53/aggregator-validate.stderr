@@ -1,3 +1,0 @@
-warning: fix text for slot 'Cursor-Innovation' in FINDING_2 not traceable to scoped input (first 80 chars: 'Name the bash harness explicitly in Testing strategy / acceptance (bash `skills/')
-warning: fix text for slot 'Cursor-Requirements' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add a required `test_pr_body.py` or `test_review_phase_detail.py` case mirroring')
-warning: fix text for slot 'Cursor-Pragmatic' in FINDING_3 not traceable to scoped input (first 80 chars: 'Build combined body = `append_review_phase_detail(render_run_summary(...), rende')

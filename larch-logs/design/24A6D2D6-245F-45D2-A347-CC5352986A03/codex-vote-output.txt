@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Print wording is not incompatible with orchestrator chat emit, and the plan already requires replacing TSV-rendering bullets in all three sites.
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of a prior neutral symlink-edge finding with no materially new evidence, and too latent for OOS issue overhead.

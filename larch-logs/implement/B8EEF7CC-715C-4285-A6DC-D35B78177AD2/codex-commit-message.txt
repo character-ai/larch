@@ -1,3 +1,0 @@
-Implement ship-pr Python Phase 7 driver
-
-Add the Python ship-pr driver and finalize stages, extend RunContext/run-log/merge seams for the state-file-less path, and document the opt-in selector. Wire merge parity into the harness shard with pytest available and cover the new driver/finalize flows with Python tests.

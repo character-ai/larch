@@ -1,1 +1,0 @@
-Fold Step 5 prelude into `design-step5b-prepare.sh`, update `/design` prose to enter Step 5 with that wrapper, and emit final summaries through `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers with Read fallback.

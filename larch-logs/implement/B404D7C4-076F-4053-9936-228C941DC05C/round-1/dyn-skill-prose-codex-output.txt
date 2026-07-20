@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/implement/SKILL.md:784-795` — The new banner probe depends on `${CLAUDE_PLUGIN_ROOT}` before the following Step 5 Bash fence rehydrates it from `$IMPLEMENT_TMPDIR/plugin-root.env`; because the probe is prose-only, an operator copying it into a Bash call in the common “root only persisted in plugin-root.env” state will invoke `/scripts/lib-implement-round-cap.sh` or fail before code review, turning cosmetic banner calculation into another pre-review retry despite the Step 5 “must ALWAYS run” invariant. **Suggested fix:** Amend the directive to include the same plugin-root rehydration before running `scripts/lib-implement-round-cap.sh`, or make the existing Step 5 runnable path expose the banner values so the cosmetic probe cannot block review.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

@@ -1,3 +1,0 @@
-larch:bc t=2026-05-27T10:00:01Z d=0 p=20985 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
-larch:bc t=2026-05-27T10:00:01Z d=0 p=21280 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
-larch:bc t=2026-05-27T10:00:06Z d=0 p=21280 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (5s, 0 polls)

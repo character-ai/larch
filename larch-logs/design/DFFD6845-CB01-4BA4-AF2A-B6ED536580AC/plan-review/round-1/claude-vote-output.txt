@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan's testing strategy already enumerates the key checks; a formal Acceptance section is structural preference, not a necessity gate
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan specifies containment via canonicalization and path-prefix checks; using lib-design-tmpdir.sh is additional defense-in-depth, not required for the feature to be correct in its actual call context
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already mandates argv verification and harness expectations matching the proven native shape; a committed byte-exact fixture is a test-quality upgrade, an OOS signal
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan says "once" which constrains the retry; a mechanical boolean guard adds defense against implementation mistakes but is not a spec gap that causes indefinite looping if "once" is honored
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

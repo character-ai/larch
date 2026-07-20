@@ -1,8 +1,0 @@
-# attributed_ballot_sha256=a6f565da64c6b31ec7bad2b4c9163afe2e1bbbce029e92cf9ed1af653865569a
-# neutral_ballot_sha256=800df3423eeeec3d4d3b6473b0bf4223e45635e267b22d9cfe60323e4a025412
-item_id	reviewer	reviewer_line
-FINDING_1	Codex-Arch, Codex-Innovation	- **Reviewer(s)**: Codex-Arch, Codex-Innovation
-FINDING_2	Codex-Innovation	- **Reviewer(s)**: Codex-Innovation
-OOS_1	Codex-Arch	- **Reviewer**: Codex-Arch
-OOS_2	Codex-Arch	- **Reviewer**: Codex-Arch
-OOS_3	Codex-Innovation	- **Reviewer**: Codex-Innovation

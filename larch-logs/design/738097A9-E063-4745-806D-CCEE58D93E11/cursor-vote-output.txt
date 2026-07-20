@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- primary pre-body round-start-s persist is the fix; unguarded int() in the N−1 fallback only affects corrupt-ledger edge cases, not normal in-flight windowing
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- moving the existing write-once persist earlier does not change the threat model; plan scopes symlink guards to the design shell helper, not required for the Gantt fix

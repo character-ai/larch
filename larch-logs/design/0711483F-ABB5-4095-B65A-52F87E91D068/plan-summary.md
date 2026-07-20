@@ -1,1 +1,0 @@
-Add invariant Gate C persistence and mirror the existing guideline completeness checks across publish, Step 5c status plumbing, log-publish warnings, final-summary warnings, and run-log manifest validation. Keep the existing guideline path surgical and unchanged.

@@ -1,8 +1,0 @@
-{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
-{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
-{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
-{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
-{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
-{"slot":"dyn-cursor-plan-driver-action-sync","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-driver-action-sync-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-driver-action-sync.prompt"}
-{"slot":"dyn-cursor-plan-output-token-consumers","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-output-token-consumers-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-output-token-consumers.prompt"}
-{"slot":"dyn-cursor-plan-test-line-accuracy","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-test-line-accuracy-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-test-line-accuracy.prompt"}

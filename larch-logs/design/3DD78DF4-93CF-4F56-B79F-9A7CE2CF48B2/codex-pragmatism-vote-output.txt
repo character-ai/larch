@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The plan explicitly limits GLM canonicalization to main-agent pricing and says not to apply it to claude_sub.

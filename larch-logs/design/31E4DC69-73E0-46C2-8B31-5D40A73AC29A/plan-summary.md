@@ -1,1 +1,0 @@
-Add origin classification to bug digests, expose regression chains and ratios in the report, flag prose-only prevention, and add zone-based search scoping. Update Python tests, the skill contract harness, and public docs.

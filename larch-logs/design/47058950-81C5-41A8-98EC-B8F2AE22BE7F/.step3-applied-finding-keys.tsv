@@ -1,2 +1,0 @@
-1	the plan adds a python sanitizer but does not specify a supported `python/cli.py` invocation for the step 8 adapter.
-1	raw child stderr may remain in `implement_tmpdir` on malformed-output, sanitizer, merge-write, or interruption paths.

@@ -1,5 +1,0 @@
-Step 3 plan-review panel cut short by operator (known multi-hour hang bug).
-Task bytrkl2ui (plan-review-loop.sh) stopped via TaskStop; my session process tree had 0 survivors.
-No usable results: ballot.txt / voting-tally.md / accepted-plan-findings.md / rejected-findings.md / oos.md all empty; .step3-plan-review-result.env absent.
-Treating Step 3 as LOOP_STATUS=panel-failed; plan.txt unchanged; skipping Gate B and Step 3.6; proceeding to Step 3b.
-Other concurrent /design runs (larch5, larch8) were detected and deliberately NOT touched.

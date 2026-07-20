@@ -1,8 +1,0 @@
-Reviewing counter-increment placement against the diff and source.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND
-
-**Placement verification (for the record):** In `scripts/dispatch-with-waterfall.sh` (lines 495–512), `reuse_fell_through=false` is reset at the start of each inner `for idx` iteration, so a prior slot’s fall-through cannot leak. `reuse_fell_through=true` is set only inside `if [[ -n "$source_row" ]]` after `reuse_slot_result` returns non-zero; a successful reuse hits `continue` at line 504 and never reaches the increment. When `source_row` is empty (no reuse attempted), the flag stays `false` and `phase2_relaunch_count` is not bumped even though `launch_slot` still runs — matching the plan’s “fall-through only” scope. The guarded increment at line 511 is equivalent to the plan’s “increment immediately before `launch_slot`” for the fall-through path only.

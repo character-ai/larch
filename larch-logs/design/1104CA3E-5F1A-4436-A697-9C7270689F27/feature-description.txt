@@ -1,7 +1,0 @@
-# [DESIGNING] When /design asks to approve final plan, it does not show it.  Should it, though, given its size?
-
-Perhaps it should show final plan summary, and ask:
-1) Approve
-2) See full plan
-3) discuss more
-

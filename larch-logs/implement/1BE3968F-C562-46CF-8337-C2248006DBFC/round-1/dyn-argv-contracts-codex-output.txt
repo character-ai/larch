@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `scripts/run-step5-review.sh:196-207` — The single-round Step 5 argv path still allows callers to request rounds above the new hard cap: `--mode single --round-num 6` now forwards `--round-cap 5` but does not stop dispatch. Downstream, `skills/review/scripts/review-core.sh:936-943` marks `ROUND_NUM >= 5` as `cap-reached`, and `skills/review-and-fix/scripts/review-and-fix.sh:1558-1571` still treats `cap-reached` like `fix-required` and applies fixes, so a stale/manual single-mode caller can run and mutate on round 6 despite the branch’s “hard ceiling 5” contract. **Suggested fix:** Fail closed before downstream dispatch when `STEP5_MODE=single` and `ROUND_NUM > ROUND_CAP_BASE` (or enforce the same in `review-and-fix.sh --mode diff`), and add a regression that a degraded-prior fixture plus `--round-num 6` does not invoke the spy review helper.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

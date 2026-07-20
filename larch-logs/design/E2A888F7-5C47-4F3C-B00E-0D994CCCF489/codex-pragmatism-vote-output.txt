@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This repeats rejected FINDING_3 without materially new evidence, and the outlined template wrapper is optional rather than required for the specified coverage.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The wrapper API can canonically emit one supported argv order; preserving raw argument ordering is not necessary for the additive wrapper feature.

@@ -1,6 +1,0 @@
-Add git and CI helper CLI primitives
-
-Register Python CLI verbs for the git, push, PR, merge, gh, CI, and phantom helper domains, and add typed backing functions for the first B1 consolidation slice. Repoint count-commits and selected Python internals to typed helpers, update retired-script lint precision, and cover the new contracts with pytest plus the verify-skill-called harness.
-
-Validation: make py-test; make py-lint; make lint-retired-scripts; bash scripts/test-verify-skill-called.sh.
-Note: full make lint and relevant-checks were started but exceeded the tool turn window before a terminal result was available.

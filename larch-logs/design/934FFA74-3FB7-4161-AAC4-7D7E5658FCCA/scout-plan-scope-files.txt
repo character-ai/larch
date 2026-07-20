@@ -1,8 +1,0 @@
-skills/design/SKILL.md
-scripts/test-design-structure.sh
-scripts/test-design-structure.md
-scripts/design-pause-load.sh
-scripts/design-pause-load.md
-skills/design/scripts/test-design-pause-resume.sh
-skills/design/scripts/test-design-pause-resume.md
-docs/configuration-and-permissions.md

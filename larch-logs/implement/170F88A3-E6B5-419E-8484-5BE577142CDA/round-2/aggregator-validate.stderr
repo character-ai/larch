@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'On log-open failure stream `--print-stdout` to sys.stdout directly or fail witho')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'After `_plugin_root()` verify `plugin_root.is_dir()` and `(plugin_root / python/')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Add a stubbed plan-block test with body prose containing `rounds_completed: 0` a')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add a test with footer `rounds_completed: nope`; assert exit 2 and the malformed')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add `test_step_16_17_slack_skipped_no_warnings` with `slack_status=skipped` and ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Add stubbed RecordingRunner tests for successful `implement_finalize_postbump_ma')

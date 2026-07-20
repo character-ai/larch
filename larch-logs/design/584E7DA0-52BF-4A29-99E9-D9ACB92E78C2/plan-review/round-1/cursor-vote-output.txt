@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan defers postbump resume token and omits conflict-resolution.md though Phase 4 exit 0 still hardcodes ship-pr-rrr-phase14
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan requires exit 5 for step8b non-bump handoff but live run_rebase_rebump path at 3377-3381 uses exit_stall rc 4 with STALL_TRACKING true

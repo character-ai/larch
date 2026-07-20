@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan specifies the required plan-path-only sidecar behavior; assigning it to a particular helper is an implementation-structure preference.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A recovered live merge base provides authoritative committed-path attribution, so retaining frozen-only observations would risk stale coverage rather than prevent a required failure.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- This assumes local tampering of a trusted per-run directory and adds authentication/provenance complexity beyond the scoped fallback fix.
-FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The regression can model the two phases by changing the existing runner state or using separate runners; a new harness capability is unnecessary.
-FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

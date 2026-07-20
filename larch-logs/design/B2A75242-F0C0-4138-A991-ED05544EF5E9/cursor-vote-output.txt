@@ -1,4 +1,0 @@
-Reading the ballot and inspecting the referenced code to cast votes.
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already requires per-slot execution-issues warnings; append-failure is consistency not a necessity gate
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- outline fixes Item 6 via loud warnings while explicitly keeping fallback manifest rows
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- rc 2/rc 5 failure-tail paths are already covered; dropping duplicate plan bullets is proportional trim not required for delivery

@@ -1,9 +1,0 @@
-Reviewing the branch diff and commit history for correctness and Bash 3.2 compatibility.
-Reading the checkpoint script, gate exit semantics, and comparing with the prior inline behavior.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** The branch deliberately changes orchestrator-visible exit semantics for gate validation failures: the old inline `SKILL.md` block always `exit 1` after logging (even when `oos-disposition-gate.sh` returned `2`), while `oos-disposition-checkpoint.sh` now propagates gate `1`/`2` and pre-gate failures as `1`/`2` respectively. That matches the plan, updated Step 8+ prose, and harness cases (e.g. gate-exit-2 passthrough); it is not a port regression.
-- **correctness** Commit-range and inline-triage scanning both key off the caller’s current working directory (`git rev-parse --show-toplevel` without `-C` in the gate; checkpoint uses the same discovery for `merge-base`). That mirrors the removed inline fence and is correct when `/implement` runs the Bash block from the target repo root, as documented for validation failures.
-- **risk-integration** `ebde0c5be` (`chore(larch-logs): flush implement run …`) is unrelated run-log noise on the branch; it does not affect the checkpoint helper contract.

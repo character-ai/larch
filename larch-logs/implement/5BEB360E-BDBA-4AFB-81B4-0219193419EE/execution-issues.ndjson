@@ -1,1 +1,0 @@
-{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"9cf179ecac8176c39dfe897865c0ab4165df5a681c91aac6d917c598388e7578","body":"\n- **Step dispatch-code-voters.sh voter1 — launch-claude-review.sh (claude voter) failed (exit 2)**:\n  ```\nvoter1_rc=2\noutput_bytes=0\n  ```\n"}

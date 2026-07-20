@@ -1,8 +1,0 @@
-ISSUE_1_NUMBER=3218
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/3218
-ISSUE_1_ID=4552830000
-ISSUE_1_TITLE=[OOS] run-external-agent.sh stderr source order misses custom sinks in implement/lint-fix launchers
-ISSUE_1_BLOCKER_LINKS_APPLIED=1
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0

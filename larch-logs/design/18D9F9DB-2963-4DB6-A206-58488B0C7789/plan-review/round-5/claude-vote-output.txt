@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan text already says "on non-zero emit WARN=marker-delete-failed while still reporting LOAD_OK=true", which an experienced shell developer would correctly implement with an if ! guard; spelling out the snippet adds detail but the plan's intent is unambiguous

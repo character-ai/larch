@@ -1,9 +1,0 @@
-[DESIGNING] Relax the /design plan-review rounds stopping (convergence) condition.
-
-Relax the /design plan-review rounds stopping (convergence) condition.
-
-Currently, the multi-round plan-review loop (skills/design/scripts/plan-review-loop.sh, driven from skills/design/SKILL.md Step 3) declares convergence only after TWO consecutive non-degraded review rounds that each have ≤3 accepted findings AND 0 important accepted findings. The per-round accepted bound is LARCH_DESIGN_CONVERGENCE_THRESHOLD (default 3), and a 2-round consecutive streak is required (tracked via CONVERGENCE_STREAK).
-
-Requested change: relax convergence so a SINGLE round qualifies, and raise the accepted bound from 3 to 5. New rule: "convergence needs a round with ≤5 accepted and 0 important accepted." Concretely: bump the convergence threshold default from 3 to 5, and reduce the required consecutive-round streak from 2 to 1, so one qualifying round (≤5 accepted, 0 important accepted) ends the loop.
-
-Scope includes the convergence logic in plan-review-loop.sh and the documentation that states the threshold/streak (skills/design/references/flags.md env-var table, docs/configuration-and-permissions.md, and any SKILL.md prose describing the stopping condition).

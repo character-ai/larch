@@ -1,1 +1,0 @@
-`make py-test` finished successfully: **4067 passed**, 52 skipped, in about 9 minutes. That includes the new `test_residual_bash.py` coverage from the review fixes.

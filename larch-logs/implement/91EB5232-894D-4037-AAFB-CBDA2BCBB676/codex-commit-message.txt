@@ -1,3 +1,0 @@
-Collapse implement fences through larch-run launcher
-
-Emit an executable larch-run.sh during Step 0, including resume-tail runs, so post-bootstrap fences delegate through one rehydration and dispatch path. Collapse post-Step-0 implement fences to one-line launcher calls while preserving the five pre-bootstrap old-shape exceptions. Update the structural harnesses and docs to pin the old/new fence boundary, Python dispatch, and relevant-checks anti-halt call sites.

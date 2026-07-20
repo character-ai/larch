@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- file_oos/oos_filer coverage is a separate path; this parser plan can ship without expanding scope.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the empty-fence case is a real edge case, but the proposed test set already covers the required feature path and this extra check is optional.

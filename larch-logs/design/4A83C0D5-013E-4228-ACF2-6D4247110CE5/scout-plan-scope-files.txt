@@ -1,7 +1,0 @@
-skills/design/scripts/design-route.sh
-skills/design/scripts/design-route.md
-skills/design/scripts/design-init-runparams.sh
-skills/design/scripts/design-init-runparams.md
-skills/design/SKILL.md
-scripts/test-design-structure.sh
-scripts/test-step0b-router-flag-recovery.sh

@@ -1,8 +1,0 @@
-warning: fix text for slot 'dyn-prompt-surface-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Document rc `12` phase semantics explicitly in `design-step35-settle.md` and Gat')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Pre-existing validator fix')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Plan-requested `:-current`')
-warning: fix text for slot 'dyn-settle-contract-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Pre-existing apply-ready m')
-warning: fix text for slot 'dyn-settle-contract-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_5: [OUT_OF_SCOPE] `design-step35-settle.sh` ')
-warning: fix text for slot 'dyn-settle-contract-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_6: [OUT_OF_SCOPE] `flags.md` still describes')
-warning: fix text for slot 'dyn-prompt-surface-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_7: [OUT_OF_SCOPE] Intentional dual-path in-l')
-warning: fix text for slot 'dyn-prompt-surface-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_8: [OUT_OF_SCOPE] Stale Gate C snapshot pros')

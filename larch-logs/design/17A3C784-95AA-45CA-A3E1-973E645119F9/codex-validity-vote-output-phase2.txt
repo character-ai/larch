@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already limits imports to applicable shared support and requires retaining env-capturing runners, so a careful implementer need not add unused RecordingRunner; this largely duplicates rejected round-1 scope-reduction rows.

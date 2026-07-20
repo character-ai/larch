@@ -1,7 +1,0 @@
-Exploring the codebase for code-review voting, L2 patterns, and log publishing so we can draft an accurate implementation plan.
-
-Checking how the review wrapper handles per-round tmpdirs and whether `dispatch-code-voters` references `OOS_`:
-
-Noting: `vote_for_id` in `lib-vote-tally.sh` anchors on `<id>:` and the first vote token, so a line like `FINDING_1: YES CORRECTNESS=...` should still tally correctly without changing vote parsing. `parse-judge-vote-and-rating.sh` does not exist in the repo yet (L6 blocks on L2 #2671). `round_artifact_included` in `scripts/larch-log.sh` uses an explicit allowlist — generic `*.tsv` files are excluded, so we must add `findings-classification.tsv` for `write-round` to publish it.
-
-

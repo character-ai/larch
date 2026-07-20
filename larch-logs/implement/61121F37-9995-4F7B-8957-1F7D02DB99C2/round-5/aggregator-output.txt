@@ -1,3 +1,0 @@
-Normalizing the supplied reviewer findings into a merged structured list. Verifying a few merge boundaries against the cited code paths (read-only).
-Confirmed SKILL.md uses `_wfr_emit_cost` / cost-delta logic while the callsite linter still pins obsolete greps. Delivering the normalized aggregator output.
-

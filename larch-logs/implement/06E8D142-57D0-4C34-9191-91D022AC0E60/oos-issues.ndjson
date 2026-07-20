@@ -1,1 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/6732\n- **Title**: [OUT_OF_SCOPE] residual TOCTOU windows around `chmod` and `mktemp`\n- **Stable ID**: oos-accepted-review:OOS_1\n"}

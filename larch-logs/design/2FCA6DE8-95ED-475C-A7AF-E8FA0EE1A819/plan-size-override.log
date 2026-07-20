@@ -1,6 +1,0 @@
-OPERATOR OVERRIDE — initial Step 2b hard size brake forced through.
-Operator chose 'Force the full plan through' at the hard-size AskUserQuestion.
-This gate is non-overridable by skill design; bypass is at explicit operator direction.
-HARD_TRIGGER_FIRED=true TRIGGER_REASONS=diff-added
-PLAN_LINES=205 DIFF_ADDED=2500 DIFF_DELETED=6500 DIFF_LINES=9000 (threshold: diff_added>2000)
-Consequence: very large PR; size management shifts to /implement.

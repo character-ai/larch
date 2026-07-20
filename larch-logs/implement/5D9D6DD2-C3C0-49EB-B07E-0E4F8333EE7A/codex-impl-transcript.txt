@@ -1,9 +1,0 @@
-Implemented the plan and wrote the manifest atomically at the requested path.
-
-Validation run:
-- `make py-test` — passed
-- `make py-lint` — passed
-- `make lint-retired-scripts` — passed
-- `bash scripts/relevant-checks.sh` — passed
-
-Manifest status: `complete`.

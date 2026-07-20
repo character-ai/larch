@@ -1,1 +1,0 @@
-Finish the migration cleanup. Delete the retired Bash helper and harness, route Step 2 materialization through `file_oos.materialize_manifest_oos()` in-process, move shell-harness coverage into pytest, and remove stale retired-path references so `make lint-retired-scripts` stays clean.

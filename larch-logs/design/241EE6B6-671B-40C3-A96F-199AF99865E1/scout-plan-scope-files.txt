@@ -1,7 +1,0 @@
-scripts/launch-review.sh
-scripts/test-launch-review.sh
-scripts/validate-research-output.sh
-scripts/collect-agent-results.sh
-skills/design/scripts/dispatch-plan-review-panel.sh
-scripts/ship-pr.sh
-scripts/test-ship-pr.sh

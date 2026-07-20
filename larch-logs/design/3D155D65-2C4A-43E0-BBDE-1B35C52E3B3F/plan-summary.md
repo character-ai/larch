@@ -1,1 +1,0 @@
-Add a pre-dispatch structural Ruff classifier in `checks_lint_fix.py`, route matching C901/PLR0911/PLR0912/PLC0415 logs straight to `main-agent-required`, and cover the new behavior with focused lint-fix tests.

@@ -1,4 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `correctness` `scripts/dispatch-code-voters.sh:111` `scripts/test-dispatch-code-voters.sh:354`  
-   The suppression guard checks only `basename "$REVIEW_TMPDIR"`, but the harness creates one parent tmpdir named `test-dispatch-code-voters.XXXXXX` and then passes child review dirs like `$TMP/env-isolation-review`. In that concrete case, `review_basename=env-isolation-review`, so `should_suppress_parse_rate_issue_append` returns false and line 170 still calls `append-tool-failure.sh`, writing to the explicit `LARCH_EXECUTION_ISSUES_LOG` that regression 1 expects to remain empty. Fix the predicate to recognize harness ancestry from `voter_path` or `REVIEW_TMPDIR` path segments, for example matching `*/test-dispatch-code-voters.*/*` and the sibling harness patterns, while still requiring the voter output to be under the review tmpdir.

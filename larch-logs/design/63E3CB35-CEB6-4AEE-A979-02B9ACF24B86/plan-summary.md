@@ -1,1 +1,0 @@
-Port only /design Step 6 into Python. Keep the existing guard order, pause behavior, sentinels, stdout rows, and cleanup gates. Delete retired Step 6 wrappers, the Step 6 shell test, and two debug scaffolds. Update launcher, docs, migrated-script pins, and harness routing.

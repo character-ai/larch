@@ -1,1 +1,0 @@
-file-design-oos.sh prepare returned FILE_DESIGN_OOS_DEPS_AVAILABLE=false — invoking /larch:issue without --intra-batch-deps-file/--no-dep-llm (Phase-2 LLM dep-analysis is sole dep path).

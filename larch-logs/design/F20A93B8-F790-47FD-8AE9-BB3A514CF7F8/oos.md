@@ -1,5 +1,0 @@
-### OOS_1: File follow-up issue for broader nested-mode dead-code cleanup in /design
-- **Description**: The current plan explicitly defers full removal of nested-mode dead code in `skills/design/SKILL.md` (all `SESSION_ENV_PATH` branches, `--caller-env` parameters, the `branch_info_supplied=true` path, Anti-patterns #4 and #7 themselves, the "nested verbosity contract" prose, nested-mode breadcrumb-prefix examples). The user confirmed "/design NEVER runs from /implement EVER", so all of this code is dead in production but still ships and adds reader cost. File a follow-up GitHub issue titled "Remove dormant nested-mode logic from /design SKILL.md" that scopes the cleanup and links back to #2588 for context. Affected files: `skills/design/SKILL.md` (anti-patterns section, Step 0 narrative, every step's CLAUDE_PLUGIN_ROOT bootstrap block, the "Artifact-only return contract" prose). Affected lines roughly: SKILL.md ~86-92 (anti-patterns), ~99-165 (Step 0), and the ~20 CLAUDE_PLUGIN_ROOT bootstrap blocks throughout.
-- **Reviewer**: Claude (quick mode)
-- **Vote tally**: N/A — quick-mode self-review
-- **Phase**: design

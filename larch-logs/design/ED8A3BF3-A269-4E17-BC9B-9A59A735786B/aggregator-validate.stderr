@@ -1,1 +1,0 @@
-warning: fix text for slot 'Cursor-dyn-public-output-security' in FINDING_8 not traceable to scoped input (first 80 chars: 'Reuse `file_oos._sanitize_public_text` (`python/file_oos.py:235-242`) for every ')

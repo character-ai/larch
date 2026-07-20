@@ -1,2 +1,0 @@
-{"phase":"implement","step":"7a","category":"Tool Failures","source":"execution-issues.md pre-bump","source_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","body":"\n"}
-{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"49672dd640b543cf28eda372ee6e46a386d5dfcc60c2418209da825d6a315f95","body":"- **Step 5**: review loop stopped after round 2 because accepted findings were not substantial (accepted=4; reasoning: count < 8 threshold, dropped from 12 in round 1 indicating convergence).\n"}

@@ -1,1 +1,0 @@
-Create one Step 2 post-dispatch wrapper that runs the phantom probe, branch assertion, and short SHA capture. Update `/implement` prose so Step 4 reuses `COMMIT_SHA`. Keep Python dispatcher untouched.

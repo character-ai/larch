@@ -1,7 +1,0 @@
-skills/design/scripts/dedup-plan-lines.py
-skills/design/scripts/dedup-plan-lines.md
-skills/design/scripts/plan-review-loop.sh
-skills/design/scripts/test-plan-review-loop.sh
-scripts/relevant-checks.sh
-agent-lint.toml
-skills/design/scripts/parse-plan-commands.md

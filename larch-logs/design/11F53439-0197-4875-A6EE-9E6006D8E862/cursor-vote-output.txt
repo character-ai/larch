@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- planned integration test still trips rc==4 via seeded summary poison and guards frozen-at-round-1; rejected-findings path is optional fidelity, not a necessity gate
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- optional test comment or future telemetry wiring is not required to fix the tally freeze bug
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already uses a stub logger emitting only LOG_WRITTEN=true; broader stdout assertions are test polish, not necessary for the fix
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- #4584 clarification is helpful scope documentation but the plan's file list already limits edits to voting.py, tests, and docs
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- post-fix tally writes succeed; aggregate bleed is noisy diagnostics only and producer already emits allowed # Review Round headers
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- alternative design preference; warn-and-continue matches the approved approach and retains diagnostics on a discard-only body
-OOS_3: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- intentional plan trade-off; direct write-tally unit tests own stderr warning coverage and success-path relay is explicitly out of scope

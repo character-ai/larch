@@ -1,1 +1,0 @@
-Add a fail-closed authorization gate to GitHub issue mutations. Require explicit live-run evidence at both `issue create-one` and stall-report boundaries. Give tests a default deny marker so an omitted stub cannot reach real `gh` mutations.

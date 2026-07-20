@@ -1,6 +1,0 @@
-Port small user skill helpers to Python
-
-Add Python CLI implementations for issue, block-issue, alias, cleanup, upgrade-larch, and forked-repo helpers. Retarget skill, script, and documentation call sites to python/cli.py, retire absorbed shell helpers, and cover the migrated behavior with pytest and focused harness updates.
-
-Inline-triage rule 1: Updated stale prose references to retired helper names during the migration sweep.
-Inline-triage rule 2: Kept retained title-eligibility and agent-lint harness checks green after deleting migrated helpers.

@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already requires shared agreement math and live-vs-TSV parity tests; extracting a classification-input helper is a robustness refactor, not necessary for the feature.

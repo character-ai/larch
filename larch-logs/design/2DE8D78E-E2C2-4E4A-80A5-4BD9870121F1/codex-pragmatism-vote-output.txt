@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires preserving audit stderr and return-code boundary contracts.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The failure-modes section explicitly requires preserving exposed transport-versus-parse distinctions.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already mandates preserving every caller field set and asserting field sequences.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan requires ShipError translation at status and return-code boundaries and preserves LIST_STATUS/warnings.

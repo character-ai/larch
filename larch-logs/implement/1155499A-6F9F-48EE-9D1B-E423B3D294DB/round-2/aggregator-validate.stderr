@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Append `|| true` to the pipeline or disable pipefail for that capture; keep empt')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Standardize on `cat -- "${DESIGN_TMPDIR}/plan.txt"` or Read-tool equivalent in b')
-warning: fix text for slot 'dyn-threshold-divergence-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Update those fenced blocks (or replace them with “invoke `emit-design-plan-previ')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'dyn-bash-script-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Out-of-scope: larch-logs flush / large plan-goals-test.md in diff — operational ')

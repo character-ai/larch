@@ -1,5 +1,0 @@
-Verify vendor CI fixes locally before push
-
-Replay originally failed CI jobs after broad vendor fixes and before staging/pushing, preserving head-changed and verification-regression routing. Make the captured-command fix-loop honor _RCC_MAX_ITER with safe clamping and raise the per-job default budget via LARCH_CI_LOCAL_FIX_ITER.
-
-Add ship-pr harness coverage for vendor verification success, unfixable bails, head-changed routing, sweep regressions, empty TSV fallback, and iteration-budget behavior.

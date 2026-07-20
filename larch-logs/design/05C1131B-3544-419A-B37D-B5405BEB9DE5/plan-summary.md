@@ -1,1 +1,0 @@
-Port `scripts/launch-review.sh` into `python/cli.py agent launch-review`, retarget callers and retry metadata, delete the retired shell launcher/harness files, and replace shell-harness coverage with focused pytest parity for prompt sidecars, retries, dirty-tree sidecars, auth/preflight bundles, outer metadata, token/timing hooks, and Cursor JSON post-processing.

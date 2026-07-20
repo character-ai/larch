@@ -1,1 +1,0 @@
-I need to wait for the background task to complete before I can read the ballot file.

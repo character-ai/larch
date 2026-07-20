@@ -1,7 +1,0 @@
-Re-enable design log publish merge gate
-
-Restore the /design run-log publish call and its failure-envelope coverage.
-
-Require required CI checks to register for the pushed head before watching them, fail closed with dedicated registration-timeout diagnostics, and keep the existing --admin merge only after the registered checks pass.
-
-Update the design-log publish, design-publish, and SECURITY contracts to describe the head-bound registration gate.

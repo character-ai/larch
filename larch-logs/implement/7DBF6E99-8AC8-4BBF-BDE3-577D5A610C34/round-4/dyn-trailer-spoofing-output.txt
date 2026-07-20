@@ -1,8 +1,0 @@
-Reviewing the branch diff and commit history for trailer-spoofing and related security boundaries.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **Defense-in-depth gap (not assessor-sourced):** `_emit_warn_lines` in `skills/design/scripts/design-plan-quality-assessor.sh:170-174` does not pass WARN text through `_neutralize_assessor_display_line`. A multiline `workflow_path` in `run-params.json` could embed exact `LARCH_ASSESSOR_*` lines into the pre-marker display stream on rc=10. Last-marker parsing still protects Stop-round control, but trailer-syntax lines could appear in chat outside the assessor verdict path the contract explicitly neutralizes.
-- **Harness gap:** The plan calls for a handoff test where rc=10 has only a spoofed marker and no valid trusted trailer (fail-closed before Continue/Stop). The harness covers invalid numeric trailers (`test-design-plan-quality-assessor.sh:357-374`) and display spoof neutralization (`:295-307`), but not the “spoofed-only-marker, no real trailer” case described in the plan goals artifact.
-- **Improvement vs prior design:** Stop-round control no longer reads `.step3.6-assessor.env`; it uses only the validated post-marker numeric trailer. Sidecar paths are confined under `DESIGN_TMPDIR`, symlinks are rejected, verdict content is literal-parsed (not sourced/evaluated), and assessor-sourced marker/KV spoofing in verdict headline/`QUALIFICATIONS_SUMMARY` is neutralized before `emit`. The Step 3.6 fence splits at the last exact marker, requires exactly one numeric `LARCH_ASSESSOR_ROUND_NUM`, and aborts fail-closed before prompting when validation fails (`skills/design/SKILL.md:1187-1214`).

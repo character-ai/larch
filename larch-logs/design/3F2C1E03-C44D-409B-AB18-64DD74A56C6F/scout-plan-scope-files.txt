@@ -1,8 +1,0 @@
-skills/design/SKILL.md
-skills/implement/SKILL.md
-skills/design/scripts/render-final-summary.md
-skills/implement/scripts/write-final-report.md
-scripts/test-render-cost-line-callsites.sh
-scripts/test-design-structure.sh
-scripts/test-implement-structure.sh
-CHANGELOG.md

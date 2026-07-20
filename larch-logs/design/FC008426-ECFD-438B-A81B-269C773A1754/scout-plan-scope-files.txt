@@ -1,4 +1,0 @@
-python/ci_monitor.py
-python/test_ci_monitor.py
-python/config.py
-python/README.md

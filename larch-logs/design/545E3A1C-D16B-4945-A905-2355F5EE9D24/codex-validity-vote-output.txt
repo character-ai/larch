@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already requires fence-aware parsing and the G-Md-3 lint; a prescribed local helper shape is not necessary for the feature.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Fence-aware plan-boundary detection is a real separate concern, but the anchored scope explicitly limits the change to section splitting.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already requires preserving exact offsets and pinning established h2/h3 section names and content.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already specifies the cited closing and unclosed-fence rules; exhaustive extra cases are not necessary beyond its proportionate fence coverage.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A line scan is within the bounded, approved fence-state implementation and the alternative does not establish that the planned approach over-serves scope.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

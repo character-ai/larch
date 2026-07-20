@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	major	correctness	skills/design/SKILL.md:25-25; <TMPDIR>/plan.txt:298-300	Generic anti-halt text still waits on `<task-notification>` for Immediate-background fences	The acceptance grep in this PR will still find task-notification wait language in `/design`, so the obsolete wait mechanism remains documented and the feature fails its own removal criteria	Rewrite that clause to use the bgjob wait contract only, or delete it if no Immediate-background wait remains

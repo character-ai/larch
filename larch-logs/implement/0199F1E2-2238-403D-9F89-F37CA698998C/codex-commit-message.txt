@@ -1,7 +1,0 @@
-Internalize design Step 3 review loop
-
-Add a sourced Step 3 loop controller that runs review rounds, applies accepted findings through the plan revision waterfall, and emits a bounded STEP3_REVIEW_LOOP_STATUS envelope for terminal and bail-out outcomes.
-
-Extend run-step3-review.sh with --mode single|loop and --starting-round validation, keep review-round-count.txt ownership in the driver, and make plan-review-loop.sh stateless when --prune-round-num is omitted.
-
-Document the loop/resume contract and add harness coverage for loop envelopes, launcher validation, settled state cleanup, and structural pins.

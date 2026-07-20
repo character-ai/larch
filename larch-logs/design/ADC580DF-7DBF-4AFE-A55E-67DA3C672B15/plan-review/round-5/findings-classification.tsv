@@ -1,7 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Edge, Cursor-dyn-publish-contract-threading, Cursor-dyn-operator-retry-flow	rejected	NO	false-positive	major	adequate	true	Claude	NO	false-positive	nit	adequate	false	Codex	YES	true	major	good	false	Cursor
-FINDING_2	Codex-Arch, Codex-Edge, Codex-dyn-operator-retry-flow	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_3	Cursor-Pragmatic	accepted	YES	true	minor	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_4	Codex-Requirements	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_5	Cursor-dyn-legacy-flag-drift	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_6	Cursor-dyn-legacy-flag-drift	accepted	YES	true	nit	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor

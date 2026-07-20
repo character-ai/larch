@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add `TALLY_PLAN_REVIEW_STATUS=tally-error` with `LOOP_STATUS=complete` to Gate B')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Resume with `--phase "$PHASE"` from `DESIGN_STEP3_MAV_KV`; use `ACCEPTED_COUNT` ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'After post on D_POST assert `timing-ledger.tsv` contains a design round-2 row, o')

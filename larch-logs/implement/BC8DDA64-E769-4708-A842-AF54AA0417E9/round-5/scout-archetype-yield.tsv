@@ -1,8 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	1	1	0	1.000000
-edge-cases	correctness	1	1	1	0	1.000000
-testing	risk-integration	1	8	0	1	0.000000
-codex-generic	code-quality	1	1	1	0	1.000000
-dyn-step5-contract	correctness	1	0	0	0	n/a
-dyn-migration-surface	risk-integration	1	4	1	2	0.250000
-dyn-coder-dispatch	security	1	0	0	0	n/a

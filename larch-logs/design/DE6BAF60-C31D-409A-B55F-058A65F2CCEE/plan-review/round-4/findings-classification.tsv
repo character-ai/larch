@@ -1,9 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Cursor-Arch, Codex-Arch, Codex-Pragmatic, Codex-Edge, Codex-Requirements, Cursor-dyn-stub-isolation, Codex-dyn-env-leak, Codex-dyn-assertion-fidelity	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_2	Cursor-Edge, Cursor-dyn-env-leak	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_3	Cursor-Innovation	exonerated	EXONERATE	partially-true	nit	adequate	false	Claude	EXONERATE	partially-true	nit	adequate	false	Codex	EXONERATE	partially-true	nit	adequate	false	Cursor
-FINDING_4	Cursor-Pragmatic	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_5	Cursor-Requirements, Cursor-dyn-assertion-fidelity, Codex-dyn-assertion-fidelity	accepted	EXONERATE	partially-true	minor	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_6	Codex-dyn-stub-isolation	exonerated	EXONERATE	partially-true	minor	adequate	false	Claude	EXONERATE	partially-true	nit	adequate	false	Codex	EXONERATE	partially-true	minor	good	false	Cursor
-FINDING_7	Cursor-dyn-env-leak	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_8	Cursor-dyn-assertion-fidelity	exonerated	EXONERATE	partially-true	nit	adequate	false	Claude	EXONERATE	partially-true	minor	weak	false	Codex	EXONERATE	partially-true	minor	adequate	false	Cursor

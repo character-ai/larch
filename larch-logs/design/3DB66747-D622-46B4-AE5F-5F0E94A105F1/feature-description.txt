@@ -1,7 +1,0 @@
-# Refactor role of scout in /design and /implement reviews
-
-Currently, scout runs on every review round (which is wasteful of time and money) -- scout should run once.
-Furthermore, no need to spawn it as separate agent.  Its job should be moved to:
-/design: final plan writer (in addition to outputting the final plan ready for review, it should also output the same results as scout does today.)
-/implement: coder (in addition to making the code changes, it should also output the same results as scout does today.)
-

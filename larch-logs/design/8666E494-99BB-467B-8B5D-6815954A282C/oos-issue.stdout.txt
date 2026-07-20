@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=2787
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/2787
-ISSUE_1_ID=4515044413
-ISSUE_1_TITLE=[OOS] Clean up `_attempt_attestation_repair` for now-unreachable nonempty-input path
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

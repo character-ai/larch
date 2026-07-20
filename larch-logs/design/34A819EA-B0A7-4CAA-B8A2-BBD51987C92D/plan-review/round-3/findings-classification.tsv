@@ -1,6 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity
-FINDING_1	Cursor-Arch, Cursor-Pragmatic	accepted	YES	true	major	good	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_2	Cursor-Pragmatic	accepted	NO	true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_3	Cursor-dyn-cross-ref-completeness	accepted	NO	uncertain	minor	adequate	true	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important
-FINDING_4	Cursor-dyn-cross-ref-completeness	accepted	NO	uncertain	minor	adequate	true	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important
-FINDING_5	Cursor-dyn-fence-shape-audit	neutral	YES	partially-true	major	good	false	Claude	NO	partially-true	minor	good	false	Codex	NO	true	minor	good	false	Cursor	important

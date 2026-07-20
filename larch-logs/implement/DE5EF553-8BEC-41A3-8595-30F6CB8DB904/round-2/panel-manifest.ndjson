@@ -1,6 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.9/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.9/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.9/agents/reviewer-testing.md"}
-{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-2/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.9/agents/code-reviewer.md"}
-{"slot": "dyn-launcher-parity", "tool": "cursor", "output": "<TMPDIR>/round-2/dyn-launcher-parity-output.txt", "prompt_file": "<TMPDIR>/round-2/dynamic-archetypes/dyn-launcher-parity-prompt.md", "weight": 1, "focus_area": "correctness", "archetype_ref": "7239cd6d3c3e"}
-{"slot": "dyn-retry-cutover", "tool": "cursor", "output": "<TMPDIR>/round-2/dyn-retry-cutover-output.txt", "prompt_file": "<TMPDIR>/round-2/dynamic-archetypes/dyn-retry-cutover-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "fa2ef48c70ec"}

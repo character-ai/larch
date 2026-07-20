@@ -1,3 +1,0 @@
-Port OOS wire helpers to Python
-
-Move OOS serialization and header normalization into python/oos.py, register the CLI verbs, and cut over review callers to the Python runtime. Add pytest parity coverage and relevant-checks routing for the migrated surface. Retire the old shared Bash helpers, harness targets, and manifest entries.

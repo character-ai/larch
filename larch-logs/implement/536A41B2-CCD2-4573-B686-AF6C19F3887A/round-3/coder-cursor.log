@@ -1,6 +1,0 @@
-APPLIED: FINDING_2
-SKIPPED: FINDING_3 - conditional ci.yaml sharding requires GHA wall-time measurement not available in this fix pass
-APPLIED: FINDING_4
-APPLIED: FINDING_6
-APPLIED: FINDING_10
-APPLIED: FINDING_11

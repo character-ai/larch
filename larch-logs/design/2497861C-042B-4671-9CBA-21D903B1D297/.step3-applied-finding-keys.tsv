@@ -1,1 +1,0 @@
-1	the override tests call `_resolve_implement_rater_model` without `difficulty_tier`, so they only prove that plugin or environment overrides beat the empty-tier fallback (`composer-2.5`). they do not verify that overrides beat the moderate default of `grok-4.5`.

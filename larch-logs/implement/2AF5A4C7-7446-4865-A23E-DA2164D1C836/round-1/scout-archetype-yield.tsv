@@ -1,9 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-structure	code-quality	1	4	1	0	0.250000
-correctness	correctness	1	5	2	0	0.400000
-testing	risk-integration	1	5	1	0	0.200000
-security	security	1	6	0	6	0.000000
-edge-cases	correctness	1	4	2	0	0.500000
-plan-fidelity	architecture	1	2	2	0	1.000000
-dyn-dead-import-remnants	correctness	1	0	0	0	n/a
-dyn-branch-guard-relocation	correctness	1	0	0	0	n/a

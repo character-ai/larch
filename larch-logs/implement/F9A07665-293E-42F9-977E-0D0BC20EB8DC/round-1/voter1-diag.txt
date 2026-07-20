@@ -1,5 +1,0 @@
-voter1_rc=143
-output_bytes=    6469
---- first 200 bytes of voter output ---
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- binding outline should precede non-binding brainstorm in Step 2a/2a.5 prepend order
-FINDING_2: YES CORRECTNESS=true S

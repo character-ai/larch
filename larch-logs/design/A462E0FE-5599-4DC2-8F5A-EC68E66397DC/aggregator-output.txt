@@ -1,8 +1,0 @@
-Normalized aggregation: the **Cursor-Pragmatic** item is withheld (`[SCOPE-REDUCTION]`); only **Cursor-Requirements** is in scope below.
-
-### FINDING_1: Missing wrapper regression for MAV when result env absent but child stdout has STEP3 KVs
-- **Reviewer(s)**: Cursor-Requirements
-- **Severity**: important
-- **Concern**: The plan adds persist-failure handling and observability guards but does not regression-test the wrapper path where `run-step3-review.sh` exits 0, writes no `.step3-review-result.env`, and child captured stdout already carries `STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required` (and companion KVs). Production failure mode: MAV after `phase_driver_write_result_env` refuses a symlink; loop still emits MAV on the quiet contract channel, but the result env file is absent. Existing tests cover total empty output and LOOP_STATUS-only recovery; loop-depth emit is covered in `test-review-design-step3-loop.sh`; none exercise `design-step3-review.sh` propagating MAV when stdout has STEP3 KVs and the result env is missing. A wrapper regression that drops stdout merge or mis-orders the new guard could reintroduce silent exit or spurious `panel-failed` without CI signal.
-- **Suggested revisions (informational for voters; coder decides)**:
-  - From Cursor-Requirements: Add a `test-design-step3-review.sh` case where the fake `run-step3-review.sh` exits 0, writes no result env, and prints `STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required` (plus any required companion KVs) to stdout; assert wrapper stdout contains MAV and not `panel-failed`.

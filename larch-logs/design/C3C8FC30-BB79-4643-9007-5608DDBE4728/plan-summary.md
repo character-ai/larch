@@ -1,1 +1,0 @@
-Plan adds `oos-correctness` triage for correctness-focused OOS filings in both implement and design paths, plus an `/analyze-issues` high-risk OOS backlog section. It keeps OOS routing and review acceptance unchanged.

@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates neutral round-1 FINDING_5 with no materially new evidence; same slot-normalization concern, same write_reviewer_status_tsv comparison, same example path
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test finding for the retry-path concern in FINDING_1 which is a neutral round-1 duplicate; gate 4 not cleared since the retry path pre-exists and the cap still works if normalization is applied correctly
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SCOPE-REDUCTION: duplicate injection adds tokens but the cap feature works correctly either way; token efficiency concern is an OOS signal, not a necessity gate

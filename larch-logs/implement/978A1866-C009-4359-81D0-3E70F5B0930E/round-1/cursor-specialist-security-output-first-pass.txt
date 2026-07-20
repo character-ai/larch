@@ -1,5 +1,0 @@
-Gathering the branch diff and commit list for a read-only security-focused review.
-
-Reviewed the cached diff and commit history (`047867c2` Rework audit-runs user gate; `7bdabe96` chore(larch-logs) flush). Focusing on security/trust boundaries for the modified skill, tests, and docs.
-
-

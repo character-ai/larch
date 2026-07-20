@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Gate `_emit_final_summary_marked_from_disk` on render success or a freshly writt')
-warning: fix text for slot 'dyn-harness-scope-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Add focused pytest cases: (2) parametrize cleanup eligibility over `SESSION_ID` ')
-warning: fix text for slot 'dyn-harness-scope-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add focused pytest cases: (1) success path where `fake_render` creates `final-su')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Capture publish_core with fd-level stdout redirection or capture all publish-tai')

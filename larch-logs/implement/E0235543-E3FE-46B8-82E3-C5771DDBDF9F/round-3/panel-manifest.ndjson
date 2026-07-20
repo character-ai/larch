@@ -1,4 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.8/agents/reviewer-correctness.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.8/agents/reviewer-testing.md"}
-{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-3/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.8/agents/code-reviewer.md"}
-{"slot": "dyn-dyn-quiet-routing", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-dyn-quiet-routing-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-dyn-quiet-routing-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "35f26a083403"}

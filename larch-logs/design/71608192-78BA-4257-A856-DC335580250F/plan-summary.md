@@ -1,1 +1,0 @@
-Cross-cutting model-policy refresh. Update Codex model defaults and difficulty routing, reviewer and voter composition, fixer waterfalls, token pricing buckets, docs, plugin text, and targeted tests. Difficulty is HARD because this touches review orchestration, CI recovery, external launchers, and cost accounting.

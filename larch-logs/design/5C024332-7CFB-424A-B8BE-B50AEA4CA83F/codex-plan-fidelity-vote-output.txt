@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The current plan already requires comment-token matching, a non-empty reason, and exit 2 for an empty reason.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan explicitly assigns comment-token extraction to a private engine helper and references the existing implementation only as a pattern.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The wording could be clearer, but resolved-root validation is already specified and relative-root support is not required by this feature scope.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- A metric domain would be useful future contract detail, but the feature's scan-only path neither renders nor consumes metric values.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires stable sorting and resolves duplicate behavior; an exact tie-break tuple is not necessary for deterministic feature behavior.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

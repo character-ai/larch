@@ -1,1 +1,0 @@
-Classify `protected-path-edit-required-out-of-scope` as `protected-path`, keep `RESUME_HINT=step2-impl`, set retry cap to 1, allow the bail token on public output, and update tests plus retry-cap docs.

@@ -1,9 +1,0 @@
-Gathering the diff, commit list, and full-file context for the jq-related logic the scout notes highlight.
-
-Verifying `jq -e` exit status for boolean output and scanning the diff for other `steps_ran`/`args`/`@tsv` hunks.
-
-Fixing the test command and re-running.
-
-Confirming the `jq -ne` probe: absent key → exit 1 (enforce); explicit `false` → exit 0 (skip). Dynamic `sN`/`v(N+3)` naming stays unique because each `steps_ran` update advances `#args[@]` by six before the next field. `@tsv` emits a single line of three tab-separated `true`/`false` tokens; `read -r` splits on default IFS (includes tab).
-
-

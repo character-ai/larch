@@ -1,4 +1,0 @@
-1	`gh issue list` returns uppercase `open`/`closed` states, so lowercase comparisons can silently omit all rows while reporting success.
-1	the wrapper returns a flat list of dictionaries, but retaining the paginated-document outer loop can skip every issue and emit an empty successful snapshot.
-1	`list_open_main` must explicitly request every field it emits; otherwise labels and body data can disappear silently.
-1	the preflight concurrency probe currently converts issue-list failures to an empty list and continues successfully; allowing wrapper errors to propagate would change audit behavior.

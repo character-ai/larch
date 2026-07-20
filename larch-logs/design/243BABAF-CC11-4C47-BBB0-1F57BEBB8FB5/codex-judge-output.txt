@@ -1,2 +1,0 @@
-DECISION_1: THESIS — Defense A better reconciles the spec conflict by grounding continuation in the explicit decision table and script sentinel behavior.
-DECISION_2: ANTI_THESIS — Defense A more rigorously distinguishes transient `gh` lookup failure from semantic tracking-init bail behavior and shows why exit 2 preserves sharper diagnostics.

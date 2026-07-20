@@ -1,5 +1,0 @@
-Exploring the codebase read-only to map current patterns and where we'll add documentation, markers, and lint.
-
-Having mapped existing patterns (`run_in_background` scattered across shared references, structure tests in `scripts/test-*-structure.sh`, `make lint` composition), we'll create a concise implementation plan.
-
-

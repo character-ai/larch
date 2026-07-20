@@ -1,5 +1,0 @@
-{"slot": "correctness", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.11/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.11/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.11/agents/reviewer-testing.md"}
-{"slot": "dyn-code-robustness-codex", "tool": "codex", "output": "<TMPDIR>/round-1/dyn-code-robustness-codex-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-code-robustness-prompt.md", "weight": 1, "focus_area": "correctness"}
-{"slot": "dyn-responsibility-boundary-codex", "tool": "codex", "output": "<TMPDIR>/round-1/dyn-responsibility-boundary-codex-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-responsibility-boundary-prompt.md", "weight": 1, "focus_area": "architecture"}

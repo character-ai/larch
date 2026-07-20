@@ -1,3 +1,0 @@
-Exploring the Step 5 voting flow, voter launch paths, and breadcrumb-monitor behavior to draft an architecture-focused implementation plan.
-Investigating done-sentinel ownership: nested scripts like `collect-agent-results.sh` may be signaling completion to the orchestrator's monitor prematurely.
-

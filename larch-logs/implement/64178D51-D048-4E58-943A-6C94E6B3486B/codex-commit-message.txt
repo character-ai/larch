@@ -1,7 +1,0 @@
-Port design plan-review to Python CLI
-
-Add the plan-review Python CLI domain, cut live /design wrappers over to it, and retire the absorbed plan-review shell scripts and harnesses.
-
-Replace the absorbed shell harness coverage with pytest coverage for plan-review mechanics, panel/voter dispatch entry points, artifact allowlists, preview, emit, finalize, state, and evidence staging.
-
-Inline-triage rule 1: refreshed stale documentation, lint routing, and structural-test references for the retired plan-review script paths.

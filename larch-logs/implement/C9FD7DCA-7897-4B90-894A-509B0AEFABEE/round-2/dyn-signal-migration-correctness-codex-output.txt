@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **correctness** `scripts/larch-log.sh:631-636` — The new `reviewer_signals[].ns_retry_reason` producer records the first `NS_RETRY_REASON=` line it sees, but the migrated scan replaces old logic in `.claude/skills/audit-runs/scripts/audit-scan-run.sh:412-420` that explicitly used the last matching line because collector metadata may be appended. If a `.meta` has multiple reason lines, concise logs will now report a stale reason histogram. **Suggested fix:** Preserve old semantics by collecting all matching `NS_RETRY_REASON=` lines in the producer and storing the last one; add a regression with two reason lines asserting the later token is emitted and counted.
-
-- **correctness** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:1338-1371` — The real `audit-scan-run.sh` fixture only registers `ns-retry-sidecars`; it does not exercise the migrated `codex-generalist-waste` or `trailing-content-no-issues-found` scan paths, while the earlier trailing-content check at `.claude/skills/audit-runs/scripts/test-audit-runs.sh:914-938` is only a local helper for the old raw-file predicate. Regressions in output-basename matching, timing failure, all-round aggregation, or unavailable-signal skip behavior can pass CI. **Suggested fix:** Extend Test 35 to include all three reviewer-signals scans, with `codex-generalist-output.txt` + timing >120s producing fail, a later-round `first_pass_trailing_content:true` producing fail/count across all rounds, and no-signal fixtures producing skip.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

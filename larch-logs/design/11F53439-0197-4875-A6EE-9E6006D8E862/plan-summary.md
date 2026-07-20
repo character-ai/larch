@@ -1,1 +1,0 @@
-Fix `voting write-tally` so code-review body header validation warns instead of blocking the JSON write. Add regression coverage for a second Step 5 flush overwriting the round-1 tally with cumulative multi-round counts. Document cumulative `code-review-tally.json` semantics.

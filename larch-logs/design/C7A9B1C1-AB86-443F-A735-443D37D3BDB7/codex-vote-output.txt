@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already requires passed-env behavior and forbids re-encoding, so this is clarification rather than necessary scope.

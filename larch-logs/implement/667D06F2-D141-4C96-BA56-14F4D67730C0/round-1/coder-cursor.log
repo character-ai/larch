@@ -1,7 +1,0 @@
-All three review findings are applied and verified.
-
-**FINDING_1 & 2** — `_run_activity_mtime` now ranks runs using the latest timestamp across mark, vendor, and round rows in the timing ledger, not marks alone. The #4954 regression test covers the stale-newer-mark case: active Step 5 with an older mark but fresher vendor activity beats a stalled Step 0 run with a newer mark.
-
-**FINDING_6** — Unredacted `code-flow-diagram.raw-failure.log` is deleted after the bounded failure log is written, and removed on later success so secrets do not persist in the tmpdir.
-
-`make py-lint` and `make py-test` both passed (4133 tests). No commit was made; the parent session can handle that.

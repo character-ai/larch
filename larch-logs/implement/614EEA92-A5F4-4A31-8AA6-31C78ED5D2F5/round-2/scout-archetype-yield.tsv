@@ -1,7 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	0	0	0	n/a
-edge-cases	correctness	1	0	0	0	n/a
-testing	risk-integration	1	0	0	0	n/a
-codex-generic	code-quality	1	0	0	0	n/a
-dyn-dyn-reviewer-status-artifacts	correctness	1	0	0	0	n/a
-dyn-dyn-design-table-contract	risk-integration	1	1	0	0	0.000000

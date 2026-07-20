@@ -1,1 +1,0 @@
-1	the current tests only pin the dispatcher’s token-mark behavior for the binary-missing path, so they do not guard against accidental double-marking once launchers own step 2 token marks.

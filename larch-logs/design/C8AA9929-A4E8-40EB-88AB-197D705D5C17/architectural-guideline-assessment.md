@@ -1,1 +1,0 @@
-G-Fix-1 note: session_env.py lines 1806-1823 contain similar origin/main hardcodes for PR commit-count display. Intentionally deferred: display-only purpose, different from coverage gate, approved non-goal in design-outline.md. PR description should name the sibling list.
