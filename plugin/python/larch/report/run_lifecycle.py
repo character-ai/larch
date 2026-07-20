@@ -50,18 +50,12 @@ class RunLifecycleError(RuntimeError):
     """A universal lifecycle state or transition is invalid."""
 
 
-TERMINAL_EXCEPTIONS: Final = (
-    EOFError,
-    object_store.ObjectStoreError,
-    OSError,
-    run_log_publish.PublicationError,
-    RunLifecycleError,
-    ShipError,
-    storage_config.StorageConfigurationError,
-    tarfile.TarError,
-    TypeError,
-    ValueError,
-)
+def _require_lifecycle(condition: bool, message: str) -> None:  # noqa: FBT001 - internal validation pairs predicates with diagnostics
+    if not condition:
+        raise RunLifecycleError(message)
+
+
+TERMINAL_EXCEPTIONS: Final = (EOFError, object_store.ObjectStoreError, OSError, run_log_publish.PublicationError, RunLifecycleError, ShipError, storage_config.StorageConfigurationError, tarfile.TarError, TypeError, ValueError)
 
 
 @dataclass(frozen=True)
@@ -118,29 +112,11 @@ def lifecycle_log_root(
 
 
 def _context_file(*, repo_root: Path, skill: str, run_id: str, environ: Mapping[str, str]) -> Path:
-    repo_name = run_log_publish.validated_component(repo_root.name, label="repository name", slug=False)
-    return (
-        _state_home(environ)
-        / "larch"
-        / "run-lifecycle"
-        / repo_name
-        / "contexts" / skill / run_id
-        / LIFECYCLE_CONTEXT_BASENAME
-    )
+    return _state_home(environ) / "larch" / "run-lifecycle" / run_log_publish.validated_component(repo_root.name, label="repository name", slug=False) / "contexts" / skill / run_id / LIFECYCLE_CONTEXT_BASENAME
 
 
 def _write_context(*, started: LifecycleStart) -> None:
-    payload: dict[str, object] = {
-        "schema_version": LIFECYCLE_CONTEXT_SCHEMA_VERSION,
-        "repo_root": str(started.repo_root),
-        "storage_uri": started.storage_root.uri,
-        "skill": started.skill,
-        "run_id": started.run_id,
-        "log_root": str(started.log_root),
-        "run_dir": str(started.run_dir),
-    }
-    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
-    larch_io.atomic_write(started.context_file, encoded, mode=0o600, nofollow=True)
+    larch_io.atomic_write(started.context_file, json.dumps({"schema_version": LIFECYCLE_CONTEXT_SCHEMA_VERSION, "repo_root": str(started.repo_root), "storage_uri": started.storage_root.uri, "skill": started.skill, "run_id": started.run_id, "log_root": str(started.log_root), "run_dir": str(started.run_dir)}, separators=(",", ":"), sort_keys=True) + "\n", mode=0o600, nofollow=True)
 
 
 def load_run_context(*, repo_root: Path, skill: str, run_id: str, environ: Mapping[str, str] | None = None) -> LifecycleStart:
@@ -150,46 +126,29 @@ def load_run_context(*, repo_root: Path, skill: str, run_id: str, environ: Mappi
     skill_name = run_log_publish.validated_component(skill, label="skill", slug=True)
     run_name = run_log_publish.validated_component(run_id, label="run-id", slug=True)
     context_file = _context_file(repo_root=root, skill=skill_name, run_id=run_name, environ=environment)
-    if context_file.is_symlink() or not context_file.is_file():
-        raise RunLifecycleError(f"lifecycle context is missing or unsafe: {context_file}")
+    _require_lifecycle(not context_file.is_symlink() and context_file.is_file(), f"lifecycle context is missing or unsafe: {context_file}")
     raw: object = json.loads(context_file.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise RunLifecycleError("lifecycle context must be a JSON object")
+    _require_lifecycle(isinstance(raw, dict), "lifecycle context must be a JSON object")
     data = cast("dict[str, object]", raw)
-    expected: dict[str, object] = {
-        "schema_version": LIFECYCLE_CONTEXT_SCHEMA_VERSION,
-        "repo_root": str(root),
-        "skill": skill_name,
-        "run_id": run_name,
-    }
-    for key, value in expected.items():
-        if data.get(key) != value:
-            raise RunLifecycleError(f"lifecycle context identity mismatch: {key}")
-    storage_uri, log_root_raw, run_dir_raw = (
-        data.get("storage_uri"), data.get("log_root"), data.get("run_dir")
-    )
-    if not all(isinstance(value, str) and value for value in (storage_uri, log_root_raw, run_dir_raw)):
-        raise RunLifecycleError("lifecycle context paths or storage URI are missing")
+    expected: dict[str, object] = {"schema_version": LIFECYCLE_CONTEXT_SCHEMA_VERSION, "repo_root": str(root), "skill": skill_name, "run_id": run_name}
+    _require_lifecycle(all(data.get(key) == value for key, value in expected.items()), "lifecycle context identity mismatch")
+    storage_uri, log_root_raw, run_dir_raw = data.get("storage_uri"), data.get("log_root"), data.get("run_dir")
+    _require_lifecycle(all(isinstance(value, str) and value for value in (storage_uri, log_root_raw, run_dir_raw)), "lifecycle context paths or storage URI are missing")
     storage_root = storage_config._parse_storage_uri(str(storage_uri))  # pyright: ignore[reportPrivateUsage]  # persisted context reuses canonical parser  # noqa: SLF001 - sibling parser owns validation
     log_root = Path(str(log_root_raw))
     run_dir = Path(str(run_dir_raw))
-    if not log_root.is_absolute() or run_dir != log_root / skill_name / run_name:
-        raise RunLifecycleError("lifecycle context staging path mismatch")
+    _require_lifecycle(log_root.is_absolute() and run_dir == log_root / skill_name / run_name, "lifecycle context staging path mismatch")
     return LifecycleStart(root, storage_root, skill_name, run_name, log_root, run_dir, context_file)
 
 
 def _parent_identity_from_context(*, repo_root: Path, context_file: Path, environ: Mapping[str, str]) -> tuple[str, str]:
-    if not context_file.is_absolute() or context_file.is_symlink() or not context_file.is_file():
-        raise RunLifecycleError("parent lifecycle context is missing or unsafe")
+    _require_lifecycle(context_file.is_absolute() and not context_file.is_symlink() and context_file.is_file(), "parent lifecycle context is missing or unsafe")
     raw: object = json.loads(context_file.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise RunLifecycleError("parent lifecycle context identity is missing")
+    _require_lifecycle(isinstance(raw, dict), "parent lifecycle context identity is missing")
     data = cast("dict[str, object]", raw)
-    if not isinstance(data.get("skill"), str) or not isinstance(data.get("run_id"), str):
-        raise RunLifecycleError("parent lifecycle context identity is missing")
+    _require_lifecycle(isinstance(data.get("skill"), str) and isinstance(data.get("run_id"), str), "parent lifecycle context identity is missing")
     parent = load_run_context(repo_root=repo_root, skill=cast("str", data["skill"]), run_id=cast("str", data["run_id"]), environ=environ)
-    if parent.context_file != context_file:
-        raise RunLifecycleError("parent lifecycle context path mismatch")
+    _require_lifecycle(parent.context_file == context_file, "parent lifecycle context path mismatch")
     return parent.skill, parent.run_id
 
 
@@ -208,17 +167,14 @@ def _validate_parent(*, parent_skill: str, parent_run_id: str) -> None:
         _ = run_log_publish.validated_component(parent_run_id, label="parent run-id", slug=True)
 
 
-def start_run(  # noqa: C901, PLR0912, PLR0913 - lifecycle boundary validates identity, adoption, storage, and parent state together.
+def start_run(  # noqa: PLR0913 - lifecycle boundary validates identity, adoption, storage, and parent state together.
     *,
     repo_root: Path,
     skill: str,
     parent_skill: str = "",
     parent_run_id: str = "",
-    run_id: str | None = None,
-    log_root: Path | None = None,
-    issue: str = "",
-    adopt_existing: bool = False,
-    parent_context: Path | None = None,
+    run_id: str | None = None, log_root: Path | None = None, issue: str = "",
+    adopt_existing: bool = False, parent_context: Path | None = None,
     environ: Mapping[str, str] | None = None,
     storage_root: StorageRoot | None = None,
     preflight: Callable[[StorageRoot], None] = _preflight_storage,
@@ -241,8 +197,7 @@ def start_run(  # noqa: C901, PLR0912, PLR0913 - lifecycle boundary validates id
         selected_run_id, label="run-id", slug=True
     )
     selected_log_root = log_root or lifecycle_log_root(repo_root=root, environ=environment)
-    if not selected_log_root.is_absolute():
-        raise RunLifecycleError("lifecycle log root must be absolute")
+    _require_lifecycle(selected_log_root.is_absolute(), "lifecycle log root must be absolute")
     init = run_logs.log_init(
         log_root=selected_log_root,
         skill=skill_name,
@@ -258,40 +213,26 @@ def start_run(  # noqa: C901, PLR0912, PLR0913 - lifecycle boundary validates id
         raise RunLifecycleError(f"run ID already exists: {run_name}")
     run_dir = init.path.parent
     manifest = run_log_manifest._read_manifest_v2(init.path)  # noqa: SLF001 - sibling lifecycle owns this manifest transition.
-    if manifest.get("lifecycle_schema_version") not in {None, LIFECYCLE_SCHEMA_VERSION}:
-        raise RunLifecycleError("unsupported lifecycle schema version")
+    _require_lifecycle(manifest.get("lifecycle_schema_version") in {None, LIFECYCLE_SCHEMA_VERSION}, "unsupported lifecycle schema version")
     expected_parent_skill = parent_skill or None
     expected_parent_run_id = parent_run_id or None
-    if manifest.get("parent_skill") != expected_parent_skill:
-        raise RunLifecycleError("existing lifecycle parent skill mismatch")
-    if manifest.get("parent_run_id") != expected_parent_run_id:
-        raise RunLifecycleError("existing lifecycle parent run ID mismatch")
-    if manifest.get("skill") != skill_name or manifest.get("run_id") != run_name:
-        raise RunLifecycleError("new lifecycle manifest identity mismatch")
+    _require_lifecycle(manifest.get("parent_skill") == expected_parent_skill, "existing lifecycle parent skill mismatch")
+    _require_lifecycle(manifest.get("parent_run_id") == expected_parent_run_id, "existing lifecycle parent run ID mismatch")
+    _require_lifecycle(manifest.get("skill") == skill_name and manifest.get("run_id") == run_name, "new lifecycle manifest identity mismatch")
     if manifest.get("lifecycle_schema_version") == LIFECYCLE_SCHEMA_VERSION:
-        if manifest.get("storage_uri") != active_storage.uri:
-            raise RunLifecycleError("configured storage root changed after lifecycle start")
+        _require_lifecycle(manifest.get("storage_uri") == active_storage.uri, "configured storage root changed after lifecycle start")
     else:
         _ = run_log_manifest._update_manifest_v2(  # noqa: SLF001 - sibling lifecycle owns this manifest transition.
             path=init.path,
             updates={"status": config.MANIFEST_STATUS_IN_PROGRESS, "lifecycle_schema_version": LIFECYCLE_SCHEMA_VERSION, "storage_uri": active_storage.uri, "terminal_outcome": None, "finished_at": None},
         )
     context_file = _context_file(repo_root=root, skill=skill_name, run_id=run_name, environ=environment)
-    started = LifecycleStart(
-        repo_root=root,
-        storage_root=active_storage,
-        skill=skill_name,
-        run_id=run_name,
-        log_root=selected_log_root,
-        run_dir=run_dir,
-        context_file=context_file,
-    )
+    started = LifecycleStart(root, active_storage, skill_name, run_name, selected_log_root, run_dir, context_file)
     if not (run_dir / UNIVERSAL_EXECUTION_ISSUES).is_file():
         run_log_batch.atomic_write_text(path=run_dir / UNIVERSAL_EXECUTION_ISSUES, content="")
     if context_file.is_file():
         existing = load_run_context(repo_root=root, skill=skill_name, run_id=run_name, environ=environment)
-        if existing != started:
-            raise RunLifecycleError("existing lifecycle context does not match adoption")
+        _require_lifecycle(existing == started, "existing lifecycle context does not match adoption")
     else:
         _write_context(started=started)
     return started
@@ -451,17 +392,9 @@ def start_main(argv: Sequence[str]) -> int:
     _ = parser.add_argument("--parent-context")
     try:
         args = parser.parse_args(argv)
-        result = start_run(
-            repo_root=_resolve_cli_repo_root(args.repo_root),
-            skill=args.skill,
-            parent_skill=args.parent_skill,
-            parent_run_id=args.parent_run_id,
-            run_id=args.run_id,
-            log_root=Path(args.log_root) if args.log_root else None,
-            issue=args.issue,
-            adopt_existing=args.adopt_existing,
-            parent_context=Path(args.parent_context) if args.parent_context else None,
-        )
+        result = start_run(repo_root=_resolve_cli_repo_root(args.repo_root), skill=args.skill, parent_skill=args.parent_skill, parent_run_id=args.parent_run_id,
+            run_id=args.run_id, log_root=Path(args.log_root) if args.log_root else None, issue=args.issue, adopt_existing=args.adopt_existing,
+            parent_context=Path(args.parent_context) if args.parent_context else None)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
     except storage_config.StorageConfigurationError as exc:
