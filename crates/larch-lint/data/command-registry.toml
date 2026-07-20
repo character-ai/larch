@@ -8988,7 +8988,7 @@ rust = ["gh resolve-repo"]
 [[callers]]
 path = "skills/rejected-analysis/SKILL.md"
 kind = "skill"
-python = ["agent launch-review", "verify skill-called"]
+python = ["agent launch-review", "run-log sync", "verify skill-called"]
 rust = []
 
 [[callers]]

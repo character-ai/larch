@@ -131,8 +131,6 @@ def state_lock(path: Path) -> Generator[None, None, None]:
                     f"analysis state is not a regular file: {path}"
                 )
             yield
-    except AnalysisStateError:
-        raise
     except OSError as exc:
         raise AnalysisStateError(f"could not lock analysis state: {path}") from exc
 

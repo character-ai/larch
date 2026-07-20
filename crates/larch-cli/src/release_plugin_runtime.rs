@@ -13,6 +13,7 @@ const DIRECT_FILES: &[&str] = &[
     "ARCHITECTURE.md",
     "LICENSE",
     "SECURITY.md",
+    "docs/analysis-state.md",
     "docs/configuration-and-permissions.md",
     "docs/difficulty-floor-globs.tsv",
     "docs/external-reviewers.md",
