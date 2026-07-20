@@ -1,4 +1,4 @@
-"""Storage-root configuration and the initial S3 bucket-list preflight."""
+"""Storage-root configuration and provider-neutral bucket preflight."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from urllib.parse import SplitResult, urlsplit
 
 from larch.core import config, proc
 from larch.core.repo_roots import consumer_repo_root
+from larch.report.object_store import ObjectStoreError, object_store_for
 
 _MIN_URI_PATH_SEGMENT_COUNT: Final = 2
 _ASCII_CONTROL_CHARACTER_MAX: Final = 32
@@ -164,7 +165,7 @@ def preflight_s3_bucket(*, storage_root: StorageRoot, runner: proc.Runner | None
 
 
 def storage_preflight_main(argv: list[str]) -> int:
-    """Run the configured S3 storage startup preflight."""
+    """Run the configured provider's bucket-root startup preflight."""
     parser = argparse.ArgumentParser(prog="cli.py run-log storage-preflight")
     _ = parser.add_argument("--repo-root", default="")
     try:
@@ -174,11 +175,17 @@ def storage_preflight_main(argv: list[str]) -> int:
     start = Path(args.repo_root) if args.repo_root else None
     try:
         storage_root = discover_storage_root(start=start)
-        preflight_s3_bucket(storage_root=storage_root)
+        if storage_root.scheme == "s3":
+            preflight_s3_bucket(storage_root=storage_root)
+        else:
+            object_store_for(storage_root).preflight_bucket()
     except StorageConfigurationError as exc:
         print(f"storage preflight failed: {exc}", file=sys.stderr)
         return config.EXIT_STORAGE_CONFIG
     except StoragePreflightError as exc:
+        print(f"storage preflight failed: {exc}", file=sys.stderr)
+        return config.EXIT_STORAGE_PREFLIGHT
+    except ObjectStoreError as exc:
         print(f"storage preflight failed: {exc}", file=sys.stderr)
         return config.EXIT_STORAGE_PREFLIGHT
     print(f"STORAGE_URI={storage_root.uri}")

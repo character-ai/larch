@@ -17,6 +17,7 @@ use larch_core::{ChangeKind, RepositoryStatus, StatusOptions};
 
 mod git_commands;
 mod github_repository_resolution;
+mod object_store_commands;
 mod push_network;
 mod push_rebase;
 mod release_assets;
@@ -28,6 +29,7 @@ mod release_stage;
 mod release_version;
 
 use git_commands::GitCommand;
+use object_store_commands::GcsArguments;
 
 #[derive(Parser)]
 #[command(
@@ -55,6 +57,9 @@ enum Domain {
     /// Plugin metadata commands.
     #[command(subcommand)]
     Plugin(PluginCommand),
+    /// Narrow provider transports used by Python-owned run-log workflows.
+    #[command(subcommand)]
+    ObjectStore(ObjectStoreCommand),
     /// Release-maintenance commands.
     #[command(subcommand)]
     Release(ReleaseCommand),
@@ -195,6 +200,12 @@ enum BootstrapCommand {
 enum ExampleCommand {
     /// Print a message through the core library.
     Echo(EchoArguments),
+}
+
+#[derive(Subcommand)]
+enum ObjectStoreCommand {
+    /// Use Google Cloud Storage through validated Application Default Credentials.
+    Gcs(GcsArguments),
 }
 
 #[derive(Subcommand)]
@@ -483,6 +494,9 @@ fn run(
         Domain::Git(command) => run_git(command).map_err(command_failure),
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
+        }
+        Domain::ObjectStore(ObjectStoreCommand::Gcs(arguments)) => {
+            Ok(object_store_commands::run(&arguments))
         }
         Domain::Release(command) => run_release(command),
         Domain::Gh(GhCommand::WorkflowPath) => {

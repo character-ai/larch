@@ -13,6 +13,7 @@ bytes.workspace = true
 chrono.workspace = true
 gix.workspace = true
 google-cloud-auth.workspace = true
+google-cloud-storage.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true

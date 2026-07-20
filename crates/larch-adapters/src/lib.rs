@@ -6,6 +6,7 @@ pub mod github;
 mod github_actions;
 mod github_rest;
 pub mod google_auth;
+pub mod google_storage;
 pub mod logging;
 pub mod process;
 pub mod retry;
