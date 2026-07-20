@@ -60,6 +60,27 @@ canonical issue `COMMAND` row, its plan mention, or the registry's
 `migration_issue` disagrees. Registry-to-issue checks apply only to open
 executable leaves after the audit input enables rollout.
 
+## Final release and upgrade boundary
+
+`larch-lint rule release-python-free` pins the final #7674 command set. It
+requires every `release` and `upgrade-larch` row, plus `plugin read-version`,
+to keep Rust ownership, complete parity, complete caller cutover, complete
+Python removal, and its owning leaf. It also pins each applicable clean-install
+fixture.
+
+The rule rejects a restored Python registration or command entrypoint, a
+Python or direct-binary caller, and a release implementation that starts `gh`
+instead of using the typed GitHub service. `scripts/larch.sh` remains the sole
+direct executable owner and the no-binary bootstrap exception from #7670. The
+release asset workflow may run its newly built `target/release/larch` because
+that workflow constructs and verifies the release executable.
+
+`/release` Step 7 builds the candidate executable, passes it to
+`scripts/larch.sh` through the validated `LARCH_BINARY` override, and supplies
+the separately validated installed cache root to `upgrade-larch run`. This
+keeps executable identity bound to the released working tree without treating
+the active old-session root as the executable owner.
+
 ## State transitions
 
 Keep `owner = "python"` and `consumer_cutover = "pending"` while Python owns

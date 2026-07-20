@@ -171,6 +171,19 @@ fn ordinary_upgrade_preflights_then_preserves_the_active_old_root() {
 }
 
 #[test]
+fn release_step7_can_keep_execution_and_installed_roots_separate() {
+    let harness = Harness::new();
+    harness
+        .command()
+        .env("CLAUDE_PLUGIN_ROOT", &harness.new_root)
+        .args(["upgrade-larch", "run", "--plugin-root"])
+        .arg(&harness.old_root)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("LARCH_NEW_VERSION_INSTALLED=true"));
+}
+
+#[test]
 fn active_old_session_is_refreshed_without_deleting_its_cache_root() {
     let harness = Harness::new();
     harness.set("installed", "2.0.0");

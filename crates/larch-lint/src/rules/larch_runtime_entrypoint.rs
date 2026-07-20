@@ -10,10 +10,7 @@ const NAME: &str = "larch-runtime-entrypoint";
 const DESCRIPTION: &str = "Reject production callers that bypass scripts/larch.sh";
 const MESSAGE: &str =
     "direct bin/larch production entrypoint; invoke ${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh";
-const ALLOWED_PATHS: [&str; 2] = [
-    "scripts/larch.sh",
-    "python/larch/core/upgrade_larch.py",
-];
+const ALLOWED_PATHS: [&str; 1] = ["scripts/larch.sh"];
 
 static DIRECT_BINARY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[^A-Za-z0-9_.-])bin/larch(?:$|[^A-Za-z0-9_.-])")

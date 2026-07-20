@@ -392,9 +392,16 @@ enum UpgradeLarchCommand {
     /// Resolve the cache root used by release Step 7.
     ReleaseStep7Root(ReleaseStep7Arguments),
     /// Upgrade to the latest verified stable release.
-    Run,
+    Run(UpgradeLarchRunArguments),
     /// Print the legacy sparse-checkout allowlist.
     SparseDirs,
+}
+
+#[derive(Args)]
+struct UpgradeLarchRunArguments {
+    /// Use one validated installed root for release Step 7.
+    #[arg(long, hide = true)]
+    plugin_root: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -504,8 +511,9 @@ fn run(
                 larch_adapters::upgrade_larch::release_step7_root(version)
                     .map(|()| ExitCode::SUCCESS)
             }
-            UpgradeLarchCommand::Run => {
-                larch_adapters::upgrade_larch::run().map(|()| ExitCode::SUCCESS)
+            UpgradeLarchCommand::Run(arguments) => {
+                larch_adapters::upgrade_larch::run(arguments.plugin_root.as_deref())
+                    .map(|()| ExitCode::SUCCESS)
             }
             UpgradeLarchCommand::SparseDirs => {
                 larch_adapters::upgrade_larch::sparse_dirs();

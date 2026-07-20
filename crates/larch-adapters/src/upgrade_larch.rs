@@ -321,10 +321,15 @@ pub fn release_step7_root(current_version: Option<&str>) -> Result<(), Failure> 
 ///
 /// # Errors
 /// Returns a classified command failure when a required precondition, child, or postcondition fails.
-pub fn run() -> Result<(), Failure> {
+pub fn run(plugin_root: Option<&Path>) -> Result<(), Failure> {
     let context = Context::load()?;
-    let plugin_root = process_env::var_os(env::CLAUDE_PLUGIN_ROOT)
-        .map_or_else(|| context.cwd.clone(), PathBuf::from);
+    let plugin_root = plugin_root.map_or_else(
+        || {
+            process_env::var_os(env::CLAUDE_PLUGIN_ROOT)
+                .map_or_else(|| context.cwd.clone(), PathBuf::from)
+        },
+        Path::to_path_buf,
+    );
     let plugin_root = real_directory(&plugin_root)
         .ok_or_else(|| Failure::new(1, "Upgrade cannot resolve a safe CLAUDE_PLUGIN_ROOT."))?;
     let installed_version = plugin_root

@@ -166,6 +166,19 @@ subprocess_note = ["cargo", "install"]
         b"run: cargo run --locked --package larch-cli -- release plugin-runtime\n",
     );
     repository.write("Makefile", b"install:\n\tcargo install cargo-deny\n");
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "production-cargo-run"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+}
+
+#[test]
+fn production_cargo_run_rejects_release_step7_cargo_execution() {
+    let repository = TempRepo::new();
     repository.write(
         ".claude/skills/release/SKILL.md",
         b"```bash\ncargo run --quiet --locked --package larch-cli -- upgrade-larch release-step7-root\n```\n",
@@ -175,8 +188,10 @@ subprocess_note = ["cargo", "install"]
     TempRepo::command_from(repository.path())
         .args(["rule", "production-cargo-run"])
         .assert()
-        .success()
-        .stdout("")
+        .code(1)
+        .stdout(predicate::str::contains(format!(
+            ".claude/skills/release/SKILL.md:2: {MESSAGE}"
+        )))
         .stderr("");
 }
 
