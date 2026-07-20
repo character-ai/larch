@@ -12,7 +12,7 @@ use std::{
 
 use flate2::{Compression, GzBuilder, read::GzDecoder};
 use larch_adapters::{
-    PathIntent, TemporaryRoot, atomic_write_bytes, atomic_write_utf8,
+    PathIntent, TemporaryRoot, TokioProcessRunner, atomic_write_bytes, atomic_write_utf8,
     github::{AttestationOperations, OctocrabAttestationTransport, OctocrabGitHubService},
     runtime::{Cancellation, LarchRuntime},
 };
@@ -434,9 +434,13 @@ fn verify_artifact_attestations(
     let runtime = LarchRuntime::new()
         .map_err(|error| AssetError::new(format!("attestation runtime failed: {error}")))?;
     runtime.block_on(async {
-        let service = OctocrabGitHubService::from_environment()
-            .map_err(|error| AssetError::new(error.to_string()))?;
+        let working_directory = std::env::current_dir()
+            .map_err(|error| AssetError::new(format!("credential lookup failed: {error}")))?;
         let cancellation = Cancellation::new();
+        let runner = TokioProcessRunner::default();
+        let service = OctocrabGitHubService::from_gh(&runner, &working_directory, &cancellation)
+            .await
+            .map_err(|error| AssetError::new(error.to_string()))?;
         let transport = OctocrabAttestationTransport::new(&service, &cancellation);
         let operations = AttestationOperations::new(&transport);
         let tag =

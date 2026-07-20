@@ -12,7 +12,8 @@ use std::{
 };
 
 use larch_adapters::{
-    GixRepository, PathIntent, RepositoryRoot, TemporaryRoot, atomic_write_utf8,
+    GixRepository, PathIntent, RepositoryRoot, TemporaryRoot, TokioProcessRunner,
+    atomic_write_utf8,
     github::{OctocrabGitHubService, ReleasePlanningService, ReleasePullRequest},
     runtime::{Cancellation, LarchRuntime},
 };
@@ -178,9 +179,11 @@ fn prepare_inner(arguments: &PrepareArguments) -> Result<(), PrepareError> {
     let runtime = LarchRuntime::new()
         .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?;
     runtime.block_on(async {
-        let service = OctocrabGitHubService::from_environment()
-            .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?;
         let cancellation = Cancellation::new();
+        let runner = TokioProcessRunner::default();
+        let service = OctocrabGitHubService::from_gh(&runner, &root, &cancellation)
+            .await
+            .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?;
         prepare_with_service(
             arguments,
             &out_dir,

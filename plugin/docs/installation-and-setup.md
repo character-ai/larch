@@ -6,53 +6,32 @@
 
 ### Authentication
 
-Set up GitHub and Google credentials before starting larch. Installing `gh` is
-separate from supplying the `LARCH_GH_TOKEN` that larch uses for authenticated
-GitHub requests.
+Set up GitHub and Google credentials before starting larch.
 
 #### GitHub
 
-Larch requires a non-empty `LARCH_GH_TOKEN` in its environment. It does not
-fall back to `GH_TOKEN`, `GITHUB_TOKEN`, GitHub CLI configuration, or keychain
-state.
+Install the [GitHub CLI](https://cli.github.com/) and authenticate it:
 
-Choose one source for the token:
+```bash
+gh auth login
+```
 
-- **Reuse an existing GitHub CLI login.** Run this user setup command in your
-  shell:
-
-  ```bash
-  export LARCH_GH_TOKEN="$(gh auth token)"
-  ```
-
-  To provide the value for one Claude session only, run:
-
-  ```bash
-  LARCH_GH_TOKEN="$(gh auth token)" claude
-  ```
-
-  Larch does not run `gh auth token` during normal service calls.
-
-- **Create a personal access token (PAT).** Create it in GitHub
-  [Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens).
-  Prefer a [fine-grained PAT](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token)
-  when its [repository permissions and API coverage](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
-  are sufficient. Current larch operations can require a classic PAT when a
-  required GitHub API operation is not available to a fine-grained PAT. Export
-  the selected token as `LARCH_GH_TOKEN`. Keep the value in a password manager
-  or secret manager; never commit it to a repository or a `.env` file.
+Larch invokes `gh auth token` through its typed process boundary and uses the
+active `gh` session for GitHub API requests. It does not read
+`LARCH_GH_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` itself. The active session must
+hold every permission required by the operation. `/release` policy checks need
+repository Administration read permission and need Administration write only
+when they must enable a disabled setting.
 
 Verify the setup without printing the token:
 
 ```bash
-test -n "$LARCH_GH_TOKEN"
-GH_TOKEN="$LARCH_GH_TOKEN" gh api user >/dev/null
+gh auth status
+gh auth token >/dev/null
 ```
 
-The commands succeed silently when `LARCH_GH_TOKEN` is non-empty and
-authenticates to GitHub. The explicit `GH_TOKEN=` assignment is only for this
-manual GitHub CLI verification command. Larch does not make that conversion or
-invoke `gh auth token` during service calls.
+The second command succeeds silently when the active `gh` session can provide
+a token. Neither command prints the credential.
 
 See the [GitHub credential and transport security contract](security/supply-chain-credentials-and-services.md#github-credential-and-transport-boundary)
 for the runtime guarantees and residual limits.

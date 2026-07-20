@@ -244,33 +244,28 @@ them.
 See the [Google ADC security contract](security/supply-chain-credentials-and-services.md#google-application-default-credentials)
 for the canonical trust boundary.
 
-### `LARCH_GH_TOKEN`
+### GitHub CLI authentication
 
-`LARCH_GH_TOKEN` is the sole credential input for Rust GitHub service calls.
-Set it in the environment before starting larch. Missing, empty, and
-whitespace-only values fail before any network request with setup guidance.
+Rust GitHub service calls acquire their credential by invoking `gh auth token`
+through the closed process runner. Install `gh` and run `gh auth login` before
+starting larch. A missing CLI or inactive login fails before any network
+request with install or authentication guidance.
 
-Larch does not consult `GH_TOKEN`, `GITHUB_TOKEN`, `gh` configuration,
-keychain state, argv, stdin, repository configuration, issue text, or session
-files as fallbacks. The value stays in a non-`Debug` secret wrapper, is
-registered exactly with the runtime redactor, and is excluded from child
-process environments. The same child boundary excludes generic GitHub tokens,
-Google credential paths, and discovered access-token variables. The initial
-transport supports only GitHub.com over HTTPS; GitHub Enterprise needs a
-separate reviewed host policy.
+Larch does not read `LARCH_GH_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. The
+credential returned by `gh` stays in a non-`Debug` secret wrapper, is registered
+exactly with the runtime redactor, and is excluded from child process
+environments. The initial transport supports only GitHub.com over HTTPS;
+GitHub Enterprise needs a separate reviewed host policy.
 
-`/release` additionally requires repository Administration read permission on
-`LARCH_GH_TOKEN` to verify merge-commit and immutable-release policy. It needs
+`/release` requires repository Administration read permission on the active
+`gh` credential to verify merge-commit and immutable-release policy. It needs
 Administration write only when either setting is disabled and must be enabled.
-Permissions held by `GH_TOKEN` or the active `gh` login do not satisfy this
-Rust service boundary.
 
-Larch never executes the `gh` or `gcloud` service CLI at runtime. The Rust
-process allowlist permits only the vendor agents, Git, and the larch bootstrap
-self-exec, and the `service-ownership` repository rule rejects `gcloud` and
-service-credential child environments in production surfaces. The clean-install
-`gh` in `scripts/larch.sh` runs before any runtime and is a separate installer
-surface.
+The Rust process allowlist permits `gh` only for the fixed `auth token`
+operation. GitHub API operations still use the typed Rust adapter. Larch never
+uses `gh api` as a service fallback and never executes the `gcloud` service CLI.
+The `service-ownership` repository rule rejects `gcloud` and service-credential
+child environments in production surfaces.
 
 See the [GitHub credential and transport security contract](security/supply-chain-credentials-and-services.md#github-credential-and-transport-boundary)
 for the canonical trust boundary.

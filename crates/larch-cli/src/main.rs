@@ -654,7 +654,25 @@ fn run_resolve_repo(arguments: &TrailingArguments) -> ExitCode {
 fn run_logs(arguments: &RunLogsArguments) -> ExitCode {
     let output = match larch_adapters::runtime::LarchRuntime::new() {
         Ok(runtime) => runtime.block_on(async {
-            let service = match larch_adapters::github::OctocrabGitHubService::from_environment() {
+            let cancellation = larch_adapters::runtime::Cancellation::new();
+            let runner = larch_adapters::TokioProcessRunner::default();
+            let working_directory = match std::env::current_dir() {
+                Ok(path) => path,
+                Err(error) => {
+                    return larch_core::run_logs_setup_failure(
+                        &arguments.repository,
+                        arguments.run_id,
+                        format!("cannot resolve current directory: {error}"),
+                    );
+                }
+            };
+            let service = match larch_adapters::github::OctocrabGitHubService::from_gh(
+                &runner,
+                &working_directory,
+                &cancellation,
+            )
+            .await
+            {
                 Ok(service) => service,
                 Err(error) => {
                     return larch_core::run_logs_setup_failure(
@@ -664,7 +682,6 @@ fn run_logs(arguments: &RunLogsArguments) -> ExitCode {
                     );
                 }
             };
-            let cancellation = larch_adapters::runtime::Cancellation::new();
             larch_core::run_logs(
                 &service,
                 &arguments.repository,

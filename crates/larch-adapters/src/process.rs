@@ -2,13 +2,11 @@
 
 use crate::logging::JsonlJournal;
 use crate::runtime::{Cancellation, ChildProcess, ChildWait, shutdown_child};
-#[cfg(test)]
-use larch_core::env as larch_env;
 use larch_core::{
     BusinessClock, ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
     JournalRecord, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
     ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest, ProcessStatus,
-    RunId,
+    RunId, env as larch_env,
 };
 use std::{
     env,
@@ -352,6 +350,16 @@ fn copy_allowed_environment(command: &mut Command, request: &ProcessRequest) {
             command.env(key.name(), value);
         }
     }
+    if matches!(request.program(), ExternalProgram::GitHub(_)) {
+        for (key, name) in [
+            (ChildEnvironment::GhConfigDir, larch_env::GH_CONFIG_DIR),
+            (ChildEnvironment::XdgConfigHome, larch_env::XDG_CONFIG_HOME),
+        ] {
+            if let Some(value) = env::var_os(name) {
+                command.env(key.name(), value);
+            }
+        }
+    }
     for (key, value) in request.environment() {
         command.env(key.name(), value);
     }
@@ -605,8 +613,8 @@ mod tests {
     use super::*;
     use crate::runtime::LarchRuntime;
     use larch_core::{
-        ExternalProgram, GitCliOperation, HostUtilityProgram, ProcessRequest, ProcessRequestError,
-        VendorProgram,
+        ExternalProgram, GitCliOperation, GitHubCliOperation, HostUtilityProgram, ProcessRequest,
+        ProcessRequestError, VendorProgram,
     };
     use larch_test_support::{FakeProcessRunner, NeverCancelled, ProcessOutputBuilder, TestClock};
     use std::{
@@ -686,27 +694,33 @@ mod tests {
     }
 
     #[test]
-    fn executable_allowlist_excludes_service_clis_and_arbitrary_paths() {
+    fn executable_allowlist_contains_only_approved_typed_processes() {
         let allowed = [
             ExternalProgram::Vendor(VendorProgram::Claude),
             ExternalProgram::Vendor(VendorProgram::Codex),
             ExternalProgram::Vendor(VendorProgram::Cursor),
             ExternalProgram::Git(GitCliOperation::Version),
+            ExternalProgram::GitHub(GitHubCliOperation::AuthToken),
             ExternalProgram::HostUtility(HostUtilityProgram::Lsof),
         ];
-        assert_eq!(allowed.len(), 5);
+        assert_eq!(allowed.len(), 6);
         assert!(allowed.iter().all(|program| !program.reason().is_empty()));
+        assert!(
+            allowed
+                .iter()
+                .any(|program| matches!(program.executable().to_str(), Some("gh")))
+        );
         assert!(
             !allowed
                 .iter()
-                .any(|program| matches!(program.executable().to_str(), Some("gh" | "gcloud")))
+                .any(|program| matches!(program.executable().to_str(), Some("gcloud")))
         );
         let inherited: Vec<&str> = ChildEnvironment::production()
             .map(ChildEnvironment::name)
             .collect();
-        assert!(!inherited.contains(&larch_env::LARCH_GH_TOKEN));
-        assert!(!inherited.contains(&larch_env::GH_TOKEN));
-        assert!(!inherited.contains(&larch_env::GITHUB_TOKEN));
+        assert!(!inherited.contains(&"LARCH_GH_TOKEN"));
+        assert!(!inherited.contains(&"GH_TOKEN"));
+        assert!(!inherited.contains(&"GITHUB_TOKEN"));
         assert!(!inherited.contains(&"GOOGLE_APPLICATION_CREDENTIALS"));
         assert!(!inherited.contains(&"OPENAI_API_KEY"));
     }

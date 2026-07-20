@@ -8,6 +8,7 @@ mod error;
 mod git;
 mod github;
 mod github_actions;
+mod github_auth;
 mod logging_util;
 mod object_store;
 mod outcome;
@@ -55,15 +56,16 @@ pub use github::{
     resolve_tag_object_id, select_release_for_tag,
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
+pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acquire_github_token};
 pub use logging_util::emit_kv;
 pub use object_store::{
     ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
 };
 pub use outcome::{ExitCode, WorkflowOutcome};
 pub use process::{
-    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, HostUtilityProgram,
-    LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
-    ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest,
+    ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, GitHubCliOperation,
+    HostUtilityProgram, LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind,
+    ProcessEvent, ProcessEventKind, ProcessFuture, ProcessObserver, ProcessOutput, ProcessRequest,
     ProcessRequestError, ProcessRequestErrorKind, ProcessStatus, VendorProgram,
 };
 pub use redaction::{RedactionResult, RuntimeRedactor, SafeText, redact, redact_sensitive_paths};

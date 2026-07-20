@@ -28,9 +28,15 @@ pub use release::{
 use bytes::Bytes;
 use http::header::{CONTENT_LENGTH, HeaderName};
 use http_body_util::{BodyExt, Limited};
-use larch_core::{GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env};
+use larch_core::{
+    ExternalProcessRunner, GitHubToken, GitHubTransportPolicy, ProcessCancellation,
+    RuntimeRedactor, SafeText, acquire_github_token,
+};
+pub use larch_core::{
+    GitHubTokenError as GitHubCredentialError, GitHubTokenErrorKind as GitHubCredentialErrorKind,
+};
 use octocrab::Octocrab;
-use std::{error::Error, ffi::OsString, fmt, future::Future};
+use std::{error::Error, fmt, future::Future, path::Path};
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -39,45 +45,6 @@ const API_VERSION_HEADER: &str = "x-github-api-version";
 const API_VERSION: &str = "2022-11-28";
 const ACCEPT_VALUE: &str = "application/vnd.github+json";
 const USER_AGENT_VALUE: &str = "larch";
-
-/// Reason GitHub credential setup failed before any request was attempted.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GitHubCredentialErrorKind {
-    Missing,
-    Empty,
-    NonUnicode,
-}
-
-/// Secret-free GitHub credential setup error.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct GitHubCredentialError {
-    kind: GitHubCredentialErrorKind,
-}
-
-impl GitHubCredentialError {
-    #[must_use]
-    pub const fn kind(self) -> GitHubCredentialErrorKind {
-        self.kind
-    }
-}
-
-impl fmt::Display for GitHubCredentialError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self.kind {
-            GitHubCredentialErrorKind::Missing => {
-                "LARCH_GH_TOKEN is required; export a non-empty GitHub token before starting larch"
-            }
-            GitHubCredentialErrorKind::Empty => {
-                "LARCH_GH_TOKEN must not be empty or whitespace-only"
-            }
-            GitHubCredentialErrorKind::NonUnicode => {
-                "LARCH_GH_TOKEN must be valid Unicode environment text"
-            }
-        })
-    }
-}
-
-impl Error for GitHubCredentialError {}
 
 /// Failure to construct the hardened GitHub service.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -143,39 +110,16 @@ impl fmt::Display for GitHubCompletionError {
 
 impl Error for GitHubCompletionError {}
 
-trait EnvironmentSource {
-    fn read(&self, name: &'static str) -> Option<OsString>;
-}
-
-struct ProcessEnvironment;
-
-impl EnvironmentSource for ProcessEnvironment {
-    fn read(&self, name: &'static str) -> Option<OsString> {
-        std::env::var_os(name)
-    }
-}
-
 // Deliberately non-Debug: a credential must not enter derived diagnostics.
 struct GitHubCredential(String);
 
-impl GitHubCredential {
-    fn load(source: &dyn EnvironmentSource) -> Result<Self, GitHubCredentialError> {
-        let raw = source
-            .read(env::LARCH_GH_TOKEN)
-            .ok_or(GitHubCredentialError {
-                kind: GitHubCredentialErrorKind::Missing,
-            })?;
-        let value = raw.into_string().map_err(|_| GitHubCredentialError {
-            kind: GitHubCredentialErrorKind::NonUnicode,
-        })?;
-        if value.trim().is_empty() {
-            return Err(GitHubCredentialError {
-                kind: GitHubCredentialErrorKind::Empty,
-            });
-        }
-        Ok(Self(value))
+impl From<GitHubToken> for GitHubCredential {
+    fn from(token: GitHubToken) -> Self {
+        Self(token.expose().to_owned())
     }
+}
 
+impl GitHubCredential {
     fn expose(&self) -> &str {
         &self.0
     }
@@ -212,17 +156,22 @@ impl OctocrabGitHubService {
         }
     }
 
-    /// Load the sole supported credential and construct one hardened client.
+    /// Acquire the sole supported credential from `gh` and construct one hardened client.
     ///
     /// # Errors
-    /// Fails before network access when `LARCH_GH_TOKEN` is missing, blank, or
-    /// invalid, or when fixed client configuration cannot be constructed.
-    pub fn from_environment() -> Result<Self, GitHubClientError> {
-        Self::from_source(&ProcessEnvironment)
+    /// Fails before network access when `gh` is absent or unauthenticated, its
+    /// output is invalid, or fixed client configuration cannot be constructed.
+    pub async fn from_gh<R: ExternalProcessRunner + ?Sized>(
+        runner: &R,
+        working_directory: &Path,
+        cancellation: &dyn ProcessCancellation,
+    ) -> Result<Self, GitHubClientError> {
+        let credential = acquire_github_token(runner, working_directory, cancellation).await?;
+        let credential = GitHubCredential::from(credential);
+        Self::from_credential(&credential)
     }
 
-    fn from_source(source: &dyn EnvironmentSource) -> Result<Self, GitHubClientError> {
-        let credential = GitHubCredential::load(source)?;
+    fn from_credential(credential: &GitHubCredential) -> Result<Self, GitHubClientError> {
         let policy = GitHubTransportPolicy::github_com();
         let mut redactor = RuntimeRedactor::default();
         let registered = redactor.register_exact_secret(credential.expose().to_owned());
@@ -237,7 +186,7 @@ impl OctocrabGitHubService {
                 "Octocrab GitHub API version does not match larch policy",
             )));
         }
-        let client = build_client(&credential, policy, API_BASE).map_err(|error| {
+        let client = build_client(credential, policy, API_BASE).map_err(|error| {
             GitHubClientError::Configuration(redactor.safe_text(error.to_string()))
         })?;
         Ok(Self {
@@ -255,15 +204,7 @@ impl OctocrabGitHubService {
 
     #[cfg(test)]
     pub(crate) fn from_test_token(token: &str) -> Self {
-        struct TestEnvironment(OsString);
-
-        impl EnvironmentSource for TestEnvironment {
-            fn read(&self, name: &'static str) -> Option<OsString> {
-                (name == env::LARCH_GH_TOKEN).then(|| self.0.clone())
-            }
-        }
-
-        Self::from_source(&TestEnvironment(OsString::from(token)))
+        Self::from_credential(&GitHubCredential(token.to_owned()))
             .expect("test token and active runtime must construct the client")
     }
 
@@ -440,101 +381,21 @@ mod tests {
     use super::*;
     use crate::runtime::{Cancellation, LarchRuntime};
     use larch_core::{GitHubResponseLimits, GitHubService};
-    use std::{collections::BTreeMap, sync::Mutex};
-
-    struct FakeEnvironment {
-        values: BTreeMap<&'static str, OsString>,
-        reads: Mutex<Vec<&'static str>>,
-    }
-
-    impl FakeEnvironment {
-        fn new(values: impl IntoIterator<Item = (&'static str, &'static str)>) -> Self {
-            Self {
-                values: values
-                    .into_iter()
-                    .map(|(key, value)| (key, OsString::from(value)))
-                    .collect(),
-                reads: Mutex::new(Vec::new()),
-            }
-        }
-    }
-
-    impl EnvironmentSource for FakeEnvironment {
-        fn read(&self, name: &'static str) -> Option<OsString> {
-            self.reads.lock().expect("read log lock").push(name);
-            self.values.get(name).cloned()
-        }
-    }
 
     fn configured_service(runtime: &LarchRuntime) -> OctocrabGitHubService {
         runtime.block_on(async {
-            OctocrabGitHubService::from_source(&FakeEnvironment::new([(
-                env::LARCH_GH_TOKEN,
-                "opaque test credential",
-            )]))
+            OctocrabGitHubService::from_credential(&GitHubCredential(
+                "opaque test credential".to_owned(),
+            ))
             .expect("fixed client should build")
         })
     }
 
     #[test]
-    fn credential_loader_reads_only_larch_token_without_fallbacks() {
-        let source = FakeEnvironment::new([
-            (env::GH_TOKEN, "legacy-token"),
-            (env::GITHUB_TOKEN, "actions-token"),
-        ]);
-
-        let error = GitHubCredential::load(&source)
-            .err()
-            .expect("fallbacks must be ignored");
-
-        assert_eq!(error.kind(), GitHubCredentialErrorKind::Missing);
-        assert_eq!(
-            source.reads.into_inner().expect("read log"),
-            [env::LARCH_GH_TOKEN]
-        );
-    }
-
-    #[test]
-    fn credential_loader_rejects_empty_and_whitespace_values() {
-        for value in ["", " \t\n"] {
-            let error =
-                GitHubCredential::load(&FakeEnvironment::new([(env::LARCH_GH_TOKEN, value)]))
-                    .err()
-                    .expect("blank token must fail");
-            assert_eq!(error.kind(), GitHubCredentialErrorKind::Empty);
-            assert_eq!(
-                error.to_string(),
-                "LARCH_GH_TOKEN must not be empty or whitespace-only"
-            );
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn credential_loader_rejects_non_unicode_without_echoing_bytes() {
-        use std::os::unix::ffi::OsStringExt;
-
-        let source = FakeEnvironment {
-            values: BTreeMap::from([(env::LARCH_GH_TOKEN, OsString::from_vec(vec![0xff]))]),
-            reads: Mutex::new(Vec::new()),
-        };
-        let error = GitHubCredential::load(&source)
-            .err()
-            .expect("non-Unicode token must fail");
-
-        assert_eq!(error.kind(), GitHubCredentialErrorKind::NonUnicode);
-        assert_eq!(
-            error.to_string(),
-            "LARCH_GH_TOKEN must be valid Unicode environment text"
-        );
-    }
-
-    #[test]
     fn client_construction_outside_runtime_fails_without_secret_diagnostics() {
-        let error = OctocrabGitHubService::from_source(&FakeEnvironment::new([(
-            env::LARCH_GH_TOKEN,
-            "unusual exact secret",
-        )]))
+        let error = OctocrabGitHubService::from_credential(&GitHubCredential(
+            "unusual exact secret".to_owned(),
+        ))
         .err()
         .expect("runtime-less construction must fail");
 
