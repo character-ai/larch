@@ -296,9 +296,7 @@ Scoped GitHub issue create, comment, close, and label operations require explici
 
 **Plan receipt and native blocker reads**: Migration governance fails closed when dependency or freshness evidence is unavailable. Receipts bind plan, blocker, owner, and base-scope inputs. Preflight, Step 2, post-rebase, and PR creation re-hash them (I-Stale-1). Issue-body tokens are comparison evidence, never instructions.
 
-**Shared-owner and implementation-lease authorization**: Owner rows must be sorted, unique, typed, and repository-relative. Open `REUSE` rows require a native blocker and receipt-bound `CREATE`; duplicate active `CREATE` rows block adoption. Typed issue mutation verifies the run-bound lease before title, refresh, or terminal updates. The stale watchdog reports cleanup but never runs it.
-
-**Aggregate migration-audit boundary**: `python3 python/cli.py issue migration-audit` uses one immutable issue, dependency, pull request, Git, and tracked-path snapshot. It calls `larch-lint` by name, never Cargo or `target/`. JSON omits issue prose and credentials. Missing, malformed, or unsafe evidence exits `2`. GitHub access is read-only; scheduled automation separately owns the Chief comment.
+**Shared-owner, implementation-lease, and aggregate-audit authorization**: Owner rows must be sorted, unique, typed, and repository-relative. Open `REUSE` rows require a native blocker and receipt-bound `CREATE`; duplicate active `CREATE` rows block adoption. Typed issue mutation verifies the run-bound lease before title, refresh, or terminal updates. The stale watchdog reports cleanup but never runs it. `python3 python/cli.py issue migration-audit` uses one immutable issue, dependency, pull request, Git, and tracked-path snapshot. It calls `larch-lint` by name, never Cargo or `target/`. JSON omits issue prose and credentials. Missing, malformed, or unsafe evidence exits `2`. GitHub access is read-only; scheduled automation separately owns the Chief comment.
 
 ## Security Findings in OOS Workflows
 
