@@ -172,6 +172,7 @@ The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a pre
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
 git checkout -b "release/v${NEW_VERSION}"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
 cargo build --quiet --locked --release --package larch-cli
@@ -185,7 +186,6 @@ Record `PR_NUMBER` from `python/cli.py pr create` stdout. Then:
 ```bash
 python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
 WORKTREE_LARCH="$PWD/target/release/larch"
-CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release stage \

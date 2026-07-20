@@ -259,6 +259,12 @@ Google credential paths, and discovered access-token variables. The initial
 transport supports only GitHub.com over HTTPS; GitHub Enterprise needs a
 separate reviewed host policy.
 
+`/release` additionally requires repository Administration read permission on
+`LARCH_GH_TOKEN` to verify merge-commit and immutable-release policy. It needs
+Administration write only when either setting is disabled and must be enabled.
+Permissions held by `GH_TOKEN` or the active `gh` login do not satisfy this
+Rust service boundary.
+
 Larch never executes the `gh` or `gcloud` service CLI at runtime. The Rust
 process allowlist permits only the vendor agents, Git, and the larch bootstrap
 self-exec, and the `service-ownership` repository rule rejects `gcloud` and

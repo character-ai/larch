@@ -130,7 +130,8 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
     first_build = skill.index(build)
     candidate_build = skill.index(build, first_build + len(build))
     sync_complete = skill.index('sync_out="DRY_RUN_SYNC_SKIPPED=true"')
-    assert first_build < prepare < set_version < candidate_build < ensure_policy
+    checkout = skill.index('git checkout -b "release/v${NEW_VERSION}"')
+    assert first_build < prepare < ensure_policy < checkout < set_version < candidate_build
     assert sync_complete < first_build
 
     recovery = skill.index("If Step 6 fails after Step 5 merged the release PR")
