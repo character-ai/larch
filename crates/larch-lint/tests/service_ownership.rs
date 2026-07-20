@@ -191,7 +191,7 @@ fn rejects_gcloud_and_credential_child_environments_in_production_shell() {
     let repository = TempRepo::new();
     repository.write(
         "scripts/deploy.sh",
-        b"#!/usr/bin/env bash\ngcloud auth login\nGH_TOKEN=\"$SECRET\" ./do-thing\nsudo gcloud components update\ncommand gcloud storage ls\nenv FOO=bar gcloud auth print-access-token\n",
+        b"#!/usr/bin/env bash\ngcloud auth login\nLARCH_GH_TOKEN=\"$SECRET\" ./do-thing\nGH_TOKEN=\"$SECRET\" ./do-thing\nsudo gcloud components update\ncommand gcloud storage ls\nenv FOO=bar gcloud auth print-access-token\n",
     );
     repository.write(
         "skills/example/SKILL.md",
@@ -207,16 +207,19 @@ fn rejects_gcloud_and_credential_child_environments_in_production_shell() {
             "scripts/deploy.sh:2: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
         ))
         .stdout(predicate::str::contains(
-            "scripts/deploy.sh:3: service credential GH_TOKEN must not enter a child environment",
+            "scripts/deploy.sh:3: service credential LARCH_GH_TOKEN must not enter a child environment",
         ))
         .stdout(predicate::str::contains(
-            "scripts/deploy.sh:4: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
+            "scripts/deploy.sh:4: service credential GH_TOKEN must not enter a child environment",
         ))
         .stdout(predicate::str::contains(
             "scripts/deploy.sh:5: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
         ))
         .stdout(predicate::str::contains(
             "scripts/deploy.sh:6: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
+        ))
+        .stdout(predicate::str::contains(
+            "scripts/deploy.sh:7: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
         ))
         .stdout(predicate::str::contains(
             "skills/example/SKILL.md:2: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",

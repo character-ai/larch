@@ -289,16 +289,19 @@ fn workflow_path_preserves_its_legacy_stdout_contract() {
 
 #[test]
 fn run_logs_reports_missing_rust_credential_without_fallback() {
-    larch()
-        .env_remove("LARCH_GH_TOKEN")
-        .args(["gh", "run-logs", "--run-id", "7", "--repo", "owner/repo"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "--- CI log (run 7, repo owner/repo): failed-job log shown.",
-        ))
-        .stdout(predicate::str::contains("LARCH_GH_TOKEN is required"))
-        .stderr("");
+    for generic_credential in ["GH_TOKEN", "GITHUB_TOKEN"] {
+        larch()
+            .env_remove("LARCH_GH_TOKEN")
+            .env(generic_credential, "generic-token-must-not-authenticate")
+            .args(["gh", "run-logs", "--run-id", "7", "--repo", "owner/repo"])
+            .assert()
+            .code(1)
+            .stdout(predicate::str::contains(
+                "--- CI log (run 7, repo owner/repo): failed-job log shown.",
+            ))
+            .stdout(predicate::str::contains("LARCH_GH_TOKEN is required"))
+            .stderr("");
+    }
 }
 
 #[test]
