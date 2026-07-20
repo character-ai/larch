@@ -23,7 +23,7 @@ high-level trust statement.
 | Public policy, supported versions, disclosure, scope, and high-level trust | [`SECURITY.md`](../../SECURITY.md) | Root policy | Current |
 | Release provenance, bootstrap, dependencies, credentials, and external service boundaries | [`docs/security/supply-chain-credentials-and-services.md`](supply-chain-credentials-and-services.md) | Focused reference | Current; root headings are compatibility pointers |
 | Workflow trust, untrusted input, agent access, authorization, and mutation controls | [`docs/security/workflow-trust-and-mutations.md`](workflow-trust-and-mutations.md) | Focused reference | Current; root headings are compatibility pointers |
-| Temporary and committed artifacts, redaction, retention, and public publication | Named sections in [`SECURITY.md`](../../SECURITY.md) | `docs/security/artifacts-redaction-and-publication.md` | Planned in #7856; root sections remain canonical |
+| Temporary and committed artifacts, redaction, retention, and public publication | [`docs/security/artifacts-redaction-and-publication.md`](artifacts-redaction-and-publication.md) | Focused reference | Current; root headings are compatibility pointers |
 
 The final reference cleanup in #7857 will remove obsolete detail only after all
 live callers point to the correct canonical owner. Root compatibility headings
@@ -56,6 +56,9 @@ a fixed repository-wide count.
 | Installation and runtime loading | `docs/installation-and-setup.md`, `.claude-plugin/marketplace.json`, `crates/larch-cli/src/release_plugin_runtime.rs` | Root policy and all focused references ship in `plugin/` |
 | Runtime security decisions | Shipped Markdown under `skills/` | Root policy or an existing focused reference in the installed plugin |
 | Contributor policy | `AGENTS.md`, `docs/preparing-your-repo.md` | Root policy for disclosure and scope; focused references for technical behavior; this index for ownership |
+| Run-log and breadcrumb operation | `docs/run-logs.md`, `docs/run-log-cli.md`, `docs/run-log-batches.md` | Operator mechanics stay in run-log docs; confidentiality, redaction, and publication rules live in the artifact reference |
+| Lint and scanner operation | `docs/linting.md`, `.pre-commit-config.yaml`, `.github/workflows/ci.yaml` | Operator commands stay in lint docs; scanner guarantees and limits live in the artifact reference |
+| Public reports and diagnostics | Workflow docs, configuration docs, and shipped skill Markdown | Workflow routing stays with its owner; egress classification and redaction live in the artifact reference |
 
 When a focused document becomes authoritative, audit the relevant entry points
 and preserve self-contained safety instructions at public-disclosure and

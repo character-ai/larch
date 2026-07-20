@@ -56,7 +56,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | Consecutive Bash tool-call fences | `skills/*/SKILL.md`, `.claude/skills/*/SKILL.md`, `skills/*/references/*.md` | Agent-lint S021 rejects consecutive Bash fences while preserving reviewed reason-bearing suppressions and documented carve-outs. |
 | Bare top-level grep in orchestrator markdown | `skills/**/*.md`, `.claude/skills/**/*.md` | The pinned `agent-lint` rule S061 scans fenced `bash`, `sh`, and `shell` blocks and rejects bare top-level `grep` wrapper-trap shapes, no-path grep-family probes, and parent-directory ascents in grep-family path operands. Run via local `make lint` and the `agent-lint` pre-commit hook (covered by CI `agent-lint`); see `BASH_AUTHORING.md` §1 for authoring guidance. |
 | Non-ASCII bytes in dynamic awk regex | paths in `scripts/agent-lint-script-inventory.txt`, including standalone `.awk` helpers | Agent-lint G011 is promoted to an error and scans the explicit inventory on every invocation, including pre-commit runs, independent of global exclusions. It rejects non-ASCII `awk -v VAR=value` values and non-ASCII regex contexts in `match`, `gsub`, `sub`, `split`, `~`, and `!~`; display-only strings remain legal. Suppress fixtures only with a trailing `# lint-awk-multibyte-regex: ok <reason>` pragma. Run via `make agent-lint` and CI's dedicated `agent-lint` job. |
-| [gitleaks](https://github.com/gitleaks/gitleaks) | all tracked files | Secret detection (pre-commit + dedicated CI job, full-history). Path allowlist in `.gitleaks.toml`. See `SECURITY.md` → "Layered secret scanning". |
+| [gitleaks](https://github.com/gitleaks/gitleaks) | all tracked files | Secret detection (pre-commit + dedicated CI job, full-history). Path allowlist in `.gitleaks.toml`. See the [canonical scanner model](security/artifacts-redaction-and-publication.md#secret-scanning-layers). |
 
 ## Migration Governance Aggregate
 
@@ -350,7 +350,9 @@ Two scanners run as dedicated CI jobs in `.github/workflows/ci.yaml`:
 - **`gitleaks`**: Local pre-commit and CI call `python3 python/cli.py checks gitleaks`. It verifies the host's pinned `v8.18.4` release archive, extracted binary, and reported version. CI scans the working tree and PR commit range; local pre-commit scans the working tree with `--no-git`.
 - **`trufflehog`** — Runs `trufflesecurity/trufflehog` pinned to its commit SHA for `v3.82.13` (supply-chain: tags are mutable) with `version: 3.82.13` pinning the Docker image and `--only-verified`, so findings fire only for credentials that authenticate against a live provider API.
 
-See `SECURITY.md` → "Layered secret scanning" for the full three-layer model and allowlist discussion.
+See the canonical
+[secret-scanning layers](security/artifacts-redaction-and-publication.md#secret-scanning-layers)
+for the three-layer model, allowlist limits, and content-classification warning.
 
 ## Manual Release Gates
 

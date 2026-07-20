@@ -150,7 +150,11 @@ The `--debug-file` log can include **the full `permissions.allow` list (which is
 3. Replace any MCP-server URLs or proxy hostnames with `<INTERNAL-URL>`.
 4. Remove any PII (real names in paths, account IDs).
 
-Refer to `docs/dev-hook-audit.md` lines 115-137 for the analogous (stricter) policy on PostToolUse audit-hook logs — they may contain full file contents and must NEVER be pasted into PRs or issues without manual redaction.
+Refer to [Developer Hook Audit](dev-hook-audit.md#privacy) for
+the stricter PostToolUse audit-log policy. Those logs may contain full file
+contents and must never be pasted into PRs or issues without manual redaction.
+The canonical [operator-diagnostic classification](security/artifacts-redaction-and-publication.md#operator-visible-diagnostics)
+applies to both log types.
 
 ### Known limitations
 
@@ -418,7 +422,8 @@ On non-zero codex/cursor/claude subprocess exits in review/collector batches (an
 - **Collector dedup:** within one `python/cli.py agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
 - **Claude panel fallback:** `launch-claude-review.sh` clamps `--timeout` greater than **1800** to **1800** with a warning (subprocess cap in `launch-claude-subprocess.sh`).
 
-See `python/larch/agents/agents.py`.
+See `python/larch/agents/agents.py` and the canonical
+[operator-diagnostic contract](security/artifacts-redaction-and-publication.md#operator-visible-diagnostics).
 
 ### `LARCH_TOKEN_RATE_PER_M`
 
@@ -521,6 +526,10 @@ The gate files at most one issue per run. It skips operator-action and `cancelle
 Escalation-success is allowed only for `approved` and `approved-partition`. Step 3 main-agent vote/apply and postplan-operator handoffs are escalation evidence. Step 3 panel degradation is non-terminal evidence. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel`.
 
 All generic reporting calls pin `--implement-tmpdir "$DESIGN_TMPDIR"`, and path confinement applies to `$DESIGN_TMPDIR`. Cross-repo filing runs under the operator's GitHub identity.
+
+See the canonical
+[cross-repository failure-report contract](security/artifacts-redaction-and-publication.md#cross-repository-failure-reports)
+for the confidentiality and fallback rules shared by public reporters.
 
 ## Optional dedicated-runner background-task clamp
 

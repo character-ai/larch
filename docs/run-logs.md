@@ -2,7 +2,7 @@
 
 On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. **Phase 1 (#3364):** `/implement` no longer writes `version-bump-reasoning.md` on the ship path; use `/release` or manual bump flows when version reasoning must be committed.
 
-Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
+Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat committed logs as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#committed-run-logs-and-breadcrumbs).
 
 The deterministic, versioned archive representation of one sanitized run tree is
 defined in [Run-log archive format](run-log-archive.md).
@@ -167,6 +167,24 @@ re-rendering canonical batches (`token-report.ndjson`, `timing-report.ndjson`,
 `timing-report.json`, `token-report.ndjson`, and `timing-report.ndjson` are still
 committed normally.
 
+### Design publication selection
+
+`python/larch/design/design_log_publish_flow.py` owns design-log selection.
+Its exclusions apply by basename at every copied depth. Raw Codex event
+streams, plan-review transcripts, rendered prompts, launch stderr, producer
+sidecars, collector failure logs, dropped-slot raw diagnostics, token carriers,
+and the `plan-autofix/` draft tree stay session-local. Normal final logs also
+exclude `.completed/`; pause snapshots retain the top-level completion
+sentinels needed for resume provenance.
+
+The `plan-review/` tree uses the per-round contract below. The publisher drops
+the obsolete `round-<N>/revise/` tree and cumulative or redundant round files.
+Top-level `issue-body.txt`, `issue.json`, and `architecture-diagram.md` are also
+excluded because GitHub owns those public snapshots. `render-cache/` has an
+open content schema but keeps the shared suffix denylist and the same root,
+ancestor, symlink, file-type, trim, and redaction checks. An unsafe selected
+file rejects publication instead of broadening the copied set.
+
 ### breadcrumbs/
 
 The tree above shows `implement/<RUN_ID>/breadcrumbs/` as a representative
@@ -210,11 +228,13 @@ session tmpdir, must not be symlinks, and must not be hardlinks. Legacy
 When no quiet log stages, the helper returns 0 and does not create, replace,
 or clear an existing committed `breadcrumbs/` destination.
 
-The enforced-reject and silent-skip split is documented in
-[SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction):
-enforced triggers fail closed for the whole directory, while legacy ndjson files,
-non-regular files, and non-matching quiet-log basenames are ignored and not
-committed.
+The enforced-reject and silent-skip split is a security boundary. An invalid
+source root, path escape, source-directory symlink, unsafe accepted file,
+hardlink, invalid accepted basename, or redactor failure rejects publication
+for the whole directory and leaves the prior destination unchanged. Legacy
+ndjson files, monitor sidecars, non-regular files, race-disappeared candidates,
+and non-matching quiet-log basenames are ignored and not committed. See the
+canonical [breadcrumb security invariants](security/artifacts-redaction-and-publication.md#breadcrumb-security-invariants).
 
 `round-<N>/` directories are written by `run-log write-round` during
 `/implement` code review. They preserve the per-round reviewer and voter
@@ -317,7 +337,7 @@ for the authoritative producer contract and harness coverage.
 
 ### design plan-review per-round artifacts
 
-Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer — `python/plan_review.py` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
+Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer. `python/larch/design/design_log_publish_flow.py` is the authoritative committed-file filter, and [Design publication selection](#design-publication-selection) explains its operator-facing contract.
 
 #### Findings
 

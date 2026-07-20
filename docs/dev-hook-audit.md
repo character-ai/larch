@@ -136,7 +136,9 @@ responsibility:
   editing `.env`, private keys, credentials), consider the log itself
   a secret-bearing artifact with the same retention discipline.
 
-See `SECURITY.md` for the project's security posture on this audit log.
+See the canonical
+[private-session-state and diagnostic policy](security/artifacts-redaction-and-publication.md#private-session-state-and-retention)
+for the project's security posture on this audit log.
 
 ## Concurrency note
 
