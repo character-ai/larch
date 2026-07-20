@@ -47,7 +47,7 @@ from larch.design.design_terminal import (
     phase_driver_read_result_env,
     stage_terminal_state_core,
 )
-from larch.core.repo_roots import consumer_repo_root
+from larch.core import repo_roots
 from larch.state import session_env
 
 def _derive_binary_found(env: dict[str, str]) -> None:
@@ -164,13 +164,39 @@ def relay_degraded_tools_gate_stdout(*, stdout: str, design_tmpdir: Path) -> dic
     return state
 
 
+def step0_session_entry_main(argv: Sequence[str]) -> int:
+    ns = _parse_wrapper_args(argv)
+    plugin_root = require_plugin_root(ns.plugin_root)
+    repo_root = repo_roots.consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
+    storage_preflight = proc.run(
+        _cli_cmd(
+            plugin_root,
+            "run-log",
+            "storage-preflight",
+            "--repo-root",
+            str(repo_root),
+        ),
+        check=False,
+    )
+    if storage_preflight.returncode != 0:
+        if storage_preflight.stderr:
+            print(
+                storage_preflight.stderr,
+                end="" if storage_preflight.stderr.endswith("\n") else "\n",
+                file=sys.stderr,
+            )
+        print("**⚠ /design: run-log storage preflight failed; aborting before session setup**", file=sys.stderr)
+        return storage_preflight.returncode
+    return step0_session_main(argv)
+
+
 def step0_session_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     plugin_root = require_plugin_root(ns.plugin_root)
+    repo_root = repo_roots.consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
     bootstrap._install_statusline_best_effort()
-    repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
     _run_best_effort(
         command=_cli_cmd(plugin_root, "progress", "clear", "--repo-root", str(repo_root)),
         env=os.environ,

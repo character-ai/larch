@@ -154,6 +154,9 @@ def run(repo_root: Path) -> list[str]:
         ("If `RUN_ID` is non-empty, write flat review larch-log batches", "(18) SKILL.md missing Step 4 larch-log batch opener — filing semantics drifted"),
         ("`review-context`", "(18) SKILL.md missing review-context batch token — Step 4 filing list drifted"),
         ("review log-phase", "(18) SKILL.md must reference review log-phase in Step 4 — filing wiring drifted"),
+        ("run-log storage-preflight", "(18) standalone review must preflight archive storage"),
+        ("run-log publish --repo-root", "(18) standalone review must publish through the archive boundary"),
+        ("Require exit zero and `PUBLISH_OK=true`", "(18) standalone review must fail closed on publication failure"),
     ): require(skill, needle, label)
     if "/umbrella" in skill_text: failures.append("(19) SKILL.md must not reference '/umbrella' — removed umbrella composition must not return")
 

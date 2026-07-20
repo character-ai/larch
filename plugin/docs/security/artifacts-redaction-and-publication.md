@@ -266,6 +266,16 @@ caches remain private operator state. Moving an archive to object storage does
 not broaden who should receive it. See
 [Run-log archive format](../run-log-archive.md).
 
+`/design` and standalone `/review` require storage preflight before session
+work. Their terminal paths preserve the existing design allowlists, review
+round artifacts, breadcrumbs, completeness checks, and secret scrub before
+publishing `run-logs/<skill>/<run-id>.tar.gz`. A failure returns nonzero and
+retains a content-pinned pending archive; retry publishes that exact content
+even if the live staging tree changed. Success requires both the immutable
+remote object and the verified unpacked cache. Pause snapshots retain design
+completion sentinels and resume only from a verified cache. These converted
+paths do not create log branches, commits, pushes, pull requests, or merges.
+
 ## Public GitHub Publication
 
 GitHub publication is a separate security boundary from committed run logs.

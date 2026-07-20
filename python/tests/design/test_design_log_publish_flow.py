@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,11 +13,11 @@ from typing import Any
 import pytest
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
+from larch.report import run_log_publish as run_log_publisher
 from test_support import operator_repo_with_remote as _operator_repo_with_remote
 from test_support import write_gh_pr_stub as _write_gh_stub
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
-LOG_BRANCH = f"larch-logs/design-{RUN_ID}"
 
 
 def _git(*argv: str, cwd: Path) -> None:
@@ -59,8 +60,53 @@ def _run_publish(
     outcome: str = "approved",
 ) -> subprocess.CompletedProcess[str]:
     real_cli = Path(__file__).resolve().parents[2] / "cli.py"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    remote_dir = bin_dir.parent / "remote"
+    remote_dir.mkdir(parents=True, exist_ok=True)
+    aws_stub = bin_dir / "aws"
+    _ = aws_stub.write_text(
+        """#!/usr/bin/env python3
+import json
+import shutil
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+root = Path(__file__).resolve().parent.parent / "remote"
+if args[:2] == ["s3api", "put-object"]:
+    if (root.parent / "fail-upload").exists():
+        print("transport failed", file=sys.stderr)
+        raise SystemExit(1)
+    key = args[args.index("--key") + 1]
+    source = Path(args[args.index("--body") + 1])
+    target = root / key
+    if target.exists():
+        print("PreconditionFailed", file=sys.stderr)
+        raise SystemExit(1)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    print("{}")
+elif args[:2] == ["s3api", "head-object"]:
+    key = args[args.index("--key") + 1]
+    print(json.dumps({"ContentLength": (root / key).stat().st_size}))
+elif args[:2] == ["s3api", "get-object"]:
+    key = args[args.index("--key") + 1]
+    destination = Path(args[args.index("--key") + 2])
+    shutil.copy2(root / key, destination)
+    print("{}")
+elif args[:2] == ["s3", "ls"]:
+    raise SystemExit(0)
+else:
+    raise SystemExit(2)
+""",
+        encoding="utf-8",
+    )
+    aws_stub.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    env["LARCH_LOGS_URI"] = "s3://bucket/larch"
+    env["XDG_CACHE_HOME"] = str(bin_dir.parent / "cache")
+    env["XDG_STATE_HOME"] = str(bin_dir.parent / "state")
     # The real cli is used for run-log init/commit + redact; all git writes are
     # cwd-scoped to the disposable worktree, never the operator or plugin repo.
     env["CLAUDE_PLUGIN_ROOT"] = str(Path(real_cli).resolve().parents[1])
@@ -87,6 +133,33 @@ def _run_publish(
         check=False,
         env=env,
     )
+
+
+def _cached_run(repo: Path, bin_dir: Path) -> Path:
+    return bin_dir.parent / "cache" / "larch" / "run-logs" / repo.name / "design" / RUN_ID
+
+
+def _patch_archive_publish(
+    monkeypatch: pytest.MonkeyPatch,
+    cache_dir: Path,
+) -> None:
+    def fake_publish_log_run(**kwargs: object) -> tuple[run_log_publisher.PublicationResult, int]:
+        log_root = kwargs["log_root"]
+        assert isinstance(log_root, Path)
+        shutil.copytree(log_root / "design" / RUN_ID, cache_dir)
+        return (
+            run_log_publisher.PublicationResult(
+                remote_key=f"run-logs/design/{RUN_ID}.tar.gz",
+                archive_sha256="a" * 64,
+                cache_dir=cache_dir,
+                remote_status=run_log_publisher.RemotePublicationStatus.CREATED,
+                cache_status=run_log_publisher.CachePublicationStatus.PROMOTED,
+            ),
+            0,
+        )
+
+    monkeypatch.setattr(design_log_publish_flow.storage_config, "discover_storage_root", lambda **_kwargs: object())
+    monkeypatch.setattr(design_log_publish_flow.run_log_publisher, "publish_log_run", fake_publish_log_run)
 
 
 def test_log_publish_dry_run_success(tmp_path: Path) -> None:
@@ -149,9 +222,9 @@ def test_log_publish_captures_transcript_before_publish(
         captured["render_outcome"] = str(kwargs["outcome"])
         return True
 
-    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str]:
         order.append("publish")
-        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+        return (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0")
 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
@@ -207,10 +280,10 @@ def test_log_publish_capture_failure_skips_publish(
         assert ctx.session_id == RUN_ID
         return False
 
-    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str]:
         nonlocal published
         published = True
-        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+        return (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0")
 
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
@@ -251,10 +324,10 @@ def test_log_publish_approved_missing_invariant_assessment_records_warning(
     monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
-    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str]:
         nonlocal published
         published = True
-        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+        return (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0")
 
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
@@ -295,7 +368,7 @@ def test_log_publish_approved_missing_invariant_assessment_does_not_follow_marke
     monkeypatch.setattr(
         design_log_publish_flow,
         "_publish_design_logs",
-        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+        lambda **_kwargs: (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     rc = design_log_publish_flow.log_publish_main(
@@ -329,7 +402,7 @@ def test_log_publish_invariant_assessment_present_suppresses_warning(
     monkeypatch.setattr(
         design_log_publish_flow,
         "_publish_design_logs",
-        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+        lambda **_kwargs: (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     rc = design_log_publish_flow.log_publish_main(
@@ -362,7 +435,7 @@ def test_log_publish_empty_invariants_do_not_warn(
     monkeypatch.setattr(
         design_log_publish_flow,
         "_publish_design_logs",
-        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+        lambda **_kwargs: (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     rc = design_log_publish_flow.log_publish_main(
@@ -394,10 +467,10 @@ def test_log_publish_approved_missing_guideline_assessment_records_warning(
     monkeypatch.setattr(design_log_publish_flow.design_publish, "capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
-    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str]:
         nonlocal published
         published = True
-        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+        return (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0")
 
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
@@ -438,7 +511,7 @@ def test_log_publish_approved_missing_guideline_assessment_does_not_follow_marke
     monkeypatch.setattr(
         design_log_publish_flow,
         "_publish_design_logs",
-        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+        lambda **_kwargs: (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     rc = design_log_publish_flow.log_publish_main(
@@ -472,7 +545,7 @@ def test_log_publish_guideline_assessment_present_suppresses_warning(
     monkeypatch.setattr(
         design_log_publish_flow,
         "_publish_design_logs",
-        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+        lambda **_kwargs: (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     rc = design_log_publish_flow.log_publish_main(
@@ -508,11 +581,11 @@ def test_log_publish_capture_skip_still_publishes_pause(
         reasons.append(str(kwargs["outcome"]))
         return True
 
-    def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
+    def fake_publish(**kwargs: object) -> tuple[bool, str, str, str]:
         request = kwargs["request"]
         assert isinstance(request, design_log_publish_flow.PublishDesignLogsRequest)
         reasons.append(request.run_id)
-        return (True, "", "", "", "0")
+        return (True, "run-logs/design/RUN.tar.gz", "/cache/design/RUN", "0")
 
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
@@ -544,7 +617,7 @@ def test_log_publish_capture_skip_still_publishes_pause(
     assert "PUBLISH_OK=true" in capsys.readouterr().out
 
 
-def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
+def test_log_publish_creates_cloud_archive_and_cache_without_git_mutation(tmp_path: Path) -> None:
     # The design run tree is committed to a dedicated branch and PR'd; the
     # operator working tree stays clean (issue #4395), and ship is best-effort.
     repo = _operator_repo_with_remote(tmp_path)
@@ -552,22 +625,14 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     design.mkdir()
     _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
     bin_dir = tmp_path / "bin"
-    pr_create_capture = tmp_path / "pr-create-capture.txt"
-    _write_gh_stub(bin_dir / "gh", pr_create_rc=0, capture_path=pr_create_capture)
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=1)
 
     result = _run_publish(repo, design, bin_dir)
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
-    assert "PR_NUMBER=77" in result.stdout
-    assert "PR_URL=https://github.com/o/r/pull/77" in result.stdout
-    capture = pr_create_capture.read_text(encoding="utf-8")
-    argv_text, body_text = capture.split("__BODY__\n", 1)
-    pr_create_argv = argv_text.splitlines()[1:]
-    title = pr_create_argv[pr_create_argv.index("--title") + 1]
-    assert "issue #33" in title
-    assert "--body-file" in pr_create_argv
-    assert "--body" not in pr_create_argv
-    assert "issue #33" in body_text
+    assert f"REMOTE_KEY=run-logs/design/{RUN_ID}.tar.gz" in result.stdout
+    assert "PR_NUMBER=" in result.stdout
+    assert "PR_URL=" in result.stdout
     # The publish surfaces the scrub-violation count so the design tail can warn
     # the operator to rotate; a clean run reports zero (#4782).
     assert "SECRET_SCRUB_VIOLATIONS=0" in result.stdout
@@ -580,39 +645,15 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
         check=False,
     )
     assert status.stdout.strip() == "", status.stdout
-    # The clean-success path deletes the local branch (it lives on the remote).
-    branches = subprocess.run(
-        ["git", "branch", "--list", LOG_BRANCH],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert branches.stdout.strip() == ""
-    # The pushed branch carries the redacted design run tree.
-    origin = tmp_path / "origin.git"
-    ls = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
-    assert f"larch-logs/design/{RUN_ID}/final-summary.md" in ls.stdout, ls.stdout
-    assert f"larch-logs/design/{RUN_ID}/manifest.json" in ls.stdout, ls.stdout
-    blob = subprocess.run(
-        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/final-summary.md"],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert blob.returncode == 0, blob.stderr
-    assert "STALE-SENTINEL" not in blob.stdout
-    assert "<!-- larch:run-summary v=1 -->" in blob.stdout
+    cached = _cached_run(repo, bin_dir)
+    assert (cached / "artifact.txt").read_text(encoding="utf-8") == "artifact\n"
+    assert (cached / "manifest.json").is_file()
+    summary = (cached / "final-summary.md").read_text(encoding="utf-8")
+    assert "STALE-SENTINEL" not in summary
+    assert "<!-- larch:run-summary v=1 -->" in summary
+    assert (tmp_path / "remote" / "larch" / "run-logs" / "design" / f"{RUN_ID}.tar.gz").is_file()
     meta = (design / ".design-log-publish-metadata.env").read_text(encoding="utf-8")
-    assert "DESIGN_LOG_PR_NUMBER=77" in meta
+    assert f"DESIGN_LOG_REMOTE_KEY=run-logs/design/{RUN_ID}.tar.gz" in meta
 
 
 def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
@@ -650,17 +691,13 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
     def fake_capture(**_kwargs: object) -> bool:
         return True
 
-    def fake_spawn(**_kwargs: object) -> None:
-        return
-
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    cache_dir = tmp_path / "cache-enriched"
+    _patch_archive_publish(monkeypatch, cache_dir)
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
         "capture_design_transcript",
         fake_capture,
-    )
-    monkeypatch.setattr(
-        design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn
     )
     monkeypatch.setattr(
         design_summary, "render_final_summary_for_request", capture_render
@@ -687,18 +724,10 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
     assert rc == 0
     assert captured["request"].upsert_summary_comment is False
     assert not upsert_calls
-    origin = tmp_path / "origin.git"
-    blob = subprocess.run(
-        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/final-summary.md"],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert blob.returncode == 0, blob.stderr
-    assert "STALE-SENTINEL" not in blob.stdout
-    assert "## /design run" in blob.stdout
-    assert "<!-- larch:run-summary v=1 -->" in blob.stdout
+    summary = (cache_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "STALE-SENTINEL" not in summary
+    assert "## /design run" in summary
+    assert "<!-- larch:run-summary v=1 -->" in summary
 
 
 def test_log_publish_removes_stale_final_summary_when_render_fails(
@@ -737,17 +766,13 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
     def fake_capture(**_kwargs: object) -> bool:
         return True
 
-    def fake_spawn(**_kwargs: object) -> None:
-        return
-
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    cache_dir = tmp_path / "cache-render-failed"
+    _patch_archive_publish(monkeypatch, cache_dir)
     monkeypatch.setattr(
         design_log_publish_flow.design_publish,
         "capture_design_transcript",
         fake_capture,
-    )
-    monkeypatch.setattr(
-        design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn
     )
     monkeypatch.setattr(
         design_summary, "render_final_summary_for_request", capture_render
@@ -775,23 +800,7 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
     assert rc == 0
     assert captured["request"].upsert_summary_comment is False
     assert not upsert_calls
-    origin = tmp_path / "origin.git"
-    blob = subprocess.run(
-        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/final-summary.md"],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert blob.returncode != 0
-    tree = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout
-    assert f"larch-logs/design/{RUN_ID}/final-summary.md" not in tree
+    assert not (cache_dir / "final-summary.md").exists()
     assert not (design / "final-summary.md").exists()
 
 
@@ -809,35 +818,26 @@ def test_log_publish_reports_and_commits_scrubbed_secret(tmp_path: Path) -> None
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
     assert "SECRET_SCRUB_VIOLATIONS=1" in result.stdout
-    origin = tmp_path / "origin.git"
-    blob = subprocess.run(
-        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/secret.txt"],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert blob.returncode == 0, blob.stderr
-    assert raw_token not in blob.stdout
-    assert "<REDACTED-TOKEN>" in blob.stdout
+    scrubbed = (_cached_run(repo, bin_dir) / "secret.txt").read_text(encoding="utf-8")
+    assert raw_token not in scrubbed
+    assert "<REDACTED-TOKEN>" in scrubbed
 
 
-def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(
+def test_log_publish_upload_failure_keeps_tree_clean_and_durable_pending(
     tmp_path: Path,
 ) -> None:
-    # If the PR cannot be opened, the operator tree still stays clean and the
-    # pushed branch is surfaced as a recovery branch (PUBLISH_OK=false).
+    # Upload failure stays nonzero and leaves a content-pinned pending archive.
     repo = _operator_repo_with_remote(tmp_path)
     design = tmp_path / "design"
     design.mkdir()
     _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
     bin_dir = tmp_path / "bin"
-    _write_gh_stub(bin_dir / "gh", pr_create_rc=1)
+    _ = (tmp_path / "fail-upload").write_text("", encoding="utf-8")
 
     result = _run_publish(repo, design, bin_dir)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0
     assert "PUBLISH_OK=false" in result.stdout
-    assert f"RECOVERY_BRANCH={LOG_BRANCH}" in result.stdout
+    assert "archive publication failed" in result.stderr
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=repo,
@@ -846,78 +846,9 @@ def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(
         check=False,
     )
     assert status.stdout.strip() == "", status.stdout
-    origin = tmp_path / "origin.git"
-    ls = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
-
-
-def test_spawn_detached_admin_merge_routes_to_ship_design_log(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Bug #4524: GitHub-native --auto can never satisfy the active "Code review"
-    # ruleset's required-review gate for an unreviewed automated PR, so log PRs
-    # never merge. The fix routes the log PR through the existing ship design-log
-    # admin-merge waiter, launched detached so /design is not blocked on CI (#4404).
-    captured_argv: list[str] = []
-    captured_kwargs: dict[str, object] = {}
-
-    def fake_popen(argv: list[str], **kwargs: object) -> object:
-        captured_argv.extend(argv)
-        captured_kwargs.update(kwargs)
-        return object()
-
-    monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge(
-        cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo"
-    )
-
-    assert captured_argv == [
-        sys.executable,
-        "/p/python/cli.py",
-        "ship",
-        "design-log",
-        "--pr-number",
-        "77",
-        "--repo",
-        "o/r",
-    ]
-    assert "--auto" not in captured_argv
-    assert captured_kwargs["start_new_session"] is True
-    assert captured_kwargs["cwd"] == "/repo"
-    assert captured_kwargs["stdin"] == subprocess.DEVNULL
-    assert captured_kwargs["stdout"] == subprocess.DEVNULL
-    assert captured_kwargs["stderr"] == subprocess.DEVNULL
-
-
-def test_spawn_detached_admin_merge_omits_repo_when_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured_argv: list[str] = []
-
-    def fake_popen(argv: list[str], **_kwargs: object) -> object:
-        captured_argv.extend(argv)
-        return object()
-
-    monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge(
-        cli="/p/python/cli.py", pr_number="77", repo="", repo_root="/repo"
-    )
-
-    assert captured_argv == [
-        sys.executable,
-        "/p/python/cli.py",
-        "ship",
-        "design-log",
-        "--pr-number",
-        "77",
-    ]
-    assert "--repo" not in captured_argv
+    pending = tmp_path / "state" / "larch" / "run-log-pending" / repo.name / "design" / RUN_ID
+    assert (pending / "archive.tar.gz").is_file()
+    assert (pending / "retry.json").is_file()
 
 
 def test_publish_excluded_predicate() -> None:
@@ -1005,16 +936,9 @@ def test_pause_log_publish_retains_completed_sentinels(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
-    origin = tmp_path / "origin.git"
-    tree = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout
-    assert f"larch-logs/design/{RUN_ID}/.completed/step-3" in tree, tree
-    assert f"larch-logs/design/{RUN_ID}/.completed/step-5b" in tree, tree
+    cached = _cached_run(repo, bin_dir)
+    assert (cached / ".completed" / "step-3").is_file()
+    assert (cached / ".completed" / "step-5b").is_file()
 
 
 def test_final_log_publish_clears_preexisting_completed_sentinels(
@@ -1037,16 +961,9 @@ def test_final_log_publish_clears_preexisting_completed_sentinels(
 
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
-    origin = tmp_path / "origin.git"
-    tree = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout
-    assert f"larch-logs/design/{RUN_ID}/artifact.txt" in tree, tree
-    assert f"larch-logs/design/{RUN_ID}/.completed/legacy-terminal" not in tree, tree
+    cached = _cached_run(repo, bin_dir)
+    assert (cached / "artifact.txt").is_file()
+    assert not (cached / ".completed" / "legacy-terminal").exists()
 
 
 def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
@@ -1116,54 +1033,22 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
 
-    origin = tmp_path / "origin.git"
-    ls = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    tree = ls.stdout
-    base = f"larch-logs/design/{RUN_ID}"
+    cached = _cached_run(repo, bin_dir)
+    tree = {path.relative_to(cached).as_posix() for path in cached.rglob("*")}
     for name in keep:
-        assert f"{base}/{name}" in tree, f"expected kept: {name}\n{tree}"
-    assert f"{base}/plan-review/round-1/findings.md" in tree, tree
-    assert f"{base}/plan-review/round-1/codex-vote-output.txt" in tree, tree
-    assert f"{base}/plan-review/round-1/panel-prompt-sizes.tsv" in tree, tree
-    assert f"{base}/manifest.json" in tree, tree
+        assert name in tree, f"expected kept: {name}\n{tree}"
+    assert "plan-review/round-1/findings.md" in tree
+    assert "plan-review/round-1/codex-vote-output.txt" in tree
+    assert "plan-review/round-1/panel-prompt-sizes.tsv" in tree
+    assert "manifest.json" in tree
     for name in drop:
-        assert f"{base}/{name}" not in tree, f"expected dropped: {name}\n{tree}"
-    assert "codex-vote-output.txt.events.jsonl" not in tree, tree
-    assert "findings-ledger.tsv" not in tree, tree
-    assert "security-oos-observations.md" not in tree, tree
-    assert "plan-autofix" not in tree, tree
-    assert "/.completed/" not in tree, tree
-    assert "step2b-codex-raw" not in tree, tree
-
-
-def test_scrub_violations_parses_last_numeric() -> None:
-    # Mirrors the retired design-publish.sh parse: last occurrence wins, and a
-    # missing or non-numeric value defaults to "0" (#4782).
-    assert (
-        design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=3\n")
-        == "3"
-    )
-    assert (
-        design_log_publish_flow._scrub_violations(
-            "SECRET_SCRUB_VIOLATIONS=1\nSECRET_SCRUB_VIOLATIONS=5\n"
-        )
-        == "5"
-    )
-    assert design_log_publish_flow._scrub_violations("no marker here\n") == "0"
-    assert (
-        design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=oops\n")
-        == "0"
-    )
-    assert (
-        design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=0\n")
-        == "0"
-    )
+        assert name not in tree, f"expected dropped: {name}\n{tree}"
+    assert not any("codex-vote-output.txt.events.jsonl" in path for path in tree)
+    assert not any(path.endswith("findings-ledger.tsv") for path in tree)
+    assert not any(path.endswith("security-oos-observations.md") for path in tree)
+    assert not any(path.startswith("plan-autofix/") for path in tree)
+    assert not any(path.startswith(".completed/") for path in tree)
+    assert not any("step2b-codex-raw" in path for path in tree)
 
 
 def test_copy_tree_redacted_fail_closed_on_residual(
@@ -1285,7 +1170,7 @@ def test_log_publish_main_returns_nonzero_on_secret_scrub_failure(
     design = tmp_path / "design"
     design.mkdir()
 
-    def _fail(*_args: object, **_kwargs: object) -> tuple[bool, str, str, str, str]:
+    def _fail(*_args: object, **_kwargs: object) -> tuple[bool, str, str, str]:
         raise design_log_publish_flow.SecretScrubFailure("scrub failed")
 
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", _fail)
@@ -1300,15 +1185,13 @@ def test_log_publish_main_returns_nonzero_on_secret_scrub_failure(
     assert "SECRET_SCRUB_VIOLATIONS=0" in out
 
 
-def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
+def test_publish_design_logs_classifies_archive_finalization_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     design = tmp_path / "design"
     design.mkdir()
     _ = (design / "artifact.txt").write_text("plain\n", encoding="utf-8")
-    calls: list[list[str]] = []
-
     def _completed(
         argv: list[str], returncode: int, stdout: str = "", stderr: str = ""
     ) -> subprocess.CompletedProcess[str]:
@@ -1318,22 +1201,10 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
         argv: list[str], *, cwd: str | None = None
     ) -> subprocess.CompletedProcess[str]:
         del cwd
-        calls.append(argv)
         if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
             return _completed(argv, 0, str(tmp_path))
-        if argv[:3] == ["git", "worktree", "add"]:
-            return _completed(argv, 0)
         if len(argv) >= 4 and argv[2:4] == ["run-log", "init"]:
             return _completed(argv, 0)
-        if argv[:3] == ["git", "rev-parse", "HEAD"]:
-            return _completed(argv, 0, "base\n")
-        if len(argv) >= 4 and argv[2:4] == ["run-log", "commit"]:
-            return _completed(
-                argv,
-                1,
-                "",
-                "secret survived scrubbing in larch-logs/design/RUN1/a.txt\n",
-            )
         return _completed(argv, 0)
 
     def _copy_ok(*_args: object, **_kwargs: object) -> tuple[bool, int]:
@@ -1341,21 +1212,23 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
 
     monkeypatch.setattr(design_log_publish_flow, "_run", _fake_run)
     monkeypatch.setattr(design_log_publish_flow, "_copy_tree_redacted", _copy_ok)
+    monkeypatch.setattr(design_log_publish_flow.storage_config, "discover_storage_root", lambda **_kwargs: object())
 
-    with pytest.raises(
-        design_log_publish_flow.SecretScrubFailure, match="run-log commit"
-    ):
-        _ = design_log_publish_flow._publish_design_logs(
-            request=design_log_publish_flow.PublishDesignLogsRequest(
-                plugin_root=tmp_path,
-                design_tmpdir=design,
-                run_id="RUN1",
-                issue="12",
-                repo="",
-            )
+    def fail_publish(**_kwargs: object) -> object:
+        raise run_log_publisher.PublicationError("secret survived scrubbing")
+
+    monkeypatch.setattr(design_log_publish_flow.run_log_publisher, "publish_log_run", fail_publish)
+
+    result = design_log_publish_flow._publish_design_logs(
+        request=design_log_publish_flow.PublishDesignLogsRequest(
+            plugin_root=tmp_path,
+            design_tmpdir=design,
+            run_id="RUN1",
+            issue="12",
+            repo="",
         )
-
-    assert any(len(call) >= 4 and call[2:4] == ["run-log", "commit"] for call in calls)
+    )
+    assert result[0] is False
 
 
 def test_publish_excluded_github_redundant_top_level_only() -> None:
@@ -1428,16 +1301,8 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
 
-    origin = tmp_path / "origin.git"
-    ls = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    tree = ls.stdout
-    base = f"larch-logs/design/{RUN_ID}"
+    cached = _cached_run(repo, bin_dir)
+    tree = {path.relative_to(cached).as_posix() for path in cached.rglob("*")}
     for name in (
         "issue-body.txt",
         "issue.json",
@@ -1448,11 +1313,11 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(
         "architecture-diagram-sanitizer.failure.log",
         "panel-manifest.ndjson",
     ):
-        assert f"{base}/{name}" not in tree, f"expected top-level drop: {name}\n{tree}"
-    assert f"{base}/plan-review/round-1/panel-manifest.ndjson" in tree, tree
-    assert f"{base}/plan-review/round-1/architecture-diagram.md" in tree, tree
-    assert f"{base}/plan-review/round-1/architecture-diagram.candidate.md" in tree, tree
-    assert f"{base}/plan.txt" in tree, tree
+        assert name not in tree, f"expected top-level drop: {name}\n{tree}"
+    assert "plan-review/round-1/panel-manifest.ndjson" in tree
+    assert "plan-review/round-1/architecture-diagram.md" in tree
+    assert "plan-review/round-1/architecture-diagram.candidate.md" in tree
+    assert "plan.txt" in tree
 
 
 def test_log_publish_excludes_bounded_diagram_failure_sidecars(tmp_path: Path) -> None:
@@ -1471,30 +1336,10 @@ def test_log_publish_excludes_bounded_diagram_failure_sidecars(tmp_path: Path) -
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
 
-    origin = tmp_path / "origin.git"
-    ls = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    tree = ls.stdout
-    base = f"larch-logs/design/{RUN_ID}"
-    assert f"{base}/plan.txt" in tree, tree
-    assert f"{base}/design-step-5b.5-diagram-failure.bounded.log" not in tree, tree
+    cached = _cached_run(repo, bin_dir)
+    tree = {path.relative_to(cached).as_posix() for path in cached.rglob("*")}
+    assert "plan.txt" in tree
+    assert "design-step-5b.5-diagram-failure.bounded.log" not in tree
 
 
-def test_spawn_detached_admin_merge_swallows_launch_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Best-effort: a launch failure must not raise (the log PR stays open for a
-    # manual/CI merge and the working tree is already clean).
-    def boom(_argv: list[str], **_kwargs: object) -> object:
-        raise OSError("no exec")
-
-    monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", boom)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge(
-        cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo"
-    )
 # pyright: reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false

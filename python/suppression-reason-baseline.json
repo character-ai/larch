@@ -896,13 +896,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/design/design_log_publish_flow.py",
-    "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=consider-using-with",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/design/design_log_ship.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=broad-except",
@@ -984,48 +977,6 @@
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 3,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 4,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 5,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_pause.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: S607",
-    "occurrence": 6,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {

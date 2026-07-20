@@ -272,7 +272,7 @@ def test_machine_stdout_keys_derived_from_registry() -> None:
 
 def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() -> None:
     design_samples = {
-        ("design", "step0-session"): ("larch.design.design_step0", "step0_session_main"),
+        ("design", "step0-session"): ("larch.design.design_step0", "step0_session_entry_main"),
         ("design", "step5c"): ("larch.design.design_step5c", "step5c_main"),
         ("design", "step2b-drafter"): ("larch.design.design_step2b", "step2b_drafter_main"),
         ("design", "settle-next-action"): ("larch.design.design_session", "settle_next_action_main"),

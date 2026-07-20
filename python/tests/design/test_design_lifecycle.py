@@ -20,6 +20,7 @@ import pytest
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core import repo_roots
 from larch.design import design_dialectic
 from larch.design import plan_grammar
 from larch.design import design_core
@@ -635,6 +636,37 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
     assert "--skip-branch-check" not in setup_cmds[0]
     assert "--skip-repo-check" in setup_cmds[0]
     assert "--check-reviewers" in setup_cmds[0]
+
+
+def test_step0_session_entry_fails_before_setup_when_storage_preflight_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    plugin_root.mkdir()
+    attempted_setup = False
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        assert "storage-preflight" in argv
+        return CommandResult(tuple(argv), 7, "", "storage unavailable\n", 0.0)
+
+    def fake_session(_argv: Sequence[str]) -> int:
+        nonlocal attempted_setup
+        attempted_setup = True
+        return 0
+
+    monkeypatch.setattr(proc_module, "run", fake_run)
+    monkeypatch.setattr(repo_roots, "consumer_repo_root", lambda _path: tmp_path)
+    monkeypatch.setattr(design_step0, "step0_session_main", fake_session)
+
+    rc = design_step0.step0_session_entry_main(
+        ["--claude-pid", "123", "--plugin-root", str(plugin_root), "--"]
+    )
+
+    assert rc == 7
+    assert not attempted_setup
+    assert "storage unavailable" in capsys.readouterr().err
 
 
 def test_step0_session_threads_repo_root_to_design_env_and_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
