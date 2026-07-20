@@ -28,8 +28,8 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   `python/cli.py ship design-log`.
 - **Phase 5** (live via default Python ship driver): residual `run_logs.py` plus its `run_log_batch.py`,
   `run_log_manifest.py`, `run_log_commit.py`, and `run_log_flush.py` owners, `tokens.py`, `tracking_issue.py`,
-  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with split
-  `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
+  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with mutable
+  implement staging in `flush_logs_pre` and terminal archive publication from Step 18. `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own

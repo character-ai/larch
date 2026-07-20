@@ -276,6 +276,13 @@ remote object and the verified unpacked cache. Pause snapshots retain design
 completion sentinels and resume only from a verified cache. These converted
 paths do not create log branches, commits, pushes, pull requests, or merges.
 
+For `/implement`, intermediate flushes update only the session staging tree.
+Step 18 captures the transcript, performs a final execution-issues flush,
+validates completeness, and scrubs the full tree before creating the archive.
+Teardown requires a verified remote object and unpacked local cache. A final
+flush, identity, upload, or cache-verification failure returns nonzero and
+retains the session plus any content-pinned pending archive for retry.
+
 ## Public GitHub Publication
 
 GitHub publication is a separate security boundary from committed run logs.

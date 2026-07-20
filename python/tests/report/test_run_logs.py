@@ -301,14 +301,13 @@ def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert calls["nofollow"] is True
 
 
-def test_flush_logs_pre_state_file_less_requires_repo_cwd(tmp_path: Path) -> None:
+def test_flush_logs_pre_state_file_less_does_not_require_repo_cwd(tmp_path: Path) -> None:
     runner = RecordingRunner()
     skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path), cwd=None)
-    assert skip.skipped
-    assert skip.reason == config.REFRESH_SKIP_NO_REPO_CWD
+    assert not skip.skipped
 
 
-def test_flush_logs_pre_state_file_less_commits_with_repo_cwd(
+def test_flush_logs_pre_state_file_less_stages_without_git_commit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -331,7 +330,7 @@ def test_flush_logs_pre_state_file_less_commits_with_repo_cwd(
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
     skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
-    assert runner.git_commits == 1
+    assert runner.git_commits == 0
 
 
 def test_flush_logs_pre_skips_post_merge(tmp_path: Path) -> None:
@@ -949,7 +948,7 @@ def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:
     assert not (run_dir / "timing-report-refresh.json").exists()
 
 
-def test_flush_logs_pre_happy_path_commits(
+def test_flush_logs_pre_happy_path_stages_without_git_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -994,7 +993,7 @@ def test_flush_logs_pre_happy_path_commits(
     runner = RecordingRunner()
     skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
-    assert commits == [True]
+    assert not commits
     manifest = json.loads(
         (tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json").read_text(
             encoding="utf-8",
@@ -1022,7 +1021,7 @@ def test_flush_logs_pre_update_manifest_failure_returns_recovery_skip(
     assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_flush_logs_pre_commit_exception_returns_commit_skip(
+def test_flush_logs_pre_does_not_call_git_commit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1042,8 +1041,7 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
     skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
-    assert skip.skipped is True
-    assert skip.reason == config.REFRESH_SKIP_COMMIT_FAILED
+    assert skip.skipped is False
 
 
 @pytest.mark.parametrize(
@@ -1228,8 +1226,7 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
 
     skip1 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
-    assert skip1.skipped
-    assert skip1.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME
+    assert not skip1.skipped
     stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert ": stalled" in stalled_summary
     assert "- **Outcome**: ❌ STALLED" in stalled_summary
@@ -1613,7 +1610,7 @@ def test_read_state_kv_unreadable_file_returns_empty(tmp_path: Path) -> None:
     assert run_log_manifest.read_state_kv(state_file=str(state), key="RUN_ID") == ""
 
 
-def test_flush_logs_pre_skips_commit_without_repo_cwd(
+def test_flush_logs_pre_stages_without_repo_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1635,8 +1632,7 @@ def test_flush_logs_pre_skips_commit_without_repo_cwd(
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     runner = RecordingRunner()
     skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx, cwd=None)
-    assert skip.skipped
-    assert skip.reason == config.REFRESH_SKIP_NO_REPO_CWD
+    assert not skip.skipped
 
 
 def test_load_or_recover_manifest_prefers_ctx_run_id(tmp_path: Path) -> None:
@@ -1722,6 +1718,24 @@ def test_scrub_run_tree_redacts_cursor_key(tmp_path: Path) -> None:
     assert files_scrubbed == 1
     assert "crsr_1620" not in (sub / "findings.md").read_text(encoding="utf-8")
     assert (run_dir / "clean.md").read_text(encoding="utf-8") == "clean prose\n"
+
+
+def test_scrub_run_tree_redacts_tmpdir_paths(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    artifact = run_dir / "artifact.txt"
+    _ = artifact.write_text(
+        "failure at /private/tmp/larch-design-run.123/result.env\n",
+        encoding="utf-8",
+    )
+
+    violations, files_scrubbed = run_log_commit._scrub_run_tree(  # pyright: ignore[reportPrivateUsage]
+        run_dir
+    )
+
+    assert violations == 0
+    assert files_scrubbed == 1
+    assert "/private/tmp/" not in artifact.read_text(encoding="utf-8")
 
 
 def test_commit_run_reports_copy_tree_scrub_count(
@@ -2128,11 +2142,11 @@ def test_larch_log_flush_warns_when_stage_fails(
 
     rc = run_log_flush.larch_log_flush_main([])
 
-    assert rc == 0
+    assert rc == config.EXIT_INTERNAL_ERROR
     assert "WARN: larch-log flush failed: stage unavailable" in capsys.readouterr().err
 
 
-def test_larch_log_flush_warns_when_commit_run_fails(
+def test_larch_log_flush_does_not_call_git_commit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -2158,9 +2172,7 @@ def test_larch_log_flush_warns_when_commit_run_fails(
     rc = run_log_flush.larch_log_flush_main([])
 
     assert rc == 0
-    err = capsys.readouterr().err
-    assert "WARN: larch-log flush failed: rc=1" in err
-    assert "refusing to replace symlink destination: /some/path" in err
+    assert capsys.readouterr().err == ""
 
 
 def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> None:
@@ -2191,6 +2203,18 @@ def test_larch_log_commit_accepts_tmpdir_flag(
     repo.mkdir()
     _init_git_repo_on_feature(repo)
     monkeypatch.chdir(repo)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "plan-review-tally.json").write_text("{}\n", encoding="utf-8")
+    _ = (run_dir / "difficulty-rating.json").write_text("{}\n", encoding="utf-8")
     rc = run_log_commit.larch_log_commit_main(
         [
             "--log-root",
@@ -2205,14 +2229,26 @@ def test_larch_log_commit_accepts_tmpdir_flag(
     )
 
     assert rc == 0
+    assert run_dir.is_dir()
+    assert not (repo / "larch-logs").exists()
 
 
-def test_larch_log_commit_main_refuses_preterminal_stalled_summary(
+def test_larch_log_commit_main_prepares_terminal_stalled_summary(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "plan-review-tally.json").write_text("{}\n", encoding="utf-8")
+    _ = (run_dir / "difficulty-rating.json").write_text("{}\n", encoding="utf-8")
     _ = (run_dir / "final-summary.md").write_text("## /implement final summary: stalled\n", encoding="utf-8")
 
     rc = run_log_commit.larch_log_commit_main(
@@ -2227,8 +2263,8 @@ def test_larch_log_commit_main_refuses_preterminal_stalled_summary(
     )
 
     captured = capsys.readouterr()
-    assert rc != 0
-    assert "pre-terminal" in captured.err
+    assert rc == 0
+    assert "pre-terminal" not in captured.err
     assert "LARCH_LOG_COMMIT_SHA" not in captured.out
 
 
@@ -2254,11 +2290,11 @@ def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
     _ = (run_dir / "final-summary.md").write_text("## /implement final summary: commit-failed\n", encoding="utf-8")
     commits: list[str] = []
 
-    def fake_commit_run(**_kwargs: object) -> CommandResult:
-        commits.append("commit")
-        return CommandResult(("run-log", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+    def fake_prepare(**_kwargs: object) -> CommandResult:
+        commits.append("prepare")
+        return CommandResult(("run-log", "prepare-publication"), 0, "", "", 0.0)
 
-    monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit_run)
+    monkeypatch.setattr(run_log_commit, "prepare_run_tree_for_publication", fake_prepare)
     monkeypatch.setattr(run_log_commit, "_emit_larch_log_envelope", lambda *_a, **_k: None)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     rc = run_log_commit.larch_log_commit_main(
@@ -2273,7 +2309,7 @@ def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
     )
 
     assert rc == 0
-    assert commits == ["commit"]
+    assert commits == ["prepare"]
 
 
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
@@ -2513,7 +2549,7 @@ def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
     assert ["git", "clean", "-fd", "--", f"{rel}/token-report-refresh.json"] in runner.calls
 
 
-def test_flush_logs_pre_reports_volatile_only_skip_reason(
+def test_flush_logs_pre_does_not_probe_git_volatile_state(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -2523,8 +2559,7 @@ def test_flush_logs_pre_reports_volatile_only_skip_reason(
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
     skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
-    assert skip.skipped
-    assert skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY
+    assert not skip.skipped
 
 
 def test_larch_log_commit_commits_canonical_token_report_delta(
@@ -3697,7 +3732,7 @@ def test_capture_transcript_main_defer_commit_no_warning(
     assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
 
 
-def test_capture_transcript_main_refuses_preterminal_stalled_summary(
+def test_capture_transcript_main_prepares_preterminal_stalled_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3717,8 +3752,11 @@ def test_capture_transcript_main_refuses_preterminal_stalled_summary(
         _ = output.write_text('{"type":"stub"}\n', encoding="utf-8")
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    def fail_commit(**_kwargs: object) -> CommandResult:
-        raise AssertionError("pre-terminal guard should skip transcript commit")
+    prepares: list[str] = []
+
+    def fake_prepare(**_kwargs: object) -> CommandResult:
+        prepares.append("prepare")
+        return CommandResult(("run-log", "prepare-publication"), 0, "", "", 0.0)
 
     def fake_write_batch(
         *,
@@ -3735,7 +3773,7 @@ def test_capture_transcript_main_refuses_preterminal_stalled_summary(
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
     monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+    monkeypatch.setattr(run_log_flush, "prepare_run_tree_for_publication", fake_prepare)
 
     buf = StringIO()
     with contextlib.redirect_stdout(buf):
@@ -3760,8 +3798,9 @@ def test_capture_transcript_main_refuses_preterminal_stalled_summary(
 
     assert rc == 0
     captured = buf.getvalue()
-    assert "SESSION_TRANSCRIPT_STATUS=commit-failed" in captured
-    assert "pre-terminal" in issues_log.read_text(encoding="utf-8")
+    assert "SESSION_TRANSCRIPT_STATUS=captured" in captured
+    assert prepares == ["prepare"]
+    assert "pre-terminal" not in issues_log.read_text(encoding="utf-8")
 
 
 def test_capture_transcript_main_uses_explicit_tmpdir_for_render_path(

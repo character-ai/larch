@@ -73,7 +73,7 @@ Terminal runs must leave explicit `steps_ran` values through `python/cli.py fina
 
 ## Execution-issues checkpoint and metadata refresh
 
-`CI_PASSED=true` does not append execution-issues after green CI. The primary flush is Step 7a, before ship, so CI validates the same PR tree that carries the NDJSON record. Later steps may add entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-ship flush skips, and shared external-implementer / pre-push paths (`python/cli.py run-log flush`, `python/cli.py run-log refresh`) flush a later non-empty tail before the next log commit once that marker exists. Step 18 teardown remains the safety net.
+`CI_PASSED=true` does not append execution-issues after green CI. Step 7a performs the primary staging flush. Later steps may add entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; shared external-implementer and pre-push paths (`python/cli.py run-log flush`, `python/cli.py run-log refresh`) stage the later tail. Step 18 runs the final safety net, sanitizes the complete tree, and publishes one immutable archive before teardown.
 
 Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`). Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip the refresh helper entirely; do not call GitHub for issue `#0`.
 

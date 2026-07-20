@@ -91,7 +91,7 @@ The Code Reviewer archetype produces **dual-list output** with the sections belo
 1. **In-Scope Findings** — Issues that should be fixed in this PR, with specific file/line references, focus-area tag, and suggested fixes
 2. **Out-of-Scope Observations** — Pre-existing issues or concerns beyond the PR's scope, surfaced for future attention
 
-Under `/implement`, committed `larch-logs/implement/<RUN_ID>/` files are the durable store for voting tallies (accepted and rejected findings), OOS observation links, execution issues, and run statistics; accepted OOS observations are additionally filed as standalone GitHub issues at Step 9a.1. Legacy pre–Phase 1 runs may still contain `version-bump-reasoning.md`; the ship path no longer writes it. The tracking issue keeps slim marker-keyed summaries, and the PR body remains a slim projection carrying `Closes #<N>` — see [Workflow Lifecycle](workflow-lifecycle.md) for the routing contract.
+Under `/implement`, the terminal remote archive and unpacked local cache for `larch-logs/implement/<RUN_ID>/` are the durable stores for voting tallies (accepted and rejected findings), OOS observation links, execution issues, and run statistics; accepted OOS observations are additionally filed as standalone GitHub issues at Step 9a.1. Legacy pre–Phase 1 runs may still contain `version-bump-reasoning.md`; the ship path no longer writes it. The tracking issue keeps slim marker-keyed summaries, and the PR body remains a slim projection carrying `Closes #<N>` — see [Workflow Lifecycle](workflow-lifecycle.md) for the routing contract.
 
 ## Usage Across Skills
 

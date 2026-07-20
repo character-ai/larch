@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import config
 from tests.support.repo_contract import repo_root
 
 _REPO = repo_root()
@@ -173,6 +174,25 @@ def main() -> int:
     if args[:2] == ["run-log", "append-failure"]:
         log("append-failure " + " ".join(args[2:]))
         return 0
+    if args[:2] == ["run-log", "commit"]:
+        log("run-log commit " + " ".join(args[2:]))
+        return int(os.environ.get("STEP18_STUB_PREPARE_RC") or "0")
+    if args[:2] == ["run-log", "publish"]:
+        log("run-log publish " + " ".join(args[2:]))
+        publish_rc = int(os.environ.get("STEP18_STUB_PUBLISH_RC") or "0")
+        if publish_rc != 0:
+            print("publication failed: stub upload failure", file=sys.stderr)
+            return publish_rc
+        staging = Path(args[args.index("--staging-root") + 1])
+        cache = staging.parent.parent.parent / "published-cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        print("REMOTE_KEY=run-logs/implement/RUN1.tar.gz")
+        print("ARCHIVE_SHA256=" + "a" * 64)
+        print(f"CACHE_DIR={cache}")
+        print("REMOTE_STATUS=created")
+        print("CACHE_STATUS=promoted")
+        print("PUBLISH_OK=true")
+        return 0
     if args[:2] == ["token", "report"]:
         log("token report")
         return 0
@@ -187,7 +207,7 @@ def main() -> int:
         return 0
     if args[:2] == ["execution-issues", "flush-safety-net"]:
         log("flush-safety-net " + " ".join(args[2:]))
-        return 0
+        return int(os.environ.get("STEP18_STUB_FLUSH_RC") or "0")
     if args[:2] == ["run-log", "capture-transcript"]:
         log("capture-transcript " + " ".join(args[2:]))
         print("SESSION_TRANSCRIPT_STATUS=captured")
@@ -749,6 +769,7 @@ def _make_step18_impl(tmp_path: Path, name: str) -> Path:
         f"LARCH_RUN_ID=RUN1\nLARCH_TOKEN_SESSION_ID=tok\n"
         f"LARCH_CLAUDE_SOURCE_FILE=source.jsonl\n"
         f"LARCH_TIMING_LEDGER={impl}/timing-ledger.tsv\n"
+        f"REPO_ROOT={_REPO}\n"
         "STALL_TRACKING=false\n",
         encoding="utf-8",
     )
@@ -934,6 +955,75 @@ def test_step18_finalize_body_and_teardown(tmp_path: Path) -> None:
         "finalize teardown invocation"
     )
     assert "SESSION_TRANSCRIPT_STATUS=captured" in text, "finalize transcript status relay"
+    assert log_text.index("capture-transcript") < log_text.index("flush-safety-net")
+    assert log_text.index("flush-safety-net") < log_text.index("run-log publish")
+
+
+@pytest.mark.parametrize(
+    ("failure_env", "returncode", "status_kv", "stderr_text", "published"),
+    [
+        ("STEP18_STUB_PUBLISH_RC", 9, "RUN_LOG_PUBLISH_OK=false", "durable pending state", True),
+        ("STEP18_STUB_FLUSH_RC", 7, "RUN_LOG_FINAL_FLUSH_OK=false", "final execution-issues flush failed", False),
+    ],
+)
+def test_step18_terminal_log_failure_preserves_session(
+    tmp_path: Path,
+    failure_env: str,
+    returncode: int,
+    status_kv: str,
+    stderr_text: str,
+    published: bool,
+) -> None:
+    plugin = _make_step18_plugin(tmp_path)
+    impl = _make_step18_impl(tmp_path, "terminal-log-failure")
+    out = tmp_path / "terminal-log-failure.out"
+    log = tmp_path / "terminal-log-failure.log"
+
+    result = _run_step18(
+        tmp_path,
+        impl,
+        plugin,
+        out_path=out,
+        log_path=log,
+        args=["--phase", "finalize", "--step17-emitted", "false"],
+        extra_env={failure_env: str(returncode)},
+    )
+
+    assert result.returncode == returncode
+    assert status_kv in result.stdout
+    assert "---LARCH-SUMMARY-FINAL-BEGIN---" not in result.stdout
+    assert stderr_text in result.stderr
+    log_text = log.read_text(encoding="utf-8")
+    assert ("run-log publish" in log_text) is published
+    assert "flush-safety-net" in log_text
+    assert "teardown" not in log_text
+    assert impl.is_dir()
+
+
+def test_step18_no_logs_commit_skips_archive_publication(tmp_path: Path) -> None:
+    plugin = _make_step18_plugin(tmp_path)
+    impl = _make_step18_impl(tmp_path, "publish-suppressed")
+    _ = (impl / "run-flags.sh").write_text("NO_LOGS_COMMIT=true\n", encoding="utf-8")
+    out = tmp_path / "publish-suppressed.out"
+    log = tmp_path / "publish-suppressed.log"
+
+    result = _run_step18(
+        tmp_path,
+        impl,
+        plugin,
+        out_path=out,
+        log_path=log,
+        args=["--phase", "finalize", "--step17-emitted", "false"],
+        extra_env={"STEP18_STUB_EMIT_BODY": "false"},
+    )
+
+    assert result.returncode == 0
+    assert "RUN_LOG_PUBLISH_SKIPPED=no-logs-commit" in result.stdout
+    log_text = log.read_text(encoding="utf-8")
+    assert "capture-transcript" not in log_text
+    assert "flush-safety-net" not in log_text
+    assert "run-log publish" not in log_text
+    assert "teardown" in log_text
 
 
 def test_step18_step7a_complete_skips_transcript_recapture(tmp_path: Path) -> None:
@@ -1135,9 +1225,9 @@ def test_step18_restore_stall_step_mismatch(tmp_path: Path) -> None:
     assert all(line is not None for line in (mark_line, flush_line, capture_line, restore_line, teardown_line)), (
         "ordering log missing expected rows"
     )
-    assert mark_line < flush_line, "closing mark must precede execution-issues safety net"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
-    assert flush_line < capture_line, "execution-issues safety net must precede transcript safety net"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
-    assert capture_line < restore_line, "transcript safety net must precede restore-finalize-state"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert mark_line < capture_line, "closing mark must precede transcript safety net"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert capture_line < flush_line, "transcript safety net must precede the final execution-issues flush"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert flush_line < restore_line, "execution-issues flush must precede restore-finalize-state"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
     assert restore_line < teardown_line, "restore-finalize-state must precede teardown"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
 
 
@@ -1202,7 +1292,7 @@ def test_step18_restore_read_key_failure_still_teardown(tmp_path: Path) -> None:
     )
 
 
-def test_step18_no_run_id_skips_safety_nets(tmp_path: Path) -> None:
+def test_step18_no_run_id_fails_before_safety_nets_and_teardown(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "no-run-id")
     session = (impl / "session-env.sh").read_text(encoding="utf-8")
@@ -1221,11 +1311,15 @@ def test_step18_no_run_id_skips_safety_nets(tmp_path: Path) -> None:
         args=["--phase", "finalize", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false", "RUN_ID": ""},
     )
-    assert result.returncode == 0
+    assert result.returncode == config.EXIT_INTERNAL_ERROR
+    assert "RUN_LOG_PUBLISH_OK=false" in result.stdout
+    assert "LARCH_RUN_ID is unavailable" in result.stderr
     log_text = log.read_text(encoding="utf-8")
     assert "flush-safety-net" not in log_text, "no run id flush safety net skip"
     assert "capture-transcript" not in log_text, "no run id transcript safety net skip"
-    assert "teardown sentinel=" in log_text, "no run id teardown"
+    assert "run-log publish" not in log_text, "no run id publication skip"
+    assert "teardown sentinel=" not in log_text, "no run id preserves the session"
+    assert impl.is_dir()
 
 
 def test_step18_post_terminal_finalize(tmp_path: Path) -> None:

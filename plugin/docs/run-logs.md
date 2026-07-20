@@ -1,8 +1,8 @@
 # Larch Run Logs
 
-On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. **Phase 1 (#3364):** `/implement` no longer writes `version-bump-reasoning.md` on the ship path; use `/release` or manual bump flows when version reasoning must be committed.
+On a default `/implement --merge` run, Step 18 publishes one immutable `.tar.gz` archive and promotes the same sanitized tree into the unpacked local cache. The archive is the durable source of truth for voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. `/implement` does not add run-log files or commits to the business PR.
 
-Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat committed logs as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#committed-run-logs-and-breadcrumbs).
+Exceptions: `repo_unavailable=true` and `--no-logs-commit` produce no archive. Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat archives as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#committed-run-logs-and-breadcrumbs).
 
 The deterministic, versioned archive representation of one sanitized run tree is
 defined in [Run-log archive format](run-log-archive.md).
@@ -82,7 +82,7 @@ larch-logs/
       checks-digest-sizes.tsv
 ```
 
-`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
+`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before archive publication. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so durable logs preserve schema shape without exposing operator-local absolute paths.
 
 Bgjob result envs and daemon logs are session-local routing inputs before run-log capture. They record `BGJOB_RC`, step-specific KVs, stdout, stderr, and registry state under the session tmpdir, then the ship and publish steps render committed summaries from the routed outcome. The raw bgjob registry and daemon log files are diagnostics, not stable committed batch files, unless a caller copies bounded diagnostics into `execution-issues.ndjson` or another documented batch.
 
@@ -188,19 +188,19 @@ file rejects publication instead of broadening the copied set.
 ### breadcrumbs/
 
 The tree above shows `implement/<RUN_ID>/breadcrumbs/` as a representative
-example. The committed path shape is shared across publishing skill roots, so
+example. The path shape is shared across publishing skill roots, so
 the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
 `review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
 publisher wires that helper for that skill. Today the landed callers are
-`python/cli.py run-log commit` (`/implement`) and `scripts/python/cli.py design log-publish`
+`python/cli.py run-log commit` (`/implement` staging) and `scripts/python/cli.py design log-publish`
 (`design` publish).
 
-`breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
+`breadcrumbs/` is a directory artifact, not a larch-log batch.
 `python/cli.py run-log commit` and `scripts/python/cli.py design log-publish` invoke the
 shared `larch_log_publish_breadcrumbs_shared` helper. Session-tmpdir
 `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are publication
-hints only; committed publication stages quiet logs from the session root, not
+hints only; publication stages quiet logs from the session root, not
 live runtime streams under those directories.
 
 Source resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (which must still
@@ -420,7 +420,7 @@ Created by `python/cli.py run-log init` during **Step 0** when the tracking issu
 
 Attribution for the Step 8 CI-fix `larch:ci-fixer` path and the `larch:arch-assessor` assessor is prose-only: their identity is described in `skills/implement/SKILL.md` and `agents/*.md`, and no `MODE=subagent` or `TIER=subagent` tokens are emitted into run-log records for them (#7192, #7193, #7219). The conflict-resolution `larch:ci-fixer` path (`MODE=conflict`) documents attribution as `MODE=subagent` / `TIER=subagent` in `skills/implement/references/conflict-resolution.md` (#7198). The Step 2.4 Claude-fallback implementer path (`larch:claude-implementer`, work-mode `MODE=step2-plan`) records attribution as `MODE=subagent` / `TIER=subagent` via `--rater-tool subagent` and `--producer subagent` on the orchestrator fences (#7195).
 
-For current `/implement` runs, the committed manifest is normally an `"in-progress"` snapshot because the post-merge `"done"` update happens inside `$IMPLEMENT_TMPDIR` after the last log commit window. That is not an absolute invariant: older committed runs, tests, or manual/status-update flows can still produce committed manifests with `"done"` or other statuses. To assess completion, read `status` as one signal and correlate it with PR merge state plus the surrounding run-log artifacts.
+Current `/implement` archives are created after terminal reconciliation, so a merged run records the final `"done"` manifest. Bail, stall, and cancellation archives retain their terminal status. Historical Git-backed runs may still contain an `"in-progress"` snapshot from the old pre-merge commit window.
 
 ## Batch files
 
@@ -533,7 +533,7 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 ### final-summary.md
 
-**Mode**: replace. **Written**: the committed body is rendered by `python/cli.py render run-summary`; [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`. For `/design`, `python/cli.py design log-publish` renders the enriched `final-summary.md` inside the design tmpdir before copying the committed snapshot, with tracking-comment upserts suppressed in that pre-copy render. Step 5c and clarify then run the authoritative follow-up `python/cli.py design render-final-summary` pass that upserts the marker-keyed tracking comment.
+**Mode**: replace. **Written**: the published body is rendered by `python/cli.py render run-summary`; [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`. For `/design`, `python/cli.py design log-publish` renders the enriched `final-summary.md` inside the design tmpdir before copying the committed snapshot, with tracking-comment upserts suppressed in that pre-copy render. Step 5c and clarify then run the authoritative follow-up `python/cli.py design render-final-summary` pass that upserts the marker-keyed tracking comment.
 
 Committed **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the difficulty bullet, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by `python/cli.py render run-summary`: it begins with a `## /<skill> run <run-id>: <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
@@ -577,7 +577,7 @@ JSON reports may include an additive `rounds` array on a matching per-step row. 
 
 **Mode**: append (NDJSON records). **Written**: Step 2 (Q/A entries, progressive), Step 7a (pre-ship log flush of `execution-issues.md`), later external-implementer / pre-push refreshes when new entries are added after Step 7a, and Step 18's safety net when the normal flush path was missed.
 
-Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively; the main flush happens at Step 7a before shipping so the audit log is part of the same PR tree that CI validates. If later steps append new execution issues, the shared external-implementer / pre-push flush paths append only the unflushed tail, and Step 18 remains the best-effort fallback. This batch is the durable audit trail for follow-up work and operational events.
+Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively. Step 7a performs the primary staging flush; later refreshes append only the unflushed tail. Step 18 runs the final safety net before archive publication. This batch is the durable audit trail for follow-up work and operational events.
 
 ### session-transcript.jsonl
 
@@ -644,7 +644,7 @@ field (the SHA256-12 identifier). To resolve an archetype: look up
 
 ## Tracking issue comments
 
-The tracking issue carries marker-keyed summary comments as the workflow progresses. Most are run-scoped projections maintained by `/implement` and point at committed `larch-logs/` files rather than embedding bulky payloads inline. The exception is `larch:diagrams`: it is issue-scoped, jointly maintained by `/design` and `/implement`, and embeds Mermaid diagram bodies directly rather than pointing at a batch file.
+The tracking issue carries marker-keyed summary comments as the workflow progresses. Most are slim run-scoped projections maintained by `/implement`; full payloads live in the remote archive and unpacked local cache. The exception is `larch:diagrams`: it is issue-scoped, jointly maintained by `/design` and `/implement`, and embeds Mermaid diagram bodies directly.
 
 ### `larch:metadata`
 

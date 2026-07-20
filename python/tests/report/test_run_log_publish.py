@@ -237,7 +237,6 @@ def test_retry_materializes_pending_archive_when_live_staging_changed(
             store=store,
         )
     _ = (staging / "nested/result.txt").write_text("new terminal state\n", encoding="utf-8")
-
     result = _publish(
         repo=repo,
         staging=staging,

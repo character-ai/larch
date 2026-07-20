@@ -2,7 +2,7 @@
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
+Builds the **rich markdown** final run summary, writes the staged `final-summary.md` for terminal archive publication (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
 The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id>: <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer always emits `- **Outcome**:` as the first bullet. Successful outcomes display as `✅ DONE`, `stalled` displays as `❌ STALLED`, and other outcomes display raw. It no longer emits `- **Mode**:`. It emits `- Force: true` when `run-flags.sh` has `FORCE_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/larch/report/report_tokens_cost.py`](../../../python/larch/report/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
 
@@ -22,7 +22,7 @@ These values are emitted by the shared `python/cli.py stall-recovery normalize-o
 
 ## Bail-time `steps_ran` invariant
 
-If the run ends before Step 9a.1 or before `oos file` succeeds, the committed manifest MUST NOT leave `steps_ran` as an ambiguous empty object for downstream audit tooling. Step 9a.1 completion requires post-checkpoint `run-statistics.md`; explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file. `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans. `oos-issues.ndjson` without `run-statistics.md` is provisional disposition evidence and must not suppress `steps_ran.step9a1=false`.
+If the run ends before Step 9a.1 or before `oos file` succeeds, the terminal manifest MUST NOT leave `steps_ran` as an ambiguous empty object for downstream audit tooling. Step 9a.1 completion requires post-checkpoint `run-statistics.md`; explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file. `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans. `oos-issues.ndjson` without `run-statistics.md` is provisional disposition evidence and must not suppress `steps_ran.step9a1=false`.
 
 `python/cli.py final-report write` records explicit `steps_ran.step9a1=false` (and `step8` / `step7a` when their on-disk artifacts are absent) for terminal non-merge outcomes (`bailed`, `stalled`, `design-only`, fork dry-run, PR-created-without-merge, etc.); a non-zero exit from that `run-log manifest` call fails finalization. `python/cli.py run-log verify-completeness` treats missing/null `steps_ran` like `jq '.steps_ran // {}'` for the empty-object bail path, matching `python/cli.py audit-runs scan-run`.
 
@@ -57,7 +57,7 @@ When set, the writer prints the rendered markdown body to **stdout** before the
 status KV lines. Top-chat visibility is still owned by the orchestrator, which
 emits the persisted `$IMPLEMENT_TMPDIR/summary-final.md` body verbatim after the
 wrapper returns (per `skills/implement/SKILL.md` Step 17 / Step 18 prose). The
-canonical tmpdir basename is `summary-final.md`, distinct from the committed
+canonical tmpdir basename is `summary-final.md`, distinct from the archived
 `larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact.
 
 ### Key-value contract

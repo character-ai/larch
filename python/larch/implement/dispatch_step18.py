@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import config
 from larch.errors import ShipError
 from larch.implement.dispatch_helpers import (
@@ -212,6 +213,139 @@ def _should_restore_finalize(implement_tmpdir: Path) -> bool:
     return bool(ship_step) and ship_step != final_step
 
 
+def _terminal_publication_suppressed(implement_tmpdir: Path) -> bool:
+    for name in ("finalize-state.sh", "run-flags.sh", "session-env.sh"):
+        if _read_kv_file(path=implement_tmpdir / name, key="NO_LOGS_COMMIT", default="false") == "true":
+            return True
+    return False
+
+
+def _terminal_publication_repo_root(implement_tmpdir: Path) -> Path | None:
+    for name in ("session-env.sh", "ship-pr-state.sh", "finalize-state.sh"):
+        raw: str = _read_kv_file(path=implement_tmpdir / name, key="REPO_ROOT", default="").strip()
+        if not raw:
+            continue
+        root: Path = Path(raw)
+        if not root.is_absolute():
+            continue
+        try:
+            return larch_io.validate_trusted_directory(root)
+        except OSError:
+            continue
+    return None
+
+
+def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str) -> int:
+    if _terminal_publication_suppressed(implement_tmpdir):
+        _emit_kv(key="RUN_LOG_PUBLISH_SKIPPED", value="no-logs-commit")
+        return 0
+    repo_root: Path | None = _terminal_publication_repo_root(implement_tmpdir)
+    if repo_root is None:
+        print("Step 18: run-log publication failed: persisted REPO_ROOT is unavailable", file=sys.stderr)
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return config.EXIT_INTERNAL_ERROR
+    log_root: Path = implement_tmpdir / "larch-logs"
+    prepare = _run_cli_capture(
+        [
+            "run-log", "commit",
+            "--log-root", str(log_root), "--tmpdir", str(implement_tmpdir),
+            "--skill", "implement", "--run-id", run_id,
+        ],
+        cwd=repo_root,
+    )
+    if prepare.stderr:
+        sys.stderr.write(prepare.stderr)
+        sys.stderr.flush()
+    if prepare.returncode != 0:
+        print(
+            f"Step 18: run-log publication preparation failed (rc={prepare.returncode}); "
+            "the session staging tree was retained for recovery.",
+            file=sys.stderr,
+        )
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return prepare.returncode
+    publish = _run_cli_capture(
+        [
+            "run-log", "publish",
+            "--repo-root", str(repo_root), "--skill", "implement",
+            "--run-id", run_id, "--staging-root", str(log_root / "implement" / run_id),
+        ],
+        cwd=repo_root,
+    )
+    if publish.stderr:
+        sys.stderr.write(publish.stderr)
+        sys.stderr.flush()
+    publication_values: dict[str, str] = _parse_kv(publish.stdout or "")
+    cache_dir_raw: str = publication_values.get("CACHE_DIR", "")
+    cache_dir: Path | None = Path(cache_dir_raw) if cache_dir_raw else None
+    postcondition_ok: bool = (
+        publish.returncode == 0
+        and publication_values.get("PUBLISH_OK") == "true"
+        and bool(publication_values.get("REMOTE_KEY"))
+        and cache_dir is not None
+        and cache_dir.is_dir()
+    )
+    if not postcondition_ok:
+        print(
+            f"Step 18: run-log publication failed (rc={publish.returncode}); "
+            "durable pending state and the session staging tree were retained for retry.",
+            file=sys.stderr,
+        )
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return publish.returncode or config.EXIT_INTERNAL_ERROR
+    if publish.stdout:
+        sys.stdout.write(publish.stdout)
+        if not publish.stdout.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+    _emit_kv(key="RUN_LOG_PUBLISH_OK", value="true")
+    return 0
+
+
+def _complete_terminal_run_log(*, implement_tmpdir: Path, run_id: str, emit_body: str, wfr_rc: str) -> int:
+    if _terminal_publication_suppressed(implement_tmpdir):
+        _emit_kv(key="RUN_LOG_PUBLISH_SKIPPED", value="no-logs-commit")
+    elif not run_id:
+        print("Step 18: run-log publication failed: LARCH_RUN_ID is unavailable", file=sys.stderr)
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return config.EXIT_INTERNAL_ERROR
+    else:
+        source_file = os.environ.get("LARCH_CLAUDE_SOURCE_FILE") or _read_session_key_default(
+            implement_tmpdir=implement_tmpdir, key="LARCH_CLAUDE_SOURCE_FILE", default=""
+        )
+        if source_file and not (implement_tmpdir / "bgjob" / "implement-step7a.result.env").is_file():
+            capture = _run_cli_capture([
+                "run-log", "capture-transcript",
+                "--source-file", source_file, "--log-root", str(implement_tmpdir / "larch-logs"),
+                "--skill", "implement", "--run-id", run_id, "--defer-commit", "true",
+                "--execution-issues-log", str(implement_tmpdir / "execution-issues.md"), "--warning-step-label", "18",
+            ])
+            for line in (capture.stdout or "").splitlines():
+                if line.startswith("SESSION_TRANSCRIPT_STATUS="):
+                    print(line)
+        flush = _invoke_cli([
+            "execution-issues", "flush-safety-net",
+            "--log-root", str(implement_tmpdir / "larch-logs"), "--run-id", run_id,
+            "--issue-log", str(implement_tmpdir / "execution-issues.md"),
+        ])
+        if flush.returncode != 0:
+            print(
+                f"Step 18: final execution-issues flush failed (rc={flush.returncode}); "
+                "the session staging tree was retained for retry.",
+                file=sys.stderr,
+            )
+            _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="false")
+            return flush.returncode
+        _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="true")
+        publish_rc: int = _publish_terminal_archive(implement_tmpdir=implement_tmpdir, run_id=run_id)
+        if publish_rc != 0:
+            return publish_rc
+    summary = implement_tmpdir / "summary-final.md"
+    if emit_body == "true" and wfr_rc == "0" and summary.is_file() and summary.stat().st_size > 0:
+        _ = _print_summary_markers(implement_tmpdir)
+    return 0
+
+
 def _step18_gate(*, implement_tmpdir: Path, stall_tracking_memory: str) -> int:
     layers = _resolve_stall_layers(implement_tmpdir, stall_tracking_memory_arg=stall_tracking_memory)
     _emit_kv(key="STALL_TRACKING_MEMORY", value=layers.memory)
@@ -226,7 +360,7 @@ def _step18_gate(*, implement_tmpdir: Path, stall_tracking_memory: str) -> int:
     return 0
 
 
-def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:  # noqa: C901 - finalize sequences report render, token and timing marks, transcript capture, and teardown
+def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
     if step17_emitted == "true":
         (implement_tmpdir / ".step17-emitted").touch()
 
@@ -267,9 +401,6 @@ def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:  # 
     if wfr_rc != "0":
         reason = wfr_error or "render failed (no reason surfaced)"
         print(f"**⚠ Step 18: final report render failed (WFR_RC={wfr_rc}): {reason}.**", file=sys.stderr)
-    if emit_body == "true" and wfr_rc == "0" and (implement_tmpdir / "summary-final.md").is_file() and (implement_tmpdir / "summary-final.md").stat().st_size > 0:
-        _ = _print_summary_markers(implement_tmpdir)
-
     _ = _invoke_cli(["token", "report", "--since-last-mark", "--terse"])
     timing_env = {**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}
     _ = _run_cli_capture(["timing", "report", "--since-last-mark", "--terse"], env=timing_env)
@@ -277,30 +408,14 @@ def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:  # 
     _ = _run_cli_capture(["timing", "mark", "Step 18 — done"], env=timing_env)
 
     run_id = os.environ.get("RUN_ID") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default="")
-    if run_id:
-        _ = _invoke_cli([
-            "execution-issues", "flush-safety-net",
-            "--log-root", str(implement_tmpdir / "larch-logs"),
-            "--run-id", run_id,
-            "--issue-log", str(implement_tmpdir / "execution-issues.md"),
-        ])
-        source_file = os.environ.get("LARCH_CLAUDE_SOURCE_FILE") or _read_session_key_default(
-            implement_tmpdir=implement_tmpdir, key="LARCH_CLAUDE_SOURCE_FILE", default=""
-        )
-        if source_file and not (implement_tmpdir / "bgjob" / "implement-step7a.result.env").is_file():
-            capture = _run_cli_capture([
-                "run-log", "capture-transcript",
-                "--source-file", source_file,
-                "--log-root", str(implement_tmpdir / "larch-logs"),
-                "--skill", "implement",
-                "--run-id", run_id,
-                "--defer-commit", "true",
-                "--execution-issues-log", str(implement_tmpdir / "execution-issues.md"),
-                "--warning-step-label", "18",
-            ])
-            for line in (capture.stdout or "").splitlines():
-                if line.startswith("SESSION_TRANSCRIPT_STATUS="):
-                    print(line)
+    run_log_rc = _complete_terminal_run_log(
+        implement_tmpdir=implement_tmpdir,
+        run_id=run_id,
+        emit_body=emit_body,
+        wfr_rc=wfr_rc,
+    )
+    if run_log_rc != 0:
+        return run_log_rc
 
     if _should_restore_finalize(implement_tmpdir):
         restore = _invoke_cli(["session", "restore-finalize-state", "--implement-tmpdir", str(implement_tmpdir)])
