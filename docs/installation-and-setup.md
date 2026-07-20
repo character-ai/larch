@@ -150,7 +150,9 @@ The remote marketplace fetches only the checked runtime projection under
 `plugin/`. Both its fetch and the installed cache exclude Rust source,
 repository linters, tests, release automation, and CI support files. Python
 runtime modules remain because larch still executes them during the Rust
-migration.
+migration. The projection includes the root security policy, the
+[security reference index](security/README.md), and every focused security
+reference used by shipped skills.
 
 ### Git prerequisite
 
