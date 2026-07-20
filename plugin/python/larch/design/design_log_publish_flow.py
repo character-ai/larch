@@ -9,8 +9,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,9 +17,7 @@ from larch import io as larch_io
 from larch.core import config, redact, repo_roots
 from larch.design import design_publish
 from larch.design.design_summary import resolve_summary_mode
-from larch.errors import ShipError
-from larch.report import run_log_publish as run_log_publisher, storage_config
-from larch.report.object_store import ObjectStoreError
+from larch.report import run_lifecycle, run_logs
 from larch.report.run_log_batch import append_execution_issue
 
 
@@ -38,6 +34,7 @@ class PublishDesignLogsRequest:
     run_id: str
     issue: str
     repo: str
+    lifecycle_outcome: str
     include_completed: bool = False
 
 
@@ -335,99 +332,87 @@ def _run(
 def _publish_design_logs(
     *, request: PublishDesignLogsRequest
 ) -> tuple[bool, str, str, str]:
-    """Sanitize, finalize, and publish one immutable design run archive."""
+    """Stage rich design artifacts and finish through the shared lifecycle."""
     top = repo_roots.repo_root_probe(run=_run)
     repo_root = top.stdout.strip()
     if top.returncode != 0 or not repo_root:
         return (False, "", "", "0")
-    cli = str(request.plugin_root / "python" / "cli.py")
-    with tempfile.TemporaryDirectory(
-        prefix="larch-design-log-publish-",
-        dir=request.design_tmpdir.parent,
-    ) as staging_dir:
-        wt_log_root = Path(staging_dir) / "larch-logs"
-        run_dest = wt_log_root / "design" / request.run_id
-        run_dest.mkdir(parents=True, exist_ok=True)
-        init = _run(
-            [
-                sys.executable,
-                cli,
-                "run-log",
-                "init",
-                "--log-root",
-                str(wt_log_root),
-                "--skill",
-                "design",
-                "--run-id",
-                request.run_id,
-                "--issue",
-                request.issue,
-            ],
+    try:
+        context = run_lifecycle.load_run_context(
+            repo_root=Path(repo_root), skill="design", run_id=request.run_id
         )
-        if init.returncode != 0:
-            print(f"design log-publish: run-log init failed: {init.stderr.strip()}", file=sys.stderr)
+    except (OSError, TypeError, ValueError, run_lifecycle.RunLifecycleError) as exc:
+        print(
+            f"design log-publish: lifecycle context unavailable: {exc}", file=sys.stderr
+        )
+        return (False, "", "", "0")
+    run_dest = context.run_dir
+    try:
+        _ = run_logs.log_manifest_update(
+            log_root=context.log_root,
+            skill="design",
+            run_id=request.run_id,
+            updates={"issue_number": int(request.issue)},
+        )
+    except (OSError, ValueError) as exc:
+        print(
+            f"design log-publish: lifecycle issue binding failed: {exc}",
+            file=sys.stderr,
+        )
+        return (False, "", "", "0")
+    if not request.include_completed:
+        completed = run_dest / ".completed"
+        if completed.is_symlink() or completed.is_file():
+            with contextlib.suppress(FileNotFoundError, OSError):
+                completed.unlink()
+        else:
+            shutil.rmtree(completed, ignore_errors=True)
+    pre_scrub_violations = 0
+    for child in request.design_tmpdir.iterdir():
+        if child.name == ".design-log-publish-metadata.env":
+            continue
+        if _publish_excluded(
+            child.name, is_dir=child.is_dir(), top_level=True
+        ) and not (
+            request.include_completed and child.name == ".completed" and child.is_dir()
+        ):
+            continue
+        ok, scrub_count = _copy_tree_redacted(
+            plugin_root=request.plugin_root,
+            source=child,
+            dest=run_dest / child.name,
+        )
+        if not ok:
             return (False, "", "", "0")
-        if not request.include_completed:
-            completed = run_dest / ".completed"
-            if completed.is_symlink() or completed.is_file():
-                with contextlib.suppress(FileNotFoundError, OSError):
-                    completed.unlink()
-            else:
-                shutil.rmtree(completed, ignore_errors=True)
-        pre_scrub_violations = 0
-        for child in request.design_tmpdir.iterdir():
-            if child.name == ".design-log-publish-metadata.env":
-                continue
-            if _publish_excluded(
-                child.name, is_dir=child.is_dir(), top_level=True
-            ) and not (
-                request.include_completed
-                and child.name == ".completed"
-                and child.is_dir()
-            ):
-                continue
-            ok, scrub_count = _copy_tree_redacted(
-                plugin_root=request.plugin_root,
-                source=child,
-                dest=run_dest / child.name,
-            )
-            if not ok:
-                return (False, "", "", "0")
-            pre_scrub_violations += scrub_count
-        try:
-            publication, scrub_violations = run_log_publisher.publish_log_run(
-                request=run_log_publisher.PublicationRequest(
-                    repo_root=Path(repo_root),
-                    storage_root=storage_config.discover_storage_root(start=Path(repo_root)),
-                    skill="design",
-                    run_id=request.run_id,
-                    staging_root=None,
-                ),
-                log_root=wt_log_root,
-                pre_scrub_violations=pre_scrub_violations,
-            )
-        except (
-            EOFError,
-            ObjectStoreError,
-            OSError,
-            run_log_publisher.PublicationError,
-            ShipError,
-            storage_config.StorageConfigurationError,
-            tarfile.TarError,
-            TypeError,
-            ValueError,
-        ) as exc:
-            print(
-                f"design log-publish: archive publication failed: {exc}",
-                file=sys.stderr,
-            )
-            return (False, "", "", str(pre_scrub_violations))
-        return (
-            True,
-            publication.remote_key,
-            str(publication.cache_dir),
-            str(scrub_violations),
+        pre_scrub_violations += scrub_count
+    try:
+        terminal = run_lifecycle.finish_run(
+            repo_root=Path(repo_root),
+            skill="design",
+            run_id=request.run_id,
+            outcome=request.lifecycle_outcome,
+            pre_scrub_violations=pre_scrub_violations,
         )
+    except run_lifecycle.TERMINAL_EXCEPTIONS as exc:
+        print(f"design log-publish: archive publication failed: {exc}", file=sys.stderr)
+        return (False, "", "", str(pre_scrub_violations))
+    return (
+        True,
+        terminal.publication.remote_key,
+        str(terminal.publication.cache_dir),
+        str(terminal.secret_scrub_violations),
+    )
+
+
+def _lifecycle_outcome(*, reason: str, outcome: str) -> str:
+    normalized = outcome.lower()
+    if normalized.startswith("cancelled"):
+        return "cancelled"
+    if normalized.startswith("failed"):
+        return "failure"
+    if reason == "pause":
+        return "early-return"
+    return "success"
 
 
 def _default_outcome_for_reason(reason: str) -> str:
@@ -632,16 +617,17 @@ def run_log_publish(request: LogPublishRequest) -> LogPublishResult:
         )
 
     try:
-        publish_ok, remote_key, cache_dir, scrub_violations = (
-            _publish_design_logs(
-                request=PublishDesignLogsRequest(
-                    plugin_root=plugin_root,
-                    design_tmpdir=design_tmpdir,
-                    run_id=request.run_id,
-                    issue=request.issue,
-                    repo=request.repo,
-                    include_completed=request.reason == "pause",
-                )
+        publish_ok, remote_key, cache_dir, scrub_violations = _publish_design_logs(
+            request=PublishDesignLogsRequest(
+                plugin_root=plugin_root,
+                design_tmpdir=design_tmpdir,
+                run_id=request.run_id,
+                issue=request.issue,
+                repo=request.repo,
+                lifecycle_outcome=_lifecycle_outcome(
+                    reason=request.reason, outcome=outcome
+                ),
+                include_completed=request.reason == "pause",
             )
         )
     except SecretScrubFailure as exc:

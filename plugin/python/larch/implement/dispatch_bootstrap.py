@@ -13,6 +13,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.implement.dispatch_helpers import (
     _first_nonempty,
+    _forward_result,
     _invoke_cli,
     _parse_kv,
     _read_kv_file,
@@ -141,7 +142,7 @@ def _apply_fork_env(args: argparse.Namespace) -> int:  # noqa: C901 - fork-env f
     return 0
 
 
-def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901 - bootstrap entrypoint validates flags then assembles the resume and invoke argv
+def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912, PLR0915 - bootstrap entrypoint validates flags, assembles resume argv, and adopts lifecycle state
     parser = argparse.ArgumentParser(prog="cli.py implement step-0-bootstrap")
     parser.add_argument("--mode", choices=("initial", "resume"), required=True)
     parser.add_argument("--issue-number", default="")
@@ -161,6 +162,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901 - 
     parser.add_argument("--session-env", default="")
     parser.add_argument("--non-interactive", default="")
     parser.add_argument("--difficulty", default="")
+    parser.add_argument("--lifecycle-parent-context", default="")
     args = parser.parse_args(argv)
 
     for flag in (
@@ -232,4 +234,35 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901 - 
         "--non-interactive", non_interactive,
         "--difficulty", args.difficulty,
     ]
-    return _run_cli_forward(invoke_args)
+    result = _invoke_cli(invoke_args)
+    values = _parse_kv(result.stdout or "")
+    if (
+        result.returncode == 0
+        and values.get("REPO_UNAVAILABLE") != "true"
+        and (args.no_logs_commit or "false") != "true"
+    ):
+        lifecycle_args = [
+            "run-log",
+            "lifecycle-start",
+            "--repo-root",
+            str(Path.cwd()),
+            "--skill",
+            "implement",
+            "--run-id",
+            str(values.get("RUN_ID") or args.run_id or ""),
+            "--log-root",
+            str(Path(values.get("IMPLEMENT_TMPDIR", "")) / "larch-logs"),
+            "--issue",
+            str(values.get("ISSUE_NUMBER") or args.issue_number or ""),
+            "--adopt-existing",
+        ]
+        if args.lifecycle_parent_context:
+            lifecycle_args.extend(["--parent-context", str(args.lifecycle_parent_context)])
+        lifecycle = _invoke_cli(lifecycle_args)
+        if lifecycle.stdout:
+            result.stdout = (result.stdout or "") + lifecycle.stdout
+        if lifecycle.stderr:
+            result.stderr = (result.stderr or "") + lifecycle.stderr
+        if lifecycle.returncode != 0:
+            result.returncode = lifecycle.returncode
+    return _forward_result(result)

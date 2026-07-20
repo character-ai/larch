@@ -22,6 +22,9 @@ def _write_contract(root: Path, *, omit: str = "") -> None:
     path = root / lifecycle_lint.SHARED_CONTRACT
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(text, encoding="utf-8")
+    registry = root / lifecycle_lint.OWNERSHIP_REGISTRY
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    _ = registry.write_text("skill\tstart_owner\tterminal_owner\tno_archive_exception\n*\tskills/shared/run-lifecycle.md\tskills/shared/run-lifecycle.md\t-\n", encoding="utf-8")
 
 
 def _write_skill(
@@ -186,6 +189,17 @@ def test_shared_contract_rejects_missing_terminal_path(
 
     assert lifecycle_lint.lint_root(tmp_path) == 1
     assert "partially wired lifecycle contract" in capsys.readouterr().err
+
+
+def test_declared_lifecycle_with_second_terminal_publisher_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_empty_skill_roots(tmp_path)
+    _write_contract(tmp_path)
+    _write_skill(tmp_path, "sample", "# larch-run-lifecycle: shared-v1 skill=sample")
+    prompt = tmp_path / "skills" / "sample" / "SKILL.md"
+    with prompt.open("a", encoding="utf-8") as handle:
+        _ = handle.write("Run `python3 python/cli.py run-log publish` at exit.\n")
+    assert lifecycle_lint.lint_root(tmp_path) == 1
+    assert "direct terminal publisher bypasses lifecycle ownership" in capsys.readouterr().err
 
 
 def test_symlinked_skill_directory_is_a_tool_error(

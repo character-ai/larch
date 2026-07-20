@@ -21,7 +21,7 @@ from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.design import design_pause
 from larch.git import gh
-from larch.core import proc
+from larch.core import config, proc
 
 from larch.design.design_core import _capture_contract_stream_to_paths, _cli_cmd, _append_failure
 from larch.design.design_router import _parse_stdout_kv, _write_kv_file
@@ -225,6 +225,46 @@ def step0_session_main(argv: Sequence[str]) -> int:
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
     active_run_id = parsed.get("run_id", "") or session_id
+    lifecycle = subprocess.run(
+        _cli_cmd(
+            plugin_root,
+            "run-log",
+            "lifecycle-start",
+            "--repo-root",
+            str(repo_root),
+            "--skill",
+            "design",
+            "--run-id",
+            active_run_id,
+            "--log-root",
+            str(design_path / "larch-logs"),
+            "--adopt-existing",
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if lifecycle.stdout:
+        print(
+            lifecycle.stdout,
+            end="" if lifecycle.stdout.endswith("\n") else "\n",
+        )
+    lifecycle_kv = _parse_stdout_kv(lifecycle.stdout)
+    if (
+        lifecycle.returncode != 0
+        or lifecycle_kv.get("LIFECYCLE_STARTED", [""])[-1] != "true"
+    ):
+        if lifecycle.stderr:
+            print(
+                lifecycle.stderr,
+                file=sys.stderr,
+                end="" if lifecycle.stderr.endswith("\n") else "\n",
+            )
+        print(
+            "**⚠ /design: lifecycle start failed; preserving the session**",
+            file=sys.stderr,
+        )
+        return lifecycle.returncode or config.EXIT_INTERNAL_ERROR
     reviewer_probe = subprocess.run(
         _cli_cmd(plugin_root, "agent", "check-reviewers"),
         capture_output=True,

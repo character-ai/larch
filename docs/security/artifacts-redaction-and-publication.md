@@ -207,7 +207,10 @@ plans, findings, summaries, transcripts, failure evidence, and model output
 after sanitization. Treat them as sensitive even when every redaction and
 scanner passes. Current workflows do not store run logs in Git.
 
-The run-log and design-log publishers enforce these security invariants:
+The shared run lifecycle is the sole terminal archive publisher. Specialized
+design, implement, and review owners may select and stage richer artifacts, but
+they hand that one staging tree to the shared terminal boundary. That boundary
+enforces these security invariants:
 
 - select only registered batches and documented directory artifacts;
 - exclude raw prompt-bearing event streams, retry-only output, unregistered
@@ -265,7 +268,8 @@ caches remain private operator state. Moving an archive to object storage does
 not broaden who should receive it.
 
 This boundary applies to every public, alias, internal child, and dev-only skill
-archive. Parent-child metadata identifies run relationships but does not change
+archive. A durable lifecycle context binds the selected staging root to one
+repository, storage URI, skill, and run ID before publication. Parent-child metadata identifies run relationships but does not change
 the classification, redaction, or publication rules for either archive.
 
 `python/cli.py run-log sync` treats the remote inventory and downloaded archives

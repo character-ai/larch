@@ -9112,7 +9112,7 @@ rust = []
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log init", "run-log publish", "run-log storage-preflight", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
+python = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review core", "review gather-context", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
 rust = []
 
 [[callers]]
