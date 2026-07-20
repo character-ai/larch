@@ -1,7 +1,7 @@
 # flush-execution-issues.sh
 
 `flush-execution-issues.sh` appends `$IMPLEMENT_TMPDIR/execution-issues.md` to
-the committed `execution-issues` larch-log batch before the pre-ship phase.
+the staged `execution-issues` larch-log batch before the pre-ship phase and terminal archive publication.
 Primary caller: `/implement` Step 7a pre-ship log flush.
 
 Usage:

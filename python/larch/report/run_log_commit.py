@@ -180,12 +180,11 @@ def _cleanup_volatile_run_tree(
 
 
 def _scrub_run_tree(directory: Path) -> tuple[int, int]:
-    """Scrub secret-shaped values from every file under ``directory`` in place
-    before commit (parity with python3 python/cli.py redact scrub-log-secrets).
+    """Scrub secret-shaped values and local paths from a publication tree.
 
-    Returns ``(total_violations, files_scrubbed)``. Files with no secret are
-    left byte-for-byte untouched. Fail-closed: raises :class:`ShipError` if a
-    detected secret survives scrubbing, so the caller aborts rather than commits.
+    Returns ``(total_violations, files_scrubbed)``. Files needing no redaction
+    are left byte-for-byte untouched. Fail-closed: raises :class:`ShipError` if a
+    detected value survives scrubbing, so the caller aborts publication.
     """
     total = 0
     files_scrubbed = 0
@@ -196,14 +195,18 @@ def _scrub_run_tree(directory: Path) -> tuple[int, int]:
             original = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        scrub_result = redact.scrub_log_secrets(original)
+        path_scrubbed: str = redact.redact_tmpdir_paths(original)
+        scrub_result = redact.scrub_log_secrets(path_scrubbed)
         scrubbed = scrub_result.scrubbed
         findings = scrub_result.findings
-        if not findings:
+        if scrubbed == original and not findings:
             continue
         residual = redact.scrub_log_secrets(scrubbed).findings
         if residual:
             msg = f"secret survived scrubbing in {path}"
+            raise ShipError(msg)
+        if redact.redact_tmpdir_paths(scrubbed) != scrubbed:
+            msg = f"tmpdir path survived scrubbing in {path}"
             raise ShipError(msg)
         _ = path.write_text(scrubbed, encoding="utf-8")
         total += sum(findings.values())
@@ -623,6 +626,82 @@ def _commit_run(*, log_root: Path, skill: str, run_id: str, cwd: str | None, pre
     return CommandResult(tail.result.argv, 0, stdout, tail.result.stderr, 0.0)
 
 
+def prepare_run_tree_for_publication(
+    *,
+    log_root: Path,
+    skill: str,
+    run_id: str,
+    repo_root: Path,
+    pre_scrub_violations: int = 0,
+) -> CommandResult:
+    """Validate and sanitize one staging tree without publishing it through Git."""
+    if is_placeholder_run_id(run_id):
+        _warn_placeholder_run_id(run_id)
+        return CommandResult(("true",), 0, "SECRET_SCRUB_VIOLATIONS=0\n", "", 0.0)
+    run_dir: Path = _run_dir(log_root=log_root, skill=skill, run_id=run_id)
+    if not run_dir.is_dir() or run_dir.is_symlink():
+        return CommandResult(
+            ("run-log", "prepare-publication"),
+            config.RUN_LOG_INCOMPLETE_RC,
+            "",
+            f"run-log incomplete: missing staging directory {run_dir}\n",
+            0.0,
+        )
+    manifest: Path = _manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
+    _update_commit_manifest_with_warning(manifest)
+    complete, missing = verify_run_log_completeness(
+        run_dir=run_dir,
+        skill=skill,
+        repo_root=repo_root,
+    )
+    if not complete:
+        return CommandResult(
+            ("run-log", "prepare-publication"),
+            config.RUN_LOG_INCOMPLETE_RC,
+            "",
+            f"run-log incomplete: {', '.join(missing)}\n",
+            0.0,
+        )
+    _publish_breadcrumbs_with_warning(log_root=log_root, dest=run_dir)
+    try:
+        violations, files_scrubbed = _scrub_run_tree(run_dir)
+    except ShipError as exc:
+        return CommandResult(
+            ("run-log", "prepare-publication"),
+            config.EXIT_INTERNAL_ERROR,
+            "",
+            f"{exc}\n",
+            0.0,
+        )
+    violations += pre_scrub_violations
+    if violations > 0:
+        _warn_secret_scrub(
+            violations=violations,
+            files_scrubbed=files_scrubbed,
+            directory=run_dir,
+        )
+    complete, missing = verify_run_log_completeness(
+        run_dir=run_dir,
+        skill=skill,
+        repo_root=repo_root,
+    )
+    if not complete:
+        return CommandResult(
+            ("run-log", "prepare-publication"),
+            config.RUN_LOG_INCOMPLETE_RC,
+            "",
+            f"run-log incomplete after sanitization: {', '.join(missing)}\n",
+            0.0,
+        )
+    return CommandResult(
+        ("run-log", "prepare-publication"),
+        0,
+        f"SECRET_SCRUB_VIOLATIONS={violations}\n",
+        "",
+        0.0,
+    )
+
+
 def _larch_log_commit(
     *, runner: Runner,
     ctx: RunContext,
@@ -843,22 +922,23 @@ def larch_log_commit_main(argv: list[str]) -> int:
         return _larch_log_fail(code=1, message="invalid commit arguments")
     if not str(args.pre_scrub_violations).isdigit():
         return _larch_log_fail(code=1, message="invalid --pre-scrub-violations: expected non-negative integer")
-    preterminal_block = (
-        _check_preterminal_commit_blocked(args.log_root_path, args.skill, args.run_id)
-        if args.skill == "implement"
-        else None
-    )
-    if preterminal_block is not None:
-        print(f"WARN: larch-log commit skipped: {preterminal_block}", file=sys.stderr)
-        return 3
     try:
-        result = _commit_run(
-            log_root=args.log_root_path,
-            skill=args.skill,
-            run_id=args.run_id,
-            cwd=str(Path.cwd()),
-            pre_scrub_violations=int(args.pre_scrub_violations),
-        )
+        if args.skill == "implement":
+            result = prepare_run_tree_for_publication(
+                log_root=args.log_root_path,
+                skill=args.skill,
+                run_id=args.run_id,
+                repo_root=_resolve_consumer_repo_root(str(Path.cwd())),
+                pre_scrub_violations=int(args.pre_scrub_violations),
+            )
+        else:
+            result = _commit_run(
+                log_root=args.log_root_path,
+                skill=args.skill,
+                run_id=args.run_id,
+                cwd=str(Path.cwd()),
+                pre_scrub_violations=int(args.pre_scrub_violations),
+            )
     except ShipError as exc:
         print(str(exc), file=sys.stderr)
         return 3
@@ -880,7 +960,15 @@ def larch_log_commit_main(argv: list[str]) -> int:
     if "SECRET_SCRUB_VIOLATIONS" in output_values:
         extra["SECRET_SCRUB_VIOLATIONS"] = output_values["SECRET_SCRUB_VIOLATIONS"]
     unchanged = result.argv in {("true",), ("larch-log-volatile-only",)}
-    path = _repo_run_dir(repo_root=_resolve_consumer_repo_root(str(Path.cwd())), skill=args.skill, run_id=args.run_id)
+    path = (
+        _run_dir(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id)
+        if args.skill == "implement"
+        else _repo_run_dir(
+            repo_root=_resolve_consumer_repo_root(str(Path.cwd())),
+            skill=args.skill,
+            run_id=args.run_id,
+        )
+    )
     _emit_larch_log_envelope(
         path=path if path.exists() else None,
         written=bool(commit_sha),

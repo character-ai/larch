@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 import pytest
 
-from larch.core import config
+from larch.core import config, rust_runtime
 from larch.report import final_report
 from larch.report import run_log_commit
 from larch.report import run_log_flush
@@ -289,9 +289,9 @@ def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(
-        ship_pr.rust_runtime,
+        rust_runtime,
         "push_branch",
-        lambda *_a, **_k: ship_pr.rust_runtime.PushOutput(status="pushed", branch="feat"),
+        lambda *_a, **_k: rust_runtime.PushOutput(status="pushed", branch="feat"),
     )
     monkeypatch.setattr(
         ship_merge.rust_runtime,
@@ -1666,7 +1666,7 @@ def test_committed_summary_heading_outcome_bullet_without_heading_is_not_stalled
     assert not ship_pr._committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd="/tmp/repo")
 
 
-def test_recovered_stalled_summary_push_failure_blocks_merge(
+def test_recovered_stalled_summary_does_not_push_log_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1689,12 +1689,12 @@ def test_recovered_stalled_summary_push_failure_blocks_merge(
             },
         )(),
     )
-    push_statuses = ["pushed", "failed"]
+    push_statuses = ["pushed"]
 
     def fake_push(*_args: object, **_kwargs: object) -> object:
-        return ship_pr.rust_runtime.PushOutput(status=push_statuses.pop(0), branch="feat")
+        return rust_runtime.PushOutput(status=push_statuses.pop(0), branch="feat")
 
-    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", fake_push)
+    monkeypatch.setattr(rust_runtime, "push_branch", fake_push)
 
     def fake_merge(*_args: object, **_kwargs: object) -> object:
         nonlocal merge_called
@@ -1705,13 +1705,13 @@ def test_recovered_stalled_summary_push_failure_blocks_merge(
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.STALLED
-    assert result.detail == "run-log reconciliation push failed: failed"
-    assert not merge_called
+    assert result.outcome is Outcome.OK
+    assert merge_called
+    assert not push_statuses
 
 
 
-def test_recovered_stalled_summary_push_exception_blocks_merge(
+def test_recovered_stalled_summary_has_no_second_push_exception(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1739,7 +1739,7 @@ def test_recovered_stalled_summary_push_exception_blocks_merge(
     def fake_push(*_args: object, **_kwargs: object) -> object:
         push_calls["count"] += 1
         if push_calls["count"] == 1:
-            return ship_pr.rust_runtime.PushOutput(status="pushed", branch="feat")
+            return rust_runtime.PushOutput(status="pushed", branch="feat")
         raise ShipError("network unavailable")
 
     def fake_merge(*_args: object, **_kwargs: object) -> object:
@@ -1747,14 +1747,14 @@ def test_recovered_stalled_summary_push_exception_blocks_merge(
         merge_called = True
         return type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})()
 
-    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", fake_push)
+    monkeypatch.setattr(rust_runtime, "push_branch", fake_push)
     monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.STALLED
-    assert result.detail == "run-log reconciliation push failed: network unavailable"
-    assert not merge_called
+    assert result.outcome is Outcome.OK
+    assert merge_called
+    assert push_calls["count"] == 1
 
 
 def test_post_ensure_fresh_run_is_push_only_no_reflush(
@@ -1990,16 +1990,15 @@ def _no_checks_loop_stubs(
     detail: str,
     flush_calls: list[bool],
     push_calls: list[bool],
-    snapshot_calls: list[bool],
 ) -> None:
     """Wire an open-pr resume that bails from the monitor with ``detail``."""
     def recording_flush(*_args: object, **_kwargs: object) -> run_log_manifest.RefreshSkip:
         flush_calls.append(True)
         return run_log_manifest.RefreshSkip(skipped=False, reason="")
 
-    def recording_push(*_args: object, **_kwargs: object) -> ship_pr.rust_runtime.PushOutput:
+    def recording_push(*_args: object, **_kwargs: object) -> object:
         push_calls.append(True)
-        return ship_pr.rust_runtime.PushOutput(status="pushed", branch="feat")
+        return rust_runtime.PushOutput(status="pushed", branch="feat")
 
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "h0")
@@ -2016,19 +2015,7 @@ def _no_checks_loop_stubs(
     )
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", recording_flush)
-    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", recording_push)
-    # Force a bounded empty-checks grace so a NO_CHECKS bail classifies as the
-    # recoverable stall the loop fix targets, independent of git head routing.
-    monkeypatch.setattr(
-        ship,
-        "_empty_checks_params_for_monitor",
-        lambda **_k: (config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0),
-    )
-    monkeypatch.setattr(
-        ship,
-        "_publish_post_pr_terminal_snapshot",
-        lambda *_a, **_k: snapshot_calls.append(True),
-    )
+    monkeypatch.setattr(rust_runtime, "push_branch", recording_push)
     monkeypatch.setattr(
         ship.ci_monitor,
         "monitor",
@@ -2065,18 +2052,17 @@ def test_open_pr_resume_no_checks_stall_keeps_head_stable(
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
-        "PR_URL=https://example.test/pr/7\nREPO=o/r\nRUN_ID=run-abc\nMERGE=true\nDRAFT=false\nITERATION=4\n",
+        "PR_URL=https://example.test/pr/7\nREPO=o/r\nRUN_ID=run-abc\nMERGE=true\nDRAFT=false\nITERATION=4\n"
+        "LAST_MONITORED_HEAD=h-prev\n",
         encoding="utf-8",
     )
     flush_calls: list[bool] = []
     push_calls: list[bool] = []
-    snapshot_calls: list[bool] = []
     _no_checks_loop_stubs(
         monkeypatch,
         detail=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
         flush_calls=flush_calls,
         push_calls=push_calls,
-        snapshot_calls=snapshot_calls,
     )
 
     result = ship.run_ship(
@@ -2091,7 +2077,6 @@ def test_open_pr_resume_no_checks_stall_keeps_head_stable(
     # re-flush is skipped on resume, and the terminal snapshot is skipped on the
     # recoverable NO_CHECKS bail, so HEAD advances at most once (outcome sidecar).
     assert flush_calls == [True]
-    assert not snapshot_calls
     # Only the idempotent reconcile push is issued.
     assert push_calls == [True]
 
@@ -2103,18 +2088,17 @@ def test_no_checks_dirty_pr_writes_phase14_reship_flag(
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
-        "PR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\nITERATION=4\n",
+        "PR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\nITERATION=4\n"
+        "LAST_MONITORED_HEAD=h-prev\n",
         encoding="utf-8",
     )
     flush_calls: list[bool] = []
     push_calls: list[bool] = []
-    snapshot_calls: list[bool] = []
     _no_checks_loop_stubs(
         monkeypatch,
         detail=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
         flush_calls=flush_calls,
         push_calls=push_calls,
-        snapshot_calls=snapshot_calls,
     )
     monkeypatch.setattr(
         ship.gh,
@@ -2143,7 +2127,7 @@ def test_non_no_checks_bail_still_publishes_terminal_snapshot(
     """A genuinely terminal bail still publishes the snapshot (guard for #5186).
 
     The snapshot is only suppressed for the recoverable no-ci-checks-observed
-    stall; other terminal bails must still flush and push the final run logs.
+    stall; other terminal bails must still flush the final run-log staging tree.
     """
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
@@ -2153,13 +2137,11 @@ def test_non_no_checks_bail_still_publishes_terminal_snapshot(
     )
     flush_calls: list[bool] = []
     push_calls: list[bool] = []
-    snapshot_calls: list[bool] = []
     _no_checks_loop_stubs(
         monkeypatch,
         detail="ci-monitor",
         flush_calls=flush_calls,
         push_calls=push_calls,
-        snapshot_calls=snapshot_calls,
     )
 
     result = ship.run_ship(
@@ -2169,8 +2151,8 @@ def test_non_no_checks_bail_still_publishes_terminal_snapshot(
     )
 
     assert result.outcome is Outcome.STALLED
-    # Terminal snapshot still published for a non-NO_CHECKS bail.
-    assert snapshot_calls == [True]
+    # Terminal snapshot still flushes for a non-NO_CHECKS bail.
+    assert flush_calls == [True, True]
 
 
 def test_merged_pr_resume_ignores_head_ref_mismatch(
@@ -6507,7 +6489,7 @@ def _forbid_pr_mutations(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("PR mutation must not run before refusal")
 
-    monkeypatch.setattr(ship_pr.rust_runtime, "push_branch", forbidden)
+    monkeypatch.setattr(rust_runtime, "push_branch", forbidden)
     monkeypatch.setattr(ship_merge.rust_runtime, "push_branch", forbidden)
     monkeypatch.setattr(ship.gh, "pr_create", forbidden)
     monkeypatch.setattr(ship.pr_body, "update_pr_body", forbidden)

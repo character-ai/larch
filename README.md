@@ -32,7 +32,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Skills](#skills)
   - [Aliases](#aliases)
   - [Review Agents](docs/review-agents.md) — the unified `code-reviewer` archetype
-  - [Run Logs](docs/run-logs.md) — committed `larch-logs/` batch files, manifest, and tracking-issue comments
+  - [Run Logs](docs/run-logs.md) — remote run archives, local cache copies, manifests, and tracking-issue comments
   - [Security References](docs/security/README.md): security document taxonomy, ownership, and runtime packaging contract
   - [Topology Projection](docs/topology.md) — stable anchors for cross-doc topology counts
   - [Linting](docs/linting.md) — linters, Makefile targets, halt-rate regression harness
@@ -54,7 +54,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Direct design planning and plan reviews](docs/collaborative-sketches.md)** — Step 2b drafts the plan directly, then the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews it.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, and rejected findings.
-- **[Tracked runs](docs/run-logs.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.
+- **[Tracked runs](docs/run-logs.md)** — `/implement` publishes one complete terminal archive to remote storage, materializes a local cache copy, and keeps the tracking issue slim with marker-keyed summary comments.
 - **[Progress statusline](docs/progress-reporting.md)** — clone-local breadcrumbs show live larch progress without adding report text to model context.
 - **Tiered architectural knowledge** — Optional `ARCHITECTURAL_INVARIANTS.md` and `ARCHITECTURAL_GUIDELINES.md` files are supplied to authoring agents plus the dedicated code-review compliance specialist and `/design` Architecture/Standards reviewer as untrusted, scope-bound evidence.
 

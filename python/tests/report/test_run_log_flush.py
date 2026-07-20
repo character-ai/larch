@@ -243,7 +243,7 @@ def test_parse_preterminal_outcome_label_targets_run_heading() -> None:
     )
 
 
-def test_flush_logs_pre_refuses_preterminal_forbidden_label(
+def test_flush_logs_pre_stages_preterminal_forbidden_label_without_publishing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -258,18 +258,16 @@ def test_flush_logs_pre_refuses_preterminal_forbidden_label(
     monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
 
     def fail_commit(**_kwargs: object) -> CommandResult:
-        raise AssertionError("pre-terminal guard should skip commit")
+        raise AssertionError("mutable refresh must not publish through Git")
 
     monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
 
     skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
-    assert skip.skipped is True
-    assert skip.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME
-    assert "stalled" in skip.error
+    assert skip.skipped is False
 
 
-def test_flush_logs_pre_allows_neutral_preterminal_label(
+def test_flush_logs_pre_stages_neutral_preterminal_label_without_publishing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -293,10 +291,10 @@ def test_flush_logs_pre_allows_neutral_preterminal_label(
     skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
     assert skip.skipped is False
-    assert commits == ["commit"]
+    assert not commits
 
 
-def test_flush_logs_pre_maps_incomplete_commit_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_flush_logs_pre_keeps_incomplete_tree_mutable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
     _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
@@ -310,9 +308,7 @@ def test_flush_logs_pre_maps_incomplete_commit_result(tmp_path: Path, monkeypatc
 
     skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path / "repo"))
 
-    assert skip.skipped is True
-    assert skip.reason == config.REFRESH_SKIP_RUN_LOG_INCOMPLETE
-    assert "session-transcript.jsonl" in skip.error
+    assert skip.skipped is False
 
 
 def test_refresh_run_logs_main_prints_incomplete_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -334,7 +330,7 @@ def test_refresh_run_logs_main_prints_incomplete_reason(tmp_path: Path, monkeypa
     assert "REFRESH_COMMITTED=false REASON=run-log-incomplete ERROR=missing transcript" in capsys.readouterr().out
 
 
-def test_larch_log_flush_main_returns_incomplete_rc(
+def test_larch_log_flush_main_keeps_incomplete_tree_mutable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -349,11 +345,11 @@ def test_larch_log_flush_main_returns_incomplete_rc(
 
     rc = run_log_flush.larch_log_flush_main([])
 
-    assert rc == config.RUN_LOG_INCOMPLETE_RC
-    assert "session-transcript.jsonl" in capsys.readouterr().err
+    assert rc == 0
+    assert capsys.readouterr().err == ""
 
 
-def test_larch_log_flush_main_skips_preterminal_forbidden_label(
+def test_larch_log_flush_main_stages_preterminal_forbidden_label(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -373,7 +369,7 @@ def test_larch_log_flush_main_skips_preterminal_forbidden_label(
     rc = run_log_flush.larch_log_flush_main([])
 
     assert rc == 0
-    assert "pre-terminal" in capsys.readouterr().err
+    assert capsys.readouterr().err == ""
 
 
 def test_run_log_commit_missing_run_dir_preserves_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

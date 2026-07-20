@@ -657,6 +657,7 @@ def publish_run(
         else store
     )
     with publication_lock(paths.lock_file):
+        retrying_pending: bool = paths.pending_dir.exists() or paths.pending_dir.is_symlink()
         pending: PendingPublication = _pending_for_request(
             paths=paths,
             request=normalized_request,
@@ -673,7 +674,7 @@ def publish_run(
             cache_result, cache_status = _cache_result(
                 paths=paths,
                 pending=pending,
-                staging_root=normalized_request.staging_root,
+                staging_root=None if retrying_pending else normalized_request.staging_root,
             )
             if cache_result.manifest_sha256 != pending.manifest_sha256:
                 raise PublicationError("published cache failed manifest identity verification")

@@ -58,7 +58,7 @@ The retired wrapper's dormant `cleanup.sh --help`, `token report --full`, and `S
 
 ## Marker body handoff
 
-When `EMIT_BODY=true`, `WFR_RC=0`, and `summary-final.md` is non-empty, `print_summary_markers` prints the body between whole-line markers before teardown:
+When archive publication succeeds (or `NO_LOGS_COMMIT=true` explicitly suppresses it), `EMIT_BODY=true`, `WFR_RC=0`, and `summary-final.md` is non-empty, `print_summary_markers` prints the body between whole-line markers before teardown:
 
 - `---LARCH-SUMMARY-FINAL-BEGIN---`
 - `---LARCH-SUMMARY-FINAL-END---`
@@ -77,15 +77,24 @@ Before the safety nets run, the wrapper resolves `RUN_ID` from `read_session_key
 After the closing marks, the wrapper runs both Step 18 safety nets when `RUN_ID` is available:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net --log-root "$IMPLEMENT_TMPDIR/larch-logs" --run-id "$RUN_ID" --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md"
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log capture-transcript --source-file "$LARCH_CLAUDE_SOURCE_FILE" --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --defer-commit true --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" --warning-step-label "18"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net --log-root "$IMPLEMENT_TMPDIR/larch-logs" --run-id "$RUN_ID" --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md"
 ```
 
-Both safety nets are best effort and append-only.
-The transcript capture uses `--defer-commit true`; publishing paths decide whether staged logs are committed.
+Transcript capture is best effort and append-only. The execution-issues flush
+runs afterward so transcript failures enter the archive; flush failure returns
+nonzero and retains the session for retry. The transcript capture uses
+`--defer-commit true`; Step 18 owns final validation and archive publication.
 Step 7a remains the primary green-path transcript and execution-issues capture point.
 Step 18 runs transcript capture only when `bgjob/implement-step7a.result.env` is absent, so green-path runs do not recapture after Step 7a.
 Step 18 covers bail and stall paths that reach finalization before Step 7a.
+After both safety nets succeed, Step 18 validates and sanitizes the implement run with
+`run-log commit`, then calls `run-log publish` with the final staging tree.
+Successful publication verifies both the remote object and the unpacked local
+cache before teardown. Upload or verification failure returns nonzero, emits
+`RUN_LOG_PUBLISH_OK=false`, and retains the session plus durable pending archive
+for retry. `NO_LOGS_COMMIT=true` emits
+`RUN_LOG_PUBLISH_SKIPPED=no-logs-commit` and proceeds to teardown.
 Then the copied `_restore_finalize=false` gate compares `ship-pr-state.sh` and `finalize-state.sh`.
 The compare reads use guarded `session read-key` defaults, so malformed or unreadable state files do not abort teardown under `set -e`.
 It invokes `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"` when `finalize-state.sh` is missing, ship stall or bail state is truthy, or `STALL_STEP` differs.

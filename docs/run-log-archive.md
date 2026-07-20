@@ -34,7 +34,9 @@ tree. It never merges with or replaces a destination. Cache entries contain ordi
 the create-only upload to `run-logs/<skill>/<run-id>.tar.gz`. Failed attempts
 remain under `${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-pending/`
 with content-pinned retry metadata. Repeating the command may omit
-`--staging-root` when that pending state exists.
+`--staging-root` when that pending state exists. When pending state already
+exists, the publisher retries and populates the cache from that archive. It
+does not use a later mutable staging tree as the retry source.
 
 An existing remote key succeeds only when its downloaded bytes match the
 pending archive; different content fails closed. A new upload is verified by

@@ -1,6 +1,6 @@
 # Run-log Python CLI contract
 
-`python3 python/cli.py run-log ...` owns the committed run-log lifecycle.
+`python3 python/cli.py run-log ...` owns run-log staging, validation, and publication.
 
 ## Envelope
 
@@ -19,8 +19,9 @@ Validation and I/O failures use the same envelope with `LOG_WRITTEN=false`,
 empty `LOG_PATH`, empty `SHA256`, empty `COMMIT_SHA`, `BYTES=0`,
 `UNCHANGED=false`, and `ERROR=<message>`.
 
-`run-log commit` may also emit `SECRET_SCRUB_VIOLATIONS=N`.
-`run-log flush` reports scrub warnings on stderr only.
+For `--skill implement`, `run-log commit` validates and sanitizes the mutable
+staging tree. It emits `SECRET_SCRUB_VIOLATIONS=N` and does not create a Git
+commit. Other skill cutovers remain separate work.
 
 The CLI owns mechanics, not content classification. A scrub or recognized
 secret-survival failure blocks publication, but a clean pattern scan does not
@@ -56,13 +57,19 @@ lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `exists` exits 0 only after argument, log-root, slug, and batch validation
 succeed. It sets `UNCHANGED=true` when the batch file exists.
 
-Default-branch and post-merge commit refusals remain stderr-only hard stops.
+Git-publishing paths retain default-branch and post-merge stderr-only hard stops.
 
-`run-log refresh` emits `REFRESH_COMMITTED=true` on commit success, or
-`REFRESH_COMMITTED=false REASON=<token>` for skip/failure paths.
+`run-log refresh` keeps the legacy `REFRESH_COMMITTED=true` success field, but
+an implement refresh now updates only the mutable session staging tree. It
+does not commit or publish that snapshot. Skip and failure paths emit
+`REFRESH_COMMITTED=false REASON=<token>`.
 
 `run-log capture-transcript` always exits 0 for terminal statuses and emits
 `SESSION_TRANSCRIPT_STATUS=<status>`.
+
+Implement Step 18 captures the transcript before its final execution-issues
+flush. A failed final flush or archive publication returns nonzero and retains
+the session; only a verified remote object plus unpacked cache permits teardown.
 
 `verify skill-called` preserves the `VERIFIED=true|false` and `REASON=<token>`
 contract. Malformed regex faults exit 1 with stderr only.
@@ -99,8 +106,18 @@ the scan-origin skill, so matching step labels across skills stay separate.
 Per-step ratios sum each run's effective cache-create contribution before
 dividing by summed cache-read.
 
-## Post-merge commit history
+## Implement archive publication
+
+Step 18 runs `run-log commit` after its execution-issue and transcript safety
+nets, then calls `run-log publish` for the final sanitized tree. A successful
+call creates one immutable remote object and one validated unpacked cache
+directory. A failed upload returns nonzero, retains the durable pending archive,
+and stops teardown. Re-entry retries the content-pinned pending archive.
+
+## Post-merge Git history
 
 Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`).
 
-If a future need arises to land merged-outcome data in the run-log tree, do it BEFORE the squash-merge (write speculative `OUTCOME=merged` into `final-summary.md` and include it in the final pre-merge log flush commit so it rides into the squash-merge tree, rollback on merge failure) — never after.
+Current implement runs do not publish run logs through Git. The post-merge
+commit prohibition still applies to every repository mutation and to the
+uncut-over skill paths.

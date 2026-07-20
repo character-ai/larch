@@ -25,6 +25,7 @@ from larch.errors import ShipError
 from larch.git import pr_body
 from larch.issue import execution_issues
 from larch.report import final_report
+from larch.report import run_log_commit
 from larch.report import timing
 from larch.report import tokens
 
@@ -35,7 +36,7 @@ from larch.report.run_log_batch import (
     _path_is_repo_related,
     _read_kv_file,
     _read_state_kv,
-    _write_batch,
+    _write_batch as _write_batch_impl,
     parse_preterminal_outcome_label,
     parse_preterminal_outcome_label_from_run_dir,
 )
@@ -55,7 +56,11 @@ from larch.report.run_log_manifest import (
     update_manifest,
     validate_run_id_slug,
 )
-from larch.report.run_log_commit import _commit_run
+from larch.report.run_log_commit import _commit_run as _commit_run_impl
+
+_commit_run = _commit_run_impl
+_write_batch = _write_batch_impl
+prepare_run_tree_for_publication = run_log_commit.prepare_run_tree_for_publication
 
 
 def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
@@ -592,7 +597,7 @@ def flush_logs_pre(
     cwd: str | None = None,
     strict_final_report: bool = False,
 ) -> RefreshSkip:
-    """Pre-push refresh: may git-commit log batches (caller owns push)."""
+    """Refresh the mutable implement staging tree without publishing it."""
     skip = _pre_push_probe(ctx)
     if skip.skipped:
         return skip
@@ -628,24 +633,6 @@ def flush_logs_pre(
         _ = update_manifest(ctx, steps_ran=steps_update)
     except (OSError, ShipError):
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
-    if cwd is None:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
-    preterminal_skip = _preterminal_outcome_refresh_skip(ctx)
-    if preterminal_skip is not None:
-        return preterminal_skip
-    try:
-        commit_result = _commit_run(log_root=log_root, skill="implement", run_id=effective_run_id(ctx), cwd=cwd)
-    except (OSError, ShipError) as exc:
-        return RefreshSkip(
-            skipped=True,
-            reason=config.REFRESH_SKIP_COMMIT_FAILED,
-            error=str(exc).strip(),
-        )
-    commit_skip = _refresh_skip_for_commit_result(commit_result)
-    if commit_skip is not None:
-        return commit_skip
-    if commit_result.argv in {("larch-log-volatile-only",), ("true",)}:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -655,7 +642,7 @@ def flush_logs_post(
     merge_result: str | None = None,
     runner: Runner | None = None,
 ) -> RefreshSkip:
-    """Post-merge tmpdir-only flush; never git-commits."""
+    """Post-merge tmpdir-only flush; terminal publication remains Step 18-owned."""
     recovery = load_or_recover_manifest_checked(ctx)
     if not recovery.recovery_ok:
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
@@ -911,14 +898,14 @@ def capture_transcript_main(argv: list[str]) -> int:
                 issues_log=issues_log,
                 step_label=args.warning_step_label,
                 status="render-failed",
-                message=f"session-transcript render failed; transcript was not committed: {msg}",
+                message=f"session-transcript render failed; transcript was not staged: {msg}",
             )
         if not rendered.is_file() or rendered.stat().st_size == 0:
             return _capture_transcript_emit(
                 issues_log=issues_log,
                 step_label=args.warning_step_label,
                 status="render-empty",
-                message="session-transcript renderer produced an empty file; transcript was not committed.",
+                message="session-transcript renderer produced an empty file; transcript was not staged.",
             )
         _write_batch(log_root=log_root, skill=args.skill, run_id=args.run_id, batch="session-transcript", input_file=str(rendered))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -936,26 +923,28 @@ def capture_transcript_main(argv: list[str]) -> int:
             issues_log=issues_log,
             step_label=args.warning_step_label,
             status="suppressed-no-logs-commit",
-            message="--no-logs-commit was set; transcript was written under the staging log root but not committed.",
+            message="--no-logs-commit was set; transcript was written under the staging log root but not published.",
         )
     if args.defer_commit == "true":
         print("SESSION_TRANSCRIPT_STATUS=captured")
         return 0
-    preterminal_block = (
-        _preterminal_outcome_commit_blocked(log_root / args.skill / args.run_id)
-        if args.skill == "implement"
-        else None
-    )
-    if preterminal_block is not None:
-        return _capture_transcript_emit(
-            issues_log=issues_log,
-            step_label=args.warning_step_label,
-            status="commit-failed",
-            message=preterminal_block,
+    commit = (
+        prepare_run_tree_for_publication(
+            log_root=log_root,
+            skill=args.skill,
+            run_id=args.run_id,
+            repo_root=Path.cwd(),
         )
-    commit = _commit_run(log_root=log_root, skill=args.skill, run_id=args.run_id, cwd=str(Path.cwd()))
+        if args.skill == "implement"
+        else _commit_run(
+            log_root=log_root,
+            skill=args.skill,
+            run_id=args.run_id,
+            cwd=str(Path.cwd()),
+        )
+    )
     if commit.returncode != 0:
-        err = (commit.stderr or "larch-log commit failed").strip().replace("\n", " ")
+        err = (commit.stderr or "run-log publication preparation failed").strip().replace("\n", " ")
         return _capture_transcript_emit(
             issues_log=issues_log,
             step_label=args.warning_step_label,
@@ -1008,9 +997,7 @@ def _emit_flush_failure_warning(result: CommandResult) -> int:
         )
     else:
         print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
-    if result.returncode == config.RUN_LOG_INCOMPLETE_RC:
-        return config.RUN_LOG_INCOMPLETE_RC
-    return 0
+    return result.returncode
 
 
 def refresh_run_logs_main(argv: list[str]) -> int:
@@ -1094,21 +1081,8 @@ def larch_log_flush_main(argv: list[str]) -> int:
     )
     try:
         _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, cwd=str(Path.cwd()), mode="flush")
-        preterminal_skip = _preterminal_outcome_refresh_skip(ctx)
-        if preterminal_skip is not None:
-            warning = preterminal_skip.error or "pre-terminal outcome label refused"
-            print(f"WARN: larch-log flush skipped: {warning}", file=sys.stderr)
-            return 0
-        result = _commit_run(log_root=log_root, skill="implement", run_id=run_id, cwd=str(Path.cwd()))
-        flush_rc = _emit_flush_failure_warning(result)
-        for line in result.stdout.splitlines():
-            if line.startswith("SECRET_SCRUB_VIOLATIONS=") and not line.endswith("=0"):
-                print(
-                    "WARN: larch-log flush scrubbed secret-shaped values before commit",
-                    file=sys.stderr,
-                )
-        return flush_rc
     except Exception as exc:
         print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
+        return config.EXIT_INTERNAL_ERROR
     return 0
 # pyright: reportArgumentType=false

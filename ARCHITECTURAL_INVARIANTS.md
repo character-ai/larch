@@ -80,38 +80,37 @@ A command becomes Rust-owned only in the change that proves Rust implementation 
 
 ### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string
 
-Every run-log flush must either commit the run's required artifact set (session
+Every terminal run-log flush must durably publish the run's required artifact set (session
 transcript, voted-finding bodies, final report) or record the omission as a
-category-keyed execution issue that flushes into the committed run log. A
+category-keyed execution issue that flushes into the durable run log. A
 capture failure that exists only as a status value inside the session tmpdir is
 invisible to every audit surface and is a defect of the flush, not acceptable
 drift. Evidence of violation: every post-migration /implement run recorded
 `SESSION_TRANSCRIPT_STATUS=write-failed` with no execution issue while runs
 completed green (#6263), and rejected and neutral finding bodies were absent
-from committed logs with nothing recorded anywhere (#6027). Mechanical backing:
+from durable logs with nothing recorded anywhere (#6027). Mechanical backing:
 a post-flush manifest completeness check that asserts the expected artifact set,
-or its recorded execution-issue entries, before the run-log commit, with
+or its recorded execution-issue entries, before Git or archive publication, with
 regression tests in `python/tests/report/test_run_log_flush.py`.
 
-### I-Commit-1: A committed run-log field embeds its content, never a pointer into a session-tmpdir file
+### I-Commit-1: A durable run-log field embeds its content, never a pointer into a session-tmpdir file
 
-A field written into a committed run-log artifact under `larch-logs/` either embeds the redacted content it needs downstream or omits the field. It never stores a path into the session or system tmpdir (for example `$TMPDIR`, `IMPLEMENT_TMPDIR`, or `/var/folders/...`). A reader of a committed run log must be able to adjudicate the run from the committed artifact alone, without reaching into a session tmpdir that no longer exists. Evidence of violation: rejected and neutral finding bodies were absent from committed logs and survived only as pointers into session-tmpdir files that were never staged, so post-hoc adjudication could not evaluate whether a rejection was sound (#6027). Mechanical backing: a commit-time scan of staged `larch-logs/` content for session- and system-tmpdir path prefixes, with a failing check that rejects the commit; extend the run-log flush path that already stages redacted bodies so every voted finding commits its body through the existing redaction pipeline.
+A field written into a durable run-log artifact either embeds the redacted content it needs downstream or omits the field. It never stores a path into the session or system tmpdir (for example `$TMPDIR`, `IMPLEMENT_TMPDIR`, or `/var/folders/...`). A reader must be able to adjudicate the run from the Git snapshot or remote archive alone, without reaching into a session tmpdir that no longer exists. Evidence of violation: rejected and neutral finding bodies were absent from durable logs and survived only as pointers into session-tmpdir files that were never staged, so post-hoc adjudication could not evaluate whether a rejection was sound (#6027). Mechanical backing: a publication-time scan of the sanitized staging tree for session- and system-tmpdir path prefixes, with a failing check that rejects Git or archive publication; extend the run-log flush path that already stages redacted bodies so every voted finding publishes its body through the existing redaction pipeline.
 
-### I-Outcome-1: A committed outcome label for an in-flight run is neutral
+### I-Outcome-1: A durably published outcome label for an in-flight run is neutral
 
-A pre-terminal run-log snapshot commits only neutral in-progress labels such as
+A pre-terminal run-log snapshot publishes only neutral in-progress labels such as
 `shipping` or `in-progress`, never terminal failure words such as `stalled`,
 `bailed`, or `bailed-needs-user-input`, and a stalled-then-recovered run must
-not stay committed as stalled. The terminal outcome is reconciled at the last
-allowed commit window. Evidence of violation: pre-terminal snapshots froze
-merged runs as bailed or stalled in the committed logs, corrupting every
-downstream outcome census (#5646, #5676, #5970, #4900). Mechanical backing: the
-shared pre-terminal label guard in `python/larch/report/run_log_flush.py`
-blocks forbidden labels in refresh, `run-log flush`, `run-log commit`, and
-`capture-transcript` direct-commit paths, with regression tests in
-`python/tests/report/test_run_log_flush.py`, recovery expectations in
-`python/tests/report/test_run_logs.py`, and Step 7a bypass coverage in
-`python/tests/implement/test_step_7a.py`.
+not stay published as stalled. The terminal outcome is reconciled at the last
+allowed publication window. Evidence of violation: pre-terminal snapshots froze
+merged runs as bailed or stalled in durable logs, corrupting every downstream
+outcome census (#5646, #5676, #5970, #4900). Mechanical backing: `/implement`
+keeps refreshes mutable and publishes only from Step 18 after terminal
+reconciliation; uncut-over Git publishers retain their pre-terminal label
+guards. Regression coverage lives in `python/tests/report/test_run_log_flush.py`,
+`python/tests/report/test_run_logs.py`, and
+`python/tests/implement/test_implement_shell_scripts.py`.
 
 ## Panel integrity
 

@@ -10,10 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from larch.core import config, rust_runtime
+from larch.core import config
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
-from larch.errors import ShipError
 from larch.git import git
 from larch.report import final_report
 from larch.outcomes import Outcome
@@ -22,7 +21,6 @@ from larch.state import finalize
 from larch.state import stall_recovery
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state
 from larch.implement.ship_result import ShipResult, _write_terminal_finalize_if_terminal
-
 
 @dataclass(frozen=True)
 class ShipReconciliationCounters:
@@ -179,40 +177,6 @@ def reconcile_committed_stalled_summary_if_recovered(
             pr_url=ctx.pr_url,
             detail=f"run-log reconciliation flush skipped: {refresh.reason}",
         )
-    try:
-        pushed = rust_runtime.push_branch(runner, cwd=cwd)
-    except ShipError as exc:
-        _write_terminal_state(
-            ctx=ctx,
-            result=Outcome.STALLED,
-            step="run-log-reconciliation-push",
-            iteration=resolved_counters.iteration,
-            rebase_count=resolved_counters.rebase_count,
-            fix_attempts=resolved_counters.fix_attempts,
-            transient_retries=resolved_counters.transient_retries,
-        )
-        return ShipResult(
-            Outcome.STALLED,
-            pr_number=ctx.pr_number,
-            pr_url=ctx.pr_url,
-            detail=f"run-log reconciliation push failed: {str(exc).strip()}",
-        )
-    if pushed.status != "pushed":
-        _write_terminal_state(
-            ctx=ctx,
-            result=Outcome.STALLED,
-            step="run-log-reconciliation-push",
-            iteration=resolved_counters.iteration,
-            rebase_count=resolved_counters.rebase_count,
-            fix_attempts=resolved_counters.fix_attempts,
-            transient_retries=resolved_counters.transient_retries,
-        )
-        return ShipResult(
-            Outcome.STALLED,
-            pr_number=ctx.pr_number,
-            pr_url=ctx.pr_url,
-            detail=f"run-log reconciliation push failed: {pushed.status}",
-        )
     return None
 
 
@@ -297,14 +261,12 @@ def _publish_post_pr_terminal_snapshot(
     if ctx.pr_number is None:
         return
     with suppress(Exception):
-        refresh = run_log_flush.flush_logs_pre(
+        _ = run_log_flush.flush_logs_pre(
             runner=runner,
             ctx=ctx.with_(state_file=None),
             cwd=cwd,
             strict_final_report=True,
         )
-        if not refresh.skipped:
-            _ = rust_runtime.push_branch(runner, cwd=cwd)
 
 
 def run_postmerge_phase(

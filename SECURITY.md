@@ -184,7 +184,7 @@ a waiver. See the
 ## Workflow Artifact Publication
 
 Session state stays private unless a named publisher selects a bounded,
-sanitized projection. Committed run logs exclude raw prompt-bearing streams
+sanitized projection. Published run logs exclude raw prompt-bearing streams
 and retry sidecars, scrub the complete staged tree, and fail closed on unsafe
 files or redaction errors. See the canonical
 [committed run-log and breadcrumb security contract](docs/security/artifacts-redaction-and-publication.md#committed-run-logs-and-breadcrumbs)
