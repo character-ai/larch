@@ -56,6 +56,23 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | Non-ASCII bytes in dynamic awk regex | paths in `scripts/agent-lint-script-inventory.txt`, including standalone `.awk` helpers | Agent-lint G011 is promoted to an error and scans the explicit inventory on every invocation, including pre-commit runs, independent of global exclusions. It rejects non-ASCII `awk -v VAR=value` values and non-ASCII regex contexts in `match`, `gsub`, `sub`, `split`, `~`, and `!~`; display-only strings remain legal. Suppress fixtures only with a trailing `# lint-awk-multibyte-regex: ok <reason>` pragma. Run via `make agent-lint` and CI's dedicated `agent-lint` job. |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | all tracked files | Secret detection (pre-commit + dedicated CI job, full-history). Path allowlist in `.gitleaks.toml`. See `SECURITY.md` → "Layered secret scanning". |
 
+## Migration Governance Aggregate
+
+Run `python3 python/cli.py issue migration-audit --repo owner/name --chief 7687`
+to compose the migration checks into one stable JSON report and count table. The
+aggregate invokes the installed `larch-lint` executable for command-registry,
+caller-surface, Python-retirement, clean-install, and production-runtime checks.
+It exits `2` when that executable is unavailable. Production Python never runs
+Cargo or a `target/` executable. See
+[Migration Governance Audit](migration-governance.md) for the schema, channels,
+exit codes, and read-only boundary.
+
+Run the focused Python coverage with:
+
+```bash
+python3 -m pytest -q python/tests/issue/test_migration_audit.py
+```
+
 ## Usage
 
 ### Rust checks

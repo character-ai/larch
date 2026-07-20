@@ -117,6 +117,19 @@ Migration plans that create or reuse a shared launcher, adapter, registry, resol
 
 Step 0 creates and reads back the run's `larch:implementation-lease` after the branch exists and before it adds `[IMPLEMENTING]`. Existing marker-keyed tracking-summary boundaries refresh only that run's lease. Terminal cleanup updates the lease and title together, which clears active ownership on done and stalled routes. A report-only watchdog emits `stale-implementation-lease issue=#N age_hours=<N>` after 12 hours only when the recorded branch has no open PR. It prints one cleanup command and never edits GitHub state.
 
+## Migration governance aggregate
+
+`python3 python/cli.py issue migration-audit` composes migration admission,
+receipt, blocker, owner, lease, command-registry, retirement, clean-install, and
+runtime checks. It captures one immutable GitHub and repository snapshot, then
+passes that snapshot to every issue check. It emits JSON and a short count table
+without changing GitHub or repository state.
+
+Scheduled automation may archive the JSON and project it into one marker-keyed
+Chief issue comment. The workflow owns that write. See
+[Migration Governance Audit](migration-governance.md) for the report contract
+and failure behavior.
+
 ## CI-fix push sequencing
 
 When a required CI run fails, the active Step 8+ driver (`python/cli.py ship pr` delegating to `python/larch/implement/ship.py`) distills the failure to `$IMPLEMENT_TMPDIR/ci-errors-<run-id>.md` and bails to `NEXT_ACTION=ci-fix` without committing a fix. The `/implement` Step 8 ci-fixer subagent (`agents/ci-fixer.md`) reads the digest, commits the repair as `CI fix round <N>: <summary>`, and pushes via `python/cli.py push branch`. The pre-fix rebase gate runs before the round loop, so the subagent pushes onto a current branch and the next `ci-wait` poll should see `BEHIND_COUNT=0`. A compose-time architectural-invariant violation (`NEXT_ACTION=invariants-assessment`) does not use the ci-fixer loop; it re-enters the Step 8 fix ladder (materialize, tier-1 coder fix, fresh-assessor re-judge, tier-2 main agent), and the coder/main-agent fixes commit and push via `python/cli.py push branch`.

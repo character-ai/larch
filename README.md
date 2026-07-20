@@ -291,6 +291,12 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><code>--site &lt;site&gt; [--tmpdir DIR] [--repo-root DIR] [--allow-skip]</code></td>
     </tr>
     <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>python/cli.py checks run-relevant --site &lt;site&gt; --tmpdir &lt;tmpdir&gt;</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/migration-governance.md"><code>python/cli.py issue migration-audit</code></a></td>
+      <td><code>--repo owner/name --chief N [--output FILE] [--table-output stderr|stdout|none]</code></td>
+    </tr>
+    <tr><td colspan="2">Read-only aggregate for migration plans, blockers, owners, leases, command migration, clean-install coverage, and production runtime escape hatches. Emits stable JSON plus an optional count table.</td></tr>
   </tbody>
 </table>
 

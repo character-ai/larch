@@ -339,7 +339,12 @@ def issue_plan_marker_defect(issue_body: str) -> str | None:
     return None
 
 
-def validate_issue_plan(*, issue_body: str, repo_root: Path) -> plan_grammar.PlanValidationResult:
+def validate_issue_plan(
+    *,
+    issue_body: str,
+    repo_root: Path,
+    tracked_paths: frozenset[str] | None = None,
+) -> plan_grammar.PlanValidationResult:
     """Validate issue-body markers plus the extracted executable plan contract."""
     marker_defect = issue_plan_marker_defect(issue_body)
     if marker_defect is not None:
@@ -347,7 +352,9 @@ def validate_issue_plan(*, issue_body: str, repo_root: Path) -> plan_grammar.Pla
     inner, _malformed = parse_named_block(body=issue_body, marker="plan")
     if inner is None:
         return plan_grammar.PlanValidationResult(defects=("missing-plan-block",))
-    return plan_grammar.validate_plan_contract(plan_text=inner, repo_root=repo_root)
+    return plan_grammar.validate_plan_contract(
+        plan_text=inner, repo_root=repo_root, tracked_paths=tracked_paths
+    )
 
 
 def neutralize_named_block_markers(*, text: str, marker: str) -> str:
