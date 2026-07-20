@@ -45,7 +45,7 @@ hosts, operations, redirects, retries, response sizes, and diagnostics. See
 [Supply Chain, Credentials, and Services](docs/security/supply-chain-credentials-and-services.md)
 for the canonical technical contracts.
 
-Session artifacts, operator diagnostics, committed run logs, and public
+Session artifacts, operator diagnostics, remotely archived run logs, and public
 GitHub content have distinct confidentiality rules. The universal skill
 lifecycle sanitizes every terminal outcome before create-only publication and
 keeps child invocations in separate archives. Redaction and scanning are

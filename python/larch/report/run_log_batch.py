@@ -221,8 +221,8 @@ def is_placeholder_run_id(run_id: str) -> bool:
 
 def _warn_placeholder_run_id(run_id: str) -> None:
     print(
-        f"**⚠ run-log: refusing to commit non-unique placeholder run-id {run_id!r}; "
-        "expected a unique session run-id (issue #4397). Skipping run-log commit.**",
+        f"**⚠ run-log: refusing to publish non-unique placeholder run-id {run_id!r}; "
+        "expected a unique session run-id (issue #4397). Skipping run-log publication.**",
         file=sys.stderr,
     )
 

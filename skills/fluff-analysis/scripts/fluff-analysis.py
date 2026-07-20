@@ -953,7 +953,7 @@ def render(records, cutoff, min_group, since_version=None, assessment_coverage=N
     out.append("# Review Fluff Analysis")
     out.append("")
     out.append("Characterizes review suggestions that are *not accepted* or *accepted-but-low-value*, "
-               "from committed larch run logs. Counts are directional (keyword tags are approximate; "
+               "from the synchronized larch run-log cache. Counts are directional (keyword tags are approximate; "
                "severity cuts are exact). See `skills/shared/review-acceptance-rubric.md` for the "
                "necessity gate this report is designed to inform.")
     out.append("")

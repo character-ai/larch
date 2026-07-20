@@ -89,7 +89,8 @@ Step 7a remains the primary green-path transcript and execution-issues capture p
 Step 18 runs transcript capture only when `bgjob/implement-step7a.result.env` is absent, so green-path runs do not recapture after Step 7a.
 Step 18 covers bail and stall paths that reach finalization before Step 7a.
 After both safety nets succeed, Step 18 validates and sanitizes the implement run with
-`run-log commit`, then calls `run-log publish` with the final staging tree.
+`run-log publish` with the final staging tree. The publisher performs final
+validation and sanitization before archive creation.
 Successful publication verifies both the remote object and the unpacked local
 cache before teardown. Upload or verification failure returns nonzero, emits
 `RUN_LOG_PUBLISH_OK=false`, and retains the session plus durable pending archive

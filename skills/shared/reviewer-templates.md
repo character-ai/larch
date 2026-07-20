@@ -133,7 +133,6 @@ Exclude these from In-Scope findings; surface pre-existing issues only under Out
 - Lockfiles (`package-lock.json`, `go.sum`, `Cargo.lock`, etc.).
 - Vendored dependencies.
 - CI-enforced mechanical concerns that already block merge. CI coverage gaps remain in-scope: missing test globs for new files, CLI E2E needs, or non-failing workflow YAML risks.
-- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. They are intentional plugin run logs per `docs/run-logs.md`; do NOT flag them as scope drift, plan violation, unrelated commit, or PR noise. Review content quality only if directly relevant.
 
 ## Review priorities (priority order, not sequence)
 
@@ -301,7 +300,6 @@ In-Scope only if omitting the finding leaves the feature incomplete, broken, unv
 - Pre-existing issues not introduced or amplified by this change; route to OOS. **Scope check**: In-Scope requires a modified file, plan-named file, or diff-caused regression. Otherwise OOS, even if adjacent or severe.
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
-- `larch-logs/implement/` from `chore(larch-logs)` flush commits. Intentional per `docs/run-logs.md`; do NOT flag scope drift, plan violation, unrelated commit, or PR noise. Review only directly relevant content quality.
 
 ## Output format
 
@@ -397,7 +395,6 @@ In-Scope only if omitting the finding leaves the feature incomplete, broken, unv
 - Pre-existing issues not introduced or amplified by this change; route to OOS. **Scope check**: In-Scope requires a modified file, plan-named file, or diff-caused regression. Otherwise OOS, even if adjacent or severe.
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
-- `larch-logs/implement/` from `chore(larch-logs)` flush commits. Intentional per `docs/run-logs.md`; do NOT flag scope drift, robustness concern, or PR noise. Review only directly relevant content quality.
 
 ## Output format
 
@@ -489,7 +486,6 @@ In-Scope only if omitting the finding leaves the feature incomplete, broken, unv
 - Pre-existing issues not introduced or amplified by this change; route to OOS. **Scope check**: In-Scope requires a modified file, plan-named file, or diff-caused regression. Otherwise OOS, even if adjacent or severe.
 - Lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
-- `larch-logs/implement/` from `chore(larch-logs)` flush commits. Intentional per `docs/run-logs.md`; do NOT flag scope drift, CI regression risk, or PR noise. Review only directly relevant content quality.
 
 ## Output format
 
@@ -671,7 +667,6 @@ In-Scope only if omitting the finding leaves the feature incomplete, broken, unv
 - Pre-existing issues not introduced or amplified by this change; route to OOS. **Scope check**: In-Scope requires a modified file, plan-named file, or diff-caused regression. Otherwise OOS, even if adjacent or severe.
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
-- `larch-logs/implement/` from `chore(larch-logs)` flush commits. Intentional per `docs/run-logs.md`; do NOT flag PR noise. Review only directly relevant content quality.
 
 ## Output format
 

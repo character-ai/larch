@@ -55,7 +55,6 @@ const DIRECT_FILES: &[&str] = &[
     "scripts/sessionstart-health.sh",
     "scripts/sessionstart-statusline.sh",
     "scripts/sleep-seconds.sh",
-    "scripts/sweep-design-logs.sh",
 ];
 
 const DEV_ONLY_PYTHON: &[&str] = &[

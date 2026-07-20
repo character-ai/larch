@@ -260,7 +260,7 @@ def test_flush_logs_pre_stages_preterminal_forbidden_label_without_publishing(
     def fail_commit(**_kwargs: object) -> CommandResult:
         raise AssertionError("mutable refresh must not publish through Git")
 
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
     skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
@@ -286,7 +286,7 @@ def test_flush_logs_pre_stages_neutral_preterminal_label_without_publishing(
         commits.append("commit")
         return CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0)
 
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)
 
     skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
@@ -364,7 +364,7 @@ def test_larch_log_flush_main_stages_preterminal_forbidden_label(
     def fail_commit(**_kwargs: object) -> CommandResult:
         raise AssertionError("pre-terminal guard should skip commit")
 
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
     rc = run_log_flush.larch_log_flush_main([])
 

@@ -121,7 +121,7 @@ from larch.implement.ship_pr import (
     _pr_title,
     _publish_post_pr_terminal_snapshot,
     ShipReconciliationCounters,
-    reconcile_committed_stalled_summary_if_recovered,
+    reconcile_staged_stalled_summary_if_recovered,
     _summary_from_manifest,
     _write_ci_fix_detail_log,
     _write_terminal_state,
@@ -276,20 +276,18 @@ def _normalize_hook_fixed_bytes(content: bytes) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def _committed_outcome_matches(
-    *, ctx: RunContext, cwd: str, kind: AssessmentKind
-) -> bool:
+def _staged_outcome_matches(*, ctx: RunContext, kind: AssessmentKind) -> bool:
     run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id:
         return False
     sidecar = Path(ctx.tmpdir) / kind.ship_outcome_sidecar
-    committed = Path(cwd) / "larch-logs" / "implement" / run_id / kind.ship_outcome_sidecar
+    staged = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id / kind.ship_outcome_sidecar
     try:
         return (
             sidecar.is_file()
-            and committed.is_file()
+            and staged.is_file()
             and _normalize_hook_fixed_bytes(sidecar.read_bytes())
-            == _normalize_hook_fixed_bytes(committed.read_bytes())
+            == _normalize_hook_fixed_bytes(staged.read_bytes())
         )
     except OSError:
         return False
@@ -376,7 +374,7 @@ def _flush_guideline_outcome_before_pr(
     if refresh.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
         _breadcrumb(
             step="warning",
-            detail=f"guideline outcome refresh skipped: {reason} (outcome cannot be committed)",
+            detail=f"guideline outcome refresh skipped: {reason} (outcome cannot be archived)",
         )
         return
     if refresh.reason == config.REFRESH_SKIP_RUN_LOG_INCOMPLETE:
@@ -384,13 +382,13 @@ def _flush_guideline_outcome_before_pr(
         return
     if (
         refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY
-        and _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=GUIDELINES)
+        and _staged_outcome_matches(ctx=ctx, kind=GUIDELINES)
         and (
             not require_invariant_match
-            or _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=INVARIANTS)
+            or _staged_outcome_matches(ctx=ctx, kind=INVARIANTS)
         )
     ):
-        _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching committed artifact")
+        _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching staged artifact")
         return
     _breadcrumb(step="warning", detail=f"guideline outcome refresh skipped: {reason}")
     _write_terminal_state(
@@ -1179,7 +1177,7 @@ def _complete_pr_created_without_merge(
         transient_retries=resume.transient_retries,
         terminal_outcome=Outcome.OK,
     )
-    return reconcile_committed_stalled_summary_if_recovered(
+    return reconcile_staged_stalled_summary_if_recovered(
         runner=runner,
         ctx=working,
         cwd=repo_root,
@@ -1210,7 +1208,7 @@ def _merge_pr_after_log_reconciliation(
     )
     if main_health_terminal is not None:
         return main_health_terminal
-    reconciliation = reconcile_committed_stalled_summary_if_recovered(
+    reconciliation = reconcile_staged_stalled_summary_if_recovered(
         runner=runner,
         ctx=working,
         cwd=repo_root,
@@ -1283,7 +1281,7 @@ def _resume_done_result(
     repo_root: str,
 ) -> ShipResult:
     done_ctx = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
-    reconciled: ShipResult | None = reconcile_committed_stalled_summary_if_recovered(
+    reconciled: ShipResult | None = reconcile_staged_stalled_summary_if_recovered(
         runner=runner,
         ctx=done_ctx,
         cwd=repo_root,
@@ -1396,7 +1394,7 @@ def run_ship(
             return _resume_done_result(runner=runner, ctx=ctx, resume=resume, repo_root=repo_root)
         if resume.start == "merged":
             working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
-            merged_reconciliation = reconcile_committed_stalled_summary_if_recovered(
+            merged_reconciliation = reconcile_staged_stalled_summary_if_recovered(
                 runner=runner,
                 ctx=working,
                 cwd=repo_root,
@@ -1801,9 +1799,8 @@ def run_ship(
                 )
                 # A no-ci-checks-observed stall is recoverable: the main agent
                 # re-invokes ship-pr, which may rebase first when the PR merge state
-                # is dirty or behind. Publishing a
-                # terminal snapshot here would flush a fresh larch-logs commit and
-                # push it, moving HEAD and re-triggering CI before checks can attach
+                # is dirty or behind. Publishing a terminal snapshot here would
+                # re-trigger CI before checks can attach
                 # -- the perpetual stall loop of issue #5186. Skip the snapshot so
                 # HEAD stays put and CI converges on a stable head; it is published
                 # once the run reaches a genuinely terminal state.

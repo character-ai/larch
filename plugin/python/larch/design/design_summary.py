@@ -18,6 +18,7 @@ from larch.calibration import difficulty
 from larch.core import architectural_guidelines, redact
 from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
+from larch.report import storage_config
 from larch.design.design_publish import review_provenance
 from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
 from larch.core.repo_roots import plugin_root
@@ -168,7 +169,7 @@ def _build_cost_args(buckets: dict[str, int]) -> list[str]:
 
 
 def _published_run_logs_path(*, design_tmpdir: Path, run_id: str) -> str:
-    """Return a run-log link only after the publisher recorded completion."""
+    """Return a provider-neutral run identity after publication completes."""
     if not run_id or run_id == "unknown":
         return "N/A"
     result_env = design_tmpdir / ".design-publish-result.env"
@@ -180,7 +181,12 @@ def _published_run_logs_path(*, design_tmpdir: Path, run_id: str) -> str:
         return "N/A"
     if values.get("LOG_PUBLISH_COMPLETED") != "true":
         return "N/A"
-    return f"run-logs/design/{run_id}.tar.gz"
+    repo_root_raw = _read_source_env_value(path=design_tmpdir / "source-env.sh", key="REPO_ROOT")
+    return storage_config.run_log_reference(
+        repo_root=Path(repo_root_raw) if repo_root_raw else None,
+        skill="design",
+        run_id=run_id,
+    )
 
 
 def _duration(design_tmpdir: Path) -> str:

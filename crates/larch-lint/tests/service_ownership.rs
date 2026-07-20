@@ -12,7 +12,6 @@ fn ownership_matrix(adapter: &str) -> String {
         "issues",
         "labels",
         "pull-requests",
-        "release-consumers",
         "releases",
         "repository-metadata",
     ]

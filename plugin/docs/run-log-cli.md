@@ -19,10 +19,6 @@ Validation and I/O failures use the same envelope with `LOG_WRITTEN=false`,
 empty `LOG_PATH`, empty `SHA256`, empty `COMMIT_SHA`, `BYTES=0`,
 `UNCHANGED=false`, and `ERROR=<message>`.
 
-For `--skill implement`, `run-log commit` validates and sanitizes the mutable
-staging tree. It emits `SECRET_SCRUB_VIOLATIONS=N` and does not create a Git
-commit. Other skill cutovers remain separate work.
-
 The CLI owns mechanics, not content classification. A scrub or recognized
 secret-survival failure blocks publication, but a clean pattern scan does not
 make a log public-safe. See the canonical
@@ -36,7 +32,6 @@ make a log public-safe. See the canonical
 - `run-log append`
 - `run-log exists`
 - `run-log manifest`
-- `run-log commit`
 - `run-log flush`
 - `run-log refresh`
 - `run-log capture-transcript`
@@ -68,8 +63,6 @@ Publication failure returns nonzero and retains the durable pending archive.
 
 `exists` exits 0 only after argument, log-root, slug, and batch validation
 succeed. It sets `UNCHANGED=true` when the batch file exists.
-
-Git-publishing paths retain default-branch and post-merge stderr-only hard stops.
 
 `run-log refresh` keeps the legacy `REFRESH_COMMITTED=true` success field, but
 an implement refresh now updates only the mutable session staging tree. It
@@ -119,8 +112,8 @@ dividing by summed cache-read.
 
 ## Implement archive publication
 
-Step 18 runs `run-log commit` after its execution-issue and transcript safety
-nets, then calls `run-log publish` for the final sanitized tree. A successful
+Step 18 runs `run-log publish` after its execution-issue and transcript safety
+nets. The publisher validates and sanitizes the final staging tree. A successful
 call creates one immutable remote object and one validated unpacked cache
 directory. A failed upload returns nonzero, retains the durable pending archive,
 and stops teardown. Re-entry retries the content-pinned pending archive.
@@ -129,6 +122,5 @@ and stops teardown. Re-entry retries the content-pinned pending archive.
 
 Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`).
 
-Current implement runs do not publish run logs through Git. The post-merge
-commit prohibition still applies to every repository mutation and to the
-uncut-over skill paths.
+Run-log publication does not mutate Git. The post-merge commit prohibition
+still applies to every repository mutation.

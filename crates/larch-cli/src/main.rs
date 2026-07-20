@@ -83,7 +83,7 @@ enum GitSubcommand {
     CheckPhantomDirty(CheckPhantomDirtyArguments),
     /// Probe whether a remote branch exists via typed ls-remote.
     CheckRemoteBranch(TrailingArguments),
-    /// Classify or reset a flush-only local main branch ahead of origin/main.
+    /// Classify local main synchronization against origin/main.
     CheckMainSync(TrailingArguments),
     /// Check out the current side of conflicted paths.
     CheckoutOurs(CheckoutOursArguments),

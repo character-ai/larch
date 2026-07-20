@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 import tomllib
@@ -50,6 +51,15 @@ class StorageRoot:
     def bucket_uri(self) -> str:
         """Return the provider bucket root used by existence preflights."""
         return f"{self.scheme}://{self.bucket}"
+
+
+def run_log_reference(*, repo_root: Path | None, skill: str, run_id: str) -> str:
+    """Render a provider-neutral run identity for public summaries."""
+    provider = "unknown"
+    if repo_root is not None:
+        with contextlib.suppress(StorageConfigurationError):
+            provider = load_storage_root(repo_root=repo_root).scheme
+    return f"provider `{provider}`, skill `{skill}`, run ID `{run_id}`"
 
 
 def _validated_bucket(parsed: SplitResult) -> str:

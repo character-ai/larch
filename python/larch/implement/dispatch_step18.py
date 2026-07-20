@@ -245,25 +245,6 @@ def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str) -> int:
         _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
         return config.EXIT_INTERNAL_ERROR
     log_root: Path = implement_tmpdir / "larch-logs"
-    prepare = _run_cli_capture(
-        [
-            "run-log", "commit",
-            "--log-root", str(log_root), "--tmpdir", str(implement_tmpdir),
-            "--skill", "implement", "--run-id", run_id,
-        ],
-        cwd=repo_root,
-    )
-    if prepare.stderr:
-        sys.stderr.write(prepare.stderr)
-        sys.stderr.flush()
-    if prepare.returncode != 0:
-        print(
-            f"Step 18: run-log publication preparation failed (rc={prepare.returncode}); "
-            "the session staging tree was retained for recovery.",
-            file=sys.stderr,
-        )
-        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
-        return prepare.returncode
     publish = _run_cli_capture(
         [
             "run-log", "publish",

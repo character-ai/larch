@@ -19,6 +19,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.report import exec_issue_detail
+from larch.report import storage_config
 from larch.report.run_log_batch import (
     _EXECUTION_ISSUE_CATEGORIES,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the canonical category set.
     _normalize_body_for_hash,  # pyright: ignore[reportPrivateUsage]  # shared writer preserves the established hash grammar.
@@ -450,7 +451,21 @@ def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = Fals
         count = sum(1 for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines() if line.startswith("- "))
     summary = implement_tmpdir / "summary-metadata.md"
     existing = summary.read_text(encoding="utf-8") if summary.is_file() else ""
-    kept = [line for line in existing.splitlines() if not re.match(r"Execution issues pending flush: `[^`]*`$", line)] if existing else [f"Run ID: `{run_id}`", f"Logs: `larch-logs/implement/{run_id}/`", f"Tracking issue: #{issue}"]
+    repo_root_raw = _read_kv(path=implement_tmpdir / "session-env.sh", key="REPO_ROOT")
+    log_reference = storage_config.run_log_reference(
+        repo_root=Path(repo_root_raw) if repo_root_raw else None,
+        skill="implement",
+        run_id=run_id,
+    )
+    if existing:
+        kept = [
+            line
+            for line in existing.splitlines()
+            if not re.match(r"(?:Execution issues pending flush|Logs|Run log):", line)
+        ]
+        kept.insert(1, f"Run log: {log_reference}")
+    else:
+        kept = [f"Run ID: `{run_id}`", f"Run log: {log_reference}", f"Tracking issue: #{issue}"]
     kept.append(f"Execution issues pending flush: `{count}`")
     summary.write_text("\n".join(kept) + "\n", encoding="utf-8")
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))

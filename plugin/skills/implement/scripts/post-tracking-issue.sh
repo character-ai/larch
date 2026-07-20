@@ -92,7 +92,7 @@ version="$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" plu
 
 {
     printf 'Run ID: `%s`\n' "$RUN_ID"
-    printf 'Logs: `larch-logs/implement/%s/`\n' "$RUN_ID"
+    printf 'Run log: provider `unknown`, skill `implement`, run ID `%s`\n' "$RUN_ID"
     printf 'Tracking issue: #%s\n' "$ISSUE"
     printf 'Agent: `%s`\n' "$AGENT"
     printf 'Coder: `%s`\n' "$CODER"

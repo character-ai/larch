@@ -16,7 +16,7 @@ backstops. They do not decide whether content is safe to publish.
 | Private session state | Prompts, model output, raw transcripts and event streams, state envs, retry metadata, raw stdout and stderr, agent sidecars, caches, and temporary files | Keep under the owning session or temporary root. Do not commit or publish unless a named publisher selects and sanitizes the content. |
 | Model-facing data | Repository and GitHub content, plans, findings, diagnostics, tool output, and delegated-agent input or output | Treat as untrusted and session-private by default. Model access does not make the content public or safe to publish. |
 | Operator-visible diagnostics | Terminal errors, bounded stderr tails, statusline breadcrumbs, debug reports, and local fallback reports | Show only the bounded and redacted form supplied by the owning renderer. Do not paste raw diagnostics into a public issue or PR. |
-| Committed run logs | Registered `larch-logs/` batches, round artifacts, summaries, transcripts, and quiet-log breadcrumbs | Filter, trim, redact, and scrub before commit. Treat the result as sensitive and grant it only the repository's visibility. |
+| Published run logs | Registered batches, round artifacts, summaries, transcripts, and quiet-log breadcrumbs | Filter, trim, redact, and scrub before archive publication. Treat the result as sensitive and grant access only through the configured storage provider. |
 | Public GitHub content | Issue and PR bodies, comments, diagrams, research reports, failure reports, and tracking summaries | Treat publication as irreversible. Apply content allowlists, bounds, and redaction, then make a separate human or workflow classification that the content is safe for the target repository. |
 | Run-log archives and remote objects | Deterministic archives and object-store copies of a sanitized run tree | Preserve the committed run tree's confidentiality class. Archive transport does not make the content public or less sensitive. |
 
@@ -201,12 +201,12 @@ Clone-local statusline breadcrumbs are operator diagnostics stored under
 numbers. They are not the committed breadcrumb stream and are not public
 reports. See [Progress reporting](../progress-reporting.md).
 
-## Committed Run Logs and Breadcrumbs
+## Run Logs and Breadcrumbs
 
-Committed `larch-logs/` content is a durable repository artifact. It may
-contain plans, findings, summaries, transcripts, failure evidence, and model
-output after sanitization. Treat it as sensitive even when every redaction and
-scanner passes.
+Published run-log archives are durable object-store artifacts. They may contain
+plans, findings, summaries, transcripts, failure evidence, and model output
+after sanitization. Treat them as sensitive even when every redaction and
+scanner passes. The historical tracked corpus remains unchanged.
 
 The run-log and design-log publishers enforce these security invariants:
 
@@ -303,8 +303,8 @@ retains the session plus any content-pinned pending archive for retry.
 
 ## Public GitHub Publication
 
-GitHub publication is a separate security boundary from committed run logs.
-Repository visibility determines who can read committed logs. Issue and PR
+GitHub publication is a separate security boundary from run-log storage.
+Storage-provider access determines who can read archived logs. Issue and PR
 content may target another repository or a public upstream project. Never infer
 that content safe for one boundary is safe for the other.
 
@@ -319,9 +319,9 @@ token-free diagnostic.
 
 PR bodies embed only sanitized diagrams or placeholders and pass through the
 PR creation redactor before `gh pr create`. Tracking issues carry slim,
-marker-keyed summaries. Full run payloads live in committed logs, not issue
-comments. Tracking title, body, and comment writes redact paths and secrets
-before GitHub receives them.
+marker-keyed summaries that name the provider, skill, and run ID. Full run
+payloads live in remote archives, not issue comments. Tracking title, body, and
+comment writes redact paths and secrets before GitHub receives them.
 
 The `larch:diagrams` publisher accepts source files from approved temporary
 roots unless the operator explicitly allows another path. It validates the
@@ -380,7 +380,7 @@ egress contract.
 |---------|----------------|
 | Python redaction and scanner wrapper | `python/larch/core/redact.py`, `python/larch/lint/gitleaks.py` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
-| Run-log selection, trim, scrub, and commit | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
+| Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
 | Run-log archive, sync, and object publication | `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI owners |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |

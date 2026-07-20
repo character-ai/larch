@@ -69,7 +69,7 @@ check_contains "Step 2 to Step 3 reminder (impl completion)" "skills/implement/S
 check_contains "Step 4 to Step 5 reminder" "skills/implement/SKILL.md" "Continue to Step 5 IMMEDIATELY"
 check_contains "Step 7a to Step 8 reminder" "skills/implement/SKILL.md" "Continue to Step 8 IMMEDIATELY"
 check_contains "Step 7a forbids code-flow body chat" "skills/implement/SKILL.md" "NEVER print code-flow diagram bodies to chat"
-check_contains "Step 7a forbids failure-log run-log copy" "skills/implement/SKILL.md" "NEVER copy diagram failure captures into committed implement run logs"
+check_contains "Step 7a forbids failure-log run-log copy" "skills/implement/SKILL.md" "NEVER copy diagram failure captures into published implement run logs"
 # Step 12d→14: pin the bail-path boundary specifically
 # ("Continue to Step 14 IMMEDIATELY" also appears at the 12b merged! and
 # 12a already_merged paths — use the unique reason clause to pin the bail site).

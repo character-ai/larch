@@ -79,48 +79,14 @@ def _ship_has_active_failure_signal(tmpdir: Path) -> bool:
     )
 
 
-def _repo_final_summary_relpath(run_id: str) -> str:
-    return f"larch-logs/implement/{run_id}/final-summary.md"
-
-
-def _read_committed_final_summary_text(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str,
-    run_id: str,
-) -> str | None:
-    _ = ctx
-    rel = _repo_final_summary_relpath(run_id)
-    head_result = git.show_file(runner, f"HEAD:{rel}", cwd=cwd)
-    if head_result.returncode == 0 and head_result.stdout:
-        return head_result.stdout
-    repo_summary = Path(cwd) / rel
-    if repo_summary.is_file():
-        return repo_summary.read_text(encoding="utf-8", errors="replace")
-    return None
-
-
-def _committed_summary_heading_is_stalled(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str,
-) -> bool:
+def _staged_summary_heading_is_stalled(*, ctx: RunContext) -> bool:
     run_id = run_log_manifest.effective_run_id(ctx)
     if not run_id:
         return False
-    rel = _repo_final_summary_relpath(run_id)
-    text = _read_committed_final_summary_text(runner=runner, ctx=ctx, cwd=cwd, run_id=run_id)
-    if text is not None and final_report.summary_heading_is_stalled(text):
-        return True
-    branch = ctx.branch_name
-    if not branch:
+    summary = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id / "final-summary.md"
+    if not summary.is_file():
         return False
-    remote_result = git.show_file(runner, f"origin/{branch}:{rel}", cwd=cwd)
-    if remote_result.returncode != 0 or not remote_result.stdout:
-        return False
-    return final_report.summary_heading_is_stalled(remote_result.stdout)
+    return final_report.summary_heading_is_stalled(summary.read_text(encoding="utf-8", errors="replace"))
 
 
 def _live_recovered_outcome(ctx: RunContext) -> str:
@@ -133,7 +99,7 @@ def _live_recovered_outcome(ctx: RunContext) -> str:
     return outcome if outcome in {"pr-created", "pr-created-draft", "merged"} else ""
 
 
-def reconcile_committed_stalled_summary_if_recovered(
+def reconcile_staged_stalled_summary_if_recovered(
     *,
     runner: Runner,
     ctx: RunContext,
@@ -149,7 +115,7 @@ def reconcile_committed_stalled_summary_if_recovered(
     """
     resolved_counters = counters or ShipReconciliationCounters()
     if (
-        not _committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd=cwd)
+        not _staged_summary_heading_is_stalled(ctx=ctx)
         or not _live_recovered_outcome(ctx)
     ):
         return None
@@ -199,8 +165,6 @@ def _pr_title(*, ctx: RunContext, runner: Runner, cwd: str | None) -> str:
         title = ctx.pr_title
         return title if not prefix or title.startswith(prefix) else f"{prefix}{title}"
     subject = git.log_subject(runner, "HEAD", cwd=cwd)
-    if subject.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX):
-        subject = ""
     title = subject or f"Implement issue #{issue or ctx.issue}"
     return title if not prefix or title.startswith(prefix) else f"{prefix}{title}"
 

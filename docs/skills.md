@@ -22,7 +22,6 @@ child run whose manifest records the parent skill and run ID.
 - [`/design`](#design)
 - [`/difficulty-calibration`](#difficulty-calibration)
 - [`/fluff-analysis`](#fluff-analysis)
-- [`/gc-run-logs`](#gc-run-logs)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
 - [`/learn-from-bugs`](#learn-from-bugs)
@@ -104,7 +103,7 @@ All GitHub mutations are grouped behind one `AskUserQuestion` gate: approve all,
 
 **Source**: [`skills/fluff-analysis/SKILL.md`](../skills/fluff-analysis/SKILL.md)
 
-Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from committed `larch-logs/design/*/` and `larch-logs/implement/*/` run directories in the current repository. The analyzer normalizes every review finding (outcome, reviewer/voter severity, multi-label semantic tags) and prints a markdown report: acceptance baselines, low-acceptance semantic groups (distinguishing reject-heavy true fluff from OOS-heavy valid-but-deferred), a testing breakdown, severity/quality/uncertain correlations, reviewer-lane splits, an accepted-but-low-value proxy, optional pre/post comparison (`--cutoff` by timestamp or `--since-version` by `manifest.json.larch_version`), and data-driven recommendations. Keyword tags are directional; severity and outcome cuts are exact. `--include-in-progress` additionally reads un-flushed `/design` session temp dirs (racy snapshot, off by default; tunable with `--sessions-dir` / `--inprogress-since`). `--min-group N` sets the minimum findings for a semantic group to appear (default 20). `--out FILE` writes the report to a file instead of stdout. This is the standing tool behind `[Analysis Report]` issues; re-run it as the corpus grows to track whether necessity-gate changes (`skills/shared/review-acceptance-rubric.md`) move acceptance and findings-per-run. Skill-local Python is not covered by `make py-lint` (scoped to `python/`).
+Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from the synchronized local run-log cache. The analyzer normalizes every review finding and prints acceptance baselines, low-acceptance groups, reviewer-lane splits, comparisons, and recommendations. `--include-in-progress` additionally reads active `/design` session temp dirs. `--log-root DIR` selects an offline fixture corpus; otherwise the analyzer synchronizes the repository-scoped cache before reading it.
 
 ### `/rejected-analysis`
 
@@ -112,7 +111,7 @@ Characterize review **fluff** — suggestions that are *not accepted* (rejected 
 
 **Source**: [`skills/rejected-analysis/SKILL.md`](../skills/rejected-analysis/SKILL.md)
 
-Recover verified real rejected code-review findings from committed `larch-logs/implement/` and `larch-logs/review/` run directories. The collector uses implement round-local `round-*/review-findings-full.jsonl` plus `round-*/findings-classification.tsv`, and standalone review `review-findings.ndjson` plus `review-findings-classification-round-*.tsv`. `/design` plan-review rows are excluded in v1.
+Recover verified rejected code-review findings from the synchronized implement and review run-log cache. `/design` plan-review rows are excluded in v1.
 
 The inclusion rule is deliberately narrow: keep rejected in-scope code-review rows with at least one YES vote, drop 0-YES rows, and exclude `OOS_*` or `scope=oos` rows as already deferred. Verification is capped at 100 candidates by default. Cap drops and deterministic pre-verification drops are written to `larch-logs/rejected-analysis-ledger.tsv`.
 
@@ -126,7 +125,7 @@ Verifier replies must bind back to the candidate path, with a small line slack w
 
 **Source**: [`skills/difficulty-calibration/SKILL.md`](../skills/difficulty-calibration/SKILL.md)
 
-Compare predicted and realized difficulty tiers from committed `larch-logs/` data. The analyzer is read-only unless `--out FILE` is provided. It changes no thresholds, panels, reviewer points, token allocation, or live routing.
+Compare predicted and realized difficulty tiers from the synchronized run-log cache. The analyzer is read-only unless `--out FILE` is provided.
 
 The analyzer joins `difficulty-rating.json`, classification artifacts, token reports, timing reports, and `larch-logs/rejected-analysis-verdicts.tsv` when present. Classification precedence is fixed by skill:
 
@@ -146,15 +145,7 @@ The report includes corpus and degraded-input counters, confusion matrices by sk
 
 **Source**: [`skills/voter-calibration/SKILL.md`](../skills/voter-calibration/SKILL.md)
 
-Measure voter agreement, severity spread, Calibration Score, and chronic outlier voters from committed `larch-logs/design/*/`, `larch-logs/implement/*/`, and `larch-logs/review/*/` classification TSVs. The report aggregates accepted/rejected panels, excludes neutral and single/zero-voter panels, tracks missing votes separately, flags outliers when `eligible >= min_votes` and `agreement_rate < outlier_threshold` (defaults `20` and `0.50`), and computes voter-side severity standing with `--high-severity-threshold` (default `0.90`). It is diagnostic only. It does not use realized outcomes, issue fate, or reverts. It does not affect reviewer/proposer points, issue fate, spawning, thresholds, tokens, or live panel verdicts.
-
-### `/gc-run-logs`
-
-**Arguments**: `[--older-than DAYS] [--delete] [--dry-run]`
-
-**Source**: [`skills/gc-run-logs/SKILL.md`](../skills/gc-run-logs/SKILL.md)
-
-Age-based retention policy for committed `larch-logs/` run directories (`design/`, `implement/`, `review/`). Slims qualifying run dirs (older than `--older-than DAYS`, default 90) to the consumer-core keep set: `manifest.json`, `final-summary.md`, token/timing reports, findings, and execution issues. All other files and subdirectories (round forensics, aggregator artifacts, voter outputs) are removed. `--delete` fully removes qualifying dirs instead of slimming; content remains recoverable via git history. `--dry-run` previews the plan without changes. Dirs with a `pause-state.txt`, a `gc-slimmed` marker, or no resolvable run date are skipped. Creates a log-only PR for operator review and merge; never runs implicitly and never merges on the operator's behalf.
+Measure voter agreement, severity spread, Calibration Score, and chronic outlier voters from classification TSVs in the synchronized run-log cache. It is diagnostic only and does not affect live routing or verdicts.
 
 ### `/implement`
 
@@ -202,7 +193,7 @@ nothing to pause and exits successfully.
 
 **Source**: [`skills/report-tokens/SKILL.md`](../skills/report-tokens/SKILL.md)
 
-Analyze structured token reports from committed `larch-logs/<skill>/*/` run directories in the current larch repository. The skill requires `--skill=design|implement`, prices runs through `python/larch/report/report_tokens_cost.py`, writes a durable `Cache JSON:` NDJSON snapshot under a temp directory, optionally plots cost-over-time PNGs (`--no-plot` skips), and optionally posts a skill-prefixed GitHub issue (`--no-issue` skips). Advertised cache and plot paths remain readable after CLI exit and expire through automatic SessionStart `cleanup run` age sweeps for `larch-*` paths. The optional `--run-id <ID>` is consumed by the orchestrator and not forwarded to the CLI. Both skills use one aggregate graph and one per-day table set. Filed issues omit raw per-issue JSON and the removed reported-vs-estimated comparison. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
+Analyze structured token reports from the synchronized repository-scoped run-log cache. The skill requires `--skill=design|implement`, can plot trends, and can post a skill-prefixed report issue. The remote archive remains authoritative; analysis writes no tracked run-log files.
 
 ### `/triage`
 

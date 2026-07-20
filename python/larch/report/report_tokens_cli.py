@@ -65,7 +65,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     _ = parser.add_argument("--plot-from", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.plot_from is not None:
-        parser.error("--plot-from has been removed; scan committed larch-logs instead")
+        parser.error("--plot-from has been removed; use the synchronized run-log cache instead")
     return args
 
 

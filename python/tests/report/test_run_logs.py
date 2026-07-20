@@ -327,7 +327,7 @@ def test_flush_logs_pre_state_file_less_stages_without_git_commit(
         return CommandResult(("git", "commit"), 0, "", "", 0.01)
 
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
     skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
     assert runner.git_commits == 0
@@ -989,7 +989,7 @@ def test_flush_logs_pre_happy_path_stages_without_git_commit(
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
     runner = RecordingRunner()
     skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
@@ -1036,7 +1036,7 @@ def test_flush_logs_pre_does_not_call_git_commit(
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
@@ -1134,7 +1134,7 @@ def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", noop_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", noop_commit, raising=False)  # type: ignore[arg-type]
     skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip.skipped
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1168,7 +1168,7 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
     )
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0))  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0), raising=False)  # type: ignore[arg-type]
 
     skip1 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip1.skipped
@@ -1223,7 +1223,7 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
 
     skip1 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
     assert not skip1.skipped
@@ -1497,7 +1497,7 @@ def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
     monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0), raising=False)  # type: ignore[arg-type]
 
     skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
 
@@ -1555,7 +1555,7 @@ def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
     monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0), raising=False)  # type: ignore[arg-type]
 
     skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
 
@@ -2167,7 +2167,7 @@ def test_larch_log_flush_does_not_call_git_commit(
     monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_commit, "_commit_run", fail_commit)
     monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
     rc = run_log_flush.larch_log_flush_main([])
 
@@ -2581,7 +2581,7 @@ def test_flush_logs_pre_does_not_probe_git_volatile_state(
         return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
 
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)
     skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
 
@@ -3756,7 +3756,7 @@ def test_capture_transcript_main_defer_commit_no_warning(
     assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
 
 
-def test_capture_transcript_main_prepares_preterminal_stalled_summary(
+def test_capture_transcript_main_stages_preterminal_stalled_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3776,12 +3776,6 @@ def test_capture_transcript_main_prepares_preterminal_stalled_summary(
         _ = output.write_text('{"type":"stub"}\n', encoding="utf-8")
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    prepares: list[str] = []
-
-    def fake_prepare(**_kwargs: object) -> CommandResult:
-        prepares.append("prepare")
-        return CommandResult(("run-log", "prepare-publication"), 0, "", "", 0.0)
-
     def fake_write_batch(
         *,
         log_root: Path,
@@ -3797,7 +3791,6 @@ def test_capture_transcript_main_prepares_preterminal_stalled_summary(
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
     monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
-    monkeypatch.setattr(run_log_flush, "prepare_run_tree_for_publication", fake_prepare)
 
     buf = StringIO()
     with contextlib.redirect_stdout(buf):
@@ -3823,7 +3816,6 @@ def test_capture_transcript_main_prepares_preterminal_stalled_summary(
     assert rc == 0
     captured = buf.getvalue()
     assert "SESSION_TRANSCRIPT_STATUS=captured" in captured
-    assert prepares == ["prepare"]
     assert "pre-terminal" not in issues_log.read_text(encoding="utf-8")
 
 

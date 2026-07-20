@@ -54,7 +54,7 @@ Commands:
   branch-info          Emit `HEAD_SHA` and `CURRENT_BRANCH` for the cwd repository
   check-phantom-dirty  Classify repository changes against an untracked-path baseline
   check-remote-branch  Probe whether a remote branch exists via typed ls-remote
-  check-main-sync      Classify or reset a flush-only local main branch ahead of origin/main
+  check-main-sync      Classify local main synchronization against origin/main
   checkout-ours        Check out the current side of conflicted paths
   clean-tree           Report whether the worktree is clean using machine-readable key/value rows
   commit               Stage optional paths and create a commit

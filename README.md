@@ -125,12 +125,6 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Characterize review <strong>fluff</strong> from the synchronized run-log cache. Analyze which <code>/design</code> and <code>/implement</code> suggestions get rejected, deferred to OOS, or accepted but low-value, then print data-driven recommendations.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#gc-run-logs"><code>/gc-run-logs</code></a></td>
-      <td><code>[--older-than DAYS] [--delete] [--dry-run]</code></td>
-    </tr>
-    <tr><td colspan="2">Age-based retention policy for committed <code>larch-logs/</code> run directories. Slims qualifying dirs (default: older than 90 days) to the consumer-core keep set (token/timing reports, findings, manifest); <code>--delete</code> fully removes them. Creates a log-only PR for operator merge. Operator-invoked only — never runs implicitly.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
       <td><code>[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder &lt;claude|codex|cursor&gt;] [--run-id &lt;ID&gt;] [--force|-f] [--self-review] [--self-implement] [--difficulty &lt;TRIVIAL|MODERATE|HARD&gt;] &lt;issue-N&gt;</code></td>
     </tr>

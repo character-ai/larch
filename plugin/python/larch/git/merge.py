@@ -36,6 +36,7 @@ _MERGE_CONFLICT_SIGNALS = (
     "merge conflicts",
     "cannot be cleanly created",
 )
+_LOG_ONLY_RECOVERY_ENABLED = False
 
 
 def redact_merge_diagnostic(text: str) -> str:
@@ -320,7 +321,11 @@ def _ensure_head_matches_pr(
             result=config.MERGE_RESULT_ERROR,
             error="could not resolve PR head OID via gh pr view",
         )
-    if not _flush_recoverable(runner=runner, pr_head_oid=state.head_ref_oid, cwd=cwd):
+    if not _LOG_ONLY_RECOVERY_ENABLED or not _flush_recoverable(
+        runner=runner,
+        pr_head_oid=state.head_ref_oid,
+        cwd=cwd,
+    ):
         return MergeResult(
             result=config.MERGE_RESULT_ERROR,
             error=(

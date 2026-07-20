@@ -25,6 +25,18 @@ import sys
 if sys.argv[1:3] == ["plugin", "read-version"]:
     print("LARCH_PLUGIN_VERSION=1.2.3")
     raise SystemExit(0)
+if sys.argv[1:3] == ["kv", "get"]:
+    args = sys.argv[3:]
+    source = sys.stdin.read()
+    if "--file" in args:
+        with open(args[args.index("--file") + 1], encoding="utf-8") as handle:
+            source = handle.read()
+    key = args[args.index("--key") + 1]
+    for line in source.splitlines():
+        if line.startswith(key + "="):
+            print(line.split("=", 1)[1])
+            break
+    raise SystemExit(0)
 if sys.argv[1:3] == ["tracking-issue", "upsert-summary"]:
     args = sys.argv[3:]
     log = os.environ.get("TRACKING_ARGS_LOG")
@@ -45,7 +57,7 @@ printf 'ISSUE_NUMBER=3\nRUN_ID=run-2\nADOPTED=true\n' > "$impl_dir/parent-issue.
 printf 'REPO=owner/repo\nCODER=codex\n' > "$impl_dir/session-env.sh"
 cat > "$impl_dir/summary-metadata.md" <<'EOF'
 Run ID: `run-2`
-Logs: `larch-logs/implement/run-2/`
+Run log: provider `unknown`, skill `implement`, run ID `run-2`
 Tracking issue: #3
 Agent: `claude`
 Coder: `codex`

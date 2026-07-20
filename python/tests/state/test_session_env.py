@@ -1915,7 +1915,7 @@ def _run_local_cleanup(repo: Path, *, env: dict[str, str] | None = None) -> subp
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git required for local-cleanup integration tests")
-def test_local_cleanup_flush_orphan_non_flush_and_squash_gap(tmp_path: Path) -> None:
+def test_local_cleanup_preserves_ahead_commits_and_reports_divergence(tmp_path: Path) -> None:
     prefix = config.FLUSH_COMMIT_SUBJECT_PREFIX
 
     flush_repo = _setup_remote_repo(tmp_path, "flush-orphan")
@@ -1929,8 +1929,9 @@ def test_local_cleanup_flush_orphan_non_flush_and_squash_gap(tmp_path: Path) -> 
     flush_result = _run_local_cleanup(flush_repo)
     assert "CLEANUP_SUCCESS=true" in flush_result.stdout
     assert "BRANCH_DELETED=true" in flush_result.stdout
-    assert "Dropping 1 prior-run larch-log flush commit(s)" in flush_result.stderr
-    assert _git(["rev-parse", "HEAD"], cwd=flush_repo).stdout.strip() == flush_origin
+    assert "Dropping" not in flush_result.stderr
+    assert _git(["rev-parse", "HEAD"], cwd=flush_repo).stdout.strip() != flush_origin
+    assert (flush_repo / "larch-logs/implement/prior-run/session-transcript.jsonl").is_file()
 
     non_flush_repo = _setup_remote_repo(tmp_path, "non-flush-ahead")
     _commit_path(non_flush_repo, "operator-note.txt", "keep me", "operator local note")
@@ -1954,12 +1955,12 @@ def test_local_cleanup_flush_orphan_non_flush_and_squash_gap(tmp_path: Path) -> 
     _config_git_identity(pusher)
     _commit_path(pusher, "landed-from-pr.txt", "squash simulation", "feat: simulate post-merge remote advance")
     _git(["push", "-q", "origin", "main"], cwd=pusher)
-    expected = _git(["rev-parse", "HEAD"], cwd=pusher).stdout.strip()
+    local_head = _git(["rev-parse", "HEAD"], cwd=squash_repo).stdout.strip()
     squash_result = _run_local_cleanup(squash_repo)
-    assert "CLEANUP_SUCCESS=true" in squash_result.stdout
-    assert "BRANCH_DELETED=true" in squash_result.stdout
-    assert "Dropping 1 prior-run larch-log flush commit(s)" in squash_result.stderr
-    assert _git(["rev-parse", "HEAD"], cwd=squash_repo).stdout.strip() == expected
+    assert "CLEANUP_SUCCESS=false" in squash_result.stdout
+    assert "BRANCH_DELETED=false" in squash_result.stdout
+    assert "Dropping" not in squash_result.stderr
+    assert _git(["rev-parse", "HEAD"], cwd=squash_repo).stdout.strip() == local_head
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git required for local-cleanup integration tests")
