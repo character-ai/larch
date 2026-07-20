@@ -289,6 +289,7 @@ impl OctocrabGitHubService {
             test_log_redirect_origin: Some(log_redirect_origin),
             redactor,
             mutation_lock: Mutex::new(()),
+            test_continuation_base: None,
         }
     }
 

@@ -5,29 +5,39 @@ use std::fmt::Write as _;
 use predicates::prelude::*;
 use support::TempRepo;
 
-const COMMANDS: [(&str, &str, u64); 22] = [
-    ("git", "amend-add", 7735),
-    ("git", "branch-info", 7734),
-    ("git", "check-main-sync", 7758),
-    ("git", "check-phantom-dirty", 7757),
-    ("git", "check-remote-branch", 7734),
-    ("git", "checkout-ours", 7759),
-    ("git", "clean-tree", 7756),
-    ("git", "commit", 7735),
-    ("git", "conflict-files", 7756),
-    ("git", "count-commits", 7734),
-    ("git", "current-branch", 7734),
-    ("git", "phantom-probe", 7757),
-    ("git", "rebase-abort", 7759),
-    ("git", "rebase-skip", 7759),
-    ("git", "show-stage", 7734),
-    ("git", "snapshot-untracked", 7756),
-    ("git", "stage", 7735),
-    ("git", "sync-local-main", 7758),
-    ("push", "branch", 7760),
-    ("push", "checkpoint-probe", 7762),
-    ("push", "force", 7760),
-    ("push", "rebase", 7762),
+const COMMANDS: [(&str, &str, &str, u64); 22] = [
+    ("git", "amend-add", "amend_add_main", 7735),
+    ("git", "branch-info", "branch_info_main", 7734),
+    ("git", "check-main-sync", "check_main_sync_main", 7758),
+    (
+        "git",
+        "check-phantom-dirty",
+        "check_phantom_dirty_main",
+        7757,
+    ),
+    (
+        "git",
+        "check-remote-branch",
+        "check_remote_branch_main",
+        7734,
+    ),
+    ("git", "checkout-ours", "checkout_ours_main", 7759),
+    ("git", "clean-tree", "clean_tree_main", 7756),
+    ("git", "commit", "commit_main", 7735),
+    ("git", "conflict-files", "conflict_files_main", 7756),
+    ("git", "count-commits", "count_commits_main", 7734),
+    ("git", "current-branch", "current_branch_main", 7734),
+    ("git", "phantom-probe", "phantom_probe_main", 7757),
+    ("git", "rebase-abort", "rebase_abort_main", 7759),
+    ("git", "rebase-skip", "rebase_skip_main", 7759),
+    ("git", "show-stage", "show_stage_main", 7734),
+    ("git", "snapshot-untracked", "snapshot_untracked_main", 7756),
+    ("git", "stage", "stage_main", 7735),
+    ("git", "sync-local-main", "sync_local_main_main", 7758),
+    ("push", "branch", "branch_main", 7760),
+    ("push", "checkpoint-probe", "checkpoint_probe_main", 7762),
+    ("push", "force", "force_main", 7760),
+    ("push", "rebase", "rebase_main", 7762),
 ];
 
 const OPERATIONS: &str = r"pub enum GitCliOperation {
@@ -62,6 +72,7 @@ const OPERATIONS: &str = r"pub enum GitCliOperation {
 ";
 
 const REQUESTS: &str = r"
+pub(super) trait GitOperation {}
 git_op!(AddRequest, Add);
 git_op!(ApplyRequest, Apply);
 git_op!(BranchMutationRequest, BranchMutation);
@@ -92,15 +103,68 @@ git_op!(VersionRequest, Version);
 git_op!(WorktreeRequest, Worktree);
 ";
 
+const OWNER: &str = r"
+pub struct GitCli;
+macro_rules! git_methods {
+    ($($name:ident($ty:ty)),+) => {
+        $(
+            pub async fn $name(&self, _request: $ty) {}
+        )+
+    };
+}
+impl GitCli {
+    pub fn new() -> Self { Self }
+    pub fn working_directory(&self) {}
+    pub fn version(&self) {}
+    fn run<O: GitOperation>(&self, _operation: O) {}
+    git_methods!(
+        exact_diff(ExactDiffRequest),
+        config_mutation(ConfigMutationRequest),
+        remote_mutation(RemoteMutationRequest),
+        add(AddRequest),
+        rm(RmRequest),
+        reset(ResetRequest),
+        restore(RestoreRequest),
+        checkout(CheckoutRequest),
+        clean(CleanRequest),
+        apply(ApplyRequest),
+        commit(CommitRequest),
+        interpret_trailers(InterpretTrailersRequest),
+        branch_mutation(BranchMutationRequest),
+        worktree(WorktreeRequest),
+        init(InitRequest),
+        clone_repository(CloneRequest),
+        sparse_checkout(SparseCheckoutRequest),
+        rebase(RebaseRequest),
+        merge(MergeRequest),
+        pull(PullRequest),
+        stash(StashRequest),
+        fetch(FetchRequest),
+        push(PushRequest),
+        ls_remote(LsRemoteRequest),
+        tag_mutation(TagMutationRequest),
+        submodule(SubmoduleRequest),
+    );
+}
+";
+
 fn command_registry() -> String {
     let mut output = String::from("schema_version = 1\n");
-    for (domain, verb, issue) in COMMANDS {
+    for (domain, verb, python_function, issue) in COMMANDS {
+        let python_module = if domain == "git" {
+            "larch.git.git"
+        } else {
+            "larch.git.push"
+        };
         let _ = write!(
             output,
             r#"
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
+python_module = "{python_module}"
+python_function = "{python_function}"
+machine_stdout = false
 owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
@@ -120,10 +184,7 @@ fn inventory(extra: &str) -> String {
 
 fn prepare_repository(repository: &TempRepo) {
     repository.write("crates/larch-core/src/process.rs", OPERATIONS.as_bytes());
-    repository.write(
-        "crates/larch-adapters/src/git/mod.rs",
-        b"pub struct GitCli;\n",
-    );
+    repository.write("crates/larch-adapters/src/git/mod.rs", OWNER.as_bytes());
     repository.write(
         "crates/larch-adapters/src/git/repository.rs",
         b"pub struct GixRepository;\nuse gix::Repository;\n",
@@ -136,6 +197,10 @@ fn prepare_repository(repository: &TempRepo) {
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
         command_registry().as_bytes(),
+    );
+    repository.write(
+        "python/larch/cli.py",
+        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
     );
     repository.write("docs/git-operation-inventory.md", inventory("").as_bytes());
 }
@@ -200,10 +265,197 @@ fn rejects_direct_processes_and_arbitrary_git_argv_surfaces() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains(
-            "arbitrary Git operation surface outside the closed adapter",
+            "arbitrary Git operation surface outside the closed typed request families",
         ))
         .stdout(predicate::str::contains(
             "direct production Git process; use the typed Git adapter",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn rejects_aliased_qualified_and_variable_git_processes_without_suppression() {
+    let repository = TempRepo::new();
+    prepare_repository(&repository);
+    repository.write(
+        "crates/larch-core/src/leak.rs",
+        br#"use std::process::{self as process_alias, Command as ProcessCommand};
+const GIT: &str = "git";
+fn run(args: &[String]) {
+    let program = GIT;
+    let mut command = ProcessCommand::new(program);
+    let _ = command.args(args);
+    let _ = std::process::Command::new(GIT);
+    let _ = process_alias::Command::new("git");
+    let constructor = ProcessCommand::new;
+    let _ = constructor(GIT); // lint-subprocess-via-runner: ok suppression attempts cannot waive Git ownership
+    let _ = ["git", "status"];
+    let _ = vec!["git", "status"];
+}
+"#,
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "git-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "direct production Git process; use the typed Git adapter",
+        ))
+        .stdout(predicate::str::contains(
+            "generic argv forwarding to Git; use a closed typed request family",
+        ))
+        .stdout(predicate::str::contains(
+            "raw production Git argv; use a closed typed request family",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn rejects_each_direct_git_process_bypass_independently() {
+    const CASES: [&str; 7] = [
+        "use std::process::Command as ProcessCommand;\nfn run() { let _ = ProcessCommand::new(\"git\"); }\n",
+        "fn run() { let _ = std::process::Command::new(\"git\"); }\n",
+        "use std::process::Command;\nconst GIT: &str = \"git\";\nfn run() { let _ = Command::new(GIT); }\n",
+        "use std::process::Command;\nfn run() { let program = \"git\"; let _ = Command::new(program); }\n",
+        "use std::process::Command;\nfn run() { let constructor: fn(&str) -> Command = Command::new; let _ = constructor(\"git\"); }\n",
+        "use std::process::Command;\nfn run() { let _ = Command::new(\"git\"); } // lint-subprocess-via-runner: ok cannot suppress ownership\n",
+        "use tokio::process::Command as TokioCommand;\nfn run() { let _ = TokioCommand::new(\"git\"); }\n",
+    ];
+    for source in CASES {
+        let repository = TempRepo::new();
+        prepare_repository(&repository);
+        repository.write("crates/larch-core/src/leak.rs", source.as_bytes());
+        repository.commit_all();
+
+        TempRepo::command_from(repository.path())
+            .args(["rule", "git-ownership"])
+            .assert()
+            .code(1)
+            .stdout(predicate::str::contains(
+                "direct production Git process; use the typed Git adapter",
+            ))
+            .stderr("");
+    }
+}
+
+#[test]
+fn rejects_adapter_local_generic_and_public_request_surfaces() {
+    let repository = TempRepo::new();
+    prepare_repository(&repository);
+    let widened = OWNER
+        .replace(
+            "    fn run<O: GitOperation>(&self, _operation: O) {}",
+            "    fn run<O: GitOperation>(&self, _operation: O) {}\n    fn run_raw(&self, argv: Vec<String>) {}",
+        )
+        .replace(
+            "        submodule(SubmoduleRequest),",
+            "        submodule(SubmoduleRequest),\n        raw(RawRequest),",
+        )
+        .replace("pub async fn $name(", "async fn $name(");
+    repository.write("crates/larch-adapters/src/git/mod.rs", widened.as_bytes());
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "git-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "arbitrary Git operation surface outside the closed typed request families",
+        ))
+        .stdout(predicate::str::contains(
+            "GitCli public methods drifted from the closed typed request families",
+        ))
+        .stdout(predicate::str::contains("RawRequest"))
+        .stdout(predicate::str::contains(
+            "GitCli typed request methods must remain public",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn accepts_bounded_rust_git_fixture_oracles() {
+    let repository = TempRepo::new();
+    prepare_repository(&repository);
+    repository.write(
+        "crates/larch-cli/src/fixture.rs",
+        br#"#[cfg(test)]
+mod tests {
+    fn setup() {
+        let _ = std::process::Command::new("git");
+    }
+}
+"#,
+    );
+    repository.write(
+        "crates/larch-test-support/src/git.rs",
+        b"pub fn setup() { let _ = std::process::Command::new(\"git\"); }\n",
+    );
+    repository.write(
+        "crates/larch-lint/src/repository.rs",
+        b"pub fn tracked() { let _ = std::process::Command::new(\"git\"); }\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "git-ownership"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+}
+
+#[test]
+fn rejects_retired_git_python_entrypoints_and_calls() {
+    let repository = TempRepo::new();
+    prepare_repository(&repository);
+    repository.write(
+        "python/larch/git/git.py",
+        b"def commit_main() -> int:\n    return 0\n",
+    );
+    repository.write(
+        "python/larch/consumer.py",
+        b"from larch.git.git import commit_main\ncommit_main()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "git-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-present git commit",
+        ))
+        .stdout(predicate::str::contains(
+            "python-entrypoint-still-called git commit",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn rejects_retired_push_rebase_state_machine_symbols() {
+    let repository = TempRepo::new();
+    prepare_repository(&repository);
+    repository.write(
+        "python/larch/git/rebase.py",
+        b"class RebasePushResult:\n    pass\n\ndef rebase_push() -> RebasePushResult:\n    return RebasePushResult()\n",
+    );
+    repository.write(
+        "python/larch/consumer.py",
+        b"from larch.git.rebase import rebase_push\nrebase_push()\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "git-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "retired push rebase Python state-machine symbol: RebasePushResult",
+        ))
+        .stdout(predicate::str::contains(
+            "retired push rebase Python state-machine symbol: rebase_push",
         ))
         .stderr("");
 }
