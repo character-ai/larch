@@ -4884,6 +4884,19 @@ migration_issue = 7749
 clean_install_test = "clean-install-plugin-read-version"
 
 [[commands]]
+domain = "object-store"
+verb = "gcs"
+python_module = "larch.report.object_store"
+python_function = "gcs_transport_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7815
+clean_install_test = "clean-install-object-store-gcs"
+
+[[commands]]
 domain = "pr"
 verb = "body-update"
 python_module = "larch.git.pr"
@@ -8113,6 +8126,12 @@ path = "python/larch/report/cleanup_implement_logs.py"
 kind = "python-runtime"
 python = ["run-log cleanup-implement-logs"]
 rust = []
+
+[[callers]]
+path = "python/larch/report/object_store.py"
+kind = "python-runtime"
+python = []
+rust = ["object-store gcs"]
 
 [[callers]]
 path = "python/larch/report/run_log_commit.py"

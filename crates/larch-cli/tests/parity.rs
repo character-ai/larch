@@ -75,6 +75,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "plugin",
         "read-version",
     ),
+    CleanInstallCase::new("clean-install-object-store-gcs", "object-store", "gcs"),
     CleanInstallCase::new("clean-install-push-branch", "push", "branch"),
     CleanInstallCase::new(
         "clean-install-push-checkpoint-probe",

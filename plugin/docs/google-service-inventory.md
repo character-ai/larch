@@ -6,13 +6,13 @@ for every operation found by the scan.
 
 ## Checked scope
 
-The inventory was refreshed for #7843 after the service repair leaves landed.
+The inventory was refreshed for #7815 after the #7843 service repair leaves landed.
 The scan covered production Rust, Python, skills, agents, hooks, scripts, and CI
 configuration. It excluded documentation, fixtures, historical run logs, and
 the generated `plugin/` projection from caller classification.
 
-The scan found no production Google API request and no production `gcloud`
-process launch. Current matches are controls or setup prose:
+The scan found one production Google API service and no production `gcloud`
+process launch. Other matches are controls or setup prose:
 
 - `crates/larch-core/src/config.rs` owns the
   `GOOGLE_APPLICATION_CREDENTIALS` environment name.
@@ -27,15 +27,17 @@ process launch. Current matches are controls or setup prose:
 
 | Service category | Current production operations | Production callers | Adapter parity | Consumer cutover | Python removal |
 | --- | --- | --- | --- | --- | --- |
-| Google Cloud service APIs | None | None | Not applicable | Not applicable | Not applicable |
+| Cloud Storage | Bucket-root list preflight; paginated object list; create-only upload; download; metadata | `python/larch/report/object_store.py` through `scripts/larch.sh object-store gcs` | Complete: `GoogleCloudStorage` implements the larch-owned `ObjectStore` port with `google-cloud-storage` | Complete | Complete: Python owns workflow and normalized DTOs, but no Google authentication or service client |
 | `gcloud` CLI | None | None | Not applicable | Not applicable | Not applicable |
 
-`crates/larch-adapters/src/google_auth.rs` is the single concrete Google client
-owner. Its `GoogleAdc` wrapper builds the `google-cloud-auth` credentials and is
-the only module that names a `googleapis.com` service host. It is a credential
-boundary, not a service operation, and has no production consumer to cut over. No
-`google-cloud-*` service client or larch-owned service trait is present because
-the operation inventory is empty. The `service-ownership` rule in
+`crates/larch-adapters/src/google_auth.rs` remains the single Google credential
+owner. `crates/larch-adapters/src/google_storage.rs` owns the official Storage
+and Storage Control clients behind the credential-free `ObjectStore` port and
+DTOs in `larch-core`. It requests the
+`https://www.googleapis.com/auth/devstorage.read_write` scope. Operators need
+`storage.objects.list`, `storage.objects.get`, and `storage.objects.create`; no
+overwrite or delete permission is required. Create-only uploads use generation
+match zero. The `service-ownership` rule in
 `crates/larch-lint` keeps concrete Google clients, `googleapis.com` request
 surfaces, and the `gcloud` CLI inside `crates/larch-adapters`; larch never shells
 out to `gcloud`.

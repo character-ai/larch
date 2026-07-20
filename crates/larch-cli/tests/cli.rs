@@ -6,6 +6,8 @@ use std::{
 };
 
 use assert_cmd::Command;
+use larch_cli::object_store_commands::{GcsOperation, exercise, report_error};
+use larch_core::{ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject};
 use predicates::prelude::*;
 
 const ROOT_HELP: &str = "\
@@ -17,6 +19,7 @@ Commands:
   example        Non-production commands that exercise dispatcher wiring
   git            Local Git repository commands
   plugin         Plugin metadata commands
+  object-store   Narrow provider transports used by Python-owned run-log workflows
   release        Release-maintenance commands
   gh             GitHub workflow helper commands
   push           Push commands with typed Git network operations
@@ -73,6 +76,71 @@ Options:
 
 fn larch() -> Command {
     Command::cargo_bin("larch").expect("larch binary should build")
+}
+
+#[derive(Debug)]
+struct ObjectStoreFixture;
+
+fn remote_object() -> RemoteObject {
+    RemoteObject {
+        key: "larch/run".into(),
+        size: 7,
+        etag: Some("tag".into()),
+        version: Some("2".into()),
+    }
+}
+
+macro_rules! store_method {
+    ($name:ident($($argument:ident: $kind:ty),*) -> $output:ty, $result:expr) => {
+        fn $name<'a>(&'a self, $($argument: $kind),*) -> ObjectStoreFuture<'a, $output> {
+            Box::pin(async { $result })
+        }
+    };
+}
+
+impl ObjectStore for ObjectStoreFixture {
+    store_method!(preflight_bucket(_bucket: &'a str) -> (), Ok(()));
+    store_method!(list_page(_bucket: &'a str, _prefix: &'a str, _token: Option<&'a str>) -> ObjectPage, Ok(ObjectPage { objects: vec![remote_object()], next_page_token: None }));
+    store_method!(upload_create(_bucket: &'a str, _key: &'a str, _source: &'a Path) -> RemoteObject, Ok(remote_object()));
+    store_method!(download(_bucket: &'a str, _key: &'a str, _destination: &'a Path) -> (), Ok(()));
+    store_method!(metadata(_bucket: &'a str, _key: &'a str) -> RemoteObject, Ok(remote_object()));
+}
+
+#[tokio::test]
+async fn object_store_gcs_formats_every_successful_operation() {
+    for operation in [
+        GcsOperation::Preflight,
+        GcsOperation::List,
+        GcsOperation::UploadCreate,
+        GcsOperation::Download,
+        GcsOperation::Metadata,
+    ] {
+        assert_eq!(
+            exercise(operation, &ObjectStoreFixture).await,
+            std::process::ExitCode::SUCCESS
+        );
+    }
+    for error in [
+        ObjectStoreError::Authentication,
+        ObjectStoreError::AlreadyExists,
+        ObjectStoreError::NotFound,
+        ObjectStoreError::LocalIo,
+        ObjectStoreError::InvalidResponse,
+        ObjectStoreError::Transport,
+    ] {
+        assert_ne!(report_error(error), std::process::ExitCode::SUCCESS);
+    }
+    larch()
+        .env(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "/definitely/missing/adc.json",
+        )
+        .args(
+            "object-store gcs --operation metadata --bucket bucket --key larch/run"
+                .split_whitespace(),
+        )
+        .assert()
+        .code(3);
 }
 
 fn git_output<I, S>(root: &Path, arguments: I) -> Output
