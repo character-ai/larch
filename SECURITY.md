@@ -81,6 +81,17 @@ Extraction avoids `tarfile.extractall`, writes only no-follow regular files in
 a private temporary sibling, verifies before and after atomic promotion, and
 removes failed state. It never merges with or replaces an existing cache.
 
+`python/cli.py run-log publish` persists a deterministic archive and its
+content identity before remote I/O. Final object writes are create-only; an
+already-present key is downloaded to a private local file and accepted only
+after its size and SHA-256 digest match. Larch never replaces or deletes remote
+run objects. Publication and cache promotion share a per-run advisory lock,
+reject symlinked state paths, and verify the cache after atomic promotion.
+Failures retain the archive and identity-pinned retry metadata under the
+operator's XDG state directory. The normal write-through path copies the
+already-sanitized staging tree and does not trust remote bytes; a staging-less
+retry routes the retained archive through the bounded materializer above.
+
 ## Google ADC Trust Boundary
 
 Only trusted operator configuration can select Google ADC. Larch does not shell
