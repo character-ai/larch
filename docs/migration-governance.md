@@ -131,6 +131,39 @@ tracking-issue lifecycle. The audit does not run that command.
 
 ## Workflow handoff
 
-A scheduled workflow may consume the JSON, upload it as an artifact, and update
-one marker-keyed Chief issue comment. That workflow owns the comment mutation.
-The aggregate remains read-only and does not accept a comment or mutation flag.
+`.github/workflows/migration-governance.yaml` runs every day at 07:17 UTC and
+supports `workflow_dispatch`. It checks out the audited commit, loads the
+pinned Rust toolchain, builds `larch-lint` from the lockfile, verifies the
+binary, and adds only that build directory to `PATH`. It then runs:
+
+```bash
+python3 python/cli.py issue migration-audit \
+  --repo character-ai/larch \
+  --chief 7687 \
+  --output "$RUNNER_TEMP/migration-governance.json" \
+  --table-output stderr
+```
+
+Each run uploads `migration-governance.json` for 30 days when the file exists.
+This includes clean and finding reports. An audit failure also uploads a report
+if the command produced one before failing. Exit `0` passes the workflow. Exit
+`1` publishes the finding report and then fails the workflow. Exit `2`, or an
+unexpected exit, fails the workflow as an unavailable audit.
+
+The aggregate's count-table renderer supplies the bounded Chief summary. The
+workflow passes that file to `tracking-issue upsert-summary`, which redacts
+secrets and temporary paths before publication. The comment starts with the
+exact marker `<!-- larch:migration-governance v1 chief=7687 -->`. A missing
+marker creates the comment. One matching marker updates it. Duplicate markers
+fail closed without another mutation.
+
+The workflow has repository-level `contents: read` and `issues: write` only.
+Its only issue mutation is the marker-keyed comment upsert on #7687. It does not
+edit titles, bodies, labels, blockers, registries, owner rows, leases, pull
+requests, branches, or repository content. Concurrency cancels a stale run and
+allows only one run in the group, so comment writes do not overlap.
+
+To recover from an unavailable audit, artifact failure, or comment-upsert
+failure, correct the reported cause and dispatch the workflow again. Do not
+repair findings from the workflow. Resolve them through their owning migration
+surface, then dispatch a fresh audit.

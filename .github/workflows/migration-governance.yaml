@@ -1,0 +1,126 @@
+name: Migration governance
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: migration-governance-chief-7687
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the audited commit
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install the pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+
+      - name: Build and verify larch-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --package larch-lint
+          ./target/release/larch-lint --version
+          printf '%s\n' "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+
+      - name: Run the aggregate migration audit
+        id: audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_path="$RUNNER_TEMP/migration-governance.json"
+          summary_path="$RUNNER_TEMP/migration-governance-comment.md"
+          set +e
+          python3 python/cli.py issue migration-audit \
+            --repo character-ai/larch \
+            --chief 7687 \
+            --output "$report_path" \
+            --table-output stderr 2> "$summary_path"
+          audit_rc=$?
+          set -e
+          case "$audit_rc" in
+            0|1)
+              if [ -s "$report_path" ] && [ -s "$summary_path" ]; then
+                report_ready=true
+              else
+                printf '%s\n' 'Migration audit returned without its required report files.' >&2
+                audit_rc=2
+                report_ready=false
+              fi
+              ;;
+            2) report_ready=false ;;
+            *)
+              printf 'Unexpected migration-audit exit code: %s\n' "$audit_rc" >&2
+              audit_rc=2
+              report_ready=false
+              ;;
+          esac
+          printf 'audit_rc=%s\n' "$audit_rc" >> "$GITHUB_OUTPUT"
+          printf 'report_ready=%s\n' "$report_ready" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the JSON report when present
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: migration-governance-${{ github.run_id }}
+          path: ${{ runner.temp }}/migration-governance.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Refresh the Chief report comment
+        if: ${{ steps.audit.outputs.report_ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 python/cli.py tracking-issue upsert-summary \
+            --issue 7687 \
+            --marker '<!-- larch:migration-governance v1 chief=7687 -->' \
+            --content-file "$RUNNER_TEMP/migration-governance-comment.md" \
+            --repo character-ai/larch
+
+      - name: Apply the audit outcome
+        if: ${{ always() }}
+        env:
+          AUDIT_RC: ${{ steps.audit.outputs.audit_rc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$AUDIT_RC" in
+            0) exit 0 ;;
+            1)
+              printf '%s\n' 'Migration governance findings were reported.' >&2
+              exit 1
+              ;;
+            2)
+              printf '%s\n' 'The migration governance audit could not complete.' >&2
+              exit 2
+              ;;
+            *)
+              printf 'Missing or invalid migration-audit outcome: %s\n' "$AUDIT_RC" >&2
+              exit 2
+              ;;
+          esac
