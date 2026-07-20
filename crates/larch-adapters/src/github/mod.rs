@@ -25,7 +25,9 @@ pub use release::{
     validate_download_redirect,
 };
 
-use http::header::HeaderName;
+use bytes::Bytes;
+use http::header::{CONTENT_LENGTH, HeaderName};
+use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubTransportPolicy, ProcessCancellation, RuntimeRedactor, SafeText, env};
 use octocrab::Octocrab;
 use std::{error::Error, ffi::OsString, fmt, future::Future};
@@ -363,6 +365,30 @@ pub(crate) fn octocrab_status(error: &octocrab::Error) -> Option<u16> {
         octocrab::Error::GitHub { source, .. } => Some(source.status_code.as_u16()),
         _ => None,
     }
+}
+
+pub(crate) type GitHubRawResponse =
+    http::Response<http_body_util::combinators::BoxBody<Bytes, octocrab::Error>>;
+
+/// Collect a GitHub response without exceeding the caller's byte bound.
+pub(crate) async fn collect_bounded_response(
+    response: GitHubRawResponse,
+    cap: usize,
+) -> Result<Vec<u8>, ()> {
+    if response
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .is_some_and(|length| length > cap)
+    {
+        return Err(());
+    }
+    Limited::new(response.into_body(), cap)
+        .collect()
+        .await
+        .map(|body| body.to_bytes().to_vec())
+        .map_err(|_| ())
 }
 
 #[cfg(test)]

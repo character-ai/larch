@@ -9,12 +9,10 @@
 
 use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
-    check_live_mutation_auth, octocrab_status,
+    check_live_mutation_auth, collect_bounded_response, octocrab_status,
 };
-use bytes::Bytes;
 use chrono::DateTime;
-use http::header::{CONTENT_LENGTH, LINK};
-use http_body_util::{BodyExt, Limited};
+use http::header::LINK;
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
 use serde_json::{Map, Value, json};
 use std::{error::Error, fmt, future::Future};
@@ -1237,7 +1235,11 @@ impl OctocrabGitHubService {
             }
         }
         let next = dependency_next_link(response.headers())?;
-        let body = collect_dependency_response(response, self.policy.limits().body_bytes()).await?;
+        let body = collect_bounded_response(response, self.policy.limits().body_bytes())
+            .await
+            .map_err(|()| {
+                GitHubOperationError::Malformed("dependency response exceeds body bound")
+            })?;
         let value = serde_json::from_slice(&body)
             .map_err(|_| GitHubOperationError::Malformed("dependency JSON response"))?;
         Ok((value, next))
@@ -1495,30 +1497,6 @@ fn dependency_present(edges: &[DependencyRef], blocker_id: u64) -> bool {
     edges.iter().any(|edge| edge.issue_id == blocker_id)
 }
 
-type OctoResponse = http::Response<http_body_util::combinators::BoxBody<Bytes, octocrab::Error>>;
-
-async fn collect_dependency_response(
-    response: OctoResponse,
-    cap: usize,
-) -> Result<Vec<u8>, GitHubOperationError> {
-    if response
-        .headers()
-        .get(CONTENT_LENGTH)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok())
-        .is_some_and(|length| length > cap)
-    {
-        return Err(GitHubOperationError::Malformed(
-            "dependency response exceeds body bound",
-        ));
-    }
-    Limited::new(response.into_body(), cap)
-        .collect()
-        .await
-        .map(|body| body.to_bytes().to_vec())
-        .map_err(|_| GitHubOperationError::Malformed("dependency response exceeds body bound"))
-}
-
 fn dependency_next_link(headers: &http::HeaderMap) -> Result<Option<String>, GitHubOperationError> {
     let mut next = None;
     for raw in headers.get_all(LINK) {
@@ -1617,21 +1595,23 @@ fn target_has_protected_lifecycle_state(target: &DependencyTarget) -> bool {
 }
 
 fn protected_lifecycle_title(title: &str) -> bool {
-    [
-        "[IMPLEMENTING] ",
-        "[DONE] ",
-        "[DESIGNING] ",
-        "[DESIGNED] ",
-        "[STALLED] ",
-        "[IN PROGRESS] ",
-        "[PLANNED] ",
-    ]
-    .iter()
-    .any(|prefix| {
-        title
-            .get(..prefix.len())
-            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
-    })
+    let Some((prefix, remainder)) = title
+        .strip_prefix('[')
+        .and_then(|text| text.split_once("] "))
+    else {
+        return false;
+    };
+    !remainder.is_empty()
+        && matches!(
+            prefix.to_ascii_uppercase().as_str(),
+            "IMPLEMENTING"
+                | "DONE"
+                | "DESIGNING"
+                | "DESIGNED"
+                | "STALLED"
+                | "IN PROGRESS"
+                | "PLANNED"
+        )
 }
 
 fn without_triage_block(body: &str) -> Option<String> {
