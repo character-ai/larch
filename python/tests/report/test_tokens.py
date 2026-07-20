@@ -15,8 +15,19 @@ import pytest
 
 from larch.core import config
 from larch.report import report_tokens_scan
+from larch.report import run_log_corpus
 from larch.report import tokens
 from larch.report.report_tokens_models import RunRecord, VendorTotals
+
+
+@pytest.fixture(autouse=True)
+def _fixture_corpus_root(  # pyright: ignore[reportUnusedFunction]  # pytest invokes this autouse fixture by registration
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _sync(*, repo_root: Path) -> Path:
+        return repo_root / "larch-logs"
+
+    monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _sync)
 
 
 def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1104,6 +1115,7 @@ def _cache_record(
 def test_measure_cache_efficiency_writes_ranked_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = tmp_path / "consumer"
     repo.mkdir()
+    monkeypatch.setattr(tokens, "_repo_root", lambda: repo)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setenv("LARCH_MEASURE_DATE", "fixture-day")
     design_record = _cache_record(
         number=1,
@@ -1119,12 +1131,28 @@ def test_measure_cache_efficiency_writes_ranked_sections(tmp_path: Path, monkeyp
     )
     zero_record = _cache_record(number=3, title="All zero")
 
-    def fake_scan(_runner: object, *, skill: str, resolve_repo: bool, **_kwargs: object) -> report_tokens_scan.ScanResult:
-        assert resolve_repo is False
+    sync_calls = 0
+    cache_root = tmp_path / "cache" / "larch2"
+
+    def _sync(*, repo_root: Path) -> Path:
+        nonlocal sync_calls
+        assert repo_root == repo
+        sync_calls += 1
+        return cache_root
+
+    def fake_scan(
+        _runner: object,
+        *,
+        skill: str,
+        corpus_root: Path,
+        **_kwargs: object,
+    ) -> report_tokens_scan.ScanResult:
+        assert corpus_root == cache_root
         records = (design_record, zero_record) if skill == "design" else (legacy_record,)
         return report_tokens_scan.ScanResult(repo_root=repo, repo_slug=None, records=records)
 
-    monkeypatch.setattr(report_tokens_scan, "scan", fake_scan)
+    monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _sync)
+    monkeypatch.setattr(report_tokens_scan, "scan_prepared_corpus", fake_scan)
 
     out = tokens.measure_cache_efficiency()
     text = out.read_text(encoding="utf-8")
@@ -1135,6 +1163,7 @@ def test_measure_cache_efficiency_writes_ranked_sections(tmp_path: Path, monkeyp
     assert per_run[0]["ratio"] == "inf"
     assert per_run[0]["title"] == "Legacy zero read"
     assert all(row["title"] != "All zero" for row in per_run)
+    assert sync_calls == 1
 
 
 def test_cache_create_effective_uses_legacy_when_split_zero() -> None:
@@ -1670,6 +1699,39 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
 
 
+def test_measure_panel_cost_reads_synced_cache_and_writes_repository_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    cache_root = tmp_path / "cache" / "consumer"
+    panel = cache_root / "review" / "r1" / "panel-prompt-sizes.tsv"
+    panel.parent.mkdir(parents=True)
+    panel.write_text(
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+        "review\t\t\taggregator\taggregator\tcodex\tagg.txt\t70\t18\tagents/orchestrator-aggregator.md\t30\t8\n",
+        encoding="utf-8",
+    )
+    sync_calls = 0
+
+    def _sync(*, repo_root: Path) -> Path:
+        nonlocal sync_calls
+        assert repo_root == repo
+        sync_calls += 1
+        return cache_root
+
+    monkeypatch.setattr(tokens, "_repo_root", lambda: repo)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-20")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _sync)
+
+    out = tokens.measure_panel_cost()
+
+    assert out == repo / "larch-logs" / "measure-panel-cost" / "2026-07-20.tsv"
+    assert "agents/orchestrator-aggregator.md" in out.read_text(encoding="utf-8")
+    assert sync_calls == 1
+
+
 def test_measure_panel_cost_ranks_by_scaffold_bytes_before_realized_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1730,11 +1792,16 @@ def test_iter_panel_and_checks_digest_skip_symlinked_run_dirs(
     linked = root / "implement" / "run-link"
     linked.symlink_to(real)
 
-    monkeypatch.setattr(
-        tokens,
-        "_panel_context_from_tsv",
-        lambda _path, _repo: ("implement", "r1"),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    )
+    def _panel_context(
+        _path: Path,
+        _repo: Path,
+        *,
+        corpus_root: Path | None = None,
+    ) -> tuple[str, str]:
+        _ = corpus_root
+        return "implement", "r1"
+
+    monkeypatch.setattr(tokens, "_panel_context_from_tsv", _panel_context)
     panels = tokens._iter_panel_prompt_size_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
     digests = tokens._iter_checks_digest_size_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
     assert panels == [panel]

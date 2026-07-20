@@ -1,6 +1,6 @@
 ---
 name: rejected-analysis
-description: "Use when recovering verified real rejected code-review findings from committed larch run logs and filing GitHub issues for findings that remain unfixed."
+description: "Use when recovering verified real rejected code-review findings from synchronized larch run logs and filing GitHub issues for findings that remain unfixed."
 argument-hint: "--n DAYS"
 allowed-tools: Bash, Read, Write, Agent, Skill
 ---
@@ -9,7 +9,7 @@ allowed-tools: Bash, Read, Write, Agent, Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Recover **verified real** rejected code-review findings from committed run logs, then file the smallest safe set of issues.
+Recover **verified real** rejected code-review findings from synchronized run logs, then file the smallest safe set of issues.
 
 This is **mutating**. It files by default after verification.
 

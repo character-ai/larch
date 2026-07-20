@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""fluff-analysis.py — characterize review "fluff" from committed larch run logs.
+"""Characterize review "fluff" from synchronized larch run logs.
 
-Reads committed design + implement run logs (and, optionally, in-progress design
+Reads synchronized design + implement run logs (and, optionally, in-progress design
 session temp dirs), normalizes every review finding into one record stream, and
 prints a markdown report: acceptance baselines, low-acceptance semantic groups,
 testing breakdown, severity/quality/uncertain correlations, reviewer-lane splits,
@@ -22,7 +22,6 @@ import glob
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -31,7 +30,7 @@ python_dir = repo_root / "python"
 if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
 
-from larch.core import config  # noqa: E402
+from larch.core import config, repo_roots  # noqa: E402
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_DESIGN_ASSESSMENT, INVARIANT_SHIP_OUTCOME_SIDECAR, validate_invariant_ship_outcome_record  # noqa: E402
 from larch.issue.audit_runs import implement_step8_reachable  # noqa: E402
 from larch.issue.rejected_analysis import (  # noqa: E402
@@ -1418,21 +1417,21 @@ def _section_recommendations(i_all, min_group):
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
-def default_log_root():
-    try:
-        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                              capture_output=True, text=True, timeout=5, check=False)
-        if proc.returncode == 0 and proc.stdout.strip():
-            return os.path.join(proc.stdout.strip(), "larch-logs")
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return os.path.join(os.getcwd(), "larch-logs")
+def selected_log_root(raw_log_root):
+    if raw_log_root:
+        return raw_log_root
+    consumer_root = repo_roots.consumer_repo_root()
+    if consumer_root is None:
+        raise run_log_corpus.RunLogCorpusError(
+            "could not discover a Git repository root for run-log synchronization"
+        )
+    return str(run_log_corpus.synchronized_repository_log_root(repo_root=consumer_root))
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Analyze review fluff from committed larch run logs.")
+    parser = argparse.ArgumentParser(description="Analyze review fluff from synchronized larch run logs.")
     parser.add_argument("--log-root", default=None,
-                        help="larch-logs directory (default: <git toplevel>/larch-logs)")
+                        help="offline fixture corpus override; default synchronizes the current repository cache")
     parser.add_argument("--sessions-dir", default=os.path.expanduser("~/.cache/larch/sessions"),
                         help="larch session cache dir (for --include-in-progress)")
     parser.add_argument("--include-in-progress", action="store_true",
@@ -1451,7 +1450,11 @@ def main(argv=None):
                              "pre-period records get empty tags (faster corpus scans)")
     args = parser.parse_args(argv)
 
-    log_root = args.log_root or default_log_root()
+    try:
+        log_root = selected_log_root(args.log_root)
+    except run_log_corpus.RunLogCorpusError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n")
+        return 2
     if not os.path.isdir(log_root):
         sys.stderr.write("ERROR: log root not found: %s\n" % log_root)
         return 2

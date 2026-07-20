@@ -4,13 +4,13 @@
 
 ## Inputs
 
-The analyzer scans these committed log patterns under `--log-root`:
+The analyzer scans these synchronized log patterns under the resolved corpus root:
 
-- `larch-logs/design/*/plan-review/round-*/findings-classification.tsv`
-- `larch-logs/implement/*/round-*/findings-classification.tsv`
-- `larch-logs/review/*/review-findings-classification-round-*.tsv`
+- `<corpus-root>/design/*/plan-review/round-*/findings-classification.tsv`
+- `<corpus-root>/implement/*/round-*/findings-classification.tsv`
+- `<corpus-root>/review/*/review-findings-classification-round-*.tsv`
 
-Default `--log-root` resolves to `<git toplevel>/larch-logs` when `git rev-parse --show-toplevel` succeeds. It falls back to `cwd/larch-logs` otherwise.
+By default, the analyzer resolves the current Git repository, requires `.larch/config.toml` or `LARCH_LOGS_URI`, synchronizes once, and reads the unpacked cache. `--log-root DIR` bypasses synchronization for offline fixture tests.
 
 ## Optional realized-outcome input
 

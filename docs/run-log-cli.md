@@ -82,17 +82,16 @@ Run:
 python3 python/cli.py token measure-cache-efficiency
 ```
 
-The command ranks committed cache-create versus cache-read outliers per run and
-per step. It reads existing committed `token-report.json` and
-`token-report-final.json` files under consumer `larch-logs/<skill>/*/`
-directories. It also uses the existing ledger fallback from
-`report_tokens_scan.py` when available.
+The command ranks cache-create versus cache-read outliers per run and per step.
+It synchronizes the current repository once, then reads `token-report.json` and
+`token-report-final.json` from the unpacked cache. It also uses the existing
+ledger fallback from `report_tokens_scan.py` when available.
 
 Output is measurement only. It does not change token capture, report JSON
 shapes, or CI gates.
 
-The consumer repo root comes from `report_tokens_scan.scan()`
-`ScanResult.repo_root`, not from the plugin checkout. The command writes
+The consumer repo root is resolved once before synchronization, not from the
+plugin checkout. The command writes
 `larch-logs/measure-cache-efficiency/<date>.tsv` under that consumer repo and
 prints:
 

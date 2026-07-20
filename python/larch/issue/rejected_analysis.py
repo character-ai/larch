@@ -1,6 +1,6 @@
 # ruff: noqa: C901,PLR0912,PLR0913,PLR0915,PLR2004,PERF401
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportCallIssue=false
-"""Recover verified real rejected code-review findings from committed run logs.
+"""Recover verified real rejected code-review findings from synchronized run logs.
 
 ``finding_hash`` is frozen as ``sha256`` over normalized ``file_path`` and
 ``concern`` only. Run-local ballot ids, line hints, run metadata, voter labels,
@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from larch import io as larch_io
-from larch.core import logging_util, proc
+from larch.core import logging_util, proc, repo_roots
 from larch.errors import ShipError
 
 from larch.git import gh
@@ -994,7 +994,7 @@ def _render_prompt(candidate: PreparedCandidate) -> str:
 def prepare(
     *,
     days: int,
-    log_root: Path | str = Path("larch-logs"),
+    log_root: Path | str | None = None,
     work_dir: Path | str | None = None,
     verify_cap: int = DEFAULT_VERIFY_CAP,
     repo_root: Path | str | None = None,
@@ -1005,8 +1005,22 @@ def prepare(
         raise ValueError("days must be positive")
     if verify_cap <= 0:
         raise ValueError("verify_cap must be positive")
-    root = Path(repo_root or Path.cwd()).resolve()
-    logs = (root / log_root).resolve() if not Path(log_root).is_absolute() else Path(log_root)
+    requested_root = Path(repo_root or Path.cwd()).resolve()
+    root = requested_root
+    if log_root is None:
+        discovered_root = repo_roots.consumer_repo_root(requested_root)
+        if discovered_root is None:
+            raise RejectedAnalysisError(
+                "could not discover a Git repository root for run-log synchronization"
+            )
+        root = discovered_root
+        try:
+            logs = run_log_corpus.synchronized_repository_log_root(repo_root=root)
+        except run_log_corpus.RunLogCorpusError as exc:
+            raise RejectedAnalysisError(str(exc)) from exc
+    else:
+        requested_logs = Path(log_root)
+        logs = (root / requested_logs).resolve() if not requested_logs.is_absolute() else requested_logs
     wd = Path(work_dir) if work_dir is not None else Path(tempfile.mkdtemp(prefix="rejected-analysis-", dir=tempfile.gettempdir()))
     wd.mkdir(parents=True, exist_ok=True)
     active_runner = runner or proc.ProcRunner()
@@ -1569,12 +1583,22 @@ def _emit_prepare(result: PrepareResult) -> None:
 def prepare_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="rejected-analysis prepare")
     parser.add_argument("--days", "--n", dest="days", type=int, required=True)
-    parser.add_argument("--log-root", default="larch-logs")
+    parser.add_argument(
+        "--log-root",
+        default="",
+        help="offline fixture corpus override; default synchronizes the current repository cache",
+    )
     parser.add_argument("--work-dir", default="")
     parser.add_argument("--verify-cap", type=int, default=DEFAULT_VERIFY_CAP)
     args = parser.parse_args(argv)
     try:
-        result = prepare(days=args.days, log_root=args.log_root, work_dir=args.work_dir or None, verify_cap=args.verify_cap, open_issues=None)
+        result = prepare(
+            days=args.days,
+            log_root=args.log_root or None,
+            work_dir=args.work_dir or None,
+            verify_cap=args.verify_cap,
+            open_issues=None,
+        )
     except (RejectedAnalysisError, ValueError) as exc:
         logging_util.diagnostic(f"rejected-analysis prepare: {exc}")
         return 2

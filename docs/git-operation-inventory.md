@@ -105,14 +105,13 @@ python/larch/state/session_env.py	later-domain	#7677	branch,checkout,diff,fetch,
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse
 scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checkout,stash,status
-skills/fluff-analysis/scripts/fluff-analysis.py	later-domain	#7684	rev-parse
 skills/implement/references/checks-repair-loop.md	later-domain	#7681	rev-parse
 skills/implement/references/codex-manifest-schema.md	later-domain	#7681	commit
 skills/implement/references/step2-dispatch.md	later-domain	#7681	commit
 skills/implement/scripts/generate-code-flow-diagram.sh	later-domain	#7681	diff,merge-base,rev-parse
 skills/implement/scripts/oos-disposition-gate.md	later-domain	#7681	merge-base
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh	later-domain	#7681	rev-parse
-skills/voter-calibration/scripts/voter-calibration.py	later-domain	#7684	rev-parse
+skills/voter-calibration/scripts/voter-calibration.py	later-domain	#7684	dynamic
 ```
 <!-- git-ownership-matrix:end -->
 <!-- markdownlint-enable MD010 -->

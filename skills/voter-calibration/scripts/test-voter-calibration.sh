@@ -415,8 +415,10 @@ worktree="$FIX/worktree"
 mkdir -p "$worktree"
 cp -R "$FIX/larch-logs" "$worktree/larch-logs"
 git -C "$worktree" init -q
+default_status=0
 (
   cd "$worktree"
   env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --min-votes 3 > "$FIX/default-root.md"
-)
-grep -Fq '| code-review | v1 | 4 | 0 | 4 | 0 | 0.000 | true |' "$FIX/default-root.md"
+) 2> "$FIX/default-root.err" || default_status=$?
+[[ "$default_status" -eq 2 ]]
+grep -Fq 'storage configuration is missing' "$FIX/default-root.err"
