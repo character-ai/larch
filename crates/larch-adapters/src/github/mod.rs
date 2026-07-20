@@ -14,9 +14,10 @@ pub use attestation::{
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
     CreatedPullRequest, DependencyMutation, DependencyRef, GitHubOperationError, MergeStateStatus,
-    Mergeable, PullRequest, PullRequestEdit, PullRequestReviewState, PullRequestSpec,
-    PullRequestState, ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState,
-    ReleasePlanningService, ReleasePullRequest, ReviewDecision,
+    Mergeable, PullRequest, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod,
+    PullRequestMergeResult, PullRequestReviewState, PullRequestSpec, PullRequestState,
+    ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState, ReleasePlanningService,
+    ReleasePullRequest, ReviewDecision,
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,

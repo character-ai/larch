@@ -33,7 +33,7 @@ imports Octocrab, names a GitHub service host, or embeds a GraphQL document.
 | Issue get, list, search, create, edit, close | `github_rest.rs` (`GitHubService`) | Python issue, deps, triage, audit-runs, combine-issues commands | #7687 chief umbrella (per-domain leaf) |
 | Comment list, create, edit, delete | `github_rest.rs` (`GitHubService`) | Python issue, clarify, tracking-issue commands | #7687 chief umbrella (per-domain leaf) |
 | Label list, create, add, remove | `github_rest.rs` (`GitHubService`) | Python issue, block-issue commands | #7687 chief umbrella (per-domain leaf) |
-| Pull request, review, merge state | `github/operations.rs` (fixed GraphQL document) | Python ci, design, release commands | #7687 chief umbrella (per-domain leaf) |
+| Pull request, review, merge state, merge mutation | `github/operations.rs` (fixed GraphQL document and typed merge request) | Python ci, design, release commands | #7687 chief umbrella (per-domain leaf; merge consumer cutover) |
 | Issue-dependency add, remove | `github/operations.rs`, `github/mutation_auth.rs` gate | Python `block-issue`, `deps` commands | #7687 chief umbrella (per-domain leaf) |
 | Release listing, draft, publish, Latest promotion, asset upload, asset download | `github/release.rs` (`OctocrabReleaseTransport`) | Rust release commands; Python gc-run-logs commands | Release cutover complete (#7752); remaining domains under #7687 |
 | Artifact and immutable-release attestation verification | `github/attestation.rs` (`OctocrabAttestationTransport`) | Rust bootstrap and release commands | Complete (#7752) |
