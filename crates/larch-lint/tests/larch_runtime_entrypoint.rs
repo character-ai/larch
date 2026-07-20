@@ -46,15 +46,11 @@ fn larch_runtime_entrypoint_rejects_direct_binary_callers() {
 }
 
 #[test]
-fn larch_runtime_entrypoint_allows_bootstrap_verification_and_nonproduction_surfaces() {
+fn larch_runtime_entrypoint_allows_bootstrap_and_nonproduction_surfaces() {
     let repository = TempRepo::new();
     repository.write(
         "scripts/larch.sh",
         b"#!/usr/bin/env bash\nexec \"$plugin_root/bin/larch\" \"$@\"\n",
-    );
-    repository.write(
-        "python/larch/core/upgrade_larch.py",
-        b"binary = root / \"bin/larch\"\n",
     );
     repository.write(
         "python/larch/core/caller.py",
@@ -77,4 +73,22 @@ fn larch_runtime_entrypoint_allows_bootstrap_verification_and_nonproduction_surf
         .success()
         .stdout("")
         .stderr("");
+}
+
+#[test]
+fn larch_runtime_entrypoint_rejects_retired_upgrade_python_exception() {
+    let repository = TempRepo::new();
+    repository.write(
+        "python/larch/core/upgrade_larch.py",
+        b"binary = root / \"bin/larch\"\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "larch-runtime-entrypoint"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "python/larch/core/upgrade_larch.py:1: direct bin/larch production entrypoint",
+        ));
 }

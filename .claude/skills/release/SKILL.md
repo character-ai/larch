@@ -277,7 +277,7 @@ Prefer the working-tree upgrade driver over the installed Skill implementation s
 
 `CURRENT_VERSION` from Step 2 is not proof of the active install and must not override a valid active session root. The allowlist and preflight bootstrap come from the working tree.
 
-Run root resolution and the working-tree script with captured stdout and stderr whenever `RESOLVED_ROOT` is non-empty. `release-step7.env` is written only when `PR_LIST_FILE` is available:
+Build the binary and invoke both commands through `scripts/larch.sh`. Pass `RESOLVED_ROOT` with `--plugin-root`. Write `release-step7.env` only when `PR_LIST_FILE` exists:
 
 Do not Invoke the Skill tool as a Step 7 fallback from the Bash fence; without the same capture contract it cannot provide reliable restart state.
 
@@ -293,8 +293,10 @@ MARKETPLACE_RECONCILED=false
 NEW_VERSION_INSTALLED=false
 RESTART_REQUIRED=false
 RESOLVED_ROOT=""
+WORKTREE_LARCH="$PWD/target/release/larch"
 
-ROOT_OUT=$(cargo run --quiet --locked --package larch-cli -- upgrade-larch release-step7-root --current-version "${CURRENT_VERSION:-}" 2>/dev/null || true)
+cargo build --quiet --locked --release --package larch-cli
+ROOT_OUT=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" upgrade-larch release-step7-root --current-version "${CURRENT_VERSION:-}" 2>/dev/null || true)
 case "$ROOT_OUT" in
   RESOLVED_ROOT=*) RESOLVED_ROOT="${ROOT_OUT#RESOLVED_ROOT=}" ;;
   *) RESOLVED_ROOT="" ;;
@@ -304,7 +306,7 @@ if [ -n "$RESOLVED_ROOT" ]; then
   echo "Applying the just-released larch marketplace source through the working-tree upgrade script..."
   upgrade_rc=0
   upgrade_out=$(
-    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" cargo run --quiet --locked --package larch-cli -- upgrade-larch run 2>&1
+    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" upgrade-larch run --plugin-root "$RESOLVED_ROOT" 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
   if [[ "$upgrade_out" == *"LARCH_MARKETPLACE_RECONCILED=true"* ]] || \

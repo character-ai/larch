@@ -18,7 +18,6 @@ const NAME: &str = "production-cargo-run";
 const DESCRIPTION: &str = "Reject production Cargo and target-directory larch execution";
 const MESSAGE: &str =
     "production runtime must use scripts/larch.sh; cargo and target-directory execution are development-only";
-const RELEASE_OWNER: &str = ".claude/skills/release/SKILL.md";
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,
@@ -88,9 +87,7 @@ fn check_shell(path: &str, source: &str, line_offset: usize) -> Result<Vec<Findi
 fn check_commands(path: &str, commands: Vec<ShellCommand>) -> Result<Vec<Finding>, LintError> {
     commands
         .into_iter()
-        .filter(|command| {
-            prohibited_argv(command.words()) && !is_allowed_release_command(path, command.words())
-        })
+        .filter(|command| prohibited_argv(command.words()))
         .map(|command| {
             let number = u32::try_from(command.line())
                 .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
@@ -111,7 +108,7 @@ fn prohibited_argv(words: &[String]) -> bool {
         && cargo_subcommand(words, index).is_some_and(|word| matches!(word, "run" | "install"))
 }
 
-fn executable_index(words: &[String]) -> Option<usize> {
+pub(super) fn executable_index(words: &[String]) -> Option<usize> {
     let mut index = 0;
     loop {
         while words
@@ -134,23 +131,6 @@ fn cargo_subcommand(words: &[String], cargo_index: usize) -> Option<&str> {
         .iter()
         .find(|word| !word.starts_with('-'))
         .map(String::as_str)
-}
-
-fn is_allowed_release_command(path: &str, words: &[String]) -> bool {
-    if path != RELEASE_OWNER {
-        return false;
-    }
-    let Some(cargo_index) = executable_index(words) else {
-        return false;
-    };
-    if !is_cargo(&words[cargo_index]) || cargo_subcommand(words, cargo_index) != Some("run") {
-        return false;
-    }
-    words.windows(2).any(|pair| pair == ["--package", "larch-cli"])
-        && words.windows(2).any(|pair| {
-            pair[0] == "upgrade-larch"
-                && matches!(pair[1].as_str(), "release-step7-root" | "run")
-        })
 }
 
 fn is_cargo(word: &str) -> bool {
