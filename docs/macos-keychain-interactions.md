@@ -23,4 +23,7 @@ cursor login                          # recreates the keychain entry interactive
 
 On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_API_KEY` is empty AND no `cursor-user` / `cursor-access-token` keychain entry exists, the launcher exits early with an actionable message rather than letting `cursor agent` emit the cryptic `Security process exited with code: 45`. The check and pre-read are strictly read-only. They do NOT delete keychain entries or invoke `cursor` as a subprocess. On Linux/CI, the check and pre-read are no-ops (`CURSOR_API_KEY` is the only auth path).
 
-For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD_JSON` sidecars under the session tmpdir, because the collector's empty-output retry path relies on faithful argv reconstruction), see `SECURITY.md`.
+For the at-rest secret-persistence tradeoff (the API key appears in `.meta`
+`CMD_JSON` sidecars under the session tmpdir because the collector's
+empty-output retry path relies on faithful argv reconstruction), see
+[Private Session State and Retention](security/artifacts-redaction-and-publication.md#private-session-state-and-retention).

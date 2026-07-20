@@ -787,8 +787,8 @@ _BREADCRUMB_SOURCE_TMPDIR_ENV: tuple[str, ...] = (
 def _breadcrumb_source_confined(source_root: Path) -> bool:
     """Defense-in-depth: is the breadcrumb source under a session tmpdir?
 
-    Backs the SECURITY.md guarantee that a breadcrumbs hint outside the active
-    session tmpdir is a publish-nothing no-op. The live caller always derives
+    Backs the artifact security guarantee that a breadcrumbs hint outside the
+    active session tmpdir is a publish-nothing no-op. The live caller always derives
     ``--source-dir`` from ``log_root.parent`` (the session tmpdir), so this
     never trips on the supported path; it guards a future caller that passes an
     operator-controlled or escaped ``--source-dir``. When no session tmpdir env
@@ -823,8 +823,8 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
     dest = Path(args.dest_dir)
     source_root = src.parent
     if not _breadcrumb_source_confined(source_root):
-        # Per SECURITY.md: a breadcrumbs hint whose session root falls outside
-        # every active session tmpdir is a publish-nothing no-op (defense-in-depth;
+        # Per the artifact security reference: a breadcrumbs hint whose session
+        # root falls outside every active session tmpdir is a publish-nothing no-op (defense-in-depth;
         # live callers always derive --source-dir from log_root.parent). This is a
         # no-op, not the removed source-directory-wide rejection — the per-file
         # symlink/hardlink/redaction guards below remain the fail-closed surface.

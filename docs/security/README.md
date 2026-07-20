@@ -9,25 +9,21 @@ high-level trust statement.
 
 - Give each security guarantee one canonical document.
 - Link to the canonical document instead of copying its normative text.
-- Keep a compatibility pointer under an old root heading until its callers use
-  the focused reference.
 - Keep disclosure and security-sensitive triage instructions useful without
   opening a secondary link.
-- Record implementation owners and migration status. Do not treat a planned
-  document as authoritative before its extraction lands.
+- Use stable headings for important security topics so live links remain
+  useful.
+- Record implementation owners and mixed-runtime migration status in the
+  canonical document.
 
 ## Document Taxonomy
 
-| Area | Canonical owner now | Focused owner | Status |
-|------|---------------------|---------------|--------|
-| Public policy, supported versions, disclosure, scope, and high-level trust | [`SECURITY.md`](../../SECURITY.md) | Root policy | Current |
-| Release provenance, bootstrap, dependencies, credentials, and external service boundaries | [`docs/security/supply-chain-credentials-and-services.md`](supply-chain-credentials-and-services.md) | Focused reference | Current; root headings are compatibility pointers |
-| Workflow trust, untrusted input, agent access, authorization, and mutation controls | [`docs/security/workflow-trust-and-mutations.md`](workflow-trust-and-mutations.md) | Focused reference | Current; root headings are compatibility pointers |
-| Temporary and committed artifacts, redaction, retention, and public publication | [`docs/security/artifacts-redaction-and-publication.md`](artifacts-redaction-and-publication.md) | Focused reference | Current; root headings are compatibility pointers |
-
-The final reference cleanup in #7857 will remove obsolete detail only after all
-live callers point to the correct canonical owner. Root compatibility headings
-remain until that cleanup.
+| Area | Canonical owner |
+|------|-----------------|
+| Public policy, supported versions, disclosure, scope, and high-level trust | [`SECURITY.md`](../../SECURITY.md) |
+| Release provenance, bootstrap, dependencies, credentials, and external service boundaries | [Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md) |
+| Workflow trust, untrusted input, agent access, authorization, and mutation controls | [Workflow Trust, Mutation, and Private Findings](workflow-trust-and-mutations.md) |
+| Temporary and committed artifacts, redaction, retention, and public publication | [Artifacts, Redaction, and Publication](artifacts-redaction-and-publication.md) |
 
 ## Runtime Packaging Contract
 
@@ -42,8 +38,7 @@ service inventories linked by the focused supply-chain reference. Those links
 therefore resolve in both a source checkout and an installed plugin.
 
 `crates/larch-cli/src/release_plugin_runtime.rs` is the single implementation
-owner. The old Python projection command is retired, and no Bash projection
-implementation remains.
+owner.
 
 ## Live Reference Audit
 
@@ -54,12 +49,12 @@ a fixed repository-wide count.
 |---------|-------------------|----------------------|
 | Vulnerability disclosure | `skills/bug/SKILL.md`, `skills/triage/SKILL.md` | Root `SECURITY.md`; keep the no-public-issue instruction inline |
 | Installation and runtime loading | `docs/installation-and-setup.md`, `.claude-plugin/marketplace.json`, `crates/larch-cli/src/release_plugin_runtime.rs` | Root policy and all focused references ship in `plugin/` |
-| Runtime security decisions | Shipped Markdown under `skills/` | Root policy or an existing focused reference in the installed plugin |
+| Runtime security decisions | Shipped Markdown under `skills/` | The focused reference that owns the behavior in the installed plugin |
 | Contributor policy | `AGENTS.md`, `docs/preparing-your-repo.md` | Root policy for disclosure and scope; focused references for technical behavior; this index for ownership |
 | Run-log and breadcrumb operation | `docs/run-logs.md`, `docs/run-log-cli.md`, `docs/run-log-batches.md` | Operator mechanics stay in run-log docs; confidentiality, redaction, and publication rules live in the artifact reference |
 | Lint and scanner operation | `docs/linting.md`, `.pre-commit-config.yaml`, `.github/workflows/ci.yaml` | Operator commands stay in lint docs; scanner guarantees and limits live in the artifact reference |
 | Public reports and diagnostics | Workflow docs, configuration docs, and shipped skill Markdown | Workflow routing stays with its owner; egress classification and redaction live in the artifact reference |
 
-When a focused document becomes authoritative, audit the relevant entry points
-and preserve self-contained safety instructions at public-disclosure and
-security-sensitive triage boundaries.
+When editing security references, audit the relevant entry points. Preserve
+self-contained safety instructions at public-disclosure and security-sensitive
+triage boundaries.

@@ -14,7 +14,8 @@
 # Secret scanning still covers larch-logs — the gitleaks pre-commit hook uses
 # `--no-git --source .` (pass_filenames: false) and ignores this list, and the
 # dedicated CI gitleaks job scans the newly-added subdir. always_run hooks that
-# scan internally exclude larch-logs in their own logic. See SECURITY.md.
+# scan internally exclude larch-logs in their own logic. See
+# docs/security/artifacts-redaction-and-publication.md.
 exclude: ^(\.venv/|node_modules/|larch-logs/|plugin/)
 
 repos:

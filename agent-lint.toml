@@ -40,7 +40,8 @@ suppress = [
 # scripts/audit-edit-write.sh and scripts/test-audit-edit-write.sh are the
 # dev-only opt-in PostToolUse audit hook pair — structurally referenced from
 # Makefile (test target), docs/dev-hook-audit.md (enable snippet),
-# scripts/audit-edit-write.md (sibling contract), and SECURITY.md, but NOT
+# scripts/audit-edit-write.md (sibling contract), and
+# docs/security/artifacts-redaction-and-publication.md, but NOT
 # from hooks/hooks.json or .claude/settings.json by design (issue #155:
 # contributors opt in locally via gitignored .claude/settings.local.json).
 # agent-lint's G004/dead-script rule only scans SKILL.md / CLAUDE.md /
@@ -1354,13 +1355,13 @@ conditional-sources = [
 root-max-lines = 879
 root-max-tokens = 35383
 root-max-content-tokens = 35301
-# Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
+# Issues #7731/#7725/#7733/#7726/#7732/#7737 add focused trust boundaries;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
 # Git-CLI migration (#7675/#7734/#7735) routes runtime Git callers through `scripts/larch.sh`;
-# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
+# I-Runtime-1 and the supply-chain security reference specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary;
-# issue #7780 tightens force-mode.md and SECURITY.md force-admission prose;
+# issue #7780 tightens force-mode.md and the workflow security reference;
 # issue #7747 documents typed release-asset attestation verification;
 # issue #7750 adds the release-version transaction boundary;
 # issue #7752 documents immutable publication and Latest promotion;
@@ -1421,12 +1422,12 @@ roots = [
   "skills/shared/reviewer-templates.md",
   "skills/shared/voting-protocol.md",
 ]
-# Issues #7731/#7725/#7733/#7726/#7732/#7737 add trust boundaries to imported SECURITY.md;
+# Issues #7731/#7725/#7733/#7726/#7732/#7737 add focused trust boundaries;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
-# I-Runtime-1 and its SECURITY.md backing specify the verified entrypoint;
+# I-Runtime-1 and the supply-chain security reference specify the verified entrypoint;
 # issues #7764/#7755 add repository-resolution and attestation boundaries;
 # issue #7749 adds the release-planning trust boundary;
-# issue #7780 updates SECURITY.md force-admission trust-boundary prose;
+# issue #7780 updates the workflow security reference;
 # issue #7747 documents typed release-asset attestation verification;
 # issue #7750 adds the release-version transaction boundary;
 # issue #7752 documents immutable publication and Latest promotion;

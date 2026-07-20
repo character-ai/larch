@@ -179,6 +179,20 @@ least-privilege scopes and IAM permissions. Offline tests use local fixtures.
 Live ADC tests are ignored by default, require explicit opt-in, and do not render
 credential headers.
 
+### Object storage credentials and transport
+
+Cloud Storage uses the larch-owned `ObjectStore` port, the official Rust client,
+and the hardened ADC boundary above. S3 and R2 use standard AWS credential
+resolution. R2 also requires a matching account ID and an HTTPS endpoint on the
+account's Cloudflare host.
+
+The provider-neutral transport accepts only validated bucket roots and object
+keys. Uploads are create-only. Downloads use a private temporary file and atomic
+promotion. Provider diagnostics are reduced to fixed, credential-free failure
+classes. The [Google service inventory](../google-service-inventory.md) records
+the Cloud Storage client, scope, permissions, operations, and mixed-runtime
+consumer path.
+
 ### GitHub credential and transport boundary
 
 The Rust GitHub service reads exactly one non-empty `LARCH_GH_TOKEN` from the
@@ -416,4 +430,5 @@ boundaries above discoverable without duplicating their operation ledgers:
 | Release, attestations, bootstrap, upgrade | `.github/workflows/rust-release-assets.yaml`, `scripts/larch.sh`, `crates/larch-cli/src/release_plugin_runtime.rs`, `crates/larch-adapters/src/github/attestation.rs`, `python/tests/release/test_assets.py`, `python/tests/release/test_rust_bootstrap.py`, and the clean-install cases in `crates/larch-cli/tests/parity.rs` |
 | GitHub credentials and operations | `crates/larch-adapters/src/github/`, `crates/larch-adapters/src/github_actions.rs`, the [GitHub service inventory](../github-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
 | Google ADC | `crates/larch-adapters/src/google_auth.rs`, the [Google service inventory](../google-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
+| Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `python/larch/report/object_store.py`, the [Google service inventory](../google-service-inventory.md), and their focused Rust and Python tests |
 | Repository reads and Git compatibility | `docs/git-operation-inventory.md`, `crates/larch-adapters/src/git/`, `crates/larch-adapters/tests/git_repository.rs`, `crates/larch-lint/src/rules/git_ownership.rs`, and the command registry clean-install cases |
