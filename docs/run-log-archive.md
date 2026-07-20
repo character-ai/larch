@@ -28,3 +28,20 @@ malformed contents, and integrity mismatches. Defaults limit archives to
 Materialization writes into a private temporary sibling, verifies the complete
 tree, renames it into place, and verifies it again. Failures remove the staged
 tree. It never merges with or replaces a destination. Cache entries contain ordinary files and the manifest.
+
+`python3 python/cli.py run-log publish --repo-root <root> --skill <skill>
+--run-id <run-id> --staging-root <tree>` persists the archive before attempting
+the create-only upload to `run-logs/<skill>/<run-id>.tar.gz`. Failed attempts
+remain under `${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-pending/`
+with content-pinned retry metadata. Repeating the command may omit
+`--staging-root` when that pending state exists.
+
+An existing remote key succeeds only when its downloaded bytes match the
+pending archive; different content fails closed. A new upload is verified by
+remote metadata. The normal success path copies the sanitized staging tree
+directly into
+`${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo>/<skill>/<run-id>/`,
+without downloading or decompressing the archive. Retry without staging safely
+materializes the durable archive instead. A per-run lock covers upload,
+collision verification, cache promotion, and atomic retirement of pending
+state.

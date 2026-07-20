@@ -657,6 +657,23 @@ def _write_materialized_bytes(path: Path, content: bytes, *, root: Path, mode: i
         os.fsync(handle.fileno())
 
 
+def _fsync_directory(path: Path) -> None:
+    directory: Path = larch_io.validate_trusted_directory(path)
+    flags: int = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor: int = os.open(directory, flags)
+    try:
+        opened: os.stat_result = os.fstat(descriptor)
+        if not stat.S_ISDIR(opened.st_mode):
+            raise OSError(f"archive directory changed while opening: {directory}")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _extract_regular_member(
     archive: tarfile.TarFile,
     tar_member: tarfile.TarInfo,
@@ -813,7 +830,122 @@ def _extract_validated_archive(
             temporary_root=temporary_root,
         )
     for member in sorted(directories, key=lambda item: item.path.count("/"), reverse=True):
-        temporary_root.joinpath(*PurePosixPath(member.path).parts).chmod(0o755)
+        directory: Path = temporary_root.joinpath(*PurePosixPath(member.path).parts)
+        directory.chmod(0o755)
+        _fsync_directory(directory)
+    _fsync_directory(temporary_root)
+
+
+def _copy_staging_members(
+    *,
+    staging_root: Path,
+    temporary_root: Path,
+    manifest: RunArchiveManifest,
+) -> None:
+    directories: list[ArchiveMember] = [
+        member for member in manifest.members if member.kind == "directory"
+    ]
+    for member in sorted(directories, key=lambda item: (item.path.count("/"), item.path)):
+        destination: Path = temporary_root.joinpath(*PurePosixPath(member.path).parts)
+        destination.mkdir(mode=0o700)
+        _ = larch_io.validate_trusted_directory(destination, root=temporary_root)
+    _write_materialized_bytes(
+        temporary_root / ARCHIVE_MANIFEST_NAME,
+        manifest.to_bytes(),
+        root=temporary_root,
+        mode=0o644,
+    )
+    for member in manifest.members:
+        if member.kind == "directory":
+            continue
+        expected: os.stat_result = member.source.stat(follow_symlinks=False)
+        destination = temporary_root.joinpath(*PurePosixPath(member.path).parts)
+        digest = hashlib.sha256()
+        written = 0
+        with (
+            _open_regular_member(member.source, root=staging_root, expected=expected) as source,
+            _new_materialized_file(destination, root=temporary_root, mode=member.mode) as output,
+        ):
+            while chunk := source.read(_CHUNK_SIZE):
+                written += len(chunk)
+                _ = output.write(chunk)
+                digest.update(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        _assert_unchanged(member.source, expected=expected)
+        if written != member.size or digest.hexdigest() != member.sha256:
+            raise OSError(f"archive source changed while promoting cache: {member.source}")
+    for member in sorted(directories, key=lambda item: item.path.count("/"), reverse=True):
+        directory: Path = temporary_root.joinpath(*PurePosixPath(member.path).parts)
+        directory.chmod(0o755)
+        _fsync_directory(directory)
+    _fsync_directory(temporary_root)
+
+
+def promote_staging_run_directory(
+    *,
+    staging_root: Path,
+    run_dir: Path,
+    expected_skill: str,
+    expected_run_id: str,
+    expected_manifest_sha256: str,
+) -> RunArchiveMaterializationResult:
+    """Copy a sanitized staging tree directly into the unpacked run cache."""
+    if not validate_run_id_slug(expected_skill):
+        raise ValueError(f"invalid expected skill: {expected_skill}")
+    if not validate_run_id_slug(expected_run_id):
+        raise ValueError(f"invalid expected run-id: {expected_run_id}")
+    root: Path = larch_io.validate_trusted_directory(staging_root)
+    requested_run_dir: Path = run_dir if run_dir.is_absolute() else Path.cwd() / run_dir
+    if requested_run_dir.name != expected_run_id:
+        raise ValueError("promoted run directory name must match the expected run-id")
+    try:
+        _ = requested_run_dir.relative_to(root)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("promoted run directory must not be inside the staging tree")
+    parent: Path = larch_io.ensure_trusted_directory(requested_run_dir.parent)
+    destination: Path = parent / requested_run_dir.name
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"refusing to merge staging tree into existing run directory: {destination}")
+    members: tuple[ArchiveMember, ...] = _collect_members(root)
+    manifest = RunArchiveManifest(skill=expected_skill, run_id=expected_run_id, members=members)
+    manifest_sha256: str = hashlib.sha256(manifest.to_bytes()).hexdigest()
+    if manifest_sha256 != expected_manifest_sha256:
+        raise ValueError("staging tree no longer matches the pending archive manifest")
+    temporary_root: Path | None = None
+    try:
+        temporary_root = Path(
+            tempfile.mkdtemp(dir=parent, prefix=f".{destination.name}.promote-")
+        )
+        temporary_root.chmod(0o700)
+        _copy_staging_members(
+            staging_root=root,
+            temporary_root=temporary_root,
+            manifest=manifest,
+        )
+        _ = verify_materialized_run_directory(
+            run_dir=temporary_root,
+            expected_skill=expected_skill,
+            expected_run_id=expected_run_id,
+        )
+        _ = temporary_root.rename(destination)
+        _fsync_directory(parent)
+        temporary_root = None
+        try:
+            return verify_materialized_run_directory(
+                run_dir=destination,
+                expected_skill=expected_skill,
+                expected_run_id=expected_run_id,
+            )
+        except (OSError, TypeError, ValueError):
+            shutil.rmtree(destination)
+            _fsync_directory(parent)
+            raise
+    finally:
+        if temporary_root is not None:
+            shutil.rmtree(temporary_root)
 
 
 def materialize_run_archive(
@@ -867,6 +999,7 @@ def materialize_run_archive(
             limits=active_limits,
         )
         _ = temporary_root.rename(destination)
+        _fsync_directory(parent)
         temporary_root = None
         try:
             return verify_materialized_run_directory(
@@ -877,6 +1010,7 @@ def materialize_run_archive(
             )
         except (OSError, TypeError, ValueError):
             shutil.rmtree(destination)
+            _fsync_directory(parent)
             raise
     finally:
         if temporary_root is not None:

@@ -297,6 +297,51 @@ def test_materialize_run_archive_reproduces_and_verifies_tree(tmp_path: Path) ->
     assert not list(run_dir.parent.glob(".run-materialize.materialize-*"))
 
 
+def test_promote_staging_run_directory_copies_without_extracting_archive(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    _write_tree(staging)
+    created = _create_materialization_fixture(staging, tmp_path)
+    run_dir = tmp_path / "cache" / "run-materialize"
+
+    result = run_log_archive.promote_staging_run_directory(
+        staging_root=staging,
+        run_dir=run_dir,
+        expected_skill="implement",
+        expected_run_id="run-materialize",
+        expected_manifest_sha256=created.manifest_sha256,
+    )
+
+    assert result.run_dir == run_dir
+    assert result.manifest_sha256 == created.manifest_sha256
+    assert run_log_archive.verify_materialized_run_directory(
+        run_dir=run_dir,
+        expected_skill="implement",
+        expected_run_id="run-materialize",
+    ) == result
+    assert not list(run_dir.parent.glob(".run-materialize.promote-*"))
+
+
+def test_promote_staging_run_directory_rejects_staging_drift(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    _write_tree(staging)
+    created = _create_materialization_fixture(staging, tmp_path)
+    _ = (staging / "new.txt").write_text("late mutation", encoding="utf-8")
+    run_dir = tmp_path / "cache" / "run-materialize"
+
+    with pytest.raises(ValueError, match="no longer matches"):
+        _ = run_log_archive.promote_staging_run_directory(
+            staging_root=staging,
+            run_dir=run_dir,
+            expected_skill="implement",
+            expected_run_id="run-materialize",
+            expected_manifest_sha256=created.manifest_sha256,
+        )
+
+    assert not run_dir.exists()
+
+
 @pytest.mark.parametrize("unsafe_name", ["/absolute.txt", "../escape.txt", "nested/../../escape.txt", "a\\b"])
 def test_materialize_rejects_escaping_or_ambiguous_paths(tmp_path: Path, unsafe_name: str) -> None:
     archive_path = tmp_path / "unsafe.tar.gz"
