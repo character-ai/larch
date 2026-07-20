@@ -4032,6 +4032,18 @@ migration_issue = 7685
 
 [[commands]]
 domain = "lint"
+verb = "skill-run-lifecycle"
+python_module = "larch.lint.lint_skill_run_lifecycle"
+python_function = "main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7826
+
+[[commands]]
+domain = "lint"
 verb = "status-routing-truthiness"
 python_module = "larch.lint.lint_status_routing_truthiness"
 python_function = "main"
@@ -4149,6 +4161,19 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 migration_issue = 7682
+
+[[commands]]
+domain = "object-store"
+verb = "gcs"
+python_module = "larch.report.object_store"
+python_function = "gcs_transport_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+migration_issue = 7815
+clean_install_test = "clean-install-object-store-gcs"
 
 [[commands]]
 domain = "oos"
@@ -4882,19 +4907,6 @@ consumer_cutover = "complete"
 python_removal = "complete"
 migration_issue = 7749
 clean_install_test = "clean-install-plugin-read-version"
-
-[[commands]]
-domain = "object-store"
-verb = "gcs"
-python_module = "larch.report.object_store"
-python_function = "gcs_transport_main"
-machine_stdout = true
-owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
-migration_issue = 7815
-clean_install_test = "clean-install-object-store-gcs"
 
 [[commands]]
 domain = "pr"
@@ -5882,54 +5894,6 @@ migration_issue = 7679
 
 [[commands]]
 domain = "run-log"
-verb = "archive"
-python_module = "larch.report.run_log_archive"
-python_function = "main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7683
-
-[[commands]]
-domain = "run-log"
-verb = "materialize"
-python_module = "larch.report.run_log_archive"
-python_function = "materialize_main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7683
-
-[[commands]]
-domain = "run-log"
-verb = "publish"
-python_module = "larch.report.run_log_publish"
-python_function = "main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7683
-
-[[commands]]
-domain = "run-log"
-verb = "sync"
-python_module = "larch.report.run_log_sync"
-python_function = "main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-migration_issue = 7683
-
-[[commands]]
-domain = "run-log"
 verb = "append"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_append_main"
@@ -5957,6 +5921,18 @@ domain = "run-log"
 verb = "append-failure"
 python_module = "larch.report.run_logs"
 python_function = "append_failure_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7683
+
+[[commands]]
+domain = "run-log"
+verb = "archive"
+python_module = "larch.report.run_log_archive"
+python_function = "main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
@@ -6038,10 +6014,94 @@ migration_issue = 7683
 
 [[commands]]
 domain = "run-log"
+verb = "lifecycle-cancel"
+python_module = "larch.report.run_lifecycle"
+python_function = "cancel_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7826
+
+[[commands]]
+domain = "run-log"
+verb = "lifecycle-early-return"
+python_module = "larch.report.run_lifecycle"
+python_function = "early_return_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7826
+
+[[commands]]
+domain = "run-log"
+verb = "lifecycle-failure"
+python_module = "larch.report.run_lifecycle"
+python_function = "failure_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7826
+
+[[commands]]
+domain = "run-log"
+verb = "lifecycle-finalize"
+python_module = "larch.report.run_lifecycle"
+python_function = "finalize_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7826
+
+[[commands]]
+domain = "run-log"
+verb = "lifecycle-start"
+python_module = "larch.report.run_lifecycle"
+python_function = "start_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7826
+
+[[commands]]
+domain = "run-log"
 verb = "manifest"
 python_module = "larch.report.run_logs"
 python_function = "larch_log_manifest_main"
 machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7683
+
+[[commands]]
+domain = "run-log"
+verb = "materialize"
+python_module = "larch.report.run_log_archive"
+python_function = "materialize_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7683
+
+[[commands]]
+domain = "run-log"
+verb = "publish"
+python_module = "larch.report.run_log_publish"
+python_function = "main"
+machine_stdout = true
 owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
@@ -6119,6 +6179,18 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 migration_issue = 7814
+
+[[commands]]
+domain = "run-log"
+verb = "sync"
+python_module = "larch.report.run_log_sync"
+python_function = "main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+migration_issue = 7683
 
 [[commands]]
 domain = "run-log"
@@ -9121,6 +9193,12 @@ rust = []
 path = "skills/shared/reviewer-templates.md"
 kind = "skill"
 python = ["generate *", "generate check"]
+rust = []
+
+[[callers]]
+path = "skills/shared/run-lifecycle.md"
+kind = "skill"
+python = ["run-log lifecycle-start"]
 rust = []
 
 [[callers]]

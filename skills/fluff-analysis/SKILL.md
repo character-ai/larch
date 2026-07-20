@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: fluff-analysis
 description: "Use when analyzing review fluff in synchronized larch run logs: rejected, OOS, or accepted-low-value findings, plus tuning recommendations."
 allowed-tools: Bash, Read

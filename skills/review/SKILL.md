@@ -1,10 +1,10 @@
 ---
+# pending:7827
 name: review
 description: "Use when reviewing code changes (--diff for branch diff, or positional text for existing code review). Description mode records accepted OOS items in local artifacts for manual `/issue` follow-up."
 argument-hint: "[--diff] [--subagent] [--dynamic-archetypes <N>] [--session-env <path>] [--step-prefix <prefix>] [--difficulty <TRIVIAL|MODERATE|HARD>] [<description>]"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, Skill
 ---
-
 # Code Review Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**

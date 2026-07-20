@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: triage
 description: "Use when an existing non-security GitHub issue needs verification, root-cause analysis, and a safe update before /design."
 argument-hint: "<issue-number> [--repo OWNER/REPO] [--report-only]"

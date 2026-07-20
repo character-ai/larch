@@ -1,8 +1,12 @@
 ---
+
+# larch-run-lifecycle: shared-v1 skill=status
 name: status
 description: "Use when checking larch plugin health: reports the current larch version and checks availability of external vendor tools (Codex and Cursor) using the same probe machinery as /implement."
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `status`.**
 
 # status
 

@@ -1,4 +1,6 @@
 ---
+
+# pending:7827
 name: issue
 description: "Use when creating GitHub issues with semantic dedup and blocker-dependency analysis. Supports single or batch mode plus dry-run and dependency flags."
 argument-hint: "[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [<issue description or title>]"

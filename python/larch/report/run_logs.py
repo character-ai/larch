@@ -115,6 +115,7 @@ def log_init(
     skill: str,
     run_id: str,
     parent_skill: str = "",
+    parent_run_id: str = "",
     issue: str = "",
 ) -> LogInitResult:
     """Idempotently synthesize a v2 manifest for ``skill``/``run_id``.
@@ -124,6 +125,10 @@ def log_init(
     """
     if parent_skill:
         run_log_batch._validate_slug(label="parent-skill", value=parent_skill)
+    if parent_run_id:
+        run_log_batch._validate_slug(label="parent-run-id", value=parent_run_id)
+    if bool(parent_skill) != bool(parent_run_id):
+        raise ValueError("parent-skill and parent-run-id must be provided together")
     if issue and not str(issue).isdigit():
         raise ValueError(f"invalid issue: {issue}")
     path = run_log_manifest._manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
@@ -131,6 +136,7 @@ def log_init(
         return LogInitResult(path=path, written=False, unchanged=True)
     extra: dict[str, Any] = {
         "parent_skill": parent_skill or None,
+        "parent_run_id": parent_run_id or None,
         "issue_number": int(issue) if issue else None,
     }
     manifest = run_log_manifest.Manifest.synthesize_v2(skill=skill, run_id=run_id, extra=extra)
@@ -185,6 +191,7 @@ def log_exists(
 def larch_log_init_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log init")
     parser.add_argument("--parent-skill", default="")
+    parser.add_argument("--parent-run-id", default="")
     parser.add_argument("--issue", default="")
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
@@ -195,6 +202,7 @@ def larch_log_init_main(argv: list[str]) -> int:
             skill=args.skill,
             run_id=args.run_id,
             parent_skill=args.parent_skill,
+            parent_run_id=args.parent_run_id,
             issue=args.issue,
         )
     except ValueError as exc:

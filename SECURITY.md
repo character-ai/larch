@@ -46,7 +46,9 @@ hosts, operations, redirects, retries, response sizes, and diagnostics. See
 for the canonical technical contracts.
 
 Session artifacts, operator diagnostics, committed run logs, and public
-GitHub content have distinct confidentiality rules. Redaction and scanning are
+GitHub content have distinct confidentiality rules. The universal skill
+lifecycle sanitizes every terminal outcome before create-only publication and
+keeps child invocations in separate archives. Redaction and scanning are
 egress backstops, not complete content classifiers. See
 [Artifacts, Redaction, and Publication](docs/security/artifacts-redaction-and-publication.md)
 for the canonical technical contracts.

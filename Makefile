@@ -50,8 +50,8 @@ py-lint: py-lint-main py-typecheck
 # Timed locally under the same concurrent process shape as CI, then LPT-packed
 # into three 110–111-second groups. Keep every check in the master list and in
 # exactly one three-way group. One-way mode remains the local default.
-PY_LINT_FAST_CHECKS := ruff complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests run-log-walkers module-manifest engine-adoption
-PY_LINT_FAST_CHECKS_SHARD_1 := ruff subprocess-via-runner layering result-env-key-parity env-via-config-constant kv-codec shared-convention-regex tmpdir-arg-env-fallback self-disarmable-gate
+PY_LINT_FAST_CHECKS := ruff complexity-baseline keyword-only subprocess-via-runner gh-argv-literal git-push-refspec wire-artifact-pairing tempfile-dir result-env-key-parity tmpdir-arg-env-fallback markdown-heading-fence-state self-disarmable-gate unreachable-branch status-routing-truthiness monkeypatch-facade-binding env-via-config-constant root-resolution kv-codec lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason pylint-skip-file guidelines-note-wrapper-bypass layering flat-tests run-log-walkers skill-run-lifecycle module-manifest engine-adoption
+PY_LINT_FAST_CHECKS_SHARD_1 := ruff subprocess-via-runner layering result-env-key-parity env-via-config-constant kv-codec shared-convention-regex tmpdir-arg-env-fallback self-disarmable-gate skill-run-lifecycle
 PY_LINT_FAST_CHECKS_SHARD_2 := monkeypatch-facade-binding git-push-refspec wire-artifact-pairing gh-argv-literal suppression-reason root-resolution run-log-walkers complexity-baseline renderer-golden-tests module-manifest keyword-only
 PY_LINT_FAST_CHECKS_SHARD_3 := status-routing-truthiness lifecycle-prefix-literal tempfile-dir pylint-skip-file unreachable-branch guidelines-note-wrapper-bypass flat-tests engine-adoption markdown-heading-fence-state
 PY_LINT_FAST_SHARD_ID ?= 1
@@ -172,6 +172,7 @@ LINT_TEST_DESCRIPTORS := \
 	status-routing-truthiness|python/tests/lint/test_lint_status_routing_truthiness.py \
 	pylint-skip-file|python/tests/lint/test_lint_pylint_skip_file.py \
 	module-manifest|python/tests/lint/test_lint_module_manifest.py \
+	skill-run-lifecycle|python/tests/lint/test_lint_skill_run_lifecycle.py \
 	engine-adoption|python/tests/lint/test_lint_engine_adoption.py \
 	em-dash-output|python/tests/lint/test_lint_em_dash_output.py \
 	flat-tests|python/tests/lint/test_lint_flat_tests.py \
