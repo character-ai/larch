@@ -19,6 +19,8 @@ from larch.report.object_store import ObjectStoreError, object_store_for
 
 _MIN_URI_PATH_SEGMENT_COUNT: Final = 2
 _ASCII_CONTROL_CHARACTER_MAX: Final = 32
+_SHA256_HEX_LENGTH: Final = 64
+_GIT_COMMIT_HEX_LENGTH: Final = 40
 
 
 class StorageConfigurationError(ValueError):
@@ -51,6 +53,17 @@ class StorageRoot:
     def bucket_uri(self) -> str:
         """Return the provider bucket root used by existence preflights."""
         return f"{self.scheme}://{self.bucket}"
+
+
+@dataclass(frozen=True)
+class LegacyMigrationDescriptor:
+    """Repository-owned trust anchor for one historical migration inventory."""
+
+    schema: str
+    source_commit: str
+    storage_root: str
+    inventory_key: str
+    inventory_sha256: str
 
 
 def run_log_reference(*, repo_root: Path | None, skill: str, run_id: str) -> str:
@@ -109,13 +122,8 @@ def _parse_storage_uri(raw_uri: str) -> StorageRoot:
     )
 
 
-def load_storage_root(*, repo_root: Path, environ: Mapping[str, str] | None = None) -> StorageRoot:
-    """Load and validate storage configuration, honoring the environment override."""
-    environment = os.environ if environ is None else environ
-    override = environment.get(config.ENV_LARCH_LOGS_URI, "")
-    if override:
-        return _parse_storage_uri(override)
-    config_path = repo_root / config.STORAGE_CONFIG_RELPATH
+def _load_repository_config(repo_root: Path) -> dict[str, object]:
+    config_path: Path = repo_root / config.STORAGE_CONFIG_RELPATH
     if config_path.is_symlink() or not config_path.is_file():
         raise StorageConfigurationError(
             f"storage configuration is missing: create {config.STORAGE_CONFIG_RELPATH} at the repository root "
@@ -123,9 +131,18 @@ def load_storage_root(*, repo_root: Path, environ: Mapping[str, str] | None = No
         )
     try:
         with config_path.open("rb") as handle:
-            raw_data = cast("dict[str, object]", tomllib.load(handle))
+            return cast("dict[str, object]", tomllib.load(handle))
     except tomllib.TOMLDecodeError as exc:
         raise StorageConfigurationError(f"invalid {config.STORAGE_CONFIG_RELPATH}: {exc}") from exc
+
+
+def load_storage_root(*, repo_root: Path, environ: Mapping[str, str] | None = None) -> StorageRoot:
+    """Load and validate storage configuration, honoring the environment override."""
+    environment = os.environ if environ is None else environ
+    override = environment.get(config.ENV_LARCH_LOGS_URI, "")
+    if override:
+        return _parse_storage_uri(override)
+    raw_data: dict[str, object] = _load_repository_config(repo_root)
     raw_logs = raw_data.get("logs")
     if not isinstance(raw_logs, dict):
         raise StorageConfigurationError(f"invalid {config.STORAGE_CONFIG_RELPATH}: missing [logs] table")
@@ -134,6 +151,65 @@ def load_storage_root(*, repo_root: Path, environ: Mapping[str, str] | None = No
     if not isinstance(uri, str):
         raise StorageConfigurationError(f"invalid {config.STORAGE_CONFIG_RELPATH}: [logs].uri must be a string")
     return _parse_storage_uri(uri)
+
+
+def load_legacy_migration_descriptor(  # noqa: C901 - strict descriptor schema is validated as one transaction
+    *, repo_root: Path, storage_root: StorageRoot
+) -> LegacyMigrationDescriptor | None:
+    """Load a repository-scoped legacy inventory descriptor, when configured."""
+    raw_data: dict[str, object] = _load_repository_config(repo_root)
+    raw_logs: object = raw_data.get("logs")
+    if not isinstance(raw_logs, dict):
+        raise StorageConfigurationError(f"invalid {config.STORAGE_CONFIG_RELPATH}: missing [logs] table")
+    logs = cast("dict[str, object]", raw_logs)
+    raw_descriptor: object = logs.get("legacy_migration")
+    if raw_descriptor is None:
+        return None
+    if not isinstance(raw_descriptor, dict):
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: [logs.legacy_migration] must be a table"
+        )
+    descriptor = cast("dict[str, object]", raw_descriptor)
+    required: frozenset[str] = frozenset({
+        "inventory_key", "inventory_sha256", "schema", "source_commit", "storage_root",
+    })
+    if frozenset(descriptor) != required:
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: [logs.legacy_migration] has invalid fields"
+        )
+    if not all(isinstance(descriptor[key], str) for key in required):
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: [logs.legacy_migration] values must be strings"
+        )
+    values = cast("dict[str, str]", descriptor)
+    digest: str = values["inventory_sha256"]
+    commit: str = values["source_commit"]
+    inventory_key: str = values["inventory_key"]
+    if len(digest) != _SHA256_HEX_LENGTH or any(character not in "0123456789abcdef" for character in digest):
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: legacy inventory SHA-256 is malformed"
+        )
+    if len(commit) != _GIT_COMMIT_HEX_LENGTH or any(character not in "0123456789abcdef" for character in commit):
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: legacy source commit is malformed"
+        )
+    key_parts: list[str] = inventory_key.split("/")
+    if inventory_key.startswith("/") or not inventory_key.endswith(".json") or any(
+        not part or part in {".", ".."} for part in key_parts
+    ):
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: legacy inventory key is unsafe"
+        )
+    if values["storage_root"] != storage_root.uri:
+        raise StorageConfigurationError("legacy migration descriptor does not match the active storage root")
+    if not values["schema"]:
+        raise StorageConfigurationError(
+            f"invalid {config.STORAGE_CONFIG_RELPATH}: legacy migration schema is empty"
+        )
+    return LegacyMigrationDescriptor(
+        schema=values["schema"], source_commit=commit, storage_root=values["storage_root"],
+        inventory_key=inventory_key, inventory_sha256=digest,
+    )
 
 
 def discover_storage_root(

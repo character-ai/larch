@@ -45,6 +45,10 @@ class StagingManifestMismatchError(ValueError):
     """The live staging tree differs from an already pinned pending archive."""
 
 
+class MissingArchiveManifestError(ValueError):
+    """A structurally readable archive has no root versioned manifest."""
+
+
 @dataclass(frozen=True)
 class ArchiveMember:
     """One normalized source-tree member represented in the archive."""
@@ -136,6 +140,27 @@ class RunArchiveMaterializationResult:
     manifest_sha256: str
     member_count: int
     expanded_size: int
+
+
+@dataclass(frozen=True)
+class LegacyArchiveMember:
+    """One inventory-pinned regular member in a legacy migration archive."""
+
+    path: str
+    size: int
+    sha256: str
+    mode: int
+
+
+@dataclass(frozen=True)
+class LegacyRunArchive:
+    """Verified inventory metadata needed to materialize one legacy run."""
+
+    archive_size: int
+    archive_sha256: str
+    member_count: int
+    expanded_size: int
+    members: tuple[LegacyArchiveMember, ...]
 
 
 @dataclass(frozen=True)
@@ -366,7 +391,8 @@ class _BytesReader:
         return chunk
 
 
-def _sha256_file(path: Path) -> str:
+def sha256_file(path: Path) -> str:
+    """Return the SHA-256 digest of one regular file."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(_CHUNK_SIZE):
@@ -405,7 +431,7 @@ def create_run_archive(
     _write_archive(archive_path=archive_path, manifest=manifest, staging_root=root)
     return RunArchiveResult(
         archive_path=archive_path,
-        archive_sha256=_sha256_file(archive_path),
+        archive_sha256=sha256_file(archive_path),
         manifest_sha256=hashlib.sha256(manifest.to_bytes()).hexdigest(),
         member_count=len(members),
     )
@@ -605,6 +631,8 @@ def _inspect_archive(
     manifest_members: list[tarfile.TarInfo] = [
         member for member, row in zip(members, member_rows, strict=True) if row[0] == ARCHIVE_MANIFEST_NAME
     ]
+    if not manifest_members:
+        raise MissingArchiveManifestError("archive must contain exactly one root archive-manifest.json")
     if len(manifest_members) != 1:
         raise ValueError("archive must contain exactly one root archive-manifest.json")
     manifest_info: tarfile.TarInfo = manifest_members[0]
@@ -944,6 +972,155 @@ def promote_staging_run_directory(
                 run_dir=destination,
                 expected_skill=expected_skill,
                 expected_run_id=expected_run_id,
+            )
+        except (OSError, TypeError, ValueError):
+            shutil.rmtree(destination)
+            _fsync_directory(parent)
+            raise
+    finally:
+        if temporary_root is not None:
+            shutil.rmtree(temporary_root)
+
+
+def _legacy_manifest(  # noqa: C901 - inventory and synthesized manifest validate as one transaction
+    *, expected_skill: str, expected_run_id: str, legacy: LegacyRunArchive,
+    limits: ArchiveExtractionLimits,
+) -> ValidatedRunArchiveManifest:
+    if legacy.member_count != len(legacy.members):
+        raise ValueError("legacy archive inventory member count is inconsistent")
+    if legacy.member_count > limits.max_members:
+        raise ValueError("legacy archive exceeds member-count limit")
+    if legacy.expanded_size != sum(member.size for member in legacy.members):
+        raise ValueError("legacy archive inventory expanded size is inconsistent")
+    if legacy.expanded_size > limits.max_expanded_bytes:
+        raise ValueError("legacy archive exceeds total expanded-size limit")
+    known_names: dict[str, str] = {}
+    file_members: list[ManifestMember] = []
+    directory_names: set[str] = set()
+    for member in legacy.members:
+        path: str = _canonical_input_member_path(member.path)
+        _add_member_name(path, known_names)
+        if member.size < 0 or member.size > limits.max_member_bytes:
+            raise ValueError(f"legacy archive member has invalid size: {path}")
+        if member.mode not in {0o644, 0o755}:
+            raise ValueError(f"legacy archive member has unsupported mode: {path}")
+        if len(member.sha256) != _SHA256_HEX_LENGTH or any(
+            character not in "0123456789abcdef" for character in member.sha256
+        ):
+            raise ValueError(f"legacy archive member digest is invalid: {path}")
+        parent: PurePosixPath = PurePosixPath(path).parent
+        while str(parent) != ".":
+            directory_names.add(str(parent))
+            parent = parent.parent
+        file_members.append(ManifestMember(path, "file", member.size, member.sha256))
+    if len(file_members) + len(directory_names) + 1 > limits.max_members:
+        raise ValueError("legacy archive exceeds member-count limit after directory synthesis")
+    manifest_members: tuple[ManifestMember, ...] = tuple(sorted([
+        *(ManifestMember(path, "directory", 0, None) for path in directory_names), *file_members,
+    ], key=lambda member: member.path))
+    _validate_member_paths(manifest_members)
+    records: list[dict[str, int | str | None]] = [{
+        "kind": member.kind, "path": member.path, "sha256": member.sha256, "size": member.size,
+    } for member in manifest_members]
+    payload: dict[str, object] = {
+        "archive_format": ARCHIVE_FORMAT, "member_count": len(records), "members": records,
+        "run_id": expected_run_id, "schema_version": ARCHIVE_SCHEMA_VERSION, "skill": expected_skill,
+    }
+    encoded: bytes = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    if legacy.expanded_size + len(encoded) > limits.max_expanded_bytes:
+        raise ValueError("legacy archive exceeds total expanded-size limit")
+    return ValidatedRunArchiveManifest(
+        skill=expected_skill, run_id=expected_run_id, members=manifest_members, encoded=encoded,
+    )
+
+
+def _inspect_legacy_archive(
+    archive: tarfile.TarFile, *, expected_skill: str, expected_run_id: str,
+    legacy: LegacyRunArchive, limits: ArchiveExtractionLimits,
+) -> _ValidatedArchive:
+    manifest: ValidatedRunArchiveManifest = _legacy_manifest(
+        expected_skill=expected_skill, expected_run_id=expected_run_id, legacy=legacy, limits=limits,
+    )
+    expected: tuple[tuple[str, int, int], ...] = tuple(
+        (member.path, member.size, member.mode) for member in legacy.members
+    )
+    members: list[tarfile.TarInfo] = []
+    actual: list[tuple[str, int, int]] = []
+    known_names: dict[str, str] = {}
+    for tar_member in archive:
+        if len(members) >= limits.max_members:
+            raise ValueError("legacy archive exceeds member-count limit")
+        name, kind = _validate_tar_member(tar_member, limits=limits)
+        if kind != "file" or name == ARCHIVE_MANIFEST_NAME:
+            raise ValueError(f"unsupported legacy archive member type: {name}")
+        _add_member_name(name, known_names)
+        members.append(tar_member)
+        actual.append((name, tar_member.size, tar_member.mode))
+    if tuple(actual) != expected:
+        raise ValueError("legacy archive members do not match migration inventory")
+    return _ValidatedArchive(
+        manifest=manifest, members=tuple(members),
+        expanded_size=legacy.expanded_size + len(manifest.encoded),
+    )
+
+
+def materialize_legacy_run_archive(  # noqa: C901,PLR0913 - security-critical validation stays transactional
+    *, archive_path: Path, run_dir: Path, expected_skill: str, expected_run_id: str,
+    legacy: LegacyRunArchive, limits: ArchiveExtractionLimits | None = None,
+) -> RunArchiveMaterializationResult:
+    """Validate and atomically materialize one inventory-pinned legacy archive."""
+    if not validate_run_id_slug(expected_skill):
+        raise ValueError(f"invalid expected skill: {expected_skill}")
+    if not validate_run_id_slug(expected_run_id):
+        raise ValueError(f"invalid expected run-id: {expected_run_id}")
+    active_limits = ArchiveExtractionLimits() if limits is None else limits
+    active_limits.validate()
+    requested_run_dir: Path = run_dir if run_dir.is_absolute() else Path.cwd() / run_dir
+    if requested_run_dir.name != expected_run_id:
+        raise ValueError("materialized run directory name must match the expected run-id")
+    parent: Path = larch_io.ensure_trusted_directory(requested_run_dir.parent)
+    destination: Path = parent / requested_run_dir.name
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"refusing to merge archive into existing run directory: {destination}")
+    archive_entry: os.stat_result = archive_path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(archive_entry.st_mode):
+        raise ValueError(f"run archive is not a regular file: {archive_path}")
+    if archive_entry.st_size != legacy.archive_size:
+        raise ValueError("legacy archive size does not match migration inventory")
+    if archive_entry.st_size <= 0 or legacy.expanded_size > archive_entry.st_size * active_limits.max_compression_ratio:
+        raise ValueError("legacy archive exceeds compression-ratio limit")
+    temporary_root: Path | None = None
+    try:
+        with _open_regular_member(archive_path, root=archive_path.parent, expected=archive_entry) as handle:
+            digest = hashlib.sha256()
+            while chunk := handle.read(_CHUNK_SIZE):
+                digest.update(chunk)
+            if digest.hexdigest() != legacy.archive_sha256:
+                raise ValueError("legacy archive digest does not match migration inventory")
+            _ = handle.seek(0)
+            with tarfile.open(fileobj=handle, mode="r:gz") as archive:
+                validated: _ValidatedArchive = _inspect_legacy_archive(
+                    archive, expected_skill=expected_skill, expected_run_id=expected_run_id,
+                    legacy=legacy, limits=active_limits,
+                )
+                temporary_root = Path(tempfile.mkdtemp(
+                    dir=parent, prefix=f".{destination.name}.materialize-",
+                ))
+                temporary_root.chmod(0o700)
+                _extract_validated_archive(archive, validated, temporary_root=temporary_root)
+        _ = verify_materialized_run_directory(
+            run_dir=temporary_root, expected_skill=expected_skill,
+            expected_run_id=expected_run_id, limits=active_limits,
+        )
+        _ = temporary_root.rename(destination)
+        _fsync_directory(parent)
+        temporary_root = None
+        try:
+            return verify_materialized_run_directory(
+                run_dir=destination, expected_skill=expected_skill,
+                expected_run_id=expected_run_id, limits=active_limits,
             )
         except (OSError, TypeError, ValueError):
             shutil.rmtree(destination)

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import threading
 import tarfile
+import gzip
+import hashlib
+import io
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -45,6 +49,116 @@ class MemoryObjectStore:
         ):
             raise TimeoutError("test download release timed out")
         _ = destination.write_bytes(content)
+
+
+def _legacy_archive(entries: list[tuple[str, bytes, bytes]]) -> bytes:
+    output = io.BytesIO()
+    with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=0) as compressed:
+        with tarfile.open(
+            fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT
+        ) as archive:
+            for name, content, kind in entries:
+                info = tarfile.TarInfo(name)
+                info.type = kind
+                info.size = len(content)
+                info.mode = 0o644
+                info.mtime = 0
+                info.uid = 0
+                info.gid = 0
+                info.uname = ""
+                info.gname = ""
+                archive.addfile(
+                    info, io.BytesIO(content) if kind == tarfile.REGTYPE else None
+                )
+    return output.getvalue()
+
+
+def _legacy_fixture(
+    tmp_path: Path,
+    *,
+    run_id: str = "legacy-run",
+    entries: list[tuple[str, bytes, bytes]] | None = None,
+    archive_digest: str | None = None,
+    archive_size: int | None = None,
+    inventory_mutation: dict[str, object] | None = None,
+) -> tuple[dict[str, bytes], str]:
+    active_entries = entries or [
+        (
+            "manifest.json",
+            b'{"issue_number":7886,"started_at":"2026-07-20T00:00:00Z"}\n',
+            tarfile.REGTYPE,
+        ),
+        (
+            "token-report.json",
+            b'{"claude":{"totals":{"total":10}},"BUCKETS_claude":{"input":10}}\n',
+            tarfile.REGTYPE,
+        ),
+    ]
+    archive_bytes = _legacy_archive(active_entries)
+    remote_key = f"run-logs/implement/{run_id}.tar.gz"
+    object_key = f"larch/{remote_key}"
+    source_files = [
+        {
+            "archive_member_path": name,
+            "archive_object_key": object_key,
+            "bytes": len(content),
+            "git_oid": hashlib.sha1(content).hexdigest(),  # noqa: S324 - fixture models Git SHA-1 object IDs
+            "mode": "100644",
+            "path": f"larch-logs/implement/{run_id}/{name}",
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+        for name, content, kind in active_entries
+        if kind == tarfile.REGTYPE and not name.startswith("../")
+    ]
+    archive_row: dict[str, object] = {
+        "archive_bytes": len(archive_bytes) if archive_size is None else archive_size,
+        "kind": "run",
+        "member_count": len(source_files),
+        "object_key": object_key,
+        "run_id": run_id,
+        "sha256": archive_digest or hashlib.sha256(archive_bytes).hexdigest(),
+        "skill": "implement",
+        "uncompressed_bytes": sum(int(row["bytes"]) for row in source_files),
+    }
+    inventory: dict[str, object] = {
+        "archives": [archive_row],
+        "schema": "larch-run-log-migration-inventory-v1",
+        "source_commit": "a" * 40,
+        "source_files": source_files,
+        "storage_root": "s3://bucket/larch",
+        "totals": {
+            "archive_bytes": archive_row["archive_bytes"],
+            "archive_objects": 1,
+            "members": len(source_files),
+            "run_directories": 1,
+            "source_paths": len(source_files),
+            "uncompressed_bytes": archive_row["uncompressed_bytes"],
+        },
+    }
+    if inventory_mutation:
+        inventory.update(inventory_mutation)
+    inventory_bytes = (json.dumps(inventory, sort_keys=True) + "\n").encode()
+    inventory_key = "migration/test-inventory.json"
+    config_dir = tmp_path / "repo" / ".larch"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    _ = (config_dir / "config.toml").write_text(
+        "\n".join(
+            [
+                "[logs]",
+                'uri = "s3://bucket/larch"',
+                "",
+                "[logs.legacy_migration]",
+                'schema = "larch-run-log-migration-inventory-v1"',
+                f'source_commit = "{"a" * 40}"',
+                'storage_root = "s3://bucket/larch"',
+                f'inventory_key = "{inventory_key}"',
+                f'inventory_sha256 = "{hashlib.sha256(inventory_bytes).hexdigest()}"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return {remote_key: archive_bytes, inventory_key: inventory_bytes}, remote_key
 
 
 def _archive_bytes(tmp_path: Path, *, skill: str, run_id: str, content: str) -> bytes:
@@ -336,3 +450,152 @@ def test_concurrent_syncs_share_the_publication_lock_and_download_once(
     assert sorted(result.downloaded_count for result in results) == [0, 1]
     assert store.download_calls == [key]
     assert store.list_calls == ["run-logs/", "run-logs/"]
+
+
+def test_legacy_cold_sync_verifies_extracts_and_warm_sync_lists_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    objects, remote_key = _legacy_fixture(tmp_path)
+    store = MemoryObjectStore(objects)
+    request = _request(
+        repo=tmp_path / "repo",
+        cache_home=tmp_path / "cache",
+        state_home=tmp_path / "state",
+    )
+    calls = 0
+    materialize = run_log_archive.materialize_legacy_run_archive
+
+    def counted_materialize(**kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return materialize(**kwargs)  # pyright: ignore[reportArgumentType] - forwards the exact production keyword contract
+
+    monkeypatch.setattr(
+        run_log_archive, "materialize_legacy_run_archive", counted_materialize
+    )
+
+    cold = run_log_sync.sync_repository_run_logs(request=request, store=store)
+    run_dir = cold.corpus_root / "implement/legacy-run"
+
+    assert cold.downloaded_count == 1
+    assert calls == 1
+    assert store.download_calls == [remote_key, "migration/test-inventory.json"]
+    assert (run_dir / "manifest.json").is_file()
+    assert (run_dir / "token-report.json").is_file()
+    assert (run_dir / run_log_archive.ARCHIVE_MANIFEST_NAME).is_file()
+    _ = run_log_archive.verify_materialized_run_directory(
+        run_dir=run_dir,
+        expected_skill="implement",
+        expected_run_id="legacy-run",
+    )
+
+    warm = run_log_sync.sync_repository_run_logs(request=request, store=store)
+
+    assert warm.present_count == 1
+    assert warm.downloaded_count == 0
+    assert calls == 1
+    assert store.list_calls == ["run-logs/", "run-logs/"]
+    assert store.download_calls == [remote_key, "migration/test-inventory.json"]
+
+
+def test_mixed_legacy_and_versioned_archives_materialize_together(
+    tmp_path: Path,
+) -> None:
+    objects, remote_key = _legacy_fixture(tmp_path)
+    normal_key = "run-logs/design/normal-run.tar.gz"
+    objects[normal_key] = _archive_bytes(
+        tmp_path, skill="design", run_id="normal-run", content="normal\n"
+    )
+    store = MemoryObjectStore(objects)
+
+    result = run_log_sync.sync_repository_run_logs(
+        request=_request(
+            repo=tmp_path / "repo",
+            cache_home=tmp_path / "cache",
+            state_home=tmp_path / "state",
+        ),
+        store=store,
+    )
+
+    assert result.downloaded_count == 2
+    assert (result.corpus_root / "implement/legacy-run/token-report.json").is_file()
+    assert (result.corpus_root / "design/normal-run/nested/result.txt").is_file()
+    assert store.download_calls == [
+        normal_key,
+        remote_key,
+        "migration/test-inventory.json",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("fixture_kwargs", "message"),
+    [
+        ({"archive_digest": "0" * 64}, "archive digest"),
+        ({"archive_size": 1}, "archive size"),
+        (
+            {"inventory_mutation": {"source_commit": "b" * 40}},
+            "source commit",
+        ),
+        (
+            {"inventory_mutation": {"storage_root": "s3://other/larch"}},
+            "storage root",
+        ),
+    ],
+)
+def test_legacy_sync_rejects_unpinned_or_inconsistent_inventory(
+    tmp_path: Path,
+    fixture_kwargs: dict[str, object],
+    message: str,
+) -> None:
+    objects, _ = _legacy_fixture(tmp_path, **fixture_kwargs)  # pyright: ignore[reportArgumentType] - parametrized fixture keyword coverage
+    store = MemoryObjectStore(objects)
+
+    with pytest.raises(ValueError, match=message):
+        _ = run_log_sync.sync_repository_run_logs(
+            request=_request(
+                repo=tmp_path / "repo",
+                cache_home=tmp_path / "cache",
+                state_home=tmp_path / "state",
+            ),
+            store=store,
+        )
+
+
+def test_legacy_sync_rejects_wrong_inventory_hash(tmp_path: Path) -> None:
+    objects, _ = _legacy_fixture(tmp_path)
+    objects["migration/test-inventory.json"] += b" "
+    store = MemoryObjectStore(objects)
+
+    with pytest.raises(ValueError, match="inventory digest"):
+        _ = run_log_sync.sync_repository_run_logs(
+            request=_request(
+                repo=tmp_path / "repo",
+                cache_home=tmp_path / "cache",
+                state_home=tmp_path / "state",
+            ),
+            store=store,
+        )
+
+
+def test_manifestless_archive_without_exact_inventory_record_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    key = "run-logs/implement/unknown-run.tar.gz"
+    store = MemoryObjectStore(
+        {key: _legacy_archive([("manifest.json", b"{}\n", tarfile.REGTYPE)])}
+    )
+
+    with pytest.raises(run_log_sync.RunLogSyncError, match="descriptor"):
+        _ = run_log_sync.sync_repository_run_logs(
+            request=_request(
+                repo=repo,
+                cache_home=tmp_path / "cache",
+                state_home=tmp_path / "state",
+            ),
+            store=store,
+        )
+
+    assert store.download_calls == [key]

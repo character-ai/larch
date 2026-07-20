@@ -66,6 +66,49 @@ def test_environment_storage_uri_overrides_repository_config(tmp_path: Path) -> 
     assert storage_root.uri == "s3://environment-root/override"
 
 
+def test_load_legacy_migration_descriptor_is_repository_scoped(tmp_path: Path) -> None:
+    config_dir = tmp_path / ".larch"
+    config_dir.mkdir()
+    _ = (config_dir / "config.toml").write_text("""[logs]
+uri = "s3://zhupanov/larch"
+
+[logs.legacy_migration]
+schema = "larch-run-log-migration-inventory-v1"
+source_commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+storage_root = "s3://zhupanov/larch"
+inventory_key = "migration/inventory.json"
+inventory_sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+""", encoding="utf-8")
+
+    descriptor = storage_config.load_legacy_migration_descriptor(
+        repo_root=tmp_path, storage_root=storage_config.StorageRoot("s3", "zhupanov", "larch"),
+    )
+
+    assert descriptor is not None
+    assert descriptor.inventory_key == "migration/inventory.json"
+    assert descriptor.inventory_sha256 == "b" * 64
+
+
+def test_load_legacy_migration_descriptor_rejects_other_storage_root(tmp_path: Path) -> None:
+    config_dir = tmp_path / ".larch"
+    config_dir.mkdir()
+    _ = (config_dir / "config.toml").write_text("""[logs]
+uri = "s3://zhupanov/larch"
+
+[logs.legacy_migration]
+schema = "larch-run-log-migration-inventory-v1"
+source_commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+storage_root = "s3://zhupanov/larch"
+inventory_key = "migration/inventory.json"
+inventory_sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+""", encoding="utf-8")
+
+    with pytest.raises(storage_config.StorageConfigurationError, match="active storage root"):
+        _ = storage_config.load_legacy_migration_descriptor(
+            repo_root=tmp_path, storage_root=storage_config.StorageRoot("s3", "other", "larch"),
+        )
+
+
 def test_discover_storage_root_uses_the_git_toplevel(tmp_path: Path) -> None:
     _write_config(tmp_path, "s3://zhupanov/larch")
 

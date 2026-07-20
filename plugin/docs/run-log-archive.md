@@ -20,6 +20,10 @@ The resolved URI is the larch storage root. It is not the `run-logs/` prefix,
 an archive path, or a bucket-root URI.
 
 The checked-in configuration is `[logs]` with `uri = "s3://zhupanov/larch"`.
+This repository also owns a versioned `[logs.legacy_migration]` descriptor for
+the one-time historical larch migration. It pins the inventory key, inventory
+SHA-256, source commit, storage root, and schema. Consumer repositories without
+that descriptor do not enable legacy archive handling.
 
 Accept only `gs://`, `s3://`, and `r2://`. Require a plain non-empty bucket
 authority and at least one non-empty prefix segment. Reject credentials, ports,
@@ -148,6 +152,23 @@ per-run publication lock, replaced atomically after validation, and restored if
 repair fails. Interrupted download, materialization, promotion, and quarantine
 entries are removed before the next attempt.
 
+The checked-in legacy migration descriptor is a narrow compatibility boundary.
+Sync first applies the normal `archive-manifest.json` contract. Only a readable
+archive with no root archive manifest can trigger legacy lookup. Sync then
+downloads the pinned migration inventory at most once for that repository sync,
+verifies its SHA-256, and validates its bounded schema, source commit, storage
+root, object identities, source-file rows, and totals. The archive must have an
+exact inventory record, and its byte size and SHA-256 must match that record.
+
+Legacy extraction accepts only inventory-covered regular PAX members with safe
+canonical paths, supported modes, matching sizes, and matching SHA-256 digests.
+It rejects links, devices, special files, collisions, traversal, extra or
+missing members, corrupt streams, and expansion-limit violations. After private
+extraction succeeds, sync writes a local schema-version-1
+`archive-manifest.json`, verifies the complete directory, and promotes it
+atomically. It never writes, replaces, renames, or deletes a remote object.
+Later syncs validate the local directory and perform listing only.
+
 The command returns the unpacked repository corpus at
 `${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo>/`. The shared
 `run_log_corpus.synchronized_run_log_root` API performs the same one-time sync
@@ -165,4 +186,7 @@ I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
 switch every production caller to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`,
 remove the Python registration and implementation, and prove clean-install
 execution. Do not add a compatibility shim, bridge, implementation selector,
-fallback, or dual-write period.
+fallback, or dual-write period. Rust must consume the same repository-owned
+legacy migration descriptor and enforce the same inventory, archive, extraction,
+and synthesized-manifest validation contract. The hard cutover must not retain
+an undocumented Python-only exception.
