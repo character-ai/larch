@@ -69,7 +69,7 @@ def test_list_paginates_from_empty_prefix(scheme: str) -> None:
     assert scheme == "gs" or "--no-paginate" in runner.calls[0]
     outside = {"objects": [{"key": "outside/a", "size": 1}]} if scheme == "gs" else {"Contents": [{"Key": "outside/a", "Size": 1}]}
     with pytest.raises(ObjectStoreError):
-        _store(scheme, FakeRunner(_result(payload=outside))).list_objects()
+        _ = _store(scheme, FakeRunner(_result(payload=outside))).list_objects()
 
 
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
