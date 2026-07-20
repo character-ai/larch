@@ -1,4 +1,0 @@
-scripts/test-lib-external-launcher-common.sh
-scripts/test-check-reviewers.sh
-skills/review-and-fix/scripts/test-review-and-fix.sh
-skills/implement/scripts/test-codex-implementer.sh

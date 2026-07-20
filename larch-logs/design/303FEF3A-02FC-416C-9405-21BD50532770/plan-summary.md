@@ -1,1 +1,0 @@
-Plan: add a small `kv get` CLI helper, replace 13 inline `awk -F=` prompt-side KV parsers in release, pause, and deps skills, and add a SKILL.md lint that prevents new bare awk `$<digit>` field references while exempting the known circular bootstrap case.

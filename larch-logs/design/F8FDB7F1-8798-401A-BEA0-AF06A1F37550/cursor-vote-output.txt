@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan UPDATED: SKILL.md already mandates replacing Step 18/NEVER #17 contracts; extra deletion checklist is clarity not necessity.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan explicitly revised acceptance to two Bash fences (gate then finalize); one-call anchor is superseded in plan.txt.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=good UNCERTAIN=false -- plan lines 254-263 already require rewriting test-render-cost-line-callsites.sh including the awk launcher block.

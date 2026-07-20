@@ -1,1 +1,0 @@
-Consolidate the three prompt-side post-rewrite settle paths into `design-step35-settle.sh`. Keep trailer snapshotting before LLM rewrites. Move dedup, postplan, Gate B marker, round snapshot, and phase writes behind one wrapper. Update the three prose sites and extend the two named harnesses.

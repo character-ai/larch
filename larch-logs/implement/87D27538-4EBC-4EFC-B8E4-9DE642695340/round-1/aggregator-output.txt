@@ -1,2 +1,0 @@
-Normalizing the 28 reviewer inputs into a merged finding list: grouping duplicates, keeping in-scope vs `[OUT_OF_SCOPE]` separate per the merge rules, and assigning stable IDs in first-seen order.
-

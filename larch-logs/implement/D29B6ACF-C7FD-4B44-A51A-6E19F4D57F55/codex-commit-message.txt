@@ -1,3 +1,0 @@
-Port voting tally helpers to Python
-
-Move ballot parsing, vote tallies, parse-rate accounting, scoreboard generation, and judge-vote parsing into python/voting.py. Wire the voting CLI verbs through python/cli.py, cut callers over to direct Python commands, and retire the migrated shell helpers and harnesses. Add pytest coverage for the ported behavior and update remaining consumer harnesses and docs.

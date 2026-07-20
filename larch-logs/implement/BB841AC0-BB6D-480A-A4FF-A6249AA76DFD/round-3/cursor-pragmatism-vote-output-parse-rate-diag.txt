@@ -1,9 +1,0 @@
-slot=2
-voter_tool=cursor-pragmatism
-judge_error_count=13
-total_findings=13
-total_ballot_items=13
-voter_file=<TMPDIR>/round-3/cursor-pragmatism-vote-output.txt
-voter_sha256=eea85dd9622fa47b08ce68cd2a5b06928c88b76875deef4ac58df24b491aa03b
---- first 200 bytes of voter output ---
-The ballot at `<TMPDIR>/round-3/findings.md` is not readable from this session (repeated `Service temporarily unavailable` on Read/Grep/Gl

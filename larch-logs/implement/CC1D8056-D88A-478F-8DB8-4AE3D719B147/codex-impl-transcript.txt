@@ -1,8 +1,0 @@
-Implemented plan and wrote `manifest.json` with `status=complete`.
-
-Key checks run:
-- `python3 python/cli.py lint retired-scripts`
-- `python3 -m pytest -q python/test_research.py python/test_research_eval.py python/test_migration_lint.py`
-- `cd python && ruff check . && pylint research.py research_eval.py test_research.py test_research_eval.py migration_lint.py && pyright`
-- Research Makefile targets for migrated pytest harnesses
-- Research structure and collector bash32 harnesses

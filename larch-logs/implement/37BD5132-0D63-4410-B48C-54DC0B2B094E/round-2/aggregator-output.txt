@@ -1,3 +1,0 @@
-Merging duplicate reviewer findings into a normalized structured list. Checking a few source files for accurate titles and verbatim revision text where reviewers embedded fixes in the concern field.
-Building the normalized aggregator output from merged findings.
-

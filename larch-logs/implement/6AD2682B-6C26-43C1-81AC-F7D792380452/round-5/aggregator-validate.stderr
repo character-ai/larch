@@ -1,1 +1,0 @@
-zero merged FINDING blocks while input had findings; output must include a line whose trimmed text equals 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' (machine-readable attestation; leading/trailing whitespace ignored)

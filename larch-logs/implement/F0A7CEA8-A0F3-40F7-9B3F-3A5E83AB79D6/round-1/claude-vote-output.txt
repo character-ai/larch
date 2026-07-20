@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- `assert launch_calls` is consistent with the plan's intent; asserting tier sequence adds complexity beyond the task's documentation scope
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly instructed porting stubs with 42→999 remapping; duplication is deliberate and extracting a helper adds abstraction beyond scope
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- comment correctly documents the non-port rationale per plan; dirty-tree nuance is genuinely useful but beyond the plan's minimum comment requirement
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- HEAD advancement is irrelevant to the push-failure path since code returns on `not pushed` before reaching the post_head comparison
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
-OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is the intentional non-port the PR exists to document; #3405 already tracks it; a new issue would be a duplicate

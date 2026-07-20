@@ -1,3 +1,0 @@
-Use shared result-env reader in design handoffs
-
-Convert the Step 0b route, Step 3 review, and Step 5c publish handoffs to scripts/read-result-env.sh. Move resumed/already-planned router flag OR-merge into design-route.sh and update structural harnesses for the narrower stdout overlay and rc=3 publish fallback.

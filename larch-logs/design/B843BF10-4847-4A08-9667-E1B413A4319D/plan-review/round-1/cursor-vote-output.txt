@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan grammar and delegation prose already imply verb-excluded rest_argv; explicit contract line and dispatch test are hardening not a necessity gate
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- make lint and pre-commit always run from repo root so cwd-relative default works; join-rule clarity is not required to ship or verify the feature
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan edge case over-specifies a broad ValueError→exit-2 lint mapping that migration_lint static KVs do not require and would misclassify internal failures
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- retiring the quiet harness drops real LARCH_REPORT_TOKENS_REPO unsafe-slug subprocess coverage worth tracking
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- retired harness design --skill quiet parity is not named in planned test_cli.py and is a concrete coverage gap worth filing

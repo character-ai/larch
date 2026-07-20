@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan_review._write_atomic only writes into validated tmpdir that always exists; create_parent=True default can never fire in practice; latent-only behavioral difference
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- progress_report is MAY_UPDATE; Testing strategy exception already covers progress_report as a category; implementer resolves disposition of _read_simple_env during MAY_UPDATE judgment
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- empty-rows case is a rare edge path; downstream readers use parse_kv and return {} for both lone-newline and empty file; no semantic impact on callers
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- agents.py is explicitly MAY_UPDATE; implementer adds it to exception list if not repointed; not a necessity gate concern
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- wide knob surface is required by the parity constraint; narrowing the API would prevent preserving divergent call-site semantics; scope-reduction would break the acceptance criterion

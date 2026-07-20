@@ -1,5 +1,0 @@
-# architectural diagram generation overhaul
-
-1. In /design, architectural diagram should be generated after final plan proposal is approved by the user, not before as it is now
-
-2. in both /design and /implement, the architectural diagram should not be output to chat.  It's cluttering, context bloating, useless to look at, and takes time to output.  It should only end up in the tracking issue.  It should not be flushed to run logs (it may not be already, verify and remove if present) -- it should only go to tracking issue.

@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'After first-line checks, retry `_json_no_issues` on full trimmed text when any l')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Score only when `research_status == ok` or document partial scoring.')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Coerce `"1"` to `1` in `_normalize_json_record` with a test.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Give each Makefile harness a focused `pytest -k` selection; keep one full-file r')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Add a prose-only report test asserting sidecar body and `SUMMARY=PASS=0 FAIL=0 U')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Add minimal eval-set with duplicate ids; assert `validate_eval_set` false or smo')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: 'Add CLI cases without required flags asserting exit 2 and `REASON=missing_arg`.')

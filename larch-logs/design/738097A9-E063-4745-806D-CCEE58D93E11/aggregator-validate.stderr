@@ -1,2 +1,0 @@
-warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: 'In `_prior_immediate_round_end_s`, wrap `int(cols[7])` in `try/except ValueError')
-warning: fix text for slot 'Codex-Generic' in FINDING_2 not traceable to scoped input (first 80 chars: "Mirror the design helper's no-follow write-once guards in `_persist_round_start`")

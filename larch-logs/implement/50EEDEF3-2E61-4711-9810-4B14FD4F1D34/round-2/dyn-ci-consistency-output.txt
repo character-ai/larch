@@ -1,7 +1,0 @@
-Gathering the diff, commit history, and cross-file CI consistency evidence for a risk-integration review.
-
-Verifying `.PHONY` coverage for new targets and scanning for stale shard-count references.
-
-Scout checklist verified: `ci.yaml` matrix lists shards 1–20; Makefile umbrella lists `test-harnesses-1` through `test-harnesses-20`; `docs/linting.md` branch-protection list includes `(19)` and `(20)`; new targets appear on the mega-`.PHONY` line (line 4) and dispatch-code-voters targets on the secondary `.PHONY` (lines 527–528); duplicate `test-upgrade-larch:` removed (single recipe at `Makefile:765`); lockstep / LPT / `-j20` prose updated; `CARVE_OUTS` matches `scripts/test-harness-shards-coverage.md`. No risk-integration defects found in the diff.
-
-

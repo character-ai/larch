@@ -1,3 +1,0 @@
-Harden shell input sanitization for OOS follow-up #2854
-
-Fix generate-code-flow-diagram.sh so sanitizer REASON_TOKEN parsing preserves embedded = while trimming trailing fence/line metadata. Sanitize ci-failed-jobs.sh gh stderr passthrough by stripping control bytes from each diagnostic line, and cover both behaviors with focused offline harness regressions.

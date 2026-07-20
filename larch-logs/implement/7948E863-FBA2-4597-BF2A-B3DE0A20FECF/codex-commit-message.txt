@@ -1,5 +1,0 @@
-Fold Step 2b prelude into drafter wrapper
-
-Validate Step 2a sentinels inside the drafter wrapper, then repair the completion marker, pause-check, mark timing, and launch the drafter. On structural drafter success, make plan-preview output machine-safe, emit wrapper-owned rows, and delegate to the Step 2b postplan wrapper with pinned launcher transport argv.
-
-Emit rc 11 postplan contract rows before pause-save delegation and update prompt/docs routing for wrapper-owned postplan output. Extend the drafter, postplan emit, and structure harnesses for sentinel validation, delegation, spoof resistance, inline retry, rc 11, fatal rc, and token sidecar coverage.

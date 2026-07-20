@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- current plan already returns ci-fix-exhausted and forbids stale next_run_id, so extra tuple wording is redundant.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already makes ACTION=bail terminal and requires an explicit new FAILED_RUN_ID before advancing; branch-order wording is redundant.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already pins the forbidden set to a pre-launch snapshot and asks for pre-launch snapshot coverage.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- existing tests cover the named examples, but the plan already says add no duplicates and this nit lacks backlog materiality.
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- optional parser tightening is avoidable and a nit-level duplication concern, not worth a tracked issue.
-OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- multiple-job timeout risk is plausible but latent and not material enough versus issue overhead after the plan adds per-cycle verify budget.

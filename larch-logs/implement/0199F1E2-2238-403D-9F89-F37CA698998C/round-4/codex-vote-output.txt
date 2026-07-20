@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- latent tmpdir-writer bypass does not clear necessity, and phase-file tampering already has the same effect.
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- overwriting the phase file to awaiting-continuation is accepted by the loop, so the marker is not required for resume.
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate timing rows are a real reporting defect but not necessary to complete or ship the Step 3 loop feature.
-FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the result-env count can be misleading, but the rollback count file remains correct and this does not clear an in-scope necessity gate.
-FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real crash-recovery edge case, but not a necessary fix for the feature’s normal execution path.
-FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

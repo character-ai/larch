@@ -1,3 +1,0 @@
-[DESIGNING] when /implement, /design, or any other skills that do the check for codex and…
-
-when /implement, /design, or any other skills that do the check for codex and cursor availability at the start, discover that exactly one of them is unavailable (as is the case with codex right now), they should issue a warning and proceed, instead of asking the user.  The user should be asked exclusively when BOTH codex AND cursor are unavailable.

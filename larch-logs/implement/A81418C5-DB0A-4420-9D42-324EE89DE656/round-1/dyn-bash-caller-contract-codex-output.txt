@@ -1,5 +1,0 @@
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **architecture** `python/pr.py:453-471` — `closes_issue_main` is a pre-existing `*_main` entrypoint that accepts `--repo` but still does not call `_validate_repo_arg` before passing the value into `gh.extract_closes_issue_from_current_pr`, which builds `gh pr view --repo ...` in `python/gh.py:1253-1261`; this is the remaining exception to the “PR CLI verbs validate repo slugs before gh” pattern. **Suggested fix:** In the no-`--body-file` path, validate `args.repo` when present before resolving/using `repo`, returning the same clear exit-2 error style as `create_main`, `body_update_main`, and `checks_main`.

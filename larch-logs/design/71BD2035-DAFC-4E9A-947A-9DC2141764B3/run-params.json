@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "design_classification": "SIMPLE",
-  "design_classification_reason": "User selected --simple tier (2 sketches + 10-reviewer panel + auto-applied findings)",
-  "design_classification_source": "caller-forwarded",
-  "sketch_budget": 2,
-  "review_budget": "full",
-  "workflow_path": "SIMPLE"
-}

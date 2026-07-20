@@ -1,7 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Cursor-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-ci-shard-contract, Codex-dyn-ci-shard-contract	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_2	Codex-Arch, Codex-Edge, Codex-Pragmatic, Cursor-dyn-trust-boundary-evidence, Codex-dyn-trust-boundary-evidence	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_3	Codex-dyn-ci-shard-contract	exonerated	EXONERATE	partially-true	nit	weak	false	Claude	EXONERATE	true	nit	good	false	Codex	EXONERATE	true	minor	good	false	Cursor
-FINDING_4	Codex-dyn-ci-shard-contract	accepted	EXONERATE	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
-FINDING_5	Codex-dyn-trust-boundary-evidence	accepted	YES	true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_6	Codex-dyn-trust-boundary-evidence	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor

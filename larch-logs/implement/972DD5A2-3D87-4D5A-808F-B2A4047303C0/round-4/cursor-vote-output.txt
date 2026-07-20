@@ -1,7 +1,0 @@
-Reading the ballot file and inspecting referenced code so we can vote accurately on each finding.
-
-Verifying ballot claims against the codebase (read-only).
-
-Analyzing the ballot against the repo: `harness-timer.md` documents interrupted runs and Edit-In-Sync; `test-harness-timer.sh` uses the cited regexes and shim; `docs/linting.md` already parses timings as floats. Creating the formal plan record with embedded votes.
-
-

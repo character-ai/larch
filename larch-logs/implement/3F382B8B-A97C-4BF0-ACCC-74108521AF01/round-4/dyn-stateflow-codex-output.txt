@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/design/scripts/design-step3-state.sh:59-74` — Manual Step 3 re-entry only clears `accepted-plan-findings-all.md`, but leaves `oos-accepted-design.md` intact; the next `plan-review-loop.sh` invocation snapshots that stale file as prior cumulative OOS at `skills/design/scripts/plan-review-loop.sh:1574-1578`, so Gate C “Re-run review panel” / Gate A “Ready for review” can carry old accepted OOS into a fresh manual review run and later file issues that were not accepted by the latest review. **Suggested fix:** On `direct-review-entry`, clear `oos-accepted-design.md` and `.oos-accepted-design.prev.md` alongside `accepted-plan-findings-all.md`, while preserving them for `auto-continuation-entry`; add a regression test that manual re-entry resets cumulative OOS but automatic continuation preserves it.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

@@ -1,3 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dispatch-failure classification via bail_arg is preserved; empty step/phase only blocks step2-impl retry, which is outside this reporting-focused plan scope
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- documented lockstep is surface+field_key only; plan updates TSV and markdown transform together and code heredoc never tracked transforms
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- optional STALL_TRACKING on the new STATUS=bailed bullet can skip Step 18a entirely, so bail reason never reaches the stall report

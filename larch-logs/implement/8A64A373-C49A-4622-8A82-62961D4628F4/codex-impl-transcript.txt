@@ -1,1 +1,0 @@
-Complete. Wrote `manifest.json` and optional scout manifest atomically.

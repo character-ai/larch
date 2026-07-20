@@ -1,8 +1,0 @@
-### FINDING_5: `plan_quality.py` relevant-check mapping gap after `test-design-driver` partition
-- **Reviewer(s)**: Codex-Generic
-- **Severity**: important
-- **Concern**: The plan omits the `plan_quality` relevant-check expansion after partitioning `test-design-driver`. After `test-design-driver` becomes the non-`design_route` slice, a `python/plan_quality.py` edit still maps only to `test-design-driver` and no longer runs `test_design_route_merges_flags_for_already_planned`, despite the plan stating `plan_quality` keeps the former full-file lifecycle breadth.
-- **Suggested revisions (informational for voters; coder decides)**:
-  - From Codex-Generic: Add `test-step0b-router-flag-recovery` to the `python/plan_quality.py` and `python/test_plan_quality.py` `_DIRECT_TARGET_RULES` entry, and update `python/test_checks.py` expectations for that mapping.
-
-

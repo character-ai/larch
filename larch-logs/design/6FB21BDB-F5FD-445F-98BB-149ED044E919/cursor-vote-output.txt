@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Re-embedding design-step3-state.sh fixes continuation hygiene; repointing the loop to the Python CLI is consistency, not a necessity gate.
-FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false

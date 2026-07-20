@@ -1,6 +1,0 @@
-scripts/launch-review.sh
-scripts/launch-cursor-implement.sh
-scripts/launch-cursor-ci.sh
-scripts/test-launch-review.sh
-scripts/test-collect-agent-retry.sh
-scripts/launch-review.md

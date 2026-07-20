@@ -1,3 +1,0 @@
-Title: In /design Gate B, dedupe plan lines after applying voted-in suggestions
-
-In /design, after the agent applies voted-in and user-approved suggestions to the plan, instruct it to perform a duplicate-content sweep, eliminate duplicate lines, and report the number of duplicate lines detected and de-duplicated.

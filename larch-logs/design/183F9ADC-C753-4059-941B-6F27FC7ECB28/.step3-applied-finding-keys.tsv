@@ -1,5 +1,0 @@
-1	`learn_from_bugs.py` still keeps the `[bug]` search literal hardcoded behind conditional rewrite language, which leaves the production constant mismatched with the shared bug-title predicate and risks lint failure.
-1	the parity test should compare the actual `(id, title)` populations accepted by the shared heading regexes, not parser-normalized prose strings or only first-line shapes, or it can miss drift across depths and formats.
-1	the hard-ban lint must detect module-level `assign`/`annassign` string constants containing the `[bug]` title-selector pattern, not just the lifecycle-style `call`/`compare` surfaces.
-1	the scan needs an explicit allowlist for the canonical owner modules, or it will flag the source of truth for the convention and fail ci by linting its own definitions.
-2	the regression test can still pass even if the reader and indexer diverge on preprocessing or matcher choice, because it does not explicitly assert the reader-accepted `(id, title)` population.

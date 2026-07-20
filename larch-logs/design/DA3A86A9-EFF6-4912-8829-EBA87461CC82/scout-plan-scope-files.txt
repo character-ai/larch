@@ -1,9 +1,0 @@
-skills/design/SKILL.md
-skills/design/references/approval-gates.md
-skills/design/scripts/run-step3-review.sh
-scripts/test-design-structure.sh
-scripts/test-design-structure.md
-scripts/test-implement-anti-halt.sh
-skills/design/references/sketch-launch.md
-skills/design/scripts/design-driver.md
-skills/design/scripts/finalize-plan.md

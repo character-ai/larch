@@ -1,7 +1,0 @@
-Implemented the plan and wrote the manifest atomically.
-
-Validation run notes:
-- `make py-lint` passed.
-- `make lint-retired-scripts` passed.
-- Changed-module pytest subset passed: 207 tests.
-- Full `make py-test` currently has 1 remaining failure in `python/test_session_env.py::test_read_key_emits_on_fd3_under_quiet_mode`; recorded in manifest `todos_left`.

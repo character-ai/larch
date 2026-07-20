@@ -1,3 +1,0 @@
-Aggregating reviewer findings: verifying key code locations to merge duplicates accurately (read-only).
-Merges validated against `lib-larch-log.sh` and docs. Producing the aggregated finding list.
-

@@ -1,1 +1,0 @@
-Add a small public `/bug` skill that investigates a prose bug report, writes a structured issue body, invokes `/issue` without `--no-dedup`, and verifies the child via sentinel. Update anti-halt coverage, plus the required sync doc line so lint stays green.

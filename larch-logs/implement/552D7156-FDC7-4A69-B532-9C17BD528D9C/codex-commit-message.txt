@@ -1,3 +1,0 @@
-Add design post-rewrite settle wrapper
-
-Create design-step35-settle.sh to centralize post-rewrite dedup, postplan delegation, Gate B phase markers, pause detection, and expected POSTPLAN_RC routing. Update Gate B, Gate A, and discussion Round 2 prose to call the wrapper through the design launcher and document the contract. Extend structure and Gate B harness coverage for settle routing, idempotent marker resume, operator brakes, pause handling, and internal postplan site mapping.

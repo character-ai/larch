@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already blocks deletion via an explicit preflight gate ("Confirm G1-G13 merged" + "stop E3 as blocked" if any terminal lib has runtime callers); the concern is already addressed
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

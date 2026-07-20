@@ -1,5 +1,0 @@
-Relax aggregate findings input containment behind opt-in
-
-Add --allow-findings-outside-tmpdir as a default-off split-argv flag for aggregate-findings.sh. The flag is validated before filesystem containment checks, relaxes only the input findings-file containment rejection, and preserves strict symlink and output-candidate containment. Guard outside-input replacement failures so they report dispatch-failed without clobbering the original ballot.
-
-Document the asymmetric trust boundary in aggregate-findings.md and SECURITY.md, and extend the aggregate-findings harness with outside-input rejection, invalid flag ordering, opt-in merge success, and strict output-containment coverage.

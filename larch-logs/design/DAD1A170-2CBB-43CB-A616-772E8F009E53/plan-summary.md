@@ -1,1 +1,0 @@
-Restore **Review Phase Detail** injection for both `/design` and `/implement` by adding one best-effort Python helper that invokes `scripts/render-review-phase-detail.sh`, redacts its output, and appends it after the compact run-summary block. Add `/design` coverage and keep the existing `/implement` harness green.

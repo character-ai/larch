@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- line 1369 is in the Step 4 section (after <!-- step:4 —), outside the Step 3b slice boundary; the substring concern is technically valid but impractical given actual Step 3b content
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

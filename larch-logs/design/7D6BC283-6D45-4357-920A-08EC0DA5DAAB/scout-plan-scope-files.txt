@@ -1,3 +1,0 @@
-scripts/implement-bootstrap.md
-scripts/test-implement-structure.sh
-scripts/implement-bootstrap.sh

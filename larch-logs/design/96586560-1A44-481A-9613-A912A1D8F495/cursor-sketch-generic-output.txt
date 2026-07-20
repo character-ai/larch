@@ -1,4 +1,0 @@
-Exploring the referenced scripts, validation patterns, and test coverage to draft a read-only implementation plan.
-Checking whether a shared validation helper exists and reviewing the `post-tracking-issue.sh` `--run-id` early validation pattern.
-Creating the implementation plan from the codebase review.
-

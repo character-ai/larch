@@ -1,7 +1,0 @@
-Wrap design brainstorm collection and validator warnings
-
-Move Step 1d.5 brainstorm collection, Step 2b.5 plan-size warning capture, and validator auto-fix warning/override logging into their design wrappers.
-
-Demote stale executable-looking reference examples, add reference bash-fence lint coverage, and keep brainstorm launch failures staged for collect-time ingestion.
-
-Cover the launcher sink behavior and validator warning paths with focused harness updates.

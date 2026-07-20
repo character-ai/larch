@@ -1,3 +1,0 @@
-Harden render-cache design log staging
-
-Reject render-cache symlinks at the root, anywhere under the resolved physical root, and at the leaf slot immediately before staging. Mirror the plan-review symlink harness coverage and document the remaining parent-directory race surface.

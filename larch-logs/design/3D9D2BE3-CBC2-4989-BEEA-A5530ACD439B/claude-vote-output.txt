@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- timing.py line 86 already stores `Path(output).name` (basename only) in the ledger, and `_TASK_KIND_RE` enforces lowercase kinds at write time, so the normalization the finding proposes is redundant; both concerns rest on a false premise about what the ledger stores.

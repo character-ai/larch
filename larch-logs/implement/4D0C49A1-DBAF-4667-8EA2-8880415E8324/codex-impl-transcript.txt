@@ -1,9 +1,0 @@
-Implemented the plan and wrote `manifest.json` atomically.
-
-Key checks run:
-- `make test-design-clarify`
-- `make test-design-structure`
-- `python3 -m pytest python/test_clarify.py`
-- `make lint-bash32`
-- `make markdownlint`
-- `ruff`, `pylint`, `pyright` on touched Python files.

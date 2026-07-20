@@ -1,9 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Requirements	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_2	Codex-Arch	accepted	YES	true		adequate	true	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
-FINDING_3	Codex-Edge	accepted	YES	true		adequate	true	Claude	YES	true	minor	good	false	Codex	YES	true	minor	adequate	false	Cursor
-FINDING_4	Codex-Edge, Codex-Pragmatic	accepted	YES	true		good	true	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_5	Codex-Requirements	accepted	YES	true		adequate	true	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
-FINDING_6	Codex-dyn-stream-contract	accepted	YES	true		good	true	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_7	Cursor-dyn-pin-migration, Codex-dyn-pin-migration	accepted	YES	true		excellent	true	Claude	YES	partially-true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-OOS_2	Cursor-Requirements	accepted	YES	true	nit	adequate	false	Claude	EXONERATE	true	nit	no-fix	false	Codex	YES	true	nit	adequate	false	Cursor

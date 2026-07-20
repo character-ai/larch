@@ -1,1 +1,0 @@
-Implement a mechanical "staged assessment present, note dropped for shipped HEAD" notice. Surface it in the PR body through `ship.py` and in `final_report.py`, without re-authoring or re-pinning stale assessments.

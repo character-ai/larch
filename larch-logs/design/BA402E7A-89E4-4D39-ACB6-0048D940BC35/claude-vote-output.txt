@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=true -- plan line 18 already shows `###FINDING_1:` with no space after `###`; the ballot's suggested fix text is identical to what the plan already contains

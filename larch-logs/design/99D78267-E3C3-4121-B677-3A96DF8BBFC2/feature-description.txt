@@ -1,3 +1,0 @@
-# Add a rule that every larch script from now on should be in Python, except for thin wrappers
-
-

@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- thresholds are calibrated against this and plan acknowledges it; whitelisting adds complexity for a low-probability edge case
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- doc-only gap, valid under script-md-siblings.md rule but introduces no correctness risk
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

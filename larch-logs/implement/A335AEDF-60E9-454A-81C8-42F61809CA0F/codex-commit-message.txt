@@ -1,1 +1,0 @@
-Clean up aggregate-findings output path assertion (#2881)\n\nRemove the remaining aggregate-findings harness assertion that referenced retired per-tool aggregator output filenames, keeping the test aligned with the single Codex-primary dispatcher slot contract.

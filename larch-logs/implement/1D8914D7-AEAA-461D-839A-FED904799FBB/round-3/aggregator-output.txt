@@ -1,3 +1,0 @@
-Merging the 48 reviewer findings into a normalized list. Verifying a few overlapping items in the source to merge correctly and resolve conflicting reviewer positions.
-Producing the normalized aggregator output as the plan deliverable.
-

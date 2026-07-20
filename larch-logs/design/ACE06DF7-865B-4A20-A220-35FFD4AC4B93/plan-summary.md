@@ -1,1 +1,0 @@
-Fix five latent ship/rebase/research/timing/progress robustness gaps with surgical Python and markdown edits. Add focused regressions for MAIN_ADVANCED rebase routing, rebase token sidecar fallback, research warning exit codes, timing CI task-kind parity, and live progress Gantt filtering.

@@ -1,9 +1,0 @@
-Gathering the branch diff and commit list for a read-only review against the implementation plan.
-
-Searching the large diff for plan-relevant files and scanning critical hunks.
-
-Reading diff hunks for implementation files (excluding bulk `larch-logs` noise).
-
-Synthesizing the review: the diff matches most of the #2421 plan, but includes substantial unrelated changes (vote tallying, compose-review-findings, collect-findings OOS normalization, docs, and large `larch-logs`). Creating the plan document and including the full structured review.
-
-

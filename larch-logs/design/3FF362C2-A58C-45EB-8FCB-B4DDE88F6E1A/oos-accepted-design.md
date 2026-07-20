@@ -1,8 +1,0 @@
-### OOS_1:
-- **Description**: [OUT_OF_SCOPE] Tally-only self-review counts remain invisible to JSONL-only consumers. Scenario: Self-review will still write an empty review-findings-full.jsonl; fluff-analysis extracts implement records only from that file, and audit category scans also derive category data from that file
-- **Reviewer**: Codex-Arch, Codex-Pragmatic
-- **Severity**: latent
-- **Focus area**: risk-integration
-- **Location**: skills/fluff-analysis/scripts/fluff-analysis.py:337-348; python/audit_runs.py:681-708; python/audit_runs.py:803-812
-- **Phase**: design
-- **Filed URL**: https://github.com/character-ai/larch/issues/4672

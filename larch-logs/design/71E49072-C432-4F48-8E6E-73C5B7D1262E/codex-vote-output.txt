@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The scope anchor explicitly includes cleanup design-pointer reaping parity, so removing it would cut required scope.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The cleanup reaper change is part of the approved scope, not excess work outside the live-definition alignment.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

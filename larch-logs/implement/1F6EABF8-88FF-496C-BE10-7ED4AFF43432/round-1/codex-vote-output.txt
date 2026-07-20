@@ -1,5 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- real coverage loss, but it is the explicit #3121 policy tradeoff and not worth reopening as a review finding
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the item describes consistent out-of-scope test additions, not a concrete problem to file
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unreviewed committed run logs are not a concrete functional defect by themselves
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- possible stale local fixture directories are rare, not introduced by this change, and not worth issue-level follow-up

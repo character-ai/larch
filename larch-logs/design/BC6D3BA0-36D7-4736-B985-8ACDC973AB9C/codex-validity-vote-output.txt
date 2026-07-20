@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan already requires applying the runtime overlay after deep-truncation processing.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already requires every matching map entry, target deduplication, and multiple-prefix tests.
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate prior OOS observation.
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate prior OOS observation.
-OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the previously rejected budget-skipped coverage-gap finding.

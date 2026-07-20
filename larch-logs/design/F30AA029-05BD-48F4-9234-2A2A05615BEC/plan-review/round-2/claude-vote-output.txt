@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=uncertain UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=uncertain UNCERTAIN=false

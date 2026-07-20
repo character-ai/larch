@@ -1,1 +1,0 @@
-Port the six in-scope research and eval bash helpers to `python/research.py` and `python/research_eval.py`, register direct `python/cli.py` verbs, cut all live callers to those verbs, replace the eight related bash harnesses with pytest, delete retired bash and `.md` siblings, update the migration manifest and stale references, and run targeted lint plus Python checks.

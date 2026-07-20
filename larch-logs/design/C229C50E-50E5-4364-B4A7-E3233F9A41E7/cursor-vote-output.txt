@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already hardens both manifest readers with iter_jsonl_dicts per lines 103-112 and 186-194
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan deliberately fail-closes pre-launch sidecar writes; warn-only is out of scope for surviving invalid slot rows
-FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_1; plan already specifies shared iter_jsonl_dicts helper for both manifest loops
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already pins invalid-slot sidecar write before any _launch_slot at lines 62-74 and 213
-FINDING_5: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already threads DEGRADED_PANEL_WARNING through execute_round, plan_review.py, and design-step3-review.sh
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_4; plan already orders sidecar write before launches and forbids late partial-panel failure

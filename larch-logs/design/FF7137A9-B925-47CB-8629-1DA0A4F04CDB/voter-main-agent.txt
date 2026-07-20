@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already requires filtering by task kind/basename before sort/head; exact AWK block is implementation detail and the existing $2=="vendor" block is the natural location
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already says derive chart_start/chart_end from min/max of tasks_file columns 2 and 3
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- real gap: plain claude.out (unknown/claude.out in bug sample) is not filtered by the plan's ci.out and *-ci.out predicates, leaving chart_end at the tail
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already says update the expected chart title span from full round duration to filtered task span
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- CI kind list duplicated in shell will drift from python/timing.py TIMING_TASK_KINDS_ALLOWED; filing this as a tracked follow-up is proportionate
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- same concern as OOS_1 under a different framing; one tracking issue is sufficient

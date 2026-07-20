@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan already covers normalizer behavior in test_plan_review.py; retargeting apply_step3_handoff is harness hygiene, not required for the scoped verb extraction.
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already mandates stdout capture/redirect for in-process step3_record_report_evidence at lines 107 and 224-225.

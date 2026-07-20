@@ -1,7 +1,0 @@
-Guard design Step 3 orphan cleanup
-
-Keep Step 3 loop descendants in the wrapper-owned process group, add a validated design-tmpdir process cleanup CLI, and invoke it after loop teardown.
-
-Add a waterfall EXIT cleanup guard for active launcher PIDs and document the cleanup contracts plus the large heredoc background anti-pattern.
-
-Cover the new CLI routing, validation, Step 3 cleanup, loop source seam, and waterfall trap structure with focused regressions.

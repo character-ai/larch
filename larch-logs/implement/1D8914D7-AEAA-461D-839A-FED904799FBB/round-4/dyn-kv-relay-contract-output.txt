@@ -1,7 +1,0 @@
-Reviewing the KV relay between `step-7a.sh` and `rebase-checkpoint-probe.sh` — reading the diff and the scripts involved.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **risk-integration** `scripts/test-implement-rebase-macro.sh:65-77` — Case (C) still requires exactly four `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh"` literals in `skills/implement/SKILL.md`, including `rebase-checkpoint-probe.sh" 7a.r`, but the branch leaves only three fenced probe calls (1.r/4.r/7.r); 7a.r is reached via `step-7a.sh` instead. `make test-implement-rebase-macro` will fail until the harness is updated for the consolidated Step 7a call site.
-- **architecture** The issue plan block in the diff still describes probe KV “passing through naturally” on inherited FD 3, but the shipped relay in `skills/implement/scripts/step-7a.sh:397-403` is stdout capture plus `emit` replay; `skills/implement/scripts/step-7a.md:28` documents the replay model correctly. Under current `lib-quiet.sh` behavior (`scripts/rebase-checkpoint-probe.sh` never calls `larch_quiet_init`, and `emit_kv` uses FD 3 only when `LARCH_QUIET_PID` equals `$$`), the child probe writes contract lines to the redirected stdout file, not the parent FD 3 stream, so replay is required rather than duplicative.

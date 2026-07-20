@@ -1,3 +1,0 @@
-Aggregating reviewer findings into a structured list. Verifying key overlap areas in the codebase (read-only).
-Producing the normalized aggregator output as the plan.
-

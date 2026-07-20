@@ -1,1 +1,0 @@
-Add a new agent tool-contract lint, wire it into `cli.py` and `make py-lint`, cover the required fixture matrix, and append the requested invariant, guidelines, and lint docs. Do not edit existing agent definitions.

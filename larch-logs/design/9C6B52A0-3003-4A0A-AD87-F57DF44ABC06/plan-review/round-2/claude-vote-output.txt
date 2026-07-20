@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- existing keep-on-conflict harness uses real git repos not stub git; adding fetch-failure stubs there would require different infrastructure than the new focused harness
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- implementer can trivially select the right shard by inspecting current Makefile shard assignments
-FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- plan explicitly invokes the rule ("per .claude/rules/script-md-siblings.md") which already mandates edit-in-sync and coverage; the spec gap is largely filled by that reference

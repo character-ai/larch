@@ -1,3 +1,0 @@
-Clarify final-summary chat emission
-
-Require /design and /implement final-summary bodies to be emitted as orchestrator text instead of Bash or Python tool output. Add structure pins that reject final-summary markers inside Bash fences and guard against reintroducing the Bash cat summary path.

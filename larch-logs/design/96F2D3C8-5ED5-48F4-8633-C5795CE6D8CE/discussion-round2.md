@@ -1,4 +1,0 @@
-## Decision 1: Re-add audit tolerance (#4) that the review loop descoped
-- **Question**: The plan-review loop reshaped the fix to the post-`ensure_pr` flush+push root-cause approach and dropped the user-approved audit tolerance (#4). Re-add it?
-- **Resolution**: Re-add #4 to the plan. Operator directive: "re-add #4 and continue." `audit-runs scan-run` `bail_signal()` and `run-log verify-completeness` `_verify_condition_reached` treat a committed dir whose `final-summary.md` heading bails but whose manifest carries `pr_number` as non-bail, so required-file checks still run. Offline/deterministic, corrupt manifests stay strict, no backfill of historical dirs. Added surfaces: `python/audit_runs.py`, `python/run_logs.py` (verify path), `python/test_audit_runs.py`, `python/test_run_logs.py`.
-- **Source**: user

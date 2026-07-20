@@ -1,3 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan SECURITY rewrite is risky but enumeration-swallowed remains accurate in the paragraph today and is a one-sentence keep during implement, not a missing runtime contract
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan line 25 says keep Edit-in-sync verbatim while rewriting invariants to nested-activity, guaranteeing cleanup.md self-contradiction
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- docs/skills.md:47 still states top-level mtime, is a checked public doc without that phrase in STALE_PHRASES, and is outside the plan's four-file scope

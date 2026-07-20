@@ -1,9 +1,0 @@
-Gathering the diff, commit list, and relevant source sections for the invariant grep review.
-
-Confirming the pinned substring appears contiguously on line 135 of `lib-vote-tally.sh` and matches the test’s `grep -Fq` pattern; `$LIB` is `scripts/lib-vote-tally.sh` via `SCRIPT_DIR`.
-
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- The branch diff also adds committed files under `larch-logs/implement/11A6BE62-1677-4260-8CF0-8DE95694CF5D/` (manifest, plan copy, tally JSON) via a separate `chore(larch-logs)` commit; unrelated to the grep invariant but increases PR surface area if those artifacts were not meant to ship with the tally fix.

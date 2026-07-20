@@ -1,7 +1,0 @@
-Implement concise prune audit and version-aware fluff analysis
-
-Add shared prune-decision derivation, persist per-round prune-decision and prune-nit env files, and flush the implement reviewer-prune ledger.
-
-Teach fluff-analysis to bin by manifest larch_version, consume explicit severity carriers, and render implement per-tier pre/post metrics with accepted-low-value and tier composition.
-
-Make committed review logs concise by default by debug-gating raw reviewer/vote prose while adding reviewer_signals metadata and concise design round allowlists.

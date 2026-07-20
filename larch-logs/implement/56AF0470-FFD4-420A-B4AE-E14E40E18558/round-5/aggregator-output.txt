@@ -1,4 +1,0 @@
-Validating merge groups against the codebase, then producing the structured aggregator output.
-Checking whether `phase_tracking` skips resume-tail and reviewing security findings format:
-Producing the normalized aggregator output as the plan deliverable.
-

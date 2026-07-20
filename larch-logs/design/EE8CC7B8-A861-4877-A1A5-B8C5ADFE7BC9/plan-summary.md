@@ -1,1 +1,0 @@
-Fix all confirmed architectural-guidelines invalidation gaps by adding one shared pin-before-invalidate helper, routing the four reachable call sites through it, removing dead `did_fixing` plumbing, and updating focused Python tests.

@@ -1,1 +1,0 @@
-FINDING_1: EXONERATE -- Legitimate stale observability snapshot, but filing a future issue for an optional no-runtime-impact refresh is not worth the tracking overhead.

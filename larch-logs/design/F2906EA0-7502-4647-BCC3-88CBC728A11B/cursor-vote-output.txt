@@ -1,4 +1,0 @@
-Reading the ballot and verifying findings against the codebase.
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already requires direct rmdir in finally and warns against delayed-release test cleanup; extra wording is not necessary for verifiable cross-tool coverage
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- latent scope-reduction only; SerialLockState rename does not block delivering the shared startup mutex or required helper/env rename

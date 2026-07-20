@@ -1,9 +1,0 @@
-Reviewing the diagnostic-line format: reading the diff and inspecting `larch_err` emission vs test assertions.
-Checking how `larch_err` is sourced in production and whether any call uses multiple arguments.
-Checking whether quiet-mode redirection or other stderr could split the diagnostic across lines:
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** `skills/review-and-fix/scripts/test-review-and-fix.sh:2345-2363` — Cases `hoisted-anchor-missing` and `starting-round-999` exercise the `starting-round-invalid` probe-miss path (which emits the six-key `larch_err` at `review-implement-step5-loop.sh:114`) but only assert the terminal envelope, not `step5_assert_diagnostic_keys`. Cases `missing-prior` and `inflated-anchor-reject` do assert the diagnostic line. This is a test-coverage gap, not a format mismatch: production and test `larch_err` both use `printf '%s\n' "$*"`, and the implementation passes one quoted string, so all six `KEY=value` tokens land on a single stderr line as the grep at `2156` expects.
-- **correctness** `scripts/lib-quiet.sh:97-102` — Even if the diagnostic were refactored to six unquoted positional arguments, `"$*"` under default IFS would still join them into one `printf` argument and one line; the current `review-implement-step5-loop.sh:114` already uses the safer single-string form. Spaces inside `IMPLEMENT_TMPDIR` / `expected_env_path` would remain on one physical line; token-aware consumers that split on whitespace could mis-parse values, but that is pre-existing path hygiene, not introduced by this branch’s emission shape.

@@ -1,9 +1,0 @@
-finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
-FINDING_1	cursor-specialist-security-output.txt	rejected	NO	true		weak	true	NO	true	minor	weak	false	NO	true	minor	adequate	false
-FINDING_2	codex-specialist-security-output.txt|cursor-specialist-correctness-output.txt|codex-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-testing-output.txt|codex-specialist-testing-output.txt|dyn-architecture-output.txt	accepted	YES	true		good	true	YES	true	major	good	false	YES	true	major	excellent	false
-FINDING_3	codex-specialist-security-output.txt|codex-specialist-correctness-output.txt|codex-specialist-edge-cases-output.txt|codex-specialist-testing-output.txt|dyn-architecture-output.txt|dyn-code-quality-output.txt	accepted	YES	true		adequate	true	YES	true	minor	good	false	YES	true	minor	good	false
-FINDING_4	codex-specialist-edge-cases-output.txt	accepted	YES	true		adequate	true	NO	true	minor	adequate	false	YES	true	major	good	false
-FINDING_5	dyn-architecture-output.txt|dyn-code-quality-output.txt	accepted	YES	partially-true		adequate	true	YES	true	minor	adequate	false	YES	true	minor	adequate	false
-FINDING_6	dyn-code-quality-output.txt	accepted	YES	partially-true	nit	adequate	false	YES	true	nit	adequate	false	YES	true	nit	good	false
-FINDING_7	dyn-architecture-output.txt	rejected	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	true	nit	no-fix	false
-FINDING_8	dyn-code-quality-output.txt	rejected	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false

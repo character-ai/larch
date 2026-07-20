@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real drift concern, but duplicate inert audit ignores do not make this feature incomplete or broken.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Real latent drift risk, but it is not necessary for the ratchet to work now.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=no-fix UNCERTAIN=true -- Future ruff decorator-line reporting is speculative tool-version risk.
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already explicitly carves NOT_SUBSTANTIVE out of runtime fallback/Claude relaunch in approach and research/validation/external docs updates.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already requires re-embedding both dispatch and loop assets plus STATUS-gated decoded tests; atomic sequencing is implementation discipline, not a new necessary plan requirement.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already requires synthesis prompt and inline Read lists to use collector STATUS=OK and dropped-lane markers for NOT_SUBSTANTIVE.
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already names a focused synthetic collector-record test asserting COLLECT_FAILURE_COUNT increments and NOT_SUBSTANTIVE is omitted from ingestion.
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- covered by in-scope code-voter docs finding; no separate tracked issue is needed.

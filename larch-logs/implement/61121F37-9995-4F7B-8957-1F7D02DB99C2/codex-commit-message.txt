@@ -1,5 +1,0 @@
-Ensure final summaries always surface cost lines (#2837)
-
-Add explicit --cost-unavailable handling to the shared run-summary renderer so missing or unreliable token data renders Cost: N/A instead of an all-zero dollar line. Update implement and design final-summary callers to use that mode, recover with full-schema fallback bodies when rendering fails, and keep chat output sourced from the resolved summary file.
-
-Strengthen implement/design skill instructions so terminal runs emit the verbatim cost line as collapse-resistant plain orchestrator text and avoid free-form recap summaries that hide or paraphrase the per-agent cost breakdown. Extend offline harnesses for cost-unavailable behavior, token-missing summaries, renderer fallbacks, Step 18 conditional printing, and early design cancellation mode defaults.

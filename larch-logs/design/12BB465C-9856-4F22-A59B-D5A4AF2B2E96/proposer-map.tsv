@@ -1,6 +1,0 @@
-# attributed_ballot_sha256=5f8622fba4ddddf93df49d3113c5c1cb090b1d65e4c8d64b24dd8ea1482d986d
-# neutral_ballot_sha256=8134f87e4e9cccfc5ba677965602d0ae87ef814fc1897d398245e973413d0df7
-item_id	reviewer	reviewer_line
-FINDING_1	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
-FINDING_2	Codex-Generic	- **Reviewer(s)**: Codex-Generic
-FINDING_3	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation

@@ -1,3 +1,0 @@
-Add /design readability preamble enforcement
-
-Adds a shared readability preamble for /design prompt surfaces, wires prompt tokens and inline read directives, and enforces the registration contract through pre-commit and Makefile harnesses.

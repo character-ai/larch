@@ -1,9 +1,0 @@
-Reviewing the branch diff and `run-analysis.sh` tempfile handling for correctness issues.
-Checking Python control flow for edge cases and whether similar patterns exist elsewhere in the repo.
-### In-Scope Findings
-- **correctness** `skills/report-tokens/scripts/run-analysis.sh:1031-1049` — The `try`/`finally` that calls `os.unlink(body_path)` sits *after* the `with tempfile.NamedTemporaryFile(..., delete=False)` block, not around it. If `f.write(body)` raises (e.g. `OSError` from a full disk on a large analysis + JSON body), the `with` exits with that exception and the `try`/`finally` never runs, so the temp file is left on disk. The scout’s `NameError` in `finally` does **not** occur on that path (`finally` is skipped), but the leak is still a real, reachable failure-mode regression introduced by this change. **Suggested fix:** Set `body_path = None` before the `with`, assign `body_path = f.name` immediately on entry (before `f.write`), and wrap both the write and `subprocess.run` in one `try`/`finally` that unlinks when `body_path is not None` (same pattern as `if body_path: try: os.unlink(body_path) except OSError: pass`).
-
-### Out-of-Scope Observations
-- **Flush/close before `gh`:** Exiting the `with` block closes the handle and flushes buffers, so `subprocess.run(..., --body-file, body_path)` sees a complete on-disk file; no defect there.
-- **`subprocess.run` exceptions:** With `check=False`, non-zero `gh` exit does not raise; if `subprocess.run` does raise (e.g. `gh` missing), `body_path` is already bound and `finally` still unlinks correctly.
-- **`f.write(body)` reachability:** `body` is an in-memory `str` from `analysis_text` and `json.dumps`; write failures are uncommon but plausible under disk pressure or very large reports—low operational impact (orphan files under `$TMPDIR`), but worth fixing for correctness symmetry with the bash `mktemp`+trap migrations elsewhere in the PR.

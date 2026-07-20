@@ -1,1 +1,0 @@
-Replace every Cursor reviewer and fixer `auto` producer with standard Composer 2.5 resolution. Remove the auto pricing lane and its downstream cost schema while preserving tolerant reads of historical artifacts. Update all affected docs, generated topology, and focused tests. Keep Grok 4.5 routing and pricing unchanged.

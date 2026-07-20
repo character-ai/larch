@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **correctness** `python/migration_lint.py:37-48` — `_ship_pr_live_ref()` treats any quoted bare basename after whitespace as a live invocation, so non-invocation prose/diagnostic arguments in `scripts/ship-pr.sh` are deletion blockers: e.g. `scripts/ship-pr.sh:789`, `scripts/ship-pr.sh:794`, `scripts/ship-pr.sh:1401`, and `scripts/ship-pr.sh:2816` contain failure labels like `"git-commit.sh ..."` / `"ci-wait.sh"` that this regex matches even though they are not executing the script. It also only ignores whole-line comments, so inline comments can false-positive. This violates the intended “live invocation/source forms only; comment or prose mentions do not block retirement” gate and can permanently block retired-script cleanup. **Suggested fix:** Make the ship-pr matcher shell-token aware enough to ignore comments and quoted diagnostic/prose arguments, and only accept command-position words after separators/command substitution or explicit `source`/`.` forms; add tests for `record_failure "git-commit.sh ..."`, `echo "git-commit.sh ..."`, and inline `# git-commit.sh` comments.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

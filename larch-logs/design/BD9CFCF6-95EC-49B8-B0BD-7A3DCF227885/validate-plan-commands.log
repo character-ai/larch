@@ -1,3 +1,0 @@
-DEFECT script=scripts/test-implement-structure.sh kind=missing-script
-DEFECT script=scripts/test-legacy-title-prefix-literals-scope.sh kind=missing-script
-VALIDATE_STATUS=defects-found	DEFECT_COUNT=2	SKIPPED_COUNT=0	UNSAFE_TOKEN_COUNT=0

@@ -1,8 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Thread implement tmpdir through `dispatch_panel` instead of reading only from `o')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add `test_parse_drafter_output_missing_scout_block_sets_absent_reason`.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add test with valid plan/summary and no `LARCH_SCOUT` block; assert `scout_fail_')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add `dispatch_panel` test with docs-only classifier asserting no `.producer-scou')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add `dispatch_panel` test with `DIFF_MODE=docs-only` on implement Step 5; assert')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Document as stale-sidecar guard or persist raw count in `step2-scout-coder-statu')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Pre-seed `.producer-scout-warning-logged` and assert `append-entry` is not calle')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Assert `execution-issues.md` absent or unchanged after normalize failure paths.')

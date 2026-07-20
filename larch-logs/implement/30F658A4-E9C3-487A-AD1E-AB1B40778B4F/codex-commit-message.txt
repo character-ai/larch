@@ -1,3 +1,0 @@
-Align Step 7a fork base selection
-
-Derive Step 7a base_remote/base_ref once from forked_target and pass the selected base to the small/non-runtime classifier, code-flow generator, and 7a.r rebase probe. Add generator base argv validation and fork-mode regression coverage for both classifier skip and generator invocation paths.

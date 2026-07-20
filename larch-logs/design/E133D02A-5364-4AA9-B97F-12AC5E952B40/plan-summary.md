@@ -1,1 +1,0 @@
-Centralize FINDING/OOS Markdown block parsing, security classification, counting, and dedup identity in `review_types.py`. Migrate Python consumers without changing the wire format. Add a lint ratchet and focused regression coverage.

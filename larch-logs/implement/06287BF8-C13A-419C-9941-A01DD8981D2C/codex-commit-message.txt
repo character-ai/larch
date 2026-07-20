@@ -1,3 +1,0 @@
-Port doc-facing linters to Python
-
-Add stdlib Python lint verbs for Mermaid fences, SKILL.md flag signatures, readability preambles, inline gh body usage, Codex exec auth, and skill invocation wording. Repoint pre-commit, Makefile, and CI consumers through python/cli.py, replace shell harness coverage with colocated pytest, and retire the old script paths in the migration manifest.

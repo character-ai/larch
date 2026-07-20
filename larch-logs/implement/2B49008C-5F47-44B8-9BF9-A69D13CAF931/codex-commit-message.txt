@@ -1,1 +1,0 @@
-Mark degraded final-summary fallbacks\n\nAdd visible fallback banners and machine-readable markers to terminal self-composed final-summary bodies, with tests and docs covering placement and retry discrimination.

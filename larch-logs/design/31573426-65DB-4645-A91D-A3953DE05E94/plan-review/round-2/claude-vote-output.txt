@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan uses `head-changed` consistently in both FixOutcome.failure_reason and terminal-status transitions, so escalation to TRANSIENT is correct regardless; the Bash string `head-changed-after-dispatch` is an internal lint-fix-loop status that ship-pr.sh maps to the outer `head-changed` class, and the plan collapses this two-step mapping cleanly without functional loss

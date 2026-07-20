@@ -1,6 +1,0 @@
-### In-Scope Findings
-- **code-quality** `skills/design/scripts/design-postplan-emit.sh:413-420` — The new drift advisory log uses `append-tool-failure.sh` without overriding its default `STATUS_LABEL=failed` (`scripts/append-tool-failure.sh:27,161-164`), so the `### Warnings` entry will read like `check-plan-size.sh (drift) failed (exit 0)` even though this is now an intentional rc=0 advisory. **Suggested fix:** Pass an explicit status label such as `--status-label "advisory"` or `--status-label "warned"` on the drift append call.
-- **code-quality** `skills/design/scripts/test-design-postplan-emit.sh:96-99` — The fake plugin symlinks `append-tool-failure.sh` but not its required `redact-secrets.sh` sibling; the new drift path invokes `append-tool-failure.sh --redact` (`skills/design/scripts/design-postplan-emit.sh:413-420`), so the helper exits before appending and the new assertion for `execution-issues.md` at `skills/design/scripts/test-design-postplan-emit.sh:809-812` can fail in this harness. **Suggested fix:** Add `ln -sf "$REPO_ROOT/scripts/redact-secrets.sh" "$FAKE_SCRIPTS/redact-secrets.sh"` near the existing helper symlinks, or provide a passthrough fake redactor.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

@@ -1,3 +1,0 @@
-Fold design Step 5 prelude into prepare wrapper
-
-Move the Step 5 sentinel and timing prelude into design-step5b-prepare, retain design-step5.sh as a compatibility delegator, and emit marked final-summary bodies from Step 5c and cancellation summary wrappers. Update design prose and harnesses for marker extraction and stdout bridge behavior.

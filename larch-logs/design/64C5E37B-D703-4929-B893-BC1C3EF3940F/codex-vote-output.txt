@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates prior rejected seed-stdout leakage concern and remains speculative because the current seeder is silent on stdout.
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates prior rejected scope-reduction finding with no materially new evidence.
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior rejected scope-reduction finding with no materially new evidence.
-FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stated severity is nit, so it cannot clear the in-scope necessity gate.
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior OOS/rejected scope-reduction item and does not justify a new tracked issue.

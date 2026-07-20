@@ -1,5 +1,0 @@
-skills/implement/scripts/stall-recovery-report.sh
-skills/implement/SKILL.md
-skills/implement/references/stall-recovery.md
-skills/implement/scripts/test-stall-recovery-report.sh
-skills/implement/scripts/stall-recovery-report.md

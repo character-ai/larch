@@ -1,1 +1,0 @@
-Port tracking-issue read, write, and summary shell surfaces into `python/tracking_issue.py`, wire `python/cli.py tracking-issue`, cut shell consumers to the Python CLI, delete retired shell helpers and harnesses, and update tests, manifests, lint allowlists, and security docs.

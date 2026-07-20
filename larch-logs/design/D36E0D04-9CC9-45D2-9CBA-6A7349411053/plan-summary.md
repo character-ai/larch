@@ -1,1 +1,0 @@
-Draft from direct inspection because `approach-synthesis.txt` is `NO_SKETCHES`. Plan hard-caps OOS at 3 per reviewer in both collection paths, tightens OOS rubric and prompts, regenerates derived reviewer artifacts, and adds focused regressions.

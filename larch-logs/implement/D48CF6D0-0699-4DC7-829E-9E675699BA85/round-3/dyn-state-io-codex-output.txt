@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/design/SKILL.md:1225-1233` — Step 3.5 only uses the grep fallback when `jq` is absent; if `jq` is installed but fails to parse/read `run-params.json`, `_approve_requested` remains `false`, so Gate B silently auto-applies even when the persisted file contains `"approve_requested": true`. This diverges from the shared tolerant reader in `skills/design/scripts/lib-phase-driver.sh:40-59` and can defeat the new `--approve` opt-out on schema/read drift. **Suggested fix:** Use `phase_driver_json_boolean_or_sed "$DESIGN_TMPDIR/run-params.json" approve_requested false` here, or otherwise fall back to the grep/sed path when `jq` returns empty/fails; add coverage in `skills/design/scripts/test-gate-b-apply-mode.sh` for a jq-failure/malformed-json case that still contains the approve flag.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

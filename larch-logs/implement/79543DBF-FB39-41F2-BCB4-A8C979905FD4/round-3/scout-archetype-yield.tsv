@@ -1,9 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	3	0	2	0.000000
-correctness	correctness	1	5	1	1	0.200000
-edge-cases	correctness	1	1	0	0	0.000000
-edge-cases	correctness	1	2	0	1	0.000000
-testing	risk-integration	1	8	5	0	0.625000
-testing	risk-integration	1	1	1	0	1.000000
-dyn-routing-contract	architecture	1	2	1	1	0.500000
-dyn-routing-contract-codex	architecture	1	0	0	0	n/a

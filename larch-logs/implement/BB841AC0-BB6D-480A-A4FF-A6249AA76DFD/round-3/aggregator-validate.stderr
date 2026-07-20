@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Port `_ballot_is_neutralized/_resolve_proposer_map` (or shared helper) into `pla')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Pass `--proposer-map-file` explicitly in `design-step3-mav.sh` post phase and fa')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Extend `test_review_core_aggregator_validation_exhausted` to assert findings.md ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add neutralized-ballot tally tests with rejected findings and accepted OOS rows;')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Add `execute_round` harness test where `write_proposer_map` fails and assert tal')

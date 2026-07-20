@@ -1,7 +1,0 @@
-larch:bc t=2026-05-27T07:27:10Z d=0 p=51118 s=review-and-fix.sh c=progress text=→ Step 5 round 1/5
-larch:bc t=2026-05-27T07:27:10Z d=0 p=51118 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
-larch:bc t=2026-05-27T07:27:11Z d=0 p=51353 s=dispatch-panel.sh c=progress text=→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)
-larch:bc t=2026-05-27T07:33:38Z d=0 p=51312 s=review-core.sh c=progress text=→ review: consolidating findings
-larch:bc t=2026-05-27T07:41:57Z d=0 p=51118 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 6 accepted, 7 rejected (7 exonerated)
-larch:bc t=2026-05-27T07:41:57Z d=0 p=51118 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (6 fixes)
-larch:bc t=2026-05-27T08:06:00Z d=0 p=51118 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop

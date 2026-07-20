@@ -1,1 +1,0 @@
-Retire the dead optional-trailer Bash and awk artifacts, expose clone-tag derivation through a Python CLI verb, repoint the two Step 8 shell wrappers, port or preserve tests in pytest, and update migration/docs inventories.

@@ -1,1 +1,0 @@
-Review the SECURITY.md sweep against current CLI registrations, module locations, and deleted-lane history. Check the lint parser for fence, suffix, suppression, containment, and diagnostic edge cases. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

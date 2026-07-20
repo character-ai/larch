@@ -1,3 +1,0 @@
-Implemented the plan and wrote `manifest.json` atomically with `status=complete`.
-
-Also wrote the optional scout reviewer manifest.

@@ -1,4 +1,0 @@
-warning: fix text for slot 'dyn-artifact-security-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Add `.step3-report-*.recorded` to `design_artifact_excluded`, or stop creating p')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Expand pytest when panel logic is ported in-process.  ### OOS_2: [OUT_OF_SCOPE] ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Align SKILL.md with python-migration.md delegation wording.  ### OOS_3: [OUT_OF_')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Address in a dedicated pause/resume issue if still required.  ### OOS_4: [OUT_OF')

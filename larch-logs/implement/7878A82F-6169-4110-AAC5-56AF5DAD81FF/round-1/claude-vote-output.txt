@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- the `needs_user_reason=oos-filing` path is not visible in the SKILL.md exit matrix; the Exit 0 and OOS checkpoint — the two declared consumers — were both updated; default-deny
-FINDING_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true
-FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

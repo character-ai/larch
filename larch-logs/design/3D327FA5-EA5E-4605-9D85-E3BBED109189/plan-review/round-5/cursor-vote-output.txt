@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Approach and Failure modes already mandate A2-before-A1; file-list order alone is insufficient to warrant another plan edit
-FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false

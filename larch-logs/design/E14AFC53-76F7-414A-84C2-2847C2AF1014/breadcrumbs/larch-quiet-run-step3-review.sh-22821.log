@@ -1,4 +1,0 @@
-render-voter-prompt.sh: --scope-anchor-file must resolve under an allowed local workspace or tmpdir
-render-voter-prompt.sh: --scope-anchor-file must resolve under an allowed local workspace or tmpdir
-render-voter-prompt.sh: --scope-anchor-file must resolve under an allowed local workspace or tmpdir
-**⚠ Voter claude: 15/15 ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at <TMPDIR>/claude-vote-output.txt.**

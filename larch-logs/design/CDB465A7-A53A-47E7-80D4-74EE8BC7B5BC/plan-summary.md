@@ -1,1 +1,0 @@
-Port Step 5 review-and-fix orchestration into a new Python module, register direct CLI verbs, cut callers over, replace absorbed shell harnesses with pytest, delete retired shell and `.md` files, and update stale references plus the migration manifest.

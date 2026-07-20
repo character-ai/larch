@@ -1,5 +1,0 @@
-Reduce static review archetype counts
-
-Remove the standalone security review slot from code-review dispatch and fold its focus into edge-cases. Drop the /design edge static/sketch slot by moving boundary/failure coverage into architecture and pragmatic prompts, and scrub public count prose/topology. Update timing allow-lists, dispatch fixtures, and test harnesses for the reduced panels.
-
-Inline-triage rule 2: Fixed the latent-reroute grep guard in plan-review tallying so non-latent findings do not abort under strict Bash.

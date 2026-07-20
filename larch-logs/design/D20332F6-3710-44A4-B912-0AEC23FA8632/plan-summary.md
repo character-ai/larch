@@ -1,1 +1,0 @@
-Add `python/larch_io.py` as the shared stdlib-only IO helper module. Repoint duplicate KV parsing, text IO, and atomic write helpers across `python/` while preserving each call site's current behavior. Add parity tests and update private-helper tests that assume old local definitions.

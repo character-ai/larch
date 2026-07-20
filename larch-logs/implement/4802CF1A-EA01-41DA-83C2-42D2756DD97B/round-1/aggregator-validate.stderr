@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Capture consumer_root once at `run_step3_review` entry or read a durable session')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add an integration case with a consumer-only script in `plan.txt` absent from `p')
-warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Mirror `_scrub_run_tree` residual detection before writing dest and add a regres')

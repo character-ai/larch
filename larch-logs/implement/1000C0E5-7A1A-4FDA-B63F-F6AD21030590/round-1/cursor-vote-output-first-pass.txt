@@ -1,9 +1,0 @@
-Reading the ballot and verifying claims against provided context. Gathering files read-only.
-
-Verifying ballot claims against the codebase: reading the cited regions in `collect-agent-results.sh`, `larch-log.sh`, tests, and docs.
-
-Checking `collect-agent-results.sh` around lines 1085–1086 (FINDING_7) and `larch-log.md` for FINDING_29.
-
-Verified `collect-agent-results.sh` (lines 81–82, 1085–1086, 1186–1270), `larch-log.sh` (67–98), tests (285–372), and `collect-agent-results.md` (11–19). Creating the plan record and delivering vote lines.
-
-

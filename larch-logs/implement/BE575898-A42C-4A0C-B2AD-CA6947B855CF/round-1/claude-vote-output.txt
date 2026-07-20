@@ -1,7 +1,0 @@
-FINDING_1: EXONERATE -- fixture heredocs with deprecated vocabulary are a plan-deliberate choice; harness invariants hold and no correctness gap exists
-FINDING_2: NO -- archival run logs are immutable historical records; issuing a cleanup ticket for them is incorrect
-FINDING_3: EXONERATE -- "superseded by unified `--panel hard`" describes the architectural property (single code path), not the retired brand name; removing "unified" here would be less informative
-FINDING_4: NO -- comment at line 300 is accurate: bad.md does contain all 4 current POS_MARKERS; extra deprecated phrases are non-enforced and do not make the comment wrong
-FINDING_5: YES
-FINDING_6: EXONERATE -- generic narrative label "review panel" is intentionally unconstrained; important technical specifics (6 Cursor specialists, --panel hard, round counts) are all still pinned
-FINDING_7: YES

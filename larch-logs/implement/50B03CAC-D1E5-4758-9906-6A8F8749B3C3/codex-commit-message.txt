@@ -1,3 +1,0 @@
-Remove stale amend wording from commit docs
-
-Update the git-commit and implement-finalize harness contracts to refer to the separate CHANGELOG commit path after the post-bump flow stopped amending.

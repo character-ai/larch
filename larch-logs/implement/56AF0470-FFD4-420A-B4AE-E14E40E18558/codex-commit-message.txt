@@ -1,3 +1,0 @@
-Exclude larch logs from explicit Mermaid lint inputs
-
-Make lint-mermaid-fences apply the existing larch-logs runtime-artifact exclusion to pre-commit explicit filename invocations, not just --changed-only. This keeps relevant-checks from linting committed run-log archives while preserving Mermaid validation for authored docs.

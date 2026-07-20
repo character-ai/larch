@@ -1,1 +1,0 @@
-Plan adds an off-by-default `LARCH_UNIQUE_FINDER_BONUS` float knob, applies it only to accepted in-scope sole-finder rows in both tally layers, keeps default output byte-compatible, and documents the experimental rule.

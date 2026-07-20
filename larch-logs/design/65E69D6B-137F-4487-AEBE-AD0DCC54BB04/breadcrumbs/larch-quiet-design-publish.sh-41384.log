@@ -1,1 +1,0 @@
-design-publish.sh: composed-plan.redacted.md missing or empty — orchestrator must run redact-secrets.sh first

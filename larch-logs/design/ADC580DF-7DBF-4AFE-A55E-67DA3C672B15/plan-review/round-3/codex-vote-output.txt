@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Existing latest-rc gates already cover WARN replay sufficiently; an extra structure pin is more specificity than warranted.
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The stale-env concern is real, but the plan already pins the prompt-side quarantine in structure tests where that logic lives.

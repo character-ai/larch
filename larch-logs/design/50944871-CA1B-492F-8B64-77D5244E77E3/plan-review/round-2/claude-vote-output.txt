@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- render-cache artifacts will not bear cursor-plan-/codex-primary-plan- prefixes in practice; adding a context flag introduces more complexity than the theoretical risk warrants
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

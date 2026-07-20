@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **code-quality** `scripts/relevant-checks.sh:131-145` — The new cumulative re-tally behavior in `skills/design/scripts/persist-retally-step3-env.sh:68-101` and its regression coverage in `skills/design/scripts/test-persist-retally-step3-env.sh:60-107` are not routed by `scripts/relevant-checks.sh`, so a future change to that helper will run pre-commit but skip the specific harness that validates the new merge/idempotency/tally-error behavior. **Suggested fix:** Add a direct-target case for `skills/design/scripts/persist-retally-step3-env.sh`, `skills/design/scripts/persist-retally-step3-env.md`, `skills/design/scripts/test-persist-retally-step3-env.sh`, and `skills/design/scripts/test-persist-retally-step3-env.md` that appends `test-persist-retally-step3-env`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

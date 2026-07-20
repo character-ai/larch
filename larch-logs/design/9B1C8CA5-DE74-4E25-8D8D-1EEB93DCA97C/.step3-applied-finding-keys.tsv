@@ -1,5 +1,0 @@
-1	`test_finalize.py` patches facade bindings that `finalize.py` will no longer resolve. recovery, initialization, and teardown tests may fail before running or pass without exercising the intended failure paths.
-1	`test_step_7a.py` patches `step_7a.run_logs` flush and diagnostic helpers even though production will resolve those through owner modules. tests may raise `attributeerror` or invoke real flush and commit code.
-1	the warning-path test patches `review_and_fix.run_logs.append_execution_issue`, but production will resolve the function through `run_log_batch`. the intended fail-open `oserror` path will not be exercised.
-1	residual `run_logs.py` helpers may continue using bare imports that recreate removed facade attributes, undermining the intended facade shrink.
-2	`test_implement_dispatch.py` still calls `run_logs.append_execution_issue`; removing that re-export will cause the warning-normalization regression test to fail with `attributeerror`, despite production dispatch code not using the facade.

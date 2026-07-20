@@ -1,4 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.1/agents/reviewer-correctness.md"}
-{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-3/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.1/agents/code-reviewer.md"}
-{"slot": "dyn-round-start-safety", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-round-start-safety-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-round-start-safety-prompt.md", "weight": 1, "focus_area": "security", "archetype_ref": "bf17b26028f0"}
-{"slot": "dyn-harness-deadlock", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-harness-deadlock-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-harness-deadlock-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "5c04638b5113"}

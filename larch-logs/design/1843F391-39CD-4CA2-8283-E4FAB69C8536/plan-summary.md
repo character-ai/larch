@@ -1,1 +1,0 @@
-Add a voter severity calibration score beside the existing High Rate signal. All-major voters get lower voter standing than calibrated voters, without changing proposer scoring, panel severity, spawning, or token allocation.

@@ -1,2 +1,0 @@
-Brainstorm how to add ability to pause to /design, so it can save its state in issue, retain temp directory, and resume later
-

@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Real uncovered edge cases, but the plan's mandated tests and explicit implementation cover the required independence; extra regression coverage is out of scope.

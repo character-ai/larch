@@ -1,5 +1,0 @@
-### In-Scope Findings
-
-No in-scope issues found. I inspected **plan** `larch-logs/design/C229C50E-50E5-4364-B4A7-E3233F9A41E7/plan.txt:27-33,120-127,200-207`, **code** `python/plan_review.py:39-52,109-113,370-470,1300-1494`, and **tests** `python/test_plan_review.py:17-65,1064-1190`.
-
-The code limits round carry to `DEGRADED_PANEL_WARNING` and `INVALID_SLOT_PANEL_WARNING` via `_STEP3_ROUND_CARRY_KEYS`, clears carry state before true continuation rounds, and emits the new fields as optional envelope KVs. The final envelope shape remains backward-compatible because existing keys are preserved and the new warning keys are additive.

@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- delegation sentence at the top provides sufficient routing context; phantom probe ordering is implicit from plan structure
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan's testing strategy includes a repo-wide stale-reference sweep that should catch this
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

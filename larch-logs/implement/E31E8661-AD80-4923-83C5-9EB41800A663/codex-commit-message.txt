@@ -1,3 +1,0 @@
-Fix scout cap-hit cleanup
-
-Clear stale dynamic scout cap-hit markers before each Cursor and Claude tier so fallback JSON writes are not rejected. Expand plan scout, rendering scope-anchor, and Step 2 sidecar coverage for the regression and Cursor same-path normalization.

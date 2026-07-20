@@ -1,1 +1,0 @@
-Inline the live design OOS non-security counter in `python/design_oos.py`, delete the 3 OOS awk files, update stale references, and add parity coverage so existing OOS filing behavior stays unchanged.

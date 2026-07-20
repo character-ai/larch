@@ -1,3 +1,0 @@
-Fix design failure report run IDs
-
-Read /design SESSION_ID values from source-env.sh when composing stall recovery reports, and use the shared run-id reader for Tier A metadata. Keep design-publish result recording and final-summary rendering alive when terminal-state staging preserves an earlier failure state. Extend the offline harnesses for environment root-cause propagation, source-env run metadata, and STAGED=false preservation.

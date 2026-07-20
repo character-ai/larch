@@ -1,1 +1,0 @@
-Fold the Step 0 degraded-tools gate into `design-step0-session.sh`, delete the separate degraded wrapper, and update `SKILL.md` plus `scripts/test-design-structure.sh` so the happy path is `session`, `route`, `init`.

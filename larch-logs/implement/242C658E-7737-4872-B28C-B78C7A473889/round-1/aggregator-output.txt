@@ -1,2 +1,0 @@
-Normalizing the supplied reviewer findings into a merged structured list per aggregator rules (merge by behavioral risk, first-seen IDs, severity max, preserve verbatim revisions).
-

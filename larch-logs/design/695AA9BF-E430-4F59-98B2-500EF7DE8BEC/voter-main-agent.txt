@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Verbosity Control allowed-output list must also permit plain immediate-background wait breadcrumbs (e.g. ⏳ 5c:...) for non-Step-3 fences; without this the plan is internally inconsistent and agents may suppress the new required output.
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan already requires removing the universal each-immediate-background-wait wording at the source; a separate Failure modes bullet is redundant.
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Testing strategy is informational guidance. Plan explicitly preserves Step 3 intact; a careless blanket replace is not what the plan describes.

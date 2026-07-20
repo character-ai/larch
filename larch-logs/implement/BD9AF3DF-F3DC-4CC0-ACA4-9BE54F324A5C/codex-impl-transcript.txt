@@ -1,9 +1,0 @@
-Implemented plan and wrote `manifest.json`.
-
-**Verified:**
-- `bash -n` on modified scripts/tests.
-- `bash skills/design/scripts/test-design-step5c.sh`
-- `bash skills/design/scripts/test-design-publish.sh`
-- `bash scripts/test-design-log-publish.sh` passed per harness log.
-
-**Not run:** `scripts/relevant-checks.sh`, per implementer instruction.

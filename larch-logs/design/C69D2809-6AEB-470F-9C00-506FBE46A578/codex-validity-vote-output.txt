@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real gap, but the plan’s doc-only feature is still shippable without this extra source-file grep; it is verification hardening, not a required change.
-OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no concrete defect; the plan explicitly allows either a new section or an existing one, so this is a style/scope preference.
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- this is a general limitation of doc guidelines, not a filing-worthy issue in the proposed design.

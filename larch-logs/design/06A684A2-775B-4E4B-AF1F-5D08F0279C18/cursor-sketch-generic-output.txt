@@ -1,7 +1,0 @@
-Exploring the codebase read-only: locating `run_ci_fix_vendor`, bail reasons, launcher exit taxonomy, and implement Step 8 handling.
-
-Checking how `wrapper_rc` 2 and `LAUNCHER_EXIT` interact with the intended taxonomy:
-
-Noting launchers use `exit 0` with `LAUNCHER_EXIT` in captured stdout (wrapper contract); `wrapper_rc` 2 indicates validation failures. Creating the plan.
-
-

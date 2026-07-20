@@ -1,7 +1,0 @@
-Add design-log CI merge bridge
-
-Add a checks-only design-log ship helper that waits on required checks, reruns one failed required run with bounded log-readiness and stale-row settle handling, and transient-retries the squash admin merge from the consumer repo root.
-
-Thread required-check mode through ci_monitor, add delete-branch support to gh.pr_merge, and wire python/cli.py ship design-log into design-log-publish.sh.
-
-Update Python and shell harness coverage plus docs for the new bridge and fail-closed required-check classification.

@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- the necessary staging/no-changes gap is covered by FINDING_2, while cleanup and no-edit paths are already specified as attempt-relative.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the order inconsistency is real, but the latent residue scenario does not clear the necessity gate.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already implies only failure paths continue through the waterfall, so explicit return wording is clarifying rather than necessary.
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the added snapshot-mode work addresses prior carryover and data-loss regressions, so broad scope reduction would risk reintroducing accepted defects.
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the doc mismatch is real but too small to clear the tracked-issue overhead gate.

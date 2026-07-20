@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan deliberately keeps lines 1-90 plan_lines byte-stable; trailer budget tradeoff is documented intent not an oversight
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan embeds regexes in the .sh section but check-plan-size.md still says grammar same as diff_lines for mechanical_churn
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- authoritative contract in check-plan-size.md plus SKILL Gate B/waterfall guidance is enough without mirroring full grammar on every surface
-FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- preserve-or-recompute intent is stated; deterministic post-apply validation is more machinery than the plan warrants
-FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already allows a focused regression or documented spot-check for trailer preservation

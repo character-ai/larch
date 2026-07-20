@@ -1,1 +1,0 @@
-Move `/design` architecture diagram generation to after Gate C approval and before Step 5c publish. Keep `/implement` behavior unchanged, with regression tests for no chat/run-log diagram output and tracking-issue routing.

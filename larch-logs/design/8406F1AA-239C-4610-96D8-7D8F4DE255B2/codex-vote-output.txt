@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Real plan-format noise, but the verification commands remain identifiable and current plan validation passed, so it does not clear the necessity gate.

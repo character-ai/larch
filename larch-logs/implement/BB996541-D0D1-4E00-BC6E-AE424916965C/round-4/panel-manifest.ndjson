@@ -1,4 +1,0 @@
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-4/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.9/agents/reviewer-edge-cases.md"}
-{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-4/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.1.9/agents/code-reviewer.md"}
-{"slot": "dyn-robustness", "tool": "cursor", "output": "<TMPDIR>/round-4/dyn-robustness-output.txt", "prompt_file": "<TMPDIR>/round-4/dynamic-archetypes/dyn-robustness-prompt.md", "weight": 1, "focus_area": "code-quality", "archetype_ref": "e540c20c53b7"}
-{"slot": "dyn-integration-paths", "tool": "cursor", "output": "<TMPDIR>/round-4/dyn-integration-paths-output.txt", "prompt_file": "<TMPDIR>/round-4/dynamic-archetypes/dyn-integration-paths-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "225d60c2be36"}

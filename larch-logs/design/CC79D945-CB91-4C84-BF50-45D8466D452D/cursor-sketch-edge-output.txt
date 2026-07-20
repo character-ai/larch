@@ -1,5 +1,0 @@
-Exploring `ship-pr.sh` and related scripts to map exit paths, stall semantics, and integration points for an edge-case analysis.
-
-Having mapped `exit_transient_net`, orchestrator Exit 6 handling in `SKILL.md`, and the `ship_pr_pre_push` / `ship-pr-rrr-phase14` path, creating the plan document.
-
-

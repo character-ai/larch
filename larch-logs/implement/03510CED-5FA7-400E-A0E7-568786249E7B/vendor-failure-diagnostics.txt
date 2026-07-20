@@ -1,8 +1,0 @@
-===== ci fixer cursor-ci =====
-exit-code: 124
-===== diag =====
-Stall detected: channel=stdout time_since_last_progress=180s
---- stall ps snapshot (target pid=41019) ---
-  PID  %CPU ELAPSED STAT
-41019   0.0   03:00 S   
-Failed with exit code 124. Output size: 0 bytes.

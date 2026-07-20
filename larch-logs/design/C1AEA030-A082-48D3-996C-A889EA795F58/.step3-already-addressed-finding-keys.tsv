@@ -1,1 +1,0 @@
-python/larch/state/_classify.py:276-284 python/larch/implement/ship_pr.py:331-338. scenario: `_resume_hint_for()` still runs after the short-circuit and can override `resume_hint=none`

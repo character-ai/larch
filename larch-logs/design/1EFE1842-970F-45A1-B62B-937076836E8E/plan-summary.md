@@ -1,1 +1,0 @@
-Fix five `/implement` bugs with focused Python changes, sibling regression tests, and one audit-reference update. Keep `plan-from-issue.txt` unchanged, preserve explicit `--workdir`, and strip only terminal `/design` provenance from materialized `plan.txt`.

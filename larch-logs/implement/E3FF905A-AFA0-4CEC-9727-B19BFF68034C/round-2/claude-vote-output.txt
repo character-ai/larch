@@ -1,1 +1,0 @@
-The ballot at `findings.md` contains no `FINDING_N` items — the aggregator attested an empty merge (`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`). There are no findings to vote on.

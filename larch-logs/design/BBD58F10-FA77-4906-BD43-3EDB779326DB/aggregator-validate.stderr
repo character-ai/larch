@@ -1,7 +1,0 @@
-warning: unknown From slot label 'Cursor-Edge, Codex-Edge' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Requirements, Codex-Requirements' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Edge, Codex-Edge' in FINDING_3 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-grammar-coverage, Codex-dyn-grammar-coverage' in FINDING_3 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-grammar-coverage, Codex-dyn-grammar-coverage' in FINDING_4 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-makefile-shard-audit, Codex-dyn-makefile-shard-audit' in FINDING_5 (not present on any input finding)

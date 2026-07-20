@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add pytest cases for `LARCH_WAIT_BARRIER_MODE=delayed`/`nonzero_done` and Voter-')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add subprocess pytest cases using existing wait-barrier stub modes, mirroring de')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Check `result.returncode`; on failure set an explicit failure parse-rate status ')
-warning: fix text for slot 'dyn-stub-root-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add a subprocess test mirroring retired `happy-voter1-delayed-done`: stub `pytho')

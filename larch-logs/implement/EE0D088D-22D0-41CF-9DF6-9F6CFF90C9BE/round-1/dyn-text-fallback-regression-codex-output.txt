@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `python/ci_monitor.py:325-346` — `_classify_checks_text(..., required=False)` now applies the broadened `fail_re` unconditionally, so existing ship-pr callers that use the default non-required path can newly classify fallback text containing words like `skip`, `skipping`, `cancelled`, `neutral`, `unknown`, or `action required` as CI failure. That contradicts the plan’s “default behavior unchanged” requirement; the added test only preserves the optional JSON path (`python/test_ci_monitor.py:2143-2144`) and does not cover optional text fallback. **Suggested fix:** Gate the broadened fail-closed pattern behind `required=True`, keep the old non-required text behavior (`fail` only, plus old pending tokens), and add a regression test showing non-required text such as an optional skipped/neutral check remains classified as pass.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

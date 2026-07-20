@@ -1,8 +1,0 @@
-{"slot": "structure", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-structure-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/reviewer-structure.md"}
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/reviewer-correctness.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/reviewer-testing.md"}
-{"slot": "security", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-security-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/reviewer-security.md"}
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/reviewer-edge-cases.md"}
-{"slot": "plan-fidelity", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/reviewer-plan-fidelity.md"}
-{"slot": "generic", "tool": "codex", "output": "<TMPDIR>/round-1/codex-generalist-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.8.29/agents/code-reviewer.md"}
-{"slot": "dyn-doc-vs-code", "tool": "cursor", "output": "<TMPDIR>/round-1/dyn-doc-vs-code-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-doc-vs-code-prompt.md", "weight": 2, "focus_area": "correctness", "archetype_ref": "02c207f5f06b"}

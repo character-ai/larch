@@ -1,3 +1,0 @@
-warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt' in FINDING_4 (not present on any input finding)
-warning: fix text for slot 'dyn-artifact-contract-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Call this out explicitly in `scripts/launch-cursor-ci.md` (and optionally add a ')
-warning: fix text for slot 'dyn-artifact-contract-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'On `jq` failure, append a single-line marker to `${OUTPUT}.diag` (or write a min')

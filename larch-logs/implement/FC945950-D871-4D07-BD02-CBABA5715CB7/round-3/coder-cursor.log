@@ -1,5 +1,0 @@
-**FINDING_2** is applied. The blanket dunder exemption in `python/lint_keyword_only.py` is now an explicit whitelist of fixed-signature protocol methods (`__eq__`, `__enter__`, `__exit__`, etc.). `__init__`, `__new__`, and `__call__` are no longer auto-exempt.
-
-The baseline was regenerated (1449 records). `CliFailure.__init__` and `_PinnedHTTPSConnection.__init__` are now included. `keyword-only-exemptions.json` stays empty; no external-contract exceptions were needed.
-
-`python3 python/cli.py lint keyword-only` exits 0, and `make py-test` passed (4623 tests).

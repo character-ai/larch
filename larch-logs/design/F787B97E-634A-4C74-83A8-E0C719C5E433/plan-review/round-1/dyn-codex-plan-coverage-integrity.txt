@@ -1,8 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	major	correctness	python/larch/implement/scope_disposition.py:503-515,543-560,698-712	Frozen fallback filters descendants before the new predicate sees them	With no remote HEAD, a touched child such as `pkg/nested.py` is removed by the exact `path in plan_paths` filter, so firm `pkg/` remains uncovered	Apply the firm-path predicate while collecting fallback porcelain and provenance, and add a fallback regression
-1	in_scope	minor	correctness	python/larch/implement/scope_disposition.py:812-869	Artifact reload does not enforce canonical firm paths in `touched_paths`	An artifact containing `plan_paths=["pkg/"]` and `touched_paths=["pkg/file.py"]` can pass recomputed counts, untouched paths, and fingerprint validation while persisting a non-firm path	Reject touched entries outside `plan_paths`, or normalize them to ordered firm paths before validating and fingerprinting
-1	in_scope	minor	correctness	python/tests/implement/test_scope_disposition.py:305-332	The regression does not explicitly pin plan ordering and descendant fingerprint stability	Permuting multiple touched descendants can change persisted `touched_paths` order or the fingerprint even though firm coverage is unchanged, causing reload or disposition mismatch	Assert ordered firm paths, multiple-descendant deduplication, and equal fingerprints after permuted raw inputs and artifact reload
-
-1. [correctness] Frozen fallback drops directory descendants before coverage mapping.
-2. [correctness] Reload must reject non-canonical touched paths.
-3. [correctness] Pin ordering and fingerprint stability in the regression.

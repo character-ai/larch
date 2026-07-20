@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate rejected scope-reduction; canonical artifacts make exact reload membership sufficient, but removing planned validation alignment is not necessary.

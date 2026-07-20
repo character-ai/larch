@@ -1,5 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	2	1	1	0.500000
-codex-generic	code-quality	1	1	1	0	1.000000
-dyn-round-start-safety	security	1	2	1	1	0.500000
-dyn-harness-deadlock	risk-integration	1	2	0	1	0.000000

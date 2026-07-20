@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The claim that line 404 pins diff_added and 408 pins mechanical_churn is factually wrong (those are || fail continuations; diff_added is at 405, mechanical_churn at 409), but the broader risk — that a plan phrase like "replace snapshot block 403-408" would swallow those preservation greps — is real and the surgical-replacement fix is the right call
-FINDING_2: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
-FINDING_3: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
-OOS_1: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true

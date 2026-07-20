@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Port deleted harness scenarios into `python/test_review_{pipeline,aggregate,tall')
-warning: fix text for slot 'dyn-review-and-fix-handoff-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Route every Python CLI call in `review-and-fix.sh` through the same `$PY_CLI` va')
-warning: fix text for slot 'dyn-review-cli-parity-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'dyn-review-and-fix-handoff-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] SECURITY.md scout attribut')
-warning: fix text for slot 'dyn-review-cli-parity-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Duplicate `PY_CLI` assignm')
-warning: fix text for slot 'dyn-review-and-fix-handoff-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  **Merge summary**: 30 raw inputs consolidated t')

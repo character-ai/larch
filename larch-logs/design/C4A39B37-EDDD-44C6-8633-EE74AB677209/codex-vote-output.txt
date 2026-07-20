@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Current gate output always emits BOTH_DOWN and the plan already covers the prompted-sentinel path, so explicit missing-output guard is defensive parity rather than necessary.
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Generated parsed env is already validated before route, so an extra route-side invalid-POSITIONAL_KIND defense is malformed-sidecar parity rather than necessary.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The body is explicitly in the slice scope and retained for compatibility, so a cleanup issue does not clear backlog materiality.
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The extra public parse verb is small surface creep inside the explicit one-verb-per-body port scope, not worth a tracked issue.

@@ -1,9 +1,0 @@
-slot	tool	status	elapsed_s	output
-cursor-plan-arch	cursor	done	772	<TMPDIR>/cursor-plan-arch-output.txt
-cursor-plan-innovation	cursor	done	772	<TMPDIR>/cursor-plan-innovation-output.txt
-cursor-plan-pragmatic	cursor	done	772	<TMPDIR>/cursor-plan-pragmatic-output.txt
-cursor-plan-requirements	cursor	done	772	<TMPDIR>/cursor-plan-requirements-output.txt
-codex-plan-generic	codex	failed	772	<TMPDIR>/codex-plan-generic-output.txt
-dyn-cursor-plan-contract-drift	cursor	done	772	<TMPDIR>/cursor-plan-dyn-contract-drift-output.txt
-dyn-cursor-plan-rebalance-spread	cursor	done	772	<TMPDIR>/cursor-plan-dyn-rebalance-spread-output.txt
-dyn-cursor-plan-reviewer-severity	cursor	done	772	<TMPDIR>/cursor-plan-dyn-reviewer-severity-output.txt

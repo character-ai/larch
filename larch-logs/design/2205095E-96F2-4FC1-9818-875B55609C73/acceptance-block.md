@@ -1,9 +1,0 @@
-## Acceptance
-
-- `/implement` Step 5 and `/review` code-review voting dispatch three Cursor archetype voters (`cursor-validity`, `cursor-plan-fidelity`, `cursor-pragmatism`) through `scripts/dispatch-code-voters.sh` on the Cursor-available path; no Claude or Codex voter launches on that path.
-- `python/cli.py render voter --archetype <slug>` renders each archetype's distinct lens on top of the full acceptance rubric; the default (`render voter` with no `--archetype`) is byte-unchanged, so `/design` plan-review and MAV voters are unaffected.
-- The 2-of-3 majority threshold and the existing tally / scoreboard / point-competition machinery are preserved; slot identity comes from predetermined per-archetype output paths and `--voter-labels`, never from `ALL_OUTPUT_TOOLS` tool-name mapping.
-- Cursor-unavailable rounds fall back to a single Claude voter (via `launch-claude-review`, binding-single tier); Codex never backfills the voter panel; the legacy 3-vendor panel is not restored.
-- `findings-classification.tsv` carries per-archetype `vN_tool` attribution (21-column schema); `fluff-analysis.py` parses both the legacy 18-column and the new 21-column implement schemas by header name.
-- `README.md`, `docs/review-agents.md`, `docs/skills.md`, and `docs/voting-process.md` describe the 3-Cursor archetype panel; the `3-judge panel on every round` anchor remains in all five `test-quick-mode-docs-sync.sh` POS targets; `/design` plan-review, conflict-review, and research-validation rows are untouched.
-- `make lint`, `make py-lint`, `make py-test`, `bash scripts/test-dispatch-code-voters.sh`, `bash scripts/test-quick-mode-docs-sync.sh`, `bash skills/fluff-analysis/scripts/test-fluff-analysis.sh`, and `python3 -m pytest python/test_rendering.py python/test_voting.py python/test_review_tally.py` pass.

@@ -1,3 +1,0 @@
-file-design-oos prepare returned FILE_DESIGN_OOS_DEPS_AVAILABLE=false (oos-file-conflict-deps.sh graceful-degrade with no caller TSV produced).
-Single-item OOS batch (count=1) — intra-batch dep analysis would have no edges to detect anyway.
-Proceeding with /larch:issue invocation WITHOUT --intra-batch-deps-file / --no-dep-llm (LLM dep-analysis runs against any existing open issues).

@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **code-quality** `skills/implement/scripts/stall-recovery-report.sh:36-43,1148-1162` — `cmd_normalize_issue_env` relies on `if ! atomic_write_text ...` to detect output write failures, but `atomic_write_text` does not explicitly check the `printf '%s' "$content" >"$tmp"` write. In Bash, when a function is invoked from an `if !` conditional, `errexit` is suppressed inside the function, so a failed temp-file write can fall through to `mv -f "$tmp" "$dest"` and then emit `NORMALIZED=true` / `ISSUE_ENV_WRITTEN=true` with an empty or partial `stall-recovery-issue.env`. **Suggested fix:** Make `atomic_write_text` explicitly check and clean up every mutating step, e.g. `printf ... >"$tmp" || { rm -f "$tmp"; return 1; }` and `mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }`, so normalize’s failure branch is reliable under `set -euo pipefail`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

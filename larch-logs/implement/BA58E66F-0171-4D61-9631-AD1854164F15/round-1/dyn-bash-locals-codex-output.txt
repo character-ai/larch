@@ -1,6 +1,0 @@
-### In-Scope Findings
-- **code-quality** `skills/design/scripts/file-design-oos.sh:238-242` — `_sent_created` is assigned inside `cmd_prepare` without `local`, unlike the surrounding function-scoped variables. In bash functions this creates or mutates a global, making the helper harder to reason about and vulnerable to accidental reuse/clobbering in the same process. **Suggested fix:** Declare it locally before assignment, e.g. `local issue_sentinel="$d/oos-issue-sentinel" _sent_created`, or add `local _sent_created` before the `awk` command substitution.
-- **code-quality** `skills/design/scripts/file-design-oos.sh:245-247` — The new sentinel skip path emits `WARN=` with raw `printf` instead of `emit_kv`; under the default quiet contract, ordinary stdout is redirected and machine-readable output must use `emit`/`emit_kv` (`scripts/lib-quiet.sh:6-7`, `scripts/lib-quiet.sh:158-178`). The added harness disables quiet mode at `skills/design/scripts/test-file-design-oos.sh:4`, so it passes while real callers may see the status but not the documented warning. **Suggested fix:** Emit the warning with `emit_kv WARN "file-design-oos prepare: ..."` and add/adjust coverage to exercise default quiet mode for these contract KVs.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

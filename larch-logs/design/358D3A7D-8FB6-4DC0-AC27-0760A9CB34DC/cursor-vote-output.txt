@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- redact() on str inputs is pure regex/string work; realistic failures already map to the planned handled tuple, so extra catch-all mapping is defensive not necessary for the cutover
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit severity fails OOS materiality gate; fail-closed non-object handling is an already-accepted prior-round gap, not scope creep worth a separate issue

@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `correctness` [skills/review/scripts/tally-code-votes.sh:451](<OPERATOR_REPO_PATH>/skills/review/scripts/tally-code-votes.sh:451): Now that dynamic manifest entries are no longer skipped at [skills/review/scripts/tally-code-votes.sh:462](<OPERATOR_REPO_PATH>/skills/review/scripts/tally-code-votes.sh:462), the `seen` map needs the same fallback basename normalization used for manifest rows. Concrete failing scenario: the existing fallback-normalization fixture shape in `skills/review/scripts/test-tally-code-votes.sh:412-448` uses reviewer `dyn-foo-output-phase2.txt` with manifest output `dyn-foo-output.txt`; `seen` records the raw phase2 basename, then the manifest pass treats `dyn-foo-output.txt` as unseen and appends an extra zero-count `dyn-foo` row with `STATUS=OK`. Normalize `f[1]` through `norm_base()` before setting `seen[...]`, and add a regression asserting a dynamic phase2 finding does not also get a dead-slot row.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.
-
-Validation note: I attempted `bash scripts/test-lib-vote-tally.sh` and `bash skills/review/scripts/test-tally-code-votes.sh`, but both failed immediately because the read-only sandbox blocked `mktemp` directory creation.

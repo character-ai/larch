@@ -1,1 +1,0 @@
-Port reviewer health and negotiation from retired Bash scripts into `python/agents.py`, register two `agent` CLI verbs, retarget callers and docs, move harness coverage into pytest, and delete the retired script contracts.

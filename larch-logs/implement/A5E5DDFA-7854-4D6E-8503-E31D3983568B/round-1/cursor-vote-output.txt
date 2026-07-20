@@ -1,9 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- Harness blurb is generic; test names already spell out the six-slot cases.
-FINDING_3: YES
-FINDING_4: EXONERATE -- NOT_SUBSTANTIVE scenarios are covered without a six-launched-only anchor.
-OOS_1: EXONERATE -- Unused `--round-num` is real but too minor to track as its own issue.
-OOS_2: EXONERATE -- Run-log noise is policy/process, not a concrete product defect.
-OOS_3: YES
-OOS_4: EXONERATE -- Wording nit in echo labels, not worth a standalone issue.
-OOS_5: NO -- Describes intended denominator behavior, not a defect to file.

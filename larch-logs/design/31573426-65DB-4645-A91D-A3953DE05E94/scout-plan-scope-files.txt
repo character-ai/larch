@@ -1,3 +1,0 @@
-python/checks.py
-python/test_checks.py
-python/README.md

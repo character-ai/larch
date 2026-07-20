@@ -1,1 +1,0 @@
-Add two Python AST ratchet linters. Mirror the existing keyword-only linter pattern. Wire both into `py-lint-main`, pre-commit, docs, CLI dispatch, baselines, and pytest harnesses. Do not fix existing violations.

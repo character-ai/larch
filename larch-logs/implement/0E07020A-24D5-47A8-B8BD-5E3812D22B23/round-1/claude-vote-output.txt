@@ -1,1 +1,0 @@
-The ballot file (`findings.md`) contains no `FINDING_N:` or `OOS_N:` entries — only the aggregator merge note followed by `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`. There are zero ballot items to vote on.

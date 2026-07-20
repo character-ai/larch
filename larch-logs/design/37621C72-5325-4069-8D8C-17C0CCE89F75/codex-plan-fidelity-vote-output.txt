@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already explicitly requires an `is not None` presence check and identifies the truthiness failure mode.
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Reducing byte compatibility conflicts with the anchored no-behavior-change requirement; the newline contradiction needs resolution without dropping that contract.

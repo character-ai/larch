@@ -1,1 +1,0 @@
-Add public `/deps` with a prompt-driven audit flow and Python guardrails for issue grouping, stale REGULAR rewrites, stale closes, dependency edge normalization, in-flight flip handling, and approved-only GitHub mutation.

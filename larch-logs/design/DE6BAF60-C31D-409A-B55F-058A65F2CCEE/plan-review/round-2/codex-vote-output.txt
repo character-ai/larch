@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- read-only source config is copied with non-writable mode, so login-mode auth prep should still fail before Codex runs
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-OOS_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- overlap is real, but it is a plan-trimming concern rather than durable follow-up issue material
-OOS_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- capture duplication is a small harness-shape concern, not worth filing as a separate GitHub issue

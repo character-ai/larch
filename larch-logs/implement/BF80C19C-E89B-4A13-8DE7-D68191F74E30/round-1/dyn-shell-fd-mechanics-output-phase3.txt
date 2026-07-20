@@ -1,5 +1,0 @@
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **code-quality** `skills/design/scripts/design-route.sh:252-254` — The `if [[ "$_render_rc" -ne 0 ]]; then :; fi` block in `render_cancel_summary` is intentional dead code: render failure is silently swallowed with no diagnostic, not even at debug level. Per the plan this is by design ("tolerate render failure"), but the explicit `if … then :; fi` noop suggests the intent was to add a warning that never got written. A future maintainer might spend time tracing what happens on render failure and conclude it's a stub. **Suggested fix:** Either replace the noop block with a `larch_err "render-final-summary.sh failed (rc=$_render_rc); continuing"` diagnostic (which would surface in the quiet log for post-mortem), or delete the dead `if` block entirely and add a brief comment above the `return 0` explaining that render failure is tolerated.

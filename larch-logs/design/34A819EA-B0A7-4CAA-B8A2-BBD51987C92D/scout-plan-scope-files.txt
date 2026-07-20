@@ -1,7 +1,0 @@
-python/session_env.py
-python/test_session_env.py
-skills/design/scripts/test-design-pause-resume.sh
-skills/design/SKILL.md
-skills/design/references/approval-gates.md
-skills/design/references/discussion-rounds.md
-scripts/test-design-structure.sh

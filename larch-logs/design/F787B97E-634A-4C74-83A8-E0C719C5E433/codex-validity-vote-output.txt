@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate rejected finding; reload validation must agree with directory-aware coverage semantics.

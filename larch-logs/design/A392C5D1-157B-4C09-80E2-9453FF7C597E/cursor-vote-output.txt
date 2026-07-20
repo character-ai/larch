@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan step 8 already mandates migrating review-core stubs to native boundaries in review_test_support.py; explicit REVIEW_CORE_*_SH preservation is optional.
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Plan already requires registering review reviewer-prune in scripts/test-review-structure.sh (steps 7 and Files to modify).
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Lifting the heredoc is approach guidance; plan already requires contract parity and colocated pytest for reviewer-prune behavior.

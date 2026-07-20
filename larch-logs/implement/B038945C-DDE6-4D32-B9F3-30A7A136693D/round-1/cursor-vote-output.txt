@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- absent() drift is real but a dedicated verifier extension is out of proportion for this PR
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan acceptance uses manual /design --simple smoke; offline schema/flag harnesses cover the scripted surface
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- non-numeric --sketch-budget values are rejected by require_enum before jq tonumber runs
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- per-flag validation allows inconsistent tuples only for direct CLI misuse; canonical SKILL.md paths always pass aligned tier values
-FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- BASH_AUTHORING.md already documents the bash 5.x & hazard and %%/## split; a dedicated subsection is polish beyond acceptance

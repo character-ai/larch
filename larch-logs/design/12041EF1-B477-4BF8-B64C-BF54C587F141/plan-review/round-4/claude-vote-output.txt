@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- "reportedly rejected" is unverifiable without reading #3548; no SCOPE_ANCHOR_FILE exists on current main to confirm any prior design rejection
-FINDING_4: EXONERATE CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- Makefile shows target absent today and script is absent; whether #3548 adds both is speculative; plan has verify-first for the script itself which bounds the risk
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real implementation simplification, but the planned in-process capture path can still deliver the Step 5b port and does not clear an in-scope necessity gate
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

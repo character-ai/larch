@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  ### OOS_1: [OUT_OF_SCOPE] Large committed `larc')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Extra harness for `test-re')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  **Merge notes (for humans, not machine validati')

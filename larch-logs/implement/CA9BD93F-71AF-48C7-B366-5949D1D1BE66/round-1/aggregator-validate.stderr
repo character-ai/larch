@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Wrap teardown in `set +e` with rc capture; relay stdout; exit 0 after closing ma')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add `require(skill, ...)` pins for Step 18a.5 section presence, Do not run Step ')

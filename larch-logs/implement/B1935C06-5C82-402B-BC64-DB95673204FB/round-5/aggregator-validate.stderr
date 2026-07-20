@@ -1,3 +1,0 @@
-warning: fix text for slot 'dyn-tierb-safety-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Add substring checks for high-risk design sources (normalized sliding windows or')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Treat dedup failure like compose failure or emit fallback-print-required.  ### O')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Pass --session-env-file "$DESIGN_TMPDIR/source-env.sh" on record-escalation call')

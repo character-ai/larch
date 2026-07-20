@@ -1,5 +1,0 @@
-Add design review phase detail artifacts
-
-Synthesize /design plan-review round metadata from snapshotted artifacts, normalize design reviewer attribution for review-findings JSONL, and append the shared Review Phase Detail renderer to design final summaries.
-
-Refresh round metadata after successful MainAgent retally, clear stale metadata on tally errors, and cover the new design paths in focused harnesses.

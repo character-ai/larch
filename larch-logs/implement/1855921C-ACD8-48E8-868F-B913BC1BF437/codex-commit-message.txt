@@ -1,3 +1,0 @@
-Guard Step 6 against in-flight design publish
-
-Fail Step 6 prelude and cleanup when Step 5c has no status sidecar but the background wait marker is still active. Add an offline Step 6 harness for in-flight, missing-sidecar, and stale-marker paths, and wire it into the design test inventory.

@@ -1,1 +1,0 @@
-Plan: add shared Codex `exec_command` policy-rejection fast-fail, unblock lint-fix verification with a least-privilege writable tmpdir grant, cover launcher and lint-fix argv behavior in tests, and document the sandbox posture.

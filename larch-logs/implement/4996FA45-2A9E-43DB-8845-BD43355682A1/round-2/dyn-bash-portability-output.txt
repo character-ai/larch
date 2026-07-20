@@ -1,9 +1,0 @@
-Gathering the diff and commit list for a bash-portability and correctness review.
-
-Reading the full verifier script for exact line numbers and checking Bash 3.2 / grep edge cases.
-
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-The new manifest resolution block in [`scripts/verify-run-log-completeness.sh`](scripts/verify-run-log-completeness.sh) uses only Bash 3.2–supported constructs: `[[ ... ]]`, `${LARCH_VERIFY_MANIFEST#./}`, the `while [[ "$MANIFEST" == *//* ]]` loop, and `${MANIFEST//\/\//\/}` (global pattern substitution is available in Bash 3.x). The allowlist check at `134-137` runs under `LC_ALL=C`, so the ERE is evaluated in the C locale and `A-Za-z` ranges are the usual ASCII ranges, not locale collation surprises. In a POSIX bracket expression, a `-` that is the last character before `]`` is a literal hyphen; both BSD `grep` (macOS) and GNU `grep` treat `grep -E` as POSIX ERE here, so `^[A-Za-z0-9_./*-]+$` behaves as intended and `*` inside `[...]` is literal. The diff also adds unrelated `larch-logs/implement/4996FA45-...` run artifacts and Makefile `env -u LARCH_VERIFY_MANIFEST` wrapping; those are outside the bash-portability focus but widen the branch surface area. An adjacent pre-existing line (`139`) still uses `grep -q '\*'` without `LC_ALL=C`; that predates this hunk and is unlikely to bite for a single ASCII `*` probe.

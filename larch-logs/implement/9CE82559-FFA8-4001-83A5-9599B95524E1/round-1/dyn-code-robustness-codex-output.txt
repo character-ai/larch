@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **code-quality** `scripts/write-design-round-meta.sh:81-85` — `voting-tally.md` is treated as authoritative whenever the file exists, but `_parse_tally_md` always exits successfully with zero counts even when the table is missing or unparseable. That means a truncated/malformed round-local tally suppresses the valid `findings-classification.tsv` fallback and writes misleading zero metadata. **Suggested fix:** Have the tally parser emit/return a parsed-row count or status, and fall back to `findings-classification.tsv` when `voting-tally.md` has no parseable `FINDING_`/`OOS_` rows.
-
-- **code-quality** `scripts/lib-design-round-artifacts.sh:23-33` — `compose-review-findings.sh` now looks for round-local `plan-review-prune-label-map.tsv` files when normalizing design reviewer labels, but the round artifact allowlist still does not stage that basename. In multi-round runs, earlier custom/pruned labels can be lost once the root label map changes, causing Review Phase Detail attribution to fall back to unmapped labels. **Suggested fix:** Add `plan-review-prune-label-map.tsv` to `design_round_artifact_included()` and cover it in the round snapshot/log publishing tests.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

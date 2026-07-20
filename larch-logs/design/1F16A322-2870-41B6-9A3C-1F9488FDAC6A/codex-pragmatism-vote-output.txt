@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate rejected finding; decrease handling is not required by the specified writer or gate behavior.
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Duplicate rejected finding and message disambiguation is not necessary for the required gate.
-FINDING_4: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- The claimed strict ordering is not established by the plan, and the proposed extra semantics are not required by scope.

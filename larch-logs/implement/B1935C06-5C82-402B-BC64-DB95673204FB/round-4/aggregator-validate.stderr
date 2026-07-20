@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Invoke `design-stage-terminal-state.sh` from a Step 0b script fence or dedicated')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Wire mechanical staging into the clarify hard-halt path before `SUMMARY_OUTCOME=')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Expand `test-design-failure-report.sh` to cover the plan checklist: terminal-win')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add an offline `design-step5c.sh` harness with stubbed `design-publish.sh` retur')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add a dedicated harness for `design-step-validator-autofix.sh` and map `relevant')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Extend `PUBLISH_OK=false` / nonzero publish-rc fixtures to assert `design-failur')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Add runtime `step3_record_report_evidence` calls for each escalation status; ass')

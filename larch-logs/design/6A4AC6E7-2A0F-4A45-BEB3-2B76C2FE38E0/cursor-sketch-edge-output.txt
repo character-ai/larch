@@ -1,3 +1,0 @@
-Exploring the Step 5 voting, breadcrumb monitor, and related launch paths to ground the failure-mode analysis.
-Identifying a likely cascade root cause: `breadcrumb-monitor.sh` exits immediately when `LARCH_BREADCRUMBS_SURFACED_FILE` is non-empty, which `larch_quiet_init` writes when FD-3 is visible—this can decouple the orchestrator while `review-and-fix.sh` still runs. Creating the implementation plan.
-

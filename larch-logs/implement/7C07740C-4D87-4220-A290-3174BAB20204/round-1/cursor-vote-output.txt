@@ -1,8 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- trivial style-only nit with negligible review or correctness impact
-FINDING_4: EXONERATE -- `Schema note` in the same subsection already states `require_key` and `--force-init-state true` for upgrades
-OOS_1: YES
-OOS_2: EXONERATE -- accurate observation but no concrete malfunction or clear product-driven issue to file without intent
-OOS_3: EXONERATE -- acceptable per repo policy; splitting commits is workflow advice, not a durable issue
-OOS_4: EXONERATE -- pre-existing trust model unchanged in essence; hardening belongs in a dedicated effort, not a standalone filing from this PR

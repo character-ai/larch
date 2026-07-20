@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Neither named structure-pin file references `_REGISTRY`.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Full-suite validation exceeds changed-file guidance but does not affect feature correctness or completeness.

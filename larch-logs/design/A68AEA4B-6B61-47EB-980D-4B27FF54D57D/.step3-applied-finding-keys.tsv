@@ -1,8 +1,0 @@
-1	plan revisions do not identify a gate c settle site, required result handling, or the exact return point for fresh reassessment.
-1	replacing the inline remediation loop will invalidate existing structure-pin needles unless the pins are updated to assert the new ladder.
-1	the required validated `exception:` disclosure under `--skip-approve` is not assigned to the final-summary renderer and tests.
-1	a new publish refusal for a bare or malformed guideline deviation is not mapped to a documented return-to-gate-c or cancellation branch.
-1	presence-only invariant assessment checks could allow stale or violating assessment notes to publish, contrary to the never-publishable invariant rule.
-2	a validated exception rationale is appended to an issue-upserted final summary without a redaction requirement, so secret-shaped values from the plan or note could be published.
-2	the plan does not define when tier-2 counters are consumed. repairs, failed settles, pause/resume, or guideline declines could re-enter gate c without charging the round, violating the one-round-per-kind bound.
-2	changes to `agents/_implementer-base.md` would leave the generated external implementer prompts stale, causing agent-sync or generation checks to fail.

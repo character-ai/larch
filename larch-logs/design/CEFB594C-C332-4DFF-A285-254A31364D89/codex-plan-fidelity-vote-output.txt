@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan expressly makes the structurally uncommittable post-merge tail best-effort; the required pre-merge committed flush remains unchanged.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Narrowing silent post-merge skips conflicts with the scoped best-effort-tail behavior and is not necessary to deliver the checkout-drift fix.

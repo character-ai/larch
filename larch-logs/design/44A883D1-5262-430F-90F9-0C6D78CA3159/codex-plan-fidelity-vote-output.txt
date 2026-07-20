@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The stale design prose is real, but the anchored scope defers that docs sweep and runtime dispatch remains correct.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Static metadata is stale, but dispatch derives the correct review role independently, so the feature path works.
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

@@ -1,7 +1,0 @@
-Reading the ballot file to vote on each finding.
-
-Verifying key technical claims in the codebase so votes are grounded (read-only).
-
-Verified `rebase-push.sh` uses `BASE_REMOTE` for lease OIDs (lines 254–269), `ship-pr.sh` fork path invokes `rebase-push.sh --base-remote upstream --base-ref main` without `--no-push`, `git-push.sh` retries unfiltered `git push`, and `run_rebase_rebump` uses `--no-push` then `git-force-push.sh`. Creating a short plan record, then delivering machine-parseable votes.
-
-

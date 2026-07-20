@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Extract shared helper or call `plan-block-read` in a presence-only mode.')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Move validators into `lib-phase-driver.sh` and source from both drivers.')
-warning: fix text for slot 'dyn-harness-regression-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Split each check into a driver-required `grep` on `design-init-runparams.sh` (li')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Reuse sub-step 2 REPO in clarify sub-step 3.2.  ### OOS_2: [OUT_OF_SCOPE] Unrela')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'No action for #3245 unless CI flakes; note in PR test plan.  ### OOS_3: [OUT_OF_')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Parse with a `while IFS= read -r` loop or strict `MARKER_HIT=*` case on whole li')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Reuse `phase_driver_read_result_env` allowlists or reject `\\n`/`\\r` in values wh')

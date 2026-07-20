@@ -1,5 +1,0 @@
-warning: fix text for slot 'dyn-guard-whitelist-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'When `live_dirs_file` is non-empty, allow the foreground probe only if the comma')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Split the guard fix into a focused PR when feasible')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Split or separately review migration commit vs feature commit.  ### OOS_2: [OUT_')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add assertions for step-3-terminal and sidecar removal once step1e is fixed  ###')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add grep pin for .completed/step-3-terminal in AGENTS.md recovery bullet alongsi')

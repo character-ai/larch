@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the prior rejected cleanup-identity concern; the harness can make this an OOS issue instead of an in-scope acceptance
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior rejected wait-budget concern; extra slack is a robustness tweak, not a required feature fix
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior rejected preflight-override timing concern; late failure for malformed test-only overrides is not a feature-path defect
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

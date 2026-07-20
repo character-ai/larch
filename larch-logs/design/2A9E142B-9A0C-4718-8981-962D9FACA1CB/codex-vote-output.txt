@@ -1,2 +1,0 @@
-OOS_1: EXONERATE -- Parent linkage is legitimate, but making every new piece blocked by the soon-to-close original issue adds misleading dependency semantics.
-OOS_2: YES

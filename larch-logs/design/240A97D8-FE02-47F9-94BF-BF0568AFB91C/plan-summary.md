@@ -1,1 +1,0 @@
-Remove `/design` tier routing and hard-only sketch or dialectic machinery. Keep the remaining minimum-change design flow, the plan-review panel, and the plan-size brake. Rename size-trigger tokens, remove run-summary and report-token workflow splits, and finish with a clean `git grep -nE 'SIMPLE|HARD' -- ':!larch-logs'`.

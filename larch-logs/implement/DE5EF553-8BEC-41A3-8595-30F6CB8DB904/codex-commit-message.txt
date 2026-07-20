@@ -1,9 +1,0 @@
-Port review launcher to Python
-
-Add the canonical python3 python/cli.py agent launch-review verb for Codex and Cursor review runs, including prompt sidecars, retry metadata, token-budget handling, timing, diagnostics, dirty-tree sidecars, and vendor usage records.
-
-Retarget dispatch, scouting, voting, and collector retry callers to the Python launcher, fail closed on retired review shell metadata, and retire the shell launcher plus its shell harness.
-
-Add pytest parity coverage for the Python review launcher and update active docs, rules, security notes, lint allowlists, and the migrated-scripts manifest.
-
-Inline-triage rule 1: Corrected stale cursor empty-result retry bound while updating launcher docs.

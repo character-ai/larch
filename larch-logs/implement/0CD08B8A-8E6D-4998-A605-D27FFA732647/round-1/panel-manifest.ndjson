@@ -1,6 +1,0 @@
-{"slot": "security", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-security-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/48.3.0/agents/reviewer-security.md"}
-{"slot": "correctness", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/48.3.0/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/48.3.0/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/48.3.0/agents/reviewer-testing.md"}
-{"slot": "dyn-ci-workflow-codex", "tool": "codex", "output": "<TMPDIR>/round-1/dyn-ci-workflow-codex-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-ci-workflow-prompt.md", "weight": 1, "focus_area": "risk-integration"}
-{"slot": "dyn-prune-nit-design-codex", "tool": "codex", "output": "<TMPDIR>/round-1/dyn-prune-nit-design-codex-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-prune-nit-design-prompt.md", "weight": 1, "focus_area": "architecture"}

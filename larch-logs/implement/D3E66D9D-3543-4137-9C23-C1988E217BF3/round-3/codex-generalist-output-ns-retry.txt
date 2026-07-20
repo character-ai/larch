@@ -1,7 +1,0 @@
-### FINDING_1: Harness ancestor paths are not matched
-- Severity: **Important**
-- Focus area: correctness
-- Location: `scripts/dispatch-code-voters.sh:111`
-- What: `is_harness_review_path` only matches when the whole path ends with `test-dispatch-code-voters.*`, `test-collect-*`, `test-check-*`, or `test-tally-*`; it does not match paths nested under those harness directories.
-- Concrete failing scenario: with `TMP=/tmp/test-dispatch-code-voters.ABC`, `REVIEW_TMPDIR=$TMP/env-isolation-review`, and `voter_path=$REVIEW_TMPDIR/claude-vote-output.txt`, both `is_harness_review_path "$REVIEW_TMPDIR"` and `is_harness_review_path "$voter_path"` return false, so `append-tool-failure.sh` still writes the parent `LARCH_EXECUTION_ISSUES_LOG`; the new regression assertions at `scripts/test-dispatch-code-voters.sh:361` and `scripts/test-dispatch-code-voters.sh:381` would fail.
-- Suggested fix: make the guard segment-aware for descendants, for example match both `*/test-dispatch-code-voters.*` and `*/test-dispatch-code-voters.*/*` for each harness prefix, or normalize/split path segments before checking.

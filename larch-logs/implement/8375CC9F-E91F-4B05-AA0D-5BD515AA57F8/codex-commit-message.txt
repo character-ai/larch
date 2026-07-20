@@ -1,7 +1,0 @@
-Stop /design background polling probes
-
-Replace the live reviewer-status prompt with a twice-per-wait contract, add background wait markers around immediate-background /design wrappers, and write terminal reviewer status artifacts for post-notification display.
-
-Add a shipped PreToolUse guard that denies Read/Bash progress probes while a live wait marker exists, plus telemetry surfaced in the final summary.
-
-Inline-triage rule 1: Updated script sibling contracts for the changed wrappers, final-summary renderer, and new hook harness.

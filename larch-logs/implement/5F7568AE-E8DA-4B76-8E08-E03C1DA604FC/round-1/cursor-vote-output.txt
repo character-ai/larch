@@ -1,7 +1,0 @@
-Reading the ballot and verifying claims against provided context files.
-
-Verifying ballot claims against the repo: reading diff context and the cited source regions.
-
-Verified against the repo: `review-and-fix.sh` (tally body ~535–542, `write_rejected_findings_aggregate` ~611–656, call ~853), `heavy-worker.md` (~65–83), `emit-tally.sh` (validation ~48–49, comment ~116–118, jq v2 ~129–149), `SKILL.md` Step 7a (~1674–1680), `write-final-report.sh` / `.md`, and `review-core.md` (~59–88).
-
-

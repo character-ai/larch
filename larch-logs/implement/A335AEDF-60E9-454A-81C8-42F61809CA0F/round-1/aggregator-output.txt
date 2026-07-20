@@ -1,3 +1,0 @@
-Normalizing reviewer findings into a merged structured list. Verifying key overlap points in the cited code (read-only).
-Verified overlap in the cited lines. Producing the normalized aggregator output (read-only; no file writes).
-

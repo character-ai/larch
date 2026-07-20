@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- literal `\*` grep is not locale-sensitive; the inconsistency is cosmetic with no practical risk
-FINDING_3: YES
-FINDING_4: YES
-FINDING_5: NO -- purely informational clarifications with no actionable finding

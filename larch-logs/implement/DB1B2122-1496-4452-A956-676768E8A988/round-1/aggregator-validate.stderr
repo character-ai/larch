@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Apply larch_log_slug_is_valid at parse time; test ../bad and newline run-id.  ##')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: '(No separate fix beyond noting test-hardening scope; in-scope reviewers cover th')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: '(Out of scope unless acceptance-level CI parity with Step 0a pins is desired; se')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Update positional tail when flags.md is next edited for #3133 follow-ups.  ### O')
-warning: fix text for slot 'dyn-skill-fence-kv-protocol-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: '(Pre-existing Step 0a pattern; see FINDING_12 for Step 0-pre hardening direction')
-warning: fix text for slot 'dyn-partial-emission-coverage-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: '(Harness strengthening gap; see FINDING_4 for actionable test fix.)  ---  **Subs')

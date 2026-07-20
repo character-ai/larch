@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_1: [OUT_OF_SCOPE] Infra KV exports removed f')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Harness gap for SKILL reac')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Dirty-tree prose says “sha')
-warning: fix text for slot 'dyn-parse-block-duplication-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  **Merge notes (for voters, not machine output):')

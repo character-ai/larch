@@ -1,8 +1,0 @@
-Reviewing the branch diff and commit history for risk-integration issues around artifact glob policy.
-Checking retry artifact naming and edge-case glob interactions.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- The branch diff vs `main` also carries the Python Step 8 ship cutover (`python/ship.py`, finalize/restore helpers, and related tests) from commits `dbd4309f0` and `503ad481a`; that surface is outside the dynamic Codex `round_artifact_included()` / `write-round` contract reviewed here.
-- Dynamic Codex retry-shaped basenames (`dyn-*-codex-output-retry*.txt`) are referenced elsewhere (`skills/review/scripts/check-reviewer-failure-threshold.sh:59`) but are not emitted by current dispatch (`skills/review/scripts/dispatch-panel.sh:205` uses unphased `dyn-${name}-codex-output.txt` only). Retry retention still relies on the pre-existing broad `*-output-*.txt` allow at `scripts/larch-log.sh:100`, not the new explicit clause at `89-92`; that dual-path layout predates this branch’s behavior and is acceptable given no retry artifacts exist today, but it is a latent maintenance footgun if the broad allow is tightened later without updating the explicit clause.

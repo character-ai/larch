@@ -1,7 +1,0 @@
-warning: fix text for slot 'dyn-sole-writer-invariant-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_1: [OUT_OF_SCOPE] Cap-hit envelope round cou')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Structural pins do not enf')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.')
-warning: fix text for slot 'dyn-state-machine-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Multi-round integration ha')
-warning: fix text for slot 'dyn-state-machine-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Verified OK scout checklis')
-warning: fix text for slot 'dyn-sole-writer-invariant-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_5: [OUT_OF_SCOPE] `_plan_forward_flags` test')
-warning: fix text for slot 'dyn-sole-writer-invariant-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_6: [OUT_OF_SCOPE] Legacy Gate B continuation')

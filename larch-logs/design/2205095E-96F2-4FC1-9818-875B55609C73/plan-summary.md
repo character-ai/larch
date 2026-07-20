@@ -1,1 +1,0 @@
-Plan: direct cutover of code-review voters to three Cursor archetype lanes, with Claude-only fallback when Cursor is unavailable. Keep majority thresholds, update prompt rendering, attribution labels, docs, and tests.

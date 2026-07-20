@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- line 780 in SKILL.md is about the `.completed/step-4b` sentinel, not a read-and-derive mandate; SKILL.md already delegates Gate C to approval-gates.md via "per approval-gates.md (only when _skip_approve_requested_gatec=false)"
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- shared helper is a code-quality improvement; nit severity does not meet materiality floor for a tracked issue
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly offers "present-note (or read --emit-note)" as co-equal choices; plan choosing present-note is within stated scope, not over-serving it
-OOS_3: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- SKILL.md delegates Gate C behavior to approval-gates.md; once approval-gates.md is updated the delegation picks up the new contract, and the latent concern does not clear the materiality floor for a separate issue

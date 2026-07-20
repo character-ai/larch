@@ -1,4 +1,0 @@
-SKIPPED: FINDING_6 - lint consecutive-bash does not flag `.claude/skills/agnix-fix/SKILL.md` (inter-fence gap line exceeds breadcrumb length threshold)
-APPLIED: FINDING_7**FINDING_6** was skipped: `lint consecutive-bash` does not flag `.claude/skills/agnix-fix/SKILL.md` because the prose between the bash fences is 109 characters, above the 100-character breadcrumb limit, so no suppression was needed.
-
-**FINDING_7** was applied: `_is_wrong_correct_pair` in `python/lint_consecutive_bash.py` now includes `gap_lines` in its scan, and `test_wrong_correct_labels_only_in_gap_passes` was added in `python/test_lint_consecutive_bash.py`. All 26 consecutive-bash tests pass.The consecutive-bash unit tests finished successfully: **26 passed** in `python/test_lint_consecutive_bash.py`, including the new `test_wrong_correct_labels_only_in_gap_passes` case.

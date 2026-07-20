@@ -1,1 +1,0 @@
-All eight findings were applied. The background full `make py-test` run reported 2 failures in new tests (`test_sanitize_cell_strips_triple_backticks` and `test_tally_code_review_mav_retally_ledger_lifecycle`); both were fixed and now pass on a targeted re-run. `make py-lint` also passes.

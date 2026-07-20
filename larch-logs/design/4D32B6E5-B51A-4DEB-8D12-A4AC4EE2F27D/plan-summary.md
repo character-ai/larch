@@ -1,1 +1,0 @@
-Plan: add balanced fence detection to `/issue` batch parsing, gate generic and OOS boundary checks inside balanced fences, add focused parser regressions, and narrow the `/issue` authoring caution to unfenced `### ` body lines.

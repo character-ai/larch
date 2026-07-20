@@ -1,3 +1,0 @@
-Consolidating 35 raw items into merged findings with stable IDs, preserving verbatim suggested revisions (omitting placeholder “Address the concern above.” bullets), and listing OUT_OF_SCOPE items as separate findings with `[OUT_OF_SCOPE]` in each heading. Creating the formal plan document that contains the full aggregator output.
-
-

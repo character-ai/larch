@@ -1,1 +1,0 @@
-Add design re-entry session guard\n\nAdd a per-issue, per-PPID session-cache marker for /design completion and a Step 0b guard that refuses fresh same-session re-entry. Surface the new cancelled-reentry-guard outcome in final summaries and pin the prompt ordering with regression coverage.

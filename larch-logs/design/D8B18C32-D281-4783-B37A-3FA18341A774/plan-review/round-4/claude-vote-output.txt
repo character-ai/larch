@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the prefix glob `8[[:alnum:]-]*` in bash case matches `8a<script>` because `*` matches any characters including `<` and `>`; the current code accepts the string unchanged, so the `8a<script>` fixture IS a valid regression test that would fail if the rewrite is reverted

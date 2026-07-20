@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- plan explicitly says to apply "the same `is_message_enabled` / attribution rules `SimilaritiesChecker.close()` uses"; no custom semantics are added; reviewer misreads the plan's intent
-FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false

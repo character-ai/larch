@@ -1,1 +1,0 @@
-Plan updates `/implement` prompt text plus the rebase probe contract so green-path runs skip vestigial reference loads. Scope stays to `skills/implement/SKILL.md`, `scripts/rebase-checkpoint-probe.sh`, and `scripts/rebase-checkpoint-probe.md`.

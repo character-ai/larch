@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already explicitly requires each child to preserve immutable identity fields in its terminal merge envelope.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The proposed merge-first lookup is an implementation detail for a speculative state; the plan's seeded-before-start contract and fail-closed behavior remain sufficient.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior-round OOS observation.
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The plan requires identity seeding before launch and fail-closed handling for missing live identity, so the asserted early-window safe-rejoin case lacks a concrete trigger.

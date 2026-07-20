@@ -1,3 +1,0 @@
-file-design-oos.sh prepare reported FILE_DESIGN_OOS_DEPS_AVAILABLE=false — intra-batch dependency pre-pass unavailable or empty; invoking /larch:issue without --intra-batch-deps-file/--no-dep-llm (graceful degrade).
---- prepare stderr ---
-file-design-oos: oos-file-conflict-deps.sh exit 0 — graceful-degrade (no caller TSV)

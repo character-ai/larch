@@ -1,8 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	5	0	4	0.000000
-edge-cases	correctness	1	0	0	0	n/a
-testing	risk-integration	1	5	3	1	0.600000
-codex-generic	code-quality	1	0	0	0	n/a
-dyn-research-parity	correctness	1	0	0	0	n/a
-dyn-callsite-cutover	risk-integration	1	0	0	0	n/a
-dyn-test-replacement	code-quality	1	0	0	0	n/a

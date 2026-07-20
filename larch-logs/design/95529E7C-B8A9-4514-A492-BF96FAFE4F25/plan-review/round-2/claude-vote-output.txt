@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- cannot confirm pre-existing stale ordering text in current docs; proposed fix describes an ordering (no pre-publish render, marker at end) that contradicts both the current design-publish.md and the plan's preserved call sequence
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

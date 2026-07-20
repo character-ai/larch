@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- launch-review.sh writes ${OUTPUT}.json only inside _launch_cursor() (line 660+); the codex path exits at line 656 before that block; no codex-primary .json sidecar is produced
-FINDING_3: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- session dir contains no *.dirty-tree.tracked-paths files; finding is speculative about non-existent producers
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan's edge-cases section already states "Use *-output*.txt (not *-output.txt) so phased fallbacks are covered"; the anchor rule applies to the entire branch; this is an implementation-fidelity nit, not a plan gap
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

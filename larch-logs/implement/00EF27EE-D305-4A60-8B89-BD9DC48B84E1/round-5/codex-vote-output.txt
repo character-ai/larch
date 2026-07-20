@@ -1,3 +1,0 @@
-FINDING_8: NO -- documented run-log churn is intentional workflow behavior, not a concrete issue worth filing.
-FINDING_12: YES
-FINDING_13: NO -- the omitted positional replay is an explicit Tier 3 contract limitation with no current registry-backed failure case.

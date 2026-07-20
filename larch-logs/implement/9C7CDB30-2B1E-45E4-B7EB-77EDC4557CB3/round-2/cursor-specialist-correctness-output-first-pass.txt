@@ -1,9 +1,0 @@
-Reviewing the branch diff against the plan: reading the pre-computed diff and commit history (read-only git commands).
-
-Checking `scan_oos_category_mangle` in context (`set -e`, jq behavior) and whether `outcome`/`phase` casing matches producers.
-
-Checking whether `category-stats` (synthetic) uses the same definition of "mangled" as `oos-category-mangle`.
-
-Verifying the orchestrator-flow line vs. post-report step 4 for the zero-findings path:
-
-

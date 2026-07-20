@@ -1,4 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- standalone diagram-rejected is covered by the sanitizer-rejection category; naming it separately would add inventory verbosity the plan deliberately avoided
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- committed run logs are intentional per docs/run-logs.md, not a defect worth raising
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- rebase failure paths are already listed; flush-skip is harness-level detail beyond qualitative inventory-row scope

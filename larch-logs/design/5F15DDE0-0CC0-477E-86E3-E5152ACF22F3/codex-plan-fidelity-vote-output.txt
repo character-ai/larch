@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- degraded-fallback ordering is real, but the plan explicitly excludes failure-path rendering changes.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- summary-last does not move the run-summary heading off the first nonempty line, so the tolerance check still sees it.
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the degraded-fallback ordering issue in FINDING_1.

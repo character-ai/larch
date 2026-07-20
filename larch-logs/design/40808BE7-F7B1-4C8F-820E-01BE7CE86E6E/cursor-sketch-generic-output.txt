@@ -1,4 +1,0 @@
-Exploring the test harness and attestation-strip logic to draft an implementation approach.
-Checking how `merge_plus_spurious_attest` differs from the proposed success case and confirming validation behavior for blocks + impure attestation.
-Creating the implementation plan from the harness and aggregation pipeline analysis.
-

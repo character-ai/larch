@@ -1,6 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- explicit arm is intentional contract documentation; phased and negative fixtures provide regression coverage without narrowing the broad allow.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- codex-plan-* is live in design tests and design intentionally excludes raw dyn outputs, so implement-scoped plan is appropriate.
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already anchors deny-then-allow ordering and negative prompt/events tests guard misplacement.
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- larch-log.md already frames unchanged behavior; harness md bullet is optional nit.
-OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mirrors pre-existing phased-cursor harness-doc gap while larch-log.md already documents phased static Codex inclusion.

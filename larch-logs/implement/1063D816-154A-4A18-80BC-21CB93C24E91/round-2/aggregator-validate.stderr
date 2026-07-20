@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Update Step 5c item 2 to list the terminal-sentinel publish gate for `review_sta')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add an explicit carve-out: the step-3 terminal gate applies only when `STEP3_REV')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Add `test_publish_refuses_complete_without_step3_sentinel` mirroring the cap-hit')
-warning: fix text for slot 'dyn-asset-drift-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Wire the loop source paths into `relevant-checks.sh` as above, and optionally ad')

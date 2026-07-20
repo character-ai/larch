@@ -1,3 +1,0 @@
-warning: fix text for slot 'dyn-test-target-drift-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Add pytest integration tests that stub subprocesses and assert bootstrap invokes')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'M rename reason token to dirty-tree baseline failed  ### OOS_2: [OUT_OF_SCOPE] P')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Confirm no live references; drop stale plan row if already migrated elsewhere  #')

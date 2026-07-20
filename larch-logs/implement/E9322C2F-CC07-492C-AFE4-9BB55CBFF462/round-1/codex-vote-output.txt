@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- test-local heredoc duplication is real but not worth adding abstraction here
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the new producer emits COMBINED, so fail-closed handling for inconsistent legacy/stub KVs is more robustness than warranted
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- zero can reasonably mean fail zero in a test stub and extra validation adds little value
-FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate parsing is small and intentional enough that a standalone follow-up issue is not warranted
-FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
-FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- this is speculative future-proofing for an 8-slot script, not worth filing now

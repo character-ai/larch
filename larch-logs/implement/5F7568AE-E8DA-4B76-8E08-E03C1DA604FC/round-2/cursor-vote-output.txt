@@ -1,9 +1,0 @@
-Reading the ballot and session context to verify each finding before voting.
-
-Verifying ballot claims against the repo: reading cited sections and diff context.
-
-Verifying `test-review-core.sh` stub and `review-and-fix.md` on mixed full/compact wording:
-
-Verification complete: confirmed `review-core.sh` zero-findings branch exits at line 392 before `emit-tally.sh` (lines 502–516); `write_rejected_findings_aggregate` matches findings 4, 7, 10, 18; `render_rejected_findings_for_tally` awk matches findings 5 and 16. Submitting the plan with vote rationale.
-
-

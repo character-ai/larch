@@ -1,1 +1,0 @@
-1	docs/run-logs.md:349-358 plan changes self-review tally cli but leaves the canonical run-log contract documenting removed --accepted/--rejected flags. scenario: after the pr, docs tell callers that counts are passed via flags, but the parser rejects those flags and derives counts from files

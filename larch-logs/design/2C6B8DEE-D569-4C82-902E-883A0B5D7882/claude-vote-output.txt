@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- MainAgent fallback voter path lacked rubric before this feature too; no new regression introduced, behavior on that path is unchanged
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

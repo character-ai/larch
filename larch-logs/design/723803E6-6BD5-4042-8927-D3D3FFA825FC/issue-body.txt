@@ -1,9 +1,0 @@
-Current order (inside design-publish.sh, Step 5c)
-
-  1. Post the plan to the issue — plan-block-write.sh writes the larch:plan block into issue #3461. Sets PLAN_WRITE_OK=true.
-  2. Upsert the architecture-diagram comment.
-  3. Create + merge the logs-flush PR — design-log-publish.sh (disposable worktree → push → gh pr create → wait for required CI → gh pr merge --squash --admin --delete-branch). It emits PUBLISH_OK=true only after the squash --admin merge completes.
-  4. Render the final summary.
-  5. Rename [DESIGNING] → [DESIGNED] — tracking-issue-write.sh rename --state designed, but gated on PUBLISH_OK == true (if [ -n "$SESSION_ID" ] && [ "$PUBLISH_OK" == true ]).
-
-TODO: Move (5) to right after (2), dropping gating on  PUBLISH_OK == true, of course, as publish happens will now be happening in the subsequent rather than earlier (as now) step.

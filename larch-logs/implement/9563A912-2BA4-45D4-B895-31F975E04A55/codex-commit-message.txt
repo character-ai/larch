@@ -1,5 +1,0 @@
-Wrapperize implement skill Bash fences
-
-Add self-rehydrating wrappers for the remaining /implement Bash blocks, move heavy routing prose into references, and re-point the structural harnesses at the wrapperized prompt shape.
-
-Inline-triage rule 1: Updated prompt prose that still described inline session-key rehydration after wrappers took ownership.

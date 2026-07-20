@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan explicitly re-points --manual-gate-b greps and jq filter to the driver in separate bullets; concern is about grouping clarity, not missing substance
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- already-planned detection via naive grep matches today's inline behavior; this refactor does not regress the pre-existing divergence from plan-block-read.sh semantics
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false

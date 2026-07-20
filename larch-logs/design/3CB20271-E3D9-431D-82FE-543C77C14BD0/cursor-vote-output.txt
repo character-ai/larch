@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- pytest is already the defined parity authority; the optional pre-deletion harness step is procedurally ambiguous but not required to ship the port.
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- stale failure log wording is cosmetic triage noise; dispatch behavior and KV contract are unchanged.
-FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false

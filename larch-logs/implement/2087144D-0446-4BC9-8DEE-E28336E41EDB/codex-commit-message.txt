@@ -1,7 +1,0 @@
-Reconcile sparse allowlist drift during upgrade
-
-Move the install sparse allowlist into a sourced-only library, make /upgrade-larch gate its already-latest early exit on a matching sparse cone, and emit a machine-readable reconcile signal after same-version cone repairs.
-
-Teach /release to run the working-tree upgrade script against the active cache root and persist cone-reconcile state for restart guidance. Add a SessionStart warn-only sparse-cone drift probe and update operator/security docs.
-
-Extend the upgrade and SessionStart harnesses for sparse-cone drift, release root resolution, captured reconcile detection, and fail-open hook behavior.

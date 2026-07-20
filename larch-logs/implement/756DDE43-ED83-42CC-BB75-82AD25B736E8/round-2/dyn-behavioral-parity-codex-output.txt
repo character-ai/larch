@@ -1,9 +1,0 @@
-### In-Scope Findings
-- **correctness** `python/ci_cli.py:181-201` — `ci failed-jobs` does not preserve the `scripts/ci-failed-jobs.sh:42-148` contract: it lacks `--output-tsv`, uses different KV names, emits an extra JSON line, and returns 0 for `in_progress`/`error` states instead of the legacy 3/1 exits. Any cutover expecting `FAILED_JOBS_COUNT`, `FAILED_JOBS_FIXABLE`, `FAILED_JOBS_UNFIXABLE`, and/or a TSV will mis-handle failed CI classification. **Suggested fix:** Add `--output-tsv`, restore the legacy KV names and TSV/plain-row output behavior, and return the same usage/gh-error/in-progress exit codes as the shell helper.
-
-- **correctness** `python/git.py:943-960` — `remote_branch_state()` is now the shared implementation used by `python/finalize.py:259`, but it dropped the transient retry/redacted-error behavior from `scripts/check-remote-branch.sh`; a one-off transport failure now reports `state="error"` immediately and can stall finalize instead of succeeding after retry. **Suggested fix:** Wrap `git ls-remote` in the existing transient retry helper and redact/fold the captured error before returning `RemoteBranchState(error=...)`.
-
-- **correctness** `python/ci_cli.py:61-86` — `ci decide` silently accepts invalid values: unknown statuses fall through to `ACTION=wait`, invalid `--conflicted` values are treated as false, and negative counts are accepted by argparse. This diverges from `scripts/ci-decide.sh` validation and can turn malformed input into a merge/wait decision. **Suggested fix:** Validate status, conflicted, and all numeric fields exactly like the shell helper; return usage exit 1 on invalid input before emitting a decision.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

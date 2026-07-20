@@ -1,4 +1,0 @@
-Reviewing the cited code and locating reviewer output files to normalize findings and produce the aggregator plan.
-Checking how the aggregator validates output format and whether positive attestations should be excluded:
-Producing the normalized aggregator output from the 27 input items, excluding eight positive attestations (FINDING_14–16, 20–24) that require no action.
-

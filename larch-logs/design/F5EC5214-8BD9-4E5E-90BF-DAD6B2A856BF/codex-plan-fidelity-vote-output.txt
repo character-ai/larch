@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected FINDING_7 with no materially new evidence; the plan already requires preserving every CLI entry function's exact KEY=value grammar.
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected FINDING_9 with no materially new evidence; the plan's descriptor-backed artifact-path and invalidation coverage already requires preserving per-kind behavior.

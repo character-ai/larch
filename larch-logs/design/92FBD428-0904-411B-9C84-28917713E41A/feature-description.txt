@@ -1,7 +1,0 @@
-Reduce static archetype counts by 1 in /implement, /review, and /design:
-
-Reduce static archetype counts by 1 in /implement, /review, and /design:
-- /implement and /review : combine security with edge-cases
-- /design : migrate Edge-cases to Architecture/Standards and Failure-modes to Pragmatism/Safety
-- correct all the documentation and other relevant places, with bias towards removing actual reviewer counts rather than modifying, as this number changes with time as we continue to experiment.
-- verify that all places that spawn reviewers are written/coded to do so on a per-existing archetype basis, so that changing the number of archetypes does not require changing that .md/bash/python code

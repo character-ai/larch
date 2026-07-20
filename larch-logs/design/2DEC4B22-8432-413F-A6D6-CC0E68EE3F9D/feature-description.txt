@@ -1,3 +1,0 @@
-# In /design, replace drafter agent (that writes plan right before asking user for approval and then review) by Claude Opus 4.8
-
-Currently, I believe the Waterfall backup for it is Codex -> Claude -> Cursor, and I want to switch Codex and Claude, but to make sure Claude is invoked with Opus 4.8 model, not Sonnet.

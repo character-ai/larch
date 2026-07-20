@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale log message in failure path is real but cosmetic; feature delivers correctly without this fix and it does not clear a necessity gate
-FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false

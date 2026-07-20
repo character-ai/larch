@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-- **architecture** `scripts/test-design-structure.sh:86` — The newly introduced `assert_no_direct_step3b_step4_routes` function uses `BEGIN { IGNORECASE=1 }` in its awk invocation. `IGNORECASE` is a gawk-only extension; BSD awk (macOS system `/usr/bin/awk`) silently treats it as an ordinary variable assignment with no semantic effect, making the fourth routing-verb rule `/(continue|proceed|auto-continue|route|jump|enter|go)/` case-sensitive only on macOS. Any future prose using a capitalised routing verb (e.g. `"Proceed from Step 3b to Step 4"`) would evade the guard entirely. Today's scanned content happens to use lowercase verbs exclusively, and lines containing `"Step 3b completion boundary"` are exempted by the first rule regardless of case, so no current violation is masked — but the guard is architecturally incomplete on the repo's primary development platform. **Suggested fix:** Replace `BEGIN { IGNORECASE=1 }` with portable `tolower()` matching: capture `lower = tolower($0)` at the top of each record, and change the fourth rule to `lower ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && /Step 3b/ && /Step 4/`. `tolower()` is supported by all standard awk implementations including BSD awk and one-true-awk.
-
-### Out-of-Scope Observations
-
-NO_ISSUES_FOUND

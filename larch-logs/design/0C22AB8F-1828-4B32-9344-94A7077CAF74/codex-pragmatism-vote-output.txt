@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The plan already updates `step-8-ship.md` to replace the retired harness reference.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already requires Step 18 output-ordering parity; prescribing its test-node coupling is unnecessary.
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- This duplicates neutral ledger FINDING_7 without materially new evidence.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Excluding legacy assertions violates the explicit acceptance requirement that every assertion map to pytest before deletion.

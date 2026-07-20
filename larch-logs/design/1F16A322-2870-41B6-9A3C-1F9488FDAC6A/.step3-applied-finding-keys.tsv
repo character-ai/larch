@@ -1,9 +1,0 @@
-1	literal writer requirements could strip manually authored `operator_override` data during `--write`, reactivating the gate and losing operator decisions.
-1	the documented makefile regeneration path still invokes `--write` without the required reason.
-1	check mode could pass when live metrics match or are below the baseline even though committed history violates the 14-day repeat-bump rule.
-1	including lint code in identity could allow two different complexity metrics for the same function to evade the same-symbol repeat-bump rule.
-1	new rows with empty history would fail to record their initial metric, allowing a subsequent bump to be misclassified as the first increase.
-1	a whitespace-only override reason could incorrectly silence the gate.
-1	the debt report could double-count duplicate baseline rows unless it validates identity uniqueness independently.
-2	`--reason` and stored `reason` values may accept whitespace-only text, weakening the required audit trail.
-2	the proposed strict history ordering may reject valid post-decrease rebounds or make same-date cross-code events and override handling nondeterministic.

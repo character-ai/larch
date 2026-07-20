@@ -1,9 +1,0 @@
-Reading the ballot and any referenced context files.
-
-FINDING_1: YES
-FINDING_2: EXONERATE -- run-log snapshot vs plan framing is real but intentional `larch-logs` practice, so a standalone tracking issue is unnecessary.
-FINDING_3: EXONERATE -- comment still documents fail-closed behavior; verbatim plan wording would be churn without functional gain.
-FINDING_4: YES
-FINDING_5: EXONERATE -- stale header is real but a normal follow-up doc/PR suffices without a GitHub issue.
-FINDING_6: EXONERATE -- `/fix-issue` mention in `token-cost.md` is minor doc drift that does not need its own issue.
-FINDING_7: NO -- historical `CHANGELOG.md` entries are expected archaeology, not defect tracking.

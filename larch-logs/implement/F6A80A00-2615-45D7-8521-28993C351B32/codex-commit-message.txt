@@ -1,3 +1,0 @@
-Extract plan-voter coverage helpers and harden tally status
-
-Move plan-voter coverage accounting and interleaved status KV emission into lib-voter-coverage while preserving dispatcher stdout order. Raise the external waterfall voter timeout to 1860s and document per-round design tmpdir routing. Ensure tally-plan-review emits TALLY_PLAN_REVIEW_STATUS=tally-error on every non-zero exit via an early EXIT trap, and extend the dispatcher/tally harnesses for the new contracts.

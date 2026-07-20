@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: NO -- The brace group is already in an `|| true` list, so `errexit` does not create the claimed early-abort surface for the added `head`.
-FINDING_3: YES
-FINDING_4: YES
-FINDING_5: EXONERATE -- The bounded snippet is legitimate to question, but `append-tool-failure.sh` is already a verbatim fenced-log path and sanitizing this case adds more complexity than warranted.

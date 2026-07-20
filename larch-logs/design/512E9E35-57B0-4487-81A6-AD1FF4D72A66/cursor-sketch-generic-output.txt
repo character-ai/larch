@@ -1,3 +1,0 @@
-Exploring the codebase to map the current design-tier architecture and draft a read-only implementation plan.
-Creating the implementation plan from the codebase exploration.
-

@@ -1,7 +1,0 @@
-Exploring the codebase read-only to map failure modes for the plan-review-loop refactor. Searching and reading the cited scripts and design flow.
-
-Checking how `test-design-driver.sh` treats `TALLY` and whether `tally-plan-review` can run with zero voter files:
-
-Noting a documentation vs. implementation mismatch: `plan-review.md` still specifies Voter 1 as an Agent-tool subagent while the binding decision moves it to `launch-claude-review.sh`.
-
-

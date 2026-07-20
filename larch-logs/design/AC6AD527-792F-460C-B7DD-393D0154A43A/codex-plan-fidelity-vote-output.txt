@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the placement is an edge-case hardening preference, not a required part of the stalled-drive fix.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- moving the reset later is sensible, but the plan's stated re-entry reset still covers the feature path and this is not required for correctness.

@@ -1,1 +1,0 @@
-{"phase":"review","step":"9a.1","category":"OOS","body":"FINDING_18: stale Step 18 session-transcript doc refs in larch-log-batches.md/ship-pr.sh — folded inline per doc-drift rule. FINDING_11: pre-existing refresh-run-logs commit false-success — logged, not filed per rule 2."}

@@ -1,3 +1,0 @@
-Document Monitor one-shot wait ban
-
-Add explicit /implement and /design guidance banning Monitor for one-shot completion tracking, and document the narrow premature-notification recovery waiter exception. Extend the anti-polling structural harness and sibling docs to pin the new literals.

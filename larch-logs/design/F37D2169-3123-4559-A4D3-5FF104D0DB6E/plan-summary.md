@@ -1,1 +1,0 @@
-Add an operator assessment waiver and a generic manual-merge reconciler. Reorder operator-bail recovery before final reporting, preserve deferred terminal emission across turns, harden Step 18 re-entry, and repair run `BD267D84`.

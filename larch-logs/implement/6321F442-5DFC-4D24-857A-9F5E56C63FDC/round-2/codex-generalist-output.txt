@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `code-quality` — `scripts/test-dispatch-code-voters.sh:208`: the new round-2 test expects `DEGRADED_PANEL_WARNING=...1/2...`, but the scenario at `scripts/test-dispatch-code-voters.sh:200` should produce 2 effective judges. With `--round-num 2 --cursor-available false`, `scripts/dispatch-code-voters.sh:371-376` writes only the Cursor slot and disables Codex fallback; then `scripts/dispatch-with-waterfall.sh:281-303` correctly falls through to Claude phase 3, so Voter 1 plus Voter 3 fallback both produce output and no degraded warning is emitted. Update the assertion to require no degraded warning, or make the Claude fallback fail if the test is meant to exercise degradation.
-
-2. **Important** `risk-integration` — `skills/shared/voting-protocol.md:66-69`: shared prompt/docs contracts still say code review launches all three voters every round, while the implementation now omits Codex after round 1. The stale contract also appears in `README.md:84`, `docs/workflow-lifecycle.md:154`, `docs/skills.md:95`, `docs/collaborative-sketches.md:55`, `skills/shared/topology.tsv:13`, `docs/topology.md:23`, and the guard in `scripts/test-quick-mode-docs-sync.sh:86-92`, so consumers and future edits will be pushed back toward the old Codex-every-round policy. Update those surfaces and regenerate topology docs where applicable.
-
-3. **Nit** `code-quality` — `cursor:1`: the branch adds a repo-root file containing only `FINDING_1: YES`. This looks like captured reviewer/voter output and is unrelated to the plugin runtime or docs. Remove the file from the branch.
-
-I attempted to run `bash scripts/test-dispatch-code-voters.sh --section happy`, but the read-only sandbox blocked its temp directory creation with `Operation not permitted`.

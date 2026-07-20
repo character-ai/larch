@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `python/ci_cli.py:37-88` — The new CI CLI entrypoints dropped legacy argument validation: `status_main`/`wait_main` accept unsupported `--base-remote`/`--base-ref` and negative numeric values, then `gather_status` converts the resulting fetch failure into `CI_STATUS=pending` (`python/ci_monitor.py:401-403`); `decide_main` also accepts arbitrary `--ci-status`, negative counters, and non-boolean `--conflicted`, producing actions such as `ACTION=wait` instead of the old usage failure. This can turn caller typos into long CI waits or wrong decisions after cutover. **Suggested fix:** Restore the old validations in `ci_cli.py` before calling `ci_monitor`: reject unsafe base labels, require non-negative integers, require `ci_status in {pass,fail,pending,merged,error}`, and require `conflicted` to be `true|false`; preserve the old exits/status KVs (`ci status` emits `CI_STATUS=error`, `ci wait`/`ci decide` return usage exit 1).
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

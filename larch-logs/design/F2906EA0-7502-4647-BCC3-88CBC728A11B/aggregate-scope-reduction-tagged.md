@@ -1,7 +1,0 @@
-### FINDING_1:
-- **Reviewer(s)**: Cursor-Innovation
-- **Severity**: latent
-- **Focus area**: architecture
-- **Location**: python/agents.py:155
-- **Concern**: [SCOPE-REDUCTION] Plan renames SerialLockState to StartupLockState even though the approved outline only mandates external_startup_lock_* helpers and LARCH_EXTERNAL_STARTUP_LOCK_* env vars. Scenario: The rename fans out across python/test_agents.py python/test_launch_review.py python/test_review_and_fix.py and monkeypatch type hints without changing runtime behavior
-- **Proposed resolution**: Keep the SerialLockState dataclass name; rename only the acquire/release helpers env reads and lock path

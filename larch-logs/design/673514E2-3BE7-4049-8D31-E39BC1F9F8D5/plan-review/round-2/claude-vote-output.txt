@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plan says "no 2>&1" not "guarantee live renderer stderr"; fd juggling adds maintenance complexity disproportionate to latent benefit
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

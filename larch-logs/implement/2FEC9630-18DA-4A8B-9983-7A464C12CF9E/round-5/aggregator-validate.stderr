@@ -1,4 +1,0 @@
-warning: fix text for slot 'dyn-design-callsite-cutover-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Call `design_require_plugin_root` immediately after `design_source_env_optional`')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Remove stub in a hygiene pass.  ### OOS_3: [OUT_OF_SCOPE] Absorbed shell helpers')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Delete or migrate test-trailer-helpers.sh when safe  ### OOS_4: [OUT_OF_SCOPE] `')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Mention python/plan_quality.py instead  ---  **Merge notes (diagnostic only):** ')

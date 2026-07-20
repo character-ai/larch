@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale failure prose is real but cosmetic and does not make the feature incomplete, broken, unverifiable, or regressed
-FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false

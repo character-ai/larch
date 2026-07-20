@@ -1,1 +1,0 @@
-{"phase":"code-review","step":"9a.1","category":"OOS","body":"## Rejected / Out-of-Scope Observations (not filed)\\n\\n### FINDING_4: Monolithic branch mixes unrelated concerns\\nVote: EXON=3 — exonerated, not filed\\n\\n### FINDING_5: Theoretical vacuous _all_flushes\\nVote: EXON=2 NO=1 — exonerated, not filed"}

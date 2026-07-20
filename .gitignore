@@ -8,6 +8,7 @@ __pycache__/
 skills-lock.json
 node_modules/
 /target/
+/larch-logs/
 .parallel-tests-timings.json
 .parallel-tests-last-failures.txt
 .parallel-tests-last-output/

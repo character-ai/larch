@@ -1,1 +1,0 @@
-{"body":"","labels":[],"number":2395,"title":"Similar to Issue #2382, try to have ship-pr.sh handle errors without ever bailing back to main agent (by calling subagents if needed)"}

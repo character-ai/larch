@@ -1,5 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- round rows with timestamps outside any step interval are silently omitted (not misattached to Step 7); the plan already documents this as Failure Mode #1; the suggested fixes add complexity without improving on the documented mitigation
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- excluding revise time from round duration is a defensible design choice for a best-effort telemetry feature; the multi-exit-path fix adds meaningful complexity for a diagnostic-only field
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

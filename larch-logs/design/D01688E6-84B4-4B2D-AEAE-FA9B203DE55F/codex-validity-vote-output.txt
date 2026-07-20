@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Duplicates prior neutral finding; the blocked-by prerequisite is already explicit in the scope anchor.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Work item 8 explicitly requires updating tier-matrix prose in both panel doc_fallback strings.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

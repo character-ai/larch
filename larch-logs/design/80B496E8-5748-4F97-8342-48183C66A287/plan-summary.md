@@ -1,1 +1,0 @@
-Route default MODERATE `/implement` coding to Cursor with `grok-4.5`. Preserve explicit coder and model overrides, other difficulty tiers, and all non-coder roles. Add matching model attribution, pricing, and focused regression tests.

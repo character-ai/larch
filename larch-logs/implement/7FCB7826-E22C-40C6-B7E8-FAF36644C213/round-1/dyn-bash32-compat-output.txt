@@ -1,8 +1,0 @@
-Reviewing branch changes for Bash 3.2 compatibility: reading the diff, key files, and commit history.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** (verification, not a defect): The Step 5c orchestrator snippets in `skills/design/SKILL.md` (lines 1319–1344) reuse the same Bash 3.2 patterns already used in Step 0b and Step 3 (`printf -v` for allowlisted keys, `${!_key:-}` for stdout merge under `set -u`). `printf -v` and indirect expansion `${!name}` are available in macOS Bash 3.2; `${!_key:-}` is the correct `set -u`-safe form when the target may be unset or empty.
-- **correctness** (verification): `skills/design/scripts/design-publish.sh` mirrors `design-init-runparams.sh` for `validate_repo` (`=~` with a simple character class), `local -a` / `WARN_LINES+=()`, `${WARN_LINES[@]+"${WARN_LINES[@]}"}`, and here-strings (`<<<`). None of the forbidden constructs from `BASH_AUTHORING.md` / `scripts/lint-bash32.sh` (`declare -A`, `mapfile`, `${var^^}`, `&>>`, `local -n`) appear in the new script or harness.
-- **correctness** (scope): Scout notes about `backfill_install_stamps` / `shopt nullglob` refer to `skills/upgrade-larch/scripts/upgrade-larch.sh`, which is outside the Step 5c `design-publish` extraction diff; no change to that helper in this feature.

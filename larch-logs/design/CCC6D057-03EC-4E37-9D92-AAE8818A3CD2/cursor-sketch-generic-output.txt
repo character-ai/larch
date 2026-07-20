@@ -1,3 +1,0 @@
-Exploring the codebase for paired-PID, dispatch-with-waterfall, and research/validation phase docs to draft an implementation plan.
-Creating the implementation plan from the codebase review.
-

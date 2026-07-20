@@ -1,7 +1,0 @@
-Reading the ballot and session context to verify each finding before voting.
-
-Verifying claims against `plan-context.txt`, `diff-context.txt`, and the repo's `ci.yaml`.
-
-Verified workspace `ci.yaml`: grep matches the ballot (direct `actions/cache@v5` at lines 54, 101, 109, 155, 198; comment at 23–24 still references transitive `actions/cache@v4`). Plan and diff context match the ripgrep step bump. Submitting the plan tool with the adjudication summary, then the required vote lines.
-
-

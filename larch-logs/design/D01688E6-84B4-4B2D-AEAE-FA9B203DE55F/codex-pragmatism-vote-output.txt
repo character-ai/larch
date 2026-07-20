@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The scope anchor already states #6825 must land first and this duplicates a prior neutral finding without new evidence.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Work item 8 explicitly requires updating both panel doc_fallback strings, including the design plan-review panel wording.
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,3 +1,0 @@
-Scope design background reviewer status output
-
-Limit the compact reviewer table guidance to Step 3 review and resume waits, and give Step 5c plus Final summary explicit plain progress breadcrumbs for their background fences.

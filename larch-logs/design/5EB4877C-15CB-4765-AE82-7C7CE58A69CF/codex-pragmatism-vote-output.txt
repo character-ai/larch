@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stdout vs stderr is not a required contract for this new lint, so this is not necessary to ship it correctly.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the stated regex does not match a bare `ok -->`; it already requires a non-empty reason.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- absolute line-number handling matters, but the plan already points at the sibling frontmatter/body split and this extra wording is not clearly required.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the starter pattern set is a heuristic, so adding this extra phrasing is not necessary for the mandated matrix or live-tree check.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- this is a scope-reduction preference, not a blocker; the plan already allows a local parser if needed.
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same as above; reusing the helper may be nicer, but the approved design still permits a small local parser.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- this is a duplicate of the local-parser scope-reduction concern and not a distinct filing-worthy OOS observation.

@@ -1,7 +1,0 @@
-Reading the pre-computed diff and commit history (read-only).
-
-Searching the diff for changed files and security-sensitive patterns.
-
-### In-Scope Findings
-
-No in-scope issues found.

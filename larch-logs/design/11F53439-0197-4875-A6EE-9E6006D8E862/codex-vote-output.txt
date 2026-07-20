@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- More production-like coverage is legitimate, but the planned test still exercises the failing write-tally gate and cumulative rewrite path.
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- This is future-regression hardening, not required to fix the current tally freeze.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan scopes the assertion to a stub logger, so an exact LOG_WRITTEN-only stdout check would not break the planned test.
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Clarifying the already-landed producer fix may help, but the plan already confines the production change to voting.py.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stray validation warnings for discarded diagnostic body text do not clear the backlog materiality bar.
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Deleting validation instead of warning is a simplification preference, not a material future issue.
-OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Loss of a warning breadcrumb on a now-successful flush is diagnostic polish, not worth a tracked issue.

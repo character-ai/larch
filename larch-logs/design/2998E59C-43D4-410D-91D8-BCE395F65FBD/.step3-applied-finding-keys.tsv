@@ -1,1 +1,0 @@
-1	the shard partition guard inventories only `test-*` recipes, so valid non-`test-*` bash leaves such as `write-final-report-bash-harness` are reported as orphaned. the guard, `.phony` checks, and self-tests must consistently recognize shard-bound direct-bash leaves while excluding aggregates and pytest recipes.

@@ -1,3 +1,0 @@
-### FINDING_1: Approach step #3 should mention STEP_FAILED=session-setup for consistency
-- **Concern**: In the Approach section, step #2 emits both `GATE_ERROR=<text>` and `STEP_FAILED=session-entry-gate` on contract violation, but step #3 only forwards `PREFLIGHT_ERROR=...`. The Failure modes and Testing strategy sections both require the `STEP_FAILED=session-setup` line in the B-preflight assertion. The Approach prose should match.
-- **Proposed resolution**: Update Approach step #3 to read: "On non-zero exit, forwards captured `PREFLIGHT_ERROR=...` to stdout, emits `STEP_FAILED=session-setup`, and exits **2**." This keeps the Approach internally consistent with Failure modes and Testing strategy.

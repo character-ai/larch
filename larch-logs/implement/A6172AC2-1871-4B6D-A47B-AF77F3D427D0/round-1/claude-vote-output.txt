@@ -1,7 +1,0 @@
-I cannot read the ballot — every attempt to access `<TMPDIR>/round-1/findings.md` triggers a permission prompt that hasn't been approved yet.
-
-**To unblock me, please do one of:**
-
-1. **Approve the permission prompt** that appears when I try to read the file (look for a "Allow" button in the Claude Code UI for that path).
-2. **Add the path to the allow-list** — run `/update-config` and add `~/.cache/larch/sessions/**` to the read-allowed paths.
-3. **Paste the ballot contents** directly into the chat.

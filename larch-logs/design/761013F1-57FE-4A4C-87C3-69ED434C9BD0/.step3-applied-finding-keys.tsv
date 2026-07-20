@@ -1,1 +1,0 @@
-1	the current seeding plan omits `larch/report/tokens.py` `_vendor_rows`, and the planned test-reference check uses plain name text matching, which can falsely treat `_progress_vendor_rows` as coverage for `_vendor_rows`. that lets an unreferenced `*_rows` helper stay unratcheted while `make py-lint` still passes.

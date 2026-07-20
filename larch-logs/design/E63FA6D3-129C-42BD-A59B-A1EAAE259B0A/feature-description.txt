@@ -1,3 +1,0 @@
-# [BUG] /learn-from-bugs leaves around modified and committed larch-logs/shared/learn-from-bugs-state.json
-
-If /learn-from-bugs does indeed try to keep state between invocation in this file, it should create a proper PR after modifying this file at the end of its run, and merge this PR with --admin if available, or ask ask user to merge it if not.

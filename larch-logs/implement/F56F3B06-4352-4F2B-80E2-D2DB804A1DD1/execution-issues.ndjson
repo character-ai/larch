@@ -1,5 +1,0 @@
-### Warnings
-- **Step 1 (drop-bump-commit)**: DROPPED=false before rebase; worktree had untracked larch-log file. Re-bump ran successfully.
-### Warnings
-- **Step 10 (rebase 2)**: DROPPED=false before second rebase; worktree had pending larch-log writes. Re-bump to 26.0.23 succeeded.
-- **Step 10 (lint fix)**: version-bump-reasoning.md committed with double trailing newline; fixed by larch-log write+commit.

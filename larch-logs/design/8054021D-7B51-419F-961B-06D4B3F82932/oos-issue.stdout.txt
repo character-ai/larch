@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=5196
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/5196
-ISSUE_1_ID=4723048410
-ISSUE_1_TITLE=[OOS] [OUT_OF_SCOPE] Merged postplan-emit --with-plan-size still returns on check-size failure without execution-issues self-log
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

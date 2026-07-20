@@ -1,1 +1,0 @@
-Implemented plan, validated changes, and wrote the manifest atomically at the requested path.

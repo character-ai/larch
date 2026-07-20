@@ -1,6 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-dyn-meta-contract, Codex-dyn-doc-sync	exonerated	EXONERATE	partially-true	minor	adequate	false	Claude							YES	true	major	good	false	Cursor
-FINDING_2	Cursor-Edge, Codex-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-dyn-harness-realism, Cursor-dyn-doc-sync	accepted	YES	partially-true	major	good	false	Claude							YES	true	major	excellent	false	Cursor
-FINDING_3	Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements, Codex-dyn-meta-contract, Cursor-dyn-meta-contract, Codex-dyn-harness-realism	accepted	YES	true	blocker	excellent	false	Claude							YES	true	major	excellent	false	Cursor
-FINDING_4	Codex-Pragmatic, Codex-Requirements, Codex-dyn-meta-contract, Codex-dyn-harness-realism	accepted	YES	true	blocker	excellent	false	Claude							YES	true	major	excellent	false	Cursor
-FINDING_5	Codex-Edge	exonerated	EXONERATE	partially-true	nit	adequate	false	Claude							EXONERATE	true	nit	good	false	Cursor

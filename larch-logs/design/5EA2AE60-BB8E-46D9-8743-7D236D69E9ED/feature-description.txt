@@ -1,3 +1,0 @@
-# /implement, when it detects CI failures, still appears to use CI as the test…
-
-/implement, when it detects CI failures, still appears to use CI as the test grounds for its fixes, rather than going into a fix/test loop locally until tests pass locally and only then pushing — which is what it is supposed to do.

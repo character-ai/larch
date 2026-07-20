@@ -1,5 +1,0 @@
-# Add /deps public (exported) skill
-
-It should audit all currently open issues, grouping them into DESIGNING, DESIGNED, IMPLEMENTING, and REGULAR (the rest) sets.
-1. For all REGULAR tests, for each of their constituent parts, analyze if it's actual any longer as well as whether it's accurate w.r.t. latest main.  If not, rewrite the issue to bring it up to date.
-2. For each issue (regardless of what set it's in), figure out its dependencies.  NOTE: issues in any set but REGULAR can not have a new dependencies added to them (i.e., since they are already in flight, they can't be marked blocked), so, if reasonable, the potential dependency must be the one to block.  If, however, both are in flight, a loud warning should be emitted.  All new dependencies should be expressed using /block-issue.

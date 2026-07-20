@@ -1,2 +1,0 @@
-1	default porcelain status may report an untracked directory while path collection returns files beneath it, causing the intersection to omit valid review fixes and incorrectly return noop.
-1	the firm file set omits the test updates needed to verify fully clean, partially dirty, baseline-dirty, and related commit-fix scenarios.

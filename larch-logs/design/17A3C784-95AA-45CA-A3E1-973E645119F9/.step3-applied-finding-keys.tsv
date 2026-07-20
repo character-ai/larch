@@ -1,1 +1,0 @@
-1	the plan retains `stubrunner` and `_ok()` in `test_checks.py`, but acceptance requires all five modules to import shared support. this conflict could cause unnecessary factory adoption that breaks fd-routing and call-record semantics.

@@ -1,3 +1,0 @@
-Implemented. Manifest written with `status=complete`.
-
-Targeted tests passed. Full `make lint` was attempted but failed in sandbox at `test-collect-findings` due a quiet-log permission error under the session cache.

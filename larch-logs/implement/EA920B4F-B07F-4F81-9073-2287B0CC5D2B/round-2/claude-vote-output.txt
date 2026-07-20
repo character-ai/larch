@@ -1,8 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- stub satisfies the sibling-doc rule; omitting shard name and line cites is too minor for a GitHub issue
-FINDING_4: NO -- no concrete defect identified; reviewers surfaced the commit title itself as a finding
-FINDING_5: NO -- run-log flush commit surfaced without any identified behavioral concern or defect
-FINDING_6: YES
-FINDING_7: YES
-FINDING_8: EXONERATE -- self-reference omission in edit-in-sync prose follows existing harness stub style and has no behavioral impact; too minor to warrant a GitHub issue

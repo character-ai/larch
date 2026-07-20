@@ -1,8 +1,0 @@
-Reviewing the CI monitor test changes against the monitor control flow and RecordingRunner helpers.
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **correctness** `python/ci_monitor.py:416` — The consecutive-status bail reason is hardcoded as `"ci-status.sh returned no valid output 3 times consecutively"` while the threshold is `config.CI_MONITOR_STATUS_FAILURE_BAIL` (currently 3). `test_monitor_consecutive_status_errors_are_transient` and `test_poll_ci_three_consecutive_errors_bail` would still pass if the constant were lowered to 1, so the tests do not guard against that config/message drift. **Suggested fix:** Either derive the bail message from `CI_MONITOR_STATUS_FAILURE_BAIL` or add an assertion on `runner.calls` count for the `gh pr view` key so the test fails when fewer than three status-gather attempts occur before bail.
-
-- **code-quality** `python/test_ci_monitor.py:403-446` — The new monitor-level tests are thin but valid integration checks: `test_monitor_already_merged_short_circuit_ok` drives real `poll_ci()` → `gather_status()` with `state: "MERGED"` and would fail if `action` regressed to `"merge"` or `"wait"`; `test_monitor_consecutive_status_errors_are_transient` exercises the full three-iteration error loop (not the monkeypatched `poll_ci` path in `test_monitor_transient_bail_maps_to_transient`) and would fail if `monitor()` routed that bail to `Outcome.STALLED`. The main residual gap is no call-count assertion, not a false-positive stub default.

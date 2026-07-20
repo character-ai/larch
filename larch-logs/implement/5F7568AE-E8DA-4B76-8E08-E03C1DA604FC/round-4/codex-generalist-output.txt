@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `risk-integration` `scripts/ship-pr.sh:970`  
-   `write-final-report.sh` now runs after `create-pr.sh`, but `create-pr.sh` has already pushed the branch at `scripts/create-pr.sh:147-152`. The new `larch-log.sh commit` at `scripts/ship-pr.sh:996` creates a local log commit containing `final-summary.md`, but the clean happy path goes straight to CI/merge without another push, so GitHub merges the old remote head and the final summary is still absent from the merged run-log. Move final-summary rendering into a pre-push/pre-bump flush, or push the post-PR log commit before entering CI wait.
-
-2. **Important** `architecture` `skills/review/references/heavy-worker.md:65`  
-   The `/review --diff --subagent` contract still tells the heavy worker to write `review-summary.json` with `schema_version: 1` and no `panel` object. That path bypasses the updated `emit-tally.sh`, so standalone subagent reviews will continue producing summaries without `panel.scout_status`, `panel.static_slot_count`, `panel.dynamic_slot_count`, and `panel.total_slot_count`. Update the heavy-worker schema and return contract to match `emit-tally.sh` schema version 2.

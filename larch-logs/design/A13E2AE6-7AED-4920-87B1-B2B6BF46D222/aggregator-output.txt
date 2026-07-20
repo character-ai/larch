@@ -1,3 +1,0 @@
-Merging the supplied reviewer findings into a normalized structured list. Verifying a few cross-cutting details in the codebase so merged concerns stay accurate.
-Confirmed Tests 16–20 already exist in the harness and `run_rebase_rebump` calls `drop-bump-commit.sh` without `--allow-changelog-only` or a `commit-changelog` step. Producing the normalized aggregator output.
-

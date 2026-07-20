@@ -1,1 +1,0 @@
-Both review fixes are in place. The full `make py-test` run had failed on two tests that still expected the old sidecar error text; those are updated for the new hash-stamped sidecar format and item-mismatch validation. Both pass now, and `make py-lint` is clean.

@@ -1,9 +1,0 @@
-### FINDING_4: [OUT_OF_SCOPE] **[correctness]** (behavior clarification, not a defect): [`scripts/dispatch-code-voters.sh:240-246`](scripts/dispatch-code-voters.sh) runs `rm -f "$first_pass_sidecar"` before `check_voter_parse_rate` and the early return on non-`NOT_SUBSTANTIVE` statuses, so any pre-existing colliding first-pass sidecar beside that `voter_path` is cleared even when no retry runs; combined with [`scripts/dispatch-code-voters.sh:279-280`](scripts/dispatch-code-voters.sh) (retry-fail path never `cp`s), this matches the harness expectations in [`scripts/test-dispatch-code-voters.sh:381-382`](scripts/test-dispatch-code-voters.sh), [`scripts/test-dispatch-code-voters.sh:478-481`](scripts/test-dispatch-code-voters.sh), and [`scripts/test-dispatch-code-voters.sh:544-566`](scripts/test-dispatch-code-voters.sh) (stale seed removed; no sidecar on fail).
-- **Reviewer**: dyn-sidecar-lifecycle-output.txt
-- **Concern**: - **[correctness]** (behavior clarification, not a defect): [`scripts/dispatch-code-voters.sh:240-246`](scripts/dispatch-code-voters.sh) runs `rm -f "$first_pass_sidecar"` before `check_voter_parse_rate` and the early return on non-`NOT_SUBSTANTIVE` statuses, so any pre-existing colliding first-pass sidecar beside that `voter_path` is cleared even when no retry runs; combined with [`scripts/dispatch-code-voters.sh:279-280`](scripts/dispatch-code-voters.sh) (retry-fail path never `cp`s), this matches the harness expectations in [`scripts/test-dispatch-code-voters.sh:381-382`](scripts/test-dispatch-code-voters.sh), [`scripts/test-dispatch-code-voters.sh:478-481`](scripts/test-dispatch-code-voters.sh), and [`scripts/test-dispatch-code-voters.sh:544-566`](scripts/test-dispatch-code-voters.sh) (stale seed removed; no sidecar on fail).
-- **Suggested revision**: Address the concern above.
-
-
-Vote tally: YES=0 NO=1 EXON=2 JUDGE_ERROR=0 Result=rejected
-
-

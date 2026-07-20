@@ -1,5 +1,0 @@
-Add code-review forensic findings classification TSV
-
-Emit per-round code-review findings-classification TSV artifacts from tally-code-votes, propagate them through review-core and review logging, and publish implement round copies via larch-log write-round. Update voter prompts to request the four rating axes for FINDING_N and OOS_N ballot lines.
-
-Add review-side harness coverage for nested implement and standalone review TSV paths, degraded panels, empty ballots, log publishing, and parser parity.

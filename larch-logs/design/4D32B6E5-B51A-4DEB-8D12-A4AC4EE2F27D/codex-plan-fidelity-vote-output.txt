@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real issue, but it is a separate OOS/file_oos path and not required for the parser-fix feature to ship correctly
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already specifies balanced fence pairs and plain-text fallback for unclosed openers; this is a clarification, not a missing requirement
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- extra coverage would be nice, but the planned regressions already cover the risk-bearing fence-aware paths and this edge case is optional

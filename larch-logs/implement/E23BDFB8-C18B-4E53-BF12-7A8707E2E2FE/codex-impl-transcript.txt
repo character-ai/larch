@@ -1,4 +1,0 @@
-Implemented and wrote `manifest.json`.
-
-**Test run:**
-- `python3 -m pytest python/test_finalize.py python/test_ship.py` passed.

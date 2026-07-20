@@ -1,1 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/5014\n- **Title**: [OUT_OF_SCOPE] `cleanup_implement_logs` `--run-dir` lacks `larch-logs/implement/` guard\n- **Stable ID**: oos-accepted-review:OOS_1\n"}

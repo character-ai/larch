@@ -1,1 +1,0 @@
-Add a generic stdlib Python ASCII Gantt renderer. Replace Mermaid reviewer timing in the shared final-report renderer. Add progress-report ASCII timing for completed review rounds. Update tests and docs that currently assert or describe Mermaid.

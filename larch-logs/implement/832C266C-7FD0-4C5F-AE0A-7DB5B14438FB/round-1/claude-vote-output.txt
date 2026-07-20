@@ -1,8 +1,0 @@
-FINDING_1: EXONERATE -- cosmetic punctuation consistency between continue banners is valid but too minor to warrant a finding for a documentation-only change
-FINDING_2: EXONERATE -- the plan explicitly chose proportional pinning; pinning every phrase of the NEVER entry would create brittleness without meaningful regression protection for documentation-only changes
-FINDING_3: EXONERATE -- the fix targets the specific regression root cause (sub-skill terminal output); 5c.2–5c.5 are plain bash commands not sub-skill invocations; the step body provides sequential instruction
-FINDING_4: NO -- redundant CI checks are harmless; check (17)'s full-token pin still catches the important regression even if (15b) passes on a stray match
-FINDING_5: YES -- the `/larch:issue` grep scans the entire 5b→5c window, not the banner line specifically, so the check does not verify the banner names `/larch:issue`; the failure message is misleading and a future edit could silently drop `/larch:issue` from the banner
-FINDING_6: NO -- diff-only review not confirming CI completion is a review methodology limitation, not a code correctness defect
-FINDING_7: NO -- committed larch-logs/implement/ artifacts are expected behavior per the run-log contract documented in AGENTS.md and docs/run-logs.md
-FINDING_8: NO -- this is a positive scope-compliance observation confirming the change is correctly scoped, not a defect worth filing

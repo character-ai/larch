@@ -1,1 +1,0 @@
-Plan: relabel Step 4 rejected findings as considered-not-adopted suggestions, keep audit files unchanged, harden plan-review prompts against already-addressed concerns, and remove the stale pre-launch `/design` reviewer status breadcrumb while preserving real post-notification status tables.

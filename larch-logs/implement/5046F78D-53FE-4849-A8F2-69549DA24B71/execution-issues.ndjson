@@ -1,2 +1,0 @@
-{"phase":"implement","step":"18","category":"Tool Failures","source":"execution-issues.md safety-net","source_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","body":"\n"}
-{"phase":"implement","step":"18","category":"Coder Issues","source":"execution-issues.md safety-net","source_sha256":"0abbe1e7f7eadd9743242ce402f21416c1ea45877b0ab27241a8209c919dffbe","body":"- **Step 5**: wrapper stalled: coder-failed — Round 2 had 11 accepted findings but both Codex and Cursor dispatch failed. Round 1 (6 fixes) was applied successfully.\n"}

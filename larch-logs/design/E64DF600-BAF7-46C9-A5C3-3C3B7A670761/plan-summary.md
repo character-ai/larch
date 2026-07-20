@@ -1,1 +1,0 @@
-Build the Step 8 assessment-state foundation without changing the live route. Add conservative path filtering, separate authored and covered fingerprints, safe incremental coverage, explicit note states, backward-compatible metadata, tolerant schema-v1 outcomes, and focused tests and docs.

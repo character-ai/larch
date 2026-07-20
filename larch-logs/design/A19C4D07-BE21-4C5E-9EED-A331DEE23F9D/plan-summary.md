@@ -1,1 +1,0 @@
-Add a standalone Step 8 assessment coordinator and machine-readable CLI. It will validate frozen evidence, skip safe diffs, launch Claude with read-only tools, parse exact results, persist durable outcomes, degrade safely, and avoid duplicate launches. The live Step 8 route stays unchanged.

@@ -1,8 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- env-key setup breadcrumb branch exists, but the proposed mv fixture likely will not force that path and adds brittle coverage for a largely unreachable case
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the plan explicitly describes an env-key strip case, so setting OPENAI_API_KEY appears intentional rather than targeting the wrong auth branch
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the ambiguity is real, but the plan can keep the existing retained multiline line and any mismatch would be caught as a harness failure rather than a silent regression

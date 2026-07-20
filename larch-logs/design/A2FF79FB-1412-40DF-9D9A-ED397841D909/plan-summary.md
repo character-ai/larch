@@ -1,1 +1,0 @@
-Replace the gameable design `SKILL.md` line cap with the existing skill-closure token ratchet plus a new blank-line-neutral content-token metric. Update tests, baseline JSON, and lint docs. Do not edit `skills/design/SKILL.md`.

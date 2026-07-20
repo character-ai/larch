@@ -1,7 +1,0 @@
-Step 3 plan-review panel returned LOOP_STATUS=panel-failed.
-Root cause: run-step3-review.sh forwards --convergence-threshold to plan-review-loop.sh,
-which rejects unknown options (exit 2). This is the SAME regression (#3265/#3269) that
-Workstream B of this very design (#3274) removes end-to-end. On the installed 47.0.19
-plugin (byte-identical to repo HEAD for both scripts), Step 3 external plan review cannot
-run until this fix lands. Design proceeds to Gate C with the unreviewed plan; once #3274
-merges, /design Step 3 review works again.

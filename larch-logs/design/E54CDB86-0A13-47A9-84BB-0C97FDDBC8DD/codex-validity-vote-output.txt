@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the round-1 forced-timing finding; any warning is not feature-blocking
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the feature can be completed by updating the row builders directly; the helper refactor is optional

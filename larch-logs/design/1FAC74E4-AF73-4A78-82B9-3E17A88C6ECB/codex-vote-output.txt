@@ -1,8 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already requires parsing wait output, starting the next cycle from the new failed run id, and testing that path
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already says local verification failure rolls back that cycle's edits, avoids push, and continues to the cap
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- future drift from an inline loop is a maintainability concern, not necessary for this feature's required behavior
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

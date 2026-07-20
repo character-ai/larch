@@ -1,1 +1,0 @@
-Plan hardens `scripts/hook-anti-read-poll.sh` with two state-dir revalidation points and extends `scripts/test-hook-anti-read-poll.sh` with a variant-based regression that proves the new pre-`mktemp` guard blocks symlink redirection.

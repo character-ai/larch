@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already blocks E3 on G1-G13 completion plus strict inventory/whole-tree pass before terminal-lib deletion
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

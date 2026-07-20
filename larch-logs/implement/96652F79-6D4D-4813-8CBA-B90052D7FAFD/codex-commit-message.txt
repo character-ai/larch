@@ -1,7 +1,0 @@
-Remove implement workflow classification
-
-Drop implement-side workflow flags, persisted workflow run flags, timing workflow rows, and implement Path/Workflow summary output. Keep design SIMPLE/HARD fallback behavior gated to design timing reports.
-
-Update report-tokens so implement scans do not read workflow auxiliaries, implement renders omit workflow columns/cache keys, and issue trimming uses the implement Aggregate cost label.
-
-Add regressions for legacy workflow artifacts, polluted design environments, fixed Step 2 timeout, and workflow-free implement report output.

@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `.github/workflows/ci.yaml:306-329` — The new gitleaks cache skips the pinned SHA256 verification on cache hits: `Install gitleaks v8.18.4` is conditional on `cache-hit != 'true'`, and the only checksum check is inside that skipped install step. That regresses the prior posture where every CI run verified the downloaded gitleaks tarball before installing the security scanner; now a stale or poisoned `/usr/local/bin/gitleaks` cache only has to print a plausible version before scanning. **Suggested fix:** Either remove the gitleaks binary cache, or cache the tarball and always run the pinned `sha256sum --check` before extracting/installing; if caching the extracted binary, add an unconditional post-cache binary checksum verification using a pinned binary hash and include that hash in the cache key.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

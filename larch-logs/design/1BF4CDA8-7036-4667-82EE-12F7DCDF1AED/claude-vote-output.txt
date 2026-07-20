@@ -1,8 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan prose at line 92 is normative and correct; JSON example is illustrative and the implementer generates baseline from live ruff output, not this template; feature execution path is unaffected by the doc typo
-FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- With --select limited to the five codes, global ignore list in audit config is redundant but harmless; feature works correctly either way; this is a simplification concern not a necessity
-FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Drift risk is real but the feature is not broken or incomplete without using extend; refactoring two TOML files is out of scope for this one-config+docs change
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Trigger is speculative future ruff release behavior; no concrete trigger in current ruff versions; fails issue-overhead test for a hypothetical scenario
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

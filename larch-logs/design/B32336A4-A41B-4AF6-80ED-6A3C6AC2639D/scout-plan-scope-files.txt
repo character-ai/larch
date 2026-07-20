@@ -1,8 +1,0 @@
-scripts/degraded-tools-gate.sh
-scripts/degraded-tools-gate.md
-scripts/test-degraded-tools-gate.sh
-skills/shared/external-reviewers.md
-skills/design/SKILL.md
-skills/implement/SKILL.md
-skills/research/SKILL.md
-skills/review/SKILL.md

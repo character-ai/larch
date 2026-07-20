@@ -1,8 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.7/agents/reviewer-correctness.md"}
-{"slot": "correctness", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.7/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.7/agents/reviewer-edge-cases.md"}
-{"slot": "edge-cases", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.7/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-1/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.7/agents/reviewer-testing.md"}
-{"slot": "testing", "tool": "codex", "output": "<TMPDIR>/round-1/codex-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.7/agents/reviewer-testing.md"}
-{"slot": "dyn-scout-fallback", "tool": "cursor", "output": "<TMPDIR>/round-1/dyn-scout-fallback-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-scout-fallback-prompt.md", "weight": 1, "focus_area": "correctness", "archetype_ref": "cfa7a29debac"}
-{"slot": "dyn-scout-fallback-codex", "tool": "codex", "output": "<TMPDIR>/round-1/dyn-scout-fallback-codex-output.txt", "prompt_file": "<TMPDIR>/round-1/dynamic-archetypes/dyn-scout-fallback-prompt.md", "weight": 1, "focus_area": "correctness"}

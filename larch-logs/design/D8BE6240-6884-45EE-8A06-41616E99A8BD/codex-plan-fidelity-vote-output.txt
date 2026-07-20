@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The plan already requires both canonical and legacy raw-heading rejection and explicit coverage; literal ERE escaping is an implementation detail, not a missing feature requirement.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The stale supplementary contract is outside the approved in-scope surfaces and not needed for generated titles to use the canonical prefix.

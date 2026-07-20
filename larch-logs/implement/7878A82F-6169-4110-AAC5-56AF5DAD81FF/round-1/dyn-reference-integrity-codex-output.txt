@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/implement/SKILL.md:977` — The default Python `needs_user_reason=oos-filing` path still mandates only `skills/implement/references/oos-pipeline.md`, even though the extracted OOS triage, dual-write, sanitization, and terminal-disposition rules now live in `skills/implement/references/execution-issues-tracking.md:57-90`; the bash/Step 8+ paths at `skills/implement/SKILL.md:1079` and `skills/implement/SKILL.md:1097` load both references, so the default path is now inconsistent. **Suggested fix:** Add `skills/implement/references/execution-issues-tracking.md` to the mandatory read list for the Python `oos-filing` dispatch before executing Step 9a.1.
-
-- **architecture** `skills/implement/references/oos-pipeline.md:27-69` — Several references still point readers to “SKILL.md” for rules that were moved out: dual-write redaction rules, `~30` LOC convention, sanitization, OOS carve-outs, and the Terminal disposition invariant. After this branch, those authorities are in `skills/implement/references/execution-issues-tracking.md`, so these are stale cross-references. **Suggested fix:** Replace the “per/from SKILL.md” wording with explicit references to `skills/implement/references/execution-issues-tracking.md` and, where useful, the relevant headings.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

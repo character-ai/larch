@@ -1,9 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=weak UNCERTAIN=false -- The risk is speculative hardening around the specified auto-apply path, which already frames findings as untrusted data; no concrete feature-breaking bypass is shown.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- After rc=0 the handler continues the loop and re-reads the phase file, so an apply skip that wrote awaiting-continuation does not force post-apply work.
-FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

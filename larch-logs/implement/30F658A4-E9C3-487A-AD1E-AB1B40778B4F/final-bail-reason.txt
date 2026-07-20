@@ -1,1 +1,0 @@
-could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state="UNKNOWN")

@@ -1,3 +1,0 @@
-Aggregating reviewer inputs into merged findings with stable IDs (first-seen order of each merged topic), preserving `[OUT_OF_SCOPE]` on out-of-scope headings, and including only substantive suggested-revision text (omitting slots whose only suggestion was “Address the concern above.”).
-
-

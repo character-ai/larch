@@ -1,3 +1,0 @@
-warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: '`In _read_active_run_id, read the pointer best-effort, strip trailing \\n/\\r/whit')
-warning: fix text for slot 'Cursor-Requirements' in FINDING_1 not traceable to scoped input (first 80 chars: '`Read the first line (or full small file), strip trailing newline/whitespace, th')
-warning: fix text for slot 'Codex-Arch' in FINDING_3 not traceable to scoped input (first 80 chars: '`Spell out the removal step, either recursive delete or unlink the log before rm')

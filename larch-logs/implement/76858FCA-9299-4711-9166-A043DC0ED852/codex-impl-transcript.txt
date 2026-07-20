@@ -1,7 +1,0 @@
-Implemented the plan and wrote `manifest.json` atomically.
-
-**Validation run:**
-- `bash skills/design/scripts/test-design-publish.sh` passed.
-- `bash scripts/test-design-structure.sh` passed.
-- `bash scripts/relevant-checks.sh` passed on rerun.
-- One earlier `relevant-checks` run hit a flaky unrelated `test_launch_review.py` timeout; the targeted test passed afterward.

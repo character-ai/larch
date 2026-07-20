@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- current plan already requires sentinel-only accepted evidence materialization before the checkpoint with the strict Filed URL form
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bare pathlib glob patterns are root-relative here, so adding exact filenames does not recursively delete matching files under the cache tree
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

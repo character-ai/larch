@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the scoped plan targets the remaining voter-calibration caller; no sibling migration is required here.
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- skills lint coverage is explicitly a non-goal and is not necessary for this feature.

@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Nit** `code-quality` `skills/implement/scripts/test-step-8a-changelog.sh:199` — Fixture (b) claims to cover “empty manifest + ISSUE_NUMBER”, but it passes `MANIFEST_PATH=""`, so it only covers the no-manifest path and not the valid-empty-JSON manifest path in `scripts/implement-finalize.sh:701-704`. Add a `{}` manifest fixture with `ISSUE_NUMBER` set and pass that path, so the stated fallback behavior is actually pinned.
-
-2. **Nit** `code-quality` `scripts/test-git-push.md:3` — The sibling harness docs are stale for changed tests: `scripts/test-git-push.md`, `scripts/test-create-pr.md`, and `scripts/test-drop-bump-commit.md` do not describe the new dedup, empty-diagnostic, or walk-back coverage added in `scripts/test-git-push.sh`, `scripts/test-create-pr.sh`, and `scripts/test-drop-bump-commit.sh`. Update those sibling `.md` stubs to match the new assertions.
-
-### Out-of-Scope Observations
-
-No out-of-scope observations.

@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Real bug, but it lives in file_oos.py and is outside the plan’s fenced-parser scope.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Useful extra test, but the required regression set already covers the new fence-aware paths; empty-fence coverage is optional.

@@ -1,1 +1,0 @@
-Fold `/implement` Step 0 degraded-tools gating and 1.r rebase probing into `python/cli.py bootstrap invoke`. Keep only the both-down interactive prompt as a routing row, remove the standalone degraded wrapper, and update tests/docs for the new single-call happy path.

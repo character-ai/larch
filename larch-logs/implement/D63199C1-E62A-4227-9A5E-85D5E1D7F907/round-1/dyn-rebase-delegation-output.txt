@@ -1,8 +1,0 @@
-I'll read the precomputed diff and the `rebase._sync_local_main` / `git.sync_local_main` implementations to verify delegation semantics and the exact refusal string.
-### In-Scope Findings
-
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-
-- **architecture** `python/rebase.py:56-89` / `python/git.py:861-881` — I audited the delegation chain called out in the scout notes. `git.sync_local_main` returns the exact literal `"refusing to update local 'main' while checked out on main"` with `rc=1` when checked out on `main` (`python/git.py:869-870`); `_sync_local_main` compares against that same literal at `python/rebase.py:73` and `python/rebase.py:88`, so the `Stalled` guard is wired correctly today. On the non-`main` path, local `main` absent still ends as a no-op: old code returned immediately after `try_rev_parse("main") is None`; new code falls through to `git.sync_local_main`, which returns `("absent", 0)` (`python/git.py:871-872`) without raising `Stalled`. Missing-remote no-op on non-`main` is preserved via the early return at `python/rebase.py:77-80`. `test_sync_local_main_missing_remote_on_main_stalls` (`python/test_rebase.py:1120-1140`) correctly stalls on the on-`main` path via `sync_local_main`'s refusal (the `branch -f` stubs are unused on the correct ordering, but the test would fail if missing-remote were checked before the on-`main` guard). Residual maintainability note (pre-existing design choice amplified by this refactor, not a current bug): cross-layer behavior still depends on a duplicated magic string rather than a shared typed result constant.

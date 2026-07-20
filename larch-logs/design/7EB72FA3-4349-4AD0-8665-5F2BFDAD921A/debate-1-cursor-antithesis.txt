@@ -1,7 +1,0 @@
-Reading the debate prompt file to follow its instructions and produce the requested structured output.
-
-Gathering concrete `file:line` evidence from the codebase for the dialectic debate.
-
-Steelman: Co-locating `run_implement_loop` with `run_implement_round` keeps one Bash process boundary, reuses the round function’s validation and session resolution without a wrapper re-deriving flags, and extends an entrypoint the implement skill already names—so SKILL.md stays a single stable script name with a new mode instead of a second script to document and test.
-
-

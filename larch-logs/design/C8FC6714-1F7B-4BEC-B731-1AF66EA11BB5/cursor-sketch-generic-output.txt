@@ -1,3 +1,0 @@
-Exploring the codebase for the background+monitor pair pattern, Family B writers, and existing lint/test infrastructure.
-Confirming the failure mode: canonical fences run the Family B script and monitor sequentially, but live streaming requires shell-backgrounding (`&`); incident run 984F0AA4 used `&` without `wait`. Creating the implementation plan.
-

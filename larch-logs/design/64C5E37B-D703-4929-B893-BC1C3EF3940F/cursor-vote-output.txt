@@ -1,7 +1,0 @@
-Reading the ballot and verifying findings against the codebase.
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates rejected R2 FINDING_4; seed is stdout-silent today so capture is latent hardening not necessity
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates rejected R4 FINDING_2; plan-scope trim is desirable but not required to ship the pre-driver merge
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same duplicate scope-reduction concern as FINDING_3 with no new evidence
-FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity floor; duplicate of prior rejected scope-reduction items
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate prior OOS rows; one-line plan edit does not clear issue-overhead test

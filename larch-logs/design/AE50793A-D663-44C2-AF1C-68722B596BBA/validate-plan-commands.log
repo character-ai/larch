@@ -1,5 +1,0 @@
-SKIPPED script=scripts/test-hook-bg-poll-guard.sh reason=new-script
-SKIPPED_FLAG_CHECK script=skills/design/scripts/test-plan-review-loop.sh reason=no-help
-SKIPPED_FLAG_CHECK script=skills/design/scripts/test-render-final-summary.sh reason=no-help
-SKIPPED_FLAG_CHECK script=scripts/test-hook-anti-read-poll.sh reason=no-help
-VALIDATE_STATUS=ok	DEFECT_COUNT=0	SKIPPED_COUNT=4	UNSAFE_TOKEN_COUNT=0

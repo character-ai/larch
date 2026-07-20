@@ -1,1 +1,0 @@
-Implement neutral-only pricing by subtracting 0.25 for each in-scope neutral finding across `/design`, `/review`, and the shared scoreboard path. Keep OOS neutral, accepted, rejected, pruning, Top reviewers, and count semantics unchanged.

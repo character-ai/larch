@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already updates subskill-invocation.md; one-line generalization belongs in the same PR, not a separate issue
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Write plus deny-edit-write matches the established /research /tmp pattern; no concrete harm from the added surface

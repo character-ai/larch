@@ -1,5 +1,0 @@
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **architecture** `scripts/write-final-report.sh` (new `read_lines_kv` function, ~lines 103–108 of the added block) — A second inline `awk -F= -v k="$key" '$1==k{print $2; exit}'` key-value parser is defined locally when an equivalent `read_kv` function already exists in the same file for reading from file paths. The only difference is the source (string vs file path), but the duplication adds a maintenance surface where a future change to KV parsing semantics (e.g., handling quoted values or multi-`=` values) would need to be applied in two places. **Suggested fix:** Refactor `read_lines_kv` to pipe the blob into the existing `read_kv` function, or consolidate both into a single helper that accepts either a file path or a heredoc/process-substitution.

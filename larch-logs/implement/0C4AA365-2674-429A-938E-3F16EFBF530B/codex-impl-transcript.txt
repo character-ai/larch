@@ -1,8 +1,0 @@
-Implemented Step 2 changes and wrote `manifest.json`.
-
-**Validated:**
-- `make test-design-step3-mav`
-- `make test-step3-orchestrator-fence`
-- `make test-design-structure`
-- `make lint-bash32`
-- Targeted `shellcheck` on edited shell scripts.

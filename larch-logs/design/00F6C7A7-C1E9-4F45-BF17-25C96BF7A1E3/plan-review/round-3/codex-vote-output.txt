@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Step 2.4 is a real additional FINAL_BAIL_REASON site, but the planned Step 18a FINAL_BAIL_REASON fallback means missing IMPLEMENT_BAIL_REASON mirroring should not render none.

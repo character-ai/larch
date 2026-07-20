@@ -1,7 +1,0 @@
-APPLIED: FINDING_10**FINDING_10 applied** in `skills/design/SKILL.md`:
-
-- **Missing-script guidance** now runs only when `VALIDATE_MISSING_SCRIPT_COUNT` is positive (or the log has `kind=missing-script` lines).
-- **Review-provenance `publish_rc=4`** is a separate branch: no auto-repair, no Override, only Fix-and-retry (re-run `/design`) or Cancel.
-- **Missing-composition** handling is unchanged.
-
-`make lint` passed.

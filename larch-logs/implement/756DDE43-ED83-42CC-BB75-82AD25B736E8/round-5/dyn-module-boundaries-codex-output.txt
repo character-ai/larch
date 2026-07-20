@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **architecture** `python/ci_cli.py:116-256` — `ci wait` embeds the wrapper’s stateful contract in the CLI layer: KV ordering, default bail state, elapsed calculation, atomic output-file publishing, `.done` sentinel writing, signal handling, and exception-path behavior all live outside `python/ci_monitor.py`. That violates the branch’s thin-CLI/module-boundary invariant and leaves `ci_monitor.poll_ci` unable to represent the full wait primitive for Python internals without reimplementing or shelling through `cli.py`. **Suggested fix:** Move the wait-result formatting/publish contract into `ci_monitor` behind a typed helper, and leave `ci_cli.wait_main` as argument parsing plus a call to that helper.
-
-- **architecture** `python/ci_cli.py:259-311` — Failed-job classification output logic is split between `ci_cli.py` and `ci_monitor.py`: `ci_cli.py` redefines `_JOB_NAME_RE` and owns `_failed_job_reason_token`, while `python/ci_monitor.py:36-39,548-589` owns the parser/classifier. The unfixable reason tokens and job-name validity are part of the CLI contract, so this duplication can drift silently from the backing library. **Suggested fix:** Put the valid-name predicate and reason-token derivation in `ci_monitor`—for example by adding a reason field to `JobClass` or a library helper that returns the fixable/unfixable token lists—and have `ci_cli.py` only emit the returned values.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

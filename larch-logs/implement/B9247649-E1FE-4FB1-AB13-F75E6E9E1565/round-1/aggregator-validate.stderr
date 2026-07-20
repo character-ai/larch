@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Limit `--straggler-cutoff` to phase 1 only, or treat phase 2/3 straggler kills a')
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Make anchor validation non-mutating and initial-result-only, such as a no-retry ')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Emit separate warning keys or concatenate; teach consumers to read all `WARN` li')
-warning: fix text for slot 'codex-specialist-edge-cases-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Build coverage by manifest slug and excuse a missing slug only when every launch')

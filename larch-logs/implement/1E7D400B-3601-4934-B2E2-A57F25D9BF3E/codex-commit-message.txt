@@ -1,3 +1,0 @@
-Fix stall recovery issue input filing
-
-Route Step 18a first-detection filing through the heading-bearing stall-recovery issue input file and document canonical issue key normalization for create and dedup paths. Tighten stall-step title sanitization to full-token matches while preserving documented production stall tokens. Add parser and structure regressions for the issue-input wiring and unsafe step values.

@@ -1,5 +1,0 @@
-Reading the pre-computed diff and verifying plan fidelity against the implementation plan.
-
-Searching the diff for plan-relevant files (diff is large, likely includes larch-logs).
-
-NO_ISSUES_FOUND

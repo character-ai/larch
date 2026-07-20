@@ -1,5 +1,0 @@
-ISSUE_1_NUMBER=4185
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4185
-ISSUE_1_ID=4654399917
-ISSUE_1_TITLE=[OOS] Structure pins only grep for literal tokens, not teardown behavior
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

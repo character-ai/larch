@@ -1,3 +1,0 @@
-Fix aggregate empty-merge attestation semantics (#2939)
-
-Accept attestation-only duplicate merges as REASON=ok with MERGED_COUNT=0 and a whitespace-only persisted ballot. Add a nonconforming_heading_with_attestation narrow trigger for malformed pseudo-headings that also include the attestation token, and update the aggregate harness plus docs for the corrected contract.

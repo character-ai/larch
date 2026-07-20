@@ -1,1 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"Filed: https://github.com/character-ai/larch/issues/3121 — report-tokens test harnesses write fixtures under in-tree larch-logs paths instead of TMPDIR (accepted, YES=2 NO=0 EXON=1)"}

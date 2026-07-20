@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- Legitimate coverage gap, but a mocked gh/jq harness is more complexity than this narrow dev-only release-script branch warrants.
-FINDING_4: EXONERATE -- Legitimate review/process concern, but this branch-specific bundling is not worth filing as a future tracking issue.
-FINDING_5: EXONERATE -- Theoretical hardening point, but normal git behavior makes it too unlikely to warrant a tracking issue.

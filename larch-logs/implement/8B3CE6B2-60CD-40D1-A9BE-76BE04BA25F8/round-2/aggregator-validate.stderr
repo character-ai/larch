@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Check `.completed/step-4b` (written after Gate C Approve at Step 5b prepare) ins')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add `test_determine_step` with step-3/3b/3b/4 present and step-4b absent; assert')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add `test_determine_step_after_step4_resumes_gate_c_not_diagram` (and optional p')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Concatenate stripped stdout into the tail source passed to `_diagram_failure_cap')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add a generation-failure shell/Python fence mirroring `write_bounded_failure`/`a')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Add offline harness for `--mode diagram` and `design-step3b-sanitize.sh` coverin')

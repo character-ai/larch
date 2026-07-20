@@ -1,1 +1,0 @@
-Docs-only plan: update the two future token-allocation statements to use precision-value, add a short rationale in `docs/point-competition.md`, and leave scoring rules, schema, diagnostics, and code unchanged.

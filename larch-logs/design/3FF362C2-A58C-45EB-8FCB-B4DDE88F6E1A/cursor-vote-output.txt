@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Approved outline non-goal excludes Python tally derivation; artifact grep plus literal substitution fixes the hardcoded 0/0 defect without clearing completeness.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Same residual agent-substitution risk is real but plan already derives counts from durable artifacts before the tally fence per stated non-goals.

@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Skip gap-fill for active `ship_pr_pre_push` handoff or align with narrowed final')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Skip `_persist_stall_metadata_if_needed` for handoff stalls; add `ship.main()` t')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add `test_ship` happy-path: flag + handoff keys → rebase succeeds → flag removed')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Clear flag on terminal failure or broaden exception handling; add `test_ship` co')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Use `_write_terminal_finalize_if_terminal(Outcome.OK)` on this path.')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Stop no-op mocking `write_finalize_state`; assert `finalize-state.sh` `STALL_TRA')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Restore accurate SECURITY.md language listing remaining review/parity gaps and d')

@@ -1,8 +1,0 @@
-plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
-plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
-plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
-plan-arch	codex-plan-arch	cursor	<TMPDIR>/codex-primary-plan-arch-output.txt	reused	cursor-plan-arch
-plan-innovation	codex-plan-innovation	cursor	<TMPDIR>/codex-primary-plan-innovation-output.txt	reused	cursor-plan-innovation
-plan-pragmatic	codex-plan-pragmatic	cursor	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	reused	cursor-plan-pragmatic
-plan-requirements	codex-plan-requirements	cursor	<TMPDIR>/codex-primary-plan-requirements-output-phase2.txt	ok
-plan-dyn-harness-integrity	dyn-codex-plan-harness-integrity	cursor	<TMPDIR>/codex-primary-plan-dyn-harness-integrity-output-phase2.txt	ok

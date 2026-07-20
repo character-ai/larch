@@ -1,4 +1,0 @@
-warning: fix text for slot 'dyn-prompt-structure-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add anchored assertions that `_step3_review_kill_tmpdir_processes` sits after `_')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add optional wrapper guard if mechanical enforcement is desired beyond plan scop')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Clarify or remove in a separate cleanup if confirmed unreachable.  ### OOS_3: [O')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add pause-path stale-origin case pinning fetch before diff if Item 6 needs stron')

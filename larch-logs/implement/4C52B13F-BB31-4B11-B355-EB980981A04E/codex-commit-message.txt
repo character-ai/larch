@@ -1,5 +1,0 @@
-Fixes #4110: Pin Step 3 result-file polling ban
-
-Strengthen both /design Step 3 background-review fences so they ban polling .step3-review-result.env before the task notification.
-
-Add the shared orchestrator NEVER rule for run_in_background result-file sleep loops and extend the anti-polling harness to pin both new literals.

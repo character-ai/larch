@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the ordering ambiguity is real, but fallback round-binding hardening is not necessary for the anchored stale-breadcrumb removal while latest-reviewer-status.tsv remains the primary real-status source.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- the plan already states the ledger-missing case must be framed when --report-framing is passed.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- the plan already requires the shell fallback to print the same heading and annotation before catting the raw file.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the extra CLI surface is a small maintainability concern but does not clear the issue-overhead gate.
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- this duplicates the residual concern-level suppression issue and is not a separate material backlog item.

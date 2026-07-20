@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The guard meets its scoped source-literal requirement; hypothetical documentation false positives are not necessary here.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Closing #7047 is an explicit goal and approach item in the anchored scope.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The regression guard is the feature’s explicit scoped deliverable.
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Closing #7047 is explicitly required by the approved direction.
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Test-file placement is a style preference, not a filing-worthy observation.

@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- redundancy concern is real and plan acknowledges it, but the explicit allow clause provides documented intent and defensive guard against future broad-codex-deny additions; trivial ordering tests pin the invariant

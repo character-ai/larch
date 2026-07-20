@@ -1,1 +1,0 @@
-Plan: add explicit no-confirmation instructions to the `/design` Step 5b file-issues path and the legacy `/implement` bash OOS pipeline, then pin the prompt contract with structure harness assertions.

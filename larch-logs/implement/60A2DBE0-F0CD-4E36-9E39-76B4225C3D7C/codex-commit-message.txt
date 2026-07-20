@@ -1,5 +1,0 @@
-Use shell renderer for progress timing charts
-
-Delegate progress review detail entirely to render-review-phase-detail.sh, remove the duplicate Python timing chart path, and keep argv coverage on the raised renderer timeout.
-
-Drop stale test-harness Mermaid CI setup and update renderer, linting, and migration docs for the current ASCII and basename-check contracts.

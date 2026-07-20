@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=important QUALITY=excellent UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan says "keep/adjust the sub-step ordering check to assert cancel-title-filter before clarify"; implementer can derive stable anchors from that directional guidance without the plan prescribing exact grep literals

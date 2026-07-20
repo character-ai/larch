@@ -1,3 +1,0 @@
-Fix initial mergeStateStatus UNKNOWN retry
-
-Add a shared retry helper for empty/UNKNOWN PR metadata reads, apply it to the initial merge-state check with four retries, and preserve the existing post-force-push retry/error contract. Extend merge-pr tests and sibling docs for persistent empty/UNKNOWN, UNKNOWN-to-CLEAN, and UNKNOWN-to-BEHIND initial recovery cases.

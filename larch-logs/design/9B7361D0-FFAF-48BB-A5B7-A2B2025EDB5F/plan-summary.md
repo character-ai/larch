@@ -1,1 +1,0 @@
-Resolve all 6 OOS items with surgical doc/config/test edits. No runtime behavior changes. Add two regression cases for stale `LARCH_TOKEN_SESSION_ID` handling and `collect-results` non-zero failure logging.

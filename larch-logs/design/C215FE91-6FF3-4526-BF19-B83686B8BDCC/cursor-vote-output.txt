@@ -1,5 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ok-checks= prefix forces TOKEN to sit in the list segment; grep tests show reason-text and suffix tokens do not match
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- greedy [^[:space:]]*, in the optional group consumes any comma-separated prefix, so three-token lists still match the last token
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- build_fence_heredoc_flags is invoked inside fence_has_family_b_pid_capture_and_wait, which runs once per anchor, not once per fence as the plan claims
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- ([,[:space:]]|$) allows ok-checks=TOKEN at EOL with no reason, unlike bare ok which requires trailing text
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- adversarial boundary fixtures are worthwhile regression guards but live grep already rejects the cited substring false positives

@@ -1,7 +1,0 @@
-### In-Scope Findings
-
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-
-- **correctness** `scripts/test-degraded-tools-gate.sh:90-98` — The modified Case 5 (`--codex-present ""`, `--cursor-present true`) now silently produces `PRESENCE_INPUT_EMPTY=true` on stdout (visible after the `2>&1` addition), but no assertion checks for its presence or absence. The plan introduced Case 5a–5d specifically to cover empty-presence behaviour, yet Case 5 overlaps with 5b's scenario (one empty presence, cursor healthy) without asserting the new KV. This is a coverage gap — Case 5 was left as an unlabelled instance of the same class the plan set out to test explicitly. It does not affect correctness of the gate itself, but a future reader may be confused about why Case 5 produces `PRESENCE_INPUT_EMPTY=true` yet makes no claim about it. **Suggested fix:** Add `assert_contains "$out" "PRESENCE_INPUT_EMPTY=true"` to Case 5 (since `2>&1` is already used there and the KV is now present), or rename/collapse Case 5 into the Case 5b family with a clear label.

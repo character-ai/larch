@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/design/scripts/render-final-summary.sh:345-352` — The sentinel fallback only uses `ISSUES_CREATED`, but the normal annotate path treats both newly-created and deduplicated OOS items as filed/resolved: `skills/design/scripts/file-design-oos.sh:357-417` parses both `ISSUE_<i>_URL` and `ISSUE_<i>_DUPLICATE_OF_URL`, while `/issue` increments `ISSUES_DEDUPLICATED` for duplicate outcomes in `skills/issue/SKILL.md:332-344`. If annotate is skipped and `/issue` successfully deduplicates all or some OOS items, the new fallback reports `OOS filed: 0` for all-dedup runs or undercounts mixed create+dedup runs. **Suggested fix:** Parse `ISSUES_DEDUPLICATED` from `oos-issue-sentinel` as well, validate both counters, and set the fallback count to `ISSUES_CREATED + ISSUES_DEDUPLICATED` when `ISSUES_FAILED` is absent/zero; add regression cases for all-dedup and mixed create+dedup sentinel fallback.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

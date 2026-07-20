@@ -1,1 +1,0 @@
-Plan adds an always-on larch-scoped Claude Code status line, fail-silent renderer, SessionStart installer, stale-run hardening, docs, and tests. PostToolUse snapshots stay conditional on verifying `systemMessage` is UI-only.

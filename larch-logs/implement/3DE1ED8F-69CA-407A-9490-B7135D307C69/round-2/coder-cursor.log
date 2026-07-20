@@ -1,3 +1,0 @@
-`make py-test` finished with **1 failure** out of 4076 passed: `test_rendering.py::test_generate_check_accepts_verb_registry`. The reviewer-template updates from FINDING_32 regenerated `agents/reviewer-*.md` but left `agents/pre-rendered/` out of sync.
-
-I ran `python3 python/cli.py generate pre-rendered-reviewer-prompts` to refresh the pre-rendered bodies and manifest. That test now passes.

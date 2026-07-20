@@ -1,8 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: EXONERATE -- nit formatting inconsistency is real but trivial; prefer EXONERATE per guideline
-FINDING_4: YES
-OOS_1: YES
-OOS_2: EXONERATE -- DESIGN_ONLY_DONE being static in ship-pr.sh is current design intent; not a bug worth filing
-OOS_3: NO -- finding itself states the pattern is acceptable per repo policy, making it not worth raising
-OOS_4: YES

@@ -1,9 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/implement/scripts/stall-recovery-report.sh:1064-1077` — `normalize-issue-env` validates the captured stdout file before handling a nonzero `/larch:issue` exit. If issue filing fails before producing a readable `$IMPLEMENT_TMPDIR/stall-recovery-issue.stdout`, the helper exits during validation and never removes stale `$IMPLEMENT_TMPDIR/stall-recovery-issue.env`, so Step 8 can later target an old recovery issue. **Suggested fix:** Validate `--issue-exit-code` and the output path first; when the exit code is nonzero, call `emit_issue_env_false "issue-exit-code" "$out_file"` without requiring a readable stdout file.
-
-- **risk-integration** `skills/implement/scripts/stall-recovery-report.sh:1079-1089` — The filtered stdout scratch file uses a predictable `$tmpdir/stall-recovery-issue.stdout.filtered.$$` path and writes to it with plain redirection. That bypasses the helper’s usual temp-file containment pattern and can clobber or follow a pre-existing path in the shared implement tmpdir before the durable env write. **Suggested fix:** Create the filtered file with `mktemp` in `$tmpdir`, reject symlinks/non-regular preexisting paths by construction, and clean it up via a trap/local cleanup.
-
-- **risk-integration** `skills/implement/scripts/stall-recovery-report.sh:1137-1147` — The new durable env write calls `atomic_write_text` in an `if ! ...` conditional, but `atomic_write_text` at `skills/implement/scripts/stall-recovery-report.sh:36-43` does not explicitly check the temp-file `printf`; under Bash’s errexit suppression in conditional function calls, a failed/partial temp write can still proceed to `mv` and then emit `NORMALIZED=true`. **Suggested fix:** Make `atomic_write_text` explicitly check and clean up each step (`printf ... || { rm -f "$tmp"; return 1; }`, then `mv ... || ...`) so callers cannot publish partial env files.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

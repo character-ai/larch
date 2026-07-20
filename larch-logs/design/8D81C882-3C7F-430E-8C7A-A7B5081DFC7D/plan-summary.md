@@ -1,1 +1,0 @@
-Move /design sentinel writes from prompt prose into existing wrappers. Add small wrapper flags for Step 3 re-entry, Step 3 resume state, postplan completion sentinels, and remaining state-file markers. Update docs and tests without changing sentinel ordering.

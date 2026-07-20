@@ -1,7 +1,0 @@
-Fix Python ship-pr soak regressions
-
-Drop the unsupported gh pr create --json flags and resolve created PRs via branch lookup or stdout URL recovery. Map operational ShipError failures to stalled JSON results and add stderr breadcrumbs for long-running ship and CI phases.
-
-Remove merge-time pre-flush churn, poll lagged PR head OIDs after force-push recovery, and skip volatile-only refresh sidecars after restoring/cleaning the run tree. Keep canonical token and timing reports commit-worthy.
-
-Lower the runtime floor to Python 3.11 across packaging, lint/type pins, report-tokens, docs, and CI matrices. Add regression coverage for PR creation, merge convergence, volatile flush cleanup, stderr breadcrumbs, and set-e-safe routing envelope parsing.

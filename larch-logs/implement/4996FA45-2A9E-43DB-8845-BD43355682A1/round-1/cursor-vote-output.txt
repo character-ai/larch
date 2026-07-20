@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- literal `*` probe is ASCII-stable; `LC_ALL=C` there buys little versus churn
-FINDING_3: EXONERATE -- real grammar slack, but strict single-`*` enforcement is optional polish, not backlog-worthy
-FINDING_4: YES
-FINDING_5: NO -- accurate reviewer context; nothing to track or change in product code

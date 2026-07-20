@@ -1,3 +1,0 @@
-APPLIED: FINDING_16**FINDING_16** is fixed: the no-op `test-lib-design-tmpdir` Makefile stub was removed per the migration plan (`.PHONY` and shard entries were already gone).
-
-`make test-harness-shards-coverage` passes. No commit was made; the parent session handles that.

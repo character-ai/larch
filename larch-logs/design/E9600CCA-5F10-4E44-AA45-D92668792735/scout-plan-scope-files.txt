@@ -1,9 +1,0 @@
-scripts/ship-pr.sh
-scripts/ship-pr.md
-python/ci_monitor.py
-python/test_ci_monitor.py
-skills/implement/SKILL.md
-scripts/test-ship-pr-fix-loop-3334.inc.sh
-scripts/test-ship-pr.sh
-scripts/test-implement-step8-exit3-first-fixer.sh
-scripts/ci-decide.md

@@ -1,4 +1,0 @@
-## Plan
-
-(needs /design — operator runs `/design` on this issue after partition lands.)
-

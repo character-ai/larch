@@ -1,1 +1,0 @@
-Implemented working-tree changes and wrote the manifest at the requested path.

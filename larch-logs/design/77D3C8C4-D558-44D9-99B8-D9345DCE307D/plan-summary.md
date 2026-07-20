@@ -1,1 +1,0 @@
-Neutralize reviewer attribution with `anonymous` in voter-facing ballots. Keep original proposer labels in `proposer-map.tsv` for scoring, classification, and audit artifacts. Do not scrub finding body text.

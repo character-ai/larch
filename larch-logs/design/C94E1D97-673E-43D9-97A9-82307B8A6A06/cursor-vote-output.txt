@@ -1,2 +1,0 @@
-The ballot file came back empty — I'll look elsewhere in the session directory for it.
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

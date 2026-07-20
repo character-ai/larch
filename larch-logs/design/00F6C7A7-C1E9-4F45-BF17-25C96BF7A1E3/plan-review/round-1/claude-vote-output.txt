@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=good UNCERTAIN=true
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan's classify-level fix covers all new runs; default-0 in load_classification_arg is a minor backward-compat edge case not worth added complexity
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

@@ -1,5 +1,0 @@
-scripts/lint-foreground-markers.sh
-scripts/lint-foreground-markers.md
-scripts/test-lint-foreground-markers.sh
-scripts/test-lint-foreground-markers.md
-BASH_AUTHORING.md

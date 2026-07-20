@@ -1,1 +1,0 @@
-Plan: add shared aggregate OOS promotion logic to design and implement tallies, keep accepted OOS unchanged, fix design OOS empty-stdout and cross-session sentinel retries, and cover the behavior with focused unit tests.

@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: EXONERATE -- plan explicitly removes cases 12/12b and accepts grep-scoped harness tradeoff
-FINDING_3: EXONERATE -- empty `steps_ran` in a committed log fixture is benign; no issue needed
-FINDING_4: YES
-FINDING_5: NO -- redundant `rm -f manifest.env` absent from plan text is trivial and correctly harmless

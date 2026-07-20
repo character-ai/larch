@@ -1,1 +1,0 @@
-/design should file the OOS issue(s), with [OOS] title prefix, using /issue, as soon as they are approved (voted in).

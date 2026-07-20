@@ -1,4 +1,0 @@
-scripts/larch-log.sh
-scripts/test-larch-log-write-round.sh
-scripts/test-larch-log-write-round.md
-scripts/larch-log.md

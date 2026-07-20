@@ -1,7 +1,0 @@
-Port session state helpers to Python
-
-Add python/session_env.py with session lifecycle CLI verbs, guarded writers, design env refresh, run params, finalize-state restoration, and cleanup behavior.
-
-Register the session verbs, cut live call sites to python/cli.py, retarget structural tests, and retire the invoke-style bash scripts and harnesses via migrated-scripts.tsv.
-
-Document the session writer guard and deferred sourced-only library boundary.

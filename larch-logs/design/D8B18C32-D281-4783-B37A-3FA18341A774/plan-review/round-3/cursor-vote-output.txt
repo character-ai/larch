@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Bash glob `8[[:alnum:]-]*` matches `8a<script>` (one alnum char then `*` eats the rest), so the injection gap is real and the planned sanitizer tightening is warranted, not unrelated churn.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan.txt lines 40-41 split the `/larch:issue --input-file` path across two lines while the planned same-line grep pin would fail that formatting.
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- the Step 4 rewrite bullets omit an explicit DRY_RUN_DECISION gate before `/larch:issue` and env normalization, risking real issue filing under LARCH_STALL_RECOVERY_DRY_RUN=1.

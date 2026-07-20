@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Optional-field preservation coverage is useful but not necessary for the one-shot legacy migration.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior accepted documentation/regen OOS observation.

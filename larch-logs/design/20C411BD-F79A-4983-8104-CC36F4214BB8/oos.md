@@ -1,5 +1,0 @@
-### OOS_1: /alias forwards a verbal feature description that /implement rejects
-- **Description**: `skills/alias/SKILL.md:167` passes `"--auto [--merge] <feature-description>"` as the args to the `/implement` Skill tool. After issue #2485, `/implement` requires a positional `<issue-N>` (digits only) and explicitly rejects verbal feature descriptions with the message `**❌ /implement no longer accepts a verbal feature description. Run /design <issue-N> first to write a plan to the issue body, then re-run /implement <issue-N>.**`. Removing `--auto` (this issue's item C) leaves the verbal-description rejection unfixed. The fix likely requires either (a) `/alias` running `/design` first to create an anchored issue with a plan body, then forwarding the new issue number to `/implement`, or (b) restoring a verbal-description path in `/implement` for trusted internal callers. Out of scope for #2595 (cleanup-only).
-- **Reviewer**: Claude (quick mode)
-- **Vote tally**: N/A — quick-mode self-review
-- **Phase**: design

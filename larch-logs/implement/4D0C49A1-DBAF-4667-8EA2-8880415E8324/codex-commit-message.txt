@@ -1,3 +1,0 @@
-Add two-phase design clarify wrapper
-
-Add a narrow clarify comment-fetch helper and route Step 0b clarify through launcher-backed fetch and publish phases. Keep operator-authored clarify plan and response artifacts separate, preserve fail-closed plan writes, and cover publish failure, empty session, plan-write failure, and happy path behavior.

@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The named queue constructors are explicitly required by the scoped feature and approved outline.
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

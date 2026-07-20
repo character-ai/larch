@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the plan already requires replacing the stale Step 18 Read fallback, sentinel write, and NEVER #17 contracts.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- this is a latent exceptional read-failure hardening concern, while the plan already requires unconditional teardown ordering.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- non-canonical in-memory stall values are not a necessary feature path, and the plan already pins the not-false-and-not-empty predicate.
-FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=adequate UNCERTAIN=false
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the harness update is already part of the current feature work, not material enough for a separate backlog issue.

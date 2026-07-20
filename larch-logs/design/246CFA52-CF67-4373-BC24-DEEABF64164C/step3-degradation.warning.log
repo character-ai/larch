@@ -1,6 +1,0 @@
-Step 3 plan-review ran DEGRADED (1/3 effective judges) via direct plan-review-loop.sh workaround for bug #3275.
-
-Codex (10 reviewers + voter): OpenAI usage limit — "You've hit your usage limit ... try again at 1:22 PM"; codex exec exit 1, 0 bytes. The trailing "codex_core::session: failed to record rollout items: thread not found" is a post-abort teardown artifact, not the cause. Reproduced in an isolated single-invocation probe.
-Cursor voter: returned a degraded/empty .result (outputTokens>1000, result<500 bytes, no sentinel) -> launch-review.sh promoted to CURSOR_DEGRADED_RESPONSE -> 4/4 ballot items JUDGE_ERROR -> NOT_SUBSTANTIVE. Cursor reviewers (5) earlier in the run succeeded, so this was a transient degraded episode, not an outage.
-Effective panel: Claude voter only. 4 important findings accepted (binding-single-judge) and auto-applied to plan.txt.
-Plan-size hard trigger (DIFF_ADDED=2080>2000) fired post-apply; operator chose OVERRIDE AND CONTINUE (proceed past the hard gate).

@@ -1,4 +1,0 @@
-slot	tool	status	elapsed_s	output
-cursor-plan-innovation	cursor	done	1113	<TMPDIR>/cursor-plan-innovation-output.txt
-cursor-plan-pragmatic	cursor	done	1113	<TMPDIR>/cursor-plan-pragmatic-output.txt
-cursor-plan-requirements	cursor	failed	1113	<TMPDIR>/cursor-plan-requirements-output.txt

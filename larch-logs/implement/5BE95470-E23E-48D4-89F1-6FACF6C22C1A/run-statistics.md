@@ -1,1 +1,0 @@
-Run 5BE95470-E23E-48D4-89F1-6FACF6C22C1A: 1 accepted OOS issue filed (#3565, combined OOS_1+OOS_2 per Rule A), 2 rejected (FINDING_8 — ephemeral branch-diff nit; FINDING_9 — moot, #3529 already on main).

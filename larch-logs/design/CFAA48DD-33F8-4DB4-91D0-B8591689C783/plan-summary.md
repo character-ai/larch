@@ -1,1 +1,0 @@
-Move the readability authority into `skills/shared/`, wire every public and dev-only skill, restore `/design` composition anchors, and harden the readability lint with skill coverage plus a floor guard.

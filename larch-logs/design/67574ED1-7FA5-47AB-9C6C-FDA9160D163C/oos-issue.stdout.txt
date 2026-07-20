@@ -1,7 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=4726
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4726
-ISSUE_1_ID=4695124941
-ISSUE_1_TITLE=[OOS] design_oos annotate: partial failure leaves stale sentinel; rerun silently skips re-filing failed OOS block

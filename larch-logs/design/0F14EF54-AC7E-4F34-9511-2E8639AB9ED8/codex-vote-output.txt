@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=blocker QUALITY=adequate UNCERTAIN=false -- embedded plan-review aggregation already invokes `python3 "$PLUGIN_ROOT/python/cli.py" review aggregate-findings`, and G2 ports that CLI body in-process before deleting the shell façade.

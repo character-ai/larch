@@ -1,3 +1,0 @@
-Wrap design skill Bash fences
-
-Move /design prompt-side Bash bodies into executable design-step wrappers and update SKILL.md to call wrappers only. Retarget the design structure check to enforce wrapper-only fences, executable siblings, and key handoff contracts. Document the Step 3 adjudication, postplan wrapper, OOS stdout, and Step 5c skip-validate handoffs.

@@ -1,9 +1,0 @@
-scripts/design-log-publish.sh
-scripts/design-pause-load.sh
-scripts/design-log-publish.md
-scripts/design-pause-load.md
-SECURITY.md
-scripts/test-design-log-publish.sh
-skills/design/scripts/test-design-pause-resume.sh
-scripts/test-design-log-publish.md
-skills/design/scripts/test-design-pause-resume.md

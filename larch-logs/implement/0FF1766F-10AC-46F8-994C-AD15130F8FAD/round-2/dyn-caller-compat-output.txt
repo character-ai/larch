@@ -1,7 +1,0 @@
-Gathering the diff, commit list, and caller parsing of `git-force-push.sh` for architecture/caller-compat review.
-
-Tracing callers' parsing of `git-force-push.sh` output and verifying the exit-2 vs BRANCH= contract after emitting `BRANCH` before the guard.
-
-Confirming: `emit_kv BRANCH` runs before the guard; `git status` failure exits 2 after emitting `BRANCH=`, contradicting the contract doc. Verifying `implement-finalize.sh` isn't in the diff (pre-existing parsing) — still an amplified failure mode for the new exit-1 shape.
-
-

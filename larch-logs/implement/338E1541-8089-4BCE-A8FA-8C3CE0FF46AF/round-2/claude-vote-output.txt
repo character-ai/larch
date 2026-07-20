@@ -1,1 +1,0 @@
-The ballot at `<TMPDIR>/round-2/findings.md` contains no FINDING_N items — only the aggregator header comment and blank lines. There are no items to vote on.

@@ -1,1 +1,0 @@
-Trace each descriptor field to both the former guideline and invariant behavior. Check compatibility wrappers, exact JSON fields, CLI stdout, empty-invariant handling, outcome vocabularies, and stale-artifact validation for lost divergences. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

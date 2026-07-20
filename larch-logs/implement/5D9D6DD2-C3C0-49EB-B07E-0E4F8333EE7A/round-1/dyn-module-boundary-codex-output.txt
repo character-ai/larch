@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **architecture** `python/session_env.py:179-181` — `cleanup_cache_sessions_root()` does not implement the documented bash-style `${HOME:-/tmp}` fallback: when `XDG_CACHE_HOME` is unset/empty and `HOME` is present but empty, `os.environ.get("HOME", TMP_FALLBACK)` returns `""`, so the session cache root becomes `/.cache/larch/sessions` instead of `/tmp/.cache/larch/sessions`. Because `cleanup_cache_sessions_root()` feeds `_writer_target_allowed()` and `is_allowed_session_tmpdir()` (`python/session_env.py:197-208`) plus setup tmpdir creation (`python/session_env.py:987-999`), this crosses the intended cache-root boundary and can allow/create root-level `/.cache` state while diverging from the retired `scripts/cleanup-tmpdir.sh` semantics. **Suggested fix:** Use `home = os.environ.get("HOME") or TMP_FALLBACK` in `cleanup_cache_sessions_root()` while preserving relative `XDG_CACHE_HOME`, and add a pytest with `XDG_CACHE_HOME` unset or empty and `HOME=""` asserting `/tmp/.cache/larch/sessions`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

@@ -1,7 +1,0 @@
-Both review fixes are in and verified.
-
-**FINDING_5:** `_capture_stdout_stderr` now catches `OSError` during stderr setup, so Step 5b annotate/prepare emit the failure contract instead of crashing when the stderr log path is unavailable.
-
-**FINDING_7:** `run_plan_review_round` no longer reads or writes `review-round-count.txt`; the outer Step 3 driver owns cap checks and persist/rollback. That removes the off-by-one where round 5 was skipped after the outer prewrite.
-
-`make py-lint` passed, and the full `make py-test` suite passed (3434 tests). Changes are uncommitted, as requested.

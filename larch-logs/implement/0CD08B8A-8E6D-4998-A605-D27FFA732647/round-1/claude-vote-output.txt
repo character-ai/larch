@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=weak UNCERTAIN=false -- oos.md already receives OOS items from collect-findings.sh and they survive the tally; if tally-code-votes.sh truncated oos.md, that pre-existing code-review OOS path would be broken too, which the existing system disproves
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=weak UNCERTAIN=false -- aggregate-findings.sh uses the identical severity pattern on the same findings.md produced by collect-findings.sh; if reviewers omitted the severity line, aggregate-findings.sh severity classification would also fail
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false

@@ -1,3 +1,0 @@
-Extend combine-issues OOS dependency handling
-
-Add native dependency fetch, inherited planning, closure eligibility, open-issue audit, and audit-planning helpers for combined OOS issues. Defer source closure until dependency reads, inherited writes, classifications, blocked-source state, and exception decisions are resolved. Document the updated OOS flow with approval gates for non-OOS issues blocked by new OOS issues and for Tier-2 audit edges.

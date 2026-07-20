@@ -1,9 +1,0 @@
-Implemented the remaining fix needed for this invocation to validate cleanly: `scripts/lint-mermaid-fences.sh` now excludes `larch-logs/` for explicit pre-commit filename inputs as well as `--changed-only`, with regression coverage in `scripts/test-mermaid-fragments.sh` and docs updated.
-
-Verification:
-- `make test-implement-bootstrap` passed: `PASS=302 FAIL=0`
-- `make test-mermaid-fragments` passed: `29 passed`
-- `bash scripts/relevant-checks.sh` passed
-- `git diff --check` passed
-
-Wrote the required manifest atomically at `<TMPDIR>/manifest.json` with `status=complete`. No `qa-pending.json` was written because QA is not needed.

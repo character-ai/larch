@@ -1,7 +1,0 @@
-Both accepted findings are addressed.
-
-**FINDING_3:** Reverted `python/complexity-baseline.json` to match `origin/main`, so the branch is limited to the 17 design-lifecycle modules. That revert is staged but not committed.
-
-**FINDING_7:** Rebased onto current `origin/main` without conflicts. `make py-lint` and `make py-test` both passed (4667 passed, 52 skipped).
-
-The parent workflow should commit the staged `complexity-baseline.json` revert when it picks up these fixes.

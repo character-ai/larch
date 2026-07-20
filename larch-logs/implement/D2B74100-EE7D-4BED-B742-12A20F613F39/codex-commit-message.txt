@@ -1,5 +1,0 @@
-Fix design publish failure and repo handling
-
-Fail closed when design log publish exits non-zero, validate repo arguments at publish and pause boundaries, and preserve repo bindings through design pause flows. Render publish-skipped summaries honestly, suppress synthetic run-log paths for skipped or failed publish outcomes, and gate Step 5c completion on publish success.
-
-Cover the publish, pause/resume, final-summary, run-summary, postplan pause, design-log-publish, and structural contracts with updated harnesses and sibling docs.

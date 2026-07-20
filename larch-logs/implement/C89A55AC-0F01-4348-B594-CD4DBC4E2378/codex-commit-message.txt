@@ -1,3 +1,0 @@
-Port prompt rendering and generators to Python
-
-Add python/rendering.py with render, mermaid, diagrams, and generate CLI verbs; retarget runtime callers and generator registry to python/cli.py. Regenerate reviewer, implementer, pre-rendered, and topology artifacts with Python regeneration headers. Retire the absorbed bash renderers/generators and their legacy harnesses, recording the paths in python/migrated-scripts.tsv. Add pytest coverage for the rendering ports and update remaining structure/stub tests for the Python CLI surface.

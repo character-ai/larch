@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Drop the capture entirely (no _render_rc) or promote to WARN_LINES+=("render-can')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Assert `[[ ${#ROUTE_KVS[@]} -gt 0 ]]` at the top of `route_emit_stdout_and_exit`')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: '`[[ $(grep -cE \'>/dev/null$\' "$DESIGN_ROUTE_SH") -eq 2 ]] || fail ...` This fail')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Embedded whitespace: if `_reentry_out` ever contains a value with spaces (e.g., ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Newline-embedded values: word splitting on unquoted `$var` collapses embedded ne')
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Add `grep -Fq \'phase_driver_write_result_env\' "$DESIGN_ROUTE_SH"` alongside the ')

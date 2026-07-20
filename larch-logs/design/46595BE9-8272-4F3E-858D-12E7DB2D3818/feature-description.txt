@@ -1,4 +1,0 @@
-feat(/design): append (PLANNED) to issue title on completion + branch/logs/PR flow
-
-1. when design process completes, it should append (PLANNED) prefix to tracking issue title
-2. /design should create a branch when it starts the process, save all run logs directly in its branch's run-id directory just like where /implement flushes its logs, and, after completing its work, create a PR that bypasses CI and merge it which contains complete run logs of /design.

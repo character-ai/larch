@@ -1,5 +1,0 @@
-skills/implement/scripts/step-7a.sh
-skills/implement/scripts/generate-code-flow-diagram.sh
-skills/implement/scripts/test-step-7a.sh
-skills/implement/scripts/step-7a.md
-skills/implement/scripts/generate-code-flow-diagram.md

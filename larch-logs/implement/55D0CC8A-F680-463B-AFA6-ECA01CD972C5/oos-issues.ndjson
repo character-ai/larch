@@ -1,1 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/4539\n- **Title**: [OOS] [OUT_OF_SCOPE] Stop hook does not unset stale `LARCH_TOKEN_SESSION_ID` when `session_id` is absent\n"}

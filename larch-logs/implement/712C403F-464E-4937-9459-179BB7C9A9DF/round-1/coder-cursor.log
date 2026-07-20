@@ -1,3 +1,0 @@
-**FINDING_1 applied.** Gate C anti-halt and loop-exit prose in `skills/design/SKILL.md` and `skills/design/references/approval-gates.md` now treat both **Approve final design** and the panel-failure relabel **Approve final design (acknowledge panel failure)** as valid Approve picks that continue to Step 5 in the same turn.
-
-`make lint` passed.

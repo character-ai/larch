@@ -1,7 +1,0 @@
-scripts/write-run-params.sh
-scripts/write-run-params.md
-scripts/test-write-run-params.sh
-skills/design/references/flags.md
-skills/design/SKILL.md
-skills/design/references/approval-gates.md
-README.md

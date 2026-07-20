@@ -1,8 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity
-FINDING_1	Cursor-Arch, Codex-Arch, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-contract-trace, Codex-dyn-contract-trace, Cursor-dyn-routing-regression, Codex-dyn-routing-regression	accepted	YES	true	blocker	excellent	false	Claude	YES	true	blocker	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking
-FINDING_2	Codex-Arch, Codex-Innovation, Codex-dyn-routing-regression	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_3	Codex-Innovation, Codex-Pragmatic, Codex-dyn-contract-trace	accepted	NO	partially-true	major	adequate	true	Claude	YES	true	blocker	good	false	Codex	YES	true	blocker	good	false	Cursor	blocking
-FINDING_4	Cursor-Innovation, Cursor-Requirements, Codex-dyn-contract-trace	accepted	NO	uncertain	uncertain	adequate	true	Claude	YES	true	blocker	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking
-FINDING_5	Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-dyn-contract-trace, Codex-dyn-routing-regression	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important
-OOS_1	Cursor-Requirements	accepted	YES	true	minor	adequate	false	Claude	YES	true	major	adequate	false	Codex	YES	true	major	good	false	Cursor	latent
-OOS_2	Cursor-Requirements	neutral	YES	true	minor	adequate	false	Claude	NO	partially-true	minor	weak	false	Codex	NO	partially-true	nit	adequate	false	Cursor	latent

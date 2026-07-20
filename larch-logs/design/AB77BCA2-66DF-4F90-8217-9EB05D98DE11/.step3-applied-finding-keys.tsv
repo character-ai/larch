@@ -1,4 +1,0 @@
-1	required result-env writes must remain inside the allowed tmpdir boundary, use the existing trusted merge-env validation and atomic-write mechanisms, and be validated before `run_ship` or other mutations.
-1	result-env emission must preserve the route-exit pairing rules and avoid contradictory ci keys.
-2	path prevalidation remains incomplete for lexical `..` paths, which can cause the validator’s lexical parent loop to fail to reach the resolved root and hang at `/`.
-2	python/larch/implement/ship_result.py [scope-reduction] blanket uppercase key rendering drifts from route-exit wire names. scenario: `dispatch_ship` handoff emits lowercase ledger keys such as `ledger_ready=true` (see `test_implement_dispatch.py`), while repair/ci keys are uppercase. uniform uppercasing of json keys would emit `ledger_ready` and break parity with established handoff vocabulary piece 2 must consume.

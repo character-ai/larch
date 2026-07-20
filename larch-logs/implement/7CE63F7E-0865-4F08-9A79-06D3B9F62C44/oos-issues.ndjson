@@ -1,2 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"FINDING_1: Enforce monitor_rc two-branch propagation in Family B lint — Filed as https://github.com/character-ai/larch/issues/3025"}
-{"phase":"implement","step":"9a.1","category":"OOS","body":"FINDING_8: Monitor exit 0 can be misread as writer success — Inline-triage rule 2: < 30 LOC doc addition to breadcrumb-monitor.md (commit 04e1c5d7)"}

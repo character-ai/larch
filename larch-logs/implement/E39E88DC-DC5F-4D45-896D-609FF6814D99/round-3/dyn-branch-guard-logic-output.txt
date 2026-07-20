@@ -1,9 +1,0 @@
-Reading the pre-computed diff and commit log, then inspecting the changed sections for branch-guard correctness.
-
-Diff cache file is empty; gathering changes via read-only `git diff` and locating branch-guard code.
-
-Reading implemented branch-guard sections: `git diff main...HEAD` is empty (likely `main` or no divergence); reviewing working-tree code referenced by grep.
-
-Precomputed diff at `<TMPDIR>/round-3/diff.txt` is empty; `git log $(git merge-base HEAD main)..HEAD --oneline` is empty (workspace matches `main` or has no unique commits). Review used the working tree: [`scripts/ship-pr.sh`](scripts/ship-pr.sh) `run_bump_phase`, [`skills/implement/scripts/step2-implement.sh`](skills/implement/scripts/step2-implement.sh) pre-launcher guard, [`skills/implement/SKILL.md`](skills/implement/SKILL.md) §2.2, and related tests/docs.
-
-

@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/implement/references/stall-recovery.md:19` — Step 4 depends on `$ISSUE_RC` for `normalize-issue-env`, but the procedure never defines how the `/larch:issue --input-file` child invocation’s exit status is captured, nor that normalization must run even when `/larch:issue` fails. An orchestrator following the prose can leave `$ISSUE_RC` unset or halt on the failed child call, bypassing the cleanup/manual-filing path that Step 8 relies on. **Suggested fix:** Spell out the capture contract: always create `$IMPLEMENT_TMPDIR/stall-recovery-issue.stdout`, record the child result as `ISSUE_RC` (`0` on success, nonzero on failure), and always invoke `normalize-issue-env` before continuing.
-
-- **architecture** `skills/implement/scripts/stall-recovery-report.sh:1066-1147` — `normalize-issue-env` is documented as removing stale `stall-recovery-issue.env` on failed/partial filing, and Step 8 trusts that file when present, but early failures such as missing/unreadable issue stdout or malformed `--issue-exit-code` exit before cleanup; the write-failure path also emits failure without unlinking the stale env. This can leave an old `ISSUE_NUMBER` for the terminal comment path. **Suggested fix:** Resolve the output path up front and best-effort remove it on every normalization failure path, including invalid/missing stdout, invalid exit code, and write failure; emit `ISSUE_ENV_WRITTEN=false` with a reason where possible.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

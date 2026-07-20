@@ -1,3 +1,0 @@
-Port clarify round-trip helpers to Python
-
-Add python/clarify.py with clarify state, comment-post, and label flows, register the CLI verbs, and add gh label/comment wrappers. Cover the migrated behavior with pytest, retarget clarify harness make targets, retire the old shell scripts, and update docs plus security references for the Python clarify surface.

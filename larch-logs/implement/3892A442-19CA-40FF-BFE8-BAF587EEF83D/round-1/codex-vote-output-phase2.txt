@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL already has tier resolution; extra harness needles go beyond the plan’s structure-test scope.
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan specifies a manual live-surface grep gate, not a new CI harness.
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Latent substring false positive; a one-line absent pin is optional hardening.
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan explicitly removed the `--simple` table-row assertion from the driver harness.
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- flags.md has other structure pins; dedicated tier-section needles are optional nit coverage.
-FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Step 0a creates DESIGN_TMPDIR before 0b flag rejection, conflicting with “before Step 0 / no tmpdir” prose.
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Historical CHANGELOG entry; plan excludes CHANGELOG from the live-surface completeness grep.

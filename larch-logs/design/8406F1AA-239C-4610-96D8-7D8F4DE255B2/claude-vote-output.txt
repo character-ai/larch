@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Unterminated fence is a real formatting defect but plan-block tooling reads raw text line-by-line, not rendered markdown, so diff_* trailer keys remain parseable; the feature is not blocked, broken, or incomplete, placing this below the necessity gate.

@@ -1,1 +1,0 @@
-I'll wait for the background task to complete before reading the ballot.

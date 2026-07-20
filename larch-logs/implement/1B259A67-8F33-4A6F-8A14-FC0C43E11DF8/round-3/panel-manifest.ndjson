@@ -1,5 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.19/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.19/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/49.0.19/agents/reviewer-testing.md"}
-{"slot": "dyn-arch-ingestion", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-arch-ingestion-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-arch-ingestion-prompt.md", "weight": 1, "focus_area": "architecture", "archetype_ref": "ae5a220bff45"}
-{"slot": "dyn-pricing-rates", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-pricing-rates-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-pricing-rates-prompt.md", "weight": 1, "focus_area": "correctness", "archetype_ref": "e1b2f3d071e8"}

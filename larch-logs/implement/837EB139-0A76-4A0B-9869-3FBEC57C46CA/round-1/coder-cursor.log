@@ -1,9 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_2
-APPLIED: FINDING_4**Review fixes applied.** All three accepted findings are addressed:
-
-- **FINDING_1:** Added local type annotations in `python/decompose.py`, `python/plan_scout.py`, and `python/design_summary.py` (including the `json.loads` sites reviewers called out).
-- **FINDING_2:** Reverted `python/complexity-baseline.json` to match `origin/main`.
-- **FINDING_4:** Branch diff is now limited to the 17 approved design-lifecycle modules (no out-of-scope files).
-
-`make py-lint` passes after follow-up fixes in `plan_scout.py` (subprocess result typing) and `design_step_log.py` (complexity baseline alignment). Changes are uncommitted, as requested.

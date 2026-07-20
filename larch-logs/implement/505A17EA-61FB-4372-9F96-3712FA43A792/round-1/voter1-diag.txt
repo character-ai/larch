@@ -1,5 +1,0 @@
-voter1_rc=1
-output_bytes=     135
---- first 200 bytes of voter output ---
-API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
-

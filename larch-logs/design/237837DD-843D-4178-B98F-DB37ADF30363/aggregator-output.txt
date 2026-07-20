@@ -1,3 +1,0 @@
-Merging the 32 reviewer inputs into a normalized finding list: grouping by behavioral risk, applying severity merge rules, and preserving verbatim suggested revisions per slot.
-Normalized 32 reviewer inputs into 15 merged findings. Creating the structured aggregator output for voter consumption.
-

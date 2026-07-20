@@ -1,1 +1,0 @@
-Fold three happy-path `/implement` parse-then-route chains into Python-owned composite verbs. Keep Step 3 unchanged because its next action is branch-specific foreground commit logic, not a consecutive background fence.

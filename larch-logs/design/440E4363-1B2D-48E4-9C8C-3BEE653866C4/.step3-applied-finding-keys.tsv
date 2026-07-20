@@ -1,4 +1,0 @@
-1	finalization must inspect the daemon-owned `.result.env` and branch on `bgjob_rc` before requiring merge or status artifacts.
-1	crash finalization must not retry another tier when the crashed lane already advanced `head` with a salvage commit.
-1	crash recovery must fail closed on uncommitted drift or unverified changes before launching the next fixer tier.
-1	launch context plus stdout and stderr tails must be composed, redacted, and truncated as one bounded payload.

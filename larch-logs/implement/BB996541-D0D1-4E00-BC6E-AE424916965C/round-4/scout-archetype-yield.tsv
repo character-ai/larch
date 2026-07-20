@@ -1,5 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-edge-cases	correctness	1	0	0	0	n/a
-codex-generic	code-quality	1	0	0	0	n/a
-dyn-robustness	code-quality	1	4	3	1	0.750000
-dyn-integration-paths	risk-integration	1	2	2	0	1.000000

@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: NO -- duplicates FINDING_1; same "failed" gloss ambiguity from a second reviewer; one tracking issue is sufficient
-FINDING_3: YES
-FINDING_4: EXONERATE -- section header comments are informal labels, not authoritative test maps; updating them for each new sub-case adds no real maintainability value
-FINDING_5: YES

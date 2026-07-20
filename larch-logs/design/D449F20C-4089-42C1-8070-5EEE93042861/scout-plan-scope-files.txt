@@ -1,5 +1,0 @@
-skills/design/SKILL.md
-skills/design/references/approval-gates.md
-scripts/test-design-structure.sh
-skills/design/scripts/test-assess-plan-round.sh
-skills/design/scripts/test-assess-plan-round.md

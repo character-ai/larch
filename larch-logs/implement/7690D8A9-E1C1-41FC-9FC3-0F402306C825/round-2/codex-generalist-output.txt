@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `correctness` `scripts/rebase-push.sh:258-275` — The new force-push retry refreshes the branch ref after a `--force-with-lease` failure, then retries with the default lease. Concrete failing scenario: remote `origin/feature` advances from `A` to another runner’s `B`; this script’s first push fails the lease, line 263 refreshes the tracking ref to `B`, and the retry can now lease against `B` and overwrite it with this local `HEAD`. Preserve the original expected remote OID for all retries, e.g. use `--force-with-lease=refs/heads/$CURRENT_BRANCH:$expected_oid`, and only treat refreshed remote equality with local `HEAD` as success; otherwise fail or rebase rather than retrying against the refreshed lease.
-
-2. **Nit** `risk-integration` `scripts/ship-pr.md:66-77` — The new docs say `REBASE_COUNT >= 5`, but line 72 still says an existing `REBASE_COUNT >= 20` guard bounds the retry budget, and line 77 still says `run_evaluate_failure` runs one vendor fix attempt. Update these stale statements to match the new 5-attempt behavior.
-
-### Out-of-Scope Observations
-
-1. **Latent** `correctness` `scripts/git-force-push.sh:65-90` — The pre-existing force-push helper has the same lease-refresh retry shape: after a failed force-with-lease it fetches the branch, then retries with the refreshed default lease. This predates the current PR, but the same concrete overwrite path applies if another writer advanced the remote branch between the local lease snapshot and the retry. Use an explicit expected remote OID across retries or fail when refreshed remote differs from local `HEAD`.

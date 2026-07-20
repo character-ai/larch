@@ -1,9 +1,0 @@
-Gathering the diff and commit history for a Plan Fidelity review (read-only).
-
-Searching the large diff for plan-relevant files and reading key hunks.
-
-Reading diff hunks for plan-listed files.
-
-Plan items 1–6 are present in the diff with matching behavior. Calling CreatePlan to record the review conclusion.
-
-

@@ -1,7 +1,0 @@
-warning: unknown From slot label 'Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-ledger-state, Codex-dyn-ledger-state' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Requirements, Codex-Requirements' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-shell-semantics, Codex-dyn-shell-semantics' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-shell-semantics, Codex-dyn-shell-semantics' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-ledger-state, Codex-dyn-ledger-state' in FINDING_2 (not present on any input finding)
-warning: unknown From slot label 'Cursor-Requirements, Codex-Requirements' in FINDING_3 (not present on any input finding)
-warning: unknown From slot label 'Cursor-dyn-ledger-state, Codex-dyn-ledger-state' in FINDING_4 (not present on any input finding)

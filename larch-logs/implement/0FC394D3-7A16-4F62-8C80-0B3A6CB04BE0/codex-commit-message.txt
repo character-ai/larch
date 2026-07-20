@@ -1,5 +1,0 @@
-Add Python pre-push conflict handoff signal
-
-Introduce bash-parity handoff literals and a PrePushConflictHandoff error for non-bump-only pre-push conflict exhaustion. Write the phase-14 handoff flag only for the waterfall-exhaustion handoff path while keeping bump/mixed conflicts, residual conflicts after a winning tier, and flag write failures as plain Stalled outcomes.
-
-Document the Phase 7 driver deferral and cover the new config, error, and rebase behavior with tests.

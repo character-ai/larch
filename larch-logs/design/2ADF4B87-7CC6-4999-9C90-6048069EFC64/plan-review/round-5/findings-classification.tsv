@@ -1,8 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity
-FINDING_1	Cursor-Arch, Cursor-Pragmatic	neutral	NO	partially-true	minor	good	false	Claude	NO	partially-true	nit	good	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_2	Codex-Arch, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-shell-parity, Codex-dyn-shell-parity	accepted	YES	true	minor	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_3	Codex-Arch, Codex-Innovation, Codex-dyn-shell-parity	accepted	YES	true	minor	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_4	Cursor-Requirements	neutral	NO	true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_5	Codex-Requirements	accepted	YES	true	minor	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important
-FINDING_6	Codex-dyn-shell-parity	rejected	NO	true	nit	good	false	Claude	NO	uncertain	minor	adequate	true	Codex	NO	partially-true	nit	adequate	false	Cursor	latent
-FINDING_7	Cursor-Innovation	neutral	NO	partially-true	minor	good	false	Claude	NO	partially-true	nit	good	false	Codex	YES	true	major	excellent	false	Cursor	important

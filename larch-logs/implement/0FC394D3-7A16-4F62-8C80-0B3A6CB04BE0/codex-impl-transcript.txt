@@ -1,5 +1,0 @@
-Implementation complete. Wrote manifest with status `complete` at the requested path.
-
-Validated with:
-- `PYLINTHOME=/private/tmp/pylint-cache make py-lint`
-- `PYTHONPATH=/private/tmp/larch-pytest-nosleep env -u LARCH_QUIET_LOG_FILE make py-test`

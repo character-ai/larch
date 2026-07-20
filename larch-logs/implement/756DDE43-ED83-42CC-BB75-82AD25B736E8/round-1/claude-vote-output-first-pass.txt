@@ -1,3 +1,0 @@
-FINDING_29: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan F17 explicitly scoped detection to full manifest path + $SCRIPT_DIR-derived forms to avoid false positives; omitting bare-basename for non-ship-pr files is intentional design
-OOS_30: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stale docstring is a nit; not compelling for a new issue
-OOS_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

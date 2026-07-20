@@ -1,8 +1,0 @@
-Fix Step 5 round timing duplicate probe
-
-Make the Step 5 resume wrapper treat an existing round timing ledger row as an awk success so it skips duplicate recording. Document the invariant and pin the fixed expression in the timing rehydration harness.
-
-Tests:
-- bash scripts/test-implement-timing-rehydration.sh
-- make test-implement-timing-rehydration
-- bash scripts/relevant-checks.sh

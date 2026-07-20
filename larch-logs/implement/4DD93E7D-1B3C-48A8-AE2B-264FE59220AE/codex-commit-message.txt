@@ -1,3 +1,0 @@
-Implement launcher-owned design resume state
-
-Add wrapper flags for Step 3 re-entry, mid-loop resume state, postplan continue markers, and Step 2b completion-only markers. Update /design contracts to use the launcher-owned wrappers and extend regression coverage for the moved state ownership.

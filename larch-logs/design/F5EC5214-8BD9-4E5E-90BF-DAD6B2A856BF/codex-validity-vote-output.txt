@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate rejected finding; the plan already requires preserving design-persistence behavior, CLI stdout, and divergent policies.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate rejected finding; the plan's descriptor artifact policies and exact behavior preservation already cover per-kind invalidation divergence.

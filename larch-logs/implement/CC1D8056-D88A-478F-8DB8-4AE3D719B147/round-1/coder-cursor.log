@@ -1,5 +1,0 @@
-All **16 accepted findings** were applied across `python/research.py`, `python/research_eval.py`, tests, docs, and harness scripts.
-
-**Core fixes:** killable subprocess fetch workers on budget expiry, RFC6598 `100.64.0.0/10` SSRF blocking, `network-error` for DNS failures, per-call DNS resolution (no global socket timeout), fail-soft `OSError` reads, full eval judge + v2 baseline schema, and restored eval-set validation semantics.
-
-**Verification:** `37 passed` in `python/test_research.py` and `python/test_research_eval.py`; `test-research-structure.sh` and `test-collect-agent-bash32.sh` also pass. Changes are not committed.

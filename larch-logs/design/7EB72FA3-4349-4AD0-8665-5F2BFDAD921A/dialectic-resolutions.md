@@ -1,6 +1,0 @@
-### DECISION_1: Where the multi-round loop controller lives
-**Resolution**: Extend the existing launcher `scripts/run-step5-review.sh` to default to multi-round dispatch (a new `--mode loop` or `--all-rounds` flag), and add the actual loop function `run_implement_loop` next to `run_implement_round` inside `skills/review-and-fix/scripts/review-and-fix.sh`.
-**Disposition**: fallback-to-synthesis
-**Thesis summary**: Co-locating multi-round dispatch in `scripts/run-step5-review.sh` and adding `run_implement_loop` beside `run_implement_round` in `review-and-fix.sh` keeps argv assembly, degraded-round cap inflation, and the diff-mode round primitive in one proven pipeline; quarantine into a separate wrapper would either duplicate resolution logic or couple through `source`/re-invocation that is easier to drift.
-**Antithesis summary**: (antithesis output truncated after steelman; missing all 5 required output tags and the RECOMMEND line — no substantive counter-argument was produced)
-**Why fallback**: missing_tag — Cursor antithesis output ended after the steelman block; `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, `<risk_if_wrong>`, and the terminal `RECOMMEND: ANTI_THESIS` line were all absent. Per debate quorum gate, fallback-to-synthesis stands and the chosen approach prevails by default.

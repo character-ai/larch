@@ -1,1 +1,0 @@
-Add a small `architectural-guidelines present-note` CLI surface. Keep deviation judgment in `/design` prose, but move absent, invalid, and clean-note strings into Python. Update the two `/design` reference sites and Python tests.

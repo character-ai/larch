@@ -1,9 +1,0 @@
-Change conditional reviewer pruning to key on precision, not on `accepted_count > 0`.
-
-**Problem.** Today the only *live* consequence of scoring is conditional spawning. `docs/point-competition.md` ("Conditional spawning") and `reviewer-prune-ledger.tsv` prune a reviewer combo only when it has **zero accepted findings** across its last two launched rounds. A reviewer that lands one accepted finding survives regardless of how much rejected noise it also produced. So the `−1` reject penalty currently bites nothing live (token allocation is still "Future Plans"). The penalty is computed and displayed but drives no behavior.
-
-**Proposed change.** Prune on a precision signal: net score ≤ 0 over the trailing window, or acceptance rate below a floor, instead of `accepted == 0`. This gives the reject penalty a real, cheap, in-loop consequence using the ledger already written.
-
-**Evidence.** 34.9% of in-scope findings are unanimously rejected (`−1`), each consuming three voter evaluations; noise alongside one lucky accept is unpriced.
-
-**Affected surfaces.** Conditional-spawning logic in `python/review_pipeline.py`, `reviewer-prune-ledger.tsv`, `docs/point-competition.md` ("Conditional spawning").

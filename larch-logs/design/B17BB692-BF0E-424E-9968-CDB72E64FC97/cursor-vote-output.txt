@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan already mandates mirrored argv constants plus full test retarget; single-source import is maintainability, not required for the CI speedup
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- omitting pip retry env may flake installs but does not block delivering parallel pyright or the 2X python-lint goal
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- replay should match CI PYLINT_JOBS=0; Makefile sysconf fallback is explicit non-goal for local replay paths

@@ -1,1 +1,0 @@
-Cut G13 consumers from the 16 retired ci/pr/merge/push/gh Bash helpers to existing `python/cli.py` verbs, close small checkpoint-probe parity gaps found during inspection, delete the Bash helpers plus contracts and harnesses, update stale references, append retired paths to the manifest, and verify `lint-retired-scripts`, lint, and Python tests.

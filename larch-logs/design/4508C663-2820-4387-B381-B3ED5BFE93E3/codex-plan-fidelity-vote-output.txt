@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The scope anchor already specifies these rules, and this duplicates a neutral prior-round finding.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan requires resolution from --root and isolated root fixtures.
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Same-line reason-bearing suppression is explicitly required feature scope.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already requires sweeping bare and other unprefixed stale machinery references.
-FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- This duplicates the prior-round rejected duplicate-run concern.
-FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Symlink policy is not necessary to deliver the two-document pointer-lint feature.

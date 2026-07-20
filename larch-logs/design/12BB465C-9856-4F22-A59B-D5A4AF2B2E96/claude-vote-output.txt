@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- two-leading-sentinel raw_decode acceptance is pre-existing tier-1 behavior the plan does not change; singleton check is scoped to tier-2 which handles it correctly; no necessity gate cleared
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- removing OUTER_LAUNCHER_SITE is a "cleaner" concern, not a necessity; the feature ships correctly either way and the extension is proportionate to the fix; no necessity gate cleared

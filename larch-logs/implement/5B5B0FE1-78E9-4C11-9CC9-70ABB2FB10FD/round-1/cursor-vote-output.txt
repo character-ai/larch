@@ -1,5 +1,0 @@
-FINDING_1: YES
-FINDING_2: YES
-FINDING_3: YES
-FINDING_4: YES
-FINDING_5: EXONERATE -- tautological process limit for any diff, not a branch-specific defect worth a panel finding

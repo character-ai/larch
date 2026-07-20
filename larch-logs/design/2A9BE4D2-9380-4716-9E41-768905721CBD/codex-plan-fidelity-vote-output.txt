@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the prior-round emergency-repair skip concern; no materially new evidence, so it does not clear the necessity gate.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this extra non-default-workflow test is a robustness check, not a required feature-path fix, so it is out of scope.

@@ -1,1 +1,0 @@
-Plan: make three doc fixes, accept `blocking` reviewer severity, and change the rebalance feasibility warning to use the packed shard spread estimate. Add focused Python tests and run targeted plus repo-relevant checks.

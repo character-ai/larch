@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Set `DEGRADED_ROUND` when succeeded path count < manifest slot count')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Mirror plan-review: derive `DISPATCH_OK` and `STATIC_DISPATCH_OK` from launch rc')

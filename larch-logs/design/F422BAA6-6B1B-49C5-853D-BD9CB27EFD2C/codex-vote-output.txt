@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- named invalid-repo path is not on the feature execution path because design_publish validates repo before invoking log-publish
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- the plan already requires classifying run-log commit scrub failures before the recoverable no-commit return
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the current plan already limits Item 1 to one short intentional-asymmetry clause, so further scope reduction is not necessary
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the trigger is speculative and not plausible in the validated Step 5c usage path
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- boolean count drift affects only malformed or hand-edited tally JSON and does not clear the OOS materiality gate

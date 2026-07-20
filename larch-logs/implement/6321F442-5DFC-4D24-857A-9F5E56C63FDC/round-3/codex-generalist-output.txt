@@ -1,9 +1,0 @@
-### In-Scope Findings
-
-1. **Important** `correctness` `skills/review/scripts/review-core.sh:509` — Round 2+ votes are now intentionally 2-judge, but `tally-code-votes.sh` still emits `⚠ Degraded code-review panel` whenever effective voters are below 3 (`skills/review/scripts/tally-code-votes.sh:265-267`). Concrete failing scenario: round 2 launches Claude+Cursor successfully, `voting-tally.md` gets a degraded banner, then `review-and-fix.sh` sees that banner (`skills/review-and-fix/scripts/review-and-fix.sh:1005-1039`), retries the panel, and records `DEGRADED_ROUND=true`, which inflates round caps and excludes the round from convergence. Pass the round or expected voter count into `tally-code-votes.sh` and only emit the degraded banner when effective voters fall below the expected count for that round; add a round-2 regression test.
-
-2. **Nit** `risk-integration` `README.md:84` — Several public/reference docs still say code review uses Codex every round or still describe the old full panel shape (`README.md:84`, `docs/collaborative-sketches.md:55`, `docs/workflow-lifecycle.md:154`, `docs/skills.md:95`, `skills/shared/topology.tsv:13`). This will mislead consumers even though the runtime now omits Codex after round 1. Update the remaining docs/topology source and regenerate generated projections as needed.
-
-No out-of-scope observations.  
-
-Checks run: `bash -n` on the changed shell scripts and updated test harnesses.

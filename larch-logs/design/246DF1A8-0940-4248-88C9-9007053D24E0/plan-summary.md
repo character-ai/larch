@@ -1,1 +1,0 @@
-Hard-cutover git and phantom consumers to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py"` verbs. Delete the retired bash helpers, their `.md` siblings, and obsolete bash harnesses. Keep `scripts/lib-phantom-probe.sh` as a repointed survivor. Update pytest coverage, docs, Makefile wiring, agent-lint allowlists, and `python/migrated-scripts.tsv`.

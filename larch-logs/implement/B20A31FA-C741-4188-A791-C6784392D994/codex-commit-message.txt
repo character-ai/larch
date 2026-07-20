@@ -1,7 +1,0 @@
-Prefer OPENAI_API_KEY for covered Codex paths
-
-Add shared Codex auth helpers that prefer a live non-empty OPENAI_API_KEY via per-invocation provider overrides while leaving key material out of temp config and auth files. Strip stale larch env-key config on login fallback before symlinking auth.json.
-
-Wire the helper into the Codex implement, review, CI, health-probe, and review-fix dispatch paths, including trusted-project parity and auth-mode-aware probe stamps.
-
-Update docs and security notes to scope the covered paths and exclude direct Codex lanes that are not wired here.

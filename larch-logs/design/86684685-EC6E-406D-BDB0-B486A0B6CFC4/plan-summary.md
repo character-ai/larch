@@ -1,1 +1,0 @@
-Plan fixes six token sidecar gaps with small, targeted changes: clean active-ledger env at every sidecar ingestion call, preserve ingestion warnings, avoid false `TOKEN_RECORD=` emission, add Python ship recovery fallback ingestion parity, add validation-phase ingestion instructions, and pin the prompt-side research/validation contracts with harness coverage.

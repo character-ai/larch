@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing' in FINDING_12 not traceable to scoped input (first 80 chars: 'Treat inline plan-size threshold comparisons and `diff_lines`/`plan_lines` param')
-warning: fix text for slot 'dyn-dyn-ast-lint-precision' in FINDING_17 not traceable to scoped input (first 80 chars: 'Fix parsers or shrink the baseline in dedicated follow-up.')
-warning: fix text for slot 'dyn-dyn-ast-lint-precision' in FINDING_19 not traceable to scoped input (first 80 chars: 'Extend lint scope or fix findall-based parsers separately.')

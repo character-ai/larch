@@ -1,1 +1,0 @@
-Remove result-quality retries for reviewer collection and code voters. Keep launch retries. Count `NOT_SUBSTANTIVE` and parse-rate failures as degraded slots. Harden the combined `codex-plan-generic` prompt and update tests/docs.

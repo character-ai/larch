@@ -1,3 +1,0 @@
-Trim implement green-path reference loads
-
-Add a ROUTE KV to the rebase checkpoint probe and document the rc plus ROUTE predicate for prompt routing. Update /implement prompt prose to skip rebase routing, phantom probe, and Step 7a summary-template loads on the green path while keeping fallback routing explicit. Remove dead telemetry lines and preserve the Step 8 recovery guidance before stubbing the retired NEVER entry.

@@ -1,8 +1,0 @@
-scripts/step-telemetry-mark.sh
-scripts/step-telemetry-mark.md
-scripts/test-step-telemetry-mark.sh
-scripts/test-step-telemetry-mark.md
-skills/implement/SKILL.md
-scripts/test-implement-timing-rehydration.sh
-scripts/test-implement-timing-rehydration.md
-Makefile

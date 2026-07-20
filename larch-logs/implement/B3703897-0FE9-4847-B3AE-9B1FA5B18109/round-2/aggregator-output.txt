@@ -1,3 +1,0 @@
-Merging overlapping reviewer findings, preserving `[OUT_OF_SCOPE]` on merged headings where any source used that tag, and ordering clusters by the smallest original finding id in each cluster. Creating the plan document with the full structured list.
-
-

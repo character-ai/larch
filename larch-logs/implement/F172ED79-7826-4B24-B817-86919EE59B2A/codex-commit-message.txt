@@ -1,3 +1,0 @@
-Surface Step 3 result-env write failures
-
-Log Step 3 result-env persistence failures without clobbering the already emitted operational loop status. Repair the design-step3-review wrapper handoff from recoverable LOOP_STATUS values, with a panel-failed fallback when no usable status exists. Run Cursor review subprocesses with stdin from /dev/null and extend the Step 3 and launch-review harness docs/tests for the regressions.

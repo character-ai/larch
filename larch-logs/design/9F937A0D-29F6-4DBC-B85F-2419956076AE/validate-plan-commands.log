@@ -1,2 +1,0 @@
-SKIPPED script=skills/implement/scripts/oos-disposition-checkpoint.sh reason=new-script
-VALIDATE_STATUS=ok	DEFECT_COUNT=0	SKIPPED_COUNT=1	UNSAFE_TOKEN_COUNT=0

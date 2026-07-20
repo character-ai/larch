@@ -1,8 +1,0 @@
-# attributed_ballot_sha256=97df0c476efd697f5acbac51cfb21e8d14180ea109d1feca54446fdea496e1df
-# neutral_ballot_sha256=4ac79e81fea5befa77ea0e7e7f24b66332bb162470d853aa0338cd38e4088768
-item_id	reviewer	reviewer_line
-FINDING_1	Cursor-Arch	- **Reviewer(s)**: Cursor-Arch
-FINDING_2	Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Marker Contract Auditor	- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Marker Contract Auditor
-FINDING_3	Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Marker Contract Auditor	- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Marker Contract Auditor
-FINDING_4	Codex-Pragmatic, Codex-dyn-Marker Contract Auditor	- **Reviewer(s)**: Codex-Pragmatic, Codex-dyn-Marker Contract Auditor
-FINDING_5	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation

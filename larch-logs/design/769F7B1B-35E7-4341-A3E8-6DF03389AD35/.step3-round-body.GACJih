@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "<stdin>", line 37, in <module>
-  File "<stdin>", line 18, in prob
-NameError: name 'problem_text' is not defined

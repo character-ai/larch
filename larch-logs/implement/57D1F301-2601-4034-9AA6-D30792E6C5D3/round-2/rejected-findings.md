@@ -1,9 +1,0 @@
-# Rejected Findings
-
-10:FINDING_13_OUTCOME=rejected
-13:FINDING_14_OUTCOME=rejected
-20:FINDING_17_OUTCOME=rejected
-25:FINDING_2_OUTCOME=rejected
-32:FINDING_5_OUTCOME=rejected
-35:FINDING_6_OUTCOME=rejected
-42:FINDING_9_OUTCOME=rejected

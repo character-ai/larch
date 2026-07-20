@@ -1,1 +1,0 @@
-Fix the Step 5c false `failed-publish` race by making log publish idempotent when the remote log branch is already merged, emitting `RECOVERY_BRANCH` for concurrent final runs, and preserving an existing successful `.design-publish-result.env` from later failure overwrites.

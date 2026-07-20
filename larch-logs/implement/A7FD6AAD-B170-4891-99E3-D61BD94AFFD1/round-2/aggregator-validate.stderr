@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add phase fallback in `_resolve_collector_stderr_tail_file` (or ledger-driven lo')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Re-render or re-redact sidecar contents in `_emit_collector_stderr_tail_from_fil')
-warning: fix text for slot 'dyn-hook-regex-parser-output.txt' in FINDING_26 not traceable to scoped input (first 80 chars: 'replace `\\-n\\b` with a portable boundary such as `-[[:space:]]n([^[:alnum:]_]|$)')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_26 not traceable to scoped input (first 80 chars: 'Split into its own PR or commit series for clearer review.')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_26 not traceable to scoped input (first 80 chars: 'Review hook changes independently of this PR.  ### OOS_2: [OUT_OF_SCOPE] *.launc')
-warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_26 not traceable to scoped input (first 80 chars: 'Add *.launch-stderr to the same exclusion list as *.sidecar.  ### OOS_3: [OUT_OF')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_26 not traceable to scoped input (first 80 chars: 'Follow-up stderr-source hook for implement launchers per plan out-of-scope note.')

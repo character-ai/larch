@@ -1,1 +1,0 @@
-Plan fixes three in-scope OOS items: review Step 4 log-root and RUN_ID guarding, design publish pause warning labels, and duplicate Step 18 execution-issues flushes. It preserves scout-manifest behavior, keeps clarify out of scope, and relies on teardown for execution-issues safety-net coverage.

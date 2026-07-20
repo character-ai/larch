@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- stale inventory rows are cleanup-only; they do not block the feature or its acceptance criteria.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the harness is pinning the intended final-summary source contract, not a retired wait mechanism, so the claimed failure does not follow from this plan.
-FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- duplicate of FINDING_1 with no materially new evidence.

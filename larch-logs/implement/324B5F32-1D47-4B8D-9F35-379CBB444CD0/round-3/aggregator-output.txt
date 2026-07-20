@@ -1,3 +1,0 @@
-Normalized the supplied reviewer slots into merged findings where they describe the same behavioral risk, preserved `[OUT_OF_SCOPE]` on out-of-scope items, and used each slot’s **Suggested revision** line verbatim (omitting bullets when that line was absent).
-
-

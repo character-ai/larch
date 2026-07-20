@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The validation-contract concern is real but does not make the discoverability feature incomplete or broken.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The harness-run wording is unnecessary cleanup, not required for the fence-count mitigation.
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The broader rule scope is noisy architecture, but the scoped note can still deliver the required mitigation.

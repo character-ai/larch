@@ -1,7 +1,0 @@
-Complete.
-
-- **Manifest written:** `codex-step2-out/manifest.json`
-- **Status:** `complete`
-- **Files touched:** 27
-- **Validation:** `bash scripts/relevant-checks.sh` passed
-- **Scout manifest:** written best-effort

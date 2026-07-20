@@ -1,1 +1,0 @@
-Add a stdlib Python closure-size scanner, a committed baseline, and a lint ratchet for `/design` and `/implement` always-loaded markdown. Wire it through `python/cli.py`, `make`, pre-commit, and focused tests.

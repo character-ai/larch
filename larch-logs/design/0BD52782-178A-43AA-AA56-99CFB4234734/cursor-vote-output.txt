@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- drift-prevention refactor is real but not backlog-material for this hot-path scope
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- issue explicitly allowed present-note; separate verb is a scope choice not a functional gap
-OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2 already accepted in-scope; separate OOS issue not warranted

@@ -1,7 +1,0 @@
-Reading the ballot and nearby context files for verification.
-
-FINDING_1: EXONERATE -- cosmetic doc-only nit with negligible operational impact versus a one-off character swap.
-FINDING_2: YES
-FINDING_3: EXONERATE -- tiny boolean early-exit in a dev-only script; a stubbed gh/jq harness would be disproportionate glue for the risk.
-FINDING_4: EXONERATE -- general PR hygiene gripe, not a concrete defect warranting a tracking issue.
-FINDING_5: EXONERATE -- hypothetical rev-list vs log mismatch is not issue-worthy for this script path.

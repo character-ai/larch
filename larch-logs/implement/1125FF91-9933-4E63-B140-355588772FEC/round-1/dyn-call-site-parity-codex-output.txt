@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **architecture** `scripts/lib-timing-kinds.sh:49-54` — The branch adds `claude-phase3-structure` and `claude-phase3-plan-fidelity`, but the active waterfall call path does not emit those kinds: `scripts/dispatch-with-waterfall.sh:223-228` derives Claude timing as `${tool}-${phase}-${slot_names[$idx]}`, while `skills/review/scripts/dispatch-panel.sh:104-112` queues only `security`, `correctness`, `edge-cases`, and `testing` static slots, with plan-fidelity folded into testing. These new allow-list entries are therefore dead/misleading in the same way `claude-phase3-aggregator` was meant to avoid. **Suggested fix:** Remove `claude-phase3-structure` and `claude-phase3-plan-fidelity` from the allow-list/docs unless separate active slots are reintroduced; keep only the four emitted static phase-3 kinds plus warning-only `claude-phase3-dyn-*`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

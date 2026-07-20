@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already mandates bootstrap absorbed-tail both-down hard-fail and implement SKILL routing before 1.r
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan bootstrap section already switches coder selection to binary-found-only semantics
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- same dialectic-protocol surface already covered by FINDING_4 in-scope fix

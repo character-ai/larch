@@ -1,8 +1,0 @@
-All four review findings are applied:
-
-- **FINDING_1**: CRLF parity via `removesuffix("\r")` on each `split("\n")` line in `larch_io._line_iter`, plus a CRLF parity test
-- **FINDING_3**: Missing-file guard restored in `session_env._read_kv_raw`
-- **FINDING_4**: `atomic_write` no longer unlinks symlink temps on refusal
-- **FINDING_10**: `plan_quality._atomic_write` uses `prefix=f".{path.name}."` for unpredictable temps
-
-The background full `make py-test` run failed on one intermediate edit to `test_parse_kv_cr_strip_modes`. The final code passes targeted tests (19/19) and `make py-lint`.

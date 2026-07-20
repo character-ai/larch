@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- --skip-approve explicitly auto-approves; summary preview matches interactive Approve-without-See-full-plan behavior
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already mandates run-params.json jq read like Gate B; separate fence is defensive, not required for correct flag sourcing
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

@@ -1,7 +1,0 @@
-All four accepted findings were applied in `python/ship.py`:
-
-- **`LAST_MONITORED_HEAD`** is persisted in `ship-pr-state.sh` across monitor iterations.
-- **`_seed_last_monitored_head`** rehydrates post-push empty-checks grace on cold resume (including from `CI_FIX_REBASE_PENDING_HEAD` when relevant).
-- **`test_post_push_resume_rehydrates_empty_checks_grace`** covers the resume path.
-
-Targeted ship tests and full `make py-test` passed (3866 passed, 52 skipped). `make py-lint` is clean.

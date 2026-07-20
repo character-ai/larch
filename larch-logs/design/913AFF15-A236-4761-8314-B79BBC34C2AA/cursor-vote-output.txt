@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan lines 90-110 already require harness retarget including Step 5d compact gate pin; explicit line 84 is redundant detail.

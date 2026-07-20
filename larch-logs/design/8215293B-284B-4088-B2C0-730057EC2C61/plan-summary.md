@@ -1,1 +1,0 @@
-Add four new Step 8 assessment adapter and harness files. The adapter will validate assessment identity, rejoin matching jobs, retry one failed bgjob, and fail closed without duplicating Piece 2 logic or changing `skills/implement/SKILL.md`.

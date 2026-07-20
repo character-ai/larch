@@ -1,5 +1,0 @@
-Fold design degraded gate into session setup
-
-Run the degraded-tools gate from design-step0-session.sh after the design env is written, then emit the same Step 0 decision envelope from that session fence.
-
-Remove the standalone design-step0-degraded wrapper and update /design prose plus structural pins to reflect the three-fence Step 0 path.

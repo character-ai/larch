@@ -1,1 +1,0 @@
-voter-2	codex	collector-failure	STATUS=FAILED ✓ codex agent: completed (exit code 0, output 219 bytes) Traceback (most recent call last):   File "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.11/python/cli.py", line 756, in <module

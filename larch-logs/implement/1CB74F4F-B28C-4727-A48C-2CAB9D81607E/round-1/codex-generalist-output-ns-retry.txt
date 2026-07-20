@@ -1,5 +1,0 @@
-### In-Scope Findings
-
-1. **Nit** — `code-quality` — `scripts/test-dispatch-code-voters.sh:206`  
-   What: The new regression only asserts the diagnostic header is present, so it would still pass if the first 200 bytes of voter output were not actually copied into `execution-issues.md`.  
-   Suggested fix: Add a second assertion for the stub payload, e.g. `grep -Fq 'stub voter output for diag test' "$issues_log_nonempty"`.

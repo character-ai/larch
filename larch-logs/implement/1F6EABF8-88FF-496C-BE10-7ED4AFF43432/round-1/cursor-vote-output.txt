@@ -1,5 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- intentional #3121 tradeoff already documented in plan and CHANGELOG
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observational consistency note, not a concrete defect worth filing
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- conventional run-log flush with no stated functional defect
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing footgun already documented; use --no-issue when ACTUAL_SPEND is set
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- pre-existing stale-fixture risk, not introduced by harness removal

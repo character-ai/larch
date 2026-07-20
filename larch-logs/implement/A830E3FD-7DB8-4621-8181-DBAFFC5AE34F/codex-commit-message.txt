@@ -1,3 +1,0 @@
-Fix combine-issues closed-blocker closure
-
-Classify closed inherited blockers as satisfied after repo-gated metadata enrichment, keep satisfied edges out of writes and closure blockers, emit deferred source mapping fragments, add close-stale, and update OOS guidance and regression coverage.

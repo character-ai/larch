@@ -1,3 +1,0 @@
-Complete Python Step 8 cutover contract
-
-Harden the Python ship driver entrypoint, quiet routing, contract JSON emission, and stalled metadata gap-fill. Align Step 8+ routing prose and structural pins with JSON plus finalize-state reads, preserve Python stall metadata during finalize restore, and add finalize-state fallback classification. Consolidate Python test runners and cover PR base threading, XDG cache roots, restore preservation, and stall recovery fallback behavior.

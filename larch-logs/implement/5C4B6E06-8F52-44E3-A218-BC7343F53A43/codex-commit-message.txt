@@ -1,3 +1,0 @@
-Filter review timing charts to displayed reviewer rows
-
-Exclude CI and launcher probe timing rows from reviewer timing charts before sorting and capping. Compute chart axes from the filtered displayed rows while preserving the table Time and Cost windows. Document the filtered chart semantics and cover tail CI/probe rows plus all-filtered rounds in the renderer harness.

@@ -1,1 +1,0 @@
-Port the Step 2b drafter launchers and remaining live launcher-library behavior into `python/agents.py`, register direct CLI verbs, repoint consumers, replace shell parity harnesses with pytest, delete the retired scripts/docs/tests, and update retired-script/docs references so `make lint-retired-scripts` can pass.

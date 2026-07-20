@@ -1,3 +1,0 @@
-Merging duplicate reviewer findings by behavioral risk and first-seen order. Checking whether the repo defines an expected aggregator output format.
-Merged 26 raw inputs into 13 distinct findings (7 in-scope groups, 3 out-of-scope, 3 testing gaps). Creating the structured aggregator output.
-

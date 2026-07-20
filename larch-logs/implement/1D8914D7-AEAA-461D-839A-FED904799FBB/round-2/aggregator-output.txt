@@ -1,3 +1,0 @@
-Aggregating reviewer findings: verifying key code paths so merges reflect the same behavioral risks.
-Confirming the branch state matches reviewer claims. Producing the aggregated structured finding list.
-

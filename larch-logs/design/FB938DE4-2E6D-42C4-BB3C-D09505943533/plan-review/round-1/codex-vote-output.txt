@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already explicitly updates the outer merge guards for skip_approve_requested in both SKILL.md Step 0b and design-init-runparams.sh.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already gates the Gate C prompt path on skip_approve_requested=false and states the skip path proceeds to Step 5 with no AskUserQuestion.
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- summary-mode visibility changes are real but not necessary for a flag whose stated purpose is to auto-approve the final gate without interaction.
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

@@ -1,4 +1,0 @@
-Exploring the aggregate-findings pipeline, validation logic, and existing tests to draft an implementation plan.
-Checking how the validator is embedded and whether a separate `validate_py` path exists:
-Identifying a design conflict: #2881/#2782 treat attestation-only output as `empty_merge_from_nonempty_input`, while `orchestrator-aggregator.md` defines that output as the valid duplicate-only merge contract.
-

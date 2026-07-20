@@ -1,5 +1,0 @@
-Exploring the codebase to map `ship-pr.sh`, related exit paths, and reusable patterns for an architecture-focused plan.
-
-Having mapped `ship-pr.sh` phases, exit contracts, and related launchers, creating an architecture-focused plan.
-
-

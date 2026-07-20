@@ -1,3 +1,0 @@
-{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
-{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
-{"slot":"codex-plan-generic","tool":"codex","output":"<TMPDIR>/codex-plan-generic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-generic.prompt"}

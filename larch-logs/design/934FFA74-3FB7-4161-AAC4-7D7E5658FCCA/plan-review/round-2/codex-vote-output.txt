@@ -1,8 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already states before-pause ordering as the mitigation, so more detailed assertion prescription is likely redundant
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan already requires degraded zero-sketch writes before jumping plus Step 2b idempotent coverage
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

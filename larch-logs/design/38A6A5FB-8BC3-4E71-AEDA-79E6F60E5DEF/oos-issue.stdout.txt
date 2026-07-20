@@ -1,6 +1,0 @@
-ISSUE_1_NUMBER=4350
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4350
-ISSUE_1_TITLE=[OOS] Strip review_status / rounds_completed header lines from plan.txt during /implement materialization
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0

@@ -1,6 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Port host tier classification and append the documented `<details>` credibility ')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add `RESEARCH_TMPDIR` to `quiet_init` tmpdir precedence matching `scripts/lib-qu')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Pass `parsed.port` or 443 into `HTTPSConnection` and the connector seam; add a p')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Debug retry artifacts and stdout; check `META_TIMEOUT=1` retry timeout vs `_clas')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Monkeypatch slow `getaddrinfo`; assert `UNKNOWN(timeout)` within per-fetch/globa')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Add prose-only report fixture; assert no-claims sidecar body and `SUMMARY` line.')

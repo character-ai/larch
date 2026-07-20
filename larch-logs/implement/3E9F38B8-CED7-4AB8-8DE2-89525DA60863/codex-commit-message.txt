@@ -1,3 +1,0 @@
-Remove redundant merge parity harness target
-
-Remove test-merge-parity from the Makefile shard wiring now that the Python parity test runs under make py-test. Update the linting catalog and document /report-tokens scan-input trust boundaries plus the Python egress redactor in SECURITY.md.

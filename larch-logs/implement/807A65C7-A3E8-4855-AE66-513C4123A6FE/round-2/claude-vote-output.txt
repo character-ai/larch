@@ -1,9 +1,0 @@
-FINDING_1: EXONERATE -- nit about pre-existing text that wasn't touched by this diff; not issue-worthy
-FINDING_2: YES
-FINDING_3: NO -- meta-concern about review tooling infrastructure, not the code change itself
-FINDING_4: EXONERATE -- paragraph style matches surrounding prose in the Behavior section; splitting adds structure overhead for a triage note approved as one paragraph in the plan
-FINDING_5: EXONERATE -- same as FINDING_4
-FINDING_6: EXONERATE -- same as FINDING_4
-FINDING_7: YES
-FINDING_8: YES
-FINDING_9: YES

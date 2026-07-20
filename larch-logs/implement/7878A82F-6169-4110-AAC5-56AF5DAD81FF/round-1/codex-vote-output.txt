@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale anchor is real but nit-level and not worth a separate tracked issue
-FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real wording tension, but no concrete filing/logging failure beyond the specific call-site issues already covered
-FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false

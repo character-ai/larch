@@ -1,5 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements, Codex-dyn-glob-safety, Codex-dyn-fixture-parity, Codex-dyn-producer-name-audit	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_2	Codex-Innovation, Codex-Pragmatic	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
-FINDING_3	Codex-dyn-fixture-parity	exonerated	EXONERATE	partially-true	nit	adequate	true	Claude	YES	true	minor	excellent	false	Codex	EXONERATE	partially-true	nit	adequate	false	Cursor
-FINDING_4	Codex-dyn-producer-name-audit	exonerated	EXONERATE	partially-true	nit	adequate	true	Claude	EXONERATE	true	nit	good	false	Codex	EXONERATE	true	nit	adequate	false	Cursor

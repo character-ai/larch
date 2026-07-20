@@ -1,7 +1,0 @@
-Reading the ballot file and producing votes for each finding.
-
-Checking for additional findings beyond the first section.
-
-The ballot contains a single item, **FINDING_1**. Votes (only lines in the required format):
-
-FINDING_1: EXONERATE -- Legitimate coverage gap, but a grep/static guard on a print fragment couples tests to wording and refactors for limited payoff on a nit.

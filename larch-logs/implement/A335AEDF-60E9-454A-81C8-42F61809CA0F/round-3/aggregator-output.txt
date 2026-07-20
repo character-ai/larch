@@ -1,3 +1,0 @@
-Validating key code paths cited by reviewers so the merged finding list is accurate.
-Producing the normalized aggregator output as the plan deliverable.
-

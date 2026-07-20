@@ -1,8 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_2Both review fixes are in place.
-
-**FINDING_1:** Updated the chart-title assertion in `skills/implement/scripts/test-write-final-report.sh` from `window 0:00-1:05 (65s)` to `window 0:00-0:50 (50s)`.
-
-**FINDING_2:** Same update in `skills/design/scripts/test-render-final-summary.sh`.
-
-`make test-write-final-report` and `make test-render-final-summary` both passed. No commit was made.

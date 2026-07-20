@@ -1,3 +1,0 @@
-Add /implement stall recovery reporting gate
-
-Introduce the stall-recovery report helper, sanitization allowlists, retry-attempt harness, Step 18a recovery prompt, and shared larch dev-clone detection used by both recovery and stale-plugin checks.

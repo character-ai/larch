@@ -1,3 +1,0 @@
-Cover PR line counts in final-summary fallback
-
-Add a write-final-report fallback fixture that forces renderer failure while PR line-count data is valid, asserting the degraded summary keeps the fallback marker, PR bullet, and bucketed Lines (PR diff) output. Update the harness sibling doc to name the degraded bucketed line-count coverage.

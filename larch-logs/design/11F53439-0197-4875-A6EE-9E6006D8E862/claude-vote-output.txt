@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plan explicitly asserts `_build_tally_body` copies `round-N/review-round-summary.md`; reviewer's claim that the impl-root copy (with allowed headers) is preferred cannot be confirmed without reading the function; uncertain => default-deny
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- ignored flush return value is real but wiring it into Step 5 telemetry is not required to fix the tally-freeze bug; suggested fix explicitly says "no change required"; future-proofing concern
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan specifies a stub logger that emits only `LOG_WRITTEN=true`; the reviewer's concern about `LOG_PATH`/`BYTES`/`SHA256` applies to the real subprocess, not to a stubbed unit test
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already scopes implementation to `voting.py` only and states the root cause correctly; adding a prose note about #4584 improves clarity but is not required for implementer correctness
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit-severity simplification that plan authors explicitly considered and rejected for diagnostic value; does not clear the OOS materiality gate
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

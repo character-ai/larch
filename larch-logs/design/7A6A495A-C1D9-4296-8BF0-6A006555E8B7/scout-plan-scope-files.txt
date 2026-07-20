@@ -1,2 +1,0 @@
-skills/design/scripts/decompose-file-issues.sh
-skills/design/scripts/test-decompose-file-issues.sh

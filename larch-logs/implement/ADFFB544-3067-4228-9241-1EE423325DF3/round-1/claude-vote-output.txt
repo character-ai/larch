@@ -1,1 +1,0 @@
-The ballot file at `<TMPDIR>/round-1/findings.md` contains no `FINDING_N` ballot items — only an aggregator normalization note. There are no items to vote on.

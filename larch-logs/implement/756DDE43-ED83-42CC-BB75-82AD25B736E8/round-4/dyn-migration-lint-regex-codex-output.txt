@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **correctness** `python/migration_lint.py:39-56` — `_ship_pr_live_ref` only ignores whole-line comments, then the full-path pattern can still match retired script paths inside inline comments or prose arguments such as `echo "scripts/foo.sh"` / `cmd # scripts/foo.sh`. That violates the documented carve-out in `docs/python-migration.md:72-75` that prose mentions in `scripts/ship-pr.sh` should not block retirement, causing false-positive deletion blockers. **Suggested fix:** Strip unquoted shell comments before matching and/or make the ship-pr patterns require command position/source position rather than any whitespace-delimited argument.
-
-- **correctness** `python/migration_lint.py:44-56` — `_ship_pr_live_ref` misses variable-indirect live calls because it requires the `$SCRIPT_DIR/...` literal to appear at an invocation/source position; assignments like `launcher="$SCRIPT_DIR/launch-cursor-ci.sh"` followed by `"$launcher"` (as in `scripts/ship-pr.sh:1620-1632`) are not recognized from the assignment line. If a retired manifest path is still invoked through this pattern, `lint-retired-scripts` can pass and allow deletion of a live `LARCH_SHIP_PR_IMPL=bash` dependency. **Suggested fix:** Treat ship-pr assignments to exact retired `$SCRIPT_DIR/<basename>` / `${SCRIPT_DIR}/<basename>` paths as live blockers, or track assigned variable names and flag later command-position executions of those variables.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

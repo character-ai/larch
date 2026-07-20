@@ -1,8 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Hypothetical helper reuse could make the spy ambiguous, but the current harness uses a writer that creates the file on success.
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The gap is real, but the new case already proves the nonzero writer short-circuit and broader failure injection is more complexity than warranted.
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The compact setup is less scannable but not worth blocking or filing separately.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Case 7 intentionally checks absence of the warning substring; full equality like Case 6 is not the same assertion shape.
-FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The duplication drift risk is real, but directly executing SKILL prose would add disproportionate complexity for this harness.
-FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

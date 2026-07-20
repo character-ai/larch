@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add unit test for real `_collect_worker_results` with fake futures that raise on')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Assert full `duplicate-code worker failed: simulated` message')
-warning: fix text for slot 'codex-specialist-edge-cases-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Return a fake future with `result()` returning `[]`, and assert a simulated sent')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add test patching `ProcessPoolExecutor` to raise `PermissionError` and asserting')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Default stub timeout inside `_run` with optional override')

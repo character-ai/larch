@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `skills/implement/scripts/stall-recovery-report.sh:1092-1118` — The new `bail_reason` rows and `integer-or-unknown` `exit_code` transform are documented in `skills/implement/scripts/stall-recovery-report-allowlists.tsv:5-6` and `skills/implement/scripts/stall-recovery-report.md:61-63`, but `lint` still compares only `surface + field_key`: `tsv_allowlist_lines` drops `source`/`transform`, `doc_allowlist_lines` emits only the first two columns, and `code_allowlist_lines` has no source/transform data. As a result, a drift back to `integer` or a wrong `BAIL_REASON` source would pass the advertised parity gate. **Suggested fix:** Extend the lint projection to compare all four columns for TSV vs markdown, and either add source/transform columns to the code heredoc or add a second explicit transform/source parity check for the fields whose transforms are part of the public contract.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

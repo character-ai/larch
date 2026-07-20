@@ -1,2 +1,0 @@
-Reading the ballot and verifying findings against the plan and codebase.
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=blocker QUALITY=adequate UNCERTAIN=false -- decoded embedded plan-review-loop.sh already calls `python3 "$PLUGIN_ROOT/python/cli.py" review aggregate-findings` (line 1799), not `legacy_review_shell/aggregate-findings.sh`; G2 ports that CLI in-process before deleting the bash façade.

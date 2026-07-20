@@ -1,1 +1,0 @@
-Port the review aggregate, tally, emit, log, compose, and nit-prune shell bodies into Python. Cut review-core pruning to the new CLI verb, delete retired shell surfaces, convert prune coverage to pytest, and update retired-script metadata and docs.

@@ -1,9 +1,0 @@
-collect-agent-results.sh: transient diagnostic for codex-primary-plan-arch-output.txt; retrying once
-collect-agent-results.sh: transient diagnostic for codex-primary-plan-innovation-output.txt; retrying once
-collect-agent-results.sh: transient diagnostic for codex-primary-plan-pragmatic-output.txt; retrying once
-collect-agent-results.sh: transient diagnostic for codex-primary-plan-requirements-output.txt; retrying once
-collect-agent-results.sh: transient diagnostic for codex-primary-plan-dyn-publish-idempotency-output.txt; retrying once
-Traceback (most recent call last):
-  File "<stdin>", line 37, in <module>
-  File "<stdin>", line 18, in prob
-NameError: name 'problem_text' is not defined

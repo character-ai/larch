@@ -1,1 +1,0 @@
-Move five `/implement` bgjob adapters into Python. Keep Bash as thin launchers. Preserve result identity, merge envelopes, retries, timing, and CI-fixer lineage while `bgjob adapt` owns liveness and reattachment.

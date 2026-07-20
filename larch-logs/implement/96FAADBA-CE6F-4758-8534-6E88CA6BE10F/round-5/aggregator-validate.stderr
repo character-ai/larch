@@ -1,3 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Remove bare lint from the substring tuple; keep bash-aligned `lint.*failed` rege')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Port Case 22 into pytest: parametrize symlink/malformed/dangling-layer/mv-fail/r')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add pytest with disk false, in-memory true, and stall evidence; assert `STALL_TR')

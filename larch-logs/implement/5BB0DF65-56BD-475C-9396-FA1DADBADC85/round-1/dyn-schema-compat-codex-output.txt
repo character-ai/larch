@@ -1,9 +1,0 @@
-### In-Scope Findings
-- **architecture** `scripts/token-report.sh:482-486` — The new `claude_sub` summary object drops cache-creation tokens, and `scripts/token-report.sh:731` computes the displayed `Claude (subprocess)` lane from only input/cache_read/output. Full JSON `BUCKETS_claude_sub` includes cache creation, and `token_total` includes vendor totals, so `--summary` can understate the subprocess lane and make the visible lanes not add up to the grand total whenever `cache_creation_input_tokens` are present. **Suggested fix:** Include `cache_create`/`cache_write_5m` in the summary object and add it to `cs_raw`, or compute the lane from `claude_sub_ledger_total`/`BUCKETS_claude_sub`; add a regression with large cache-create tokens.
-
-- **architecture** `skills/implement/scripts/write-final-report.sh:248-254` — The corrupt-zero guard still only reasons about Claude/Codex/Cursor. If a report has valid nonzero `.claude_sub` usage plus zero Codex/Cursor objects, this guard can mark the token report corrupt and force `Cost: N/A`, dropping the new lane from the persisted `/implement` final summary. **Suggested fix:** Extend the guard to include `claude_sub` presence and require all four lane totals/buckets to be zero before setting `TOKEN_REPORT_CORRUPT_ZERO=true`.
-
-- **architecture** `python/report_tokens_render.py:99-107` — The persisted report-tokens “Top runs” table uses the abbreviated header `Claude (sub)`, while the rest of the new schema/docs use the locked display label `Claude (subprocess)` for machine name `claude_sub`. This creates an avoidable label alias in committed markdown reports and fixtures. **Suggested fix:** Use `Claude (subprocess)` consistently in the top-runs header and update the golden fixtures.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

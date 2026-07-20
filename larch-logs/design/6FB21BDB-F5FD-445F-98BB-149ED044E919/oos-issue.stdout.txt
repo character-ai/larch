@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=4703
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4703
-ISSUE_1_ID=4689850362
-ISSUE_1_TITLE=[OOS] Extend foreground sentinel-probe recovery to /implement long-running fences (NEVER #8)
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

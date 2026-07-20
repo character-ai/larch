@@ -1,9 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=3966
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/3966
-ISSUE_1_ID=4636055421
-ISSUE_1_TITLE=[OOS] ballot-parse, tally-vote, scoreboard have zero live callers after B5 tally rewrites
-ISSUE_1_BLOCKED_BY=3674
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

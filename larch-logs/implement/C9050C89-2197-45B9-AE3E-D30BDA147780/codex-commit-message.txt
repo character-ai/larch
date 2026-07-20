@@ -1,3 +1,0 @@
-Harden ADOPTED sentinel error redaction
-
-Use the fixed malformed-value token for invalid ADOPTED sentinel values and update the paired harness and contract docs. Also document why get-issue-context.sh keeps stricter issue-number validation than older all-digit peers.

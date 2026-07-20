@@ -1,1 +1,0 @@
-Update shared reviewer pruning to record accepted, rejected, and total counts per reviewer combo. Prune rounds 3-4 when the last two launched rounds have net score ≤ 0 or acceptance rate below 1/3. Update focused tests and conditional-spawning docs.

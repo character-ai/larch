@@ -1,1 +1,0 @@
-FINDING_1: EXONERATE -- The TSV is a historical dated snapshot where stale references are expected; no tests break and the nit is too minor to warrant a tracking issue.

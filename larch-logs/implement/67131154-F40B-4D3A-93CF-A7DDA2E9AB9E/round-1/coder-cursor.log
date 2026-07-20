@@ -1,9 +1,0 @@
-APPLIED: FINDING_1
-APPLIED: FINDING_7
-APPLIED: FINDING_9All three review findings were applied in `python/report_tokens_scan.py`:
-
-- **FINDING_1**: `_resolve_report` now falls back to the committed ledger when the canonical token report exists but is empty, invalid, or lacks numeric vendor totals.
-- **FINDING_7**: `_ledger_fallback_report` catches `OSError` on ledger read/build and warns instead of aborting the scan.
-- **FINDING_9**: Ledger recovery uses the session-scoped ledger from `run_dir/session-id` (matching `resolve_token_ledger_path`), with a single-ledger heuristic only when `session-id` is missing.
-
-Regression tests were added in `python/test_report_tokens_scan.py`; all 24 tests in that file pass.

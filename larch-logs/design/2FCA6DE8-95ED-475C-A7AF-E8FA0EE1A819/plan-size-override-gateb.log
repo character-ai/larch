@@ -1,3 +1,0 @@
-OPERATOR OVERRIDE (Gate B) — hard size brake forced through (carrying forward the standing force-through decision).
-HARD_TRIGGER_FIRED=true TRIGGER_REASONS=diff-added PLAN_LINES=210 DIFF_ADDED=3000 DIFF_DELETED=3800 (threshold diff_added>2000)
-Plan grew after auto-applying 15 accepted plan-review findings. Override per operator direction; size management shifts to /implement.

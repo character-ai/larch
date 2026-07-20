@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Extend the test to assert proposer-map.tsv exists, findings.md contains anonymou')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Add a mocked `execute_round` test in `test_plan_review_round.py` that seeds fres')

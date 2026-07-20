@@ -1,9 +1,0 @@
-slot	tool	status	elapsed_s	output
-cursor-plan-arch	cursor	done	624	<TMPDIR>/cursor-plan-arch-output.txt
-codex-plan-arch	codex	failed	624	<TMPDIR>/codex-primary-plan-arch-output.txt
-cursor-plan-innovation	cursor	done	624	<TMPDIR>/cursor-plan-innovation-output.txt
-codex-plan-innovation	codex	failed	624	<TMPDIR>/codex-primary-plan-innovation-output.txt
-cursor-plan-pragmatic	cursor	done	624	<TMPDIR>/cursor-plan-pragmatic-output.txt
-codex-plan-pragmatic	codex	failed	624	<TMPDIR>/codex-primary-plan-pragmatic-output.txt
-cursor-plan-requirements	cursor	done	624	<TMPDIR>/cursor-plan-requirements-output.txt
-codex-plan-requirements	codex	failed	624	<TMPDIR>/codex-primary-plan-requirements-output.txt

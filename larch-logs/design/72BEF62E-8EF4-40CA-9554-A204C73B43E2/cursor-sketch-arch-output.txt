@@ -1,7 +1,0 @@
-Exploring the codebase read-only to map the current design Step 3 flow, parallel patterns in review-core and code voters, and extension points for `plan-review-loop.sh`.
-
-Noting `collect-findings.sh` already bridges `collect-agent-results` → `findings.md` (TSV + prose parsers) like `review-core.sh`; plan-review SKILL currently uses stricter `collect-agent-results` flags. Checking flag parity:
-
-Having mapped the flow: `review-core.sh` sequences dispatch → `collect-findings.sh` → threshold → `aggregate-findings.sh` → `dispatch-code-voters.sh` → `tally-code-votes.sh`. Plan review can align by reusing `collect-findings.sh` and `aggregate-findings.sh` with `--review-tmpdir` set to `DESIGN_TMPDIR`, after resolving the `collect-agent-results` flag parity gap.
-
-

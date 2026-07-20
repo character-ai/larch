@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires hard-fail boundaries to translate ShipError and preserve stderr and return-code contracts.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan explicitly requires preserving caller-exposed failure-warning distinctions.
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires preserving fields and tests to assert every wrapper field sequence.
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires preserving list status, warnings, and return-code contracts.

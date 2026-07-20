@@ -1,3 +1,0 @@
-Verifying key code paths to merge findings accurately before producing the aggregated output.
-Producing the normalized aggregator output and saving it via CreatePlan.
-

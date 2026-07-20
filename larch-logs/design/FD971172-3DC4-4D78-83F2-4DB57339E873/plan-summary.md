@@ -1,1 +1,0 @@
-Port the live `python/cli.py oos file-conflict-deps` verb to Bash parity in `python/file_oos.py`, migrate the Bash harness cases into pytest, retire the orphaned Bash helper/docs, and clean migration ledgers plus stale references.

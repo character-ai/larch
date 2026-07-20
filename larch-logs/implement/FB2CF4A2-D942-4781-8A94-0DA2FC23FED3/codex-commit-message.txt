@@ -1,5 +1,0 @@
-Harden design Step 3.6 thin-fence coverage
-
-Scope Step 3.6 structural assertions to the assessor region, pin the plan-size-trigger triple-sentinel bypass, and add empty-state pause/resume coverage through a shared helper.
-
-Preserve classification warnings as WARN KVs in postplan emit, thread repo through the Step 3.6 entry pause guard, and align assessor trust-boundary docs with the trusted-trailer control flow.

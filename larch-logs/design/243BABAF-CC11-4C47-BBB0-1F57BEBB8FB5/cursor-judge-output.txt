@@ -1,3 +1,0 @@
-DECISION_1: THESIS — The decision-order row plus “sentinel only after successful upsert” gives a concrete, script-backed resolution of the L622 vs L563 clash; the abort side’s “proportionality” argument does not outweigh aligning executable prose with that table and the stated deferral default.
-
-DECISION_2: ANTI_THESIS — Classifying a flaky `gh issue view` as infra (`STEP_FAILED=get-issue-state`, exit 2) matches existing `phase_infra` fatal patterns and avoids mis-tagging recoverable API errors as `tracking-init-failed` with stall/rename semantics the chosen side’s “pre-tracking vs in-tracking” split does not fully justify.

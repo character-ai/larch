@@ -1,8 +1,0 @@
-Understood. I’ll review proposals read-only and vote:
-
-- **YES** when the stated problem is real and worth addressing now.
-- **EXONERATE** when the concern is legitimate but the proposed change seems too complex / not worth adopting as-is.
-- **NO** only when the stated problem is not real or not worth raising.
-- For **OOS_N / [OUT_OF_SCOPE]**, I’ll judge whether the problem is real, concrete, and worth filing, not whether I like the suggested remedy.
-
-I will not modify files, commit, or push.

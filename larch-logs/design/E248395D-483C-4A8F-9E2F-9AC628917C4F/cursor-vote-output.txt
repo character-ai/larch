@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- acceptance criteria cover SKILL.md and CLI only; stale run-log docs do not block the hot path or make the feature incomplete
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real doc drift but trivial one-paragraph sync fails issue-overhead test for a separate tracked issue
-OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_1 with the same overhead rationale

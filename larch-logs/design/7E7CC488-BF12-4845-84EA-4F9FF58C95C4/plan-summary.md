@@ -1,1 +1,0 @@
-Require explicit invariant and guideline outcomes across every Step 8 producer. Persist them with existing fingerprint-pinned metadata, use one shared prose classifier only as a one-way clean-claim veto, and remove prose fallback from ship routing.

@@ -1,1 +1,0 @@
-Replace code-review voting with three Cursor archetype voters, keep single-Claude fallback when Cursor is unavailable, add archetype-aware prompt rendering without changing the default prompt, preserve tally thresholds, and record per-slot voter labels in code-review classification TSVs.

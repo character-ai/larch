@@ -1,7 +1,0 @@
-Move scout selection into producer flows
-
-Extract drafter scout candidates after the plan, filter them through the existing archetype reducer, and let Step 3 consume the prebuilt manifest.
-
-Thread coder-produced scout sidecars through external Step 2 and Step 5 review while forcing static-only review when no eligible sidecar exists.
-
-Add pre-scout manifest handling to review dispatch and update launcher prompts, generated implementer docs, and harness coverage.

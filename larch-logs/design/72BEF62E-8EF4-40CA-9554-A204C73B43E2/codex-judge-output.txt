@@ -1,7 +1,0 @@
-DECISION_1: ANTI_THESIS — Defense B proves a concrete schema mismatch with normal /design findings and shows the fixture-only approach would not resolve ordinary severity-less ballots.
-
-DECISION_2: THESIS — Defense B grounds signal-only in the existing 0-judge contract and centralizes adjudication semantics without adding a second implicit voter path.
-
-DECISION_3: THESIS — Defense A better ties the chosen path to the current /design contract and lint-pinned collector usage, while showing `collect-findings.sh` would import /review-shaped assumptions.
-
-DECISION_4: THESIS — Defense B makes the cleaner control-plane argument: the existing kill switch already works at the invocation boundary, and a design alias adds documentation, tests, and precedence surface for little gain.

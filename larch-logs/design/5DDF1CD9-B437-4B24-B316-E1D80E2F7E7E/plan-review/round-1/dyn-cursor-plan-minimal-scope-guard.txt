@@ -1,2 +1,0 @@
-Reviewing the plan and related code paths for scope creep against the stated constraints.
-{"no_issues_found": true}

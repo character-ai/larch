@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- test-lib-design-round-artifacts.sh already asserts voting-tally.md is allowlisted; an extra e2e publish assertion would be redundant
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Cursor/Codex plan-review producers use launch-stderr and stderr-tail not .stderr, but harmless over-exclusion adds no publish risk

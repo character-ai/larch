@@ -1,7 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already mandates carving NOT_SUBSTANTIVE out of runtime-timeout replacement in research-phase, validation-phase, and external-reviewers updates
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already requires atomic _LEGACY_ASSETS decode-edit-reembed for loop and dispatch plus STATUS-gated collection tests
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already requires STATUS=OK-only synthesis path tags and dropped-lane markers in research-phase.md
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already names decoded-body pins and a collector-record fixture asserting COLLECT_FAILURE_COUNT
-FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- doc drift is real but not required for the no-result-retry behavior to ship correctly
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same doc gap is low materiality for a separate tracked issue; fold into the implementing PR instead

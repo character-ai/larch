@@ -1,5 +1,0 @@
-scripts/tracking-issue-read.sh
-scripts/test-tracking-issue-read-sentinel.sh
-scripts/tracking-issue-read.md
-scripts/test-tracking-issue-read-sentinel.md
-scripts/get-issue-context.sh

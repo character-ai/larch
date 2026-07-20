@@ -1,5 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity
-FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements	accepted	YES	true	blocker	good	true	Claude	YES	true	blocker	excellent	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking
-FINDING_2	Codex-Pragmatic, Cursor-Requirements, Codex-Requirements	accepted	NO	false-positive	blocker	weak	false	Claude	YES	true	blocker	good	false	Codex	YES	true	blocker	good	false	Cursor	blocking
-FINDING_3	Cursor-Requirements	rejected	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	nit	adequate	false	Codex	NO	partially-true	minor	good	false	Cursor	important
-OOS_1	Cursor-Requirements	rejected	NO	false-positive		weak	true	Claude	NO	true	nit	no-fix	false	Codex	NO	true	nit	adequate	false	Cursor	latent

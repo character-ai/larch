@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=2801
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/2801
-ISSUE_1_ID=4518929670
-ISSUE_1_TITLE=[OOS] Doc-code mismatch in narrow-trigger retry regex
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

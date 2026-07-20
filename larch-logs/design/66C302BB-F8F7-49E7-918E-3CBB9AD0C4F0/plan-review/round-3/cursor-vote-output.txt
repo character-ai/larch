@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already mandates all six docs in one change; extending Edit-in-sync is optional list churn
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- plan updates line 26 and adds the new case; stale case bullets are minor harness-doc noise
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

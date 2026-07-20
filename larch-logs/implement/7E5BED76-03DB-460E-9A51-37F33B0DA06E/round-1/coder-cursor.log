@@ -1,8 +1,0 @@
-APPLIED: FINDING_3
-APPLIED: FINDING_8Both review findings are applied.
-
-**FINDING_3:** `raw_sole_finder_attribution` in `python/voting.py` now requires full segment tokenization before sole-finder bonus eligibility. Partial matches (e.g. `"Cursor-Pragmatic Codex-Arch"` with only one label in the corpus) no longer qualify.
-
-**FINDING_8:** An autouse fixture in `python/conftest.py` clears `LARCH_UNIQUE_FINDER_BONUS` so no-env tests do not inherit it from the caller environment.
-
-Relevant tests pass, including with `LARCH_UNIQUE_FINDER_BONUS=0.25` set in the shell. Lint is clean. No commit was made.

@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dead-asset churn is real, but the approved scope explicitly requires the universal embedded-asset invariant.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- the loop branch risk is real, but the current plan already explicitly requires validation on single and loop non-preview paths.

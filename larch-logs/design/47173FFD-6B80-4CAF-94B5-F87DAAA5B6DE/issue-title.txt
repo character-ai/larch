@@ -1,1 +1,0 @@
-[BUG] (URGENT) Degraded-tools gate falsely reports BOTH_DOWN=true when presence flags not rehydrated from session-env.sh before gate call

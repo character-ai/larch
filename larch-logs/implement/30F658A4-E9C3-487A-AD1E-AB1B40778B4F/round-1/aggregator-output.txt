@@ -1,2 +1,0 @@
-Aggregating reviewer findings: merging duplicates, dropping positive attestations (correctness/plan-fidelity observations), and ordering merged groups by first-seen input ID.
-

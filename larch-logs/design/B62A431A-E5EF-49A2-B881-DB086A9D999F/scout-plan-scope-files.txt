@@ -1,2 +1,0 @@
-scripts/test-step0b-router-flag-recovery.sh
-scripts/test-step0b-router-flag-recovery.md

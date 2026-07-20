@@ -1,8 +1,0 @@
-# Error when running /implement (and likely /design) in client repo with no workflow named "CI"
-
-⏺ The "error" is now explained: there is no workflow named "CI" in character-tech/dev-tools. The repo only has PR, Cloudflare Waiting Room Maintenance, and pr_agent workflows. The main-health probe looks for a CI workflow on push→main, finds none, and reports error. This is a
-  probe/config mismatch, not evidence that main is broken (recent commits merged normally).
-
-  The main-health contract says MAIN_CI_STATUS=error → operator-bail with the recorded detail. Since this run is --merge (auto-merge to main, hard to reverse) and I'm overriding a documented safety gate, this is genuinely your call.
-
-Need to come up with a generic solution, but likely will have to skip this step in such a case.

@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **correctness** `scripts/token-report.sh:482-731` — The new `claude_sub` `--summary` lane drops cache-creation tokens: the jq summary object only carries `input`, `cache_read`, and `output`, and `cs_raw` sums only those fields. The launchers record Claude `cache_creation_input_tokens` as `cache_create`, and full JSON folds it into `BUCKETS_claude_sub.cache_create_5m`, so summary output underreports `Claude (subprocess)` whenever cache creation occurs; the grand `token_total` still includes vendor `total`, making the per-lane summary not add up. **Suggested fix:** Include `cache_create`/`cache_create_5m` in the `claude_sub` summary object and add it to `cs_raw`, mirroring the main Claude lane; add a summary regression with nonzero `cache_create`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

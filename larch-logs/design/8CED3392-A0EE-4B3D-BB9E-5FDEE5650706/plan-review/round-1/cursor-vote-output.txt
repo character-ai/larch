@@ -1,7 +1,0 @@
-Reading the ballot and verifying each item against the plan and codebase.
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- brainstorm and manual merge arms are already pinned separately in test-design-structure.sh; the new partition pin completes per-assignment coverage without needing the full jq filter
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- write-failure recovery is documented but the plan explicitly narrows harness scope to the post-success merge path for this SIMPLE closure
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- case 2 bypasses the runtime outer guard so it does not exercise the Step 0b recovery path the test comments claim to cover
-FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,2 +1,0 @@
-Step 5b OOS curation: prepared combined had 5 capped entries with a stale item (OOS_2 ci-decide/check-main-sync exit codes — fixed in final plan round 5) and ~4x duplicate companion-module observations.
-Curated to 2 distinct non-stale items (dual-stack drift; CLI module structure). Dropped caller intra-batch deps TSV (item set changed) → /larch:issue runs its own dep analysis (graceful degrade).

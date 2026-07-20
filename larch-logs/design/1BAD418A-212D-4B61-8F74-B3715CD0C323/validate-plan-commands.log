@@ -1,4 +1,0 @@
-SKIPPED script=scripts/test-resolve-upstream-larch-repo.sh reason=new-script
-SKIPPED script=scripts/test-file-failure-report-cross-repo.sh reason=new-script
-SKIPPED_FLAG_CHECK script=skills/implement/scripts/test-stall-recovery-report.sh reason=no-help
-VALIDATE_STATUS=ok	DEFECT_COUNT=0	SKIPPED_COUNT=3	UNSAFE_TOKEN_COUNT=0

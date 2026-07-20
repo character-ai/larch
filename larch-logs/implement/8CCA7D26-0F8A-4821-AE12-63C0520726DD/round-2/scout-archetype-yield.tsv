@@ -1,8 +1,0 @@
-archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
-correctness	correctness	1	4	3	1	0.750000
-edge-cases	correctness	1	4	3	1	0.750000
-testing	risk-integration	1	2	2	0	1.000000
-codex-generic	code-quality	1	2	2	0	1.000000
-dyn-deps-safety	security	1	6	5	1	0.833333
-dyn-deps-edge-rules	correctness	1	0	0	0	n/a
-dyn-deps-cli-tests	risk-integration	1	6	4	2	0.666667

@@ -1,5 +1,0 @@
-Title: Switch to coder=codex default in /implement and fixer
-
-(Issue body empty — feature description derived from title only.)
-
-Change the default coder in /implement (and the fixer agent) from the current default to codex. This is a default-flip change in the orchestration configuration.

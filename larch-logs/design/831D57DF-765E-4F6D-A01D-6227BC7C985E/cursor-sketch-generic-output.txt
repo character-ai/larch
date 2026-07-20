@@ -1,4 +1,0 @@
-Exploring the merge-pr script and its tests to draft an implementation plan.
-Checking whether the fake-gh stub requires `GH_VIEW_SECOND_HEAD_OID` for flip counting and reviewing `git-force-push` retry patterns for consistency.
-I have enough context from the script, tests, and contracts. Creating the implementation plan.
-

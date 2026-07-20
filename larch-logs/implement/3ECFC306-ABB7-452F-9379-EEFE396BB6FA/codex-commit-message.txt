@@ -1,7 +1,0 @@
-Align drafter preview with shared renderer
-
-Route Step 2b drafter success output through emit-design-plan-preview.sh, add the step2b renderer variant, and cover its small/large-plan behavior.
-
-Document dispatcher-owned Claude voter launch paths and add claude_draft to the token raw provenance docs.
-
-Tests: make test-emit-design-plan-preview

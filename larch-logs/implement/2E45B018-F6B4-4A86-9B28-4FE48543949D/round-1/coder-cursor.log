@@ -1,5 +1,0 @@
-The background `test-design-log-publish.sh` run failed on the new **stale same-RUN_ID worktree** case: publish returned `PUBLISH_OK=false` because the seeded worktree path did not match the cleanup allowlist on macOS (`/var/folders/...` vs `/private/var/folders/...`).
-
-**Fix applied:** the harness now seeds the stale worktree with `mktemp -d "${TMPDIR:-/tmp}/design-log-publish.stale.XXXXXX"`, which matches the `design-log-publish.*` pattern in `design_publish_cleanup_same_run_worktrees`. Re-running that section in isolation passes.The background **isolated stale worktree test** failed because it used a throwaway script with a broken `setup_clone_with_origin_head` helper (empty repo clone), not because the real harness change was wrong.
-
-The actual fix is already in `scripts/test-design-log-publish.sh`: seed the stale worktree with `mktemp -d "${TMPDIR:-/tmp}/design-log-publish.stale.XXXXXX"` so it matches the cleanup allowlist on macOS. That section passes when run from the real harness.

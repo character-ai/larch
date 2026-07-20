@@ -1,5 +1,0 @@
-Implement upstream stall report filing dedup
-
-Add metadata-based upstream repository resolution and a cross-repo filing helper with exact larch-stall signature dedup, structured duplicate comments, and fallback-print statuses.
-
-Wire /implement stall recovery to emit public REPORT_DEDUP_SIGNATURE markers, normalize helper output, expose Tier A dedup, and file Tier B reports upstream with bounded comment payload validation. Update stall recovery docs and SECURITY.md for the public upstream filing boundary.

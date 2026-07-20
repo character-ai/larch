@@ -1,1 +1,0 @@
-Port the review pipeline bash bodies into `python/review_pipeline.py`, add a shared legacy runner only for retained out-of-scope review façades, cut prune consumers to `cli.py`, delete retired bash surfaces, and replace shell harness coverage with focused pytest.

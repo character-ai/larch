@@ -1,4 +1,0 @@
-Exploring the `/design` skill flow, approval gates, and brainstorm synthesis to draft an implementation plan.
-Checking how Step 2b consumes session artifacts and whether `cleanup-tmpdir` documents expected files:
-I have enough context. Creating the implementation plan.
-

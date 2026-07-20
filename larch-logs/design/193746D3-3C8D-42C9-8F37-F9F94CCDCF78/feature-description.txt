@@ -1,3 +1,0 @@
-Add --brainstorm flag to /design and figure out appropriate modifications to the skill when this flag is passed
-
-The intent is to introduce a brainstorm session at the start when the flag is passed

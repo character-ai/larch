@@ -1,5 +1,0 @@
-Port review-and-fix driver to Python
-
-Add python/cli.py review-and-fix verbs for accepted findings, Step 5, change detection, review-fix commits, rejected findings, and round timing. Capture review core in-process for Step 5, preserve the final Step 5 envelope, and carry forward MAV, prune-ledger, pre-scout, token, timing, and ledger handoff contracts.
-
-Retire the absorbed shell entrypoints and harnesses, update call sites and docs to the Python CLI surface, and cover the new driver with pytest plus retargeted structural harnesses.

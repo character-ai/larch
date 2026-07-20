@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- stdout-contract doc parity is real but not necessary for the scoped runtime diagnostic fix
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already requires the empty-description check after removing --urgent; the remaining stripped-description ambiguity is covered by FINDING_1
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rare combined diagram-failure plus rebase-failure durability gap does not clearly exceed issue-tracking overhead
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- doc discoverability gap is too small to clear the OOS materiality and issue-overhead gates

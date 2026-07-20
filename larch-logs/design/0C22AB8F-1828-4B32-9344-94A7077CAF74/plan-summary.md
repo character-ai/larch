@@ -1,1 +1,0 @@
-Migrate four Bash harnesses into one pytest module without changing runtime helpers. Preserve real-script coverage, remove obsolete Make and residual-Bash wiring, and retarget all contract references.

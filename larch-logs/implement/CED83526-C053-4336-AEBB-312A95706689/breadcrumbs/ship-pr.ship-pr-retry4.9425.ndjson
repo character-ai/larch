@@ -1,4 +1,0 @@
-larch:bc t=2026-05-29T00:12:21Z d=0 p=9484 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
-larch:bc t=2026-05-29T00:12:21Z d=0 p=9775 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
-larch:bc t=2026-05-29T00:12:26Z d=0 p=9775 s=ci-wait.sh c=wait-ci text=→ Action: rebase (4s, 0 polls)
-larch:bc t=2026-05-29T00:12:26Z d=0 p=9484 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump

@@ -1,4 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- "sanitizer rejection-token variants" can reasonably be read as including the default-token `diagram-rejected` standalone case; the distinction between a default-token run and an explicit-token loop iteration is too granular to warrant a row change
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sibling doc stale problem is real and concrete; plan explicitly acknowledges it as tracked in #2862
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- run-log flush commits under larch-logs/ are intentional per docs/run-logs.md; reviewer acknowledges no regression
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- flush-skip on rebase failure is a low-value implementation detail for an inventory doc; the rebase exit-propagation coverage already signals the behavior

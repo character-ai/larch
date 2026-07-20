@@ -1,7 +1,0 @@
-warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_1 (not present on any input finding)
-warning: unknown From slot label 'cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt' in FINDING_4 (not present on any input finding)
-warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Pass `--model claude-opus-4-7` on `launch-claude-review.sh` to match `dispatch-p')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add a `run_loop` fixture with `--codex-present false --cursor-present false`, st')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Emit `ALL_SLOTS_DROPPED=true` in a dedicated stub case and assert loop proceeds ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Assert no `SENTINEL_TIMEOUT` without tight elapsed bounds, or stub poll interval')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Extend `test-write-design-current-env` to pass and source-assert `CODEX_BINARY_F')

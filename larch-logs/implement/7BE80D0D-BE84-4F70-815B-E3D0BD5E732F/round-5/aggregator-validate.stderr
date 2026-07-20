@@ -1,8 +1,0 @@
-warning: fix text for slot 'codex-generic-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Enforce an outer deadline around the full `check_reviewers()` call, or run the p')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] CI shard-12 Node/Mermaid s')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Health-gate tests mostly m')
-warning: fix text for slot 'dyn-probe-parity-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Eight-key CLI probe output')
-warning: fix text for slot 'dyn-probe-parity-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_5: [OUT_OF_SCOPE] `external_launch_health_ga')
-warning: fix text for slot 'dyn-caller-cutover-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_6: [OUT_OF_SCOPE] Retired-script reference c')
-warning: fix text for slot 'dyn-caller-cutover-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_7: [OUT_OF_SCOPE] Makefile retargeting match')
-warning: fix text for slot 'dyn-caller-cutover-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Address the concern above.')

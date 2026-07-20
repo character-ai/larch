@@ -1,3 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The supplied plan does not mandate a templated wrapper or a contradictory exception contract, and this duplicates a previously rejected concern.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A wrapper may canonically emit one supported flag order; preserving raw argv ordering is not required for the stated feature.

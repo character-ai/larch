@@ -1,8 +1,0 @@
-Reading the ballot and relevant plan files to verify each finding.
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- spoof via ERROR whitespace tokens is a rare edge case and not required for fail-closed COMMIT_OUTCOME on normal paths
-OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
-OOS_2: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_1 already on the in-scope ballot
-OOS_3: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 with no new evidence

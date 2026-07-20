@@ -1,3 +1,0 @@
-Surface sanitized stall bail reasons
-
-Render missing or malformed stall exit codes as unknown, add the sanitized Bail reason row to public stall reports, and keep numeric exit codes unchanged. Mirror Step 2 hard-bail reasons into the in-memory bail handoff and keep --bail-reason as classifier evidence for transient and dispatch failure routing.

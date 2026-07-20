@@ -1,3 +1,0 @@
-Verifying key locations cited by reviewers so the aggregated findings are accurate.
-Creating the aggregated finding list from verified reviewer input.
-

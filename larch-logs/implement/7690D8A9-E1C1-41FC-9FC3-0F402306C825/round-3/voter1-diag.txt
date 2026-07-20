@@ -1,5 +1,0 @@
-voter1_rc=2
-output_bytes=0
---- launcher stderr (first 500 bytes) ---
-launch-claude-subprocess.sh: context file exceeds 1 MB: <TMPDIR>/round-3/diff.txt
-

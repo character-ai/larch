@@ -1,1 +1,0 @@
-{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/4895\n- **Title**: Full py-test fails in duplicate-code worker failure regression\n- **Stable ID**: oos-accepted-main-agent:OOS_1\n"}

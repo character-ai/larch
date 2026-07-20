@@ -1,5 +1,0 @@
-Extract design post-plan emit driver
-
-Add design-postplan-emit.sh to run EMIT_PLAN, the optional HARD snapshot, and plan-command validation behind one result-env contract. Rewire Step 2b and prompt-side re-emit prose to use the driver while preserving file-first/stdout parsing, defects-found routing, quick-mode parity, and pause checkpoints.
-
-Add offline driver coverage and migrate structural pins plus Makefile wiring for the new harness.

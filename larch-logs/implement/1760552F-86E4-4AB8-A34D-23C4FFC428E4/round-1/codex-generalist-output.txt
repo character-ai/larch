@@ -1,5 +1,0 @@
-### In-Scope Findings
-
-1. **Nit** `code-quality` `skills/review/scripts/tally-code-votes.md:28`, `skills/design/scripts/tally-plan-review.md:19` — The sibling docs for the changed tally scripts still document parser-fallback votes as `NEUT` / `NEUTRAL`, while the scripts now render `JERR` and `JUDGE_ERROR`. This can mislead contributors about the artifact contract after the rename. Update these docs to use `JERR` / `JUDGE_ERROR`, while keeping `NEUTRAL_COUNT` and finding-level `neutral` wording for tied-result semantics.
-
-2. **Nit** `code-quality` `skills/review/scripts/test-tally-code-votes.sh:84`, `skills/design/scripts/test-tally-plan-review.sh:158`, `scripts/test-compose-review-findings.sh:65` — Several harness fixtures/descriptions still encode the old parser-fallback label (`neutral_count` diag fields and `NEUTRAL` vote-tally/descriptive text). The tests may still pass because those fields are not parsed for the count name, but they no longer verify the renamed contract. Update these fixtures/descriptions to `judge_error_count` / `JUDGE_ERROR` where they refer to parser fallback, leaving tied-result `neutral` assertions unchanged.

@@ -1,8 +1,0 @@
-Implemented the plan and wrote `manifest.json` with `status=complete`.
-
-Validation run:
-- `bash scripts/test-implement-anti-polling-rule.sh`
-- `make test-implement-anti-polling-rule`
-- `bash scripts/relevant-checks.sh`
-
-All passed.

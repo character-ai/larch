@@ -1,7 +1,0 @@
-Plugin 47.0.19 Step 3 plan-review break (pre-wired workaround):
-  run-step3-review.sh:210 forwards --convergence-threshold to plan-review-loop.sh.
-  plan-review-loop.sh (post-#3243) has no --convergence-threshold case;
-  its catch-all rejects unknown flags with exit 2 -> Step 3 panel-failed -> Gate B skipped.
-  Workaround: RUN_STEP3_PLAN_REVIEW_LOOP_SH=<TMPDIR>/plan-review-loop-shim.sh
-  Shim strips --convergence-threshold and forwards remaining args to the bundled plan-review-loop.sh.
-  Verified: shim+--help exit 0; bundled+--convergence-threshold exit 2.

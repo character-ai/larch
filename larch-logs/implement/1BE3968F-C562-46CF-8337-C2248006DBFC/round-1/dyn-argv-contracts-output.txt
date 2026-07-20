@@ -1,8 +1,0 @@
-Reviewed the branch (3 commits since `main`) against the precomputed diff and the live script/doc surfaces. Argv and env contract changes are internally consistent.
-
-### In-Scope Findings
-NO_ISSUES_FOUND
-
-### Out-of-Scope Observations
-- **Intentional breaking change (design only):** `--round-cap` on `plan-review-loop.sh` / `run-step3-review.sh` now hits the unknown-flag path (exit 2). That is covered by `skills/design/scripts/test-plan-review-loop.sh` (lines 84–97), `skills/design/scripts/test-run-step3-review.sh` (removed round-cap case), and negative pins in `scripts/test-design-structure.sh` (lines 639–647). `/implement`’s `--round-cap` conduit via `run-step5-review.sh` → `review-and-fix.sh` is unchanged and still pinned at **5** (`scripts/test-run-step5-review.sh` lines 156–165).
-- **Harness/doc sync looks complete:** `skills/design/references/flags.md` line 61 retains the `test-design-structure.sh:1055` boundary-route pin; `scripts/lib-implement-round-cap.sh` and read sites are gone from non–`larch-logs` code; the Step 5 telemetry fence contract in `scripts/test-implement-structure.sh` (lines 473–481) matches the simplified `ROUND_CAP`/`DYNAMIC_ARCHETYPES_CAP` emission in `skills/implement/SKILL.md`.

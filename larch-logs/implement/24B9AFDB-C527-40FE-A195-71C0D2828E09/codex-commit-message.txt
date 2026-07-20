@@ -1,5 +1,0 @@
-Port issue blockers and issue queries to Python
-
-Add Python blocker and issue-query CLI verbs, cut /implement callers over to them, and retire the absorbed bash helpers with migration-manifest entries.
-
-Cover parser, dependency, issue state/info/context, and caller cutover behavior with pytest and updated offline harnesses.

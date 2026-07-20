@@ -1,3 +1,0 @@
-Add standalone design plan revision waterfall
-
-Introduce revise-plan-with-waterfall.sh for between-round /design plan revisions with Codex -> Cursor -> Claude fallback, canonical plan validation, snapshot restore, heading preservation, and emit-plan gating. Add sibling docs and an offline mocked harness, then wire the target into Makefile shard 9.

@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan non-goals keep Python canonical and adapt pytest expectations; bash rollup parity is explicitly out of scope
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- pre-existing Python file-ref behavior; aligning to voting regex would be a behavior change contrary to stated non-goals
-FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stderr ITEMS_TOTAL token is a pytest assertion detail already covered by adapt-expectations migration guidance
-FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already says port uncovered harness cases; explicit listing is helpful but not necessary for acceptance
-OOS_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false

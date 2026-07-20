@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `python/push.py:206-231` — The migrated push CLI diagnostics accidentally changed script-name prefixes from `git-push.sh` / `git-force-push.sh` to `git-sh` / `git-force-sh`, changing the user-visible CLI error contract for `python3 python/cli.py push branch <extra>` and detached-head `push force`; `scripts/git-force-push.sh:54` and `scripts/git-force-push.md:44` still document/use the old `git-force-push.sh` prefix, while `python/test_push.py:141-196` does not assert these stderr strings. **Suggested fix:** Restore the old literals (`git-push.sh: unknown argument...` and `git-force-push.sh: not on a named branch`) and add focused tests for those two error paths.
-
-- **risk-integration** `python/pr.py:379-392` — The migrated PR create wrapper now emits `create-sh` for invalid `--repo`, detached HEAD, and unreadable body file diagnostics where the deleted wrapper emitted `create-pr.sh`, so callers/operators lose the stable helper name for `python3 python/cli.py pr create ...`; the migrated tests in `python/test_pr.py:496-509` do not cover these `create_main` error messages. **Suggested fix:** Pass `script="create-pr.sh"` to `_validate_repo_arg` and restore the two `create-pr.sh:` stderr literals, then add tests for invalid repo, detached branch, and missing/unreadable body file.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

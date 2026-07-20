@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan already says "Surface before every continue" and `[[ -s "${output}.stderr-tail" ]]` guard covers tier_rc=0 cases; concern is real but plan intent is clear enough that no plan edit is warranted
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- scope expansion to all 5 lanes was an explicit user decision in design round 1 (Decision 1, Source: user); SIMPLE tier was also explicitly user-confirmed (Decision 3); this is not accidental scope creep

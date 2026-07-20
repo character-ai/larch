@@ -1,9 +1,0 @@
-Reading the dialectic ballot and casting votes for each DECISION item.
-
-Ballot labels vs. content: **DECISION_2** Defense A’s steelman describes inline locality while the header assigns it to **extract**; **DECISION_3** Defense B’s header assigns **all 38 flags** but the claim argues the full-38 set is disproportionate (i.e., it does not coherently defend 38 keys). Judging each defense against its **header-assigned** position where clear, and using substance where a defense undermines its own label.
-
-DECISION_1: THESIS - Defense A ties implicit gating to the existing absent-state cold path, names concrete guards (prefix / missing-file), and engages B’s audit worry; B’s “silent overload” case is strong but leans on unspecified future flag reuse without rebutting those guards as sharply.
-
-DECISION_2: THESIS - Defense B’s “one runtime owner / same-file drift” answer is proportionate and directly addresses local duplication; A’s finalize precedent is real but the stated argv-only trajectory weakens the need for another sourced module now.
-
-DECISION_3: THESIS - Defense A gives a tight, evidence-backed case that caller variance is the seven heredoc-driven keys while the rest are centralized defaults; Defense B’s body largely argues against full-38 exposure, so it does not substantively win the alternative it is labeled to defend.

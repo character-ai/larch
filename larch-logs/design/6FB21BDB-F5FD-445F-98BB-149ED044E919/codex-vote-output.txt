@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- direct script execution is not necessary to change if the embedded runtime asset is updated; the missing/stale-asset risk is covered by the embed findings
-FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false

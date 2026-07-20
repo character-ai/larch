@@ -1,4 +1,0 @@
-Exploring the codebase to understand the breadcrumb infrastructure and remaining rollout work.
-
-Confirming PR #2786 landed core infrastructure; rollout wiring and tests remain. Checking one more integration detail for the completion channel:
-

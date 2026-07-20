@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- scope anchor's approved direction explicitly lists only three globs; adding skills/shared/*.md expands beyond the approved scope
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- approved direction explicitly includes these carve-outs; finding asks to remove them against approved direction

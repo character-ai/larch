@@ -1,5 +1,0 @@
-Exploring the codebase to understand manifest validation, Codex prompts, and dispatcher behavior before proposing an implementation approach.
-
-Checking how the implementer base references the schema and whether a template file pattern exists elsewhere.
-Creating the implementation plan from the codebase review.
-

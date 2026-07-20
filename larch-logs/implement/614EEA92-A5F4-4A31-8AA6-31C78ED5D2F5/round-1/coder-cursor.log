@@ -1,7 +1,0 @@
-All seven accepted findings were applied across `python/plan_review_round.py`, `python/plan_review.py`, `skills/design/SKILL.md`, and `skills/shared/progress-reporting.md`.
-
-**Python:** early-exit materialization now clears stale stable tables; symlinked per-round TSVs are unlinked and re-materialized; the round-body tail always re-materializes; the renderer rejects TSVs without a `status` column and omits elapsed time for skipped rows; explicit-round materialization replaces symlinked stable destinations.
-
-**Docs:** Step 3 defers to the pre-rendered `reviewer-status-table.txt` contract; symlinked or missing tables trigger the warning.
-
-**Tests:** new/updated coverage for these paths. Full `make py-test` passed (4705 passed, 48 skipped).

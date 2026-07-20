@@ -1,7 +1,0 @@
-warning: fix text for slot 'dyn-caller-cutover-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Write `wf.stdout + wf.stderr` (or stderr-first) into the failure log before `_ap')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add three small targeted tests so regressions in gate ordering or `posix_ere_to_')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'the plan calls for a dedicated invalid-ERE test on the aggregate alternation pat')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'One two-slot fixture with `dyn-foo` and a static slot where only the dynamic slo')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Register once (module-level flag) if the function is ever imported and called mu')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Document supported class set; add a test if future callers use `[[:punct:]]`.  #')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'This mirrors the bash behavior but can make root-cause diagnosis harder when the')

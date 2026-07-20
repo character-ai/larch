@@ -1,5 +1,0 @@
-1	the step-3 review wrapper is being changed as if all stale result-env cleanup should go away, but the fresh-launch result-env reset is required hygiene and must remain distinct from removing the sentinel path.
-1	the plan removes the hooks that the clone-ownership parity harness checks but leaves the harness and live make target in place, so ci will either call a deleted script or keep testing a dead contract.
-1	the pre-commit configuration still invokes the writer-parity lint that the plan deletes, so `make lint` will keep calling a removed command unless the hook entry is removed with the code.
-1	a shared skills rule still contains the forbidden `task-notification` token, so the extinct-token acceptance grep will keep finding the old wait mechanism even after the surrounding harnesses are removed.
-2	the companion markdown for the deleted anti-polling harness still pins retired literals (`design-background-wait`, `task-notification`, and other removed contracts). after `scripts/test-implement-anti-polling-rule.sh` is deleted, that stale doc can keep the plan’s extinct-token grep failing.

@@ -1,4 +1,0 @@
-finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
-FINDING_1	Cursor-Arch, Cursor-Edge, Cursor-Innovation, Codex-Arch, Codex-Edge, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-contract-cartographer, Codex-dyn-contract-cartographer	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
-FINDING_2	Codex-Innovation	exonerated	EXONERATE	partially-true	minor	adequate	false	Claude	YES	true	minor	adequate	false	Codex	EXONERATE	true	minor	adequate	false	Cursor
-FINDING_3	Codex-Pragmatic, Codex-dyn-contract-cartographer	accepted	EXONERATE	uncertain	minor	adequate	true	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor

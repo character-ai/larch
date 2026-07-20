@@ -1,3 +1,0 @@
-warning: fix text for slot 'dyn-display-parse-sync-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Mirror postplan/Step 0b: collect WARN bodies in an array during file parse, then')
-warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Rename when editing sentinel logic.  ### OOS_2: [OUT_OF_SCOPE] `D6B`-style test ')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Extend D6B-style case to assert TALLY_PLAN_REVIEW_STATUS file wins as well.  ###')

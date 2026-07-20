@@ -1,3 +1,0 @@
-scripts/dispatch-with-waterfall.sh
-scripts/test-dispatch-with-waterfall.sh
-scripts/dispatch-with-waterfall.md

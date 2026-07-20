@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- manifest=True always co-occurs with non-empty ndjson in the current code ordering; the described overwrite path requires an implementation ordering the plan does not introduce
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing latent issue independent of the checkpoint addition; the retry/combine title-rewrite gap exists regardless of whether a checkpoint is wired in
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Path.glob("bare-filename") without ** matches only at the root of version_root, not recursively; the claimed "any matching path under the cache tree" behavior requires a ** pattern not present in these literals
-FINDING_6: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- test finding for a surface not listed in plan scope; defaults to OOS under gate 4
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

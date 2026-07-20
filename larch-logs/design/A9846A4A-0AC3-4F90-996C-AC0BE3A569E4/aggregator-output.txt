@@ -1,2 +1,0 @@
-Merging 39 raw reviewer findings into a normalized structured list (read-only; no file or repo changes).
-

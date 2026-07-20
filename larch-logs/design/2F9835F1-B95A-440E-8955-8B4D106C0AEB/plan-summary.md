@@ -1,1 +1,0 @@
-Add an opt-in, fail-closed static sweep of recent `origin/main` commits. It builds bounded evidence bundles, runs finder and refuter passes, reports surviving candidates, and advances sweep state only after successful completion.

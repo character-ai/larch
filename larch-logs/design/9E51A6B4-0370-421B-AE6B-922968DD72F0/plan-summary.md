@@ -1,1 +1,0 @@
-Fix Step 3 loop result persistence at the source. Sanitize CR/LF in durable KV values, replace the swallowed env-write failure with a visible warning, document the contract, and add regression coverage.

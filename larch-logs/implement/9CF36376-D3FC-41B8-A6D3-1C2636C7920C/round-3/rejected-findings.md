@@ -1,2 +1,0 @@
-# Rejected Findings
-

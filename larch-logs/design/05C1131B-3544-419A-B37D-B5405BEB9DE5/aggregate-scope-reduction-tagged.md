@@ -1,7 +1,0 @@
-### FINDING_1:
-- **Reviewer(s)**: Codex-Generic
-- **Severity**: important
-- **Focus area**: architecture
-- **Location**: python/plan_scout.py:464
-- **Concern**: [SCOPE-REDUCTION] Plan adds a new SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_CMD override for scout review launches. Scenario: The scope anchor says no new launcher features beyond bash parity, and the existing SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH hook already covers the fake executable override used by tests; adding a second override creates a new config contract unrelated to the cutover
-- **Proposed resolution**: Keep the existing SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH override as the only test hook, change only the default argv prefix to python/cli.py agent launch-review --tool cursor, and remove the new CMD variable and related tests

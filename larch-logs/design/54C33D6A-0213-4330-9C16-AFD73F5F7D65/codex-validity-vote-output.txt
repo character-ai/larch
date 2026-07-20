@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The scoped file contains the remaining non-fixture raw issue-view argv call.
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Extending lint into skills is explicitly outside this plan's scope.

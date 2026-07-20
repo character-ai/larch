@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Invalid override handling is inconsistent, but blank/control-character overrides are outside the feature path and acceptance criteria.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The shared resolver already owns and tests override precedence; this caller-default change does not create a distinct risk-bearing precedence path.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The proposed assertion concerns a difficulty record rather than the required Cursor usage sidecar and is not necessary to verify the feature.
-FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false

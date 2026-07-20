@@ -1,2 +1,0 @@
-1. No --no-dedup option (no options to start)
-2. It should thoroughly investigate and root cause the described bug, and then call /issue to document the result, specifying detailed context, root cause analysis, and suggested fixe(s) (if it has any ideas how to fix).  The resulting issue should contain complete set of information needed for /design to do a good job.

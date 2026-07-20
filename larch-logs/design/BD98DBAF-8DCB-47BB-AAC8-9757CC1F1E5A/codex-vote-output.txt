@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- scope reduction would drop the count-path pin that Item 2 explicitly needs, so the planned regional assertions are proportionate.

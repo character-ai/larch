@@ -1,9 +1,0 @@
-All six accepted findings were applied:
-
-- **Cap-at-entry** now writes `.completed/step-3` before returning `cap-hit`
-- **Publish** refuses stale or terminal provenance without the step-3 sentinel and splices provenance above `diff_lines`
-- **Emergency preflight** skips zero-review refusal on fallback plans
-- **`panel-init-failed`** is allowed as a generic bail token
-- **Test harnesses** cover cap-hit sentinel routing and cap-at-entry behavior
-
-Targeted pytest and `relevant-checks.sh` both passed (exit 0). No commit was made; the parent session handles that.

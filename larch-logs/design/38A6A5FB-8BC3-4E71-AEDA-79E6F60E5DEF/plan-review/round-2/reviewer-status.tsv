@@ -1,6 +1,0 @@
-slot	tool	status	elapsed_s	output
-cursor-plan-arch	cursor	done	1063	<TMPDIR>/cursor-plan-arch-output.txt
-cursor-plan-innovation	cursor	done	1063	<TMPDIR>/cursor-plan-innovation-output.txt
-cursor-plan-pragmatic	cursor	done	1063	<TMPDIR>/cursor-plan-pragmatic-output.txt
-cursor-plan-requirements	cursor	done	1063	<TMPDIR>/cursor-plan-requirements-output.txt
-codex-plan-generic	cursor	done	1063	<TMPDIR>/codex-plan-generic-output.txt

@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected ledger finding; inline fence tracking is a legitimate alternative but not a necessary change to this scoped lint plan.
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of neutral ledger finding; the plan already scopes detection to drafting-model-authored plan metadata rather than trusted operator authority.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of rejected ledger finding; baseline-key precision is useful robustness work, not required feature-path behavior.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The scope anchor expressly makes the mechanical scan a non-goal and limits this work item to appending the invariant text.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of rejected ledger finding about _renumber_oos_headings fence gating.

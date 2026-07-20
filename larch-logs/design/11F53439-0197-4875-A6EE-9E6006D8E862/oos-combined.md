@@ -1,7 +1,0 @@
-### OOS_1: Aggregated rollup of 2 capped OOS items
-- **Description**: Cap 1 (OOS_ISSUES_PER_RUN_CAP) exceeded; the following 2 items were rolled up by skills/implement/scripts/oos-issue-cap.sh:
-  - **- **Description**: `flush_review_batches` still swallows tally write failures after this fix. Scenario: `write-tally` failures only emit stderr warnings and `flush_review_batches` returns `True`. A future non-header failure would still freeze the committed tally at the last good round with no hard stop**: OOS_1: - Description: flush_review_batches still swallows tally write failures after this fix. Scenario: write-tally failures only emit stderr warnings and flush_review_batches returns True. A future… [Files: python/review_and_fix.py:916-920]
-  - **- **Description**: Alternate root cause: tally batch commit ordering vs per-round round-* commits. Scenario: Issue RCA left open whether committed logs can retain round-1 tally even when later write-tally calls succeed; if validation softening does not fix all pinned-at-1 runs, trace run-log commit timing separately**: OOS_2: - Description: Alternate root cause: tally batch commit ordering vs per-round round- commits. Scenario: Issue RCA left open whether committed logs can retain round-1 tally even when later writ… [Files: python/review_and_fix.py:880-952]
-- **Reviewer**: Combined: capped per-run rollup
-- **Vote tally**: N/A — capped rollup of 2 entries
-- **Phase**: implement

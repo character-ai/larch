@@ -1,9 +1,0 @@
-Fold design publish validation into Step 5c driver
-
-Move composed-plan validation and redaction into design-publish.sh with exit 4 for validator defects, result-env VALIDATE_* keys, skip-validate for the accepted false-positive path, and a pre-side-effect pause checkpoint.
-
-Remove review_budget / --force-validate / --review-budget from run-params and postplan emit handling so validation runs unconditionally.
-
-Update Step 5c and the shared validator-failure prose for auto-repair-then-escalate retries, rc-4 gating, and result-env quarantine.
-
-Refresh the publish, postplan, run-params, structure, flag-signature, and summary-callsite harnesses for the new contracts.

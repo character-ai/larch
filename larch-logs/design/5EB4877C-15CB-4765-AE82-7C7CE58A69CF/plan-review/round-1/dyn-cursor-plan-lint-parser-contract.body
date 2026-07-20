@@ -1,1 +1,0 @@
-Review the new lint parser, regex detection, suppression handling, and fixture matrix. Focus on false positives, false negatives, output contract drift, and live-tree scan scope. Cite each finding with the exact file and symbol that supports it. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

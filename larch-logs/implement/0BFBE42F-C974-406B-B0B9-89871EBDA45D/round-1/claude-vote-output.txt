@@ -1,9 +1,0 @@
-FINDING_1: EXONERATE -- docs/workflow-lifecycle.md Flags table is pre-existing and plan explicitly enumerated only 5 locations; legitimate gap but not issue-worthy given table is already sparse for many other flags
-FINDING_2: EXONERATE -- pre-existing duplicate Shard-12 comment is a minor style nit not worth tracking as an issue
-FINDING_3: NO -- reviewer themselves acknowledge alias skills are acceptable by design; trivial observation with no actionable issue
-FINDING_4: EXONERATE -- legitimate CI structural risk but pre-existing and the Makefile comment already calls out the dependency explicitly
-FINDING_5: EXONERATE -- edge case in coverage script for a scenario (two shard lines with the guard) that is practically impossible to encounter accidentally
-FINDING_6: EXONERATE -- auditability concern is legitimate but timing evidence belongs in CI run output and PR description, not in the code diff itself; actual balance is verified by post-merge CI
-FINDING_7: EXONERATE -- four single-harness shards are the natural LPT outcome when outlier tests dominate; fixing it would undermine the bin-packing goal
-FINDING_8: EXONERATE -- post-merge timing monitoring is sound operational advice but not a code defect; CI will surface any regression
-FINDING_9: EXONERATE -- speculative flake risk from reordering within shards; well-isolated harnesses are the standard expectation and reactive CI triage is the right fix path if a pair surfaces

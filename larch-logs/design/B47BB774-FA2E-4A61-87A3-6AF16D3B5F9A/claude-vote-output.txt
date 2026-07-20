@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the plan's parseable_review_output_present bypass is a valid fix for the primary #4547 scenario; SUCCEEDED_SLOTS alignment is a design preference, not a correctness defect on the feature path
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- tally-code-votes.sh does truncate oos.md at line 114 but would repopulate it from ballot OOS rows if findings.md retains them after aggregation; plan likely works given typical aggregator behavior; finding's primary emit_zero_findings_branch claim is incorrect about the plan (plan explicitly bypasses it when oos_count>0)

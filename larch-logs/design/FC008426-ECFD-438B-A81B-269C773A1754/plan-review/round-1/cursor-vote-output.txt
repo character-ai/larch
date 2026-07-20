@@ -1,2 +1,0 @@
-Reading the ballot and verifying claims against the codebase.
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

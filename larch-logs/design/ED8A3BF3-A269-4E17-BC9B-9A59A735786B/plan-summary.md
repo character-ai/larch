@@ -1,1 +1,0 @@
-Implement a Python-owned post-ship OOS filer, remove the dead Python `oos-filing` handoff, keep the bash path unchanged, and add tests for filing, Codex combining, PR-body audit, and run-log manifest evidence.

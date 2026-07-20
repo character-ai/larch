@@ -1,1 +1,0 @@
-Add a Gate C main-agent audit for accepted plan-review findings. Preserve one pre-review snapshot, persist the audit into design logs, and make strong dissent override `--skip-approve` without auto-reverting reviewer changes.

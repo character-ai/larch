@@ -1,6 +1,0 @@
-warning: fix text for slot 'dyn-review-and-fix-handoff-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: 'Before the first `"${REVIEW_CORE_CMD[@]}"` invocation, mirror the `RUN_EXTERNAL_')
-warning: fix text for slot 'dyn-review-cli-parity-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: '- **architecture** The branch relocates bash into `python/legacy_review_shell/` ')
-warning: fix text for slot 'dyn-retired-reference-sweep-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: '- **architecture** The C1b modules (`python/review_pipeline.py`, `python/review_')
-warning: fix text for slot 'dyn-review-cli-parity-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: '- **risk-integration** `python/review_pipeline.py:33-35` relays captured bash st')
-warning: fix text for slot 'dyn-review-cli-parity-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: '- **code-quality** `.gitleaks.toml:20` still allowlists deleted `skills/review/s')
-warning: fix text for slot 'dyn-retired-reference-sweep-output.txt' in FINDING_17 not traceable to scoped input (first 80 chars: '- **risk-integration** `agent-lint.toml:324-325` — Duplicate `python/test_compos')

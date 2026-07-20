@@ -1,6 +1,0 @@
-FINDING_1: EXONERATE -- small operator-doc gap in ship-pr.md; fix in-repo suffices without a tracking issue.
-FINDING_2: YES
-FINDING_3: NO -- meta noise in a pasted plan, not a product defect to track.
-FINDING_4: NO -- historical run-log wording is editorial only, not incorrect.
-FINDING_5: EXONERATE -- PR/issue copy hygiene is real but not issue-tracker scope.
-FINDING_6: YES

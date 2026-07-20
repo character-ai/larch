@@ -1,1 +1,0 @@
-Implemented per plan and wrote `manifest.json` with `status=complete`.

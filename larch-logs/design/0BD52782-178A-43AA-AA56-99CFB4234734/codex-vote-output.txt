@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the carve-out wording is vague, but the planned Presentation contract can still make the helper authoritative for skip-approve.
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- possible helper drift is speculative maintainability work and does not clear issue-overhead.
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the scope anchor explicitly allowed a new present-note command.
-OOS_3: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- this is covered by in-scope Finding 2, not a future OOS issue.

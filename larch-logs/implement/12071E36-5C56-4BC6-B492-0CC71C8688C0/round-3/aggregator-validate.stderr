@@ -1,4 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Check `.pause-requested` first with minimal path checks, invoke `pause_save_main')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Resolve sink path and require it under design_tmpdir; otherwise use basename fal')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Re-indent to match sibling rules.  ### OOS_2: [OUT_OF_SCOPE] Unescaped `POSITION')
-warning: fix text for slot 'dyn-launcher-cutover-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add a `capsys` test where `fake_init` returns `INIT_STATUS=ok\\nRENAMED=false\\n` ')

@@ -1,1 +1,0 @@
-Plan the refactor in one PR. Keep wire output stable. Add typed result dataclasses, move `KEY=value` emission to thin wrappers, split postplan decisions from effects, and decompose `run_ship` into phase helpers.

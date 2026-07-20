@@ -1,7 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Write a `.step16-16a-done` sentinel from `step_16_17`/`step_16_16a` and gate ste')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add unit test: absent `.step17-emitted` invokes `step_16_16a` once before `write')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add closeout tests for `step_16_16a` (rejected + slack, no `step_17`) and a `fin')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Mirror `step_17` telemetry marking in step18b before `write_final_report`.')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Align MAV/coder bullets with the full deferred-timing block (record-only, seed/k')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Call implement `step-16-16a` via subprocess, surface failures in execution-issue')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add require/forbid checks in `test-implement-structure.sh` for recover-then-repo')

@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scanner asserting LARCH_TIMING_SKILL=implement covers the primary attribution vector; requiring DESIGN_TMPDIR='' only on vendor lines adds per-subcommand scanner complexity for a secondary risk
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already says "targeted assertions" and names the Step 2 dispatch stack files; single reviewer; implementer can scope the stale-key grep reasonably without plan amendment
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- parity table covers decide() action; plan proposes monitor()-level Outcome assertions not covered by that table; error and already_merged are both reachable through monitor() and untested at MonitorResult.outcome level
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

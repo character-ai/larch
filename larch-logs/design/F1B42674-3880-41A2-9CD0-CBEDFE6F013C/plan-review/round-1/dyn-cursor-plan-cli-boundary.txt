@@ -1,4 +1,0 @@
-Reviewing the plan and inspecting `cli.py` registrations, moved module signatures, and related integration points.
-The workspace is still pre-PR; I'll compare the plan against current scripts and `cli.py` registration patterns.
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	scripts/check-topology-rule-paths.py:129-131	Topology main still gates on len(sys.argv) instead of delegated argv	Under python3 python/cli.py lint topology-rule-paths, sys.argv includes cli.py plus domain and verb (length >= 3), so the copied guard always calls fail() before validation runs	In python/check_topology_rule_paths.py, delete the len(sys.argv) guard; use main(argv: list[str] | None = None) with args = argv if argv is not None else sys.argv[1:] and parser.parse_args(args) only, matching lint_mermaid_fences.py:253-256

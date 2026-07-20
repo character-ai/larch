@@ -1,4 +1,0 @@
-skills/design/SKILL.md
-skills/shared/orchestrator-never.md
-scripts/test-implement-anti-polling-rule.sh
-scripts/test-implement-anti-polling-rule.md

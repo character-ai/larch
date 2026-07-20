@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already wires line_enabled_callback via process_tokens/process_module and requires legacy pylint parity in disable fixtures
-FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false

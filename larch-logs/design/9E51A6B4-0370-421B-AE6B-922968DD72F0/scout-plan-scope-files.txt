@@ -1,4 +1,0 @@
-skills/design/scripts/review-design-step3-loop.sh
-skills/design/scripts/review-design-step3-loop.md
-skills/design/scripts/test-review-design-step3-loop.sh
-skills/design/scripts/test-review-design-step3-loop.md

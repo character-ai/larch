@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplication is mitigated by existing test coverage of both call sites; extraction adds abstraction overhead without proportionate safety gain
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- test design fragility is real but latent and the suggested fix is too vague; prefer EXONERATE per tie-breaking
-FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- rcc_max_iter_honored already exercises the LARCH_CI_LOCAL_FIX_ITER path for valid values; gap for invalid values is latent
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- plan explicitly specifies mocking at the _verify_failed_jobs_locally layer; concern is speculative about implementation drift

@@ -1,1 +1,0 @@
-Resolve the live base from the correct remote HEAD. Treat the frozen Step 2 fallback as untrusted for committed-path coverage, so upstream churn cannot satisfy the scope gate. Add focused regression tests for non-main and forked defaults, malformed or missing remote HEADs, and conservative fallback behavior.

@@ -1,3 +1,0 @@
-Reading the ballot and verifying findings against the plan and codebase.
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- in-process calls with `_capture_stdout_stderr` can preserve Bash parity; subprocess CLI delegation is optional simplification, not required for port completeness or correctness.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

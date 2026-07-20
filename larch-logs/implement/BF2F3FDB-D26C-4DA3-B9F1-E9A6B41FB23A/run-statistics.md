@@ -1,1 +1,0 @@
-Run BF2F3FDB-D26C-4DA3-B9F1-E9A6B41FB23A: 0 OOS issues filed. 1 accepted OOS item (FINDING_10 — larch-log.sh allowlist, pre-existing/nit, explicitly rejected from filing per inline-triage rule 2). Remaining OOS items exonerated or rejected by voters.

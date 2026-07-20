@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already says "replace the prompt-side capture-file and run-log append-failure command"; "capture-file" covers the validation.log write; this is a clarification ask, not a gap
-FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- code-reuse preference; the plan explicitly marks the helper optional ("if useful"); feature correctness is unaffected by whether a new helper or existing helpers are used
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan requires "preserve stdout echo behavior for prompt-side KV parsing"; the LARCH_QUIET_DISABLE try/finally wraps the capture call and is retained unless explicitly removed; a careful implementer following the preserve requirement keeps it
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

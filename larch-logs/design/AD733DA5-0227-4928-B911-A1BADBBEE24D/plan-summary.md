@@ -1,1 +1,0 @@
-Plan: merge Step 8 architectural invariant and guideline compose-time pauses into `NEXT_ACTION=assessments`, keep old per-kind actions as back-compat, update prompt contracts, and add route, resume, and harness coverage.

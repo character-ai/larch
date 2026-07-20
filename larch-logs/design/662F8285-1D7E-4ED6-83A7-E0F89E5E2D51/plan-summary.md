@@ -1,1 +1,0 @@
-Unify implement scout sidecar normalization by delegating `step2-implement.sh` to the design scout wrapper's `--filter-manifest` path. Add a regression that would fail with the old incomplete reserved-slug list.

@@ -1,9 +1,0 @@
-Gathering the branch diff and commit history for a correctness-focused review against the feature description and implementation plan.
-
-Scanning the large diff for changed files and critical sections.
-
-Checking the Step 0 bash snippet, whether exit-code 1 handling remains, and the shell scripts' logic.
-
-Creating the review plan and delivering the structured findings.
-
-

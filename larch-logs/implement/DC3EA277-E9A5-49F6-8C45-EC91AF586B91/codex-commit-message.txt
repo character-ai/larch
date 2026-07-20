@@ -1,5 +1,0 @@
-Fix Step 5 lint timing ownership
-
-Record terminal lint-fix main-agent stalls in-loop and leave prompt-side record-only resumes with no round-start file to replay. Add runtime coverage for Step 5 timing, ship-pr lint handoff ledger KVs, and generated larch-run launcher contracts.
-
-Inline-triage rule 1: Updated script sibling docs for the expanded timing and launcher harness contracts.

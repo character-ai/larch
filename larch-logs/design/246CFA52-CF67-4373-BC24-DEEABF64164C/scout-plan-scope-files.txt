@@ -1,7 +1,0 @@
-python/version_bump.py
-python/changelog.py
-python/test_version_bump.py
-python/test_changelog.py
-python/git.py
-python/config.py
-python/README.md

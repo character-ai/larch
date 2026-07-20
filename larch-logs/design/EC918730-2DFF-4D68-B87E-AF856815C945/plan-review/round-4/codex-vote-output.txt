@@ -1,6 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- legitimate, but making the explicit clause independently authoritative adds more churn than the contract-clarification plan warrants
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ordering should stay safe, but the plan already anchors after relevant sidecar denies and the extra line-level prescription is overkill
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- true but too small to require another doc-framing change beyond the primary contract update
-OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real doc-test drift, but too small and plan-adjacent to justify a separate GitHub issue

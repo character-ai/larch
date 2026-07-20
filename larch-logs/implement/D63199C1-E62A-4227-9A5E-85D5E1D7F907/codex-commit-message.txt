@@ -1,7 +1,0 @@
-Move Python CLI dispatch into domain modules
-
-Co-locate the git, push, pr, merge, and gh CLI entrypoints with their typed domain modules, rename ci_cli to ci, and retarget cli.py registry entries.
-
-Delegate rebase local-main synchronization through git.sync_local_main while preserving the rebase-only missing-remote no-op and checked-out-main refusal.
-
-Migrate companion CLI tests into domain tests and retire the deleted companion paths in migrated-scripts.tsv.

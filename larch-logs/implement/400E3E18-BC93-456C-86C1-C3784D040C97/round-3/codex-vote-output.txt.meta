@@ -1,9 +1,0 @@
-TOOL=codex
-TIMEOUT=1200
-CAPTURE_STDOUT=false
-CAPTURE_STDOUT_ONLY=false
-OUTPUT_FILE=<TMPDIR>/round-3/codex-vote-output.txt
-OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/scripts/launch-review.sh
-OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/round-3/codex-vote-output.txt.prompt
-OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
-OUTER_LAUNCHER_RISK=high

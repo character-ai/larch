@@ -1,9 +1,0 @@
-TOOL=cursor
-TIMEOUT=1800
-CAPTURE_STDOUT=false
-CAPTURE_STDOUT_ONLY=true
-OUTPUT_FILE=<TMPDIR>/round-4/dyn-inline-to-script-fidelity-output.txt
-OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.41/scripts/launch-review.sh
-OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/round-4/dyn-inline-to-script-fidelity-output.txt.prompt
-OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
-OUTER_LAUNCHER_RISK=high

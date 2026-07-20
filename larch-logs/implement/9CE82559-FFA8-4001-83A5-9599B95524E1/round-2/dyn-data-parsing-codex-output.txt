@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **correctness** `scripts/compose-review-findings.sh:462-467` — The Gate B filter treats any rejected block containing the reason phrase as skipped and removes every line containing that phrase from both accepted and rejected blocks before comparison. An accepted finding that legitimately quotes `rejected by user during one-by-one review` can therefore normalize to the same body as a rejected block whose only matching line is the structured reason, causing the accepted finding to be dropped from `review-findings-full.jsonl` and undercounted/misattributed in Review Phase Detail. **Suggested fix:** Detect the skip only from a structured reason line in rejected blocks, strip only that reason line, and add a regression where accepted prose quotes the phrase but must remain emitted.
-
-- **correctness** `scripts/write-design-round-meta.sh:40-45` — `_parse_tally_md()` reads `Result` as `$(NF-1)`, which works for rows with a trailing pipe but misparses rows without one: `| FINDING_1 | 3 | 0 | 0 | accepted` makes `$(NF-1)` the last vote count, not `accepted`, and the fallback does not run because `0` is nonblank. If the TSV fallback is absent/unusable, metadata silently reports zero counts from a valid tally table. **Suggested fix:** Parse the header to locate the `Item` and `Result` columns, or trim an optional empty final field and use the last non-empty field; share that logic with the OOS adjustment parser and cover both trailing/non-trailing table rows.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

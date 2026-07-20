@@ -1,7 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=adequate UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The limitation is real, but extending the generic pin verifier to absent guards adds more machinery than this narrow backstop warrants.
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Full `/design --simple` E2E coverage would be expensive relative to the existing unit and structural coverage for this branch.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The exact test is absent, but `--sketch-budget abc` is already cleanly rejected by enum validation before jq.
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

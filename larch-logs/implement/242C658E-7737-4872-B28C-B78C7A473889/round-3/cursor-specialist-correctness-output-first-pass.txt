@@ -1,4 +1,0 @@
-Reviewing branch changes against the plan: reading the precomputed diff, commit history, and key implementation files.
-Checking whether the hoisted path skips the sync retry that the plan intended only for the artifact guard:
-Review complete. Summarizing findings against the plan and the production incident scenario.
-

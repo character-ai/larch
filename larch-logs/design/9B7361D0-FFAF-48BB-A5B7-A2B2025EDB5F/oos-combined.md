@@ -1,7 +1,0 @@
-### OOS_1: Aggregated rollup of 2 capped OOS items
-- **Description**: Cap 1 (OOS_ISSUES_PER_RUN_CAP) exceeded; the following 2 items were rolled up by skills/implement/scripts/oos-issue-cap.sh:
-  - **- **Description**: [OUT_OF_SCOPE] The /status catalog entry keeps the same Claude-only fallback framing the plan removes from skills/status/SKILL.md. Scenario: After the planned status SKILL copy fix lands, docs/skills.md still tells users degraded status can mean reduced panel or Claude-only fallback, which conflicts with the both-down hard-fail contract**: OOS_1: - Description: [OUT_OF_SCOPE] The /status catalog entry keeps the same Claude-only fallback framing the plan removes from skills/status/SKILL.md. Scenario: After the planned status SKILL copy … [Files: skills/status/SKILL.md. docs/skills.md docs/skills.md:173-179]
-  - **- **Description**: [OUT_OF_SCOPE] External reviewers documentation still describes the retired degraded-tools gate routing. Scenario: The shared gate contract requires Continue for one-down and hard-fails both-down, but this page says one-down auto-proceeds and both-down prompts**: OOS_2: - Description: [OUT_OF_SCOPE] External reviewers documentation still describes the retired degraded-tools gate routing. Scenario: The shared gate contract requires Continue for one-down and ha… [Files: docs/external-reviewers.md:3-10]
-- **Reviewer**: Combined: capped per-run rollup
-- **Vote tally**: N/A — capped rollup of 2 entries
-- **Phase**: implement

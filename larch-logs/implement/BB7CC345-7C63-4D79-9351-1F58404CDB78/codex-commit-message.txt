@@ -1,3 +1,0 @@
-Classify protected path Codex bails
-
-Add protected-path stall recovery classification for protected-path-edit-required-out-of-scope, including retry policy, operator warning prose, and stale-evidence regression coverage.

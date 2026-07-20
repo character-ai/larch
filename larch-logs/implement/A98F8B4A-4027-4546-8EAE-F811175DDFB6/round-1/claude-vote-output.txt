@@ -1,8 +1,0 @@
-FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- BOGUS-classification failure is sufficient to prove the writer-abort-before-recovery boundary; covering jq/atomic-write failures is scope expansion beyond the SIMPLE-tier minimum
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit-level style inconsistency; more complexity than warranted to fix
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- absence-check substring is semantically correct for Case 7's purpose (proving warning did not appear); full equality is appropriate for Case 6's positive assertion
-FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
-FINDING_8: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- speculative reader-interpretation concern about a heading; cannot verify without reading SKILL.md, and "can be read as" is too weak a basis for an issue

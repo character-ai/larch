@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- the planned regex cannot cross the whitespace before the reason text, so reason-only token mentions do not suppress checks.
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- the planned prefix group uses non-whitespace, so it can consume multiple comma-delimited tokens before the requested token.
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false

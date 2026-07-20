@@ -1,5 +1,0 @@
-Collapse implement preflight mechanical gates
-
-Add scripts/implement-preflight.sh to own admission, issue fetch, plan-block extraction, and emergency fallback composition for /implement Preflight items 1-3. Update the implement skill and audit reference so prompt-side judgment begins after the helper succeeds, with audit.txt written only on refuse.
-
-Add the offline implement-preflight harness, wire it into Makefile and linting docs, and retarget existing Preflight structure tests to the single helper surface.

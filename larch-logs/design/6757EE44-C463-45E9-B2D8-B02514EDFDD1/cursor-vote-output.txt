@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- point-competition.md already aliases Findings/Proposed; voting-protocol one-liner can cite Proposed without blocking the stated precision-value policy deliverable
-FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan already defines the weighted numerator as accepted_weight minus Rejected with +2/+1 cross-ref; column-visible derivation is clarifying, not required for this docs-only policy change

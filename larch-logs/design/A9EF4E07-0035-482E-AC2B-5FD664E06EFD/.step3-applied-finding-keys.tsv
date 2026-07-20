@@ -1,4 +1,0 @@
-1	`python/tests/design/test_design_cli_ports.py` still expects repointed verbs to target `larch.design.design_lifecycle`; the three-tuple and direct-module migration must update these expectations and focused validation.
-1	spot checks do not enforce the acceptance rule that no `_registry` entry targets `larch.design.design_lifecycle`.
-1	existing tests outside `python/tests/test_cli.py` compare or unpack two-field registry values; converting `_registry` rows to three-tuples will break the full python suite.
-2	the plan changes `_registry` values to three-tuples but does not explicitly update its type annotation, potentially causing strict pyright failures.

@@ -1,8 +1,0 @@
-ISSUE_1_NUMBER=4985
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/4985
-ISSUE_1_ID=4711383880
-ISSUE_1_TITLE=[OOS] No cross-skill regression for the exact mixed-ranking OOS scenario
-ISSUE_1_BLOCKER_LINKS_APPLIED=1
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0

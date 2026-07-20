@@ -1,1 +1,0 @@
-{"run_id": "C8D02339-F003-4D6C-82F2-585A93EF3ED1", "skill": "implement", "batch": "oos-issues", "phase": "implement", "step": "9a.1", "category": "Accepted", "body": "| [OOS] Embedded legacy assets in plan_review.py: defer larch_quiet_init until after session validate-design-tmpdir | #4589 | https://github.com/character-ai/larch/issues/4589 |"}

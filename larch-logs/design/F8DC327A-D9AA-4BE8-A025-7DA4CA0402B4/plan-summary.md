@@ -1,1 +1,0 @@
-Port /design terminal-failure and escalation reporting onto the shared stall-report core. Add generic helper flags, design-side staging/report driver, teardown wiring, escalation record call sites, tests, and security/docs updates.

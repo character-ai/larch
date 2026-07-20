@@ -1,3 +1,0 @@
-Bailed: the plan requires editing `.claude-plugin/plugin.json`, which this implementer is forbidden to modify.
-
-Wrote `manifest.json` with `status=bailed` and reason `protected-path-edit-required-out-of-scope`.

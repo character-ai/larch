@@ -1,6 +1,0 @@
-1	the planned token `status-routing-truthiness` conflicts with the documented and required `lint-status-routing-truthiness` pragma, so valid suppressions would not be recognized.
-1	the shared cli path currently suppresses matching baseline rows silently, so the required non-failing warning output cannot be produced.
-1	a string-only source filter cannot exclude tracked python symlinks before engine discovery, so an in-scope symlink may fail with exit 2 instead of being ignored.
-1	python/larch/lint/lint_status_routing_truthiness.py:lintrule [scope-reduction] suppression_token omits required lint- prefix. scenario: plan sets rule id and suppression_token to status-routing-truthiness, but scope/docs require # lint-status-routing-truthiness: ok. engine._scan_source matches rule.suppression_token literally (engine.py:1434-1435, _apply_inline_suppressions). wrong token makes every same-line suppression a no-op while empty-reason tests still pass via scanerror.
-2	`rule` does not require a baseline. a clean scan can therefore exit 0 when `python/status-routing-truthiness-baseline.json` is missing, allowing the ratchet to pass without its committed reason-bearing baseline.
-2	`pathspecs` omits the shallow `python/larch/*.py` glob. using only the recursive pathspec may skip direct child modules such as `python/larch/cli.py`.

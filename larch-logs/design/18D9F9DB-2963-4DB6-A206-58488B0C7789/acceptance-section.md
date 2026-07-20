@@ -1,8 +1,0 @@
-## Acceptance
-
-- WI1: `scripts/design-log-publish.sh` stages `.completed/` files named `emit_plan`, `tally`, `finalize`, and `validate_plan_commands` (alongside `step-*`) without failing; pause publish reports `PUBLISH_OK=true` when those sentinels are present. An arbitrary `.completed/` basename still fails with `unexpected file under .completed`. `scripts/design-log-publish.md` lists the accepted driver phase-sentinel basenames and names `design-driver.sh` as their source.
-- WI2: `scripts/design-pause-load.sh` restores snapshots with a guarded `git ls-tree -r -z` capture plus per-file `git show` (no `git archive | tar`); a real-`git` repo carrying `larch-logs/ export-ignore` restores successfully (`LOAD_OK=true`). The committed `.gitattributes` `larch-logs/ export-ignore` line is unchanged.
-- WI3: the loader keeps the pause marker on every restore/extract/snapshot-content failure (`snapshot-not-found`, `snapshot-extract-failed`, `missing-restored-artifact`, and the restored-* mismatches) and deletes it only after a successful install; a post-success delete failure surfaces `WARN=marker-delete-failed` with `LOAD_OK=true`. `emit_load_fail` no longer deletes the marker on any path.
-- Tests: `bash scripts/test-design-log-publish.sh`, `bash skills/design/scripts/test-design-pause-resume.sh`, and `bash skills/design/scripts/test-design-driver.sh` all pass; the WI2 real-`git` export-ignore reproduction and the WI3 keep-on-failure / delete-on-success fixtures are present.
-- Docs: `scripts/design-pause-load.md`, `SECURITY.md`, and the test `.md` siblings reflect the ls-tree+show restore and the keep-on-failure / delete-on-success marker lifecycle.
-- `make lint` (relevant-checks / pre-commit) is green.

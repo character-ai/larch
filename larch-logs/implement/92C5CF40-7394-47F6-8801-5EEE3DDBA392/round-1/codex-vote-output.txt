@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicated arity checks are real but too small to warrant a separate issue.
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- eval-research already rejects flag-shaped next tokens for value-taking flags, and it has no boolean value-taking flags.
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- whitespace-only values still fail with exit 2 via enum validation, so the remaining difference is only diagnostic wording.

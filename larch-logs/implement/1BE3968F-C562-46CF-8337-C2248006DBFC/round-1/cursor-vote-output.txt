@@ -1,6 +1,0 @@
-Reading the ballot and related context to verify each finding.
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- removing degraded-round cap inflation is the explicit #3662 plan requirement, not a regression
-FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- stale env-write-failed doc references are real but cosmetic doc drift, not feature-blocking
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- run-step3-review.sh enforces flat cap 5; leftover tier-cap prose does not change Gate C behavior at counts 3-4
-FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- review-and-fix.md still says degraded rounds skip the cap, but loop code no longer inflates; stale doc only
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- no exact in-loop round-5 degraded cap-hit pin, but hard-cap boundary logic is covered by existing loop-suite cases

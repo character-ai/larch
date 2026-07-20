@@ -1,5 +1,0 @@
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add stubbed `_run_cycle` test expecting `ci-fix-exhausted` and `next_run_id=None')
-warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add a monkeypatched `_run_cycle` test where `_wait_for_ci` returns e.g. `({ACTIO')
-warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add a stubbed `_run_cycle` test with `ACTION=retry` and no `FAILED_RUN_ID`, asse')
-warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Add `main()` test with cycle-2 waterfall-failed stub asserting `STATUS=ci-fix-ex')
-warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Call `git.paths_delta_revert` with the pre-tier baseline before raising, then re')

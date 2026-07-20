@@ -1,1 +1,0 @@
-Fix seven small /design drift items with citation updates, one relevant-checks mapping, Step 2b fail-safe hardening, Step 3 timing fixes, teardown structure assertions, and final log-publish idempotency coverage.

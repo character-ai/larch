@@ -1,6 +1,0 @@
-Port issue-wire helpers to Python
-
-Add python/issue_wire.py for plan/named blocks, scope paths, title helpers, untrusted blocks, and P3119 lint.
-Register the new CLI verbs, add gh issue body read/edit support, and reuse the shared untrusted renderer path.
-Cut over design, implement, review, tracking, and recovery callsites to python/cli.py issue-wire verbs.
-Retire the absorbed shell helpers and harnesses, update migrated-script tracking, and refresh docs/security references.

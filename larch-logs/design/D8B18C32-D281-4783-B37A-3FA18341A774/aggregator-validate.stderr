@@ -1,5 +1,0 @@
-warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: 'Minimum-change path: wire `issue-input-file` in `stall-recovery.md` and add only')
-warning: fix text for slot 'Cursor-Innovation' in FINDING_2 not traceable to scoped input (first 80 chars: 'Drop the negative grep; keep the positive same-line `stall-recovery-issue-input.')
-warning: fix text for slot 'Cursor-Innovation' in FINDING_3 not traceable to scoped input (first 80 chars: 'Point normalization prose at `skills/issue/SKILL.md` batch output keys (`ISSUE_1')
-warning: fix text for slot 'Cursor-dyn-env-contract' in FINDING_3 not traceable to scoped input (first 80 chars: 'Cite `skills/issue/SKILL.md:332-344` for indexed batch stdout keys and `oos-pipe')
-warning: fix text for slot 'Cursor-dyn-subcommand-existence' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add `bump-branch-guard` to production-token preservation asserts (direct `safe_s')

@@ -1,5 +1,0 @@
-{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.0/agents/reviewer-correctness.md"}
-{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.0/agents/reviewer-edge-cases.md"}
-{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.0/agents/reviewer-testing.md"}
-{"slot": "dyn-exit-contract", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-exit-contract-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-exit-contract-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "50c21f7e6cb5"}
-{"slot": "dyn-code-reuse", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-code-reuse-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-code-reuse-prompt.md", "weight": 1, "focus_area": "code-quality", "archetype_ref": "2ccc53b72455"}

@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicates the prior rejected scope-reduction finding; the approved plan requires reload validation to agree with compute_coverage.

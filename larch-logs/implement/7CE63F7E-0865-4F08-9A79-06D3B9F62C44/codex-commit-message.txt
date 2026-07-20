@@ -1,3 +1,0 @@
-Prevent orphaned Family B background writers (#2996)
-
-Enforce and document the canonical background+monitor wrapper for top-level Family B writers: shell-background the writer, capture its PID, run breadcrumb-monitor in the foreground, then wait on the writer while preserving writer and monitor exit semantics. Sweep skill fences to that shape, fix collect-agent-results.sh done-trap composition, and add regression coverage for early sentinels, writer exit propagation, monitor failures, and bounded timeout reaping.

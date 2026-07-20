@@ -1,7 +1,0 @@
-# Issue #3065: Add CI lint test for Bash 3.2 compliance
-
-## Title
-Add CI lint test (also can likely run on pre-commit) verifying all modified or new bash scripts are Bash 3.2 compliant
-
-## Body
-(empty)

@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Without jq the script already degrades to Cost: N/A, and a non-jq corrupt-zero parser is more complexity than this edge case warrants.
-FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Committed run logs and transcript artifacts are an intentional documented contract, not a concrete bug or regression worth filing here.
-FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The opt-in outside-input trust boundary is already explicit in the script docs, so this is not worth a separate follow-up issue.

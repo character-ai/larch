@@ -1,6 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already returns ci-fix-exhausted on wait_err and main() exits before reading next_run_id
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- ACTION=bail must be handled immediately after wait_err or co-occurring BEHIND/rebase fields can mis-route before fail-closed exhaustion
-FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already mandates pre-launch forbidden snapshot in implementation and submodule test coverage
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already requires a read-only coverage audit before adding any test_checks.py cases
-OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already prefers _run_cycle-only handling and marks parser tightening optional
-OOS_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- multiple fixable jobs per cycle can still exceed the planned 2x verify budget and prematurely kill the delegate

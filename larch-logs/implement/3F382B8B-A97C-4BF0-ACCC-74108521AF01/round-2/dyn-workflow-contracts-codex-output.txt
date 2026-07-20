@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **architecture** `skills/design/SKILL.md:1274-1279` — The new automatic continuation path re-enters `run-step3-review.sh`, but that driver still deletes every `plan-review/round-*` directory at entry (`skills/design/scripts/run-step3-review.sh:212-222`). With automatic multi-round review now normal before Gate C, round 2+ will erase round 1 forensic artifacts even though `docs/run-logs.md:180-182` describes per-round artifacts under `plan-review/round-<N>/`. **Suggested fix:** Preserve prior automatic-round directories during the same pre-Gate-C sequence; only clear stale/manual rerun artifacts on explicit Gate C/Gate A re-entry or clean just the target round directory after resolving the next round number.
-
-- **architecture** `scripts/relevant-checks.sh:118-134` — The branch adds `plan-review-continuation.sh` routing to `test-step3-review-cap`, and that harness now pins `skills/design/SKILL.md` continuation contracts (`skills/design/scripts/test-step3-review-cap.sh:16-32`), but `skills/design/SKILL.md` changes still route only to `test-design-structure`. A future edit can break the new Step 3.5 continuation prose without relevant checks running the harness that would catch it. **Suggested fix:** Add `test-step3-review-cap` to the `skills/design/SKILL.md` relevant-check target set, or move the continuation pins into `test-design-structure`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

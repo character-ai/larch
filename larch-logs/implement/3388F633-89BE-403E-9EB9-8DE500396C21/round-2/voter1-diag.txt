@@ -1,2 +1,0 @@
-voter1_rc=1
-output_bytes=     135

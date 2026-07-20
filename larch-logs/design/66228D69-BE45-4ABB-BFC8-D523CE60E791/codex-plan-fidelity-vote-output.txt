@@ -1,2 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of the rejected contract-mismatch issue; updating the reference doc is not necessary for the feature to work.
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

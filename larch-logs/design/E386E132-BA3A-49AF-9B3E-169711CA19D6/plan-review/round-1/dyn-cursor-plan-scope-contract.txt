@@ -1,2 +1,0 @@
-Reviewing the plan against the codebase for scope-contract drift around `MAY_UPDATE` and `WARN_PLAN_FILES_UNTOUCHED`.
-{"no_issues_found": true}

@@ -1,3 +1,0 @@
-1	`codex_state=probe-failed` cannot distinguish a cli-version gate from other probe failures, while `status check` emits only fixed kvs. `/larch:status` therefore cannot reliably render the actionable upgrade message.
-1	existing probe stamps and diagnostic artifacts can be reused across probe-role or model changes, allowing stale healthy results or stale gate messages to survive within the ttl.
-1	disabling probe caching or serving a cached probe result may prevent the immediate degraded-tools/status path from receiving or reloading the gate-specific detail.

@@ -1,5 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicates prior neutral finding; the audit-trail ordering is not newly evidenced.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicates prior neutral test-coverage finding; the plan already mandates proportionate focused tests.
-FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The plan already specifies the exact choices and recommendation.
-OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicates a previously rejected documentation concern and the plan does not require this reference update.

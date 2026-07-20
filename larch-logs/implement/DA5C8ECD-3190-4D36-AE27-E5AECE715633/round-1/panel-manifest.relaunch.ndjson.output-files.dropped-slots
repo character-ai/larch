@@ -1,3 +1,0 @@
-correctness	cursor	collector-failure	STATUS=FAILED ❌ cursor agent: FAILED (exit code 1, output 0 bytes) 
-edge-cases	cursor	collector-failure	STATUS=FAILED ❌ cursor agent: FAILED (exit code 1, output 0 bytes) 
-testing	cursor	collector-failure	STATUS=FAILED ❌ cursor agent: FAILED (exit code 1, output 0 bytes) 

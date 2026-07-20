@@ -1,1 +1,0 @@
-Scrub em-dashes only from the three approved skill/report markdown surfaces. Preserve code fences, sentinels, KVs, and machine-parsed tokens. Update any pinned test expectations only if they fail after the prose edits.

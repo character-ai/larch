@@ -1,1 +1,0 @@
-Port Step 5c into `python/design_lifecycle.py`, keep `design_publish.py` as the publish library, reduce `design-step5c.sh` to a thin wrapper, and preserve the Step 5c stdout, sentinel, summary, and exit-code contracts.

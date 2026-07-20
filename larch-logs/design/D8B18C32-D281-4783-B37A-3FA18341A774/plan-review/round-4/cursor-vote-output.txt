@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- bash `8[[:alnum:]-]*` matches `8a<script>` via trailing `*`; current `safe_step_value` passes it through, so the fixture would fail if sanitizer rewrite is skipped

@@ -1,7 +1,0 @@
-{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-06-13T01:10:15Z"}
-{"type":"vendor","vendor":"codex","input":99179,"output":7890,"cache_read":783488,"cache_create":0,"total":890557,"raw":"codex_plan_draft","ts":"2026-06-13T01:20:01Z","model":"gpt-5.5"}
-{"type":"vendor","vendor":"cursor","input":114067,"output":11237,"cache_read":1562349,"cache_create":0,"total":1687653,"raw":"cursor_review","ts":"2026-06-13T01:24:30Z"}
-{"type":"vendor","vendor":"cursor","input":121654,"output":12150,"cache_read":2067881,"cache_create":0,"total":2201685,"raw":"cursor_review","ts":"2026-06-13T01:24:37Z"}
-{"type":"vendor","vendor":"cursor","input":226689,"output":10310,"cache_read":998134,"cache_create":0,"total":1235133,"raw":"cursor_review","ts":"2026-06-13T01:25:31Z"}
-{"type":"vendor","vendor":"cursor","input":241476,"output":11251,"cache_read":1458083,"cache_create":0,"total":1710810,"raw":"cursor_review","ts":"2026-06-13T01:25:38Z"}
-{"type":"vendor","vendor":"cursor","input":103413,"output":11455,"cache_read":1253472,"cache_create":0,"total":1368340,"raw":"cursor_review","ts":"2026-06-13T01:29:45Z"}

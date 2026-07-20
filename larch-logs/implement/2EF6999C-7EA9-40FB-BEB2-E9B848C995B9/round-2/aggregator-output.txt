@@ -1,5 +1,0 @@
-Aggregating reviewer inputs per orchestrator rules: merging duplicate themes, preserving `[OUT_OF_SCOPE]` on merged headings when required, omitting non-code plan-fidelity items (FINDING_23–25) and negative “no issue” items (FINDING_37), and producing verbatim suggested-revision bullets per slot.
-
-
-
-LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED

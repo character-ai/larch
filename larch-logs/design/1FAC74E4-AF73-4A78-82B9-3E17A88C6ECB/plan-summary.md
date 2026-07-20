@@ -1,1 +1,0 @@
-Plan: reorder fixer policy to Claude/Opus 4.8 first, add a delegated agentic CI-fix subprocess with a 20-cycle budget and passive CI wait, remove ship-pr version-bump conflict handling, and update lint-fix dispatch plus tests and docs.

@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already frames agent-lint.toml edit as conditional ("if the current lint graph does not already recognize"), and the three .sh comparisons are not analogous (design-driver.sh, check-plan-size.sh, invoke-plan-validator.sh are all directly cited in SKILL.md prose, making them traceable; a python3 "$VAR" call from plan-review-loop.sh is not)

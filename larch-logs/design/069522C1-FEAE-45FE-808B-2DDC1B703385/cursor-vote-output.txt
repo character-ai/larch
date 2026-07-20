@@ -1,4 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already mandates harness port coverage for late-sentinel, wait-barrier, and CLI smoke tests without requiring bash-symlink retarget wording
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already specifies render-all-voters fail-closed gate and zero-launch pytest before any subprocess start
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

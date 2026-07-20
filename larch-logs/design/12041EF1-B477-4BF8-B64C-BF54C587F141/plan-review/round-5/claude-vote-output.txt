@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- raw stdout leakage is a real concern but authoritative consumers use env/result-env, not raw stdout; filtering _tally_raw adds complexity for a secondary channel
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already qualifies the Makefile update with "when helper exists" and "only when... exists"; the verify-first guard is present in multiple places
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan intentionally left nullable arms on inline arity guards; dedup alone is not worth a follow-up issue
-FINDING_3: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- eval-research has no boolean enum argv flags and its require_value already rejects a --* next token
-FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing weak maybe assertions; tightening is optional and outside this PR's boolean missing/empty scope
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- whitespace-only tokens are a latent edge case; rejecting them would exceed the plan's present/non-empty parity target

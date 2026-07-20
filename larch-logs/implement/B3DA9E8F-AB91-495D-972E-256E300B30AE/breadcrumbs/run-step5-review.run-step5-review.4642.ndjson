@@ -1,7 +1,0 @@
-larch:bc t=2026-05-26T20:55:16Z d=0 p=5033 s=review-and-fix.sh c=progress text=→ Step 5 round 1/5
-larch:bc t=2026-05-26T20:55:16Z d=0 p=5033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
-larch:bc t=2026-05-26T20:55:17Z d=0 p=5621 s=dispatch-panel.sh c=progress text=→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)
-larch:bc t=2026-05-26T20:59:32Z d=0 p=5486 s=review-core.sh c=progress text=→ review: consolidating findings
-larch:bc t=2026-05-26T21:05:25Z d=0 p=5033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 6 accepted, 3 rejected (3 exonerated)
-larch:bc t=2026-05-26T21:05:27Z d=0 p=5033 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (6 fixes)
-larch:bc t=2026-05-26T21:07:38Z d=0 p=5033 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 6 fixes (commit 49c58af)

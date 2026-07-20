@@ -1,1 +1,0 @@
-FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Item 2 only needs a count-path pin; the proposed simpler test still satisfies scope without regional slice helpers.

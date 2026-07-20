@@ -1,3 +1,0 @@
-Exploring the codebase for final-summary emission, lib-quiet/FD-3 behavior, and SKILL orchestration patterns.
-Noting that both scripts already call `larch_quiet_init`; FD 3 still routes into the Bash tool capture. #2837's cost-line-only orchestrator emit was a partial mitigation. Creating the implementation plan.
-

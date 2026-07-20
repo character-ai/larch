@@ -1,7 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=3576
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/3576
-ISSUE_1_ID=4602402425
-ISSUE_1_TITLE=[OOS] Add harness pin for stall-recovery-issue.env batch-key normalization

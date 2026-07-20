@@ -1,7 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `.claude/skills/audit-runs/SKILL.md:241,291-298` — `audit-compute-counters.sh` now emits `NS_RETRIES_SKIPPED_RUNS`, but the audit skill’s counter read-list and `cumulative_counters` YAML schema still omit the corresponding `ns_retries_skipped_runs` key. Operators composing reports per this skill will drop the new skip signal, and prior-report accumulation cannot preserve it across batches. **Suggested fix:** Add `NS_RETRIES_SKIPPED_RUNS` to the read-list, add `ns_retries_skipped_runs` to the frontmatter schema, update `audit-compute-counters.md`, and make `audit-compute-counters.sh` parse/add the prior value if the field is meant to be cumulative; otherwise rename/document it as a batch-only delta.
-
-- **risk-integration** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:438-459,476-484` — The NS-retry legacy fallback no longer reads `NS_RETRY_REASON=` from `*-ns-retry*.txt.meta`; it appends `UNKNOWN` for every legacy sidecar, including mixed concise/legacy orphan sidecars. This regresses the pre-migration reason histogram that audit reports depend on for diagnosing retry causes. **Suggested fix:** Restore/factor the old meta parsing logic for legacy sidecars and use it in both the “signals unavailable” fallback loop and the orphan-sidecar loop when reviewer signals are present.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

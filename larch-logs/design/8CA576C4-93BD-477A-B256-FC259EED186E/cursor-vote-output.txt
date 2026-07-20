@@ -1,8 +1,0 @@
-FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- `_run` already caps the whole CLI at 60s for cold-start; widening inner `--timeout` matches the likely flake layer and outer-layer ambiguity does not clear a necessity gate.
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- retry-counter tests assert literal `"2"` beside `--timeout "2"`; a broad replace would break those paths.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- approved outline already targets the codex flake and its ~20 sibling stub tests; narrowing is proportionality, not necessity.
-FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- shared `STUB_AGENT_TIMEOUT` for success-path stubs is already in the approved outline goals, not unscoped churn.
-FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same sibling-timeout goal in the approved outline; one-test-only change would under-deliver the stated Item 2 scope.
-FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- broad success-path timeout normalization is explicit in the outline; the anchor names one repro but goals cover siblings.
-FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- unrelated-test churn concern is real but does not block delivering the outlined harness-stability fix.
-OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docstring drift only; no runtime or verification impact, not worth a tracked issue.

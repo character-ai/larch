@@ -1,3 +1,0 @@
-Providing the orchestrator aggregation: merging duplicate LPT/partial-LPT concerns (excluding the explicitly separated OUT_OF_SCOPE doc-only item per “keep out-of-scope separate when the source distinguishes them”), merging identical site-packages path concerns, splitting the dynamic reviewer’s ABI/cache-key point from the “getsitepackages vs pip” cluster because they imply different mitigations, merging overlapping-cache nits, and listing standalone OUT_OF_SCOPE items.
-
-

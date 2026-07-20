@@ -1,1 +1,0 @@
-skills/review/scripts/test-aggregate-findings.sh

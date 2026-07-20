@@ -1,1 +1,0 @@
-Plan covers all 14 items. It fixes self-review tally fallback, docs drift, missing failure-path tests, stall recovery tests, implement recovery prose, duplicate-code CI wiring, and focused duplicate-code/design-lifecycle regressions. It records no-defect closures for already-reconciled or retrospective audit items.

@@ -1,7 +1,0 @@
-### FINDING_1:
-- **Reviewer(s)**: Cursor-Requirements
-- **Severity**: important
-- **Focus area**: correctness
-- **Location**: python/plan_review.py embedded skills/design/scripts/run-step3-review.sh; plan.txt:71-85
-- **Concern**: Non-preview validate placement is ambiguous for `--mode loop`: bullets group `single`, `loop`, and `run_step3_round_body`, but loop mode never calls `run_step3_round_body`; it cds/exports in a separate bottom `if [[ "$STEP3_MODE" == loop ]]` block before sourcing `review-design-step3-loop.sh`. Scenario: An implementer can add validate+quiet only inside `run_step3_round_body`, leaving the loop branch still doing `DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" ...)"` and downstream writes with no allowlist check while entry-level `larch_quiet_init` is removed; the security regression persists on the primary `plan-review run --mode loop` path
-- **Proposed resolution**: Spell out one shared non-preview preamble immediately after the `--preview-only` early-exit: resolve `PLUGIN_ROOT` (preview-path `phase_driver_resolve_plugin_root` pattern), `session validate-design-tmpdir "$DESIGN_TMPDIR_ARG" || exit $?`, bind/export `DESIGN_TMPDIR`, then `larch_quiet_init`; only then enter the loop fork or `run_step3_round_body`

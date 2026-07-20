@@ -1,7 +1,0 @@
-Fix final design log republish rebuild
-
-Rebuild final design-log commits from a freshly fetched default branch immediately before push, with delete-aware replacement and late no-delta idempotency. Keep pause-mode branch reuse semantics intact and use force-with-lease when replacing an existing final log branch.
-
-Update the design publish wrapper so an existing successful result no longer suppresses the current publish invocation, while preserving the prior success result if the later attempt fails.
-
-Cover the stale-base, existing-run delta, delete-aware, remote-branch republish, and wrapper re-entry cases in the offline harnesses.

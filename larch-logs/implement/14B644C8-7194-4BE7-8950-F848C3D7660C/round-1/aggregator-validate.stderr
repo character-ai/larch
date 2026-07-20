@@ -1,2 +1,0 @@
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Update docs/run-logs.md and docs/point-competition.md to match python/voting.py ')
-warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Do not add multi-label whitespace segments as labels; build labels from authorit')

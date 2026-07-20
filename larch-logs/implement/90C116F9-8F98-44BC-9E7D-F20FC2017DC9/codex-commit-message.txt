@@ -1,3 +1,0 @@
-Render ship-pr progress for unlisted phases
-
-Use ship-pr-state.sh presence, not a phase allow-list, to select the ship-pr progress renderer. Add a regression test covering an unlisted bump phase so future ship-pr phase names still render active ship-pr status.

@@ -1,4 +1,0 @@
-
-Aggregating reviewer findings: checking workspace for reviewer output files with verbatim fix directions beyond the placeholders in the prompt.
-Producing the merged structured finding list from the 19 raw inputs (read-only; no file writes).
-

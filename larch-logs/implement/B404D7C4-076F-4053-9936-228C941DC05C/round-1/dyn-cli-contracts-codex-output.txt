@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `scripts/lib-implement-round-cap.sh:50-54` — The new direct-exec CLI validates `<current_round>` as “digits only” but passes the raw value into `count_prior_degraded_rounds`; Bash arithmetic in `scripts/lib-implement-round-cap.sh:28` treats leading-zero values as octal, so valid-looking inputs such as `08` can emit a Bash diagnostic on stderr while still returning `0` and printing `0`, violating the documented “single integer stdout / usage stderr exit 2” CLI contract. **Suggested fix:** After the digit check, normalize with base-10 arithmetic before calling the function, e.g. `current_round=$((10#$3))`, validate `current_round >= 1`, then call `count_prior_degraded_rounds "$2" "$current_round"`.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

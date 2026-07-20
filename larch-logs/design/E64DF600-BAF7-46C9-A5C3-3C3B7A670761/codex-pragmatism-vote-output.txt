@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan explicitly wires advancement into shared compose prechecks and mandates reuse tests, so this bypass is already covered.
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- This duplicates prior OOS finding 1/FINDING_6 without materially new evidence.
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,1 +1,0 @@
-NO_SKETCHES was provided. Draft from repository inspection only. Plan ports remaining `/implement` shell entry bodies to Python CLI verbs, cuts consumers to direct `python/cli.py` calls, deletes retired shell/docs/harnesses, and updates tests plus retired-script manifest.

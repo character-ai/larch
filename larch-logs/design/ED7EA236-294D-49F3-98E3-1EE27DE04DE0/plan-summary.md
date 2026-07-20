@@ -1,1 +1,0 @@
-Retire the bash ship-pr path and relevant-checks bash suite. Keep the Python ship path unchanged. Move relevant-checks dispatch into `python/checks.py`, add CLI envelopes for orchestrators, repoint `/implement`, `/review`, and `review_and_fix.py`, remove `--codex-add-dir`, update docs, and delete stale harnesses.

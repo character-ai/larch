@@ -1,9 +1,0 @@
-### FINDING_1: Case-variant suppressions omit assert message lines
-- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
-- **Severity**: major
-- **Concern**: The planned residual-Bash suppressions cover only the two `printf` fixture lines containing `[Bug]` headings (lines 246 and 295), but lines 248 and 298 also contain literal `[Bug]` tokens in `assert_eq` message strings. Because the new lint scans every line in the manifest-listed script, implementing only the two planned suppressions will leave findings and cause the repo-wide zero-findings acceptance check to fail.
-- **Suggested revisions (informational for voters; coder decides)**:
-  - From Cursor-Arch: Extend the scripts/test-file-failure-report-cross-repo.sh update to add a trailing reason-bearing # lint-prefix-case-variant: ok pragma on all four [Bug]-bearing manifest lines (246, 248, 295, 298), or explicitly list 248 and 298 in the file section and keep the acceptance check that every such line is covered.
-  - From Cursor-Pragmatic: Extend the `scripts/test-file-failure-report-cross-repo.sh` update and the testing-strategy checklist to cover all four `[Bug]`-bearing lines (246, 248, 295, 298), each with its own trailing `# lint-prefix-case-variant: ok <reason>` (or rewrite the assert messages to avoid bracketed case variants).
-  - From Cursor-Pragmatic: Treat all four `[Bug]` occurrences in this script as in-scope for line-local suppressions, or rewrite the assert messages to describe legacy casing without a bracketed token (for example, "legacy mixed-case bug-prefix raw heading rejected"). Update the testing-strategy bullets to validate all four lines, not only the `printf` fixtures.
-  - From Cursor-Requirements: Add reason-bearing trailing suppressions to lines 248 and 298 as well, or reword those assertions to avoid bracketed tokens; update the testing-strategy checklist to cover all four `[Bug]` occurrences in this script.

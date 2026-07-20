@@ -1,5 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Rename failure handling is real but changes publish behavior outside this diagnostics-focused scope.
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_5: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- The plan requires surfaced write failures, not global exception propagation that would necessarily replace the existing rc-3 fallback.

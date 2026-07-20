@@ -1,5 +1,0 @@
-### In-Scope Findings
-- **risk-integration** `.github/workflows/ci.yaml:421-456` — The Python package now advertises/supports `>=3.11` (`python/pyproject.toml:1-4`, docs/runtime guards say “3.11 or newer”), but the branch changes the `python-lint` and `python-tests` matrices to **only** `3.11`, removing the previous 3.12 CI coverage entirely. This leaves no validation for newer supported interpreters, so 3.12+ regressions in the shipped Python driver or dev/test dependency set can pass CI despite the public “or newer” contract. **Suggested fix:** Keep 3.11 in the matrix as the minimum-version gate, but add at least the prior 3.12 lane back to `python-lint` and `python-tests` (or a min+latest-supported matrix). Keep `pyrightconfig.json` targeting 3.11 if the goal is to prevent newer-only APIs.
-
-### Out-of-Scope Observations
-NO_ISSUES_FOUND

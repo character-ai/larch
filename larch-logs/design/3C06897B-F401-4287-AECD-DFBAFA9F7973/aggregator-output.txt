@@ -1,3 +1,0 @@
-Merging the 47 reviewer inputs into a deduplicated finding list (first-seen order). Verifying a few referenced locations for accurate normalization.
-Confirming merge groups against SKILL.md. Producing the normalized aggregator output.
-

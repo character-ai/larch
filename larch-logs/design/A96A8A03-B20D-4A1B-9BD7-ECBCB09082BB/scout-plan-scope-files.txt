@@ -1,8 +1,0 @@
-scripts/test-implement-structure.sh
-skills/review-and-fix/scripts/record-implement-review-round-timing.sh
-skills/review-and-fix/scripts/test-record-implement-review-round-timing.sh
-scripts/lint-fix-loop.sh
-scripts/test-implement-structure.md
-skills/review-and-fix/scripts/record-implement-review-round-timing.md
-skills/review-and-fix/scripts/test-record-implement-review-round-timing.md
-scripts/lint-fix-loop.md

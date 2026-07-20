@@ -1,5 +1,0 @@
-Delegate design plan drafting to Claude subprocess
-
-Add the Step 2b drafter launcher, prompt wiring, summary freshness handling, voter model defaults, and fallback reviewer model/doc updates. Cover the new launcher, voter default, and preview freshness behavior with offline harnesses.
-
-Inline-triage rule 2: add agent-lint reachability entries for the new launcher and harness so lint treats the Makefile and SKILL invocation paths correctly.
