@@ -41,7 +41,8 @@ const SERVICE_HOSTS: [&str; 4] = [
     "googleapis.com",
 ];
 /// Service credentials that must never enter a spawned child environment.
-const CHILD_CREDENTIALS: [&str; 4] = [
+const CHILD_CREDENTIALS: [&str; 5] = [
+    "LARCH_GH_TOKEN",
     "GH_TOKEN",
     "GITHUB_TOKEN",
     "GOOGLE_APPLICATION_CREDENTIALS",
