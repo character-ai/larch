@@ -9,6 +9,10 @@ disable-model-invocation: true
 
 **MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `release`.**
 
+This is a dev-only checkout skill. If `CLAUDE_PLUGIN_ROOT` is unset, substitute
+the repository root (`$PWD`) for that placeholder in the lifecycle command;
+the lifecycle start remains the first command.
+
 # Release
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
@@ -21,25 +25,21 @@ Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default t
 
 | Flag | Purpose |
 |------|---------|
-| `--dry-run` | Compute and preview only; exit before any write (no branch, PR, merge, tag, Release, promote, or `/upgrade-larch`) |
+| `--dry-run` | Compute and preview only; the ignored working-tree Rust build may refresh, but no branch, PR, merge, tag, Release, promote, or `/upgrade-larch` write occurs |
 | `--skip-approve`, `-s` | Skip Step 4 approval only when `PR_COUNT>0`, acting as Confirm |
 | `--bump major\|minor\|patch` | Override the aggregate bump type from `release prepare` |
 | `--repo OWNER/REPO` | Hub repo for `gh` (default: `scripts/larch.sh gh resolve-repo`, falling back to `character-ai/larch`) |
 
 ## Step 1 — Parse flags and guard
 
-Resolve `REPO` when `--repo` is omitted:
-
-```bash
-REPO=$("${CLAUDE_PLUGIN_ROOT:-$PWD}/scripts/larch.sh" gh resolve-repo 2>/dev/null || echo "character-ai/larch")
-```
-
 Guard (abort before prepare):
 
 - Current branch MUST be `main` (including when `--dry-run`).
 - Working tree MUST be clean (`git status --porcelain` empty), except `--dry-run` may run with a dirty tree only when the operator accepts inconsistent preview output.
 
-On failure, print a clear operator-visible error and stop.
+On failure, print a clear operator-visible error and stop. Run this raw Git guard before building the working-tree Rust driver, so a refused invocation does not refresh ignored build artifacts.
+
+After the guard passes, build the exact current checkout before its first Rust-backed release command. Always invoke that driver through `scripts/larch.sh`; the explicit environment supplies bootstrap identity without depending on an installed plugin root or a stale same-version binary. Resolve `REPO` through the verified driver when `--repo` was omitted.
 
 **Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch, fast-forward, or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` and fast-forward local `main` only when it is strictly behind `origin/main`; refuse (do not rebase) when local `main` has unpublished commits or has diverged, then continue to Step 2 and let `release prepare` report `ERROR=stale-local-main` if the cached refs still show a stale checkout.
 
@@ -85,6 +85,13 @@ else
   sync_out="DRY_RUN_SYNC_SKIPPED=true"
   sync_rc=0
 fi
+if [ "$sync_rc" -eq 0 ] || [ "$sync_rc" -eq 3 ]; then
+  WORKTREE_LARCH="$PWD/target/release/larch"
+  cargo build --quiet --locked --release --package larch-cli
+  if [ -z "${REPO:-}" ]; then
+    REPO=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" gh resolve-repo 2>/dev/null || echo "character-ai/larch")
+  fi
+fi
 ```
 
 Branch on `sync_rc`:
@@ -98,7 +105,8 @@ On **`--dry-run`**: do not invoke `python/cli.py push rebase`; continue to Step 
 
 ```bash
 PREPARE_DIR="$(mktemp -d)"
-prepare_out=$("$PWD/scripts/larch.sh" release prepare \
+WORKTREE_LARCH="$PWD/target/release/larch"
+prepare_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release prepare \
   --repo "$REPO" \
   ${BUMP_OVERRIDE:+--bump "$BUMP_OVERRIDE"} \
   --out-dir "$PREPARE_DIR")
@@ -116,7 +124,7 @@ RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 
 Re-derive these paths from `PR_LIST_FILE` in each later Bash fence that consumes notes (Step 3, Step 5, Step 6, and Step 6 recovery) rather than relying on `PREPARE_DIR` or prior shell-local variables surviving across Bash invocations.
 
-On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
+On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `main-status-failed`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
 
 **Narrate the prepared window** before Step 3: state that `PR_COUNT` PRs merged since `BASELINE_TAG`, then that you are reading the PR list for release notes. When `IGNORED_LARCHLOG_PR_COUNT` is greater than `0`, add that `IGNORED_LARCHLOG_PR_COUNT` larch run-log PRs (`chore(larch-logs): …`) were excluded from the count and notes. `release prepare` already drops those PRs from both `PR_COUNT` and `PR_LIST_FILE`, so the count reflects substantive PRs only.
 
@@ -163,8 +171,10 @@ The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a pre
 # lint-consecutive-bash: ok PR creation must finish before candidate staging
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
+WORKTREE_LARCH="$PWD/target/release/larch"
 git checkout -b "release/v${NEW_VERSION}"
-"$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
+cargo build --quiet --locked --release --package larch-cli
 git add .claude-plugin/plugin.json plugin/.claude-plugin/plugin.json Cargo.toml Cargo.lock
 git commit -m "Release v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
@@ -174,10 +184,11 @@ Record `PR_NUMBER` from `python/cli.py pr create` stdout. Then:
 
 ```bash
 python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
-"$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
+WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
-stage_out=$("$PWD/scripts/larch.sh" release stage \
+stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release stage \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
   --repo "$REPO" \
@@ -191,7 +202,7 @@ $stage_out
 EOF
 test -n "$SOURCE_COMMIT"
 TAG="v${NEW_VERSION}"
-asset_run_out=$("$PWD/scripts/larch.sh" release asset-run \
+asset_run_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release asset-run \
   --repo "$REPO" \
   --tag "$TAG" \
   --source-commit "$SOURCE_COMMIT")
@@ -229,7 +240,8 @@ After the workflow succeeds, validate the uploaded draft against the exact candi
 
 ```bash
 SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
-"$PWD/scripts/larch.sh" release validate-draft \
+WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release validate-draft \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
@@ -248,7 +260,8 @@ On candidate CI, asset workflow, draft validation, or merge failure, stop before
 
 ```bash
 SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
-"$PWD/scripts/larch.sh" release finish \
+WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
@@ -260,7 +273,9 @@ SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
 If Step 6 fails after Step 5 merged the release PR, do **not** re-run full `/release`. Re-run Step 6 only with the same version, PR, and source commit:
 
 ```bash
-"$PWD/scripts/larch.sh" release finish \
+WORKTREE_LARCH="$PWD/target/release/larch"
+cargo build --quiet --locked --release --package larch-cli
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \

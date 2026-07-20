@@ -476,8 +476,8 @@ fn verify_clean_main(repository: &GixRepository) -> Result<(), PrepareError> {
         ));
     }
     let status = repository
-        .status(&StatusOptions::default())
-        .map_err(|error| PrepareError::new("dirty-main", error.to_string()))?;
+        .local_status(&StatusOptions::default())
+        .map_err(|error| PrepareError::new("main-status-failed", error.to_string()))?;
     if status.is_dirty() {
         return Err(PrepareError::new("dirty-main", "main worktree is dirty"));
     }

@@ -300,6 +300,13 @@ then promotes it. Ambiguous promotion reads back Latest before a retry. The
 final Latest state is verified. The release commands expose no raw Git, `gh`,
 URL, GraphQL, or Python fallback.
 
+The dev-only release skill builds the current checkout before its first
+Rust-backed release command and rebuilds immediately after the candidate
+version write. Every working-tree release command still enters through
+`scripts/larch.sh` with the checkout root and release binary supplied
+explicitly. This prevents an installed or same-version stale binary from
+owning either side of the candidate-version boundary.
+
 Issue-dependency list, add, and remove use the shared live-mutation gate:
 operator mode, or a regular non-symlink session file directly under a canonical
 root that carries `LARCH_LIVE_MUTATION_OK=true` and the matching run ID. Writes
@@ -338,15 +345,19 @@ library diagnostics.
 
 Status and typed tree changes follow the same reopen rule. Status uses the full
 configured `gix` iterator and never writes its optional index-stat refreshes.
-Repository and worktree config that defines an external clean, process,
-textconv, or diff command returns `UnsupportedSemantics` before iteration.
-Callers must route those byte-sensitive cases through the closed exact-diff Git
-CLI operation. User and system filter definitions remain operator-owned config.
-Status rejects repository attributes that select them before `gix` can launch a
-filter. Effective conversion attributes are queried through the configured
-attribute stack. Discovery does not follow symlinks and fails closed when the
-worktree traversal exceeds its entry cap. Typed results contain paths, modes,
-IDs, and flags, but no file content or upstream diagnostic text.
+The strict `RepositoryRead::status` operation returns `UnsupportedSemantics`
+before iteration for repository and worktree clean or process filter config. It
+also rejects repository attributes that select conversion or configured filter
+behavior. Typed tree changes reject configured textconv and external diff
+drivers. Callers that need exact diff interpretation must route those
+byte-sensitive cases through the closed exact-diff Git CLI operation.
+Compatibility callers that consume only status and untracked names use
+`GixRepository::local_status`; it retains configured filters and does not
+promise exact diff semantics. User and system filter definitions remain
+operator-owned config. Effective conversion attributes are queried through the
+configured attribute stack. Discovery does not follow symlinks and fails closed
+when the worktree traversal exceeds its entry cap. Typed results contain paths,
+modes, IDs, and flags, but no file content or upstream diagnostic text.
 
 ### Git mutation compatibility
 

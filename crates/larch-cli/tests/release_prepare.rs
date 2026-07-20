@@ -140,6 +140,35 @@ fn release_prepare_rejects_dirty_and_stale_main_before_network_access() {
         .stdout(predicates::str::contains("ERROR=stale-local-main\n"));
 }
 
+#[test]
+fn release_prepare_accepts_clean_main_with_conversion_attributes() {
+    let repository = repository();
+    git(
+        repository.path(),
+        ["remote", "add", "origin", "https://github.com/o/r.git"],
+    );
+    git(
+        repository.path(),
+        ["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let out_dir = tempfile::tempdir().expect("output directory");
+
+    larch()
+        .current_dir(repository.path())
+        .env_remove("LARCH_GH_TOKEN")
+        .args([
+            "release",
+            "prepare",
+            "--repo",
+            "o/r",
+            "--out-dir",
+            out_dir.path().to_str().expect("UTF-8 output directory"),
+        ])
+        .assert()
+        .failure()
+        .stdout(predicates::str::contains("ERROR=gh-release-list-failed\n"));
+}
+
 fn assert_bump(repository: &Path, base: &str, expected: &str) {
     larch()
         .current_dir(repository)
@@ -170,6 +199,11 @@ fn repository() -> TempDir {
         "---\nname: base\nargument-hint: [--old]\n---\n",
     )
     .expect("base skill");
+    fs::write(
+        repository.path().join(".gitattributes"),
+        "* text=auto eol=lf\n",
+    )
+    .expect("conversion attributes");
     fs::write(repository.path().join("README.md"), "base\n").expect("readme");
     commit_all(repository.path(), "base");
     repository

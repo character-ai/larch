@@ -12,7 +12,10 @@ mod release_prepare_tests {
     use larch_adapters::{TemporaryRoot, github::GitHubOperationError};
     use larch_core::{GitHubRepositoryRef, ProcessCancellation, RepositoryRead};
     use larch_test_support::{GitFixture, GitRepository};
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        fs,
+    };
 
     #[derive(Default)]
     struct FakeReleaseService {
@@ -131,6 +134,9 @@ mod release_prepare_tests {
                 b"---\nname: base\nargument-hint: [--old]\n---\n",
             )
             .expect("base skill");
+        repository
+            .write(".gitattributes", b"* text=auto eol=lf\n")
+            .expect("conversion attributes");
         repository.write("README.md", b"base\n").expect("readme");
         checked_git(&repository, ["add", "-A"]);
         checked_git(&repository, ["commit", "--quiet", "-m", "base"]);
@@ -290,6 +296,22 @@ mod release_prepare_tests {
                 &Cancellation::new(),
             ))
             .expect("prepare release with explicit bump");
+    }
+
+    #[test]
+    fn clean_main_distinguishes_status_probe_failure_from_dirty_state() {
+        let fixture = release_repository();
+        let index = fixture.root().join(".git/index");
+        fs::remove_file(&index).expect("remove fixture index");
+        fs::create_dir(&index).expect("replace index with directory");
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+
+        assert_eq!(
+            verify_clean_main(&repository)
+                .expect_err("status probe must fail")
+                .token,
+            "main-status-failed"
+        );
     }
 
     #[test]
