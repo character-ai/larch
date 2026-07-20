@@ -50,6 +50,30 @@ def test_list_paginates_from_empty_prefix(scheme: str) -> None:
     outside = {"objects": [{"key": "larch/../outside", "size": 1}]} if scheme == "gs" else {"Contents": [{"Key": "larch/../outside", "Size": 1}]}
     with pytest.raises(ObjectStoreError):
         _ = _store(scheme, FakeRunner(_result(payload=outside))).list_objects()
+
+
+@pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
+def test_list_paginates_the_complete_run_log_prefix(scheme: str) -> None:
+    if scheme == "gs":
+        pages = (
+            {"objects": [{"key": "larch/run-logs/design/run-a.tar.gz", "size": 1}], "next_page_token": "two"},
+            {"objects": [{"key": "larch/run-logs/review/run-b.tar.gz", "size": 2}]},
+        )
+    else:
+        pages = (
+            {"Contents": [{"Key": "larch/run-logs/design/run-a.tar.gz", "Size": 1}], "NextContinuationToken": "two"},
+            {"Contents": [{"Key": "larch/run-logs/review/run-b.tar.gz", "Size": 2}]},
+        )
+    runner = FakeRunner(*(_result(payload=page) for page in pages))
+
+    objects = _store(scheme, runner).list_objects("run-logs/")
+
+    assert [item.key for item in objects] == [
+        "run-logs/design/run-a.tar.gz",
+        "run-logs/review/run-b.tar.gz",
+    ]
+    assert "larch/run-logs/" in runner.calls[0]
+    assert "two" in runner.calls[1]
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
 def test_upload_is_create_only(scheme: str, tmp_path: Path) -> None:
     source = tmp_path / "archive"

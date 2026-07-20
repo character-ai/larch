@@ -34,9 +34,10 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
-- `larch/report/run_log_archive.py`, `object_store.py`, `storage_config.py`, and
-  `run_log_publish.py` own deterministic archives, provider-neutral transfer,
-  append-only publication, durable retry, and write-through cache promotion.
+- `larch/report/run_log_archive.py`, `object_store.py`, `storage_config.py`,
+  `run_log_publish.py`, and `run_log_sync.py` own deterministic archives,
+  provider-neutral transfer, append-only publication, durable retry,
+  write-through cache promotion, and repository-scoped cache synchronization.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
 - `test_support.py`: intentionally remains at `python/` root as a shared pytest helper exempted by `python3 python/cli.py lint flat-tests`. It provides the shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 

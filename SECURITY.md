@@ -94,6 +94,17 @@ operator's XDG state directory. The normal write-through path copies the
 already-sanitized staging tree and does not trust remote bytes; a staging-less
 retry routes the retained archive through the bounded materializer above.
 
+`python/cli.py run-log sync` treats the remote inventory and every downloaded
+archive as untrusted. It accepts only the exact
+`run-logs/<skill>/<run-id>.tar.gz` layout, rejects invalid and colliding local
+names before download, checks the downloaded size against the listing, and
+routes all content through bounded materialization. Synchronization shares the
+publisher's per-run lock. It never replaces a valid cache entry. An invalid
+entry is quarantined and restored if repair fails; successful repair promotes a
+fully verified directory before removing the quarantine. Stale private
+download, extraction, promotion, and quarantine entries are removed under the
+same lock.
+
 ## Google ADC Trust Boundary
 
 Only trusted operator configuration can select Google ADC. Larch does not shell

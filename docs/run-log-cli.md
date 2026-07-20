@@ -38,6 +38,15 @@ empty `LOG_PATH`, empty `SHA256`, empty `COMMIT_SHA`, `BYTES=0`,
 - `run-log append-entry`
 - `run-log append-failure`
 - `run-log publish-breadcrumbs`
+- `run-log archive`
+- `run-log materialize`
+- `run-log publish`
+- `run-log sync`
+
+The archive lifecycle verbs use their own machine envelopes. `run-log sync`
+lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
+`LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and
+`SYNC_OK=true`. See [Run-log archive format](run-log-archive.md).
 
 `exists` exits 0 only after argument, log-root, slug, and batch validation
 succeed. It sets `UNCHANGED=true` when the batch file exists.
