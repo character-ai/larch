@@ -19,6 +19,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/linting.md",
     "docs/python-migration.md",
     "docs/review-agents.md",
+    "docs/run-log-archive.md",
     "docs/run-log-batches.md",
     "docs/run-log-cli.md",
     "docs/run-logs-required-files.tsv",
