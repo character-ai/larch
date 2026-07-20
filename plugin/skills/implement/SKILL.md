@@ -432,7 +432,7 @@ After each `AskUserQuestion` return (Codex Q/A loop, Claude-fallback `FALLBACK_Q
   **A**: <user answer OR chosen interpretation + one-sentence rationale>
 ```
 
-**Sanitize Q/A at compose time** (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`) because answers can contain sensitive content and `execution-issues.md` is committed into run logs.
+**Sanitize Q/A at compose time** (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`) because answers can contain sensitive content and `execution-issues.md` is published in the run archive.
 
 **Progressive log append**:
 1. Compose an NDJSON record with `phase="implement"`, `step="2"`, `category="Q/A"`, and a sanitized markdown `body`.

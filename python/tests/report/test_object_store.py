@@ -10,6 +10,13 @@ from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, ob
 from larch.report.storage_config import StorageRoot
 _ACCOUNT = "0123456789abcdef0123456789abcdef"
 _ENDPOINT = f"https://{_ACCOUNT}.r2.cloudflarestorage.com"
+_CONTRACT_PATH = Path(__file__).parents[3] / "tests/fixtures/run-log-object-store-contract-v1.json"
+
+
+def _contract() -> dict[str, object]:
+    return cast("dict[str, object]", json.loads(_CONTRACT_PATH.read_text(encoding="utf-8")))
+
+
 def _result(code: int = 0, payload: object | None = None) -> proc.CommandResult:
     return proc.CommandResult((), code, "" if payload is None else json.dumps(payload), "", 0.0)
 class FakeRunner:
@@ -98,3 +105,33 @@ def test_metadata_and_download_normalize_providers(scheme: str, tmp_path: Path) 
     _store(scheme, FakeRunner(_result(), download=True)).download("run", destination)
     assert destination.read_bytes() == b"archive"
     assert not list(tmp_path.glob(".archive.*"))
+
+
+def test_gcs_transport_matches_shared_machine_contract(tmp_path: Path) -> None:
+    contract = _contract()
+    assert contract["schema_version"] == 1
+    remote = cast("dict[str, object]", contract["remote_object"])
+    page = cast("dict[str, object]", contract["list_page"])
+    key = str(remote["key"]).removeprefix("larch/")
+
+    listed = _store("gs", FakeRunner(_result(payload=page))).list_objects("run-logs/")
+    assert listed[0]._asdict() == {
+        "key": key,
+        "size": remote["size"],
+        "etag": remote["etag"],
+        "version": remote["version"],
+    }
+    metadata = _store("gs", FakeRunner(_result(payload=remote))).metadata(key)
+    assert metadata == listed[0]
+
+    source = tmp_path / "archive"
+    _ = source.write_bytes(b"archive")
+    uploaded = _store("gs", FakeRunner(_result(payload=remote))).upload_create(key, source)
+    assert uploaded == listed[0]
+
+    errors = cast("list[dict[str, object]]", contract["transport_errors"])
+    for fixture in errors:
+        exit_code = cast("int", fixture["exit_code"])
+        with pytest.raises(ObjectStoreError) as failure:
+            _ = _store("gs", FakeRunner(_result(exit_code))).metadata(key)
+        assert failure.value.kind.value == fixture["kind"]

@@ -528,8 +528,13 @@ def test_default_synced_corpus_matches_explicit_fixture(
         sync_calls += 1
         return cache_root
 
+    def _state_root(*, repo_root: Path) -> Path:
+        assert repo_root == tmp_path
+        return root
+
     monkeypatch.setattr(dc.repo_roots, "consumer_repo_root", lambda: tmp_path)
     monkeypatch.setattr(dc.run_log_corpus, "synchronized_repository_log_root", _sync)
+    monkeypatch.setattr(dc.analysis_state, "repository_state_root", _state_root)
 
     assert dc.analyze_main(["--log-root", str(root), "--out", str(explicit_out)]) == 0
     _ = capsys.readouterr()

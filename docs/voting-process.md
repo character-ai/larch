@@ -43,7 +43,7 @@ The dispatchers emit loud degraded-panel warnings when effective judges drop bel
 
 On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 22 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, trailing `scope`, and no `body_severity`. `/design` plan review keeps its separate 23-column `finding_reviewers` + `body_severity` + `scope` schema. The `scope` column is `in_scope` or `oos`; tally producers write it for `OOS_*` ids, `[OUT_OF_SCOPE]` or `[OOS]` legacy rows, and `_scope_drift`. Top reviewers and weighted scoreboards skip `scope=oos` even when `finding_id` is `FINDING_N`.
 
-Old committed design logs may still contain `Claude`, `Codex`, and `Cursor` voter labels. Calibration readers keep those legacy rows readable while new rows use semantic `codex-*` or `cursor-*` labels.
+Old published design logs may still contain `Claude`, `Codex`, and `Cursor` voter labels. Calibration readers keep those legacy rows readable while new rows use semantic `codex-*` or `cursor-*` labels.
 
 ## Ballot Format
 
@@ -109,9 +109,12 @@ A voter agrees when `accepted` pairs with `YES`, or `rejected` pairs with `NO`. 
 
 Chronic outliers are flagged when `eligible >= min_votes` and `agreement_rate < outlier_threshold`. The shared defaults are `min_votes=20` and `outlier_threshold=0.50`. Low-sample voters are never flagged.
 
-Live `voting-tally.md` scoreboards and `/voter-calibration` committed-log analysis use the same `voter_agreement_row_from_panel` and `compute_voter_agreement` math.
+Live `voting-tally.md` scoreboards and `/voter-calibration` cached-log analysis use the same `voter_agreement_row_from_panel` and `compute_voter_agreement` math.
 
-`/rejected-analysis` emits verified false-negative labels through `larch-logs/rejected-analysis-verdicts.tsv` for `/voter-calibration` to consume. It does not score voters or change live thresholds.
+`/rejected-analysis` emits verified false-negative labels through
+`rejected-analysis/verdicts.tsv` in repository-scoped analyzer state for
+`/voter-calibration` to consume. It does not score voters or change live
+thresholds.
 
 ## Out-of-Scope Observations
 

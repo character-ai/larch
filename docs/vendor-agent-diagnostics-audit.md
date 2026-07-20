@@ -1,15 +1,15 @@
 # Vendor-agent diagnostics audit (#3713)
 
 This table classifies every vendor-agent launch site against the three
-properties the issue requires for committed run logs:
+properties the issue requires for published run logs:
 
 - **Saved** — on failure, the agent's stderr / tool-native diagnostic streams are
   preserved into files that survive the run (not truncated by retry loops, not
   deleted before publish).
 - **Logged** — the failure lands in `execution-issues.md` (or the equivalent run
   log) with **non-empty** diagnostics whenever any diagnostic stream had content.
-- **Flushed** — those diagnostics reach git (design: `design-log-publish.sh`
-  staging; implement: the `vendor-failure-diagnostics` batch and/or the
+- **Flushed** — those diagnostics reach the published archive (design:
+  `design log-publish` staging; implement: the `vendor-failure-diagnostics` batch and/or the
   `execution-issues` batch), redacted via `redact secrets` /
   `redact tmpdir-paths`.
 
@@ -20,7 +20,7 @@ non-zero exit it composes a bounded, content-filtered `${OUTPUT}.failure-diag`
 carrier inside its `EXIT` trap **before** writing `${OUTPUT}.done`, so a visible
 `.done` always implies the carrier exists for failures. A retry that later
 SUCCEEDS clears the carrier (entry-clear + success-clear), so retry-then-success
-commits nothing. The carrier library (`python/larch/agents/agents.py`)
+publishes nothing. The carrier library (`python/larch/agents/agents.py`)
 exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 `external_stream_reset` (per-attempt history archive), `append_vendor_failure_diagnostics`
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
@@ -31,7 +31,8 @@ a fail-closed backstop (missing / zero-byte `--output-file` → synthesize
 `no diagnostics captured (exit N)`), so every `execution-issues.md` failure entry
 is non-empty regardless of site. Raw streams (`*.sidecar`, `*.diag`,
 `*.events.jsonl`, `*.sidecar.history`, `*.events.history`, scout `*.raw.*` stems)
-stay publish-excluded; only the composed `*.failure-diag` carrier reaches git.
+stay publish-excluded; only the composed `*.failure-diag` carrier reaches the
+published run archive.
 
 Routing key: **D** = directly fixed; **I** = inherits-via-`python3 python/cli.py agent run-external-agent`
 (or via the now-fixed `python3 python/cli.py agent launch-claude-subprocess`); **R** = residual gap named
@@ -53,7 +54,7 @@ below.
 | `python/cli.py run-log` | — | — | ✅ implement | **D** | Keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied in `round_artifact_included` (batch is the sole durable path; F14). |
 | `python/plan_review.py` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
-| `python/cli.py run-log flush` | — | — | ✅ | **D** | Commit-tail flush. |
+| `python/cli.py run-log flush` | — | — | ✅ | **D** | Archive-tail flush. |
 | `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
 | `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |

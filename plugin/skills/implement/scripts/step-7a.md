@@ -76,5 +76,5 @@ Keep this file aligned with:
 ## Vendor failure-diagnostics flush (#3713)
 
 Calls `scripts/flush-vendor-failure-diagnostics.sh` (best-effort, no commit)
-before the log commit/push so the `vendor-failure-diagnostics` batch carries any
+before terminal archive publication so the `vendor-failure-diagnostics` batch carries any
 vendor-agent failure carriers staged this run. No-op when no failures occurred.

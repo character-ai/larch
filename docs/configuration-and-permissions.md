@@ -188,6 +188,42 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ## Environment Variables
 
+### Run-log object storage
+
+Each consumer repository must provide a larch storage root in
+`.larch/config.toml`:
+
+```toml
+[logs]
+uri = "s3://zhupanov/larch"
+```
+
+`LARCH_LOGS_URI` overrides the file value for the process. It must contain the
+same complete storage-root shape. Do not set it to a bucket root, a
+`run-logs/` prefix, or an individual archive. Larch derives:
+
+```text
+s3://zhupanov/larch/run-logs/<skill>/<run-id>.tar.gz
+```
+
+Accepted schemes are `gs://`, `s3://`, and `r2://`. The value must not contain
+credentials. Missing or invalid configuration fails before run work starts.
+
+S3 and R2 require the AWS CLI on `PATH` and use standard AWS credential
+discovery. R2 also requires a 32-character lowercase hexadecimal
+`LARCH_R2_ACCOUNT_ID` and the exact matching HTTPS
+`LARCH_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`. GCS uses the
+Rust transport and Google ADC described below.
+
+The startup check lists the provider bucket root only. Success depends only on
+provider status. Larch ignores stdout, does not inspect objects or permissions,
+does not list the configured prefix, and does not write a probe object. Storage
+credentials remain process or provider inputs. Larch has no credential file or
+repository trust registry.
+
+The full URI, provider, archive, cache, sync, and error rules live in
+[Run-log storage contracts](run-log-archive.md).
+
 ### Google Application Default Credentials
 
 Google-backed Rust adapters use standard ADC. Operators may set
@@ -486,7 +522,7 @@ Step duration threshold (in seconds) used by `python3 python/cli.py timing repor
 
 ### `LARCH_VERBOSE_TOKENS`
 
-When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always written to the committed `token-report` and `timing-report` larch-log batches regardless of this setting.
+When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always written to the published `token-report` and `timing-report` larch-log batches regardless of this setting.
 
 ### `LARCH_CLEANUP_RETENTION_DAYS`
 

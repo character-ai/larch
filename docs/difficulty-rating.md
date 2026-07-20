@@ -14,7 +14,8 @@ Raters emit `confidence` as `low`, `medium`, or `high`. Low confidence bumps the
 
 ## Seeded examples
 
-These examples seed the rubric from committed run-log evidence and are refreshed when calibration misses identify better anchors.
+These examples seed the rubric from published run-log evidence and are
+refreshed when calibration misses identify better anchors.
 
 | Tier | Examples |
 |---|---|

@@ -16,6 +16,30 @@ this recipe.
 - **`cli.py` is the canonical entrypoint** for all external consumers. Adopted modules MAY keep `if __name__ == "__main__":` blocks as compatibility pass-throughs; `cli.py` becomes canonical via consumer cutover + docs + lint, not by disabling module execution.
 - **fd-3 via `quiet_init`/`contract_stream`/`emit_kv`**: KV output intended for the .md orchestrator always goes to the contract stream (fd 3 after `quiet_init`, else stdout). Post-quiet human diagnostics go through `BreadcrumbWriter` (never raw `print(file=sys.stderr)` after `quiet_init`).
 
+### Run-log Python-to-Rust handoff
+
+The run-log domain remains Python-owned while flushing, archive publication,
+cache promotion, and sync remain registered in `python/cli.py`. The Rust GCS
+adapter is a narrow authentication transport behind the same provider contract.
+It does not make the run-log command Rust-owned and does not authorize a Python
+fallback for a future Rust command.
+
+Before a Rust cutover, pass the shared
+`tests/fixtures/run-log-object-store-contract-v1.json` fixture plus archive,
+materialization, publication, and sync parity tests. Then make one atomic
+change that:
+
+1. switches every skill, hook, script, and Python runtime caller to
+   `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`;
+2. removes the Python registrations and superseded implementation;
+3. updates the command registry to Rust-owned with no pending removal; and
+4. proves clean-install execution through the verified bootstrap.
+
+Do not add a compatibility shim, bridge, dual-write path, implementation
+selector, runtime fallback, or staged consumer split. The storage contract in
+`docs/run-log-archive.md` survives the owner change; the Python implementation
+does not.
+
 - **G1 review pipeline port (#3692)**: `python/review_pipeline.py` owns `gather-context`, `dispatch-panel`, `collect-findings`, `check-reviewer-failure-threshold`, `core`, and `reviewer-prune` in-process. `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` own aggregate, nit-prune, tally, emit, log-phase, and compose behavior in-process.
 
 - **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The `tally` verb is ported in-process to `python/plan_review_tally.py` (the gzip-embedded `tally-plan-review.sh` body is retained for contract tests but no longer executed). Treat the remaining delegated Python entry points as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.

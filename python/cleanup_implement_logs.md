@@ -1,6 +1,6 @@
 # python/cleanup_implement_logs.py contract
 
-`python3 python/cli.py run-log cleanup-implement-logs` applies retroactive cleanup rules to committed implement run-log directories.
+`python3 python/cli.py run-log cleanup-implement-logs` applies retroactive cleanup rules to historical Git-corpus run directories.
 
 ## CLI
 

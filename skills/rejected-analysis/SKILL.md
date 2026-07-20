@@ -98,7 +98,8 @@ The frozen `finding_hash` excludes run-local `FINDING_N`. It hashes only normali
 
 When parsed `VERIFY_COUNT=0`, skip only Steps 4 and 5.
 
-Still run Step 6 `finalize` and Step 8 `record` so prepare-owned `ledger-pending.tsv` rows merge into the committed ledger.
+Still run Step 6 `finalize` and Step 8 `record` so prepare-owned
+`ledger-pending.tsv` rows merge into repository-scoped analyzer state.
 
 ### Step 4: Launch read-only verification
 

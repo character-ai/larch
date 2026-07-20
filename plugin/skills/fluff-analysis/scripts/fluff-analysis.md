@@ -109,4 +109,4 @@ asserts the report shape, the `--cutoff` section, and the missing-log-root exit
 code. Skill-local Python is not covered by `make py-lint` (scoped to `python/`).
 ## Concise prune/log audit update
 
-`--since-version X.Y.Z` bins committed runs by `manifest.json.larch_version` and prefers version mode over timestamp cutoff. Implement pre/post output includes per-severity acc/OOS/reject rows, accepted-low-value, tier composition, and reports malformed or missing versions as skipped.
+`--since-version X.Y.Z` bins cached runs by `manifest.json.larch_version` and prefers version mode over timestamp cutoff. Implement pre/post output includes per-severity acc/OOS/reject rows, accepted-low-value, tier composition, and reports malformed or missing versions as skipped.

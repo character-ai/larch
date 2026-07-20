@@ -520,7 +520,7 @@ jobs:
 
 
   # Generator and local metadata drift checks. Uses a sparse checkout because
-  # committed run logs are not part of the generated runtime surface.
+  # Legacy larch-logs fixtures are not part of the generated runtime surface.
   agent-sync:
     runs-on: ubuntu-latest
     timeout-minutes: 10

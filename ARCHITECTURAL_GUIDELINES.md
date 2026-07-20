@@ -120,7 +120,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Deviate when: the field has no consumer yet (module-private, single call site). This complements AGENTS.md Output Style, which forbids rewording machine structure, with the consumer-atomicity half.
 
 ### G-Wire-2: Evolve an archived-artifact schema additively; keep readers tolerant of prior shapes and never backfill historical logs
-- Why: remote archives and the historical tracked corpus mix run-log TSV and JSONL schema versions, so a reader that assumes the latest columns misreads old rows. larch keeps new writes backward-compatible and detects the shape by column count, `schema_version`, or header.
+- Why: remote archives mix run-log TSV and JSONL schema versions, so a reader that assumes the latest columns misreads old rows. larch keeps new writes backward-compatible and detects the shape by column count, `schema_version`, or header.
 - Deviate when: an unreleased artifact with no published history yet.
 
 ### G-Wire-3: Sweep every consumer of shared machinery, not only the consumer that surfaced the bug

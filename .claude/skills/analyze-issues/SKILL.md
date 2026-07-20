@@ -65,7 +65,7 @@ Design-phase scoring joins `OOS_FILE_MAP` rows to `oos-accepted-design.md` block
 
 ## Ground-truth Voter Calibration
 
-The report appends `## Ground-truth Voter Calibration` after fate-adjusted OOS scoring. This diagnostic scans committed `larch-logs`, pins `panel_kind` per discovered classification TSV, and ingests rows through `classification_row_panel_inputs`, not `voter_agreement_rows_from_tsv`. Row prep retains raw TSV fields, compact flags, normalized voter votes, reviewer attribution, and the post-selection parsed header so OOS routing uses `(row, header)`.
+The report appends `## Ground-truth Voter Calibration` after fate-adjusted OOS scoring. This diagnostic scans the synchronized run-log cache, pins `panel_kind` per discovered classification TSV, and ingests rows through `classification_row_panel_inputs`, not `voter_agreement_rows_from_tsv`. Row prep retains raw TSV fields, compact flags, normalized voter votes, reviewer attribution, and the post-selection parsed header so OOS routing uses `(row, header)`.
 
 The diagnostic excludes ineligible rows before realized-outcome work: neutral verdicts, main-agent-vote placeholders, and rows with fewer than two parseable voter cells. In-scope rows bind `panel_verdict` from authoritative prose. Design rows consult round-local `plan-review/round-N` accepted/rejected markdown first, fall back to run-root markdown only when round-local files are absent, and mark round-local/run-root disagreement weak.
 

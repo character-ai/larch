@@ -16,7 +16,7 @@ from typing import cast
 
 from larch.calibration import difficulty
 from larch.core import repo_roots
-from larch.report import run_log_corpus
+from larch.report import analysis_state, run_log_corpus
 from larch.report.report_tokens_cost import display_rates
 from larch.report.report_tokens_models import (
     VendorName,
@@ -34,7 +34,8 @@ TIERS = (difficulty.TRIVIAL, difficulty.MODERATE, difficulty.HARD)
 UNKNOWN = "unknown"
 PANEL_KIND = {"design": "design", "implement": "code-review", "review": "code-review"}
 JSON_PHASES = {"code-review", "code_review"}
-SIDECAR_PATH = Path("rejected-analysis-verdicts.tsv")
+SIDECAR_PATH = Path("rejected-analysis/verdicts.tsv")
+LEGACY_FIXTURE_SIDECAR_PATH = Path("rejected-analysis-verdicts.tsv")
 ACCEPTED_HARD_THRESHOLD = 3
 
 
@@ -525,6 +526,8 @@ def _token_timing(skill: str, run_dir: Path, state: AnalyzerState) -> TokenTimin
 
 def _read_sidecar(log_root: Path, state: AnalyzerState) -> SidecarIndex:
     path = log_root / SIDECAR_PATH
+    if not path.is_file():
+        path = log_root / LEGACY_FIXTURE_SIDECAR_PATH
     if not path.is_file() or path.is_symlink():
         state.bump("missing_rejected_sidecar")
         return SidecarIndex({}, 0, present=False)
@@ -929,7 +932,7 @@ def analyze_main(argv: list[str] | None = None) -> int:
         except run_log_corpus.RunLogCorpusError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-        state_root = repo_root / "larch-logs"
+        state_root = analysis_state.repository_state_root(repo_root=repo_root)
     if not log_root.is_dir():
         print(f"ERROR: --log-root is missing or not a directory: {log_root}", file=sys.stderr)
         return 2

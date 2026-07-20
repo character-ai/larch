@@ -49,7 +49,7 @@ The two opener posts. Publish these first; everything else hangs off them.
 - **"Tokens are the new cloud bill."** Treat cost as a first-class design constraint, with the same rigor as latency or memory.
 - **"Right model, right job."** Model routing. Why a strong specialist, for example a dedicated reviewer model, can be cheaper per unit of value than a cheap generalist.
 - **"The cheapest token is the one you never send."** Deterministic offload as cost control, not only as a correctness control.
-- **"Context is a budget, not a buffer."** Minimize what each agent has to read. Keep durable bulk in committed logs and keep the tracking issue slim.
+- **"Context is a budget, not a buffer."** Minimize what each agent has to read. Keep durable bulk in published archives and keep the tracking issue slim.
 - **"Measure before you cut."** Per-step, per-model cost attribution to find the one expensive step instead of guessing. Grounded in the token-report tooling.
 
 ## Part III: Quality at scale
@@ -74,7 +74,7 @@ The two opener posts. Publish these first; everything else hangs off them.
 
 ### Theme 6: Observability and self-improvement
 
-- **"Log everything. Commit the logs."** Run logs as the durable substrate that lets a system study itself, and why they belong in version control rather than a transient dashboard.
+- **"Log everything. Publish the logs."** Run logs as the durable substrate that lets a system study itself, and why immutable object archives beat a transient dashboard.
 - **"Closing the loop: how the review system tunes itself."** Fluff analysis feeding back into tighter reviewer and judge instructions. The system measures its own waste and corrects it.
 - **"Calibrating the judges."** Voter agreement, chronic outliers, and detecting a reviewer that has quietly drifted out of calibration.
 - **"Mining your own rejects."** Recovering real bugs from findings the panel voted down. Turning false negatives into filed work.

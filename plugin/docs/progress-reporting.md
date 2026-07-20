@@ -12,7 +12,7 @@ larch 14:03: [implement 5] Step 5 — code review started
 
 Breadcrumbs are one-line human events, not bare counters. For example, review code should write `reviewers 7/12 done`, not `reviewers 7/12`. Breadcrumbs identify GitHub entities by number, such as `PR #6626`, and do not include URLs.
 
-Statusline breadcrumbs are local operator diagnostics, not committed run-log
+Statusline breadcrumbs are local operator diagnostics, not published run-log
 breadcrumbs or public reports. Keep private paths, hosts, credentials, personal
 data, and repository content out of event text. See the canonical
 [operator-diagnostic classification](security/artifacts-redaction-and-publication.md#operator-visible-diagnostics).

@@ -27,7 +27,7 @@ The smoke tests only the wrapper contract:
 | Generation failure, warning, and stale-artifact cleanup | `test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts` |
 | Upsert failure continues to checkpoint | `test_step7a_upsert_failure_keeps_checkpoint_and_exit_success` |
 | Empty issue number skips the upsert but runs the checkpoint | `test_step7a_empty_issue_number_skips_upsert_but_runs_checkpoint` |
-| Flush degradation, no-logs-commit, and I-Outcome-1 refusal | `test_step7a_skips_run_log_commit_after_preterminal_refresh_skip`, no-logs-commit tests |
+| Flush degradation, no-logs-commit, and I-Outcome-1 refusal | legacy-named `test_step7a_skips_run_log_commit_after_preterminal_refresh_skip`, no-logs-commit tests |
 | Rebase conflict, failure, unexpected exit, and deferred commit | `test_step7a_rebase_failure_*` tests |
 | Transcript KVs, session lookup, and terminal KVs | transcript, session, and terminal-KV tests in `test_step_7a.py` |
 | Wrapper root selection, routing, argv, streams, and exit status | this smoke |

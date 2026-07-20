@@ -1,4 +1,95 @@
-# Run-log archive format
+# Run-log storage contracts
+
+This document defines the language-neutral run-log storage boundary. Python owns
+the workflow; a narrow Rust transport owns GCS authentication and requests only.
+
+The shared provider fixture is `tests/fixtures/run-log-object-store-contract-v1.json`.
+Python and the Rust GCS transport both load it in tests. A later runtime
+migration must preserve this contract or version it explicitly.
+
+## Configuration resolution
+
+Resolve the storage root from the current repository in this order:
+
+1. Use a non-empty `LARCH_LOGS_URI`.
+2. Otherwise read `[logs].uri` from repository-root `.larch/config.toml`.
+3. Fail when neither source supplies a value. Do not infer a bucket, provider, or prefix.
+
+The environment value replaces the file value. The two values are not merged.
+The resolved URI is the larch storage root. It is not the `run-logs/` prefix,
+an archive path, or a bucket-root URI.
+
+The checked-in configuration is `[logs]` with `uri = "s3://zhupanov/larch"`.
+
+Accept only `gs://`, `s3://`, and `r2://`. Require a plain non-empty bucket
+authority and at least one non-empty prefix segment. Reject credentials, ports,
+queries, fragments, whitespace, control characters, empty segments, `.`, and
+`..`. Preserve accepted bucket and prefix text. Do not hash or silently rewrite
+it.
+
+## Remote and local layout
+
+For storage root `<URI>`, the only run-archive layout is
+`<URI>/run-logs/<skill-name>/<run-id>.tar.gz`. For the checked-in root, a design
+archive is `s3://zhupanov/larch/run-logs/design/<run-id>.tar.gz`.
+
+Only skill directories exist directly below `run-logs/`. Mutable analyzer
+state, ledgers, reports, and measurements never appear there.
+
+The unpacked cache layout is
+`${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo-name>/<skill-name>/<run-id>/`.
+
+Keep repository, skill, and run names as validated literal directory names. Do
+not hash them. The cache is a private local copy, not a second publication
+target.
+
+Content-pinned retry state lives outside the cache at
+`${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-pending/`.
+
+## Provider operations
+
+Every provider implements the same operations:
+
+| Operation | Contract |
+|---|---|
+| `preflight_bucket` | List the bucket root and decide success from exit or provider status only. Ignore stdout. Do not list the configured prefix, inspect contents or permissions, call a head-bucket substitute, or write a probe object. |
+| `list` | List the requested prefix through every page. Return relative keys, byte sizes, and optional opaque ETag and version values. Reject malformed pages, repeated page tokens, and keys outside the configured root. |
+| `upload_create` | Create one object only if absent. Never replace an existing object. Return normalized metadata. |
+| `metadata` | Return normalized metadata for one exact key. |
+| `download` | Write to a private sibling temporary file and atomically promote it. Never merge with a destination. |
+
+For `s3://zhupanov/larch`, startup preflight is equivalent to
+`aws s3 ls s3://zhupanov`.
+
+S3 and R2 use the AWS CLI transport and standard AWS credential discovery. R2
+also requires `LARCH_R2_ACCOUNT_ID` and `LARCH_R2_ENDPOINT`. The endpoint must
+be `https://<account-id>.r2.cloudflarestorage.com`, and the account ID must
+match the host. GCS uses the narrow Rust transport through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` and standard Google Application Default
+Credentials.
+
+## Machine-readable errors
+
+Provider diagnostics are untrusted and may contain credentials. Adapters reduce
+them to this closed set before orchestration consumes them:
+
+| Kind | Meaning | GCS transport exit |
+|---|---|---:|
+| `transport` | Request launch, timeout, network, or unclassified provider failure | 1 |
+| `invalid-response` | Invalid request shape or malformed provider response | 2 |
+| `authentication` | Credentials are missing, invalid, expired, or denied | 3 |
+| `already-exists` | A create-only destination already exists | 4 |
+| `not-found` | The requested bucket or object does not exist | 5 |
+| `local-io` | A local source, destination, or atomic file operation failed | 6 |
+
+Python also uses `configuration` before transport selection. In memory, an
+error carries only `kind`, `provider`, and `operation`. The Rust GCS command
+uses the fixed exit mapping above. Its stderr label for `invalid-response` is
+`invalid-request-or-response`; Python normalizes exit 2 back to
+`invalid-response`. Do not parse provider stderr or expose it as the machine
+contract.
+
+## Archive, publication, and synchronization
 
 `python3 python/cli.py run-log archive` packages one completed, sanitized
 staging tree as `<run-id>.tar.gz`. The source tree is not changed.
@@ -46,7 +137,8 @@ directly into
 without downloading or decompressing the archive. Retry without staging safely
 materializes the durable archive instead. A per-run lock covers upload,
 collision verification, cache promotion, and atomic retirement of pending
-state.
+state. Any failure returns nonzero, retains pending state, and prevents clean
+workflow success.
 
 `python3 python/cli.py run-log sync --repo-root <root>` lists the complete
 `run-logs/` remote prefix once, including every provider pagination page. It
@@ -61,3 +153,16 @@ The command returns the unpacked repository corpus at
 `run_log_corpus.synchronized_run_log_root` API performs the same one-time sync
 and returns that root. An analyzer must retain the returned path and use normal
 local file reads for all later files and waves in the same invocation.
+
+## Rust handoff
+
+Python owns configuration, archive, publication, cache, sync, and orchestration.
+Rust owns only the narrow GCS authentication transport. That split does not
+authorize another archive, layout, error, or provider contract.
+
+When the run-log domain migrates, follow `docs/python-migration.md` and
+I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
+switch every production caller to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`,
+remove the Python registration and implementation, and prove clean-install
+execution. Do not add a compatibility shim, bridge, implementation selector,
+fallback, or dual-write period.

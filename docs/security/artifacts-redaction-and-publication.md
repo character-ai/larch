@@ -3,8 +3,7 @@
 This document is the canonical security reference for larch artifacts,
 redaction, diagnostics, secret scanning, retention, and publication. Root
 [`SECURITY.md`](../../SECURITY.md) keeps the public summary. [Larch Run
-Logs](../run-logs.md) owns the detailed
-committed-file selection and batch contracts.
+Logs](../run-logs.md) owns the detailed archive-selection and batch contracts.
 
 The rules here classify data by where it may go. Redaction and scanning are
 backstops. They do not decide whether content is safe to publish.
@@ -18,7 +17,7 @@ backstops. They do not decide whether content is safe to publish.
 | Operator-visible diagnostics | Terminal errors, bounded stderr tails, statusline breadcrumbs, debug reports, and local fallback reports | Show only the bounded and redacted form supplied by the owning renderer. Do not paste raw diagnostics into a public issue or PR. |
 | Published run logs | Registered batches, round artifacts, summaries, transcripts, and quiet-log breadcrumbs | Filter, trim, redact, and scrub before archive publication. Treat the result as sensitive and grant access only through the configured storage provider. |
 | Public GitHub content | Issue and PR bodies, comments, diagrams, research reports, failure reports, and tracking summaries | Treat publication as irreversible. Apply content allowlists, bounds, and redaction, then make a separate human or workflow classification that the content is safe for the target repository. |
-| Run-log archives and remote objects | Deterministic archives and object-store copies of a sanitized run tree | Preserve the committed run tree's confidentiality class. Archive transport does not make the content public or less sensitive. |
+| Run-log archives and remote objects | Deterministic archives and object-store copies of a sanitized run tree | Preserve the sanitized run tree's confidentiality class. Archive transport does not make the content public or less sensitive. |
 
 Session-private means private from publication, not private from the local
 operating-system user. A process running as the same user may read or replace
@@ -104,13 +103,13 @@ The independent verified scan remains necessary, but it does not fill every
 allowlist or pattern gap.
 
 The ignored `target/` directory may contain dependency-owned key fixtures in
-compiled metadata. Authored source, high-churn documentation, and
-`larch-logs/` are not blanket-allowlisted. Gitleaks scans them in the local and
-CI pattern layers. Contributors should write token examples as short prefixes,
-such as `ghp_`, or explicit placeholders such as `<REDACTED-TOKEN>`.
+compiled metadata. Authored source and high-churn documentation are not
+blanket-allowlisted; Gitleaks scans them locally and in CI. Remote archives are
+not fetched into CI. Contributors should use short token prefixes such as
+`ghp_`, or explicit placeholders such as `<REDACTED-TOKEN>`.
 
-The larch-owned pre-flush scrubber is the primary recognized-secret defense for
-committed run logs. It covers token families, including selected Cursor key
+The larch-owned pre-publication scrubber is the primary recognized-secret defense for
+published run logs. It covers token families, including selected Cursor key
 families, that the pinned Gitleaks rules may not recognize. Gitleaks and
 TruffleHog remain independent backstops, not substitutes for that scrubber.
 
@@ -129,8 +128,8 @@ environments, and raw retry metadata. Examples include:
 - session envs, finalize state, plugin-root state, and timing ledgers.
 
 These files support routing, retries, and operator diagnosis. They are not
-stable committed batches. A publisher may copy a bounded, registered,
-sanitized projection into a committed artifact. The raw source remains
+stable published batches. A publisher may copy a bounded, registered,
+sanitized projection into a published artifact. The raw source remains
 session-private.
 
 External CLI credentials may enter a child process environment. A live
@@ -153,7 +152,7 @@ Deletion is permanent and does not redact first. A failed directory activity
 scan skips that directory, while a failed top-level enumeration skips that
 pass. See [Configuration and Permissions](../configuration-and-permissions.md)
 for the operator setting and [Larch Run Logs](../run-logs.md#retention) for
-committed-log retention.
+run-log retention.
 
 The opt-in `scripts/audit-edit-write.sh` developer hook is intentionally
 unredacted. Its gitignored JSONL can contain file paths, file contents,
@@ -185,7 +184,7 @@ tails.
 Per-slot `*.failure-diag` files combine bounded diagnostic sources for local
 recovery. They remain session-private. The implement pre-ship flush redacts
 their selected content into `vendor-failure-diagnostics.txt`, which becomes a
-committed run-log batch. The per-slot byte cap is owned by
+published run-log batch. The per-slot byte cap is owned by
 `vendor_failure_diag_byte_cap`. The composed batch has no second aggregate
 cap, so the slot cap and registered-slot set bound its inputs. Runs that stop
 before the flush and research validation runs keep these diagnostics local.
@@ -198,7 +197,7 @@ report renderer applies the public field contract described below.
 
 Clone-local statusline breadcrumbs are operator diagnostics stored under
 `~/.cache/larch/progress/`. Their one-line events avoid URLs and use GitHub
-numbers. They are not the committed breadcrumb stream and are not public
+numbers. They are not the published breadcrumb stream and are not public
 reports. See [Progress reporting](../progress-reporting.md).
 
 ## Run Logs and Breadcrumbs
@@ -206,7 +205,7 @@ reports. See [Progress reporting](../progress-reporting.md).
 Published run-log archives are durable object-store artifacts. They may contain
 plans, findings, summaries, transcripts, failure evidence, and model output
 after sanitization. Treat them as sensitive even when every redaction and
-scanner passes. The historical tracked corpus remains unchanged.
+scanner passes. Current workflows do not store run logs in Git.
 
 The run-log and design-log publishers enforce these security invariants:
 
@@ -214,7 +213,7 @@ The run-log and design-log publishers enforce these security invariants:
 - exclude raw prompt-bearing event streams, retry-only output, unregistered
   diagnostic carriers, and redundant GitHub snapshots;
 - trim `CMD_JSON` from selected `.meta` files and remove the top-level
-  `.result` from selected agent JSON before committing round artifacts;
+  `.result` from selected agent JSON before archiving round artifacts;
 - reject unsafe roots, symlinks, hardlinks where prohibited, special files,
   path escape, and a failed trim or redaction;
 - redact temporary paths and recognized secrets in every selected artifact;
@@ -233,13 +232,13 @@ The complete selection rules, per-round allowlists, batch schemas, and
 retention rules live in [Larch Run Logs](../run-logs.md),
 [Run-log Python CLI contract](../run-log-cli.md), and
 [Run-log batch registry](../run-log-batches.md). Those documents describe what
-is committed. This document owns why every transition must stay filtered,
+is published. This document owns why every transition must stay filtered,
 bounded, and fail-closed.
 
 ### Breadcrumb security invariants
 
 Session `breadcrumbs/` directories are publication hints, not content roots.
-The committed publisher selects only session-root quiet logs with accepted
+The run-log publisher selects only session-root quiet logs with accepted
 basenames. Legacy stream files and monitor sidecars stay local. Every selected
 quiet log must remain within the active session root, be a regular non-symlink
 file, and satisfy the hardlink and basename checks.
@@ -381,7 +380,7 @@ egress contract.
 | Python redaction and scanner wrapper | `python/larch/core/redact.py`, `python/larch/lint/gitleaks.py` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Run-log selection, trim, scrub, and publication | `python/larch/report/run_log_commit.py`, `run_log_flush.py`, `run_log_publish.py`, and `python/larch/design/design_log_publish_flow.py` |
-| Run-log archive, sync, and object publication | `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI owners |
+| Run-log archive, sync, and object publication | Python owns `python/larch/report/run_log_archive.py`, `run_log_sync.py`, `object_store.py`, and their CLI surfaces. Rust owns only the narrow GCS authentication transport. Both transports share `tests/fixtures/run-log-object-store-contract-v1.json`. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction or run-log owners before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tracking, plan, diagram, and public-report publication | The typed Python CLI owners named by each workflow; service calls use the current typed GitHub adapter where migrated |

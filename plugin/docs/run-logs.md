@@ -4,8 +4,9 @@ On a default `/implement --merge` run, Step 18 publishes one immutable `.tar.gz`
 
 Exceptions: `repo_unavailable=true` and `--no-logs-commit` produce no archive. Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat archives as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#run-logs-and-breadcrumbs).
 
-The deterministic, versioned archive representation of one sanitized run tree is
-defined in [Run-log archive format](run-log-archive.md).
+The configured storage root, deterministic archive, provider, cache, sync,
+error, and Rust-handoff contracts are defined in
+[Run-log storage contracts](run-log-archive.md).
 
 ## Universal skill lifecycle
 
@@ -23,14 +24,22 @@ identity to the target as parent metadata. The lifecycle lint rejects temporary
 migration markers and any skill whose declaration, name, or mandatory contract
 instruction is incomplete.
 
-## Plan scope and historical logs
+## Plan scope and Git isolation
 
-Issue-anchored `larch:plan` blocks list the files that a `/implement` run is expected to touch. The historical tracked `larch-logs/` corpus remains readable, but current workflows neither update it nor create log-only maintenance PRs. Historical migration and deletion are separate work.
+Issue-anchored `larch:plan` blocks list the repository files that a
+`/implement` run is expected to touch. Run logs are not repository files.
+Current workflows stage them under the session root, publish one remote
+archive, and promote one unpacked cache copy. They create no log branch,
+commit, push, pull request, or merge.
 
 ## Directory structure
 
-```
-larch-logs/
+The paths below are relative to the session staging root. A synchronized cache
+returns the same `<skill>/<RUN_ID>/` corpus shape without the leading
+session-only `larch-logs/` directory.
+
+```text
+larch-logs/                 # session staging only
   design/
     <RUN_ID>/
       manifest.json
@@ -78,7 +87,7 @@ larch-logs/
         review-summary.json
         voting-tally.md
         panel-prompt-sizes.tsv
-        aggregator-validate.stderr / aggregator-dispatch.stderr (when the findings aggregator fails; committed under the round directory when `write-round` runs)
+        aggregator-validate.stderr / aggregator-dispatch.stderr (when the findings aggregator fails; staged under the round directory when `write-round` runs)
         *-output.txt
         *-output.txt.meta
         *-output.txt.json
@@ -100,7 +109,12 @@ larch-logs/
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before archive publication. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so durable logs preserve schema shape without exposing operator-local absolute paths.
 
-Bgjob result envs and daemon logs are session-local routing inputs before run-log capture. They record `BGJOB_RC`, step-specific KVs, stdout, stderr, and registry state under the session tmpdir, then the ship and publish steps render committed summaries from the routed outcome. The raw bgjob registry and daemon log files are diagnostics, not stable committed batch files, unless a caller copies bounded diagnostics into `execution-issues.ndjson` or another documented batch.
+Bgjob result envs and daemon logs are session-local routing inputs before
+run-log capture. They record `BGJOB_RC`, step-specific KVs, stdout, stderr, and
+registry state under the session tmpdir. Ship and publish steps render durable
+summaries from the routed outcome. Raw bgjob registry and daemon files are
+diagnostics, not stable published batches, unless a caller copies bounded
+diagnostics into `execution-issues.ndjson` or another documented batch.
 
 ### design architectural invariant and guideline assessments
 
@@ -112,7 +126,7 @@ it records either the deterministic clean note or a blocking violation
 assessment. The guideline artifact keeps the existing clean/deviation contract.
 
 When a knowledge file is absent, invalid, or empty for invariants, Gate C removes any stale assessment
-artifact before approval, so no stale copy is committed. The artifacts publish
+artifact before approval, so no stale copy is published. The artifacts publish
 through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
 It is auditable through `/fluff-analysis` guideline assessment coverage and
 `python/cli.py audit-runs scan-run --skill design`.
@@ -165,7 +179,7 @@ empty, or symlinked artifacts fail.
 
 Step 2 also records launch-time architectural-knowledge requiredness in the
 session-local `step2-architectural-knowledge.env` file. That snapshot is not a
-committed run-log batch, but the dispatcher uses it to decide whether the coder's
+published run-log batch, but the dispatcher uses it to decide whether the coder's
 `manifest.json` must include `architectural_acknowledgment`. Missing or empty
 acknowledgment on `complete` or `needs_qa` bails with
 `architectural-acknowledgment-missing` instead of recovering as
@@ -175,13 +189,13 @@ logged under `Warnings` as Step 2 architectural-knowledge omissions.
 ### In-loop refresh sidecars
 
 In-loop refresh sidecars (`token-report-refresh.json`, `timing-report-refresh.json`,
-`session-transcript-refresh.txt`) are volatile in-loop snapshots that are NOT
-committed to the run tree. The Python ship driver reads them as inputs for
+`session-transcript-refresh.txt`) are volatile in-loop snapshots that are not
+published in the run tree. The Python ship driver reads them as inputs for
 re-rendering canonical batches (`token-report.ndjson`, `timing-report.ndjson`,
 `session-transcript.jsonl`) but does not copy the refresh files themselves into
 `larch-logs/implement/<RUN_ID>/`. Canonical reports such as `token-report.json`,
 `timing-report.json`, `token-report.ndjson`, and `timing-report.ndjson` are still
-committed normally.
+published normally.
 
 ### Design publication selection
 
@@ -207,12 +221,11 @@ The tree above shows `implement/<RUN_ID>/breadcrumbs/` as a representative
 example. The path shape is shared across publishing skill roots, so
 the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
 `review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
-publisher wires that helper for that skill. Today the landed callers are
-`python/cli.py run-log commit` (`/implement` staging) and `scripts/python/cli.py design log-publish`
-(`design` publish).
+publisher wires that helper for that skill. The landed callers are the
+`/implement` terminal publisher and `python/cli.py design log-publish`.
 
-`breadcrumbs/` is a directory artifact, not a larch-log batch.
-`python/cli.py run-log commit` and `scripts/python/cli.py design log-publish` invoke the
+`breadcrumbs/` is a directory artifact, not a larch-log batch. The implement
+publisher and `python/cli.py design log-publish` invoke the
 shared `larch_log_publish_breadcrumbs_shared` helper. Session-tmpdir
 `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are publication
@@ -223,12 +236,12 @@ Source resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (which must still
 be under an active session tmpdir), else the log-root parent's `breadcrumbs/`.
 That directory is a hint only: publication derives the session root with
 `dirname` and stages matching `larch-quiet-<script>-<pid>.log` files from the
-session root rather than scanning committed inputs from `breadcrumbs/` itself.
+session root rather than scanning published inputs from `breadcrumbs/` itself.
 The source hint and every staged file must resolve under
 `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
 `larch_log_breadcrumbs_under_session_tmp`; otherwise publication skips
 breadcrumb staging and returns success without creating or replacing the
-committed `breadcrumbs/` directory.
+published `breadcrumbs/` directory.
 
 Per-script session-root quiet logs whose basenames match exactly
 `larch-quiet-<script>-<pid>.log` are staged. Each accepted file is individually
@@ -242,14 +255,14 @@ session tmpdir, must not be symlinks, and must not be hardlinks. Legacy
 `*.ndjson` files and other non-quiet-log artifacts under the session
 `breadcrumbs/` hint are not published.
 When no quiet log stages, the helper returns 0 and does not create, replace,
-or clear an existing committed `breadcrumbs/` destination.
+or clear an existing published `breadcrumbs/` destination.
 
 The enforced-reject and silent-skip split is a security boundary. An invalid
 source root, path escape, source-directory symlink, unsafe accepted file,
 hardlink, invalid accepted basename, or redactor failure rejects publication
 for the whole directory and leaves the prior destination unchanged. Legacy
 ndjson files, monitor sidecars, non-regular files, race-disappeared candidates,
-and non-matching quiet-log basenames are ignored and not committed. See the
+and non-matching quiet-log basenames are ignored and not published. See the
 canonical [breadcrumb security invariants](security/artifacts-redaction-and-publication.md#breadcrumb-security-invariants).
 
 `round-<N>/` directories are written by `run-log write-round` during
@@ -259,7 +272,7 @@ Only registered artifact names are copied. `.meta` files have `CMD_JSON=...`
 removed when `CMD_JSON=` is the first non-whitespace token, included
 `*-output.txt.json` / `*-output-*.txt.json` sidecars have their top-level
 `.result` field removed, and all copied files still pass through the normal
-tmpdir and secrets redaction. This trimming is specific to the committed round
+tmpdir and secrets redaction. This trimming is specific to the published round
 artifacts; the session tmpdir may still hold raw sidecars for in-run retries.
 If JSON trimming fails, `write-round` fails closed instead of copying the raw
 sidecar into `larch-logs/`.
@@ -270,9 +283,9 @@ sidecar into `larch-logs/`.
 
 Rows are written only when `LARCH_PANEL_SLOT` is set and the slot class is recognized as specialist, plan-review, voter, aggregator, or implementer. Dispatch producers set the panel environment explicitly in review dispatch, code voters, plan-review dispatch, aggregation, and review-fix coder paths. Appends use a best-effort flock-protected TSV writer, so lock or write failures skip telemetry without failing the parent dispatch.
 
-Current rows include `scaffold_bytes`, `scaffold_tokens`, `payload_bytes`, and `payload_tokens`. `prompt_bytes` remains the rendered prompt size. `payload_bytes` is count-only per-run content that the renderer or dispatcher knows it inlined or attached as prompt payload; `scaffold_bytes` is the non-negative remainder of prompt bytes after subtracting payload bytes. Older committed TSVs may lack these columns. `measure-panel-cost` treats missing scaffold as the whole prompt and missing payload as zero.
+Current rows include `scaffold_bytes`, `scaffold_tokens`, `payload_bytes`, and `payload_tokens`. `prompt_bytes` remains the rendered prompt size. `payload_bytes` is count-only per-run content that the renderer or dispatcher knows it inlined or attached as prompt payload; `scaffold_bytes` is the non-negative remainder of prompt bytes after subtracting payload bytes. Older published TSVs may lack these columns. `measure-panel-cost` treats missing scaffold as the whole prompt and missing payload as zero.
 
-Committed locations are:
+Published locations are:
 
 - Design plan review: `larch-logs/design/<RUN_ID>/plan-review/round-<N>/panel-prompt-sizes.tsv` only. Top-level design copies are ignored.
 - Implement Step 5: `larch-logs/implement/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv`.
@@ -284,7 +297,7 @@ Committed locations are:
 
 `checks-digest-sizes.tsv` is count-only telemetry for relevant-checks failure digests. It records byte and estimated-token counts for the redacted failure log and the generated digest, plus signed `saved_bytes` and `saved_tokens` values. Savings can be negative when a digest is larger than a tiny redacted log. The file never stores log text, digest text, commands, failure lines, prompts, or absolute paths.
 
-Committed locations are:
+Published locations are:
 
 - Implement checks failures: `larch-logs/implement/<RUN_ID>/checks-digest-sizes.tsv`.
 - Standalone review checks failures: `larch-logs/review/<RUN_ID>/checks-digest-sizes.tsv`.
@@ -329,7 +342,7 @@ Semantics:
   Consumers prefer explicit `scope=oos` over id prefixes; legacy TSVs without
   `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback.
 
-Older committed design TSVs may use the 21-column shape without
+Older published design TSVs may use the 21-column shape without
 `body_severity`. `/voter-calibration` keeps those readable through
 header-driven detection, so `v3_tool` is not shifted into the body-severity
 slot.
@@ -353,7 +366,7 @@ for the authoritative producer contract and harness coverage.
 
 ### design plan-review per-round artifacts
 
-Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer. `python/larch/design/design_log_publish_flow.py` is the authoritative committed-file filter, and [Design publication selection](#design-publication-selection) explains its operator-facing contract.
+Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer. `python/larch/design/design_log_publish_flow.py` is the authoritative archive-selection filter, and [Design publication selection](#design-publication-selection) explains its operator-facing contract.
 
 #### Findings
 
@@ -366,15 +379,19 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step
 
 - `oos.md`
 - `oos-accepted-design.md`
-- `ballot.txt` (session snapshot; excluded from committed log by publisher)
+- `ballot.txt` (session snapshot; excluded from the published archive)
 - `voting-tally.md`
 
 `voting-tally.md` includes the per-finding vote table, reviewer competition
 scoreboard, and voter agreement scoreboard. The voter agreement section is a
 diagnostic view over the same classification rows. It does not introduce a new
-committed artifact.
+published artifact.
 
-`accepted-plan-findings.md` and `rejected-findings.md` are excluded from committed round directories (#3721) — they are cumulative across rounds (round N's copy is a prefix-snapshot of round N+1's); only the top-level copies in the design run directory are kept. Per-round outcome attribution is preserved by each round's `findings-classification.tsv` joined with `findings.md`.
+`accepted-plan-findings.md` and `rejected-findings.md` are excluded from
+published round directories (#3721) because they are cumulative across rounds.
+Only the top-level copies in the design run directory are kept. Per-round
+outcome attribution is preserved by each round's
+`findings-classification.tsv` joined with `findings.md`.
 
 #### Manifests and voter diagnostics
 
@@ -416,7 +433,7 @@ finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\
 `finding_id` is the ballot id (`FINDING_N` or `OOS_N`), `reviewer_slots` is the
 pipe-delimited proposer attribution, `voting_result` is one of `accepted`, `neutral`, or `rejected`, and `scope` is `in_scope` or `oos`. Producers write `scope=oos` for direct `OOS_*` rows, legacy `[OUT_OF_SCOPE]` or `[OOS]` rows, and scope-drift rows. Consumers prefer explicit `scope=oos` over id prefixes; legacy TSVs without `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback. On the three-slot code-review path, `v1` is `codex-validity`, `v2` is `codex-plan-fidelity`, and `v3` is `codex-pragmatism`; `claude` appears in `v1_tool` only on the both-externals-down fallback path, and older logs may still contain `cursor-validity`. Empty or failed slots keep their `vN_tool` label with empty rating cells. Rating cells are enum-only; missing or invalid axis tokens are empty and force `vN_uncertain=true`. Older logs may lack `vN_tool` or use the compact 18-column layout. MAV re-tally rows may also use the legacy single-voter 18-column shape.
 
-The committed TSV schemas remain backward compatible for new writes. The
+The published TSV schemas remain backward compatible for new writes. The
 analyzer reads older 21-column design TSVs without `body_severity` and older
 18-column compact code-review TSVs through header-driven detection.
 
@@ -436,7 +453,9 @@ Created by `python/cli.py run-log init` during **Step 0** when the tracking issu
 
 Attribution for the Step 8 CI-fix `larch:ci-fixer` path and the `larch:arch-assessor` assessor is prose-only: their identity is described in `skills/implement/SKILL.md` and `agents/*.md`, and no `MODE=subagent` or `TIER=subagent` tokens are emitted into run-log records for them (#7192, #7193, #7219). The conflict-resolution `larch:ci-fixer` path (`MODE=conflict`) documents attribution as `MODE=subagent` / `TIER=subagent` in `skills/implement/references/conflict-resolution.md` (#7198). The Step 2.4 Claude-fallback implementer path (`larch:claude-implementer`, work-mode `MODE=step2-plan`) records attribution as `MODE=subagent` / `TIER=subagent` via `--rater-tool subagent` and `--producer subagent` on the orchestrator fences (#7195).
 
-Current `/implement` archives are created after terminal reconciliation, so a merged run records the final `"done"` manifest. Bail, stall, and cancellation archives retain their terminal status. Historical Git-backed runs may still contain an `"in-progress"` snapshot from the old pre-merge commit window.
+Current `/implement` archives are created after terminal reconciliation, so a
+merged run records the final `"done"` manifest. Bail, stall, and cancellation
+archives retain their terminal status.
 
 ## Batch files
 
@@ -494,7 +513,7 @@ voting prose, and rejected-finding details live in the per-round artifacts and
 `review-findings-full.jsonl`.
 
 `rounds` is the total number of completed code-review rounds for the run. For a
-normal multi-round `/implement`, it should match the committed `round-*`
+normal multi-round `/implement`, it should match the published `round-*`
 directory count. `accepted_count` and `rejected_count` are cumulative across all
 code-review rounds and are derived from composed `review-findings-full.jsonl`
 code-review rows. `exonerated_count` is an informational sub-count of
@@ -523,7 +542,14 @@ is not separately enumerated in the tally envelope counters.
 
 Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `python/compose_review.py` (producer contract; `python/cli.py review compose-findings` is the CLI entrypoint).
 
-**Backward compatibility**: Committed `larch-logs/**/review-findings-full.jsonl` may mix envelopes across runs. Normalize each line in three ways: **(1) v2** when `(has("reviewer_slots") and (.reviewer_slots | type == "array"))` — use `reviewer_slots` (and optional `schema_version`) as the canonical slot list. **(2) Legacy** only when v2 is absent: a string `reviewer` field (often without `schema_version`). **(3) Unknown / partial** — sparse historical stub rows may omit both usable shapes; log and skip (or count as unknown) rather than assuming a full v2 field set or treating `reviewer_slots: null`/non-array as v2. Example `jq` sketch:
+**Backward compatibility**: Published `review-findings-full.jsonl` files may
+mix envelopes across archives. Normalize each line in three ways: **(1) v2**
+when `(has("reviewer_slots") and (.reviewer_slots | type == "array"))`, use
+`reviewer_slots` and optional `schema_version` as the canonical slot list.
+**(2) Legacy** only when v2 is absent: a string `reviewer` field, often without
+`schema_version`. **(3) Unknown or partial**, log and skip sparse rows that omit
+both usable shapes. Do not treat `reviewer_slots: null` or a non-array value as
+v2. Example `jq` sketch:
 
 ```jq
 if (has("reviewer_slots") and (.reviewer_slots | type == "array")) then
@@ -549,13 +575,13 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 ### final-summary.md
 
-**Mode**: replace. **Written**: the published body is rendered by `python/cli.py render run-summary`; [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`. For `/design`, `python/cli.py design log-publish` renders the enriched `final-summary.md` inside the design tmpdir before copying the committed snapshot, with tracking-comment upserts suppressed in that pre-copy render. Step 5c and clarify then run the authoritative follow-up `python/cli.py design render-final-summary` pass that upserts the marker-keyed tracking comment.
+**Mode**: replace. **Written**: the published body is rendered by `python/cli.py render run-summary`; [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`. For `/design`, `python/cli.py design log-publish` renders the enriched `final-summary.md` inside the design tmpdir before copying the published snapshot, with tracking-comment upserts suppressed in that pre-copy render. Step 5c and clarify then run the authoritative follow-up `python/cli.py design render-final-summary` pass that upserts the marker-keyed tracking comment.
 
-Committed **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the difficulty bullet, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by `python/cli.py render run-summary`: it begins with a `## /<skill> run <run-id>: <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
+Published **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the difficulty bullet, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by `python/cli.py render run-summary`: it begins with a `## /<skill> run <run-id>: <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
 **GLM-5.2 main-agent cost line**: when the resolved run identity (`model_roster.main`, including the `glm-5.2[1m]` alias) is GLM-5.2, the `- **Cost**:` bullet renders `Claude/GLM-5.2 token $T (estimated $E)` with `E = T / 15`, substitutes `E` for the main Claude component in the displayed `TOTAL`, and inserts a `- **Cost note**:` bullet immediately after Cost. Non-GLM summaries keep the plain `Claude $C` segment with no estimated annotation and no cost-note bullet. `claude_sub` remains token-priced from its recorded model and is never divided by 15; non-GLM `[1m]` model names are not remapped by this path.
 
-For `/implement`, rejected and logged-only OOS rows stay in round artifacts and are not rendered in the final summary. OOS files only when the vote threshold accepts it and a strict majority of YES voters rate it `major`; accepted-but-`minor` OOS remains logged only. Explicit `nit` reviewer rows are dropped before voting and recorded per round in public `oos-dropped-before-vote.md`; security-tagged drops go to the local `security-oos-observations.md` sidecar and are not committed. #6028 dropped-OOS surfacing applies only to non-`nit` dropped OOS candidates.
+For `/implement`, rejected and logged-only OOS rows stay in round artifacts and are not rendered in the final summary. OOS files only when the vote threshold accepts it and a strict majority of YES voters rate it `major`; accepted-but-`minor` OOS remains logged only. Explicit `nit` reviewer rows are dropped before voting and recorded per round in public `oos-dropped-before-vote.md`; security-tagged drops go to the local `security-oos-observations.md` sidecar and are not published. #6028 dropped-OOS surfacing applies only to non-`nit` dropped OOS candidates.
 
 ### oos-issues.ndjson
 
@@ -573,7 +599,7 @@ Summary statistics for the run: number of accepted and rejected OOS items, filed
 
 **Mode**: replace. **Written**: Step 7a pre-ship flush via `scripts/flush-vendor-failure-diagnostics.sh`, when at least one vendor-agent slot logged a failure diagnostic during the run.
 
-Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_failure_diagnostics` in `python/larch/agents/agents.py`. Each slot entry is redacted (tmpdir paths and secrets) before being staged as a part under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`; the flush helper concatenates all parts and writes the combined `vendor-failure-diagnostics.txt` batch. CI launchers (`python3 python/cli.py agent launch-codex-ci`, `python3 python/cli.py agent launch-cursor-ci`, `python3 python/cli.py agent launch-claude-ci`) and implement launchers (`agent launch-codex-implement`, `agent launch-cursor-implement`) feed this batch; reviewer launchers (`agent launch-review`) also contribute when `IMPLEMENT_TMPDIR` is set. **Availability caveat**: runs that bail before Step 7a (e.g., Step 2 dispatcher stall or Step 5 review stall) do not flush this batch; diagnostic parts then remain in the session tmpdir and are removed at Step 18 cleanup. The batch is absent in the committed run log for such early-bail runs.
+Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_failure_diagnostics` in `python/larch/agents/agents.py`. Each slot entry is redacted (tmpdir paths and secrets) before being staged as a part under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`; the flush helper concatenates all parts and writes the combined `vendor-failure-diagnostics.txt` batch. CI launchers (`python3 python/cli.py agent launch-codex-ci`, `python3 python/cli.py agent launch-cursor-ci`, `python3 python/cli.py agent launch-claude-ci`) and implement launchers (`agent launch-codex-implement`, `agent launch-cursor-implement`) feed this batch; reviewer launchers (`agent launch-review`) also contribute when `IMPLEMENT_TMPDIR` is set. **Availability caveat**: runs that bail before Step 7a (e.g., Step 2 dispatcher stall or Step 5 review stall) do not flush this batch; diagnostic parts then remain in the session tmpdir and are removed at Step 18 cleanup. The batch is absent from the published archive for such early-bail runs.
 
 ### token-report.json
 
@@ -597,11 +623,11 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: `/implement` Step 7a remains the primary green-path capture point, with Step 18 as a best-effort finalization safety net for bail and stall paths that reach teardown first. `/design` captures once inside the shared `design log-publish` entry point, so Step 5c, clarify, and pause-save publish paths use the same hook. Standalone `/review` captures before cleanup and commits staged batches so the transcript survives tmpdir removal. Historical logs are not backfilled.
+**Mode**: replace. **Written**: `/implement` Step 7a remains the primary green-path capture point, with Step 18 as a best-effort finalization safety net for bail and stall paths that reach teardown first. `/design` captures once inside the shared `design log-publish` entry point, so Step 5c, clarify, and pause-save publish paths use the same hook. Standalone `/review` captures before cleanup and publishes staged batches so the transcript survives tmpdir removal. Historical archives are not backfilled.
 
-A filtered, machine-readable rendering of the Claude Code session, produced by `python3 python/cli.py run-log render-session-transcript` from the raw session JSONL. **Schema v3.** The first line is a `{"v": 3, "source_basename": ..., "turns": N, ...}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, errored/warned `tool_result` entries, and sanitized reference `Read` stubs with normalized `file_path` values only. File contents, other `tool_call` blocks, and non-error `tool_result` blocks are omitted. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit.
+A filtered, machine-readable rendering of the Claude Code session, produced by `python3 python/cli.py run-log render-session-transcript` from the raw session JSONL. **Schema v3.** The first line is a `{"v": 3, "source_basename": ..., "turns": N, ...}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, errored/warned `tool_result` entries, and sanitized reference `Read` stubs with normalized `file_path` values only. File contents, other `tool_call` blocks, and non-error `tool_result` blocks are omitted. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before publication.
 
-**Accepted capability loss (v3)**: full tool-sequence reconstruction for clean runs is not possible from the committed transcript. The retained reference `Read` stubs support aggregate reference-heatmap measurements, not detailed incident forensics.
+**Accepted capability loss (v3)**: full tool-sequence reconstruction for clean runs is not possible from the published transcript. The retained reference `Read` stubs support aggregate reference-heatmap measurements, not detailed incident forensics.
 
 The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output. The run continues when capture cannot produce a transcript. For `/implement` runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `python/render_session_transcript.md` for the complete schema.
 
@@ -617,7 +643,7 @@ produces additional registered artifacts (for example coder-side files).
 Contains a curated set of per-round artifacts: the aggregate `findings.md`,
 accepted / rejected findings, OOS review markdown, voting tally and summary,
 `aggregator-dispatch.stderr` / `aggregator-validate.stderr` when the findings
-aggregator fails (so execution issues can point at committed paths instead of
+aggregator fails (so execution issues can point at published paths instead of
 `$REVIEW_TMPDIR`),
 per-voter outputs (the byte-identical vote prompts and the raw per-specialist
 reviewer outputs are excluded by `round_artifact_included` in
@@ -627,13 +653,12 @@ code-voter slots, the canonical waterfall `*.dropped-slots` ledger, bounded
 `dropped-*-*.txt` diagnostics for dropped reviewer slots, and any later
 registered coder artifacts. The `review core`
 flush is the first snapshot for the round; `review-and-fix CLI` may run one more
-`write-round` after coder application so the committed round directory reflects
-the full round state before the later shared log-commit paths copy it into
-`larch-logs/implement/<RUN_ID>/round-<N>/` in the repo. There is no per-round
-commit.
+`write-round` after coder application so the staged round directory reflects
+the full round state before terminal archive publication. There is no
+per-round publication.
 
 **`round-meta.json`** (Phase 3c, issue #3716) — the per-round
-sidecar files are consolidated into one JSON object rather than committed
+sidecar files are consolidated into one JSON object rather than published
 individually. Sections:
 
 | Section | Source file |
@@ -677,20 +702,35 @@ Content: current plan-review tally status (voting outcome when present, or a poi
 
 Architecture is generated by `/design` Step 5b.5 after Gate C approval, then written by `/design` Step 5c via `python/cli.py design step5c`; that orchestration entrypoint calls the `design publish` tail in-process to upsert diagrams after the `larch:plan` block is successfully written. Code Flow is written by `/implement` Step 7a only when code-flow generation succeeds.
 
-Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. The stable marker is `<!-- larch:diagrams v1 -->` with no `runid=` segment. Diagrams are embedded directly in this comment rather than written as a larch-log batch. Top-level design diagram body artifacts and diagram-generation or sanitizer failure captures are excluded from committed design logs. Implement code-flow diagram body files and `code-flow-diagram.failure.log` are not copied into `larch-logs/implement/<RUN_ID>/`; bounded `execution-issues.md` warnings are the durable failure surface.
+Content: the Architecture Diagram from `/design` and Code Flow Diagram generated
+at Step 7a from the implementation diff, both embedded as Mermaid fences. The
+stable marker is `<!-- larch:diagrams v1 -->` with no `runid=` segment.
+Diagrams are embedded directly in this comment rather than written as a
+run-log batch. Top-level design diagram body artifacts and diagram-generation
+or sanitizer failure captures are excluded from published archives. Implement
+code-flow diagram body files and `code-flow-diagram.failure.log` are not copied
+into the run tree; bounded `execution-issues.md` warnings are the durable
+failure surface.
 
 ### `larch:final-summary`
 
-For `/implement`, written in two phases for full runs: first during Step 8+
-PR creation, where the active Step 8+ driver renders and commits `final-summary.md` with
-placeholder PR fields before `python/cli.py pr create` pushes the branch, and later
-refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
-be refreshed immediately after PR creation with the live URL, without a second
-log commit. Runs that never reach PR creation still run terminal cleanup and may refresh the tracking summary with `PR: N/A` when no PR exists.
+For `/implement`, the tracking summary is first rendered during Step 8+ PR
+creation with placeholder PR fields, then refreshed with the live URL and again
+during Step 18 terminal cleanup. The terminal archive contains the final
+`final-summary.md`. Runs that never reach PR creation still run terminal cleanup
+and may refresh the tracking summary with `PR: N/A`.
 
-For `/design`, `python/cli.py design log-publish` renders the committed `larch-logs/design/<RUN_ID>/final-summary.md` before copying the run tree. Step 5c and clarify follow with a post-publish `python/cli.py design render-final-summary` pass that upserts the same marker-keyed tracking comment when an issue number is configured. `failed-publish` summaries keep `Run logs: N/A` and append recovery metadata when available. `publish-skipped` summaries also keep `Run logs: N/A` and append the skipped-publish note instead of recovery prose.
+For `/design`, `python/cli.py design log-publish` renders `final-summary.md`
+before publishing the run tree. Step 5c and clarify follow with a post-publish
+`python/cli.py design render-final-summary` pass that upserts the same
+marker-keyed tracking comment when an issue number is configured.
+`failed-publish` summaries keep `Run logs: N/A` and append recovery metadata
+when available. `publish-skipped` summaries keep `Run logs: N/A` and append the
+skipped-publish note instead of recovery prose.
 
-Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
+Content: final run status (`STALL_TRACKING` value), PR URL, and remote run
+identity. The tracking-issue comment is the canonical live source for the PR
+URL.
 
 ## Assessment retirement and manual-merge reconciliation
 
@@ -720,7 +760,9 @@ The verb does not render or publish. Corrected run records remain a local handof
 
 ## Retention
 
-Cloud retention is append-only: publishers create one immutable object per run and never slim, overwrite, or delete an older archive. `/gc-run-logs` and its age-based Git retention policy are retired. The historical tracked corpus is unchanged by this policy.
+Cloud retention is append-only. Publishers create one immutable object per run
+and never slim, overwrite, or delete an archive. There is no Git retention or
+garbage-collection workflow.
 
 ## Authoritative sources
 
@@ -729,7 +771,11 @@ Cloud retention is append-only: publishers create one immutable object per run a
 - `docs/summary-comment-template.md` — marker literals and comment contracts
 ## Concise prune/log audit update
 
-Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer output audit scans instead of committing raw transcripts by default. Implement rounds include `prune-decision.env` and `prune-nit.env`; design plan-review rounds default to the four-file concise contract while keeping run-root `plan.txt`.
+Concise review logs use `round-meta.json` `reviewer_signals[]` for reviewer
+output audit scans instead of publishing raw transcripts by default. Implement
+rounds include `prune-decision.env` and `prune-nit.env`; design plan-review
+rounds default to the four-file concise contract while keeping run-root
+`plan.txt`.
 
 ## /design failure-report artifacts
 
@@ -737,30 +783,39 @@ Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer 
 
 `design-failure-terminal-state.env` is the terminal-state KV contract. Report helper stdout/stderr captures are retained beside `final-summary.md` so the summary body stays free of helper KVs.
 
-## Reconciling stuck design-log PRs
-
-`/design` opens one `chore(larch-logs):` design-run PR per run (title prefix `chore(larch-logs):` followed by `design run <RUN_ID>`, head branch `larch-logs/design-<RUN_ID>`) and spawns a **detached, best-effort** `ship design-log` waiter to admin-merge it once required CI passes. That waiter does not reliably survive the session that launched it, so design-log PRs can accumulate unmerged.
-
-`python3 python/cli.py ship design-log-sweep` is the durable backstop. It lists open PRs that carry **both** the `chore(larch-logs):` title prefix **and** a `larch-logs/` head branch, then admin-squash-merges the ones whose required checks are green. PRs that are still pending or failing are left for a later sweep, and already-merged PRs are skipped. The admin merge bypasses only the review gate the automated PR can never satisfy; the no-bypass CI ruleset still blocks merging red CI.
-
-- Runs under the operator's `gh` auth, so it requires admin merge rights.
-- `--dry-run` reports the per-PR outcome without merging.
-- `--repo OWNER/REPO` targets a specific repo; otherwise the repo is resolved from the working tree.
-- Emits `SWEEP_TOTAL`, `SWEEP_MERGED`, `SWEEP_ALREADY_MERGED`, `SWEEP_SKIPPED`, and `SWEEP_FAILED` counters; exit code is `1` when any green PR failed to merge, else `0`.
-
-**Automatic trigger:** `scripts/sweep-design-logs.sh` is a SessionStart hook (wired in `hooks/hooks.json`) that launches the sweep as a detached background process at every `startup`, `resume`, `clear`, and `compact` session event. Output is captured to a per-invocation temp log (`larch-sweep-design-logs-<PID>.log`) for post-hoc debugging. The hook always exits 0 and never blocks session start. To run the sweep manually: `python3 python/cli.py ship design-log-sweep`.
-
 ## Rejected-analysis ledger and verdict sidecar
 
-`larch-logs/rejected-analysis-ledger.tsv` is the committed idempotency ledger for `/rejected-analysis`. It records deterministic drops, verification outcomes, stale or already-fixed results, dirty-tree rejects, security-sensitive skips, cap drops, near-duplicate `alias_of` links, filed issue numbers, and deduplicated issue mappings. The primary key is `finding_hash`, computed from normalized `file_path` plus normalized `concern` only. `line_hint`, `FINDING_N`, run id, round, voter slots, and filesystem state do not participate in the hash.
+`/rejected-analysis` stores its mutable `rejected-analysis/ledger.tsv` and
+`rejected-analysis/verdicts.tsv` below the repository-scoped
+[analyzer state](analysis-state.md) root. They are not run archives.
+The ledger records deterministic drops, verification outcomes, stale or
+already-fixed results, dirty-tree rejects, security-sensitive skips, cap drops,
+near-duplicate `alias_of` links, filed issue numbers, and deduplicated issue
+mappings. Its primary key is `finding_hash`, computed from normalized
+`file_path` plus normalized `concern` only. `line_hint`, `FINDING_N`, run ID,
+round, voter slots, and filesystem state do not participate in the hash.
 
-`larch-logs/rejected-analysis-verdicts.tsv` is the committed sidecar when verifier verdicts exist. It carries `finding_hash`, source skill, run id, round, finding id, dissenting slots, verifier verdict, re-checked location, evidence, and triage time for downstream diagnostics, `/voter-calibration` false-negative labels, and `/difficulty-calibration` under-rating annotations.
+The verdict sidecar carries `finding_hash`, source skill, run ID, round, finding
+ID, dissenting slots, verifier verdict, re-checked location, evidence, and
+triage time for downstream diagnostics, `/voter-calibration` false-negative
+labels, and `/difficulty-calibration` under-rating annotations.
 
-`/difficulty-calibration` reads `difficulty-rating.json`, classification TSVs, `review-findings-full.jsonl` or `review-findings.ndjson` fallbacks, token/timing reports, and the verdict sidecar from committed logs. It tolerates gc-slimmed dirs and missing pre-initiative artifacts. Non-escalated runs without a parseable classification source report realized tier `unknown`. The analyzer is read-only and writes no run-log batches.
+`/difficulty-calibration` reads `difficulty-rating.json`, classification TSVs,
+`review-findings-full.jsonl` or `review-findings.ndjson` fallbacks, token and
+timing reports from the synchronized cache, and the verdict sidecar from
+analyzer state. Missing pre-initiative artifacts degrade to counters.
+Non-escalated runs without a parseable classification source report realized
+tier `unknown`. The analyzer does not write run-log batches.
 
 The collector reads implement artifacts from `larch-logs/implement/<run>/round-*/review-findings-full.jsonl` with `round-*/findings-classification.tsv`, falling back to the run-root JSONL only when no round-local JSONL exists. It reads standalone review artifacts from `larch-logs/review/<run>/review-findings.ndjson` with `review-findings-classification-round-*.tsv`, using `review-findings-full.jsonl` only as a fallback.
 
-Each run work dir also contains non-committed `ingest-status.jsonl`. One row is appended per verifier launch attempt. `launch-failed` rows stay retryable and are not ledgered as verification failures. `parse-failed`, `location-mismatch`, `dirty-tree`, stale, and already-fixed rows are terminal dispositions. `issue-cluster-map.json` maps `/issue` batch indexes to finding hashes so record can map created and deduplicated issues without parsing issue prose.
+Each run work directory also contains session-private `ingest-status.jsonl`.
+One row is appended per verifier launch attempt. `launch-failed` rows stay
+retryable and are not ledgered as verification failures. `parse-failed`,
+`location-mismatch`, `dirty-tree`, stale, and already-fixed rows are terminal
+dispositions. `issue-cluster-map.json` maps `/issue` batch indexes to finding
+hashes so record can map created and deduplicated issues without parsing issue
+prose.
 
 ## Scope-disposition batch
 
