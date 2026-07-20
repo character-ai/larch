@@ -165,19 +165,9 @@ length. Downloads are deadline-bounded and cancellable.
 
 ## Rust GitHub Pull-Request, Review, and Dependency Operations
 
-The pull-request, review, and issue-dependency leaf adds typed operations behind
-the transport boundary above. Its DTOs cover only the pull-request, review, and
-dependency fields current callers require and expose no raw URL or arbitrary
-GraphQL surface. Merge and review state that REST does not expose
-(`reviewDecision`, `mergeStateStatus`, `mergeable`) is read through one fixed
-GraphQL document compiled into the adapter with typed variables. Any GraphQL
-response that carries an `errors` member fails closed, including a partial-data
-response that also returns `data`. CI-check state is out of scope for this leaf.
-
-Pull-request creation reconciles before it could duplicate. It lists the open
-pull requests for the head branch first and adopts an existing one instead of
-opening a second. On an ambiguous create outcome it re-reads the head branch and
-adopts any pull request that now exists rather than retrying blindly.
+Pull-request, review, and dependency operations expose typed inputs only; the fixed review-state GraphQL query fails closed on any `errors` member, including partial data.
+Create reconciles ambiguity before retry. Merge uses the live-mutation gate and validated repository, PR, exact lowercase 40- or 64-byte head, and closed method inputs.
+Merge sends at most one request, then uses bounded exact-head read-back after uncertainty; result classes are fixed and untrusted response text never egresses.
 
 Release preparation uses typed, bounded reads for the Latest release, PRs, and
 companion issue titles. Publication fetches through the typed Git CLI adapter,

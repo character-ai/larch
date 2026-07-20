@@ -11,6 +11,7 @@ use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
     check_live_mutation_auth, octocrab_status,
 };
+use http_body_util::{BodyExt, Limited};
 use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
 use serde_json::{Map, Value, json};
 use std::{error::Error, fmt, future::Future};
@@ -31,6 +32,11 @@ pub enum GitHubOperationError {
     DeadlineExceeded,
     /// GitHub rejected the request as unauthenticated or forbidden.
     Unauthorized,
+    /// GitHub throttled the request.
+    RateLimited,
+    /// A mutation may have been accepted, but read reconciliation could not
+    /// prove its postcondition. Callers must not retry it blindly.
+    AmbiguousMutation,
     /// A transport or unexpected API failure, redacted and length-bounded.
     Transport(SafeText),
     /// A response did not match the typed contract at the named field.
@@ -51,6 +57,10 @@ impl fmt::Display for GitHubOperationError {
             Self::Unauthorized => {
                 formatter.write_str("GitHub rejected the request as unauthorized")
             }
+            Self::RateLimited => formatter.write_str("GitHub rate limited the request"),
+            Self::AmbiguousMutation => formatter.write_str(
+                "GitHub mutation outcome is uncertain; reconciliation did not prove its postcondition",
+            ),
             Self::Transport(detail) => write!(formatter, "GitHub transport failure: {detail}"),
             Self::Malformed(field) => {
                 write!(
@@ -106,6 +116,35 @@ pub enum Mergeable {
     Mergeable,
     Conflicting,
     Unknown,
+}
+
+/// One of GitHub's supported pull-request merge methods.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PullRequestMergeMethod {
+    Merge,
+    Squash,
+    Rebase,
+}
+
+/// Typed result of a pull-request merge attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PullRequestMergeResult {
+    /// The requested merge completed and GitHub returned its merge commit id.
+    Merged { merge_commit_oid: String },
+    /// The pull request had already merged at the caller's expected head.
+    AlreadyMerged,
+    /// The current or merged head differs from the caller's expected head.
+    HeadChanged,
+    /// GitHub refused the merge because the pull request is not mergeable.
+    MergeConflict,
+    /// GitHub refused the merge because repository policy blocked it.
+    BranchProtection,
+    /// GitHub refused the merge but did not provide a typed reason.
+    MergeUnavailable,
+    /// GitHub rejected the otherwise typed request as invalid or spammed.
+    ValidationFailed,
+    /// The pull request was closed without merging.
+    Closed,
 }
 
 /// Minimal typed pull-request contract current callers require.
@@ -372,6 +411,17 @@ pub struct PullRequestEdit<'a> {
     pub base: Option<&'a str>,
 }
 
+/// Immutable, checked inputs for one pull-request merge mutation.
+pub struct PullRequestMerge<'a> {
+    pub owner: &'a str,
+    pub repo: &'a str,
+    pub number: u64,
+    pub expected_head_oid: &'a str,
+    pub method: PullRequestMergeMethod,
+    pub commit_title: Option<&'a str>,
+    pub commit_message: Option<&'a str>,
+}
+
 /// One issue-dependency edge to add or remove.
 #[derive(Clone, Copy)]
 pub struct DependencyEdge<'a> {
@@ -393,6 +443,11 @@ enum DependencyWrite {
     FeatureUnavailable,
     Unauthorized,
     Failed,
+}
+
+enum MergeExchangeError {
+    Transport(octocrab::Error),
+    BodyLimit,
 }
 
 impl OctocrabGitHubService {
@@ -680,6 +735,55 @@ impl OctocrabGitHubService {
         parse_pull_request(&value, self.policy.limits())
     }
 
+    /// Merge one pull request exactly once behind the live-mutation gate.
+    ///
+    /// The expected head object id is checked before the write and sent to
+    /// GitHub as the merge precondition. Transport, timeout, and malformed
+    /// success outcomes are reconciled with a bounded read; no path resubmits
+    /// the mutation.
+    ///
+    /// # Errors
+    /// Returns `MutationRefused` before any read or write when live-mutation
+    /// authorization fails. Other failures distinguish authorization, rate
+    /// limiting, cancellation, malformed responses, and uncertain mutations.
+    pub async fn merge_pull_request(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        request: &PullRequestMerge<'_>,
+    ) -> Result<PullRequestMergeResult, GitHubOperationError> {
+        authorize_mutation(authorization)?;
+        validate_repo(request.owner, request.repo)?;
+        if !is_git_object_id(request.expected_head_oid) {
+            return Err(GitHubOperationError::Malformed(
+                "expected pull request head oid",
+            ));
+        }
+        for text in [request.commit_title, request.commit_message]
+            .into_iter()
+            .flatten()
+        {
+            if text.len() > self.policy.limits().string_bytes() {
+                return Err(GitHubOperationError::Malformed("pull request merge text"));
+            }
+        }
+
+        let _mutation = self.mutation_lock.lock().await;
+        if let Some(result) = self.merge_precondition(cancellation, request).await? {
+            return Ok(result);
+        }
+
+        let outcome = self.send_pull_request_merge(cancellation, request).await;
+        match outcome {
+            Ok(result) => Ok(result),
+            Err(error) if requires_merge_reconciliation(&error) => {
+                self.reconcile_after_merge_uncertainty(cancellation, request, error)
+                    .await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// Read merge and review state through the fixed GraphQL document.
     ///
     /// # Errors
@@ -801,6 +905,105 @@ impl OctocrabGitHubService {
                     .await?,
             )),
             CreatePlan::Create => Ok(None),
+        }
+    }
+
+    async fn merge_precondition(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        request: &PullRequestMerge<'_>,
+    ) -> Result<Option<PullRequestMergeResult>, GitHubOperationError> {
+        let current = self
+            .release_candidate_pull_request(
+                cancellation,
+                request.owner,
+                request.repo,
+                request.number,
+            )
+            .await?;
+        if current.head_oid != request.expected_head_oid {
+            return Ok(Some(PullRequestMergeResult::HeadChanged));
+        }
+        Ok(Some(match current.state {
+            ReleaseCandidatePullRequestState::Merged => PullRequestMergeResult::AlreadyMerged,
+            ReleaseCandidatePullRequestState::Closed => PullRequestMergeResult::Closed,
+            ReleaseCandidatePullRequestState::Open => match self
+                .pull_request_review_state(
+                    cancellation,
+                    request.owner,
+                    request.repo,
+                    request.number,
+                )
+                .await?
+            {
+                PullRequestReviewState {
+                    merge_state_status: MergeStateStatus::Blocked,
+                    ..
+                } => PullRequestMergeResult::BranchProtection,
+                PullRequestReviewState {
+                    mergeable: Mergeable::Conflicting,
+                    ..
+                } => PullRequestMergeResult::MergeConflict,
+                _ => return Ok(None),
+            },
+        }))
+    }
+
+    async fn send_pull_request_merge(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        request: &PullRequestMerge<'_>,
+    ) -> Result<PullRequestMergeResult, GitHubOperationError> {
+        let route = format!(
+            "/repos/{}/{}/pulls/{}/merge",
+            request.owner, request.repo, request.number
+        );
+        let body = merge_body(request);
+        let limit = self.policy.limits().body_bytes();
+        let exchange = async {
+            let response = self
+                .client
+                ._put(route.as_str(), Some(&body))
+                .await
+                .map_err(MergeExchangeError::Transport)?;
+            let status = response.status().as_u16();
+            let body = Limited::new(response.into_body(), limit)
+                .collect()
+                .await
+                .map_err(|_| MergeExchangeError::BodyLimit)?
+                .to_bytes()
+                .to_vec();
+            Ok::<_, MergeExchangeError>((status, body))
+        };
+        let (status, body) = match self.guard_operation(cancellation, exchange).await {
+            Ok(Ok(value)) => value,
+            Ok(Err(MergeExchangeError::Transport(error))) => {
+                return Err(self.transport_error(&error));
+            }
+            Ok(Err(MergeExchangeError::BodyLimit)) => {
+                return Err(GitHubOperationError::Malformed(
+                    "pull request merge response body",
+                ));
+            }
+            Err(completion) => return Err(completion_error(completion)),
+        };
+        classify_merge_response(status, &body, self.policy.limits())
+    }
+
+    async fn reconcile_after_merge_uncertainty(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        request: &PullRequestMerge<'_>,
+        _original: GitHubOperationError,
+    ) -> Result<PullRequestMergeResult, GitHubOperationError> {
+        match self.merge_precondition(cancellation, request).await {
+            Ok(Some(PullRequestMergeResult::AlreadyMerged)) => {
+                Ok(PullRequestMergeResult::AlreadyMerged)
+            }
+            Ok(Some(PullRequestMergeResult::HeadChanged)) => {
+                Ok(PullRequestMergeResult::HeadChanged)
+            }
+            Ok(_) | Err(_) => Err(GitHubOperationError::AmbiguousMutation),
         }
     }
 
@@ -941,6 +1144,115 @@ fn edit_body(edit: &PullRequestEdit<'_>) -> Value {
         body.insert("base".to_owned(), Value::from(base));
     }
     Value::Object(body)
+}
+
+fn merge_body(request: &PullRequestMerge<'_>) -> Value {
+    let mut body = Map::new();
+    body.insert("sha".to_owned(), Value::from(request.expected_head_oid));
+    body.insert(
+        "merge_method".to_owned(),
+        Value::from(match request.method {
+            PullRequestMergeMethod::Merge => "merge",
+            PullRequestMergeMethod::Squash => "squash",
+            PullRequestMergeMethod::Rebase => "rebase",
+        }),
+    );
+    if let Some(title) = request.commit_title {
+        body.insert("commit_title".to_owned(), Value::from(title));
+    }
+    if let Some(message) = request.commit_message {
+        body.insert("commit_message".to_owned(), Value::from(message));
+    }
+    Value::Object(body)
+}
+
+fn classify_merge_response(
+    status: u16,
+    body: &[u8],
+    limits: GitHubResponseLimits,
+) -> Result<PullRequestMergeResult, GitHubOperationError> {
+    match status {
+        200 => parse_merge_success(body, limits),
+        403 if merge_response_is_rate_limited(body) => Err(GitHubOperationError::RateLimited),
+        401 | 403 => Err(GitHubOperationError::Unauthorized),
+        405 => Ok(PullRequestMergeResult::MergeUnavailable),
+        409 => Ok(PullRequestMergeResult::HeadChanged),
+        422 => Ok(PullRequestMergeResult::ValidationFailed),
+        429 => Err(GitHubOperationError::RateLimited),
+        500..=599 => Err(GitHubOperationError::AmbiguousMutation),
+        _ => Err(GitHubOperationError::Transport(
+            larch_core::RuntimeRedactor::default()
+                .safe_text(format!("pull request merge returned status {status}")),
+        )),
+    }
+}
+
+fn parse_merge_success(
+    body: &[u8],
+    limits: GitHubResponseLimits,
+) -> Result<PullRequestMergeResult, GitHubOperationError> {
+    let value: Value = serde_json::from_slice(body)
+        .map_err(|_| GitHubOperationError::Malformed("pull request merge response"))?;
+    let object = as_object(&value)?;
+    match object.get("merged").and_then(Value::as_bool) {
+        Some(true) => {
+            let oid = required_str(object, "sha", limits, "pull request merge commit oid")?;
+            if !is_git_object_id(&oid) {
+                return Err(GitHubOperationError::Malformed(
+                    "pull request merge commit oid",
+                ));
+            }
+            Ok(PullRequestMergeResult::Merged {
+                merge_commit_oid: oid,
+            })
+        }
+        Some(false) => classify_merge_rejection(object, limits),
+        None => Err(GitHubOperationError::Malformed("pull request merge result")),
+    }
+}
+
+fn classify_merge_rejection(
+    object: &Map<String, Value>,
+    limits: GitHubResponseLimits,
+) -> Result<PullRequestMergeResult, GitHubOperationError> {
+    let message = required_str(object, "message", limits, "pull request merge message")?;
+    match message.as_str() {
+        "Pull Request is not mergeable" => Ok(PullRequestMergeResult::MergeConflict),
+        "Pull Request merge is blocked by branch protection" => {
+            Ok(PullRequestMergeResult::BranchProtection)
+        }
+        _ => Err(GitHubOperationError::Malformed(
+            "pull request merge rejection",
+        )),
+    }
+}
+
+fn merge_response_is_rate_limited(body: &[u8]) -> bool {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| value.get("message")?.as_str().map(str::to_owned))
+        .is_some_and(|message| {
+            message
+                .to_ascii_lowercase()
+                .starts_with("api rate limit exceeded")
+        })
+}
+
+const fn requires_merge_reconciliation(error: &GitHubOperationError) -> bool {
+    matches!(
+        error,
+        GitHubOperationError::Transport(_)
+            | GitHubOperationError::AmbiguousMutation
+            | GitHubOperationError::DeadlineExceeded
+            | GitHubOperationError::Malformed(_)
+    )
+}
+
+fn is_git_object_id(oid: &str) -> bool {
+    matches!(oid.len(), 40 | 64)
+        && oid
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn reconcile_create(existing: &[PullRequest], head_ref: &str) -> CreatePlan {
@@ -1274,8 +1586,9 @@ fn bounded_string(
 mod tests {
     use super::{
         CreatePlan, DependencyRef, GitHubOperationError, MergeStateStatus, Mergeable,
-        PullRequestState, ReviewDecision, classify_dependency_write, dependency_present, edit_body,
-        is_safe_segment, parse_dependency_refs, parse_pull_request, parse_pull_requests,
+        PullRequestMerge, PullRequestMergeMethod, PullRequestState, ReviewDecision,
+        classify_dependency_write, dependency_present, edit_body, is_safe_segment, merge_body,
+        parse_dependency_refs, parse_pull_request, parse_pull_requests,
         parse_release_candidate_pull_request, parse_review_state, reconcile_create, validate_repo,
     };
     use super::{DependencyWrite, PullRequestEdit};
@@ -1524,14 +1837,36 @@ mod tests {
             json!({ "title": "New title", "state": "closed" })
         );
     }
+
+    #[test]
+    fn merge_body_has_only_typed_supported_fields() {
+        let request = PullRequestMerge {
+            owner: "character-ai",
+            repo: "larch",
+            number: 5,
+            expected_head_oid: "1111111111111111111111111111111111111111",
+            method: PullRequestMergeMethod::Squash,
+            commit_title: Some("Merge title"),
+            commit_message: None,
+        };
+        assert_eq!(
+            merge_body(&request),
+            json!({
+                "sha": "1111111111111111111111111111111111111111",
+                "merge_method": "squash",
+                "commit_title": "Merge title",
+            })
+        );
+    }
 }
 
 #[cfg(test)]
 mod service_tests {
     use super::{
         DependencyEdge, DependencyMutation, GitHubOperationError, LiveMutationRequest,
-        MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestSpec,
-        PullRequestState, ReleasePlanningService, ReviewDecision,
+        MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestMerge,
+        PullRequestMergeMethod, PullRequestMergeResult, PullRequestSpec, PullRequestState,
+        ReleasePlanningService, ReviewDecision,
     };
     use crate::runtime::Cancellation;
     use serde_json::json;
@@ -1582,6 +1917,42 @@ mod service_tests {
             "merged": false,
         })
         .to_string()
+    }
+
+    const HEAD: &str = "1111111111111111111111111111111111111111";
+    const OTHER_HEAD: &str = "2222222222222222222222222222222222222222";
+    const MERGE_COMMIT: &str = "3333333333333333333333333333333333333333";
+
+    fn merge_candidate_json(state: &str, merged: bool, head: &str) -> String {
+        json!({
+            "state": state,
+            "merged": merged,
+            "head": { "sha": head },
+        })
+        .to_string()
+    }
+
+    fn merge_review_state_json(status: &str, mergeable: &str) -> String {
+        json!({
+            "data": { "repository": { "pullRequest": {
+                "reviewDecision": null,
+                "mergeStateStatus": status,
+                "mergeable": mergeable,
+            }}}
+        })
+        .to_string()
+    }
+
+    fn merge_request() -> PullRequestMerge<'static> {
+        PullRequestMerge {
+            owner: "o",
+            repo: "r",
+            number: 7,
+            expected_head_oid: HEAD,
+            method: PullRequestMergeMethod::Squash,
+            commit_title: Some("Merge typed operation"),
+            commit_message: None,
+        }
     }
 
     fn release_pull_request_value(number: u64, title: &str) -> serde_json::Value {
@@ -1877,6 +2248,235 @@ mod service_tests {
     }
 
     #[tokio::test]
+    async fn merge_pull_request_covers_success_stale_and_ambiguous_success() {
+        let cancellation = Cancellation::new();
+        let authorized = operator_request();
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (
+                200,
+                json!({ "merged": true, "sha": MERGE_COMMIT }).to_string(),
+            ),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("successful merge"),
+            PullRequestMergeResult::Merged {
+                merge_commit_oid: MERGE_COMMIT.to_owned(),
+            }
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) =
+            stub_service(vec![(200, merge_candidate_json("open", false, OTHER_HEAD))]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("stale expected head is a typed result"),
+            PullRequestMergeResult::HeadChanged
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (500, json!({ "message": "upstream failure" }).to_string()),
+            (200, merge_candidate_json("closed", true, HEAD)),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("ambiguous write read-back proves merged state"),
+            PullRequestMergeResult::AlreadyMerged
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn merge_pull_request_covers_refusal_permission_and_retry_refusal() {
+        let cancellation = Cancellation::new();
+        let authorized = operator_request();
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (422, json!({ "message": "policy" }).to_string()),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("validation failure result"),
+            PullRequestMergeResult::ValidationFailed
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (401, json!({ "message": "denied" }).to_string()),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect_err("permission failure remains distinct"),
+            GitHubOperationError::Unauthorized
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (500, json!({ "message": "uncertain" }).to_string()),
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect_err("reconciliation refuses a second merge submission"),
+            GitHubOperationError::AmbiguousMutation
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn merge_pull_request_handles_terminal_and_unavailable_states() {
+        let cancellation = Cancellation::new();
+        let authorized = operator_request();
+
+        let (service, server) =
+            stub_service(vec![(200, merge_candidate_json("closed", true, HEAD))]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("already merged is idempotent"),
+            PullRequestMergeResult::AlreadyMerged
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) =
+            stub_service(vec![(200, merge_candidate_json("closed", false, HEAD))]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("closed pull request is a typed result"),
+            PullRequestMergeResult::Closed
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (405, json!({ "message": "cannot merge" }).to_string()),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("unavailable merge reason is typed"),
+            PullRequestMergeResult::MergeUnavailable
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn merge_pull_request_distinguishes_conflict_policy_and_rate_limit() {
+        let cancellation = Cancellation::new();
+        let authorized = operator_request();
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "CONFLICTING")),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("conflict is a typed result"),
+            PullRequestMergeResult::MergeConflict
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("BLOCKED", "MERGEABLE")),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect("branch policy is a typed result"),
+            PullRequestMergeResult::BranchProtection
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![
+            (200, merge_candidate_json("open", false, HEAD)),
+            (200, merge_review_state_json("CLEAN", "MERGEABLE")),
+            (429, json!({ "message": "slow down" }).to_string()),
+        ]);
+        assert_eq!(
+            service
+                .merge_pull_request(&cancellation, &authorized, &merge_request())
+                .await
+                .expect_err("rate limit remains distinct"),
+            GitHubOperationError::RateLimited
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn merge_pull_request_honors_live_gate_cancellation_and_input_validation() {
+        let request = merge_request();
+        let (service, server) = stub_service(vec![]);
+        assert_eq!(
+            service
+                .merge_pull_request(&Cancellation::new(), &denied_request(), &request)
+                .await
+                .expect_err("mutation gate runs before a network read"),
+            GitHubOperationError::MutationRefused("unauthorized-mutation")
+        );
+        server.join().expect("stub completed");
+
+        let (service, server) = stub_service(vec![]);
+        let cancelled = Cancellation::new();
+        cancelled.cancel();
+        assert_eq!(
+            service
+                .merge_pull_request(&cancelled, &operator_request(), &request)
+                .await
+                .expect_err("cancellation is typed"),
+            GitHubOperationError::Cancelled
+        );
+        server.join().expect("stub completed");
+
+        let malformed = PullRequestMerge {
+            expected_head_oid: "not-an-object-id",
+            ..request
+        };
+        let (service, server) = stub_service(vec![]);
+        assert_eq!(
+            service
+                .merge_pull_request(&Cancellation::new(), &operator_request(), &malformed)
+                .await
+                .expect_err("malformed expected head is rejected before a network read"),
+            GitHubOperationError::Malformed("expected pull request head oid")
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
     async fn pull_request_review_state_reads_graphql_and_fails_closed() {
         let cancellation = Cancellation::new();
         let ok = json!({
@@ -1988,6 +2588,8 @@ mod service_tests {
             GitHubOperationError::Cancelled,
             GitHubOperationError::DeadlineExceeded,
             GitHubOperationError::Unauthorized,
+            GitHubOperationError::RateLimited,
+            GitHubOperationError::AmbiguousMutation,
             GitHubOperationError::Transport(detail),
             GitHubOperationError::Malformed("pull request state"),
             GitHubOperationError::GraphqlErrors,
