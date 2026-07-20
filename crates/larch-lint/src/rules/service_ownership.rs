@@ -8,10 +8,15 @@
 //! `gh` bootstrap in `scripts/larch.sh` is a separate installer surface and is
 //! not a runtime service caller; see `docs/github-service-inventory.md`.
 
-use std::{path::Path as StdPath, sync::LazyLock};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path as StdPath,
+    sync::LazyLock,
+};
 
 use proc_macro2::{TokenStream, TokenTree};
 use regex::Regex;
+use serde::Deserialize;
 use syn::{Attribute, ItemFn, ItemImpl, ItemMod, ItemUse, LitStr, Macro, UseTree, visit};
 use tree_sitter::Node;
 
@@ -30,6 +35,23 @@ const SUPPRESSION: &str = "lint-service-ownership";
 const ADAPTERS_PREFIX: &str = "crates/larch-adapters/";
 const GITHUB_INVENTORY: &str = "docs/github-service-inventory.md";
 const GOOGLE_INVENTORY: &str = "docs/google-service-inventory.md";
+const COMMAND_REGISTRY: &str = "crates/larch-lint/data/command-registry.toml";
+const INVENTORY_START: &str = "<!-- github-service-ownership:start -->";
+const INVENTORY_END: &str = "<!-- github-service-ownership:end -->";
+const INVENTORY_HEADER: &str = "operation\tadapter_owner\tcurrent_owner\tmigration_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands";
+const CHIEF_MIGRATION_OWNER: &str = "#7687";
+const REQUIRED_OPERATION_GROUPS: [&str; 10] = [
+    "actions",
+    "attestations",
+    "comments",
+    "issue-dependencies",
+    "issues",
+    "labels",
+    "pull-requests",
+    "release-consumers",
+    "releases",
+    "repository-metadata",
+];
 
 /// Concrete HTTP and service client crates that only the adapter crate may use.
 const CLIENT_CRATES: [&str; 7] = ["octocrab", "reqwest", "hyper", "ureq", "isahc", "surf", "curl"];
@@ -41,12 +63,19 @@ const SERVICE_HOSTS: [&str; 4] = [
     "googleapis.com",
 ];
 /// Service credentials that must never enter a spawned child environment.
-const CHILD_CREDENTIALS: [&str; 5] = [
+const CHILD_CREDENTIALS: [&str; 12] = [
+    "AUTHORIZATION",
+    "CLOUDSDK_AUTH_ACCESS_TOKEN",
+    "CLOUDSDK_AUTH_REFRESH_TOKEN",
+    "CLOUDSDK_CONFIG",
+    "GH_ENTERPRISE_TOKEN",
     "LARCH_GH_TOKEN",
     "GH_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
     "GITHUB_TOKEN",
     "GOOGLE_APPLICATION_CREDENTIALS",
     "GOOGLE_API_KEY",
+    "GOOGLE_OAUTH_ACCESS_TOKEN",
 ];
 
 const GCLOUD_MESSAGE: &str =
@@ -56,6 +85,8 @@ const DUPLICATE_GITHUB: &str =
 const DUPLICATE_GOOGLE: &str =
     "duplicate concrete Google client owner; google-cloud-auth must be used by one adapter module";
 const GRAPHQL_MESSAGE: &str = "GraphQL document appears outside crates/larch-adapters";
+const GENERIC_GITHUB_CREDENTIAL: &str =
+    "GitHub service must not read caller-supplied GH_TOKEN or GITHUB_TOKEN as a credential fallback";
 
 static GRAPHQL: LazyLock<Regex> = LazyLock::new(|| {
     // Allow a named operation and a variable or directive preamble before the
@@ -92,11 +123,257 @@ impl Rule for ServiceOwnershipRule {
         let (github_owners, google_owners) = check_client_owners(repository, &mut findings)?;
         check_inventory(repository, GITHUB_INVENTORY, &github_owners, &mut findings)?;
         check_inventory(repository, GOOGLE_INVENTORY, &google_owners, &mut findings)?;
+        check_github_operation_inventory(repository, &mut findings)?;
         check_shell_surfaces(repository, &mut findings)?;
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct OwnershipLedger {
+    #[serde(default)]
+    commands: Vec<OwnershipCommand>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OwnershipCommand {
+    domain: String,
+    verb: String,
+    owner: String,
+    implementation_parity: String,
+    consumer_cutover: String,
+    python_removal: String,
+    migration_issue: u64,
+}
+
+fn check_github_operation_inventory(
+    repository: &Repository,
+    findings: &mut Vec<Finding>,
+) -> Result<(), LintError> {
+    let inventory_path = RepoPath::from_trusted(GITHUB_INVENTORY);
+    if repository.paths().binary_search(&inventory_path).is_err() {
+        return Ok(());
+    }
+    let content = repository.read_utf8(&inventory_path)?;
+    let lines: Vec<&str> = content.lines().collect();
+    let Some(start) = lines.iter().position(|line| line.trim() == INVENTORY_START) else {
+        findings.push(Finding::new(
+            GITHUB_INVENTORY,
+            1,
+            "GitHub service ownership matrix is missing",
+        ));
+        return Ok(());
+    };
+    let Some(relative_end) = lines[start + 1..]
+        .iter()
+        .position(|line| line.trim() == INVENTORY_END)
+    else {
+        findings.push(Finding::new(
+            GITHUB_INVENTORY,
+            to_u32(start + 1),
+            "GitHub service ownership matrix is unterminated",
+        ));
+        return Ok(());
+    };
+    let end = start + 1 + relative_end;
+    let ledger = read_ownership_commands(repository)?;
+    let mut rows = BTreeSet::new();
+    let mut saw_header = false;
+    for (index, raw) in lines[start + 1..end].iter().enumerate() {
+        let line_number = start + index + 2;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with("```") {
+            continue;
+        }
+        if !saw_header {
+            saw_header = true;
+            if line != INVENTORY_HEADER {
+                findings.push(Finding::new(
+                    GITHUB_INVENTORY,
+                    to_u32(line_number),
+                    "GitHub service ownership matrix has an invalid header",
+                ));
+            }
+            continue;
+        }
+        let columns: Vec<&str> = raw.split('\t').collect();
+        if columns.len() != 8 {
+            findings.push(Finding::new(
+                GITHUB_INVENTORY,
+                to_u32(line_number),
+                "GitHub service ownership row must contain exactly eight tab-separated fields",
+            ));
+            continue;
+        }
+        let operation = columns[0].trim();
+        if !rows.insert(operation.to_owned()) {
+            findings.push(Finding::new(
+                GITHUB_INVENTORY,
+                to_u32(line_number),
+                format!("duplicate GitHub service operation owner `{operation}`"),
+            ));
+        }
+        validate_operation_row(repository, &ledger, &columns, line_number, findings);
+    }
+    if !saw_header {
+        findings.push(Finding::new(
+            GITHUB_INVENTORY,
+            to_u32(start + 1),
+            "GitHub service ownership matrix is empty",
+        ));
+    }
+    for required in REQUIRED_OPERATION_GROUPS {
+        if !rows.contains(required) {
+            findings.push(Finding::new(
+                GITHUB_INVENTORY,
+                to_u32(start + 1),
+                format!("GitHub service operation `{required}` is missing from the ownership matrix"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn read_ownership_commands(
+    repository: &Repository,
+) -> Result<BTreeMap<String, OwnershipCommand>, LintError> {
+    let path = RepoPath::from_trusted(COMMAND_REGISTRY);
+    let content = repository.read_utf8(&path)?;
+    let ledger: OwnershipLedger = toml::from_str(&content).map_err(|error| {
+        LintError::new(format!("{COMMAND_REGISTRY}: invalid TOML: {error}"))
+    })?;
+    Ok(ledger
+        .commands
+        .into_iter()
+        .map(|command| (format!("{} {}", command.domain, command.verb), command))
+        .collect())
+}
+
+fn validate_operation_row(
+    repository: &Repository,
+    ledger: &BTreeMap<String, OwnershipCommand>,
+    columns: &[&str],
+    line_number: usize,
+    findings: &mut Vec<Finding>,
+) {
+    let operation = columns[0].trim();
+    let adapter = columns[1].trim();
+    let owner = columns[2].trim();
+    let migration_issues = columns[3].trim();
+    let parity = columns[4].trim();
+    let cutover = columns[5].trim();
+    let removal = columns[6].trim();
+    let selectors = columns[7].trim();
+    if operation.is_empty() || !operation.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-') {
+        inventory_finding(line_number, "GitHub service operation key is invalid", findings);
+    }
+    let adapter_path = RepoPath::from_trusted(adapter);
+    if !adapter.starts_with(ADAPTERS_PREFIX)
+        || repository.paths().binary_search(&adapter_path).is_err()
+    {
+        inventory_finding(
+            line_number,
+            format!("GitHub service adapter owner `{adapter}` is not a tracked adapter path"),
+            findings,
+        );
+    }
+    if !matches!(owner, "python" | "rust" | "retired") {
+        inventory_finding(line_number, "GitHub service current owner is invalid", findings);
+    }
+    let issues: BTreeSet<u64> = migration_issues
+        .split(',')
+        .filter_map(|value| value.strip_prefix('#')?.parse().ok())
+        .collect();
+    if issues.is_empty()
+        || issues.len() != migration_issues.split(',').count()
+        || migration_issues.split(',').any(|value| value == CHIEF_MIGRATION_OWNER)
+    {
+        inventory_finding(
+            line_number,
+            "GitHub service migration owner must name concrete issues and must not delegate to #7687",
+            findings,
+        );
+    }
+    if !matches!(parity, "pending" | "complete" | "not-applicable")
+        || !matches!(cutover, "pending" | "complete")
+        || !matches!(removal, "pending" | "complete")
+    {
+        inventory_finding(line_number, "GitHub service migration state is invalid", findings);
+    }
+    let (commands, unknown_selectors) = expand_inventory_selectors(selectors, ledger);
+    for selector in unknown_selectors {
+        inventory_finding(
+            line_number,
+            format!("GitHub service ownership row names unknown command selector `{selector}`"),
+            findings,
+        );
+    }
+    if commands.is_empty() {
+        inventory_finding(
+            line_number,
+            "GitHub service ownership row names no production command",
+            findings,
+        );
+        return;
+    }
+    for command in commands {
+        if command.owner != owner
+            || command.implementation_parity != parity
+            || command.consumer_cutover != cutover
+            || command.python_removal != removal
+            || !issues.contains(&command.migration_issue)
+        {
+            inventory_finding(
+                line_number,
+                format!(
+                    "GitHub service ownership row falsely claims migration state for {} {}",
+                    command.domain, command.verb
+                ),
+                findings,
+            );
+        }
+    }
+}
+
+fn expand_inventory_selectors<'a>(
+    selectors: &str,
+    ledger: &'a BTreeMap<String, OwnershipCommand>,
+) -> (Vec<&'a OwnershipCommand>, Vec<String>) {
+    let mut selected = BTreeMap::new();
+    let mut unknown = Vec::new();
+    for selector in selectors.split(',').map(str::trim) {
+        if let Some(domain) = selector.strip_suffix(" *") {
+            let prefix = format!("{domain} ");
+            let before = selected.len();
+            for (key, command) in ledger {
+                if key.starts_with(&prefix) {
+                    let _ = selected.insert(key.as_str(), command);
+                }
+            }
+            if selected.len() == before {
+                unknown.push(selector.to_owned());
+            }
+        } else if let Some(command) = ledger.get(selector) {
+            let _ = selected.insert(selector, command);
+        } else {
+            unknown.push(selector.to_owned());
+        }
+    }
+    (selected.into_values().collect(), unknown)
+}
+
+fn inventory_finding(
+    line_number: usize,
+    message: impl Into<String>,
+    findings: &mut Vec<Finding>,
+) {
+    findings.push(Finding::new(
+        GITHUB_INVENTORY,
+        to_u32(line_number),
+        message,
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +562,15 @@ fn check_client_owners(
         if let Some(line) = visitor.google {
             google.push((path.as_str().to_owned(), line));
         }
+        if path.as_str().starts_with("crates/larch-adapters/src/github") {
+            for line in visitor.generic_github_credentials {
+                findings.push(Finding::new(
+                    path.as_str(),
+                    to_u32(line),
+                    GENERIC_GITHUB_CREDENTIAL,
+                ));
+            }
+        }
     }
     if github.len() > 1 {
         for (path, line) in &github {
@@ -306,6 +592,7 @@ fn check_client_owners(
 struct OwnerVisitor {
     octocrab: Option<usize>,
     google: Option<usize>,
+    generic_github_credentials: Vec<usize>,
 }
 
 impl<'ast> visit::Visit<'ast> for OwnerVisitor {
@@ -353,6 +640,13 @@ impl<'ast> visit::Visit<'ast> for OwnerVisitor {
             let _ = self
                 .google
                 .get_or_insert_with(|| segment.ident.span().start().line);
+        }
+        if path.segments.iter().any(|segment| {
+            matches!(segment.ident.to_string().as_str(), "GH_TOKEN" | "GITHUB_TOKEN")
+        }) && let Some(segment) = path.segments.last()
+        {
+            self.generic_github_credentials
+                .push(segment.ident.span().start().line);
         }
         visit::visit_path(self, path);
     }
@@ -471,7 +765,7 @@ fn collect_shell_hits(node: Node<'_>, source: &str, hits: &mut Vec<(usize, Strin
                     let mut cursor = node.walk();
                     for argument in node.children_by_field_name("argument", &mut cursor) {
                         if let Some(credential) = credential_in_assignment(node_text(argument, source)) {
-                            hits.push((argument.start_position().row, credential_message(credential)));
+                            hits.push((argument.start_position().row, credential_message(&credential)));
                         }
                     }
                 }
@@ -480,7 +774,7 @@ fn collect_shell_hits(node: Node<'_>, source: &str, hits: &mut Vec<(usize, Strin
         "variable_assignment" => {
             if let Some(name) = node.child_by_field_name("name") {
                 let variable = node_text(name, source);
-                if CHILD_CREDENTIALS.contains(&variable) {
+                if is_child_credential(variable) {
                     hits.push((name.start_position().row, credential_message(variable)));
                 }
             }
@@ -493,11 +787,16 @@ fn collect_shell_hits(node: Node<'_>, source: &str, hits: &mut Vec<(usize, Strin
     }
 }
 
-fn credential_in_assignment(word: &str) -> Option<&'static str> {
-    CHILD_CREDENTIALS.iter().copied().find(|credential| {
-        word.strip_prefix(*credential)
-            .is_some_and(|rest| rest.starts_with('='))
-    })
+fn credential_in_assignment(word: &str) -> Option<String> {
+    let equals = word.find('=')?;
+    let name = &word[..equals];
+    is_child_credential(name).then(|| name.to_owned())
+}
+
+fn is_child_credential(name: &str) -> bool {
+    CHILD_CREDENTIALS.contains(&name)
+        || name.ends_with("_ACCESS_TOKEN")
+        || name.ends_with("_REFRESH_TOKEN")
 }
 
 /// Process launchers whose real executable is the first non-option argument, so

@@ -32,6 +32,7 @@ const BLOCKED_ENVIRONMENT_KEYS: &[&str] = &[
     "GOOGLE_APPLICATION_CREDENTIALS",
     "HTTPS_PROXY",
     "HTTP_PROXY",
+    "LARCH_GH_TOKEN",
     "NO_PROXY",
 ];
 
@@ -605,11 +606,14 @@ mod tests {
 
     #[test]
     fn live_service_credentials_cannot_be_reintroduced() {
-        let program = Program::new("/bin/fixture").env("GH_TOKEN", "secret");
-        let error = validate_program(&program, "python").expect_err("credential must be blocked");
+        for credential in ["LARCH_GH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
+            let program = Program::new("/bin/fixture").env(credential, "secret");
+            let error =
+                validate_program(&program, "python").expect_err("credential must be blocked");
 
-        assert!(error.contains("GH_TOKEN"));
-        assert!(error.contains("fixture service"));
+            assert!(error.contains(credential));
+            assert!(error.contains("fixture service"));
+        }
     }
 
     #[test]

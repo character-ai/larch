@@ -3,6 +3,28 @@ mod support;
 use predicates::prelude::*;
 use support::TempRepo;
 
+fn ownership_matrix(adapter: &str) -> String {
+    let rows = [
+        "actions",
+        "attestations",
+        "comments",
+        "issue-dependencies",
+        "issues",
+        "labels",
+        "pull-requests",
+        "release-consumers",
+        "releases",
+        "repository-metadata",
+    ]
+    .map(|operation| {
+        format!("{operation}\t{adapter}\tpython\t#7661\tpending\tpending\tpending\tfixture run")
+    })
+    .join("\n");
+    format!(
+        "Owner: {adapter}\n<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tmigration_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\n{rows}\n```\n<!-- github-service-ownership:end -->\n"
+    )
+}
+
 #[test]
 fn rejects_concrete_clients_and_request_surfaces_outside_the_adapter() {
     let repository = TempRepo::new();
@@ -77,10 +99,8 @@ pub fn load() {
         "crates/larch-core/src/clean.rs",
         b"pub fn ok() -> u32 { 0 }\n",
     );
-    repository.write(
-        "docs/github-service-inventory.md",
-        b"Owner: crates/larch-adapters/src/github/mod.rs\n",
-    );
+    let inventory = ownership_matrix("crates/larch-adapters/src/github/mod.rs");
+    repository.write("docs/github-service-inventory.md", inventory.as_bytes());
     repository.write(
         "docs/google-service-inventory.md",
         b"Owner: crates/larch-adapters/src/google_auth.rs\n",
@@ -93,6 +113,65 @@ pub fn load() {
         .success()
         .stdout(predicate::str::is_empty())
         .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn rejects_inventory_omissions_duplicate_rows_and_false_cutover_claims() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-adapters/src/github/mod.rs",
+        b"pub fn owner() {}\n",
+    );
+    let inventory = ownership_matrix("crates/larch-adapters/src/github/mod.rs")
+        .replace(
+            "labels\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\n",
+            "",
+        )
+        .replace(
+            "issues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run",
+            "issues\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run,missing command\nissues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run",
+        );
+    repository.write("docs/github-service-inventory.md", inventory.as_bytes());
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "service-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "GitHub service operation `labels` is missing from the ownership matrix",
+        ))
+        .stdout(predicate::str::contains(
+            "duplicate GitHub service operation owner `issues`",
+        ))
+        .stdout(predicate::str::contains(
+            "falsely claims migration state for fixture run",
+        ))
+        .stdout(predicate::str::contains(
+            "unknown command selector `missing command`",
+        ))
+        .stderr("");
+}
+
+#[test]
+fn rejects_generic_github_credential_fallback_in_the_adapter() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/larch-adapters/src/github/mod.rs",
+        b"pub fn load() { let _ = env::GH_TOKEN; }\n",
+    );
+    let inventory = ownership_matrix("crates/larch-adapters/src/github/mod.rs");
+    repository.write("docs/github-service-inventory.md", inventory.as_bytes());
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "service-ownership"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "GitHub service must not read caller-supplied GH_TOKEN or GITHUB_TOKEN",
+        ))
+        .stderr("");
 }
 
 #[test]
@@ -191,7 +270,7 @@ fn rejects_gcloud_and_credential_child_environments_in_production_shell() {
     let repository = TempRepo::new();
     repository.write(
         "scripts/deploy.sh",
-        b"#!/usr/bin/env bash\ngcloud auth login\nLARCH_GH_TOKEN=\"$SECRET\" ./do-thing\nGH_TOKEN=\"$SECRET\" ./do-thing\nsudo gcloud components update\ncommand gcloud storage ls\nenv FOO=bar gcloud auth print-access-token\n",
+        b"#!/usr/bin/env bash\ngcloud auth login\nLARCH_GH_TOKEN=\"$SECRET\" ./do-thing\nGH_TOKEN=\"$SECRET\" ./do-thing\nCLOUDSDK_CONFIG=/tmp/adc ./do-thing\nDISCOVERED_ACCESS_TOKEN=secret ./unrelated-child\nsudo gcloud components update\ncommand gcloud storage ls\nenv FOO=bar gcloud auth print-access-token\n",
     );
     repository.write(
         "skills/example/SKILL.md",
@@ -213,13 +292,19 @@ fn rejects_gcloud_and_credential_child_environments_in_production_shell() {
             "scripts/deploy.sh:4: service credential GH_TOKEN must not enter a child environment",
         ))
         .stdout(predicate::str::contains(
-            "scripts/deploy.sh:5: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
+            "scripts/deploy.sh:5: service credential CLOUDSDK_CONFIG must not enter a child environment",
         ))
         .stdout(predicate::str::contains(
-            "scripts/deploy.sh:6: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
+            "scripts/deploy.sh:6: service credential DISCOVERED_ACCESS_TOKEN must not enter a child environment",
         ))
         .stdout(predicate::str::contains(
             "scripts/deploy.sh:7: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
+        ))
+        .stdout(predicate::str::contains(
+            "scripts/deploy.sh:8: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
+        ))
+        .stdout(predicate::str::contains(
+            "scripts/deploy.sh:9: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",
         ))
         .stdout(predicate::str::contains(
             "skills/example/SKILL.md:2: production runtime must not invoke the gcloud CLI; use the Rust Google adapter",

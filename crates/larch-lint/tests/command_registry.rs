@@ -110,6 +110,24 @@ fn missing_and_duplicate_command_rows_fail_closed() {
 }
 
 #[test]
+fn chief_umbrella_migration_ownership_fails_closed() {
+    let repository = TempRepo::new();
+    let ledger = command_row("python", "pending", "pending", "pending")
+        .replace("migration_issue = 7661", "migration_issue = 7687");
+    prepare(&repository, &ledger);
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains(
+            "fixture run delegates migration ownership to chief umbrella #7687",
+        ));
+}
+
+#[test]
 fn rust_cutover_is_rejected_while_a_python_caller_remains() {
     let repository = TempRepo::new();
     let mut ledger = command_row("rust", "complete", "complete", "pending");

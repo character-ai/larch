@@ -24,6 +24,7 @@ const CLEAN_INSTALL_CASES_PATH: &str = "crates/larch-cli/tests/parity.rs";
 const PYTHON_REGISTRY_PATH: &str = "python/larch/cli.py";
 const HOOKS_PATH: &str = "hooks/hooks.json";
 const SCHEMA_VERSION: u32 = 1;
+const CHIEF_MIGRATION_ISSUE: u64 = 7687;
 
 static PYTHON_ROW: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -474,6 +475,12 @@ fn command_map(ledger: &Ledger) -> Result<BTreeMap<CommandKey, &CommandRecord>, 
         if command.migration_issue == 0 {
             return Err(LintError::new(format!(
                 "{LEDGER_PATH}: {} has no responsible migration issue",
+                command.key().selector()
+            )));
+        }
+        if command.migration_issue == CHIEF_MIGRATION_ISSUE {
+            return Err(LintError::new(format!(
+                "{LEDGER_PATH}: {} delegates migration ownership to chief umbrella #{CHIEF_MIGRATION_ISSUE}; name the domain migration owner or completed leaf",
                 command.key().selector()
             )));
         }

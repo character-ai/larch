@@ -55,6 +55,8 @@ input.
 The `service-ownership` rule also rejects runtime `gcloud` execution and keeps
 this clean-install `gh` in `scripts/larch.sh` separate from runtime service
 access: bootstrap use of `gh` does not authorize a runtime adapter to shell out.
+Its GitHub operation matrix fails on ownership or migration-state drift,
+including chief-issue placeholders, inventory gaps, and generic-token fallback.
 
 ## Run-log Archive Materialization
 
@@ -128,7 +130,8 @@ raw URLs, arbitrary GraphQL documents, or the concrete client. Operation
 leaves must add typed paths and DTOs behind this same adapter. The
 `service-ownership` repository rule mechanically confines the Octocrab client,
 GitHub request hosts, and GraphQL documents to the adapter crate and requires
-`docs/github-service-inventory.md` to name the concrete client owner.
+`docs/github-service-inventory.md` to name client and operation owners. Parity
+fixtures independently block all GitHub credential variables.
 
 Repository, issue, comment, label, and search responses are untrusted data.
 The Rust operation adapter converts Octocrab models immediately into
