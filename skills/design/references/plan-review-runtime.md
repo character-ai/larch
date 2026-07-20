@@ -156,7 +156,7 @@ Finalize writes are loop-internal to `python/plan_review.py`. After the driver r
 
 - `$DESIGN_TMPDIR/accepted-plan-findings.md` contains accepted in-scope `FINDING_*` items for Gate B or loop bail-out handling. It may be empty.
 - `$DESIGN_TMPDIR/rejected-findings.md` contains rejected in-scope findings using the Track Rejected template below. It may be empty.
-- `$DESIGN_TMPDIR/oos-accepted-design.md` contains accepted non-security OOS items for later issue filing. Security-tagged items stay local per `SECURITY.md` and are not written to public OOS artifacts.
+- `$DESIGN_TMPDIR/oos-accepted-design.md` contains accepted non-security OOS items for later issue filing. Security-tagged items stay local per `${CLAUDE_PLUGIN_ROOT}/docs/security/workflow-trust-and-mutations.md` and are not written to public OOS artifacts.
 - `$DESIGN_TMPDIR/oos.md` contains visible OOS observations after the same security filtering. It may be empty.
 
 ### Accepted FINDING_N template (byte-preserved)

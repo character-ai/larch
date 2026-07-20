@@ -43,7 +43,7 @@ https://github.com/` rule would silently redirect every `git ls-remote`,
 bypassing the `gh repo view` parent guard. Same-user trust model — review
 your `git config --global --get-regexp '^url\..*\.insteadOf$'` before
 running the skill on a profile inherited from a less-trusted source. See
-SECURITY.md "Fork setup URL-override footgun" for the residual-risk
+`${CLAUDE_PLUGIN_ROOT}/docs/security/workflow-trust-and-mutations.md` for the residual-risk
 discussion. Pre-fetch URL classification (`phase_preflight` calls
 `normalize_github_url` on `origin.url` before the first `git fetch origin`)
 catches non-parseable, mixed-host, and multi-URL stored remote layouts but does

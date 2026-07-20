@@ -230,7 +230,7 @@ MUST NOT discard partial edits or commits via `git reset` / `git restore` / `git
 
 Before `oos_observations[]`, apply `skills/implement/SKILL.md` § "OOS triage policy" as authority:
 
-- Security findings: never inline-fold or OOS-file; use SECURITY.md privately. If uncertain whether a finding is security, do not file publicly.
+- Security findings: never inline-fold or OOS-file; use `docs/security/workflow-trust-and-mutations.md` privately. If uncertain whether a finding is security, do not file publicly.
 - Rule 1: Documentation drift, any size, folds into this commit.
 - Rule 2: Bug fixes under ~30 LOC fold into this commit.
 - Rule 3: Medium bug fixes, each >= ~30 LOC, file as ONE OOS issue when multiple. A singleton not covered by rule 2 is filed OOS.
@@ -251,7 +251,7 @@ Before writing `<MANIFEST_PATH>`, verify:
 - [ ] `bailed`: non-empty `bail_reason`. Prefer `codex-manifest-schema.md` tokens.
 - [ ] `files_touched[].path` and `tests_added_or_modified`: normalized repo-relative paths, not submodules.
 - [ ] `summary_bullets`: WHY, not HOW; public PR body and CHANGELOG copy.
-- [ ] `oos_observations`: only post-triage filed-OOS candidates not fixed here; exclude folded rules 1-2 and SECURITY.md-routed findings; each entry has `title`, `description`, `phase: "implement"`.
+- [ ] `oos_observations`: only post-triage filed-OOS candidates not fixed here; exclude folded rules 1-2 and private-security-routed findings; each entry has `title`, `description`, `phase: "implement"`.
 - [ ] `todos_left`: actionable deferred implementation work only. Do not list unrun full-suite validation commands, including full `make py-lint` / `make py-test`, when focused relevant checks passed or `/implement`/CI owns later validation.
 - [ ] Manifest `jq -e` self-validation against `<MANIFEST_PATH>.tmp` exited 0.
 - [ ] For `needs_qa`, qa-pending `jq -e` self-validation against `<QA_PENDING_PATH>.tmp` exited 0.

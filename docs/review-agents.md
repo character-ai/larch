@@ -70,7 +70,7 @@ Larch also ships generated specialist Claude agents for focused review lanes. Th
 
 ## External reviewer trust boundary (skills using Cursor / Codex against `$PWD`)
 
-This complements but is distinct from the existing note in *Persistent Agent vs. Inline Template* below about external-reviewer prompt taxonomy — that note covers **what** external reviewers are asked to look at; this section covers **what** they can do to the filesystem regardless of what they were asked. See [`SECURITY.md` § External reviewer write surface in /research](../SECURITY.md#external-reviewer-write-surface-in-research) for the full trust-model framing and [`docs/external-reviewers.md`](external-reviewers.md) for integration mechanics (launch order, timeouts, sentinel monitoring).
+This complements but is distinct from the existing note in *Persistent Agent vs. Inline Template* below about external-reviewer prompt taxonomy — that note covers **what** external reviewers are asked to look at; this section covers **what** they can do to the filesystem regardless of what they were asked. See [the canonical research boundary](security/workflow-trust-and-mutations.md#research) for the full trust-model framing and [`docs/external-reviewers.md`](external-reviewers.md) for integration mechanics (launch order, timeouts, sentinel monitoring).
 
 ## Persistent Agent vs. Inline Template
 

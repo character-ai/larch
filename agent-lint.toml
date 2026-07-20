@@ -1370,12 +1370,14 @@ root-max-content-tokens = 35301
 # issue #7785 adds clean-install and issue-registry audit boundaries.
 # issue #7853 packages the current root policy and adds its scope and overview.
 # issue #7815 adds the provider-neutral object-storage trust boundary.
+# issue #7855 loads the focused workflow-security reference only on conditional
+# private-finding and OOS routes.
 closure-max-lines = 3893
 closure-max-tokens = 146785
 closure-max-content-tokens = 146475
-conditional-max-lines = 591
-conditional-max-tokens = 18803
-conditional-max-content-tokens = 18756
+conditional-max-lines = 788
+conditional-max-tokens = 22725
+conditional-max-content-tokens = 22661
 
 [[lint.prompt-source-budgets]]
 name = "review"
