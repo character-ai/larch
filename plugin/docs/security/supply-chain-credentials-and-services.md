@@ -307,6 +307,14 @@ then promotes it. Ambiguous promotion reads back Latest before a retry. The
 final Latest state is verified. The release commands expose no raw Git, `gh`,
 URL, GraphQL, or Python fallback.
 
+Repository-policy setup reads the merge-commit and immutable-release settings
+before it writes. It mutates only a setting that is disabled, so an already
+compliant repository requires Administration read but not Administration write
+on `LARCH_GH_TOKEN`. Repairing a disabled setting requires Administration
+write. Missing permission returns a fixed, secret-free policy diagnostic. A
+required mutation remains fail-closed, and every successful setup performs a
+final read-back of both owning policy surfaces.
+
 The dev-only release skill builds the current checkout before its first
 Rust-backed release command and rebuilds immediately after the candidate
 version write. Every working-tree release command still enters through

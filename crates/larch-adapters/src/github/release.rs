@@ -7,7 +7,10 @@
 //! HTTPS, strips the credential across origins, rejects loops and hop overruns,
 //! and bounds the streamed body by a per-asset byte cap.
 
-use super::{GitHubCompletionError, GitHubHostError, OctocrabGitHubService, validate_approved_url};
+use super::{
+    GitHubCompletionError, GitHubHostError, OctocrabGitHubService, octocrab_status,
+    validate_approved_url,
+};
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName};
 use http_body_util::combinators::BoxBody;
@@ -104,6 +107,10 @@ pub enum ReleaseServiceError {
     AmbiguousMutation,
     /// An ambiguous mutation reconciled to a lost effect that must not retry.
     MutationLost,
+    /// The release credential cannot inspect or change repository policy.
+    RepositoryPolicyPermission,
+    /// A repository-policy endpoint returned a definite non-success status.
+    RepositoryPolicyStatus(u16),
     /// The transport failed with an already-redacted diagnostic.
     Transport(SafeText),
 }
@@ -128,6 +135,12 @@ impl fmt::Display for ReleaseServiceError {
                 .write_str("GitHub mutation outcome was ambiguous and awaits reconciliation"),
             Self::MutationLost => formatter
                 .write_str("GitHub mutation could not be reconciled after an ambiguous outcome"),
+            Self::RepositoryPolicyPermission => formatter.write_str(
+                "LARCH_GH_TOKEN requires repository Administration read permission for release policy checks and write permission to enable missing settings",
+            ),
+            Self::RepositoryPolicyStatus(status) => {
+                write!(formatter, "GitHub repository policy request returned status {status}")
+            }
             Self::Transport(detail) => write!(formatter, "GitHub transport failed: {detail}"),
         }
     }
@@ -625,17 +638,22 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         &self,
         repo: &RepoSlug,
     ) -> Result<(), ReleaseServiceError> {
-        let merge = self.transport.enable_merge_commits(repo).await;
-        if let Err(error) = &merge
-            && !is_ambiguous_write(error)
-        {
-            return merge;
+        let (merge_commits, immutable_releases) = self.repository_policy(repo).await?;
+        if !merge_commits {
+            let merge = self.transport.enable_merge_commits(repo).await;
+            if let Err(error) = &merge
+                && !is_ambiguous_write(error)
+            {
+                return merge;
+            }
         }
-        let immutable = self.transport.enable_immutable_releases(repo).await;
-        if let Err(error) = &immutable
-            && !is_ambiguous_write(error)
-        {
-            return immutable;
+        if !immutable_releases {
+            let immutable = self.transport.enable_immutable_releases(repo).await;
+            if let Err(error) = &immutable
+                && !is_ambiguous_write(error)
+            {
+                return immutable;
+            }
         }
         if self.verify_repository_policy(repo).await? {
             Ok(())
@@ -780,6 +798,39 @@ impl<'a> OctocrabReleaseTransport<'a> {
         }
     }
 
+    fn policy_read_error(&self, error: &octocrab::Error) -> ReleaseServiceError {
+        if octocrab_status(error) == Some(403) {
+            ReleaseServiceError::RepositoryPolicyPermission
+        } else {
+            self.transport_error(error)
+        }
+    }
+
+    fn policy_mutation_error(&self, error: &octocrab::Error) -> ReleaseServiceError {
+        if octocrab_status(error) == Some(403) {
+            ReleaseServiceError::RepositoryPolicyPermission
+        } else {
+            self.mutation_error(error)
+        }
+    }
+
+    fn policy_status_error(status: u16, mutation: bool) -> ReleaseServiceError {
+        if status == 403 {
+            return ReleaseServiceError::RepositoryPolicyPermission;
+        }
+        if mutation
+            && classify_github_retry(
+                GitHubRequestKind::Mutation,
+                GitHubFailureInput::HttpStatus(status),
+                GitHubRateLimitInputs::NONE,
+            ) == GitHubRetryAction::ReconcileMutation
+        {
+            ReleaseServiceError::AmbiguousMutation
+        } else {
+            ReleaseServiceError::RepositoryPolicyStatus(status)
+        }
+    }
+
     async fn get_json(
         &self,
         url: String,
@@ -791,6 +842,30 @@ impl<'a> OctocrabReleaseTransport<'a> {
             }
             Err(error) => return Err(self.transport_error(&error)),
         };
+        let cap = self.service.policy.limits().body_bytes();
+        let body = collect_bounded(response, cap).await?;
+        serde_json::from_slice(&body)
+            .map(Some)
+            .map_err(|error| self.transport_error_from(&error))
+    }
+
+    async fn get_policy_json(
+        &self,
+        url: String,
+    ) -> Result<Option<serde_json::Value>, ReleaseServiceError> {
+        let response = self
+            .service
+            .client
+            ._get(url)
+            .await
+            .map_err(|error| self.policy_read_error(&error))?;
+        let status = response.status().as_u16();
+        if status == 404 {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(Self::policy_status_error(status, false));
+        }
         let cap = self.service.policy.limits().body_bytes();
         let body = collect_bounded(response, cap).await?;
         serde_json::from_slice(&body)
@@ -964,36 +1039,33 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
     }
 
     fn immutable_releases_enabled<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, bool> {
-        let url = format!(
-            "https://{API_HOST}/repos/{}/immutable-releases",
-            repo.path()
-        );
+        let url = format!("/repos/{}/immutable-releases", repo.path());
         Box::pin(self.guard(async move {
-            Ok(self
-                .get_json(url)
-                .await?
-                .as_ref()
-                .and_then(|value| value.get("enabled"))
+            let Some(value) = self.get_policy_json(url).await? else {
+                return Ok(false);
+            };
+            value
+                .get("enabled")
                 .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false))
+                .ok_or(ReleaseServiceError::RepositoryPolicyPermission)
         }))
     }
 
     fn merge_commits_enabled<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, bool> {
-        let url = format!("https://{API_HOST}/repos/{}", repo.path());
+        let url = format!("/repos/{}", repo.path());
         Box::pin(self.guard(async move {
-            Ok(self
-                .get_json(url)
-                .await?
-                .as_ref()
-                .and_then(|value| value.get("allow_merge_commit"))
+            let Some(value) = self.get_policy_json(url).await? else {
+                return Ok(false);
+            };
+            value
+                .get("allow_merge_commit")
                 .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false))
+                .ok_or(ReleaseServiceError::RepositoryPolicyPermission)
         }))
     }
 
     fn enable_merge_commits<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, ()> {
-        let url = format!("https://{API_HOST}/repos/{}", repo.path());
+        let url = format!("/repos/{}", repo.path());
         Box::pin(self.guard(async move {
             let body = serde_json::json!({"allow_merge_commit": true});
             self.service
@@ -1001,22 +1073,24 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
                 .patch::<serde_json::Value, _, _>(url, Some(&body))
                 .await
                 .map(|_| ())
-                .map_err(|error| self.mutation_error(&error))
+                .map_err(|error| self.policy_mutation_error(&error))
         }))
     }
 
     fn enable_immutable_releases<'b>(&'b self, repo: &RepoSlug) -> ReleaseFuture<'b, ()> {
-        let url = format!(
-            "https://{API_HOST}/repos/{}/immutable-releases",
-            repo.path()
-        );
+        let url = format!("/repos/{}/immutable-releases", repo.path());
         Box::pin(self.guard(async move {
-            self.service
+            let response = self
+                .service
                 .client
                 ._put(url, None::<&()>)
                 .await
-                .map(|_| ())
-                .map_err(|error| self.mutation_error(&error))
+                .map_err(|error| self.policy_mutation_error(&error))?;
+            if response.status().is_success() {
+                Ok(())
+            } else {
+                Err(Self::policy_status_error(response.status().as_u16(), true))
+            }
         }))
     }
 
@@ -1223,6 +1297,10 @@ mod release_tests {
         tag: Option<TagObjectId>,
         immutable: bool,
         merge_commits: bool,
+        immutable_reads: ReleaseQueue<bool>,
+        merge_commit_reads: ReleaseQueue<bool>,
+        immutable_enables: ReleaseQueue<()>,
+        merge_commit_enables: ReleaseQueue<()>,
         release_body: String,
         list: ReleaseQueue<Vec<ReleaseState>>,
         latest: ReleaseQueue<Option<ReleaseState>>,
@@ -1233,6 +1311,8 @@ mod release_tests {
         upload: ReleaseQueue<RemoteAsset>,
         hops: ReleaseQueue<FetchOutcome>,
         list_calls: Mutex<usize>,
+        immutable_enable_calls: Mutex<usize>,
+        merge_commit_enable_calls: Mutex<usize>,
     }
 
     impl ReleaseTransport for FakeTransport {
@@ -1261,21 +1341,27 @@ mod release_tests {
         }
 
         fn immutable_releases_enabled<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, bool> {
+            let scripted = pop(&self.immutable_reads);
             let value = self.immutable;
-            Box::pin(async move { Ok(value) })
+            Box::pin(async move { scripted.unwrap_or(Ok(value)) })
         }
 
         fn merge_commits_enabled<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, bool> {
+            let scripted = pop(&self.merge_commit_reads);
             let value = self.merge_commits;
-            Box::pin(async move { Ok(value) })
+            Box::pin(async move { scripted.unwrap_or(Ok(value)) })
         }
 
         fn enable_merge_commits<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, ()> {
-            Box::pin(async { Ok(()) })
+            *self.merge_commit_enable_calls.lock().expect("call counter") += 1;
+            let outcome = pop(&self.merge_commit_enables);
+            Box::pin(async move { outcome.unwrap_or(Ok(())) })
         }
 
         fn enable_immutable_releases<'a>(&'a self, _repo: &RepoSlug) -> ReleaseFuture<'a, ()> {
-            Box::pin(async { Ok(()) })
+            *self.immutable_enable_calls.lock().expect("call counter") += 1;
+            let outcome = pop(&self.immutable_enables);
+            Box::pin(async move { outcome.unwrap_or(Ok(())) })
         }
 
         fn create_draft_release<'a>(
@@ -1480,6 +1566,14 @@ mod release_tests {
         };
         let operations = ReleaseOperations::new(&transport);
         assert!(run(operations.ensure_repository_policy(&repo())).is_ok());
+        assert_eq!(
+            *transport.merge_commit_enable_calls.lock().expect("counter"),
+            0
+        );
+        assert_eq!(
+            *transport.immutable_enable_calls.lock().expect("counter"),
+            0
+        );
         let input = DraftReleaseInput {
             tag: "v1".to_owned(),
             target_commitish: "commit".to_owned(),
@@ -1490,6 +1584,94 @@ mod release_tests {
                 .expect("reconciled update")
                 .database_id(),
             7
+        );
+    }
+
+    #[test]
+    fn policy_enablement_mutates_only_disabled_settings() {
+        let merge_transport = FakeTransport {
+            immutable: true,
+            merge_commit_reads: Mutex::new([Ok(false), Ok(true)].into()),
+            ..FakeTransport::default()
+        };
+        assert!(
+            run(ReleaseOperations::new(&merge_transport).ensure_repository_policy(&repo())).is_ok()
+        );
+        assert_eq!(
+            *merge_transport
+                .merge_commit_enable_calls
+                .lock()
+                .expect("counter"),
+            1
+        );
+        assert_eq!(
+            *merge_transport
+                .immutable_enable_calls
+                .lock()
+                .expect("counter"),
+            0
+        );
+
+        let immutable_transport = FakeTransport {
+            merge_commits: true,
+            immutable_reads: Mutex::new([Ok(false), Ok(true)].into()),
+            ..FakeTransport::default()
+        };
+        assert!(
+            run(ReleaseOperations::new(&immutable_transport).ensure_repository_policy(&repo()))
+                .is_ok()
+        );
+        assert_eq!(
+            *immutable_transport
+                .merge_commit_enable_calls
+                .lock()
+                .expect("counter"),
+            0
+        );
+        assert_eq!(
+            *immutable_transport
+                .immutable_enable_calls
+                .lock()
+                .expect("counter"),
+            1
+        );
+    }
+
+    #[test]
+    fn policy_enablement_reconciles_ambiguous_missing_setting() {
+        let transport = FakeTransport {
+            immutable: true,
+            merge_commit_reads: Mutex::new([Ok(false), Ok(true)].into()),
+            merge_commit_enables: Mutex::new([Err(ReleaseServiceError::AmbiguousMutation)].into()),
+            ..FakeTransport::default()
+        };
+
+        assert!(run(ReleaseOperations::new(&transport).ensure_repository_policy(&repo())).is_ok());
+        assert_eq!(
+            *transport.merge_commit_enable_calls.lock().expect("counter"),
+            1
+        );
+    }
+
+    #[test]
+    fn policy_enablement_fails_closed_on_definite_missing_setting_error() {
+        let transport = FakeTransport {
+            immutable: true,
+            merge_commit_enables: Mutex::new([Err(ReleaseServiceError::MutationLost)].into()),
+            ..FakeTransport::default()
+        };
+
+        assert_eq!(
+            run(ReleaseOperations::new(&transport).ensure_repository_policy(&repo())),
+            Err(ReleaseServiceError::MutationLost)
+        );
+        assert_eq!(
+            *transport.merge_commit_enable_calls.lock().expect("counter"),
+            1
+        );
+        assert_eq!(
+            *transport.immutable_enable_calls.lock().expect("counter"),
+            0
         );
     }
 
@@ -1779,6 +1961,8 @@ mod release_tests {
             ReleaseServiceError::AssetTooLarge,
             ReleaseServiceError::AmbiguousMutation,
             ReleaseServiceError::MutationLost,
+            ReleaseServiceError::RepositoryPolicyPermission,
+            ReleaseServiceError::RepositoryPolicyStatus(422),
         ] {
             assert!(!error.to_string().is_empty());
         }
@@ -1831,6 +2015,15 @@ mod transport_tests {
         Reply {
             expected_request: Some(expected_request),
             ..json_reply(status, value)
+        }
+    }
+
+    fn empty_reply_expecting(status: u16, expected_request: &'static str) -> Reply {
+        Reply {
+            status,
+            headers: Vec::new(),
+            body: Vec::new(),
+            expected_request: Some(expected_request),
         }
     }
 
@@ -1942,6 +2135,71 @@ mod transport_tests {
 
     fn repo() -> RepoSlug {
         RepoSlug::parse("o", "r").expect("valid slug")
+    }
+
+    #[tokio::test]
+    async fn policy_transport_accepts_no_content_and_maps_missing_permission() {
+        let (service, _base, server) = stub(vec![json_reply(
+            403,
+            &json!({"message": "untrusted upstream detail"}),
+        )]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        assert_eq!(
+            transport.merge_commits_enabled(&repo()).await,
+            Err(ReleaseServiceError::RepositoryPolicyPermission)
+        );
+        server.join().expect("permission stub");
+
+        let (service, _base, server) = stub(vec![json_reply(
+            403,
+            &json!({"message": "untrusted upstream detail"}),
+        )]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        assert_eq!(
+            transport.enable_merge_commits(&repo()).await,
+            Err(ReleaseServiceError::RepositoryPolicyPermission)
+        );
+        server.join().expect("merge permission stub");
+
+        let (service, _base, server) = stub(vec![json_reply(
+            403,
+            &json!({"message": "untrusted upstream detail"}),
+        )]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        assert_eq!(
+            transport.enable_immutable_releases(&repo()).await,
+            Err(ReleaseServiceError::RepositoryPolicyPermission)
+        );
+        server.join().expect("immutable permission stub");
+
+        let (service, _base, server) = stub(vec![json_reply(200, &json!({}))]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        assert_eq!(
+            transport.merge_commits_enabled(&repo()).await,
+            Err(ReleaseServiceError::RepositoryPolicyPermission)
+        );
+        server.join().expect("omitted-field stub");
+
+        let (service, _base, server) = stub(vec![
+            json_reply(200, &json!({"allow_merge_commit": true})),
+            json_reply(200, &json!({"enabled": false})),
+            empty_reply_expecting(204, "PUT /repos/o/r/immutable-releases"),
+            json_reply(200, &json!({"allow_merge_commit": true})),
+            json_reply(200, &json!({"enabled": true})),
+        ]);
+        let cancellation = Cancellation::new();
+        let transport = OctocrabReleaseTransport::new(&service, &cancellation);
+        assert!(
+            ReleaseOperations::new(&transport)
+                .ensure_repository_policy(&repo())
+                .await
+                .is_ok()
+        );
+        server.join().expect("policy setup stub");
     }
 
     #[tokio::test]
