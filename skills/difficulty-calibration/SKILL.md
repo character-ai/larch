@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=difficulty-calibration
 name: difficulty-calibration
 description: "Use when comparing predicted and realized larch difficulty tiers from synchronized run logs. Diagnostic only; changes no thresholds, panels, points, or routing."
 argument-hint: "[--log-root DIR] [--out FILE]"
 allowed-tools: Bash, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `difficulty-calibration`.**
 
 # difficulty-calibration
 

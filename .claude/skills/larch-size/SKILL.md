@@ -1,8 +1,11 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=larch-size
 name: larch-size
 description: "Use when reporting larch repository line counts and run-log sizes. Prints tracked Bash, Python, and Markdown line counts plus larch-logs size breakdowns."
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `larch-size`.**
 
 # /larch-size
 

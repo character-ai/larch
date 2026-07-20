@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=block-issue
 name: block-issue
 description: "Use when expressing a native GitHub blocked-by relationship between two issues. Takes the blocked issue number and the blocking issue number as arguments."
 argument-hint: "<ISSUE_A> <ISSUE_B> [--repo owner/name] --operator-invoked [--triage-controlled --expected-updated-at TIMESTAMP]"
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `block-issue`.**
 
 # block-issue
 

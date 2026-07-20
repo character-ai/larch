@@ -1323,17 +1323,18 @@ conditional-sources = [
   "skills/design/references/dialectic-clarifier.md",
   "skills/design/references/validator-failure.md",
 ]
-root-max-lines = 693
-root-max-tokens = 26340
-root-max-content-tokens = 26286
+root-max-lines = 695
+root-max-tokens = 26385
+root-max-content-tokens = 26330
+# Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # I-Runtime-1 specifies the mechanically enforced Rust entrypoint boundary.
 # Issue #7780 documents the executable-plan / force-admission contract in
 # docs/issue-anchored-plan.md (always-imported design closure).
 # Issue #7783 adds the shared-owner implementation-lease invariant.
 # Issue #7785 adds the atomic command-cutover invariant.
-closure-max-lines = 1679
-closure-max-tokens = 50403
-closure-max-content-tokens = 50276
+closure-max-lines = 1680
+closure-max-tokens = 50434
+closure-max-content-tokens = 50307
 conditional-max-lines = 661
 conditional-max-tokens = 18524
 conditional-max-content-tokens = 18465
@@ -1352,9 +1353,10 @@ conditional-sources = [
   "skills/implement/references/conflict-resolution.md",
   "skills/implement/references/stall-recovery.md",
 ]
-root-max-lines = 879
-root-max-tokens = 35383
-root-max-content-tokens = 35301
+root-max-lines = 881
+root-max-tokens = 35404
+root-max-content-tokens = 35322
+# Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add focused trust boundaries;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
 # Git-CLI migration (#7675/#7734/#7735) routes runtime Git callers through `scripts/larch.sh`;
@@ -1388,10 +1390,11 @@ conditional-sources = [
   "skills/review/references/heavy-worker.md",
   "skills/review/references/self-review.md",
 ]
-root-max-lines = 124
+root-max-lines = 126
 root-max-tokens = 5670
 root-max-content-tokens = 5660
-closure-max-lines = 124
+# Issue #7827 adds the mandatory universal skill lifecycle instruction.
+closure-max-lines = 126
 closure-max-tokens = 5670
 closure-max-content-tokens = 5660
 conditional-max-lines = 156

@@ -1,6 +1,6 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=triage
 name: triage
 description: "Use when an existing non-security GitHub issue needs verification, root-cause analysis, and a safe update before /design."
 argument-hint: "<issue-number> [--repo OWNER/REPO] [--report-only]"
@@ -13,6 +13,8 @@ hooks:
           command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh triage"
           timeout: 5
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `triage`.**
 
 # Triage
 

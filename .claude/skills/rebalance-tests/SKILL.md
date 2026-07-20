@@ -1,8 +1,11 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=rebalance-tests
 name: rebalance-tests
 description: "Use when rebalancing CI test harness shards, Python unit test shards, or both from recent timings. Creates one PR and verifies the selected shard plan."
 allowed-tools: Bash, Read, Write
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `rebalance-tests`.**
 
 # /rebalance-tests
 

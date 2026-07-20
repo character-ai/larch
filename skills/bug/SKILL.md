@@ -1,6 +1,6 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=bug
 name: bug
 description: "Use when filing, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled."
 argument-hint: "[--urgent] <bug description>"
@@ -13,6 +13,8 @@ hooks:
           command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh bug"
           timeout: 5
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `bug`.**
 
 # Bug Skill
 

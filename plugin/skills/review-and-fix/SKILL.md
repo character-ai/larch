@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=review-and-fix
 name: review-and-fix
 description: Use when applying accepted review findings as code fixes. Internal skill invoked by /review in diff mode; not a standalone user entry point.
 argument-hint: "--findings-file <path> [--session-env <path>] [--review-tmpdir <path>]"
 allowed-tools: AskUserQuestion, Bash, Read, Grep, Glob
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `review-and-fix`.**
 
 # Review And Fix Skill
 

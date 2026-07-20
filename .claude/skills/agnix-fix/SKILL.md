@@ -1,9 +1,12 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=agnix-fix
 name: agnix-fix
 description: "Use when fixing an open agent-sh/agnix issue from this larch clone. Prepares fork label state, then forwards to /implement --forked after /design writes the plan."
 argument-hint: "<upstream-issue-number> [extra-flags...]"
 allowed-tools: Bash, Skill
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `agnix-fix`.**
 
 # Agnix-Fix Skill
 

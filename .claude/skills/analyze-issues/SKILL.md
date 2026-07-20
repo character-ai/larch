@@ -1,8 +1,11 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=analyze-issues
 name: analyze-issues
 description: "Use when generating a GitHub-issue backlog report: coverage, categories, growth chart, waste signatures, reviewer/persona, and voter diagnostics."
 allowed-tools: Bash, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `analyze-issues`.**
 
 # analyze-issues
 

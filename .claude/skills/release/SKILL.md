@@ -1,10 +1,13 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=release
 name: release
 description: "Use when cutting a larch release: create and tag a version candidate, validate its draft assets, merge it, publish immutable, and promote Latest."
 argument-hint: "[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]"
 allowed-tools: AskUserQuestion, Bash, Skill
 disable-model-invocation: true
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `release`.**
 
 # Release
 

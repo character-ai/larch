@@ -1,6 +1,6 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=research
 name: research
 description: "Use when conducting read-only research; planner pre-pass + 4 Codex-first lanes (arch/edge/ext/security) with Claude fallback; 3-reviewer panel (Claude+Codex+Cursor); --no-issue skips auto-issue."
 argument-hint: "[--no-issue] <research question or topic>"
@@ -13,6 +13,8 @@ hooks:
           command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh research"
           timeout: 5
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `research`.**
 
 # Research Skill
 

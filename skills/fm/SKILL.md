@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=fm
 name: fm
 description: "Use when forcing an implementation with Claude subagent implement + self-review and auto-merge. Shortcut for /implement --force --self-review --self-implement --merge (same as /f --merge)."
 argument-hint: "<arguments>"
-allowed-tools: Skill, Read
+allowed-tools: Bash(python3:*), Skill, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `fm`.**
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 

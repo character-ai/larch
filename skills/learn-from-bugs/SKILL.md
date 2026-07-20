@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=learn-from-bugs
 name: learn-from-bugs
 description: "Use when mining closed bugs for recurring root causes to propose lints, invariants, guidelines, regression tests, and still-broken fixes. [BUG] default. --file/-s files residuals via /issue."
 argument-hint: "[-n COUNT] [--state closed|open|all] [--repo OWNER/REPO --root PATH] [--search QUERY] [--zones a,b] [--file|-s] [verbal description of issues to mine]"
 allowed-tools: Bash, Read, Grep, Glob, Write, Edit, AskUserQuestion, Skill
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `learn-from-bugs`.**
 
 # Learn From Bugs
 

@@ -1,10 +1,12 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=voter-calibration
 name: voter-calibration
 description: "Use when analyzing voter agreement, severity calibration, and chronic outliers from synchronized larch run logs. Diagnostic only; changes no thresholds or points."
 allowed-tools: Bash, Read
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `voter-calibration`.**
 
 # voter-calibration
 

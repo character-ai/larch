@@ -1,9 +1,12 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=analyze-bugs
 name: analyze-bugs
 description: "Use when verifying whether recent filed [BUG] issues were fixed. Dev-only; report-only unless follow-up filing is approved."
 argument-hint: "[-n COUNT] [--deep-max M] [--runtime-max M] [--deep-model sonnet|opus|fable] [--refresh] [--sample K] [--repo owner/name]"
 allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `analyze-bugs`.**
 
 # /analyze-bugs
 

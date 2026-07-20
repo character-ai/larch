@@ -1,5 +1,5 @@
 ---
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=implement
 # Referenced implement script files:
 # skills/implement/scripts/step-architectural-invariants-write-compose.md
 # skills/implement/scripts/step-architectural-invariants-write-compose.sh
@@ -12,6 +12,8 @@ description: "Use when implementing from a GitHub issue with a vetted in-body pl
 argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--run-id <ID>] [--force|-f] [--self-review] [--self-implement] [--difficulty <TRIVIAL|MODERATE|HARD>] <issue-N>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `implement`.**
 # Implement Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**

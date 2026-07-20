@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=deps
 name: deps
 description: "Use when auditing all open GitHub issues for stale REGULAR issue text and missing issue dependencies, with one approval gate before any mutation."
 argument-hint: "[--repo owner/name] [--pair-cap N]"
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `deps`.**
 
 # deps
 

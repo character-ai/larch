@@ -1,11 +1,13 @@
 ---
 
-# pending:7827
+# larch-run-lifecycle: shared-v1 skill=set-up-forked-open-source-repo
 name: set-up-forked-open-source-repo
 description: "Use when configuring a clone for upstream-fork OSS work: set origin/upstream remotes, disable upstream pushes, and optionally mirror-sync the fork."
 argument-hint: "--upstream <owner/repo> --fork <owner/repo> [--mirror-confirmed] [--init-submodules]"
 allowed-tools: Bash
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `set-up-forked-open-source-repo`.**
 
 # Set Up Forked Open Source Repo
 

@@ -1,9 +1,12 @@
 ---
+# larch-run-lifecycle: shared-v1 skill=validate-merged
 name: validate-merged
 description: "Use when inspecting recent merged changes for possible unfiled bugs. Dev-only; report-only unless a follow-up is approved."
 argument-hint: "[--max-merges N] [--repo owner/name]"
 allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `validate-merged`.**
 
 # /validate-merged
 
