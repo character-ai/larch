@@ -12,7 +12,7 @@ import pytest  # noqa: TC002
 
 from larch.report import gc_run_logs
 from larch.core.proc import CommandResult
-from larch.report.report_tokens_scan import scan
+from larch.report.report_tokens_scan import scan_prepared_corpus
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -313,7 +313,11 @@ def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_pat
     assert not (run / "round-1").exists()
     assert (run / "gc-slimmed").is_file()
 
-    result = scan(_ScanRunner(repo), skill="design", repo_override="o/r")
+    result = scan_prepared_corpus(
+        _ScanRunner(repo),
+        skill="design",
+        corpus_root=logs_root,
+    )
     assert len(result.records) == 1
     assert result.records[0].codex.total == 11
 

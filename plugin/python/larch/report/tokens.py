@@ -1965,14 +1965,11 @@ def _reference_reads_for_run(*, repo: Path, skill: str, run_dir: Path) -> list[O
     return reads
 
 
-def _skill_run_dirs(repo: Path) -> dict[str, list[Path]]:
-    root = repo / "larch-logs"
+def _skill_run_dirs(log_root: Path) -> dict[str, list[Path]]:
     by_skill: dict[str, list[Path]] = {}
-    if not root.is_dir():
+    if not log_root.is_dir():
         return by_skill
-    for skill_dir in sorted(root.iterdir()):
-        if skill_dir.is_symlink() or not skill_dir.is_dir():
-            continue
+    for skill_dir in run_log_corpus.safe_child_run_dirs(log_root):
         runs = list(run_log_corpus.run_dirs(skill_dir))
         if skill_dir.name == "review":
             seen = {path.resolve() for path in runs}
@@ -2115,7 +2112,8 @@ def measure_ngram_duplication() -> Path:
 def measure_references_heatmap() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-references-heatmap" / f"{_measure_stamp()}.tsv"
-    run_dirs_by_skill = _skill_run_dirs(repo)
+    log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
+    run_dirs_by_skill = _skill_run_dirs(log_root)
     reads: list[ObservedReferenceRead] = []
     coverage_rows: list[tuple[str, int, int, int, float, str]] = []
     for skill, dirs in run_dirs_by_skill.items():
@@ -2160,7 +2158,8 @@ def measure_references_heatmap() -> Path:
 def measure_realized_cost() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-realized-cost" / f"{_measure_stamp()}.tsv"
-    run_dirs_by_skill = _skill_run_dirs(repo)
+    log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
+    run_dirs_by_skill = _skill_run_dirs(log_root)
     skill_paths: dict[str, str] = {}
     skill_texts: list[str] = []
     for skill in sorted(run_dirs_by_skill):
@@ -2506,11 +2505,14 @@ def measure_cache_efficiency() -> Path:
 
     runner = ProcRunner()
     tagged_records: list[tuple[Skill, RunRecord]] = []
-    repo_root: Path | None = None
+    repo_root: Path = _repo_root()
+    log_root: Path = run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
     for skill in ("design", "implement"):
-        scan_result = report_tokens_scan.scan(runner, skill=skill, resolve_repo=False)
-        if repo_root is None:
-            repo_root = scan_result.repo_root
+        scan_result = report_tokens_scan.scan_prepared_corpus(
+            runner,
+            skill=skill,
+            corpus_root=log_root,
+        )
         tagged_records.extend((skill, record) for record in scan_result.records)
     out_path = repo_root / "larch-logs" / "measure-cache-efficiency" / f"{_measure_stamp()}.tsv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2540,9 +2542,15 @@ class _PanelCostAggregate:
     runs: set[tuple[str, str]] = dataclass_field(default_factory=set)
 
 
-def _panel_context_from_tsv(path: Path, repo: Path) -> tuple[str, str] | None:
+def _panel_context_from_tsv(
+    path: Path,
+    repo: Path,
+    *,
+    corpus_root: Path | None = None,
+) -> tuple[str, str] | None:
+    root = repo / "larch-logs" if corpus_root is None else corpus_root
     try:
-        rel = path.relative_to(repo / "larch-logs")
+        rel = path.relative_to(root)
     except ValueError:
         return None
     parts = rel.parts
@@ -2564,8 +2572,12 @@ def _panel_context_from_tsv(path: Path, repo: Path) -> tuple[str, str] | None:
     return skill, run_id
 
 
-def _iter_panel_prompt_size_files(repo: Path) -> list[Path]:
-    root = repo / "larch-logs"
+def _iter_panel_prompt_size_files(
+    repo: Path,
+    *,
+    corpus_root: Path | None = None,
+) -> list[Path]:
+    root = repo / "larch-logs" if corpus_root is None else corpus_root
     if not root.is_dir():
         return []
     paths: list[Path] = []
@@ -2578,7 +2590,9 @@ def _iter_panel_prompt_size_files(repo: Path) -> list[Path]:
                     name=PANEL_PROMPT_SIZE_BASENAME,
                     contain_root=root / skill,
                 )
-                if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None
+                if path.is_file()
+                and not path.is_symlink()
+                and _panel_context_from_tsv(path, repo, corpus_root=root) is not None
             )
     return sorted(paths)
 
@@ -2636,8 +2650,12 @@ def _checks_digest_size_row_values(row: Mapping[str, str]) -> dict[str, int] | N
     return values
 
 
-def _iter_checks_digest_size_files(repo: Path) -> list[Path]:
-    root = repo / "larch-logs"
+def _iter_checks_digest_size_files(
+    repo: Path,
+    *,
+    corpus_root: Path | None = None,
+) -> list[Path]:
+    root = repo / "larch-logs" if corpus_root is None else corpus_root
     if not root.is_dir():
         return []
     paths: list[Path] = []
@@ -2704,8 +2722,9 @@ def _render_checks_digest_savings_report(aggregate: ChecksDigestSavingsAggregate
 def measure_checks_digest_savings() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-checks-digest-savings" / f"{_measure_stamp()}.tsv"
+    log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
     aggregate = ChecksDigestSavingsAggregate()
-    for tsv in _iter_checks_digest_size_files(repo):
+    for tsv in _iter_checks_digest_size_files(repo, corpus_root=log_root):
         has_header, rows_seen, rows_skipped, rows = _read_checks_digest_size_file(tsv)
         if not has_header:
             continue
@@ -2721,9 +2740,10 @@ def measure_checks_digest_savings() -> Path:
 def measure_panel_cost() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-panel-cost" / f"{_measure_stamp()}.tsv"
+    log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo)
     aggregates: dict[tuple[str, str, str], _PanelCostAggregate] = {}
-    for tsv in _iter_panel_prompt_size_files(repo):
-        context = _panel_context_from_tsv(tsv, repo)
+    for tsv in _iter_panel_prompt_size_files(repo, corpus_root=log_root):
+        context = _panel_context_from_tsv(tsv, repo, corpus_root=log_root)
         if context is None:
             continue
         skill, run_id = context
@@ -3072,14 +3092,22 @@ def compute_pr_line_counts_main(argv: list[str] | None = None) -> int:
 
 def measure_checks_digest_savings_main(argv: list[str] | None = None) -> int:
     _ = argv
-    path = measure_checks_digest_savings()
+    try:
+        path = measure_checks_digest_savings()
+    except run_log_corpus.RunLogCorpusError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return config.EXIT_BAIL
     print(f"WROTE\t{path.relative_to(_repo_root())}")
     return 0
 
 
 def measure_panel_cost_main(argv: list[str] | None = None) -> int:
     _ = argv
-    path = measure_panel_cost()
+    try:
+        path = measure_panel_cost()
+    except run_log_corpus.RunLogCorpusError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return config.EXIT_BAIL
     try:
         rel = path.relative_to(_repo_root()).as_posix()
     except ValueError:
@@ -3104,14 +3132,22 @@ def measure_ngram_duplication_main(argv: list[str] | None = None) -> int:
 
 def measure_references_heatmap_main(argv: list[str] | None = None) -> int:
     _ = argv
-    path = measure_references_heatmap()
+    try:
+        path = measure_references_heatmap()
+    except run_log_corpus.RunLogCorpusError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return config.EXIT_BAIL
     print(f"WROTE\t{path.relative_to(_repo_root())}")
     return 0
 
 
 def measure_realized_cost_main(argv: list[str] | None = None) -> int:
     _ = argv
-    path = measure_realized_cost()
+    try:
+        path = measure_realized_cost()
+    except run_log_corpus.RunLogCorpusError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return config.EXIT_BAIL
     print(f"WROTE\t{path.relative_to(_repo_root())}")
     return 0
 
@@ -3120,7 +3156,7 @@ def measure_cache_efficiency_main(argv: list[str] | None = None) -> int:
     _ = argv
     try:
         path = measure_cache_efficiency()
-    except ShipError as exc:
+    except (ShipError, run_log_corpus.RunLogCorpusError) as exc:
         print(str(exc), file=sys.stderr)
         return config.EXIT_BAIL
     repo_root = _measure_repo_root_from_larch_logs_path(path)

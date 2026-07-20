@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze voter agreement, severity calibration, and chronic outliers from larch logs."""
+"""Analyze voter agreement, severity calibration, and chronic outliers from synchronized larch logs."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +24,7 @@ python_path = str(plugin_root / "python")
 if python_path not in sys.path:
     sys.path.insert(0, python_path)
 
-from larch.core import proc  # noqa: E402 - after sys.path manipulation
+from larch.core import proc, repo_roots  # noqa: E402 - after sys.path manipulation
 from larch.git import gh  # noqa: E402 - after sys.path manipulation
 from larch.issue._ground_truth import (  # noqa: E402
     _ground_truth_run_dir,
@@ -73,31 +73,22 @@ class CorpusStats:
     false_negative_rows: list[dict[str, object]] = field(default_factory=list)
 
 
-def _git_toplevel() -> Path | None:
-    proc = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        return None
-    value = proc.stdout.strip()
-    return Path(value) if value else None
-
-
-def _default_log_root() -> Path:
-    top = _git_toplevel()
-    if top is not None:
-        return top / "larch-logs"
-    return Path.cwd() / "larch-logs"
-
-
 def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def _selected_log_root(raw_log_root: str) -> Path:
+    if raw_log_root:
+        return Path(raw_log_root).expanduser()
+    repo_root = repo_roots.consumer_repo_root()
+    if repo_root is None:
+        raise run_log_corpus.RunLogCorpusError(
+            "could not discover a Git repository root for run-log synchronization"
+        )
+    return run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
 
 
 def _discover(log_root: Path) -> list[tuple[str, Path]]:
@@ -679,7 +670,11 @@ def main(argv: list[str]) -> int:
     if args.era_since_date and not args.era:
         print("voter-calibration: --era-since-date requires --era", file=sys.stderr)
         return 2
-    log_root = Path(args.log_root).expanduser() if args.log_root else _default_log_root()
+    try:
+        log_root = _selected_log_root(args.log_root)
+    except run_log_corpus.RunLogCorpusError as exc:
+        print(f"voter-calibration: {exc}", file=sys.stderr)
+        return 2
     log_root = log_root.resolve()
     if not log_root.is_dir():
         print(f"voter-calibration: resolved log root is missing: {log_root}", file=sys.stderr)

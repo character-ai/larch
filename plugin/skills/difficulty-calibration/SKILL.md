@@ -1,6 +1,6 @@
 ---
 name: difficulty-calibration
-description: "Use when comparing predicted and realized larch difficulty tiers from committed run logs. Diagnostic only; changes no thresholds, panels, points, or routing."
+description: "Use when comparing predicted and realized larch difficulty tiers from synchronized run logs. Diagnostic only; changes no thresholds, panels, points, or routing."
 argument-hint: "[--log-root DIR] [--out FILE]"
 allowed-tools: Bash, Read
 ---
@@ -16,9 +16,9 @@ classification and any required evidence before reporting the result.
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Analyze predicted versus realized difficulty tiers from committed `larch-logs/` data.
+Analyze predicted versus realized difficulty tiers from the synchronized run-log cache.
 
-The analyzer is read-only unless `--out FILE` is provided. It reads committed logs only. It does **not** change thresholds, panels, reviewer points, token allocation, or live routing.
+The analyzer is read-only unless `--out FILE` is provided. It syncs once, then reads only the unpacked cache. It does **not** change thresholds, panels, reviewer points, token allocation, or live routing.
 
 ## Usage
 
@@ -36,7 +36,7 @@ Do not re-tally or reformat the analysis in the main agent. The CLI owns extract
 
 Flags:
 
-- `--log-root DIR` - `larch-logs` directory. Default: `<git toplevel>/larch-logs`.
+- `--log-root DIR` - offline fixture corpus override. By default, sync the current repository cache.
 - `--out FILE` - write the report to `FILE` and print only `REPORT_FILE=<path>`.
 
 ## Data Model

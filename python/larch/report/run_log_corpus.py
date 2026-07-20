@@ -1,4 +1,4 @@
-"""Shared safe helpers for committed larch run-log corpus walks."""
+"""Shared safe helpers for larch run-log corpus walks."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import tarfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,7 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from larch.report import run_log_sync
+from larch.report import run_log_sync, storage_config
 from larch.report.report_tokens_models import safe_int
 
 DEFAULT_MANIFEST_CANDIDATES: tuple[str, ...] = ("manifest.json", "run-manifest.json")
@@ -33,6 +34,10 @@ class WalkWarningKind(StrEnum):
     CHILD_UNRESOLVABLE = "child_unresolvable"
     CHILD_ESCAPES = "child_escapes"
     CHILD_NOT_DIR = "child_not_dir"
+
+
+class RunLogCorpusError(RuntimeError):
+    """A repository analyzer could not prepare its synchronized corpus."""
 
 
 @dataclass(frozen=True)
@@ -259,6 +264,41 @@ def synchronized_run_log_root(
         store=store,
         environ=environ,
     ).corpus_root
+
+
+def synchronized_repository_log_root(
+    *,
+    repo_root: Path,
+    store: run_log_sync.SyncObjectStore | None = None,
+    environ: Mapping[str, str] | None = None,
+    cache_home: Path | None = None,
+    state_home: Path | None = None,
+) -> Path:
+    """Load repository config, synchronize once, and return the cache log root."""
+    try:
+        storage_root: storage_config.StorageRoot = storage_config.load_storage_root(
+            repo_root=repo_root,
+            environ=environ,
+        )
+        return synchronized_run_log_root(
+            request=run_log_sync.RunLogSyncRequest(
+                repo_root=repo_root,
+                storage_root=storage_root,
+                cache_home=cache_home,
+                state_home=state_home,
+            ),
+            store=store,
+            environ=environ,
+        )
+    except (
+        EOFError,
+        OSError,
+        RuntimeError,
+        tarfile.TarError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise RunLogCorpusError(f"run-log corpus sync failed: {exc}") from exc
 
 
 def review_transcript_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:

@@ -5,16 +5,70 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.report import run_log_corpus
+
+if TYPE_CHECKING:
+    from larch.report.object_store import RemoteObject
 
 # pytest.MonkeyPatch is used by enumeration-error coverage below.
 
 
 def _write_manifest(run_dir: Path, payload: object, *, name: str = "manifest.json") -> None:
     _ = (run_dir / name).write_text(json.dumps(payload), encoding="utf-8")
+
+
+class _EmptyStore:
+    def __init__(self) -> None:
+        self.list_calls = 0
+
+    def list_objects(self, prefix: str = "") -> tuple[RemoteObject, ...]:
+        assert prefix == "run-logs/"
+        self.list_calls += 1
+        return ()
+
+    def download(self, key: str, destination: Path) -> None:
+        raise AssertionError(f"unexpected download: {key} to {destination}")
+
+
+def test_synchronized_repository_log_root_lists_once(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    config_dir = repo / ".larch"
+    config_dir.mkdir(parents=True)
+    _ = (config_dir / "config.toml").write_text(
+        '[logs]\nuri = "s3://fixture-bucket/larch"\n',
+        encoding="utf-8",
+    )
+    store = _EmptyStore()
+
+    log_root = run_log_corpus.synchronized_repository_log_root(
+        repo_root=repo,
+        store=store,
+        cache_home=tmp_path / "cache",
+        state_home=tmp_path / "state",
+    )
+
+    assert log_root == tmp_path / "cache" / "larch" / "run-logs" / "repo"
+    assert store.list_calls == 1
+
+
+def test_synchronized_repository_log_root_requires_config(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = _EmptyStore()
+
+    with pytest.raises(run_log_corpus.RunLogCorpusError, match="storage configuration is missing"):
+        _ = run_log_corpus.synchronized_repository_log_root(
+            repo_root=repo,
+            store=store,
+            cache_home=tmp_path / "cache",
+            state_home=tmp_path / "state",
+        )
+
+    assert store.list_calls == 0
 
 
 def test_load_run_manifest_rejects_bool_issue_number(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-"""Retrospective difficulty calibration from committed larch run logs."""
+"""Retrospective difficulty calibration from synchronized larch run logs."""
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.calibration import difficulty
+from larch.core import repo_roots
 from larch.report import run_log_corpus
 from larch.report.report_tokens_cost import display_rates
 from larch.report.report_tokens_models import (
@@ -614,7 +615,12 @@ def _collect_skill_runs(log_root: Path, skill: str, state: AnalyzerState, sideca
             state.bump("unratable_missing_rating")
         classification = _classification_outcome(skill, run_dir, state)
         realized, substantiality = _realized_tier(rating, classification, state)
-        rel_link = run_dir.relative_to(log_root.parent).as_posix() if log_root.parent in run_dir.resolve().parents else run_dir.as_posix()
+        try:
+            run_relative = run_dir.resolve().relative_to(log_root.resolve())
+        except (OSError, ValueError):
+            rel_link = run_dir.as_posix()
+        else:
+            rel_link = (Path("larch-logs") / run_relative).as_posix()
         records.append(
             RunRecord(
                 skill=skill,
@@ -634,9 +640,9 @@ def _collect_skill_runs(log_root: Path, skill: str, state: AnalyzerState, sideca
     return records
 
 
-def collect_corpus(log_root: Path) -> Corpus:
+def collect_corpus(log_root: Path, *, state_root: Path | None = None) -> Corpus:
     state = AnalyzerState()
-    sidecar = _read_sidecar(log_root, state)
+    sidecar = _read_sidecar(log_root if state_root is None else state_root, state)
     records: list[RunRecord] = []
     for skill in SKILLS:
         records.extend(_collect_skill_runs(log_root, skill, state, sidecar))
@@ -897,28 +903,37 @@ def render_report(corpus: Corpus) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _default_log_root() -> Path:
-    cwd = Path.cwd()
-    for candidate in (cwd, *cwd.parents):
-        if (candidate / ".git").exists():
-            return candidate / "larch-logs"
-    return cwd / "larch-logs"
-
-
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="difficulty-calibration analyze")
-    _ = parser.add_argument("--log-root", default=str(_default_log_root()))
+    _ = parser.add_argument(
+        "--log-root",
+        default="",
+        help="offline fixture corpus override; default synchronizes the current repository cache",
+    )
     _ = parser.add_argument("--out", default="")
     return parser.parse_args(list(argv))
 
 
 def analyze_main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    log_root = Path(str(args.log_root))
+    if args.log_root:
+        log_root = Path(str(args.log_root))
+        state_root = log_root
+    else:
+        repo_root: Path | None = repo_roots.consumer_repo_root()
+        if repo_root is None:
+            print("ERROR: could not discover a Git repository root for run-log synchronization", file=sys.stderr)
+            return 2
+        try:
+            log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
+        except run_log_corpus.RunLogCorpusError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        state_root = repo_root / "larch-logs"
     if not log_root.is_dir():
         print(f"ERROR: --log-root is missing or not a directory: {log_root}", file=sys.stderr)
         return 2
-    corpus = collect_corpus(log_root)
+    corpus = collect_corpus(log_root, state_root=state_root)
     report = render_report(corpus)
     if args.out:
         out = Path(str(args.out))

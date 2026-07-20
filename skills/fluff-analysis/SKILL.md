@@ -1,6 +1,6 @@
 ---
 name: fluff-analysis
-description: "Use when analyzing review fluff in committed larch run logs: rejected, OOS, or accepted-low-value findings, plus tuning recommendations."
+description: "Use when analyzing review fluff in synchronized larch run logs: rejected, OOS, or accepted-low-value findings, plus tuning recommendations."
 allowed-tools: Bash, Read
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash, Read
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from committed larch run logs in the current repository. The analyzer scans `larch-logs/design/*/` and `larch-logs/implement/*/`, normalizes every review finding (outcome, reviewer/voter severity, semantic tags), and prints a markdown report plus recommendations for tightening the reviewer self-filter and judge (voter) instructions.
+Characterize review **fluff** from the synchronized run-log cache in the current repository. This includes suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value*. The analyzer normalizes every review finding (outcome, reviewer/voter severity, semantic tags), then prints a markdown report and recommendations for tightening the reviewer self-filter and judge (voter) instructions.
 
 This is the standing tool behind the kind of analysis filed as a `[Analysis Report]` issue: re-run it as the corpus grows to track whether necessity-gate changes (see `skills/shared/review-acceptance-rubric.md`) move acceptance and findings-per-run.
 
@@ -28,13 +28,13 @@ Do not re-derive, re-tally, or re-format the analysis in the main agent — the 
 
 Flags:
 
-- `--include-in-progress` — also read in-progress `/design` session temp dirs under the session cache (a racy snapshot of un-flushed runs). Off by default; committed logs only.
+- `--include-in-progress`: also read in-progress `/design` session temp dirs under the session cache (a racy snapshot of unflushed runs). Off by default.
 - `--cutoff ISO8601` — enable a pre/post comparison section split at this timestamp (e.g. the date a reviewer-instruction change landed). Omitted by default.
 - `--since-version X.Y.Z` — enable a pre/post comparison split by `manifest.json.larch_version`; preferred for release-gated behavior changes.
 - `--min-group N` — minimum findings for a semantic group to appear in the tables. Default: `20`.
 - `--sessions-dir DIR` — session cache dir for `--include-in-progress`. Default: `~/.cache/larch/sessions`.
 - `--inprogress-since ISO8601` — lower bound on in-progress session mtime (skips stale temp dirs).
-- `--log-root DIR` — `larch-logs` directory. Default: `<git toplevel>/larch-logs`.
+- `--log-root DIR`: offline fixture corpus override. By default, sync the current repository cache.
 - `--out FILE` — write the report to `FILE` instead of stdout.
 
 On success, stdout begins with `# Review Fluff Analysis`. If the log root is missing the script exits non-zero with a diagnostic; surface it rather than inventing results.

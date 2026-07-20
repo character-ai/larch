@@ -16,7 +16,8 @@ import pytest
 
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
-from larch.report.report_tokens_scan import scan
+from larch.report import run_log_corpus
+from larch.report.report_tokens_scan import scan, scan_prepared_corpus
 
 
 def _calls() -> list[list[str]]:
@@ -46,6 +47,16 @@ class Runner:
                 return CommandResult(tuple(argv), 1, "", "not a git repo", 0.01)
             return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
         return CommandResult(tuple(argv), 1, "", "gh transient failure", 0.01)
+
+
+@pytest.fixture(autouse=True)
+def _synchronized_fixture_root(  # pyright: ignore[reportUnusedFunction]  # pytest invokes this autouse fixture by registration
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _root(*, repo_root: Path) -> Path:
+        return repo_root / "larch-logs"
+
+    monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _root)
 
 
 def _write_run(base: Path, *, skill: str, good_tokens: bool = True) -> None:
@@ -82,6 +93,35 @@ def test_scan_rejects_git_root_failure(tmp_path: Path) -> None:
     runner = Runner(tmp_path, git_ok=False)
     with pytest.raises(ShipError):
         _ = scan(runner, skill="implement", repo_override="o/r")
+
+
+def test_scan_surfaces_sync_failure_before_analysis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail(*, repo_root: Path) -> Path:
+        raise run_log_corpus.RunLogCorpusError(f"missing config under {repo_root}")
+
+    monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _fail)
+    with pytest.raises(ShipError, match="missing config"):
+        _ = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+
+
+def test_scan_prepared_corpus_performs_no_later_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_run(tmp_path, skill="implement")
+
+    def _unexpected_sync(*, repo_root: Path) -> Path:
+        pytest.fail(f"unexpected later sync for {repo_root}")
+
+    monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _unexpected_sync)
+
+    result = scan_prepared_corpus(
+        Runner(tmp_path),
+        skill="implement",
+        corpus_root=tmp_path / "larch-logs",
+    )
+
+    assert len(result.records) == 1
 
 
 def test_scan_rejects_invalid_repo_override(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 ---
 name: report-tokens
-description: "Use when analyzing token costs from committed larch run logs for `--skill=design|implement`: price token reports, optionally plot trends, and print cost-reduction suggestions."
+description: "Use when analyzing token costs from synchronized larch run logs for `--skill=design|implement`: price token reports, optionally plot trends, and print cost-reduction suggestions."
 allowed-tools: Bash, Read
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash, Read
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Analyze token costs from committed larch run logs for the selected skill (`--skill=design|implement`) in the current git repository. The CLI delegates to `${CLAUDE_PLUGIN_ROOT}/python/larch/report/report_tokens_cli.py`, which scans `larch-logs/<skill>/*/`, reads the skill-specific token report JSON files, prices each run through `python/larch/report/report_tokens_cost.py`, prints a markdown analysis, writes a durable NDJSON cache snapshot, optionally generates plots, and optionally posts a GitHub `[Implement Analysis Report]` or `[Design Analysis Report]` issue.
+Analyze token costs from synchronized larch run logs for the selected skill (`--skill=design|implement`) in the current Git repository. The CLI syncs once, scans the unpacked cache, reads the skill-specific token report JSON files, prices each run through `python/larch/report/report_tokens_cost.py`, prints a markdown analysis, writes a durable NDJSON cache snapshot, optionally generates plots, and optionally posts a GitHub `[Implement Analysis Report]` or `[Design Analysis Report]` issue.
 
 For `--skill=implement`, reports carry no workflow dimension and graph/per-day trend output aggregates all runs into one `All runs` series/table set. For `--skill=design`, one aggregate report is generated. The filed issue intentionally omits raw per-issue JSON and actual-spend reconciliation unless `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` is set.
 
@@ -41,4 +41,4 @@ Advertised `Cache JSON:` and plot paths remain on disk after CLI exit and expire
 ## NEVER
 
 1. **NEVER treat dollar output as billing truth.** The CLI uses transparent default rates and prints them with the analysis because vendor pricing and model routing can drift outside larch's control.
-2. **NEVER forward removed replot flags.** Re-run against committed `larch-logs` instead.
+2. **NEVER forward removed replot flags.** Re-run against the synchronized cache instead.

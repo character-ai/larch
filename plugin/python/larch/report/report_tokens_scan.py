@@ -1,4 +1,4 @@
-"""Scan committed larch run logs for report-token records."""
+"""Scan synchronized larch run logs for report-token records."""
 
 from __future__ import annotations
 
@@ -37,6 +37,15 @@ class ScanResult:
     repo_root: Path
     repo_slug: str | None
     records: tuple[RunRecord, ...]
+
+
+@dataclass(frozen=True)
+class ScanRequest:
+    skill: Skill
+    repo_override: str | None
+    limit: int | None
+    resolve_repo: bool
+    corpus_root: Path | None = None
 
 def _warn(message: str) -> None:
     print(f"Warning: {message}", file=sys.stderr)
@@ -132,12 +141,12 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
     return tuple(rows)
 
 def _session_scoped_ledger_path(run_dir: Path) -> Path | None:
-    """Resolve the committed ledger for a run dir using session-id when present."""
+    """Resolve the durable ledger for a run dir using session-id when present."""
     return tokens.run_log_ledger_path(run_dir)
 
 
 def _ledger_fallback_report(run_dir: Path) -> Mapping[str, object] | None:
-    """Recover a token report from the committed session ledger when the canonical
+    """Recover a token report from the durable session ledger when the canonical
     token-report{,-final}.json is absent or unusable (issue #5133). Returns None
     when no usable ledger exists. Symlinked ledgers are skipped for safety.
     """
@@ -185,7 +194,7 @@ def _enrich_model_buckets(report: Mapping[str, object], *, run_dir: Path) -> Map
 
 
 def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | None:
-    """Load and validate a run's token report, falling back to the committed
+    """Load and validate a run's token report, falling back to the durable
     ledger when the canonical token-report{,-final}.json is absent or unusable
     (issue #5133). Returns None (after a warning) when no priceable report exists.
     """
@@ -258,14 +267,60 @@ def scan(
     limit: int | None = None,
     resolve_repo: bool = True,
 ) -> ScanResult:
+    return _scan_request(
+        runner,
+        request=ScanRequest(
+            skill=skill,
+            repo_override=repo_override,
+            limit=limit,
+            resolve_repo=resolve_repo,
+        ),
+    )
+
+
+def scan_prepared_corpus(
+    runner: Runner,
+    *,
+    skill: Skill,
+    corpus_root: Path,
+) -> ScanResult:
+    """Scan one skill from an already synchronized invocation corpus."""
+    return _scan_request(
+        runner,
+        request=ScanRequest(
+            skill=skill,
+            repo_override=None,
+            limit=None,
+            resolve_repo=False,
+            corpus_root=corpus_root,
+        ),
+    )
+
+
+def _scan_request(runner: Runner, *, request: ScanRequest) -> ScanResult:
     root = _repo_root(runner)
-    slug: str | None = _repo_slug(runner=runner, override=repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO")) if resolve_repo else None
-    log_base = root / "larch-logs" / skill
-    print(f"Scanning {log_base} for larch run logs (--skill={skill})...", file=sys.stderr)
-    max_dirs: int | None = _limit_value(limit)
+    if request.corpus_root is None:
+        try:
+            log_root: Path = run_log_corpus.synchronized_repository_log_root(repo_root=root)
+        except run_log_corpus.RunLogCorpusError as exc:
+            raise ShipError(f"ERROR: {exc}") from exc
+    else:
+        log_root = request.corpus_root
+    slug: str | None = (
+        _repo_slug(
+            runner=runner,
+            override=request.repo_override
+            or os.environ.get(config.ENV_LARCH_REPORT_TOKENS_REPO),
+        )
+        if request.resolve_repo
+        else None
+    )
+    log_base = log_root / request.skill
+    print(f"Scanning {log_base} for larch run logs (--skill={request.skill})...", file=sys.stderr)
+    max_dirs: int | None = _limit_value(request.limit)
     records: list[RunRecord] = []
     for seen, run_dir in enumerate(_run_dirs(log_base), start=1):
-        record: RunRecord | None = _record(run_dir, skill=skill, repo_slug=slug)
+        record: RunRecord | None = _record(run_dir, skill=request.skill, repo_slug=slug)
         if record is not None:
             records.append(record)
         if max_dirs is not None and seen >= max_dirs:

@@ -1,6 +1,6 @@
 ---
 name: voter-calibration
-description: "Use when analyzing voter agreement, severity calibration, and chronic outliers from committed larch run logs. Diagnostic only; changes no thresholds or points."
+description: "Use when analyzing voter agreement, severity calibration, and chronic outliers from synchronized larch run logs. Diagnostic only; changes no thresholds or points."
 allowed-tools: Bash, Read
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash, Read
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Analyze **voter agreement**, **YES-vote severity spread**, **severity calibration score**, and chronic outlier voters from committed larch run logs.
+Analyze **voter agreement**, **YES-vote severity spread**, **severity calibration score**, and chronic outlier voters from the synchronized run-log cache.
 
 The analyzer measures agreement and severity calibration only. It reports voter-side calibration standing. It does **not** use realized outcomes, issue fate, or reverts. It does **not** affect reviewer/proposer points, spawning, thresholds, token allocation, or live panel verdicts.
 
@@ -28,7 +28,7 @@ Do not re-tally or re-format the analysis in the main agent. The script owns ext
 
 Flags:
 
-- `--log-root DIR` - `larch-logs` directory. Default: `<git toplevel>/larch-logs`.
+- `--log-root DIR` - offline fixture corpus override. By default, sync the current repository cache.
 - `--min-votes N` - minimum eligible votes before outlier flagging. Default: `20`.
 - `--outlier-threshold R` - flag chronic outliers below this agreement rate. Default: `0.50`.
 - `--high-severity-threshold R` - flag voters whose valid YES-vote severities exceed this high-severity rate. Default: `0.90`.

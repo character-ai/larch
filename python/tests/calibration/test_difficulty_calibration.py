@@ -500,6 +500,44 @@ def test_missing_log_root_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[
 
     assert rc == 2
     assert "--log-root is missing" in captured.err
+
+
+def test_default_synced_corpus_matches_explicit_fixture(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "implement", "SYNCED", applied=difficulty.TRIVIAL)
+    _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"))
+    (root / "rejected-analysis-verdicts.tsv").write_text(
+        SIDECAR_HEADER
+        + "\n1\thash-1\timplement\tSYNCED\t1\tFINDING_1\tv1\tconfirmed\tpython/foo.py:1\tstill broken\t2026-06-20T00:00:00Z\n",
+        encoding="utf-8",
+    )
+    cache_root = tmp_path / "cache" / "larch2"
+    cache_run = _run(cache_root, "implement", "SYNCED", applied=difficulty.TRIVIAL)
+    _implement_tsv(cache_run, 1, _code_row("FINDING_1", "accepted"))
+    explicit_out = tmp_path / "explicit.md"
+    synced_out = tmp_path / "synced.md"
+    sync_calls = 0
+
+    def _sync(*, repo_root: Path) -> Path:
+        nonlocal sync_calls
+        assert repo_root == tmp_path
+        sync_calls += 1
+        return cache_root
+
+    monkeypatch.setattr(dc.repo_roots, "consumer_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(dc.run_log_corpus, "synchronized_repository_log_root", _sync)
+
+    assert dc.analyze_main(["--log-root", str(root), "--out", str(explicit_out)]) == 0
+    _ = capsys.readouterr()
+    assert dc.analyze_main(["--out", str(synced_out)]) == 0
+    _ = capsys.readouterr()
+
+    assert synced_out.read_text(encoding="utf-8") == explicit_out.read_text(encoding="utf-8")
+    assert sync_calls == 1
 # pyright: reportMissingParameterType=false, reportUnknownMemberType=false
 # pyright: reportUnknownParameterType=false, reportUnknownVariableType=false
 # pyright: reportUnusedCallResult=false

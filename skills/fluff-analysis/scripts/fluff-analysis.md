@@ -7,7 +7,7 @@ script).
 
 ## Purpose
 
-Read committed larch run logs and print a markdown **review fluff** report:
+Read synchronized larch run logs and print a markdown **review fluff** report:
 acceptance baselines, low-acceptance semantic groups, a testing breakdown,
 severity/quality/uncertain correlations, reviewer-lane splits, an
 accepted-but-low-value proxy, neutral-rate and important-reject-rate false-negative diagnostics, an optional pre/post-cutoff comparison, and
@@ -34,7 +34,7 @@ versions): missing fields degrade to empty, never crash a run.
 ## CLI
 
 ```text
---log-root DIR            larch-logs dir (default: <git toplevel>/larch-logs)
+--log-root DIR            offline fixture corpus override (default: synchronized cache)
 --include-in-progress     also read in-progress design session temp dirs
 --sessions-dir DIR        session cache dir (default: ~/.cache/larch/sessions)
 --inprogress-since ISO    skip in-progress sessions older than this mtime

@@ -115,13 +115,13 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#difficulty-calibration"><code>/difficulty-calibration</code></a></td>
       <td><code>[--log-root DIR] [--out FILE]</code></td>
     </tr>
-    <tr><td colspan="2">Compare predicted and realized difficulty tiers from committed run logs. Diagnostic only; changes no thresholds, panels, tokens, routing, or reviewer points.</td></tr>
+    <tr><td colspan="2">Compare predicted and realized difficulty tiers from the synchronized run-log cache. Diagnostic only; changes no thresholds, panels, tokens, routing, or reviewer points.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fluff-analysis"><code>/fluff-analysis</code></a></td>
       <td><code>[--include-in-progress] [--cutoff ISO8601] [--since-version X.Y.Z] [--min-group N] [--log-root DIR] [--out FILE]</code></td>
     </tr>
-    <tr><td colspan="2">Characterize review <strong>fluff</strong> from committed larch run logs — which <code>/design</code> and <code>/implement</code> review suggestions get rejected, deferred to OOS, or accepted-but-low-value — by acceptance baselines, low-acceptance semantic groups, severity cuts, and reviewer-lane splits, then print data-driven recommendations for tightening the reviewer self-filter and judge (voter) instructions.</td></tr>
+    <tr><td colspan="2">Characterize review <strong>fluff</strong> from the synchronized run-log cache. Analyze which <code>/design</code> and <code>/implement</code> suggestions get rejected, deferred to OOS, or accepted but low-value, then print data-driven recommendations.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#gc-run-logs"><code>/gc-run-logs</code></a></td>
@@ -157,13 +157,13 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#rejected-analysis"><code>/rejected-analysis</code></a></td>
       <td><code>--n DAYS</code></td>
     </tr>
-    <tr><td colspan="2">Recover verified real rejected code-review findings from committed run logs and file issues by default. Security-sensitive findings are not public-filed, OOS-deferred findings are excluded, and the stable <code>finding_hash</code> uses file plus concern only, excluding run metadata and filesystem state.</td></tr>
+    <tr><td colspan="2">Recover verified real rejected code-review findings from the synchronized run-log cache and file issues by default. Security-sensitive findings are not public-filed, OOS-deferred findings are excluded, and the stable <code>finding_hash</code> uses file plus concern only, excluding run metadata and filesystem state.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#report-tokens"><code>/report-tokens</code></a></td>
       <td><code>--skill &lt;design|implement&gt; [--no-issue] [--no-plot] [--run-id &lt;ID&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Analyze structured token reports from committed larch run logs, price Claude/Codex/Cursor runs through `python/larch/report/report_tokens_cost.py`, plot skill-aware trends, and print cost-reduction suggestions.</td></tr>
+    <tr><td colspan="2">Analyze structured token reports from the synchronized run-log cache, price Claude/Codex/Cursor runs through `python/larch/report/report_tokens_cost.py`, plot skill-aware trends, and print cost-reduction suggestions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>
@@ -205,7 +205,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#voter-calibration"><code>/voter-calibration</code></a></td>
       <td><code>[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--out FILE]</code></td>
     </tr>
-    <tr><td colspan="2">Measure voter agreement and chronic outlier voters from committed larch run logs. Diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points.</td></tr>
+    <tr><td colspan="2">Measure voter agreement and chronic outlier voters from the synchronized run-log cache. Diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points.</td></tr>
   </tbody>
 </table>
 

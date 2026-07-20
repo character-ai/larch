@@ -87,6 +87,46 @@ def test_extractors_and_hash_are_stable_without_filesystem_probe(tmp_path: Path)
     assert ra.compute_finding_hash(changed_metadata) == first
 
 
+def test_prepare_default_synced_corpus_matches_explicit_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _write_implement_fixture(tmp_path)
+    log_root = tmp_path / "larch-logs"
+    explicit = ra.prepare(
+        days=7,
+        log_root=log_root,
+        work_dir=tmp_path / "explicit-work",
+        repo_root=tmp_path,
+        open_issues=[],
+    )
+    sync_calls = 0
+
+    def _sync(*, repo_root: Path) -> Path:
+        nonlocal sync_calls
+        assert repo_root == tmp_path
+        sync_calls += 1
+        return log_root
+
+    def _repo_root(_start: Path | str | None = None) -> Path:
+        return tmp_path
+
+    monkeypatch.setattr(ra.repo_roots, "consumer_repo_root", _repo_root)
+    monkeypatch.setattr(ra.run_log_corpus, "synchronized_repository_log_root", _sync)
+    synced = ra.prepare(
+        days=7,
+        work_dir=tmp_path / "synced-work",
+        repo_root=tmp_path,
+        open_issues=[],
+    )
+
+    assert synced.stats == explicit.stats
+    assert [candidate.finding for candidate in synced.candidates] == [
+        candidate.finding for candidate in explicit.candidates
+    ]
+    assert sync_calls == 1
+
+
 def test_prepare_keeps_one_yes_and_ledgers_zero_yes_oos_and_duplicates(tmp_path: Path) -> None:
     _write_implement_fixture(tmp_path, run_id="RUN-A", finding_id="FINDING_1", json_id="REJ_CR1_1", concern="Missing required check", path="python/foo.py:12")
     _write_implement_fixture(tmp_path, run_id="RUN-B", finding_id="FINDING_2", json_id="REJ_CR1_2", concern="Zero yes concern", path="python/bar.py:5", vote1="NO", vote2="NO")
