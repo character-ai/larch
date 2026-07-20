@@ -1369,9 +1369,10 @@ root-max-content-tokens = 35301
 # issue #7736 adds the final Git ownership boundary.
 # issue #7785 adds clean-install and issue-registry audit boundaries.
 # issue #7853 packages the current root policy and adds its scope and overview.
-closure-max-lines = 3886
-closure-max-tokens = 146668
-closure-max-content-tokens = 146359
+# issue #7815 adds the provider-neutral object-storage trust boundary.
+closure-max-lines = 3893
+closure-max-tokens = 146783
+closure-max-content-tokens = 146474
 conditional-max-lines = 591
 conditional-max-tokens = 18803
 conditional-max-content-tokens = 18756
@@ -1432,6 +1433,7 @@ roots = [
 # issue #7736 adds the final Git ownership boundary.
 # issue #7785 adds clean-install and issue-registry audit boundaries.
 # issue #7853 packages the current root policy and adds its scope and overview.
-closure-max-lines = 6174
-closure-max-tokens = 172119
-closure-max-content-tokens = 171648
+# issue #7815 adds the provider-neutral object-storage trust boundary.
+closure-max-lines = 6181
+closure-max-tokens = 172234
+closure-max-content-tokens = 171763

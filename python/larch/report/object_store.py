@@ -137,7 +137,6 @@ class CommandObjectStore:
             return self._object(data)
         command = self._aws("s3api", "put-object", "--bucket", self.root.bucket, "--key", remote, "--body", str(source), "--if-none-match", "*", "--output", "json")
         return self._object(self._json(command, "upload"), key=key, size=size)
-
     def download(self, key: str, destination: Path) -> None:
         parent, temporary = destination.parent, None
         if parent.is_symlink() or not parent.is_dir() or destination.is_symlink():
@@ -158,12 +157,10 @@ class CommandObjectStore:
             if temporary is not None:
                 with suppress(OSError):
                     temporary.unlink(missing_ok=True)
-
     def metadata(self, key: str) -> RemoteObject:
         remote = self._key(key)
         command = self._gcs("metadata", "--key", remote) if self.root.scheme == "gs" else self._aws("s3api", "head-object", "--bucket", self.root.bucket, "--key", remote, "--output", "json")
         return self._object(self._json(command, "metadata"), key=key)
-
     def _object(self, value: object, *, listed: bool = False, key: str | None = None, size: int | None = None) -> RemoteObject:
         if not isinstance(value, dict):
             raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, self.root.scheme, "response")
@@ -179,7 +176,6 @@ class CommandObjectStore:
         raw_size = data.get(size_field) if size is None else size
         return RemoteObject(key, _required_size(raw_size, self.root.scheme), _optional(data.get("etag" if lower else "ETag")), _optional(data.get("version" if lower else "VersionId")))
 
-
 def object_store_for(root: StorageRootLike, *, environ: Mapping[str, str] | None = None, runner: proc.Runner | None = None) -> ObjectStore:
     active = proc.ProcRunner() if runner is None else runner
     if root.scheme in {"s3", "gs"}:
@@ -192,11 +188,9 @@ def object_store_for(root: StorageRootLike, *, environ: Mapping[str, str] | None
             return CommandObjectStore(root, active, endpoint)
     raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, root.scheme, "configure")
 
-
 def _valid_r2_endpoint(account: str, endpoint: str) -> bool:
     parsed = urlsplit(endpoint)
     return _R2_ACCOUNT_RE.fullmatch(account) is not None and parsed.scheme == "https" and parsed.netloc == f"{account}.r2.cloudflarestorage.com" and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment and parsed.username is None and parsed.password is None
-
 
 def _command_error(provider: str, operation: str, result: proc.CommandResult) -> ObjectStoreError:
     if provider == "gs":
@@ -214,7 +208,6 @@ def _command_error(provider: str, operation: str, result: proc.CommandResult) ->
         else:
             kind = ObjectStoreErrorKind.TRANSPORT
     return ObjectStoreError(kind, provider, operation, exit_code=result.returncode)
-
 
 def _required_string(value: object, provider: str) -> str:
     if not isinstance(value, str) or not value:
