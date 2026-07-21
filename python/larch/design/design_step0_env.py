@@ -45,6 +45,7 @@ PARSED_ENV_KEYS = (
     "approve_requested",
     "skip_approve_requested",
     "no_dedup_requested",
+    "lifecycle_parent_context",
     "run_id",
     "difficulty",
     "POSITIONAL_KIND",

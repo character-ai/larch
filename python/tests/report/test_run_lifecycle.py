@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import tarfile
 import threading
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from larch.core import alias_skill
 from larch.report import run_lifecycle, run_log_manifest, run_log_publish, run_logs
 from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, RemoteObject
 from larch.report.storage_config import StorageRoot
@@ -133,21 +138,61 @@ def test_specialized_staging_has_one_identity_context_and_terminal_upload(
 
 @pytest.mark.parametrize(("parent_skill", "child_skill"), [("f", "implement"), ("implement", "review")])
 @pytest.mark.parametrize("child_outcome", ["success", "failure"])
-def test_alias_target_and_nested_review_record_parent_child_ids(lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot], parent_skill: str, child_skill: str, child_outcome: str) -> None:
+def test_alias_target_and_nested_review_record_parent_child_ids(
+    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot],
+    parent_skill: str,
+    child_skill: str,
+    child_outcome: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     repo, environment, storage_root = lifecycle_fixture
 
     def preflight(_root: StorageRoot) -> None:
         return
 
-    parent = run_lifecycle.start_run(
-        repo_root=repo,
-        skill=parent_skill,
-        run_id=f"{parent_skill}-parent-run",
-        environ=environment,
-        storage_root=storage_root,
-        preflight=preflight,
-    )
-    child = run_lifecycle.start_run(repo_root=repo, skill=child_skill, run_id=f"{child_skill}-child-run", parent_skill="" if parent_skill == "f" else parent.skill, parent_run_id="" if parent_skill == "f" else parent.run_id, parent_context=parent.context_file if parent_skill == "f" else None, environ=environment, storage_root=storage_root, preflight=preflight)
+    start_run = run_lifecycle.start_run
+
+    def fixture_start_run(**kwargs: Any) -> run_lifecycle.LifecycleStart:
+        return start_run(
+            **kwargs,
+            environ=environment,
+            storage_root=storage_root,
+            preflight=preflight,
+        )
+
+    monkeypatch.setattr(run_lifecycle, "start_run", fixture_start_run)
+
+    def start_from_skill_call(
+        skill: str, run_id: str, parent_context: Path | None = None
+    ) -> run_lifecycle.LifecycleStart:
+        argv = [
+            "--repo-root", str(repo), "--skill", skill, "--run-id", run_id,
+        ]
+        if parent_context:
+            argv.extend(["--lifecycle-parent-context", str(parent_context)])
+        assert run_lifecycle.start_main(argv) == 0
+        return run_lifecycle.load_run_context(
+            repo_root=repo, skill=skill, run_id=run_id, environ=environment
+        )
+
+    parent = start_from_skill_call(parent_skill, f"{parent_skill}-parent-run")
+    child_parent_context = parent.context_file
+    if parent_skill == "f":
+        generated = StringIO()
+        with redirect_stdout(generated):
+            assert alias_skill.generate_main([
+                "--name", "f", "--target", "implement", "--target-dir", "/tmp/skills/f",
+                "--flags", "", "--version", "test",
+            ]) == 0
+        call_args = next(
+            line.removeprefix("- args: ")
+            for line in generated.getvalue().splitlines()
+            if line.startswith("- args: ")
+        )
+        parsed_args = shlex.split(call_args)
+        assert parsed_args[:2] == ["--lifecycle-parent-context", "$CONTEXT_FILE"]
+        child_parent_context = Path(parsed_args[1].replace("$CONTEXT_FILE", str(parent.context_file)))
+    child = start_from_skill_call(child_skill, f"{child_skill}-child-run", child_parent_context)
     store = MemoryObjectStore()
 
     child_terminal = run_lifecycle.finish_run(

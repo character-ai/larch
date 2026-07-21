@@ -35,6 +35,11 @@ REQUIRED_TERMINAL_VERBS: Final = (
 _OWNER_HEADER: Final = "skill\tstart_owner\tterminal_owner\tno_archive_exception"
 _DIRECT_PUBLISHER_TOKENS: Final = ("run-log publish", "publish_log_run(")
 _PYTHON_PUBLISHER_ALLOWLIST: Final = frozenset({Path("python/larch/report/run_lifecycle.py"), Path("python/larch/report/run_log_publish.py"), Path("python/larch/lint/lint_skill_run_lifecycle.py")})
+_CHILD_SKILL_ARGS_RE: Final = re.compile(
+    r"^Invoke the Skill tool:\n(?:^[ \t]*$\n|^- (?!args:).*$\n)*?^- args: (?P<args>[^\n]+)$",
+    re.MULTILINE,
+)
+_CHILD_CONTEXT_PREFIX: Final = '--lifecycle-parent-context "$CONTEXT_FILE" '
 
 
 def _skill_files(root: Path) -> list[Path]:
@@ -175,6 +180,18 @@ def _publisher_findings(root: Path, prompts: list[Path]) -> list[str]:
     return findings
 
 
+def _child_handoff_findings(root: Path, prompts: list[Path]) -> list[str]:
+    findings: list[str] = []
+    for prompt in prompts:
+        relative = prompt.relative_to(root).as_posix()
+        findings.extend(
+            f"{relative}: child Skill call omits leading lifecycle parent-context handoff"
+            for match in _CHILD_SKILL_ARGS_RE.finditer(prompt.read_text(encoding="utf-8"))
+            if not match.group("args").startswith(_CHILD_CONTEXT_PREFIX)
+        )
+    return findings
+
+
 def lint_root(root: Path) -> int:
     """Scan the complete shipped skill inventory and print findings."""
     try:
@@ -206,6 +223,7 @@ def lint_root(root: Path) -> int:
             findings.extend(_owner_file_findings(root=root, skill=skill, role="start", relative_path=start_owner))
             findings.extend(_owner_file_findings(root=root, skill=skill, role="terminal", relative_path=terminal_owner))
         findings.extend(_publisher_findings(root, prompts))
+        findings.extend(_child_handoff_findings(root, prompts))
     except (OSError, UnicodeError, ValueError) as exc:
         print(f"lint-skill-run-lifecycle: {exc}", file=sys.stderr)
         return EXIT_ERROR

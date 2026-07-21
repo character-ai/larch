@@ -680,7 +680,7 @@ def test_step0_bootstrap_adopts_lifecycle_unless_logs_are_disabled(tmp_path: Pat
     if no_logs == "true":
         return
     lifecycle = calls[1]
-    values = tuple(lifecycle[lifecycle.index(flag) + 1] for flag in ("--run-id", "--log-root", "--parent-context"))
+    values = tuple(lifecycle[lifecycle.index(flag) + 1] for flag in ("--run-id", "--log-root", "--lifecycle-parent-context"))
     assert (values, "--adopt-existing" in lifecycle) == (("run-7887", str(tmp_path / "larch-logs"), str(parent_context)), True)
 
 

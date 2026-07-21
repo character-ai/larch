@@ -191,23 +191,27 @@ def step0_session_entry_main(argv: Sequence[str]) -> int:
 
 
 def _start_design_lifecycle(
-    *, plugin_root: Path, repo_root: Path, design_path: Path, run_id: str
+    *, plugin_root: Path, repo_root: Path, design_path: Path, run_id: str,
+    lifecycle_parent_context: str = "",
 ) -> int:
+    command = _cli_cmd(
+        plugin_root,
+        "run-log",
+        "lifecycle-start",
+        "--repo-root",
+        str(repo_root),
+        "--skill",
+        "design",
+        "--run-id",
+        run_id,
+        "--log-root",
+        str(design_path / "larch-logs"),
+        "--adopt-existing",
+    )
+    if lifecycle_parent_context:
+        command.extend(["--lifecycle-parent-context", lifecycle_parent_context])
     result = proc.run(
-        _cli_cmd(
-            plugin_root,
-            "run-log",
-            "lifecycle-start",
-            "--repo-root",
-            str(repo_root),
-            "--skill",
-            "design",
-            "--run-id",
-            run_id,
-            "--log-root",
-            str(design_path / "larch-logs"),
-            "--adopt-existing",
-        ),
+        command,
         check=False,
     )
     if result.stdout:
@@ -279,6 +283,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
         repo_root=repo_root,
         design_path=design_path,
         run_id=active_run_id,
+        lifecycle_parent_context=parsed.get("lifecycle_parent_context", ""),
     )
     if lifecycle_rc != 0:
         return lifecycle_rc

@@ -13,6 +13,14 @@ At invocation start, run this command before the skill performs work:
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log lifecycle-start --repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" --skill "<name>"
 ```
 
+A nested child may lead with
+`--lifecycle-parent-context <absolute-context-path>`. Consume one pair, bind
+`LIFECYCLE_PARENT_CONTEXT`, and remove it before public parsing. Root,
+duplicate, missing, or later flags fail. When set, pass
+`--lifecycle-parent-context "$LIFECYCLE_PARENT_CONTEXT"` to the start command.
+The lifecycle CLI validates it and derives the immutable parent; no other parent
+IDs or environment variables are allowed.
+
 Parse `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `CONTEXT_FILE`, `STORAGE_URI`, and
 `LIFECYCLE_STARTED` from stdout without `eval` or `source`. Stop if the command
 fails or `LIFECYCLE_STARTED` is not `true`.
@@ -43,7 +51,7 @@ archives.
 
 Aliases are parent invocations, not alternate names for the target run. Start
 and finish the alias under its alias name. When invoking its target through the
-Skill tool, pass the parsed `CONTEXT_FILE` as the target's internal
-`--lifecycle-parent-context` argument before positional arguments, so the target
+Skill tool, pass the parsed `CONTEXT_FILE` as the target's leading internal
+`--lifecycle-parent-context` argument before all target arguments, so the target
 starts with a distinct child ID and immutable parent metadata. Apply the same
 handoff to every other child Skill call.

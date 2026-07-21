@@ -257,7 +257,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901, P
             "--adopt-existing",
         ]
         if args.lifecycle_parent_context:
-            lifecycle_args.extend(["--parent-context", str(args.lifecycle_parent_context)])
+            lifecycle_args.extend(["--lifecycle-parent-context", str(args.lifecycle_parent_context)])
         lifecycle = _invoke_cli(lifecycle_args)
         if lifecycle.stdout:
             result.stdout = (result.stdout or "") + lifecycle.stdout

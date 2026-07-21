@@ -141,7 +141,7 @@ def run(repo_root: Path) -> list[str]:
         require(skill, "`--force` / `-f` and `--draft` together", "SKILL -f draft mutex wording")
         require("skills/im/SKILL.md", "`--force`, `-f`", "im SKILL forwards -f alias")
         require("skills/f/SKILL.md", "--force --self-review --self-implement", "f SKILL preset flags")
-        require("skills/f/SKILL.md", 'args: --force --self-review --self-implement $ARGUMENTS', "f SKILL forwards preset args")
+        require("skills/f/SKILL.md", 'args: --lifecycle-parent-context "$CONTEXT_FILE" --force --self-review --self-implement $ARGUMENTS', "f SKILL forwards lifecycle handoff and preset args")
         require("python/tests/state/test_bootstrap.py", "test_invoke_refuses_symlinked_bootstrap_routing_env", "bootstrap refusal-path test")
         require("python/tests/state/test_bootstrap.py", "BOOTSTRAP_NEXT=cleanup", "bootstrap refusal-path emits directive")
         require("python/tests/state/test_bootstrap.py", "test_bootstrap_next_routing", "bootstrap routes continuing tails to Step 2")

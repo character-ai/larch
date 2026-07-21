@@ -54,6 +54,7 @@ class _DesignArgvParsed:
     approve_requested: bool
     skip_approve_requested: bool
     no_dedup_requested: bool
+    lifecycle_parent_context: str
     run_id: str
     difficulty: str
     positional_kind: str
@@ -67,6 +68,7 @@ class _ArgvParseState:
     approve_requested: bool = False
     skip_approve_requested: bool = False
     no_dedup_requested: bool = False
+    lifecycle_parent_context: str = ""
     run_id: str = ""
     difficulty: str = ""
     positional_args: list[str] = field(default_factory=list[str])
@@ -95,6 +97,7 @@ _KNOWN_PUBLIC_FLAG_TOKENS = frozenset(
         "--run-id",
         "--difficulty",
         "--hard",
+        "--lifecycle-parent-context",
     }
 )
 
@@ -142,6 +145,26 @@ def _parse_value_flag(
     return index + 2, None
 
 
+def _parse_lifecycle_parent_context(
+    *, argv: list[str], index: int, state: _ArgvParseState, output_path: str
+) -> tuple[str, int, int | None]:
+    if index != 0 or state.lifecycle_parent_context:
+        return "error", index, _emit_validation_error(
+            token="--lifecycle-parent-context", output_path=output_path
+        )
+    if index + 1 >= len(argv):
+        return "error", index, _emit_validation_error(
+            token="--lifecycle-parent-context", output_path=output_path
+        )
+    value = argv[index + 1]
+    if not value or value.startswith("-"):
+        return "error", index, _emit_validation_error(
+            token=value or "--lifecycle-parent-context", output_path=output_path
+        )
+    state.lifecycle_parent_context = value
+    return "continue", index + 2, None
+
+
 def _apply_double_dash(*, state: _ArgvParseState, rest: list[str]) -> None:
     if state.issue_captured:
         return
@@ -164,6 +187,11 @@ def _parse_flag_token(
     action is ``continue``, ``error``, or ``not_flag``.
     """
     token = argv[index]
+    if token == "--lifecycle-parent-context":
+        return _parse_lifecycle_parent_context(
+            argv=argv, index=index, state=state, output_path=output_path
+        )
+
     flag_attr: str | None = _SIMPLE_FLAG_ATTRS.get(token)
     if flag_attr is not None:
         setattr(state, flag_attr, True)
@@ -281,6 +309,7 @@ def _parse_design_flags(*, argv: list[str], output_path: str) -> tuple[_DesignAr
             approve_requested=state.approve_requested,
             skip_approve_requested=state.skip_approve_requested,
             no_dedup_requested=state.no_dedup_requested,
+            lifecycle_parent_context=state.lifecycle_parent_context,
             run_id=state.run_id,
             difficulty=state.difficulty,
             positional_kind=state.positional_kind,
@@ -297,6 +326,7 @@ def _emit_success(*, output_path: str, parsed: _DesignArgvParsed) -> int:
         "approve_requested": str(parsed.approve_requested).lower(),
         "skip_approve_requested": str(parsed.skip_approve_requested).lower(),
         "no_dedup_requested": str(parsed.no_dedup_requested).lower(),
+        "lifecycle_parent_context": parsed.lifecycle_parent_context,
         "run_id": parsed.run_id,
         "difficulty": parsed.difficulty,
         "POSITIONAL_KIND": parsed.positional_kind,
@@ -308,6 +338,7 @@ def _emit_success(*, output_path: str, parsed: _DesignArgvParsed) -> int:
         "APPROVE_REQUESTED": str(parsed.approve_requested).lower(),
         "SKIP_APPROVE_REQUESTED": str(parsed.skip_approve_requested).lower(),
         "NO_DEDUP_REQUESTED": str(parsed.no_dedup_requested).lower(),
+        "LIFECYCLE_PARENT_CONTEXT": parsed.lifecycle_parent_context,
         "RUN_ID": parsed.run_id,
         "DIFFICULTY": parsed.difficulty,
         "POSITIONAL_KIND": parsed.positional_kind,

@@ -202,6 +202,20 @@ def test_declared_lifecycle_with_second_terminal_publisher_fails(tmp_path: Path,
     assert "direct terminal publisher bypasses lifecycle ownership" in capsys.readouterr().err
 
 
+def test_child_skill_call_requires_leading_parent_context_handoff(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_empty_skill_roots(tmp_path)
+    _write_contract(tmp_path)
+    _write_skill(tmp_path, "sample", "# larch-run-lifecycle: shared-v1 skill=sample")
+    prompt = tmp_path / "skills" / "sample" / "SKILL.md"
+    with prompt.open("a", encoding="utf-8") as handle:
+        _ = handle.write('Invoke the Skill tool:\n\n- Try skill: "child" first.\n- args: $ARGUMENTS\n')
+
+    assert lifecycle_lint.lint_root(tmp_path) == 1
+    assert "child Skill call omits leading lifecycle parent-context handoff" in capsys.readouterr().err
+
+
 def test_symlinked_skill_directory_is_a_tool_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
