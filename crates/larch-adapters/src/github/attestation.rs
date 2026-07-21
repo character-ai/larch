@@ -570,6 +570,31 @@ struct AttestationRecord {
     initiator: String,
 }
 
+/// The raw-bytes source for one attestation record's bundle.
+#[derive(Debug)]
+enum BundleSource {
+    /// Bytes inlined directly in the attestations API response.
+    Inline(Vec<u8>),
+    /// A validated attestation-store URL to fetch the bundle from.
+    Fetch(String),
+}
+
+/// Choose a record's bundle source, preferring the inline `bundle` when the
+/// API populates both `bundle` and `bundle_url`. Only a record with neither
+/// field is malformed.
+fn select_bundle_source(
+    bundle: Option<serde_json::Value>,
+    bundle_url: Option<String>,
+) -> Result<BundleSource, AttestationServiceError> {
+    match (bundle, bundle_url) {
+        (Some(bundle), _) => Ok(BundleSource::Inline(
+            serde_json::to_vec(&bundle).map_err(|_| malformed())?,
+        )),
+        (None, Some(url)) => Ok(BundleSource::Fetch(url)),
+        (None, None) => Err(malformed()),
+    }
+}
+
 /// Production retrieval through the authenticated, deadline-bound client.
 pub struct OctocrabAttestationTransport<'a> {
     service: &'a OctocrabGitHubService,
@@ -644,10 +669,9 @@ impl<'a> OctocrabAttestationTransport<'a> {
             if record.initiator.is_empty() {
                 return Err(malformed());
             }
-            let raw = match (record.bundle, record.bundle_url) {
-                (Some(bundle), None) => serde_json::to_vec(&bundle).map_err(|_| malformed())?,
-                (None, Some(url)) => self.fetch_bundle_url(&url).await?,
-                _ => return Err(malformed()),
+            let raw = match select_bundle_source(record.bundle, record.bundle_url)? {
+                BundleSource::Inline(bytes) => bytes,
+                BundleSource::Fetch(url) => self.fetch_bundle_url(&url).await?,
             };
             if raw.len() > MAX_BUNDLE_BYTES {
                 return Err(limit_failure());
@@ -914,5 +938,35 @@ mod tests {
             assert!(!rendered.contains("bundle content"));
             assert!(rendered.len() < 100);
         }
+    }
+
+    #[test]
+    fn bundle_source_prefers_inline_bundle_when_both_are_present() {
+        let bundle = serde_json::json!({
+            "mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.3"
+        });
+        let store_url =
+            "https://tmaproduction.blob.core.windows.net/attestations/1/a.json.sn?sig=x".to_owned();
+
+        match select_bundle_source(Some(bundle.clone()), Some(store_url.clone()))
+            .expect("inline bundle wins")
+        {
+            BundleSource::Inline(bytes) => {
+                assert_eq!(bytes, serde_json::to_vec(&bundle).expect("bytes"));
+            }
+            BundleSource::Fetch(_) => panic!("both present must prefer the inline bundle"),
+        }
+
+        match select_bundle_source(None, Some(store_url)).expect("url source") {
+            BundleSource::Fetch(url) => assert!(url.contains("tmaproduction")),
+            BundleSource::Inline(_) => panic!("url-only record must fetch"),
+        }
+
+        assert_eq!(
+            select_bundle_source(None, None)
+                .expect_err("record with neither field")
+                .kind(),
+            AttestationServiceErrorKind::MalformedResponse
+        );
     }
 }
