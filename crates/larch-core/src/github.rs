@@ -971,6 +971,8 @@ fn is_valid_asset_name(name: &str) -> bool {
 pub struct ReleaseState {
     database_id: u64,
     tag: String,
+    name: Option<String>,
+    target_commitish: Option<String>,
     draft: bool,
     immutable: bool,
     prerelease: bool,
@@ -998,6 +1000,8 @@ impl ReleaseState {
         Ok(Self {
             database_id,
             tag: tag.to_owned(),
+            name: None,
+            target_commitish: None,
             draft,
             immutable,
             prerelease: false,
@@ -1014,6 +1018,14 @@ impl ReleaseState {
         self
     }
 
+    /// Attach the GitHub staging identity used to recover a mutable draft.
+    #[must_use]
+    pub fn with_staging_identity(mut self, name: Option<String>, target_commitish: String) -> Self {
+        self.name = name.filter(|value| !value.is_empty());
+        self.target_commitish = (!target_commitish.is_empty()).then_some(target_commitish);
+        self
+    }
+
     /// Return the release database id.
     #[must_use]
     pub const fn database_id(&self) -> u64 {
@@ -1024,6 +1036,18 @@ impl ReleaseState {
     #[must_use]
     pub fn tag(&self) -> &str {
         &self.tag
+    }
+
+    /// Borrow the optional release title returned by GitHub.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// Borrow the optional target commitish returned by GitHub.
+    #[must_use]
+    pub fn target_commitish(&self) -> Option<&str> {
+        self.target_commitish.as_deref()
     }
 
     /// Return whether the release is still a draft.
@@ -1079,6 +1103,41 @@ pub fn select_release_for_tag(
     let mut selected: Option<ReleaseState> = None;
     for release in releases {
         if release.tag() != tag {
+            continue;
+        }
+        if selected.is_some() {
+            return Err(ReleaseDataError::new(
+                ReleaseDataErrorKind::DuplicateReleaseTag,
+            ));
+        }
+        selected = Some(release);
+    }
+    Ok(selected)
+}
+
+/// Select one exact-tag release or its mutable GitHub placeholder draft.
+///
+/// GitHub may temporarily assign an `untagged-*` tag to a draft created just
+/// after its Git ref is pushed. The release name and exact target commit bind
+/// that placeholder to the requested staging transaction without accepting an
+/// unrelated draft.
+///
+/// # Errors
+/// Returns [`ReleaseDataErrorKind::DuplicateReleaseTag`] when more than one
+/// release claims the exact or placeholder staging identity.
+pub fn select_release_for_staging(
+    tag: &str,
+    target_commitish: &str,
+    releases: impl IntoIterator<Item = ReleaseState>,
+) -> Result<Option<ReleaseState>, ReleaseDataError> {
+    let mut selected: Option<ReleaseState> = None;
+    for release in releases {
+        let exact = release.tag() == tag;
+        let placeholder = release.is_mutable_draft()
+            && release.tag().starts_with("untagged-")
+            && release.name() == Some(tag)
+            && release.target_commitish() == Some(target_commitish);
+        if !exact && !placeholder {
             continue;
         }
         if selected.is_some() {
@@ -1441,6 +1500,40 @@ mod release_tests {
                 [release("dup", true, false), release("dup", true, false)]
             )
             .expect_err("duplicate tag should fail")
+            .kind(),
+            ReleaseDataErrorKind::DuplicateReleaseTag
+        );
+    }
+
+    #[test]
+    fn staging_selection_adopts_only_the_exact_mutable_placeholder() {
+        let placeholder = release("untagged-abc", true, false)
+            .with_staging_identity(Some("v2".to_owned()), "commit-2".to_owned());
+        let unrelated = release("untagged-def", true, false)
+            .with_staging_identity(Some("v2".to_owned()), "other".to_owned());
+        let selected =
+            select_release_for_staging("v2", "commit-2", [unrelated, placeholder.clone()])
+                .expect("selection")
+                .expect("placeholder");
+        assert_eq!(selected.database_id(), placeholder.database_id());
+
+        assert!(
+            select_release_for_staging(
+                "v2",
+                "commit-2",
+                [release("untagged-abc", false, false)
+                    .with_staging_identity(Some("v2".to_owned()), "commit-2".to_owned(),)],
+            )
+            .expect("selection")
+            .is_none()
+        );
+        assert_eq!(
+            select_release_for_staging(
+                "v2",
+                "commit-2",
+                [release("v2", true, false), placeholder],
+            )
+            .expect_err("duplicate staging identity should fail")
             .kind(),
             ReleaseDataErrorKind::DuplicateReleaseTag
         );
