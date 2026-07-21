@@ -531,12 +531,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"gc_run_logs.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
 "gh.py" = [
     "C901",
     "PLR0911",

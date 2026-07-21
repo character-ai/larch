@@ -5376,46 +5376,6 @@
     "history": []
   },
   {
-    "file": "larch/report/gc_run_logs.py",
-    "code": "C901",
-    "qualified_symbol": "_apply",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/gc_run_logs.py",
-    "code": "C901",
-    "qualified_symbol": "_plan",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/gc_run_logs.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_main",
-    "metric": 9,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/gc_run_logs.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_apply",
-    "metric": 15,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/gc_run_logs.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_apply",
-    "metric": 7,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
     "file": "larch/report/markdown_block.py",
     "code": "C901",
     "qualified_symbol": "replace_markdown_block",

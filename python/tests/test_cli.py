@@ -12,6 +12,7 @@ import pytest
 
 from larch import cli
 import importlib
+import importlib.util
 
 
 CLI_PATH = Path(__file__).resolve().parents[1] / "cli.py"
@@ -82,6 +83,10 @@ def test_dispatch_ship_pre_fix_rebase_calls_implement_dispatch() -> None:
 )
 def test_git_backed_run_log_commands_are_retired(argv: list[str]) -> None:
     assert cli.main(argv) == 2
+
+
+def test_retired_gc_run_logs_module_is_not_importable() -> None:
+    assert importlib.util.find_spec("larch.report.gc_run_logs") is None
 
 
 def test_dispatch_report_tokens_analyze() -> None:

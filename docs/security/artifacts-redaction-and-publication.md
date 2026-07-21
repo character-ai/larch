@@ -207,6 +207,10 @@ plans, findings, summaries, transcripts, failure evidence, and model output
 after sanitization. Treat them as sensitive even when every redaction and
 scanner passes. Current workflows do not store run logs in Git.
 
+Cloud run-log retention is append-only. No shipped runtime deletes or slims
+run-log content, creates a run-log Git branch, commit, push, or pull request,
+or configures remote lifecycle expiration.
+
 The shared run lifecycle is the sole terminal archive publisher. Specialized
 design, implement, and review owners may select and stage richer artifacts, but
 they hand that one staging tree to the shared terminal boundary. That boundary
