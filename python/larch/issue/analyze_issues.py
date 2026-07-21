@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from larch.core import proc
+from larch.core import proc, repo_roots
 from larch.errors import ShipError
 from larch.git import gh
 from larch.issue._ground_truth import (
@@ -75,6 +75,7 @@ from larch.issue._util import (
     pr_ref_id,
     strip_prefixes,
 )
+from larch.report import run_log_corpus
 
 # Re-export _parse_issue_number for backward compatibility (also imported from _oos above)
 
@@ -299,13 +300,25 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--top-K", "--top-k", dest="top_k", default="10")
     parser.add_argument("--categories", default="default", choices=["auto", "default"])
     parser.add_argument("--lenient", action="store_true")
-    parser.add_argument("--log-root", default="larch-logs")
+    parser.add_argument("--log-root", default=None)
     parser.add_argument("--repo", default="")
     parser.add_argument("--ground-truth-verdict", action="store_true")
     parser.add_argument("--since-date", default=GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
     parser.add_argument("--min-runs", default=str(GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS))
     parser.add_argument("--min-larch-version", default=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION)
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.log_root is not None:
+        log_root = Path(args.log_root)
+    else:
+        repo_root = repo_roots.consumer_repo_root()
+        if repo_root is None:
+            print("ERROR: could not discover a Git repository root for run-log synchronization", file=sys.stderr)
+            return 2
+        try:
+            log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
+        except run_log_corpus.RunLogCorpusError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
     repo = args.repo or _detect_repo()
     repo_valid = bool(re.fullmatch(r"[^/]+/[^/]+", repo or ""))
     if not repo_valid:
@@ -342,7 +355,6 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     issue_enrichment_degraded = _ground_truth_issue_enrichment_degraded(issues)
     if issue_enrichment_degraded:
         enrichment_degraded = enrichment_degraded or issue_enrichment_degraded
-    log_root = Path(args.log_root)
     candidate_numbers: set[int] = set()
     for record in iter_filed_oos_records(log_root):
         parsed_number, _reason = _parse_issue_number(record.get("issue_number"))
