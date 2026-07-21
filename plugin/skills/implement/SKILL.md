@@ -150,7 +150,7 @@ Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEX
 
 ## Flags
 
-**Invocation contract**: `/implement` consumes one positional GitHub issue. Only nested calls may bind `--lifecycle-parent-context` to `LIFECYCLE_PARENT_CONTEXT`.
+**Invocation contract**: Nested input: `--lifecycle-parent-context <absolute-context-path>`; bind `LIFECYCLE_PARENT_CONTEXT`, remove it, and forward it to Step 0. Other forms abort before Preflight.
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before the positional issue. Flags may appear in any order. **All boolean flags default to `false`.** Set a mental flag to `true` only when its listed token appears. `--force` and `-f` both set `force_requested=true`. Strip recognized flags before binding the issue.
 

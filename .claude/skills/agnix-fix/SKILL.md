@@ -129,7 +129,7 @@ Before invoking `/implement`, keep the CI-monitoring and changelog guidance from
 Invoke the Skill tool:
 
 - Try skill `"implement"` first (bare name). On `Unknown skill`, try `"larch:implement"` (fully-qualified plugin name).
-- args: `--forked --coder=codex` then one ASCII space, then the upstream issue number `$ISSUE_NUMBER` as the **positional** `<issue-N>` tail, then any optional extra flag tokens from `$EXTRA` (must be `/implement`-supported flags only — no removed `--auto`, no verbal feature tails).
+- args: --lifecycle-parent-context "$CONTEXT_FILE" --forked --coder=codex, then one ASCII space, then the upstream issue number `$ISSUE_NUMBER` as the **positional** `<issue-N>` tail, then optional `$EXTRA` tokens that `/implement` supports; omit `--auto` and verbal feature tails.
 
 `--coder=codex` is passed explicitly so the auto-route to the main agent for small surgical plans (per issue #1481) does NOT fire on agnix work — agnix is a Rust codebase and Codex is the appropriate implementer regardless of plan size. Issue #1475 (the protected-path-modified false-positive) has landed, so the older `--coder=claude` workaround is no longer needed.
 

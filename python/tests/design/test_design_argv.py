@@ -52,6 +52,18 @@ def test_design_parse_flags_cli_writes_sourceable_output(tmp_path: Path) -> None
     assert "POSITIONAL_VALUE='123'" in text
 
 
+def test_design_parse_flags_consumes_leading_lifecycle_parent_context(tmp_path: Path) -> None:
+    output = tmp_path / "argv.env"
+    context = "/tmp/parent-context.json"
+    result = _run_parse(
+        "--output", str(output), "--lifecycle-parent-context", context, "--brainstorm", "123"
+    )
+
+    assert result.returncode == 0
+    assert _stdout_kvs(result.stdout)["LIFECYCLE_PARENT_CONTEXT"] == context
+    assert "lifecycle_parent_context='/tmp/parent-context.json'" in output.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     ("args", "error_token"),
     [
@@ -69,6 +81,8 @@ def test_design_parse_flags_cli_writes_sourceable_output(tmp_path: Path) -> None
         (("123", "--run-id", "--bogus"), "--bogus"),
         (("123", "--run-id", "--hard"), "--hard"),
         (("123", "--run-id", "--brainstorm"), "--brainstorm"),
+        (("--brainstorm", "--lifecycle-parent-context", "/tmp/context", "123"), "--lifecycle-parent-context"),
+        (("--lifecycle-parent-context", "/tmp/one", "--lifecycle-parent-context", "/tmp/two", "123"), "--lifecycle-parent-context"),
         (("foo\n=true",), "newline-in-value"),
     ],
 )

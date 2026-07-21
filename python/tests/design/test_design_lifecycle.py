@@ -65,11 +65,32 @@ def _fake_parse_none(*_args: object, **_kwargs: object) -> tuple[int, dict[str, 
             "approve_requested": "false",
             "skip_approve_requested": "false",
             "no_dedup_requested": "false",
+            "lifecycle_parent_context": "",
             "run_id": "",
             "POSITIONAL_VALUE": "",
         },
         "",
     )
+
+
+def test_start_design_lifecycle_forwards_parent_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command: list[str] = []
+
+    def fake_run(args: list[str], **_kwargs: object) -> CommandResult:
+        command.extend(args)
+        return CommandResult(tuple(args), 0, "LIFECYCLE_STARTED=true\n", "", 0.0)
+
+    monkeypatch.setattr(design_step0.proc, "run", fake_run)
+    assert design_step0._start_design_lifecycle(  # pyright: ignore[reportPrivateUsage]
+        plugin_root=tmp_path,
+        repo_root=tmp_path,
+        design_path=tmp_path,
+        run_id="design-child",
+        lifecycle_parent_context="/tmp/parent-context.json",
+    ) == 0
+    assert command[-2:] == ["--lifecycle-parent-context", "/tmp/parent-context.json"]
 
 
 def _fake_parse_with_run_id(run_id: str) -> Callable[..., tuple[int, dict[str, str], str]]:

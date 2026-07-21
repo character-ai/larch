@@ -25,7 +25,7 @@ All `/implement` **public** flags (`--merge`, `--forked`, `--draft`, `--no-admin
 
 Invoke the Skill tool:
 - Try skill: "implement" first (bare name). If no skill matches, try skill: "larch:implement" (fully-qualified plugin name).
-- args: --force --self-review --self-implement $ARGUMENTS
+- args: --lifecycle-parent-context "$CONTEXT_FILE" --force --self-review --self-implement $ARGUMENTS
 
 After the Skill tool loads /implement, the child skill MUST begin execution at its Step 0 (session setup). Do not investigate the codebase, plan, or implement anything before Step 0 completes.
 

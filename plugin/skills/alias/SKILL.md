@@ -171,7 +171,7 @@ Print: `**Alias /<alias-name> -> /<target-skill> <preset-flags>: target: $TARGET
 
 Invoke the Skill tool:
 - Try skill: `"implement"` first (bare name). If no skill matches, try skill: `"larch:implement"` (fully-qualified plugin name).
-- args: `"[--merge] <feature-description>"`
+- args: --lifecycle-parent-context "$CONTEXT_FILE" [--merge] `<feature-description>`
 
 Only include `--merge` in the args if `alias_merge=true`.
 

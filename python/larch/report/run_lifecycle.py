@@ -389,12 +389,16 @@ def start_main(argv: Sequence[str]) -> int:
     _ = parser.add_argument("--log-root")
     _ = parser.add_argument("--issue", default="")
     _ = parser.add_argument("--adopt-existing", action="store_true")
-    _ = parser.add_argument("--parent-context")
+    _ = parser.add_argument("--lifecycle-parent-context")
     try:
         args = parser.parse_args(argv)
         result = start_run(repo_root=_resolve_cli_repo_root(args.repo_root), skill=args.skill, parent_skill=args.parent_skill, parent_run_id=args.parent_run_id,
             run_id=args.run_id, log_root=Path(args.log_root) if args.log_root else None, issue=args.issue, adopt_existing=args.adopt_existing,
-            parent_context=Path(args.parent_context) if args.parent_context else None)
+            parent_context=(
+                Path(args.lifecycle_parent_context)
+                if args.lifecycle_parent_context
+                else None
+            ))
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
     except storage_config.StorageConfigurationError as exc:
