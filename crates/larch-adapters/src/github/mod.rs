@@ -132,6 +132,11 @@ impl GitHubCredential {
 /// arbitrary GraphQL documents to domain callers.
 pub struct OctocrabGitHubService {
     pub(crate) client: Octocrab,
+    /// Client for release-asset binary downloads. It omits the
+    /// `application/vnd.github+json` Accept so the per-request
+    /// `application/octet-stream` Accept is honored; otherwise the GitHub
+    /// asset endpoint returns asset metadata JSON instead of the binary.
+    pub(crate) download_client: Octocrab,
     pub(crate) policy: GitHubTransportPolicy,
     pub(crate) api_base: Url,
     #[cfg(test)]
@@ -146,6 +151,7 @@ impl OctocrabGitHubService {
     #[cfg(test)]
     pub(crate) fn with_test_client(client: Octocrab) -> Self {
         Self {
+            download_client: client.clone(),
             client,
             policy: GitHubTransportPolicy::github_com(),
             api_base: Url::parse(API_BASE).expect("fixed API base must be valid"),
@@ -186,11 +192,17 @@ impl OctocrabGitHubService {
                 "Octocrab GitHub API version does not match larch policy",
             )));
         }
-        let client = build_client(credential, policy, API_BASE).map_err(|error| {
-            GitHubClientError::Configuration(redactor.safe_text(error.to_string()))
-        })?;
+        let client = build_client(credential, policy, API_BASE, &Self::required_headers())
+            .map_err(|error| {
+                GitHubClientError::Configuration(redactor.safe_text(error.to_string()))
+            })?;
+        let download_client = build_client(credential, policy, API_BASE, &Self::download_headers())
+            .map_err(|error| {
+                GitHubClientError::Configuration(redactor.safe_text(error.to_string()))
+            })?;
         Ok(Self {
             client,
+            download_client,
             policy,
             api_base: Url::parse(API_BASE).expect("fixed API base must be valid"),
             #[cfg(test)]
@@ -221,10 +233,14 @@ impl OctocrabGitHubService {
             redactor.register_exact_secret(credential.expose().to_owned()),
             "test credential must register"
         );
-        let client = build_client(&credential, policy, api_base.as_str())
+        let client = build_client(&credential, policy, api_base.as_str(), &Self::required_headers())
             .expect("test API base and token must construct the client");
+        let download_client =
+            build_client(&credential, policy, api_base.as_str(), &Self::download_headers())
+                .expect("test API base and token must construct the download client");
         Self {
             client,
+            download_client,
             policy,
             api_base: api_base.clone(),
             test_log_redirect_origin: Some(log_redirect_origin),
@@ -238,6 +254,16 @@ impl OctocrabGitHubService {
     #[must_use]
     pub const fn required_headers() -> [(&'static str, &'static str); 2] {
         [("user-agent", USER_AGENT_VALUE), ("accept", ACCEPT_VALUE)]
+    }
+
+    /// Headers for the release-asset download client. It omits the
+    /// `application/vnd.github+json` Accept so a per-request
+    /// `application/octet-stream` Accept survives; otherwise Octocrab appends
+    /// the JSON Accept and the GitHub asset endpoint returns metadata instead
+    /// of the binary.
+    #[must_use]
+    pub const fn download_headers() -> [(&'static str, &'static str); 1] {
+        [("user-agent", USER_AGENT_VALUE)]
     }
 
     /// Remove the exact runtime credential and standard secret families.
@@ -302,6 +328,7 @@ fn build_client(
     credential: &GitHubCredential,
     policy: GitHubTransportPolicy,
     api_base: &str,
+    headers: &[(&'static str, &'static str)],
 ) -> octocrab::Result<Octocrab> {
     let mut builder = Octocrab::builder()
         .personal_token(credential.expose().to_owned())
@@ -310,7 +337,7 @@ fn build_client(
         .set_write_timeout(Some(policy.write_timeout()))
         .base_uri(api_base)?
         .upload_uri(api_base)?;
-    for (name, value) in OctocrabGitHubService::required_headers() {
+    for &(name, value) in headers {
         builder = builder.add_header(HeaderName::from_static(name), value.to_owned());
     }
     builder.build()
@@ -428,6 +455,29 @@ mod tests {
         let limits: GitHubResponseLimits = service.transport_policy().limits();
         assert_eq!(limits.body_bytes(), 2 * 1024 * 1024);
         assert_eq!(limits.pages(), 20);
+    }
+
+    #[test]
+    fn download_client_headers_omit_the_json_accept() {
+        // The asset-download client must not advertise the vnd.github+json
+        // Accept: Octocrab appends it to the per-request octet-stream Accept,
+        // and the GitHub asset endpoint then returns metadata JSON instead of
+        // the binary.
+        assert_eq!(
+            OctocrabGitHubService::download_headers(),
+            [("user-agent", "larch")]
+        );
+        assert!(
+            !OctocrabGitHubService::download_headers()
+                .iter()
+                .any(|(name, _)| *name == "accept")
+        );
+        // The API client keeps the JSON Accept it needs.
+        assert!(
+            OctocrabGitHubService::required_headers()
+                .iter()
+                .any(|(name, value)| *name == "accept" && *value == "application/vnd.github+json")
+        );
     }
 
     #[test]

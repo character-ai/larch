@@ -1282,7 +1282,7 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
                 .map_err(|error| self.transport_error_from(&error))?;
             let response = self
                 .service
-                .client
+                .download_client
                 .execute(http_request)
                 .await
                 .map_err(|error| self.transport_error(&error))?;
