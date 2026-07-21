@@ -274,11 +274,46 @@ session. Restart `claude` after a successful install or marketplace repair.
 The first upgrade from the old sparse GitHub marketplace registration replaces
 that registration with the runtime-only remote source.
 
+If `/upgrade-larch` is unavailable or a plain `claude plugin install
+larch@larch-local` keeps installing an older version, the cached marketplace
+registration is stale. `claude plugin install` reuses that cache, so refresh
+the marketplace first, then reinstall:
+
+```bash
+claude plugin marketplace update larch-local
+claude plugin uninstall larch@larch-local
+claude plugin install larch@larch-local
+```
+
+`claude plugin marketplace update larch-local` is the step that pulls the
+latest release. Restart `claude` afterward.
+
 See the [upgrade and rollback security contract](security/supply-chain-credentials-and-services.md#upgrade-and-rollback-boundaries)
 for verification and cache-ownership guarantees.
 
 ## Uninstalling
 
+Remove the plugin:
+
 ```bash
 claude plugin uninstall larch@larch-local
+```
+
+`claude plugin uninstall` leaves the `larch-local` marketplace registration
+cached at its last-fetched version. A later `claude plugin install
+larch@larch-local` then reinstalls that cached version, not the latest release.
+For a full uninstall so a later install pulls the latest, also remove the
+marketplace:
+
+```bash
+claude plugin uninstall larch@larch-local
+claude plugin marketplace remove larch-local
+```
+
+To reinstall afterward, re-add the marketplace from its source, then install.
+The re-added marketplace fetches the latest published release:
+
+```bash
+claude plugin marketplace add https://raw.githubusercontent.com/character-ai/larch/main/.claude-plugin/marketplace.json
+claude plugin install larch@larch-local
 ```
