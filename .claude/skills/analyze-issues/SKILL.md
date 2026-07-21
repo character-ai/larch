@@ -33,7 +33,7 @@ Flags:
 - `--span-days N`: analysis span override. Default: auto.
 - `--top-K N`: number of top items to show in ranked sections. Default: `10`.
 - `--categories=auto|default`: category mode. Default: `default`.
-- `--log-root PATH`: run-log root to scan for filed OOS evidence. Default: `larch-logs`.
+- `--log-root PATH`: offline or operator-selected run-log root to scan for filed OOS evidence. When omitted, the coordinator synchronizes and scans the current repository's cache once.
 - `--repo OWNER/REPO`: explicit GitHub repository. Default: auto-detect for live runs.
 - `--lenient`: forwarded to `analyze.py`. Suppresses the >5% non-dict or malformed-number abort in `load_issues` so a corrupted dump still produces a partial report. Per-element stderr `WARN load_issues: ...` lines are still emitted; this flag only disables the threshold check.
 - `--ground-truth-verdict`: print only the ground-truth verdict report and return its gate exit code.
@@ -55,7 +55,7 @@ The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json
 
 The report includes a diagnostic `## High-risk OOS Backlog` section before fate-adjusted OOS scoring. It lists open `[OOS]` issues carrying `oos-correctness`, including correctness- and regression-tagged deferrals, sorted oldest first. It is read-only and does not mutate issues.
 
-The report includes a diagnostic `## Fate-adjusted OOS Scoring` section after the reviewer/persona tables. It scans `larch-logs/{design,implement}/` for filed OOS evidence, joins filed issue numbers to the fetched issue dump, and reports provisional points, fate-adjusted points, docked counts, and fate buckets per reviewer. It does not mutate run logs, live voting scores, or reviewer ledgers.
+The report includes a diagnostic `## Fate-adjusted OOS Scoring` section after the reviewer/persona tables. It scans `{design,implement}/` under the synchronized cache by default, or under an explicit `--log-root`, for filed OOS evidence. It joins filed issue numbers to the fetched issue dump and reports provisional points, fate-adjusted points, docked counts, and fate buckets per reviewer. It does not mutate run logs, live voting scores, or reviewer ledgers.
 
 Live runs may enrich only filed OOS candidates with targeted `gh issue view` calls so combined-away comments can be detected. Bulk `gh issue list` does not fetch comments; if newer optional list fields such as `stateReason` or `url` are unavailable, the fetch retries without them and marks the reduced data as degraded.
 

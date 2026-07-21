@@ -146,8 +146,51 @@ def test_run_main_forwards_lenient_to_analyzer(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
     monkeypatch.setattr(analyze_issues, "iter_filed_oos_records", lambda _root: [])
 
-    assert analyze_issues.run_main(["--lenient"]) == 0
+    assert analyze_issues.run_main(["--lenient", "--log-root", str(tmp_path / "logs")]) == 0
     assert seen["fetch"]
+
+
+def test_run_main_default_synchronizes_once_and_matches_explicit_log_root(monkeypatch, tmp_path: Path, capsys) -> None:
+    log_root = tmp_path / "synchronized-cache"
+    log_root.mkdir()
+    synced_roots: list[Path] = []
+    report_roots: list[Path] = []
+
+    def fake_sync(*, repo_root: Path) -> Path:
+        synced_roots.append(repo_root)
+        return log_root
+
+    def fake_report(_issues, *, log_root: Path, **_kwargs) -> str:
+        report_roots.append(log_root)
+        return "report"
+
+    monkeypatch.setattr(analyze_issues.repo_roots, "consumer_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(analyze_issues.run_log_corpus, "synchronized_repository_log_root", fake_sync)
+    monkeypatch.setattr(analyze_issues, "_detect_repo", lambda: "")
+    monkeypatch.setattr(analyze_issues, "_build_analyze_report", fake_report)
+
+    assert analyze_issues.run_main([]) == 0
+    synchronized = capsys.readouterr()
+    assert analyze_issues.run_main(["--log-root", str(log_root)]) == 0
+    explicit = capsys.readouterr()
+
+    assert synchronized.out == explicit.out == "report\n"
+    assert synchronized.err == explicit.err
+    assert synced_roots == [tmp_path]
+    assert report_roots == [log_root, log_root]
+
+
+def test_run_main_default_reports_sync_failure_before_issue_fetch(monkeypatch, tmp_path: Path, capsys) -> None:
+    def fail_sync(*, repo_root: Path) -> Path:
+        raise analyze_issues.run_log_corpus.RunLogCorpusError(f"storage unavailable for {repo_root}")
+
+    monkeypatch.setattr(analyze_issues.repo_roots, "consumer_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(analyze_issues.run_log_corpus, "synchronized_repository_log_root", fail_sync)
+    monkeypatch.setattr(analyze_issues, "fetch_main", lambda _argv: pytest.fail("issue fetch must not run"))
+
+    with pytest.raises(SystemExit, match="2"):
+        analyze_issues.run_main(["--repo", "o/r"])
+    assert f"ERROR: storage unavailable for {tmp_path}" in capsys.readouterr().err
 
 
 def test_fate_adjusted_open_and_not_planned_from_logs(tmp_path: Path) -> None:
