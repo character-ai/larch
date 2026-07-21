@@ -157,6 +157,54 @@ mod release_prepare_tests {
         repository
     }
 
+    fn merge_release_repository() -> GitRepository {
+        let repository = GitRepository::builder(GitFixture::Unborn)
+            .build()
+            .expect("release repository");
+        repository
+            .write(".claude-plugin/plugin.json", br#"{"version":"1.2.2"}"#)
+            .expect("plugin manifest");
+        repository.write("README.md", b"base\n").expect("readme");
+        checked_git(&repository, ["add", "-A"]);
+        checked_git(&repository, ["commit", "--quiet", "-m", "base"]);
+        checked_git(&repository, ["switch", "-c", "release/v1.2.3"]);
+        repository
+            .write(".claude-plugin/plugin.json", br#"{"version":"1.2.3"}"#)
+            .expect("release plugin manifest");
+        checked_git(&repository, ["add", "-A"]);
+        checked_git(
+            &repository,
+            ["commit", "--quiet", "-m", "Bump version to 1.2.3"],
+        );
+        checked_git(&repository, ["tag", "v1.2.3"]);
+        checked_git(&repository, ["switch", "main"]);
+        checked_git(
+            &repository,
+            [
+                "merge",
+                "--quiet",
+                "--no-ff",
+                "release/v1.2.3",
+                "-m",
+                "Merge pull request #7719 from o/release/v1.2.3",
+            ],
+        );
+        repository
+            .write("README.md", b"feature\n")
+            .expect("feature change");
+        checked_git(&repository, ["add", "-A"]);
+        checked_git(&repository, ["commit", "--quiet", "-m", "Feature (#42)"]);
+        checked_git(
+            &repository,
+            ["remote", "add", "origin", "https://github.com/o/r.git"],
+        );
+        checked_git(
+            &repository,
+            ["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        repository
+    }
+
     #[test]
     fn release_subject_and_frontmatter_parsers_require_exact_delimiters() {
         assert!(is_release_subject("Release v1.2.3"));
@@ -296,6 +344,61 @@ mod release_prepare_tests {
                 &Cancellation::new(),
             ))
             .expect("prepare release with explicit bump");
+    }
+
+    #[test]
+    fn prepare_excludes_the_previous_merge_landed_release_pull_request() {
+        let fixture = merge_release_repository();
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let output = tempfile::tempdir().expect("output directory");
+        let output_root = TemporaryRoot::resolve(Some(output.path())).expect("temporary root");
+        let service = FakeReleaseService {
+            latest: Some("v1.2.3".to_owned()),
+            pulls: BTreeMap::from([(42, pull_request(42, "Feature"))]),
+            associated: vec![pull_request(7719, "Release v1.2.3")],
+            ..FakeReleaseService::default()
+        };
+        let arguments = PrepareArguments {
+            repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
+            bump: Some(BumpType::Minor),
+            out_dir: output.path().to_path_buf(),
+        };
+        let runtime = LarchRuntime::current_thread().expect("test runtime");
+
+        let baseline = resolve(&repository, "v1.2.3").expect("baseline");
+        let head = resolve(&repository, "origin/main").expect("head");
+        let commits = repository
+            .walk_commits_range(&baseline, &head, 10)
+            .expect("release commits");
+        let selection = runtime
+            .block_on(select_pull_requests(
+                &service,
+                &Cancellation::new(),
+                "o",
+                "r",
+                &commits,
+            ))
+            .expect("select release pull requests");
+        assert_eq!(selection.written, BTreeSet::from([42]));
+        assert!(selection.ignored.is_empty());
+
+        runtime
+            .block_on(prepare_with_service(
+                &arguments,
+                &output_root,
+                fixture.root(),
+                &repository,
+                &service,
+                &Cancellation::new(),
+            ))
+            .expect("prepare release");
+
+        let rows = fs::read_to_string(output.path().join("pr-list.tsv"))
+            .expect("release pull request rows");
+        assert_eq!(
+            rows,
+            "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n"
+        );
     }
 
     #[test]
@@ -516,6 +619,35 @@ mod release_prepare_tests {
                 .token,
             "pr-metadata-incomplete"
         );
+    }
+
+    #[test]
+    fn pull_selection_excludes_release_pull_request_suffixes() {
+        let fixture = release_repository();
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let baseline = resolve(&repository, "v1.2.3").expect("baseline");
+        let head = resolve(&repository, "origin/main").expect("head");
+        let commits = repository
+            .walk_commits_range(&baseline, &head, 10)
+            .expect("commits");
+        let service = FakeReleaseService {
+            pulls: BTreeMap::from([(42, pull_request(42, "Release v1.2.3"))]),
+            ..FakeReleaseService::default()
+        };
+        let runtime = LarchRuntime::current_thread().expect("test runtime");
+
+        let selection = runtime
+            .block_on(select_pull_requests(
+                &service,
+                &Cancellation::new(),
+                "o",
+                "r",
+                &commits,
+            ))
+            .expect("release selection");
+
+        assert!(selection.written.is_empty());
+        assert!(selection.ignored.is_empty());
     }
 
     #[test]
