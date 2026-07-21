@@ -45,7 +45,12 @@ def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
     assert macos_step.index(sign) < macos_step.index(verify)
     assert linux_path in linux_step
     assert macos_step.index(cargo_test) < macos_step.index(cargo_build)
-    assert linux_step.index(cargo_test) < linux_step.index(cargo_build)
+    # The Linux container builds the target but does not re-run the suite:
+    # host-environment-sensitive tests (git trust, signal reaping) fail as
+    # root with no PID-1 reaper, and the full suite already runs on this
+    # commit in ci.yaml. The container still smoke-tests the built binary.
+    assert cargo_test not in linux_step
+    assert cargo_build in linux_step
     assert cli_only_test not in macos_step
     assert cli_only_test not in linux_step
 
