@@ -98,6 +98,11 @@ trait Services {
     fn local_tag(&self, tag: &str) -> Result<Option<String>, String>;
     fn create_local_tag(&self, tag: &str, oid: &str) -> Result<(), String>;
     fn push_tag(&self, tag: &str) -> Result<(), String>;
+    fn staged_release(
+        &self,
+        repo: &RepoSlug,
+        input: &DraftReleaseInput,
+    ) -> Result<Option<ReleaseState>, String>;
     fn release(&self, repo: &RepoSlug, tag: &str) -> Result<Option<ReleaseState>, String>;
     fn create_draft(
         &self,
@@ -245,6 +250,17 @@ impl Services for ProductionServices {
             .map_err(|error| error.to_string())
     }
 
+    fn staged_release(
+        &self,
+        repo: &RepoSlug,
+        input: &DraftReleaseInput,
+    ) -> Result<Option<ReleaseState>, String> {
+        let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
+        self.runtime
+            .block_on(ReleaseOperations::new(&transport).release_for_staging(repo, input))
+            .map_err(|error| error.to_string())
+    }
+
     fn release(&self, repo: &RepoSlug, tag: &str) -> Result<Option<ReleaseState>, String> {
         let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
         self.runtime
@@ -358,19 +374,14 @@ fn stage_with(
         target_commitish: source_commit.clone(),
         body: SafeText::from_untrusted(notes).as_str().to_owned(),
     };
-    match services.release(&slug, &tag)? {
-        None => {
-            let _ = services.create_draft(&slug, &input)?;
-        }
+    let release = match services.staged_release(&slug, &input)? {
+        None => services.create_draft(&slug, &input)?,
         Some(release) if release.is_mutable_draft() => {
-            let _ = services.update_draft(&slug, &release, &input)?;
+            services.update_draft(&slug, &release, &input)?
         }
         Some(_) => return Err("staged release is not a mutable draft".to_owned()),
-    }
-    let release = services
-        .release(&slug, &tag)?
-        .ok_or_else(|| "staged release is missing".to_owned())?;
-    if !release.is_mutable_draft() {
+    };
+    if release.tag() != tag || !release.is_mutable_draft() {
         return Err("staged release is not a mutable draft".to_owned());
     }
     Ok(source_commit)
@@ -661,6 +672,16 @@ mod tests {
             *self.remote_tag.borrow_mut() = Some(SOURCE.to_owned());
             Ok(())
         }
+        fn staged_release(
+            &self,
+            _repo: &RepoSlug,
+            _input: &DraftReleaseInput,
+        ) -> Result<Option<ReleaseState>, String> {
+            if self.releases.borrow().is_empty() {
+                return Ok(None);
+            }
+            Ok(self.releases.borrow_mut().remove(0))
+        }
         fn release(&self, _repo: &RepoSlug, _tag: &str) -> Result<Option<ReleaseState>, String> {
             if self.releases.borrow().is_empty() {
                 return Ok(None);
@@ -801,7 +822,7 @@ mod tests {
         let notes = notes();
         let create = FakeServices {
             remote_tag: RefCell::new(None),
-            releases: RefCell::new(vec![None, Some(draft(Vec::new()))]),
+            releases: RefCell::new(vec![None]),
             ..FakeServices::default()
         };
         assert_eq!(
@@ -811,7 +832,7 @@ mod tests {
         assert_eq!(*create.created.borrow(), 1);
 
         let resume = FakeServices {
-            releases: RefCell::new(vec![Some(draft(Vec::new())), Some(draft(Vec::new()))]),
+            releases: RefCell::new(vec![Some(draft(Vec::new()))]),
             ..FakeServices::default()
         };
         assert!(stage_with(&resume, "1.2.3", notes.path(), "character-ai/larch", "7").is_ok());

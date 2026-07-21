@@ -276,11 +276,18 @@ They do not use Python, `gh`, raw Git, arbitrary HTTP, or a fallback.
 Publication and installation stay with their owning callers.
 
 Ambiguous create, upload, edit, publish, and Latest-promotion outcomes read back
-the owning resource. A landed effect succeeds without another write. Only
-proven absence permits an idempotent retry. Publication preserves the prior
-Latest release. Promotion occurs only after immutable asset and attestation
-verification, and verifies the final Latest postcondition. Policy and draft
-edits always read back their state.
+the owning resource. A landed effect succeeds without another write. An
+ambiguous draft create is not repeated when a temporary placeholder may still
+be absent from the list response; a later staging run adopts it by identity.
+Other mutations retry only after the owning read proves absence. Publication
+preserves the prior Latest release. Promotion occurs only after immutable asset
+and attestation verification, and verifies the final Latest postcondition.
+Policy and draft edits always read back their state. Draft updates carry the
+tag, target commit, title, and body together so a temporary GitHub
+`untagged-*` association can be repaired by release id without creating a
+second draft. Clear mutation responses are validated directly; ambiguous
+responses still require an owning tag read. Body reconciliation accepts only
+an exact match or GitHub's addition of one terminal newline.
 
 Asset download uses an operation-specific host policy that differs from the
 same-origin API continuation policy. A download may leave the API origin for a

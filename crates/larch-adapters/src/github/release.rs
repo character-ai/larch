@@ -19,7 +19,8 @@ use larch_core::{
     ASSET_MEDIA_TYPE, AssetStreamGuard, GitHubFailureInput, GitHubRateLimitInputs,
     GitHubRequestKind, GitHubRetryAction, ProcessCancellation, ReconciledMutation,
     ReleaseDataError, ReleaseState, RemoteAsset, SafeText, TagObjectId, classify_github_retry,
-    reconcile_mutation, require_asset_content_type, resolve_tag_object_id, select_release_for_tag,
+    reconcile_mutation, require_asset_content_type, resolve_tag_object_id,
+    select_release_for_staging, select_release_for_tag,
 };
 use octocrab::models::repos::{Asset, Release};
 use octocrab::repos::releases::MakeLatest;
@@ -348,6 +349,23 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         Ok(select_release_for_tag(tag, releases)?)
     }
 
+    /// Select an exact-tag release or its mutable placeholder draft.
+    ///
+    /// # Errors
+    /// Fails when the transport fails or the staging identity is duplicated.
+    pub async fn release_for_staging(
+        &self,
+        repo: &RepoSlug,
+        input: &DraftReleaseInput,
+    ) -> Result<Option<ReleaseState>, ReleaseServiceError> {
+        let releases = self.transport.list_releases(repo).await?;
+        Ok(select_release_for_staging(
+            &input.tag,
+            &input.target_commitish,
+            releases,
+        )?)
+    }
+
     /// Select the most recently published non-draft release.
     ///
     /// # Errors
@@ -374,7 +392,8 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         self.transport.latest_release(repo).await
     }
 
-    /// Create a draft release, reconciling an ambiguous create before retry.
+    /// Create a draft release and reconcile an ambiguous create without a
+    /// duplicate write.
     ///
     /// # Errors
     /// Fails when the transport fails, or when an ambiguous create cannot be
@@ -389,21 +408,19 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
             Err(error) if is_ambiguous_write(&error) => self.reconcile_create(repo, input).await?,
             Err(other) => return Err(other),
         };
-        if state.tag() != input.tag
-            || !state.is_mutable_draft()
-            || self
-                .transport
-                .release_body(repo, state.database_id())
-                .await?
-                != input.body
-        {
+        if state.tag() != input.tag && state.is_mutable_draft() {
+            return self.update_draft_release(repo, &state, input).await;
+        }
+        if state.tag() != input.tag || !state.is_mutable_draft() {
             return Err(ReleaseServiceError::MutationLost);
         }
+        self.verify_release_body(repo, state.database_id(), &input.body)
+            .await?;
         Ok(state)
     }
 
-    /// Update a mutable draft and verify the exact body on both clear and
-    /// ambiguous mutation outcomes.
+    /// Update a mutable draft and verify its body on both clear and ambiguous
+    /// mutation outcomes.
     ///
     /// # Errors
     /// Fails when the update or its owning-surface read-back fails.
@@ -421,18 +438,22 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
             .update_draft_release(repo, release.database_id(), input)
             .await;
         match result {
-            Ok(_) => {}
+            Ok(observed) => {
+                if observed.database_id() != release.database_id()
+                    || observed.tag() != input.tag
+                    || !observed.is_mutable_draft()
+                {
+                    return Err(ReleaseServiceError::MutationLost);
+                }
+                self.verify_release_body(repo, release.database_id(), &input.body)
+                    .await?;
+                return Ok(observed);
+            }
             Err(error) if is_ambiguous_write(&error) => {}
             Err(other) => return Err(other),
         }
-        if self
-            .transport
-            .release_body(repo, release.database_id())
-            .await?
-            != input.body
-        {
-            return Err(ReleaseServiceError::MutationLost);
-        }
+        self.verify_release_body(repo, release.database_id(), &input.body)
+            .await?;
         let observed = self
             .release_for_tag(repo, &input.tag)
             .await?
@@ -443,15 +464,29 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         Ok(observed)
     }
 
+    async fn verify_release_body(
+        &self,
+        repo: &RepoSlug,
+        release_id: u64,
+        expected: &str,
+    ) -> Result<(), ReleaseServiceError> {
+        let observed = self.transport.release_body(repo, release_id).await?;
+        if release_bodies_match(expected, &observed) {
+            Ok(())
+        } else {
+            Err(ReleaseServiceError::MutationLost)
+        }
+    }
+
     async fn reconcile_create(
         &self,
         repo: &RepoSlug,
         input: &DraftReleaseInput,
     ) -> Result<ReleaseState, ReleaseServiceError> {
-        let existing = self.release_for_tag(repo, &input.tag).await?;
+        let existing = self.release_for_staging(repo, input).await?;
         match reconcile_mutation(GitHubRetryAction::ReconcileMutation, existing.is_some()) {
             ReconciledMutation::AlreadyApplied => existing.ok_or(ReleaseServiceError::MutationLost),
-            _ => self.transport.create_draft_release(repo, input).await,
+            _ => Err(ReleaseServiceError::AmbiguousMutation),
         }
     }
 
@@ -959,7 +994,9 @@ fn map_release(release: &Release) -> Result<ReleaseState, ReleaseServiceError> {
             .as_ref()
             .or(release.created_at.as_ref())
             .map(ToString::to_string);
-        state.with_publication(release.prerelease, published_at)
+        state
+            .with_staging_identity(release.name.clone(), release.target_commitish.clone())
+            .with_publication(release.prerelease, published_at)
     })
     .map_err(ReleaseServiceError::Data)
 }
@@ -1125,11 +1162,13 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
         release_id: u64,
         input: &DraftReleaseInput,
     ) -> ReleaseFuture<'b, ReleaseState> {
-        let url = format!(
-            "https://{API_HOST}/repos/{}/releases/{release_id}",
-            repo.path()
-        );
-        let body = serde_json::json!({"name": input.tag, "body": input.body});
+        let url = format!("/repos/{}/releases/{release_id}", repo.path());
+        let body = serde_json::json!({
+            "name": input.tag,
+            "body": input.body,
+            "tag_name": input.tag,
+            "target_commitish": input.target_commitish,
+        });
         Box::pin(self.guard(async move {
             self.service
                 .client
@@ -1141,10 +1180,7 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
     }
 
     fn release_body<'b>(&'b self, repo: &RepoSlug, release_id: u64) -> ReleaseFuture<'b, String> {
-        let url = format!(
-            "https://{API_HOST}/repos/{}/releases/{release_id}",
-            repo.path()
-        );
+        let url = format!("/repos/{}/releases/{release_id}", repo.path());
         Box::pin(self.guard(async move {
             self.get_json(url)
                 .await?
@@ -1253,6 +1289,11 @@ impl ReleaseTransport for OctocrabReleaseTransport<'_> {
             self.fetch_outcome(response, max_bytes).await
         }))
     }
+}
+
+fn release_bodies_match(expected: &str, observed: &str) -> bool {
+    expected == observed
+        || (!expected.ends_with('\n') && observed.strip_suffix('\n') == Some(expected))
 }
 
 #[cfg(test)]
@@ -1525,7 +1566,31 @@ mod release_tests {
     }
 
     #[test]
-    fn ambiguous_create_retries_the_idempotent_create_when_not_applied() {
+    fn ambiguous_create_adopts_and_repairs_a_placeholder_draft() {
+        let placeholder = release(7, "untagged-abc", true, false, Vec::new())
+            .with_staging_identity(Some("v1".to_owned()), "commit".to_owned());
+        let transport = FakeTransport {
+            releases: vec![placeholder],
+            create: Mutex::new([Err(ReleaseServiceError::AmbiguousMutation)].into()),
+            update: Mutex::new([Ok(release(7, "v1", true, false, Vec::new()))].into()),
+            release_body: "notes\n".to_owned(),
+            ..FakeTransport::default()
+        };
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "commit".to_owned(),
+            body: "notes".to_owned(),
+        };
+
+        let staged = run(ReleaseOperations::new(&transport).stage_draft_release(&repo(), &input))
+            .expect("repaired placeholder");
+
+        assert_eq!(staged.tag(), "v1");
+        assert_eq!(*transport.list_calls.lock().expect("counter"), 1);
+    }
+
+    #[test]
+    fn ambiguous_create_does_not_repeat_while_a_placeholder_may_be_lagging() {
         let transport = FakeTransport {
             create: Mutex::new(
                 [
@@ -1543,9 +1608,11 @@ mod release_tests {
             body: "notes".to_owned(),
         };
 
-        let staged = run(ReleaseOperations::new(&transport).stage_draft_release(&repo(), &input))
-            .expect("retried release");
-        assert_eq!(staged.database_id(), 7);
+        assert_eq!(
+            run(ReleaseOperations::new(&transport).stage_draft_release(&repo(), &input)),
+            Err(ReleaseServiceError::AmbiguousMutation)
+        );
+        assert_eq!(transport.create.lock().expect("queue").len(), 1);
     }
 
     #[test]
@@ -1585,6 +1652,36 @@ mod release_tests {
                 .database_id(),
             7
         );
+    }
+
+    #[test]
+    fn clear_draft_update_uses_its_response_without_an_eventual_list_read() {
+        let staged = release(7, "v1", true, false, Vec::new());
+        let transport = FakeTransport {
+            release_body: "notes\n".to_owned(),
+            update: Mutex::new([Ok(staged.clone())].into()),
+            ..FakeTransport::default()
+        };
+        let input = DraftReleaseInput {
+            tag: "v1".to_owned(),
+            target_commitish: "commit".to_owned(),
+            body: "notes".to_owned(),
+        };
+
+        assert_eq!(
+            run(ReleaseOperations::new(&transport).update_draft_release(&repo(), &staged, &input,)),
+            Ok(staged)
+        );
+        assert_eq!(*transport.list_calls.lock().expect("counter"), 0);
+    }
+
+    #[test]
+    fn release_body_matching_accepts_only_one_added_terminal_newline() {
+        assert!(release_bodies_match("notes", "notes"));
+        assert!(release_bodies_match("notes", "notes\n"));
+        assert!(!release_bodies_match("notes", "notes\n\n"));
+        assert!(!release_bodies_match("notes\n", "notes\n\n"));
+        assert!(!release_bodies_match("notes", "changed\n"));
     }
 
     #[test]
@@ -1995,7 +2092,7 @@ mod transport_tests {
         status: u16,
         headers: Vec<(&'static str, String)>,
         body: Vec<u8>,
-        expected_request: Option<&'static str>,
+        expected_requests: Vec<&'static str>,
     }
 
     fn json_reply(status: u16, value: &serde_json::Value) -> Reply {
@@ -2003,7 +2100,7 @@ mod transport_tests {
             status,
             headers: vec![("Content-Type", "application/json".to_owned())],
             body: value.to_string().into_bytes(),
-            expected_request: None,
+            expected_requests: Vec::new(),
         }
     }
 
@@ -2013,7 +2110,18 @@ mod transport_tests {
         expected_request: &'static str,
     ) -> Reply {
         Reply {
-            expected_request: Some(expected_request),
+            expected_requests: vec![expected_request],
+            ..json_reply(status, value)
+        }
+    }
+
+    fn json_reply_expecting_all(
+        status: u16,
+        value: &serde_json::Value,
+        expected_requests: Vec<&'static str>,
+    ) -> Reply {
+        Reply {
+            expected_requests,
             ..json_reply(status, value)
         }
     }
@@ -2023,7 +2131,7 @@ mod transport_tests {
             status,
             headers: Vec::new(),
             body: Vec::new(),
-            expected_request: Some(expected_request),
+            expected_requests: vec![expected_request],
         }
     }
 
@@ -2032,7 +2140,7 @@ mod transport_tests {
             status: 302,
             headers: vec![("Location", location.to_owned())],
             body: Vec::new(),
-            expected_request: None,
+            expected_requests: Vec::new(),
         }
     }
 
@@ -2041,7 +2149,7 @@ mod transport_tests {
             status: 200,
             headers: vec![("Content-Type", ASSET_MEDIA_TYPE.to_owned())],
             body: bytes,
-            expected_request: None,
+            expected_requests: Vec::new(),
         }
     }
 
@@ -2056,8 +2164,8 @@ mod transport_tests {
                 let mut request = [0_u8; 16_384];
                 let read = socket.read(&mut request).expect("read request");
                 assert!(read > 0, "request must not be empty");
-                if let Some(expected) = reply.expected_request {
-                    let request = String::from_utf8_lossy(&request[..read]);
+                let request = String::from_utf8_lossy(&request[..read]);
+                for expected in reply.expected_requests {
                     assert!(
                         request.contains(expected),
                         "request did not contain {expected:?}: {request}"
@@ -2211,6 +2319,17 @@ mod transport_tests {
         let (service, _base, server) = stub(vec![
             json_reply(200, &json!([release_json(1, "v1", true)])),
             json_reply(201, &release_json(2, "v1", true)),
+            json_reply_expecting_all(
+                200,
+                &release_json(2, "v1", true),
+                vec![
+                    "PATCH /repos/o/r/releases/2",
+                    "\"name\":\"v1\"",
+                    "\"body\":\"notes\"",
+                    "\"tag_name\":\"v1\"",
+                    "\"target_commitish\":\"main\"",
+                ],
+            ),
             json_reply_expecting(
                 200,
                 &release_json(2, "v1", false),
@@ -2250,8 +2369,14 @@ mod transport_tests {
         assert!(created.is_draft());
         assert_eq!(created.database_id(), 2);
 
+        let updated = transport
+            .update_draft_release(&repo, created.database_id(), &input)
+            .await
+            .expect("update draft");
+        assert_eq!(updated.tag(), "v1");
+
         let published = transport
-            .publish_release(&repo, created.database_id())
+            .publish_release(&repo, updated.database_id())
             .await
             .expect("publish");
         assert!(!published.is_draft());

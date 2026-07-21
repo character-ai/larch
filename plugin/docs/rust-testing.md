@@ -34,11 +34,15 @@ test its own fixture and let Cargo run it in parallel.
 
 Git fixtures may invoke installed Git as a test oracle. `GitRepository` finds
 the executable once, then clears the child environment and supplies an owned
-home, temp directory, config, identity, dates, locale, and path. Commands set
-only the child working directory. Fixture code must not change the test
-process environment or working directory. Product crates must still use the
-closed Git interfaces described in `ARCHITECTURE.md`; the fixture API does not
-authorize a production arbitrary-argument Git runner.
+home, temp directory, config, identity, dates, locale, and path. The path
+contains the installed Git directory, the fixture helper directory, and only
+the discovered system directories required by Git's shell helpers:
+`basename`, `sed`, and `uname`. This keeps Homebrew and `/usr/local` Git
+portable without inheriting the full ambient path. Commands set only the child
+working directory. Fixture code must not change the test process environment
+or working directory. Product crates must still use the closed Git interfaces
+described in `ARCHITECTURE.md`; the fixture API does not authorize a production
+arbitrary-argument Git runner.
 
 Repository read differential tests exercise the public `RepositoryRead` port
 through `GixRepository`. Compare typed IDs, ref targets, config provenance,

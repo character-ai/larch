@@ -242,7 +242,19 @@ impl GitRepository {
             )
         })?;
         let helper_bin = workspace.create_dir("bin")?;
-        let child_path = std::env::join_paths([git_parent, helper_bin.as_path()])
+        let mut child_path_entries = vec![git_parent.to_path_buf(), helper_bin];
+        for helper in ["basename", "sed", "uname"] {
+            let Ok(path) = find_executable(helper) else {
+                continue;
+            };
+            let Some(parent) = path.parent() else {
+                continue;
+            };
+            if !child_path_entries.iter().any(|entry| entry == parent) {
+                child_path_entries.push(parent.to_path_buf());
+            }
+        }
+        let child_path = std::env::join_paths(&child_path_entries)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
         let environment = TestEnvironment::isolated(&workspace)?
             .set("PATH", child_path)
@@ -1104,17 +1116,21 @@ fn command_output(status: ExitStatus, stdout: Vec<u8>, stderr: Vec<u8>) -> GitCo
 }
 
 fn find_git() -> io::Result<PathBuf> {
+    find_executable(git_binary_name())
+}
+
+fn find_executable(name: &str) -> io::Result<PathBuf> {
     let path = std::env::var_os("PATH")
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "PATH is not set"))?;
     for directory in std::env::split_paths(&path) {
-        let candidate = directory.join(git_binary_name());
+        let candidate = directory.join(name);
         if candidate.is_file() {
             return fs::canonicalize(candidate);
         }
     }
     Err(io::Error::new(
         io::ErrorKind::NotFound,
-        "installed Git was not found on PATH",
+        format!("installed {name} was not found on PATH"),
     ))
 }
 
@@ -1384,6 +1400,27 @@ mod tests {
             std::env::vars_os().collect::<std::collections::BTreeMap<_, _>>(),
             original_environment
         );
+    }
+
+    #[test]
+    fn installed_git_path_includes_discovered_shell_helper_directories() {
+        let repository = GitRepository::builder(GitFixture::Unborn)
+            .build()
+            .expect("repository");
+        let fixture_path = repository.environment.get("PATH").expect("fixture PATH");
+        let entries: Vec<_> = std::env::split_paths(fixture_path).collect();
+
+        for helper in ["basename", "sed", "uname"] {
+            let Ok(executable) = find_executable(helper) else {
+                continue;
+            };
+            assert!(
+                executable
+                    .parent()
+                    .is_some_and(|parent| entries.iter().any(|entry| entry == parent)),
+                "fixture PATH omitted {helper} parent"
+            );
+        }
     }
 
     #[test]
