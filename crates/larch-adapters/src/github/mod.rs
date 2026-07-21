@@ -265,14 +265,16 @@ impl OctocrabGitHubService {
         [("user-agent", USER_AGENT_VALUE), ("accept", ACCEPT_VALUE)]
     }
 
-    /// Headers for the release-asset download client. It omits the
-    /// `application/vnd.github+json` Accept so a per-request
-    /// `application/octet-stream` Accept survives; otherwise Octocrab appends
-    /// the JSON Accept and the GitHub asset endpoint returns metadata instead
-    /// of the binary.
+    /// Headers for the release-asset download client. It adds none of larch's
+    /// API headers. Omitting the `application/vnd.github+json` Accept lets a
+    /// per-request `application/octet-stream` Accept survive; otherwise the
+    /// asset endpoint returns metadata JSON. Omitting the `user-agent` avoids a
+    /// second `User-Agent` header (Octocrab already sets one): the
+    /// release-assets CDN rejects a duplicate `User-Agent` with HTTP 400
+    /// "invalid header name", though `api.github.com` tolerates it.
     #[must_use]
-    pub const fn download_headers() -> [(&'static str, &'static str); 1] {
-        [("user-agent", USER_AGENT_VALUE)]
+    pub const fn download_headers() -> [(&'static str, &'static str); 0] {
+        []
     }
 
     /// Remove the exact runtime credential and standard secret families.
@@ -467,20 +469,14 @@ mod tests {
     }
 
     #[test]
-    fn download_client_headers_omit_the_json_accept() {
-        // The asset-download client must not advertise the vnd.github+json
-        // Accept: Octocrab appends it to the per-request octet-stream Accept,
-        // and the GitHub asset endpoint then returns metadata JSON instead of
-        // the binary.
-        assert_eq!(
-            OctocrabGitHubService::download_headers(),
-            [("user-agent", "larch")]
-        );
-        assert!(
-            !OctocrabGitHubService::download_headers()
-                .iter()
-                .any(|(name, _)| *name == "accept")
-        );
+    fn download_client_adds_no_extra_headers() {
+        // The asset-download client adds none of larch's API headers. It must
+        // not advertise the vnd.github+json Accept (Octocrab appends it to the
+        // per-request octet-stream Accept, so the asset endpoint returns
+        // metadata JSON), and it must not add a second user-agent (Octocrab
+        // already sets one; a duplicate User-Agent makes the release-assets CDN
+        // reject the download with HTTP 400 "invalid header name").
+        assert!(OctocrabGitHubService::download_headers().is_empty());
         // The API client keeps the JSON Accept it needs.
         assert!(
             OctocrabGitHubService::required_headers()
