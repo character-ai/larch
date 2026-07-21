@@ -330,6 +330,15 @@ pub fn run(plugin_root: Option<&Path>) -> Result<(), Failure> {
     );
     let plugin_root = real_directory(&plugin_root)
         .ok_or_else(|| Failure::new(1, "Upgrade cannot resolve a safe CLAUDE_PLUGIN_ROOT."))?;
+    // The release preflight runs `<root>/scripts/larch.sh --preflight-release`,
+    // a flag only the version being installed supports. Use the driver's own
+    // root (this running larch), not the possibly-older install target
+    // `plugin_root`. Upgrading from a pre-`--preflight-release` version (e.g.
+    // 53.x) otherwise fails with "unexpected argument".
+    let driver_root = process_env::var_os(env::CLAUDE_PLUGIN_ROOT)
+        .map(PathBuf::from)
+        .and_then(|root| real_directory(&root))
+        .unwrap_or_else(|| plugin_root.clone());
     let installed_version = plugin_root
         .file_name()
         .and_then(|value| value.to_str())
@@ -364,7 +373,7 @@ pub fn run(plugin_root: Option<&Path>) -> Result<(), Failure> {
     } else {
         eprintln!("Upgrading larch from {installed_version} to {latest}...");
     }
-    preflight(&context, &plugin_root, &latest)?;
+    preflight(&context, &driver_root, &latest)?;
     let mode = refresh_marketplace(&context, marketplace_will_reconcile)?;
     eprintln!("Installing the preflighted larch plugin release...");
     let verb = if mode == RefreshMode::Install {

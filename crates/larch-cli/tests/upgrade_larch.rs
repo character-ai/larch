@@ -187,6 +187,28 @@ fn release_step7_can_keep_execution_and_installed_roots_separate() {
 }
 
 #[test]
+fn preflight_uses_the_driver_root_when_the_install_target_predates_the_flag() {
+    let harness = Harness::new();
+    // Simulate upgrading from a version whose larch.sh predates
+    // `--preflight-release` (e.g. 53.x), which errors on the flag. The preflight
+    // must still succeed by running the driver's (CLAUDE_PLUGIN_ROOT) larch.sh,
+    // not the install target's.
+    write_executable(
+        &harness.old_root.join("scripts/larch.sh"),
+        "#!/bin/sh\ncase \"$1\" in\n--preflight-release) echo 'unexpected argument' >&2; exit 1 ;;\nesac\n",
+    );
+    harness
+        .command()
+        .env("CLAUDE_PLUGIN_ROOT", &harness.new_root)
+        .env("LARCH_EXPECTED_STABLE_VERSION", "2.0.0")
+        .args(["upgrade-larch", "run", "--plugin-root"])
+        .arg(&harness.old_root)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("LARCH_NEW_VERSION_INSTALLED=true"));
+}
+
+#[test]
 fn active_old_session_is_refreshed_without_deleting_its_cache_root() {
     let harness = Harness::new();
     harness.set("installed", "2.0.0");
