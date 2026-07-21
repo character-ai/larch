@@ -293,27 +293,15 @@ for verification and cache-ownership guarantees.
 
 ## Uninstalling
 
-Remove the plugin:
+Remove the plugin and its cached versions:
 
 ```bash
 claude plugin uninstall larch@larch-local
+rm -rf ~/.claude/plugins/cache/larch-local/larch
 ```
 
-`claude plugin uninstall` leaves the `larch-local` marketplace registration
-cached at its last-fetched version. A later `claude plugin install
-larch@larch-local` then reinstalls that cached version, not the latest release.
-For a full uninstall so a later install pulls the latest, also remove the
-marketplace:
-
-```bash
-claude plugin uninstall larch@larch-local
-claude plugin marketplace remove larch-local
-```
-
-To reinstall afterward, re-add the marketplace from its source, then install.
-The re-added marketplace fetches the latest published release:
-
-```bash
-claude plugin marketplace add https://raw.githubusercontent.com/character-ai/larch/main/.claude-plugin/marketplace.json
-claude plugin install larch@larch-local
-```
+The `rm` deletes only larch's cached version directories under the `larch-local`
+marketplace and touches nothing else in the cache. `claude plugin uninstall`
+alone leaves those versions, so a later install reuses a cached version instead
+of the latest. To reinstall the latest afterward, refresh the marketplace
+(`claude plugin marketplace update larch-local`), then install again.
