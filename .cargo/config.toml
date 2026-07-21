@@ -1,0 +1,9 @@
+# Cargo aliases for larch. Keep local Rust linting identical to CI.
+
+[alias]
+# Run Clippy exactly as CI does (the `rust-lint` job's "Run Clippy with warnings
+# denied" step runs `make rust-clippy`): every target and feature, locked, with
+# warnings denied. A bare `cargo clippy` skips test and example targets and does
+# not deny warnings, so it can pass when CI fails. Run `cargo clippy-ci` (or
+# `make rust-clippy`) before pushing.
+clippy-ci = "clippy --workspace --all-targets --all-features --locked -- -D warnings"

@@ -195,7 +195,7 @@ fn preflight_uses_the_driver_root_when_the_install_target_predates_the_flag() {
     // not the install target's.
     write_executable(
         &harness.old_root.join("scripts/larch.sh"),
-        "#!/bin/sh\ncase \"${1:-}\" in\n  --preflight-release) echo 'error: unexpected argument found' >&2; exit 1 ;;\nesac\n",
+        "#!/bin/sh\ncase \"$1\" in\n--preflight-release) echo 'unexpected argument' >&2; exit 1 ;;\nesac\n",
     );
     harness
         .command()
