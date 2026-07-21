@@ -293,6 +293,20 @@ def _detect_repo() -> str:
     return gh.resolve_repo(proc) or ""
 
 
+def _resolve_run_log_root(log_root_arg: str | None) -> Path:
+    if log_root_arg is not None:
+        return Path(log_root_arg)
+    repo_root = repo_roots.consumer_repo_root()
+    if repo_root is None:
+        print("ERROR: could not discover a Git repository root for run-log synchronization", file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        return run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
+    except run_log_corpus.RunLogCorpusError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+
 def run_main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py analyze-issues run")
     parser.add_argument("--limit", default="2000")
@@ -307,18 +321,7 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--min-runs", default=str(GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS))
     parser.add_argument("--min-larch-version", default=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION)
     args = parser.parse_args(list(argv) if argv is not None else None)
-    if args.log_root is not None:
-        log_root = Path(args.log_root)
-    else:
-        repo_root = repo_roots.consumer_repo_root()
-        if repo_root is None:
-            print("ERROR: could not discover a Git repository root for run-log synchronization", file=sys.stderr)
-            return 2
-        try:
-            log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
-        except run_log_corpus.RunLogCorpusError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
+    log_root = _resolve_run_log_root(args.log_root)
     repo = args.repo or _detect_repo()
     repo_valid = bool(re.fullmatch(r"[^/]+/[^/]+", repo or ""))
     if not repo_valid:

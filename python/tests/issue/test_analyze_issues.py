@@ -188,7 +188,8 @@ def test_run_main_default_reports_sync_failure_before_issue_fetch(monkeypatch, t
     monkeypatch.setattr(analyze_issues.run_log_corpus, "synchronized_repository_log_root", fail_sync)
     monkeypatch.setattr(analyze_issues, "fetch_main", lambda _argv: pytest.fail("issue fetch must not run"))
 
-    assert analyze_issues.run_main(["--repo", "o/r"]) == 2
+    with pytest.raises(SystemExit, match="2"):
+        analyze_issues.run_main(["--repo", "o/r"])
     assert f"ERROR: storage unavailable for {tmp_path}" in capsys.readouterr().err
 
 
