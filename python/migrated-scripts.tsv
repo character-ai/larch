@@ -1117,8 +1117,6 @@ scripts/write-implement-round-meta.sh	#3692
 scripts/write-implement-round-meta.md	#3692
 scripts/render-findings-view.sh	#3692
 scripts/render-findings-view.md	#3692
-skills/gc-run-logs/scripts/gc-run-logs.sh	#3692
-skills/gc-run-logs/scripts/gc-run-logs.md	#3692
 skills/status/scripts/status.sh	#3692
 python/test_pr_body_bash_parity.py	#3692
 scripts/launch-codex-drafter.sh	#3692

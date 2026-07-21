@@ -3052,20 +3052,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/report/gc_run_logs.py",
-    "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=broad-except",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/report/gc_run_logs.py",
-    "suppression_kind": "pyright-report",
-    "text": "pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/report/progress_file.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportUnusedFunction]",
