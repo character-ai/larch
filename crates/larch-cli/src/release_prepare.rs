@@ -344,12 +344,16 @@ async fn select_pull_requests<S: ReleasePlanningService + ?Sized>(
     let mut selected = Vec::new();
     let mut written = BTreeSet::new();
     let mut ignored = BTreeSet::new();
+    let mut release_pull_requests = BTreeSet::new();
     let mut unresolved = BTreeSet::new();
     for number in suffix_numbers {
         match service
             .pull_request(cancellation, owner, name, number)
             .await
         {
+            Ok(pull_request) if is_release_subject(&pull_request.title) => {
+                release_pull_requests.insert(pull_request.number);
+            }
             Ok(pull_request) if is_log_housekeeping(&pull_request.title) => {
                 ignored.insert(pull_request.number);
             }
@@ -388,7 +392,14 @@ async fn select_pull_requests<S: ReleasePlanningService + ?Sized>(
             continue;
         };
         let number = pull_request.number;
-        if written.contains(&number) || ignored.contains(&number) {
+        if written.contains(&number)
+            || ignored.contains(&number)
+            || release_pull_requests.contains(&number)
+        {
+            continue;
+        }
+        if is_release_subject(&pull_request.title) {
+            release_pull_requests.insert(number);
             continue;
         }
         if is_log_housekeeping(&pull_request.title) {
