@@ -233,11 +233,20 @@ impl OctocrabGitHubService {
             redactor.register_exact_secret(credential.expose().to_owned()),
             "test credential must register"
         );
-        let client = build_client(&credential, policy, api_base.as_str(), &Self::required_headers())
-            .expect("test API base and token must construct the client");
-        let download_client =
-            build_client(&credential, policy, api_base.as_str(), &Self::download_headers())
-                .expect("test API base and token must construct the download client");
+        let client = build_client(
+            &credential,
+            policy,
+            api_base.as_str(),
+            &Self::required_headers(),
+        )
+        .expect("test API base and token must construct the client");
+        let download_client = build_client(
+            &credential,
+            policy,
+            api_base.as_str(),
+            &Self::download_headers(),
+        )
+        .expect("test API base and token must construct the download client");
         Self {
             client,
             download_client,
