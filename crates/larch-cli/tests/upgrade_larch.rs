@@ -291,6 +291,32 @@ fn interrupted_preflight_is_retryable_and_does_not_mutate_plugin_state() {
 }
 
 #[test]
+fn missing_plugin_data_fails_closed_before_any_mutation_with_the_remedy() {
+    let harness = Harness::new();
+    harness
+        .command()
+        .env_remove("CLAUDE_PLUGIN_DATA")
+        .arg("upgrade-larch")
+        .arg("run")
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("CLAUDE_PLUGIN_DATA is required")
+                .and(predicate::str::contains("docs/installation-and-setup.md")),
+        );
+    let log = fs::read_to_string(&harness.log).expect("log");
+    assert!(!log.contains("bootstrap --preflight-release"));
+    assert_eq!(
+        fs::read_to_string(harness.state.join("installed")).expect("installed state"),
+        "1.0.0"
+    );
+    assert_eq!(
+        fs::read_to_string(harness.state.join("marketplace")).expect("marketplace state"),
+        "remote"
+    );
+}
+
+#[test]
 fn failed_refresh_and_failed_install_leave_the_prior_root_usable() {
     let harness = Harness::new();
     harness.flag("fail_refresh");
