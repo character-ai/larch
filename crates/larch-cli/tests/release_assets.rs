@@ -12,12 +12,7 @@ use tempfile::TempDir;
 const VERSION: &str = "1.2.3";
 const TAG: &str = "v1.2.3";
 const SOURCE_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const TARGETS: [&str; 4] = [
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu",
-];
+const TARGETS: [&str; 1] = ["aarch64-apple-darwin"];
 
 #[test]
 fn package_matches_golden_bytes_and_is_deterministic() {

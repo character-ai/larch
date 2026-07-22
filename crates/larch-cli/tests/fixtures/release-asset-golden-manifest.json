@@ -14,39 +14,6 @@
         "kind": "macos",
         "version": "11.0"
       }
-    },
-    {
-      "target": "x86_64-apple-darwin",
-      "archive": "larch-v1.2.3-x86_64-apple-darwin.tar.gz",
-      "byte_size": 198,
-      "sha256": "4598355858692d34e88a20b71580cbc9cc81248780d115dfc26c986dc3e0b296",
-      "binary_path": "larch",
-      "minimum_os_or_libc": {
-        "kind": "macos",
-        "version": "10.12"
-      }
-    },
-    {
-      "target": "aarch64-unknown-linux-gnu",
-      "archive": "larch-v1.2.3-aarch64-unknown-linux-gnu.tar.gz",
-      "byte_size": 198,
-      "sha256": "4598355858692d34e88a20b71580cbc9cc81248780d115dfc26c986dc3e0b296",
-      "binary_path": "larch",
-      "minimum_os_or_libc": {
-        "kind": "glibc",
-        "version": "2.17"
-      }
-    },
-    {
-      "target": "x86_64-unknown-linux-gnu",
-      "archive": "larch-v1.2.3-x86_64-unknown-linux-gnu.tar.gz",
-      "byte_size": 198,
-      "sha256": "4598355858692d34e88a20b71580cbc9cc81248780d115dfc26c986dc3e0b296",
-      "binary_path": "larch",
-      "minimum_os_or_libc": {
-        "kind": "glibc",
-        "version": "2.17"
-      }
     }
   ]
 }

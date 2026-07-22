@@ -750,12 +750,7 @@ mod tests {
     }
 
     fn complete_assets() -> (Vec<RemoteAsset>, BTreeMap<u64, Vec<u8>>) {
-        const TARGETS: [&str; 4] = [
-            "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
-            "aarch64-unknown-linux-gnu",
-            "x86_64-unknown-linux-gnu",
-        ];
+        const TARGETS: [&str; 1] = ["aarch64-apple-darwin"];
         let root = tempfile::tempdir().expect("asset root");
         let binary = root.path().join("larch");
         fs::write(

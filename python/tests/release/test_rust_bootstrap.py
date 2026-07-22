@@ -178,9 +178,6 @@ if [ "$1:$2" = "release:view" ]; then
   [ "${GH_FAIL:-}" != view ]
   printf '%s\\n' "v$TEST_VERSION" true false false \
     "larch-v$TEST_VERSION-aarch64-apple-darwin.tar.gz" \
-    "larch-v$TEST_VERSION-x86_64-apple-darwin.tar.gz" \
-    "larch-v$TEST_VERSION-aarch64-unknown-linux-gnu.tar.gz" \
-    "larch-v$TEST_VERSION-x86_64-unknown-linux-gnu.tar.gz" \
     "larch-v$TEST_VERSION-manifest.json" \
     "larch-v$TEST_VERSION-SHA256SUMS"
   exit 0
@@ -226,7 +223,7 @@ exit 2
 
 
 def _fixture(
-    tmp_path: Path, target: str = "x86_64-unknown-linux-gnu"
+    tmp_path: Path, target: str = "aarch64-apple-darwin"
 ) -> BootstrapFixture:
     root = tmp_path / "plugin"
     data = tmp_path / "data"
@@ -333,16 +330,45 @@ def test_latest_stable_version_uses_the_bounded_bootstrap_surface(tmp_path: Path
     assert result.stdout == f"LARCH_STABLE_VERSION={VERSION}\n"
 
 
-def test_unsupported_target_fails_with_retry_guidance(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("os_name", "architecture", "detail"),
+    [
+        ("FreeBSD", "x86_64", "architecture: FreeBSD/x86_64"),
+        ("Darwin", "x86_64", "for release install: x86_64-apple-darwin"),
+        ("Linux", "aarch64", "for release install: aarch64-unknown-linux-gnu"),
+        ("Linux", "x86_64", "for release install: x86_64-unknown-linux-gnu"),
+    ],
+)
+def test_unsupported_target_fails_with_retry_guidance(
+    os_name: str, architecture: str, detail: str, tmp_path: Path
+) -> None:
     fixture = _fixture(tmp_path)
-    environment = _environment(fixture, TEST_UNAME_S="FreeBSD", TEST_UNAME_M="x86_64")
+    environment = _environment(
+        fixture, TEST_UNAME_S=os_name, TEST_UNAME_M=architecture
+    )
 
     result = _run(fixture, environment=environment)
 
     assert result.returncode == 1
     assert "unsupported operating system or architecture" in result.stderr
+    assert detail in result.stderr
     assert "Retry the command" in result.stderr
     assert not (fixture.root / "bin" / "larch").exists()
+
+
+def test_larch_binary_override_works_on_non_release_hosts(tmp_path: Path) -> None:
+    """A locally built binary keeps working where releases do not ship (#7921)."""
+    fixture = _fixture(tmp_path, target="x86_64-unknown-linux-gnu")
+    override = tmp_path / "built-larch"
+    _ = override.write_bytes(_fake_binary(VERSION, fixture.target))
+    override.chmod(0o755)
+    environment = _environment(fixture, LARCH_BINARY=str(override))
+
+    result = _run(fixture, "example", "echo", "linux-dev", environment=environment)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ran:example echo linux-dev\n"
+    assert not (fixture.root / "bin").exists()
 
 
 def test_missing_required_tool_fails_closed_with_retry_guidance(tmp_path: Path) -> None:
@@ -409,7 +435,7 @@ def test_same_version_wrong_target_is_atomically_replaced(tmp_path: Path) -> Non
     fixture = _fixture(tmp_path)
     binary = fixture.root / "bin" / "larch"
     binary.parent.mkdir()
-    _ = binary.write_bytes(_fake_binary(VERSION, "aarch64-apple-darwin"))
+    _ = binary.write_bytes(_fake_binary(VERSION, "x86_64-apple-darwin"))
     binary.chmod(0o755)
     previous_inode = binary.stat().st_ino
 
