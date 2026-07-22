@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -21,6 +22,9 @@ VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 SOURCE_COMMIT = "a" * 40
 SCRIPT = Path(__file__).parents[3] / "scripts" / "larch.sh"
+RELEASE_SKILL = (
+    Path(__file__).parents[3] / ".claude" / "skills" / "release" / "SKILL.md"
+)
 
 
 @dataclass(frozen=True)
@@ -319,6 +323,104 @@ def test_release_preflight_verifies_without_touching_plugin_cache_root(tmp_path:
     assert marker.read_text(encoding="utf-8") == "unchanged"
     assert not (fixture.root / "bin").exists()
     assert not list(fixture.data.glob(".larch-bootstrap.*"))
+
+
+def _macos_shaped_tmpdir(tmp_path: Path) -> tuple[str, Path]:
+    """A TMPDIR shaped like macOS: trailing slash, ancestor reached via a symlink.
+
+    Mirrors /var -> private/var, where the real per-user temp directory lives.
+    Returns the TMPDIR value and the symlink-free real directory.
+    """
+    real = tmp_path / "private" / "T"
+    real.mkdir(parents=True)
+    (tmp_path / "var").symlink_to(tmp_path / "private")
+    return f"{tmp_path}/var/T/", real
+
+
+def _fence_parent_block() -> str:
+    """Extract the Step 7 fence's guarded PLUGIN_DATA_PARENT composition block."""
+    lines = RELEASE_SKILL.read_text(encoding="utf-8").splitlines()
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if line.strip() == 'PLUGIN_DATA_PARENT=""'
+    ]
+    assert len(starts) == 1, "Step 7 fence no longer initializes PLUGIN_DATA_PARENT once"
+    end = next(
+        index
+        for index in range(starts[0], len(lines))
+        if lines[index].strip() == "esac"
+    )
+    return "\n".join(lines[starts[0] : end + 1])
+
+
+def _fence_bash(tmpdir_value: str, tail: str) -> str:
+    """Run the fence's guarded parent composition plus a probe line in bash."""
+    result = subprocess.run(
+        ["/bin/bash", "-c", f"{_fence_parent_block()}\n{tail}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ["PATH"], "TMPDIR": tmpdir_value},
+        timeout=20,
+    )
+    return result.stdout
+
+
+def _fence_composed_plugin_data(tmpdir_value: str) -> str:
+    """Evaluate the release Step 7 fence's CLAUDE_PLUGIN_DATA composition in bash."""
+    skill = RELEASE_SKILL.read_text(encoding="utf-8")
+    composition = re.search(r'CLAUDE_PLUGIN_DATA="(\$\{PLUGIN_DATA_PARENT[^"]*)"', skill)
+    assert composition is not None, "Step 7 fence no longer composes CLAUDE_PLUGIN_DATA"
+    return _fence_bash(tmpdir_value, f'printf "%s" "{composition.group(1)}"')
+
+
+def test_step7_fence_plugin_data_passes_preflight_with_symlinked_tmpdir(
+    tmp_path: Path,
+) -> None:
+    """The fence composition survives the full symlink-ancestor walk (#7926)."""
+    fixture = _fixture(tmp_path)
+    tmpdir_value, real_parent = _macos_shaped_tmpdir(tmp_path)
+    composed = _fence_composed_plugin_data(tmpdir_value)
+    assert composed == f"{real_parent.resolve()}/larch-plugin-data"
+    environment = _environment(fixture)
+    environment["CLAUDE_PLUGIN_DATA"] = composed
+
+    result = _run(fixture, "--preflight-release", VERSION, environment=environment)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"LARCH_PREFLIGHT_VERSION={VERSION}\n"
+
+
+def test_step7_fence_leaves_parent_empty_for_broken_or_relative_tmpdir(
+    tmp_path: Path,
+) -> None:
+    """A missing or relative TMPDIR must not compose a misleading staging path;
+    the fence leaves the parent empty and reports it instead (#7926 review).
+    """
+    probe = 'printf "%s" "$PLUGIN_DATA_PARENT"'
+    assert _fence_bash(f"{tmp_path}/does-not-exist/", probe) == ""
+    assert _fence_bash("relative-tmp", probe) == ""
+
+
+def test_symlink_ancestor_plugin_data_fails_preflight_closed(tmp_path: Path) -> None:
+    """Negative control replaying the v55.0.0 Step 7 failure: a TMPDIR-composed
+    path whose ancestor is a symlink dies in the walk, proving the sibling
+    positive test exercises the guard and not only the case-arm (#7926).
+    """
+    fixture = _fixture(tmp_path)
+    tmpdir_value, _ = _macos_shaped_tmpdir(tmp_path)
+    environment = _environment(fixture)
+    # Pre-#7926 fence shape: TMPDIR taken verbatim, only the trailing slash trimmed.
+    assert tmpdir_value.endswith("/")
+    environment["CLAUDE_PLUGIN_DATA"] = f"{tmpdir_value.rstrip('/')}/larch-plugin-data"
+
+    result = _run(fixture, "--preflight-release", VERSION, environment=environment)
+
+    assert result.returncode == 1
+    assert "is a symlink" in result.stderr
+    assert f"{tmp_path}/var" in result.stderr
+    assert not (fixture.root / "bin").exists()
 
 
 def test_latest_stable_version_uses_the_bounded_bootstrap_surface(tmp_path: Path) -> None:

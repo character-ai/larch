@@ -230,9 +230,9 @@ impl Context {
         if self.plugin_data.is_none() {
             return Err(Failure::new(
                 1,
-                "CLAUDE_PLUGIN_DATA is required. Set it to an absolute path for bounded \
-                 bootstrap staging, such as /tmp/larch-plugin-data; see the documented \
-                 local-dev pattern in docs/installation-and-setup.md.",
+                "CLAUDE_PLUGIN_DATA is required. Set it to an absolute, symlink-free path \
+                 for bounded bootstrap staging; see the documented local-dev pattern in \
+                 docs/installation-and-setup.md. On macOS, /tmp and /var are symlinks.",
             ));
         }
         let script = safe_root_file(root, "scripts/larch.sh")?;
