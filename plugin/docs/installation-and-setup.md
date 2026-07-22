@@ -197,15 +197,18 @@ select the executable explicitly:
 
 ```bash
 cargo build --locked --release --package larch-cli
-PLUGIN_DATA_PARENT="${TMPDIR:-/tmp}"
+PLUGIN_DATA_PARENT="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
 CLAUDE_PLUGIN_ROOT="$PWD" \
 CLAUDE_PLUGIN_DATA="${PLUGIN_DATA_PARENT%/}/larch-plugin-data" \
 LARCH_BINARY="$PWD/target/release/larch" \
 "$PWD/scripts/larch.sh" example echo "local build"
 ```
 
-The `%/` trim keeps the composed path free of `//` on macOS, where `TMPDIR`
-ends with a slash; bootstrap path validation rejects embedded `//`.
+`pwd -P` canonicalizes the staging parent because bootstrap path validation
+rejects a path whose existing ancestor is a symlink, and on macOS both
+`TMPDIR` (under `/var`) and the `/tmp` fallback are symlinks into `/private`.
+Canonicalizing also drops the trailing slash macOS puts on `TMPDIR`; the `%/`
+trim keeps the composed path `//`-free if the parent is ever `/`.
 
 `LARCH_BINARY` must be an absolute, regular executable. Its version and target
 self-check must match the active plugin and host.

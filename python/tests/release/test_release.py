@@ -157,9 +157,19 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
 
 def test_release_skill_step7_upgrade_run_sets_the_driver_env_contract() -> None:
     skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
-    # The %/ trim is load-bearing: macOS TMPDIR ends with a slash, and an
-    # embedded // fails larch.sh path validation during the release preflight.
-    assert 'PLUGIN_DATA_PARENT="${TMPDIR:-/tmp}"' in skill
+    # The canonicalized parent is load-bearing: macOS TMPDIR lives under the
+    # /var symlink and the /tmp fallback is itself a symlink, so an
+    # uncanonicalized parent fails the larch.sh symlink-ancestor walk during
+    # the release preflight (#7926). A relative, missing, or inaccessible
+    # TMPDIR leaves the parent empty, and the fence reports it instead of
+    # composing a misplaced staging path. test_rust_bootstrap.py runs the
+    # real guard against these compositions.
+    assert 'PLUGIN_DATA_PARENT=""' in skill
+    assert (
+        '/*) PLUGIN_DATA_PARENT="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)"'
+        " || true ;;" in skill
+    )
+    assert 'if [ -n "$PLUGIN_DATA_PARENT" ]; then' in skill
     assert (
         'LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" '
         'CLAUDE_PLUGIN_ROOT="$PWD" '
