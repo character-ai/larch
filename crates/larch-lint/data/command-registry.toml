@@ -7910,14 +7910,14 @@ python = ["generate code-reviewer-agent"]
 rust = []
 
 [[callers]]
-path = "agents/codex-implementer.md"
-kind = "agent"
+path = "skills/implement/prompts/codex-implementer.md"
+kind = "skill"
 python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
 rust = []
 
 [[callers]]
-path = "agents/cursor-implementer.md"
-kind = "agent"
+path = "skills/implement/prompts/cursor-implementer.md"
+kind = "skill"
 python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
 rust = []
 

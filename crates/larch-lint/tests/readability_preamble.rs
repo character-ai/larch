@@ -107,10 +107,13 @@ fn readability_preamble_reports_count_missing_and_path_form_failures() {
 }
 
 #[test]
-fn readability_preamble_checks_agents_and_ignores_non_reviewers() {
+fn readability_preamble_checks_agents_and_ignores_external_prompts() {
     let repository = TempRepo::new();
     repository.write("agents/reviewer-fixture.md", DEV.as_bytes());
-    repository.write("agents/codex-implementer.md", b"# no directive\n");
+    repository.write(
+        "skills/implement/prompts/codex-implementer.md",
+        b"# no directive\n",
+    );
     repository.commit_all();
 
     run_rule(&repository)
@@ -121,7 +124,7 @@ fn readability_preamble_checks_agents_and_ignores_non_reviewers() {
         .stdout(predicate::str::contains(
             "agents/reviewer-fixture.md:1: uses wrong readability directive path form\n",
         ))
-        .stdout(predicate::str::contains("agents/codex-implementer.md").not());
+        .stdout(predicate::str::contains("skills/implement/prompts/codex-implementer.md").not());
 }
 
 #[test]

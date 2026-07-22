@@ -152,13 +152,13 @@ STUB_EOF
         LCI_SESSION="lci-${variant}-$$"
         case "$variant" in
             cursor)
-                AGENT_PROMPT="$REPO_ROOT/agents/cursor-implementer.md"
+                AGENT_PROMPT="$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
                 LAUNCHER_ARGS=(python3 "$REPO_ROOT/python/cli.py" agent launch-cursor-implement)
                 EXPECTED_RAW="cursor_implement"
                 EXPECTED_TOTAL=10
                 ;;
             codex)
-                AGENT_PROMPT="$REPO_ROOT/agents/codex-implementer.md"
+                AGENT_PROMPT="$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
                 LAUNCHER_ARGS=(python3 "$REPO_ROOT/python/cli.py" agent launch-codex-implement)
                 EXPECTED_RAW="codex_implement"
                 EXPECTED_TOTAL=7999

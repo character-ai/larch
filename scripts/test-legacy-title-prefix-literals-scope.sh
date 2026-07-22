@@ -11,8 +11,8 @@ cd "$REPO_ROOT"
 
 ALLOW=(
   agents/_implementer-base.md
-  agents/codex-implementer.md
-  agents/cursor-implementer.md
+  skills/implement/prompts/codex-implementer.md
+  skills/implement/prompts/cursor-implementer.md
   python/combine_issues.py
   python/larch/implement/preflight.py
   python/test_combine_issues.py
