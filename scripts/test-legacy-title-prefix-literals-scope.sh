@@ -10,7 +10,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$REPO_ROOT"
 
 ALLOW=(
-  .claude/skills/combine-issues/SKILL.md
   agents/_implementer-base.md
   agents/codex-implementer.md
   agents/cursor-implementer.md
@@ -31,6 +30,7 @@ ALLOW=(
   python/test_issue_wire.py
   python/tests/issue/test_tracking_issue.py
   python/tests/issue/test_title_match.py
+  skills/combine-issues/SKILL.md
   skills/deps/SKILL.md
 )
 
