@@ -228,7 +228,12 @@ impl Context {
         timeout: Duration,
     ) -> Result<ProcessOutput, Failure> {
         if self.plugin_data.is_none() {
-            return Err(Failure::new(1, "CLAUDE_PLUGIN_DATA is required"));
+            return Err(Failure::new(
+                1,
+                "CLAUDE_PLUGIN_DATA is required. Set it to an absolute path for bounded \
+                 bootstrap staging, such as /tmp/larch-plugin-data; see the documented \
+                 local-dev pattern in docs/installation-and-setup.md.",
+            ));
         }
         let script = safe_root_file(root, "scripts/larch.sh")?;
         let root = script

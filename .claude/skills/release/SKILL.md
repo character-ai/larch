@@ -322,9 +322,10 @@ esac
 
 if [ -n "$RESOLVED_ROOT" ]; then
   echo "Applying the just-released larch marketplace source through the working-tree upgrade script..."
+  PLUGIN_DATA_PARENT="${TMPDIR:-/tmp}"  # macOS TMPDIR ends with /; the %/ trim keeps the composed path //-free for larch.sh path validation
   upgrade_rc=0
   upgrade_out=$(
-    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" upgrade-larch run --plugin-root "$RESOLVED_ROOT" 2>&1
+    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$PWD" CLAUDE_PLUGIN_DATA="${PLUGIN_DATA_PARENT%/}/larch-plugin-data" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" upgrade-larch run --plugin-root "$RESOLVED_ROOT" 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
   if [[ "$upgrade_out" == *"LARCH_MARKETPLACE_RECONCILED=true"* ]] || \

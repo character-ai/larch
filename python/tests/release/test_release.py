@@ -153,3 +153,17 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
         "finish",
     ):
         assert f"{worktree_prefix}{verb}" in skill
+
+
+def test_release_skill_step7_upgrade_run_sets_the_driver_env_contract() -> None:
+    skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
+    # The %/ trim is load-bearing: macOS TMPDIR ends with a slash, and an
+    # embedded // fails larch.sh path validation during the release preflight.
+    assert 'PLUGIN_DATA_PARENT="${TMPDIR:-/tmp}"' in skill
+    assert (
+        'LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" '
+        'CLAUDE_PLUGIN_ROOT="$PWD" '
+        'CLAUDE_PLUGIN_DATA="${PLUGIN_DATA_PARENT%/}/larch-plugin-data" '
+        'LARCH_BINARY="$WORKTREE_LARCH" '
+        '"$PWD/scripts/larch.sh" upgrade-larch run' in skill
+    )
