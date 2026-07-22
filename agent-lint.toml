@@ -1294,6 +1294,44 @@ files = [
 suppress = ["bash-unscoped"]
 reason = "These lifecycle skills require dynamic Bash operations whose valid argv cannot be represented by a stable command-prefix allowlist; prompt policy and script contracts provide command scope."
 
+# Codex discovers this plugin's public `skills/` root but ignores the
+# Claude-specific behavior fields below. Keep the fields: `allowed-tools`
+# limits Claude's tool surface, `argument-hint` supplies Claude's invocation
+# UX, and the three `hooks` entries enforce active Claude safety boundaries.
+# Each listed skill states its operational restrictions in its body. Codex
+# users therefore receive the instructions but no implied permission or hook
+# enforcement. See docs/skills.md#claude-and-codex-skill-metadata.
+[[lint.overrides]]
+files = [
+  "skills/alias/SKILL.md",
+  "skills/block-issue/SKILL.md",
+  "skills/bug/SKILL.md",
+  "skills/cleanup/SKILL.md",
+  "skills/combine-issues/SKILL.md",
+  "skills/deps/SKILL.md",
+  "skills/design/SKILL.md",
+  "skills/difficulty-calibration/SKILL.md",
+  "skills/f/SKILL.md",
+  "skills/fluff-analysis/SKILL.md",
+  "skills/fm/SKILL.md",
+  "skills/im/SKILL.md",
+  "skills/implement/SKILL.md",
+  "skills/issue/SKILL.md",
+  "skills/learn-from-bugs/SKILL.md",
+  "skills/rejected-analysis/SKILL.md",
+  "skills/report-tokens/SKILL.md",
+  "skills/research/SKILL.md",
+  "skills/review-and-fix/SKILL.md",
+  "skills/review/SKILL.md",
+  "skills/set-up-forked-open-source-repo/SKILL.md",
+  "skills/status/SKILL.md",
+  "skills/triage/SKILL.md",
+  "skills/upgrade-larch/SKILL.md",
+  "skills/voter-calibration/SKILL.md",
+]
+suppress = ["CX060"]
+reason = "Reviewed Claude-only behavior metadata; portable instructions and enforcement limits are documented in docs/skills.md."
+
 # Agent-lint owns the former local closure ratchets. Limits equal the last
 # reviewed measurements so growth remains an intentional, tracked TOML change.
 [[lint.prompt-source-budgets]]
