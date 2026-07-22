@@ -396,7 +396,8 @@ def test_step7_fence_leaves_parent_empty_for_broken_or_relative_tmpdir(
     tmp_path: Path,
 ) -> None:
     """A missing or relative TMPDIR must not compose a misleading staging path;
-    the fence leaves the parent empty and reports it instead (#7926 review)."""
+    the fence leaves the parent empty and reports it instead (#7926 review).
+    """
     probe = 'printf "%s" "$PLUGIN_DATA_PARENT"'
     assert _fence_bash(f"{tmp_path}/does-not-exist/", probe) == ""
     assert _fence_bash("relative-tmp", probe) == ""
@@ -405,7 +406,8 @@ def test_step7_fence_leaves_parent_empty_for_broken_or_relative_tmpdir(
 def test_symlink_ancestor_plugin_data_fails_preflight_closed(tmp_path: Path) -> None:
     """Negative control replaying the v55.0.0 Step 7 failure: a TMPDIR-composed
     path whose ancestor is a symlink dies in the walk, proving the sibling
-    positive test exercises the guard and not only the case-arm (#7926)."""
+    positive test exercises the guard and not only the case-arm (#7926).
+    """
     fixture = _fixture(tmp_path)
     tmpdir_value, _ = _macos_shaped_tmpdir(tmp_path)
     environment = _environment(fixture)
