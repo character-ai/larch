@@ -12,6 +12,25 @@ Every listed public, alias, internal, and dev-only skill uses the shared run
 lifecycle under its declared name. A nested Skill-tool call creates a distinct
 child run whose manifest records the parent skill and run ID.
 
+## Claude and Codex skill metadata
+
+Public skills are discoverable by both Claude and Codex. Skill-body instructions
+are the portable contract. A field that only one runtime honors must never be
+the sole source of a safety or workflow rule.
+
+`allowed-tools`, `argument-hint`, and skill `hooks` are Claude-only metadata.
+They remain in public skills because they restrict Claude's tool surface,
+provide Claude's invocation hint, and enforce active Claude hook boundaries.
+Codex ignores these fields. In Codex, follow the skill body, but do not infer a
+tool permission, an invocation UI hint, or hook enforcement from frontmatter.
+
+When adding an ignored field to a public skill, either express its behavior in
+portable instructions and add an equivalent Codex enforcement mechanism, or
+declare it intentionally Claude-only with a reviewed, reasoned per-file
+`CX060` suppression in [`agent-lint.toml`](../agent-lint.toml). Keep the
+suppression scope to the affected `SKILL.md` files. Do not remove live Claude
+permissions or hooks only to silence the compatibility warning.
+
 ## Public skills
 
 - [`/alias`](#alias)
