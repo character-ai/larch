@@ -232,14 +232,15 @@ If you need stricter permissions instead (no `bypassPermissions`), drop that lin
 
 - **macOS keychain auth.** If `CURSOR_API_KEY` is unset and Cursor's keychain entry is missing or stale, larch fails with a specific, actionable error instead of Cursor's cryptic `Security process exited with code: 45`. See [macOS keychain interactions](macos-keychain-interactions.md) for the full mechanism and the fix.
 
-### Configure run-log storage
+### Configure run-log storage for every repo where you will run larch
 
 Create `.larch/config.toml` at the consumer repository root:
 
 ```toml
 [logs]
-uri = "s3://zhupanov/larch"
+uri = "<URI>"
 ```
+Example `<URI>` value: `s3://my-bucket-for-larch-logs/my-client-repo-a`.
 
 The URI is the larch storage root. Larch writes archives below
 `run-logs/<skill>/<run-id>.tar.gz`, so the example does not end in
