@@ -30,12 +30,7 @@ const GZIP_HEADER: [u8; 10] = [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0
 const TAR_BLOCK: usize = 512;
 const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
 
-const TARGETS: [&str; 4] = [
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu",
-];
+const TARGETS: [&str; 1] = ["aarch64-apple-darwin"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PlatformContract {
@@ -43,37 +38,14 @@ struct PlatformContract {
     version: String,
 }
 
-fn target_contracts() -> [(&'static str, PlatformContract); 4] {
-    [
-        (
-            "aarch64-apple-darwin",
-            PlatformContract {
-                kind: "macos".to_owned(),
-                version: "11.0".to_owned(),
-            },
-        ),
-        (
-            "x86_64-apple-darwin",
-            PlatformContract {
-                kind: "macos".to_owned(),
-                version: "10.12".to_owned(),
-            },
-        ),
-        (
-            "aarch64-unknown-linux-gnu",
-            PlatformContract {
-                kind: "glibc".to_owned(),
-                version: "2.17".to_owned(),
-            },
-        ),
-        (
-            "x86_64-unknown-linux-gnu",
-            PlatformContract {
-                kind: "glibc".to_owned(),
-                version: "2.17".to_owned(),
-            },
-        ),
-    ]
+fn target_contracts() -> [(&'static str, PlatformContract); 1] {
+    [(
+        "aarch64-apple-darwin",
+        PlatformContract {
+            kind: "macos".to_owned(),
+            version: "11.0".to_owned(),
+        },
+    )]
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

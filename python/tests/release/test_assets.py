@@ -29,9 +29,7 @@ def test_release_workflow_uses_staged_rust_executable_for_asset_commands() -> No
 def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     macos_step = workflow.split("- name: Build and smoke-test on macOS", maxsplit=1)[1]
-    macos_step = macos_step.split("- name: Build and smoke-test at the GNU baseline", maxsplit=1)[0]
-    linux_step = workflow.split("- name: Build and smoke-test at the GNU baseline", maxsplit=1)[1]
-    linux_step = linux_step.split("- name: Package deterministic archive", maxsplit=1)[0]
+    macos_step = macos_step.split("- name: Package deterministic archive", maxsplit=1)[0]
 
     sign = 'codesign --force --sign - --timestamp=none "$binary"'
     verify = 'codesign --verify --verbose=2 "$binary"'
@@ -41,18 +39,12 @@ def test_release_workflow_prepares_platform_smoke_test_prerequisites() -> None:
     )
     cli_only_test = 'cargo test --locked --package larch-cli --target "$TARGET"'
     cargo_build = 'cargo build --locked --release --package larch-cli --target "$TARGET"'
-    linux_path = 'export PATH="/root/.cargo/bin:$PATH"'
     assert macos_step.index(sign) < macos_step.index(verify)
-    assert linux_path in linux_step
     assert macos_step.index(cargo_test) < macos_step.index(cargo_build)
-    # The Linux container builds the target but does not re-run the suite:
-    # host-environment-sensitive tests (git trust, signal reaping) fail as
-    # root with no PID-1 reaper, and the full suite already runs on this
-    # commit in ci.yaml. The container still smoke-tests the built binary.
-    assert cargo_test not in linux_step
-    assert cargo_build in linux_step
     assert cli_only_test not in macos_step
-    assert cli_only_test not in linux_step
+    # Apple Silicon is the only release target; no Linux container step remains.
+    assert "Build and smoke-test at the GNU baseline" not in workflow
+    assert "manylinux" not in workflow
 
 
 def test_release_workflow_verifies_draft_assets_by_release_id() -> None:
@@ -74,16 +66,8 @@ def test_expected_asset_names_are_stable() -> None:
     names = assets.expected_asset_names(identity)
     assert names == (
         "larch-v1.2.3-aarch64-apple-darwin.tar.gz",
-        "larch-v1.2.3-x86_64-apple-darwin.tar.gz",
-        "larch-v1.2.3-aarch64-unknown-linux-gnu.tar.gz",
-        "larch-v1.2.3-x86_64-unknown-linux-gnu.tar.gz",
         "larch-v1.2.3-manifest.json",
         "larch-v1.2.3-SHA256SUMS",
     )
-    assert set(assets.TARGETS) == {
-        "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
-        "aarch64-unknown-linux-gnu",
-        "x86_64-unknown-linux-gnu",
-    }
+    assert set(assets.TARGETS) == {"aarch64-apple-darwin"}
     _ = re.compile(r"larch-v")

@@ -34,17 +34,9 @@ class ReleaseIdentity:
     source_commit: str
 
 
-TARGETS: Final[tuple[str, ...]] = (
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu",
-)
+TARGETS: Final[tuple[str, ...]] = ("aarch64-apple-darwin",)
 TARGET_CONTRACTS: Final[dict[str, PlatformContract]] = {
     "aarch64-apple-darwin": PlatformContract("macos", "11.0"),
-    "x86_64-apple-darwin": PlatformContract("macos", "10.12"),
-    "aarch64-unknown-linux-gnu": PlatformContract("glibc", "2.17"),
-    "x86_64-unknown-linux-gnu": PlatformContract("glibc", "2.17"),
 }
 
 

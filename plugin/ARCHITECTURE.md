@@ -174,7 +174,7 @@ work:
   `google-cloud-auth`'s reviewed rustls provider compiles vendored AWS-LC into
   the executable. It needs a C/C++ compiler and CMake at build time, but adds no
   shared-library runtime dependency. The existing native release matrix builds
-  and smoke-tests all four supported macOS and glibc targets.
+  and smoke-tests the supported macOS target.
 - Service adapters apply fixed hosts, deadlines, response limits, same-origin
   redirect checks, bounded retries, mutation reconciliation, redaction, and
   child-environment allowlists. Tests inject fakes at core ports and do not
@@ -193,14 +193,13 @@ workspace root.
 
 ## Release constraints
 
-The executable must build and run without Python. The initial release targets
-are `aarch64-apple-darwin`, `x86_64-apple-darwin`,
-`aarch64-unknown-linux-gnu`, and `x86_64-unknown-linux-gnu`; Linux requires
-glibc 2.17 or newer. Windows and musl are not initial targets.
+The executable must build and run without Python. The only release target is
+`aarch64-apple-darwin` (Apple Silicon macOS 11.0 or newer). Intel macOS,
+Linux, and Windows are not release targets.
 
 Release archives contain only `larch` and `LICENSE`. Builds use the pinned Rust
 toolchain and lockfile. Release CI must build and smoke-test the supported
-targets without Python and must not introduce an undeclared native runtime
+target without Python and must not introduce an undeclared native runtime
 library. The thin residual `scripts/larch.sh` bootstrap verifies and atomically
 installs the release-matched binary as specified by issue #7670. Its hidden
 `larch bootstrap self-check` command reports the compiled version and target

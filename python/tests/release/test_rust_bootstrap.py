@@ -178,9 +178,6 @@ if [ "$1:$2" = "release:view" ]; then
   [ "${GH_FAIL:-}" != view ]
   printf '%s\\n' "v$TEST_VERSION" true false false \
     "larch-v$TEST_VERSION-aarch64-apple-darwin.tar.gz" \
-    "larch-v$TEST_VERSION-x86_64-apple-darwin.tar.gz" \
-    "larch-v$TEST_VERSION-aarch64-unknown-linux-gnu.tar.gz" \
-    "larch-v$TEST_VERSION-x86_64-unknown-linux-gnu.tar.gz" \
     "larch-v$TEST_VERSION-manifest.json" \
     "larch-v$TEST_VERSION-SHA256SUMS"
   exit 0
@@ -226,7 +223,7 @@ exit 2
 
 
 def _fixture(
-    tmp_path: Path, target: str = "x86_64-unknown-linux-gnu"
+    tmp_path: Path, target: str = "aarch64-apple-darwin"
 ) -> BootstrapFixture:
     root = tmp_path / "plugin"
     data = tmp_path / "data"
@@ -252,9 +249,6 @@ def _fixture(
 def _host_for_target(target: str) -> tuple[str, str]:
     mapping = {
         "aarch64-apple-darwin": ("Darwin", "arm64"),
-        "x86_64-apple-darwin": ("Darwin", "x86_64"),
-        "aarch64-unknown-linux-gnu": ("Linux", "aarch64"),
-        "x86_64-unknown-linux-gnu": ("Linux", "x86_64"),
     }
     return mapping[target]
 
@@ -333,9 +327,22 @@ def test_latest_stable_version_uses_the_bounded_bootstrap_surface(tmp_path: Path
     assert result.stdout == f"LARCH_STABLE_VERSION={VERSION}\n"
 
 
-def test_unsupported_target_fails_with_retry_guidance(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("os_name", "architecture"),
+    [
+        ("FreeBSD", "x86_64"),
+        ("Darwin", "x86_64"),
+        ("Linux", "aarch64"),
+        ("Linux", "x86_64"),
+    ],
+)
+def test_unsupported_target_fails_with_retry_guidance(
+    os_name: str, architecture: str, tmp_path: Path
+) -> None:
     fixture = _fixture(tmp_path)
-    environment = _environment(fixture, TEST_UNAME_S="FreeBSD", TEST_UNAME_M="x86_64")
+    environment = _environment(
+        fixture, TEST_UNAME_S=os_name, TEST_UNAME_M=architecture
+    )
 
     result = _run(fixture, environment=environment)
 
@@ -409,7 +416,7 @@ def test_same_version_wrong_target_is_atomically_replaced(tmp_path: Path) -> Non
     fixture = _fixture(tmp_path)
     binary = fixture.root / "bin" / "larch"
     binary.parent.mkdir()
-    _ = binary.write_bytes(_fake_binary(VERSION, "aarch64-apple-darwin"))
+    _ = binary.write_bytes(_fake_binary(VERSION, "x86_64-apple-darwin"))
     binary.chmod(0o755)
     previous_inode = binary.stat().st_ino
 

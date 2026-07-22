@@ -4,6 +4,12 @@
 
 ## Pre-requisites
 
+### Platform
+
+Larch's Rust executable ships only for Apple Silicon macOS
+(`aarch64-apple-darwin`, macOS 11.0 or newer). The bootstrap fails closed on
+Intel macOS, Linux, and Windows.
+
 ### Authentication
 
 Set up GitHub and Google credentials before starting larch.

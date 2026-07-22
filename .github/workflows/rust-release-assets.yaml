@@ -83,32 +83,8 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             runner: macos-15
-            family: macos
             architecture: arm64
             deployment_target: "11.0"
-            container_image: ""
-            container_platform: ""
-          - target: x86_64-apple-darwin
-            runner: macos-15-intel
-            family: macos
-            architecture: x86_64
-            deployment_target: "10.12"
-            container_image: ""
-            container_platform: ""
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-22.04-arm
-            family: linux
-            architecture: aarch64
-            deployment_target: ""
-            container_image: quay.io/pypa/manylinux2014_aarch64@sha256:a89d9ab0b9452ab8f748153a3d49b3a12a36638ceee285d5b468c6127024018b
-            container_platform: linux/arm64
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-22.04
-            family: linux
-            architecture: x86_64
-            deployment_target: ""
-            container_image: quay.io/pypa/manylinux2014_x86_64@sha256:a24affa4694a0572f137864b39f463cc511558c7c58e753a832e6a21adf0cc9b
-            container_platform: linux/amd64
     steps:
       - name: Check out the exact tagged commit
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -131,7 +107,6 @@ jobs:
           cargo --version
           rustc --version --verbose
       - name: Build and smoke-test on macOS
-        if: matrix.family == 'macos'
         shell: bash
         env:
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
@@ -155,50 +130,6 @@ jobs:
           test "$minimum" = "$MACOSX_DEPLOYMENT_TARGET"
           codesign --force --sign - --timestamp=none "$binary"
           codesign --verify --verbose=2 "$binary"
-      - name: Build and smoke-test at the GNU baseline
-        if: matrix.family == 'linux'
-        shell: bash
-        env:
-          CONTAINER_IMAGE: ${{ matrix.container_image }}
-          CONTAINER_PLATFORM: ${{ matrix.container_platform }}
-          TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.metadata.outputs.version }}
-          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
-        run: |
-          set -euo pipefail
-          rustup_root="${RUSTUP_HOME:-$HOME/.rustup}"
-          cargo_root="${CARGO_HOME:-$HOME/.cargo}"
-          docker run --rm \
-            --platform "$CONTAINER_PLATFORM" \
-            --volume "$GITHUB_WORKSPACE:/workspace" \
-            --volume "$rustup_root:/root/.rustup:ro" \
-            --volume "$cargo_root:/root/.cargo" \
-            --workdir /workspace \
-            --env CARGO_HOME=/root/.cargo \
-            --env RUSTUP_HOME=/root/.rustup \
-            --env RUSTUP_SKIP_UPDATE_CHECK=1 \
-            --env SOURCE_DATE_EPOCH=0 \
-            --env TARGET="$TARGET" \
-            --env VERSION="$VERSION" \
-            --env EXPECTED_ARCHITECTURE="$EXPECTED_ARCHITECTURE" \
-            "$CONTAINER_IMAGE" \
-            bash -euo pipefail -c '
-              export PATH="/root/.cargo/bin:$PATH"
-              git config --global --add safe.directory /workspace
-              cargo build --locked --release --package larch-cli --target "$TARGET"
-              binary="target/$TARGET/release/larch"
-              file "$binary" | grep -F "$EXPECTED_ARCHITECTURE"
-              actual_version="$("$binary" --version)"
-              test "$actual_version" = "larch $VERSION"
-              ldd "$binary" | tee /tmp/larch-ldd.txt
-              ! grep -F "not found" /tmp/larch-ldd.txt
-              highest_glibc="$(readelf --version-info "$binary" | grep -oE "GLIBC_[0-9]+\\.[0-9]+" | sort -Vu | tail -1)"
-              test -n "$highest_glibc"
-              case "$highest_glibc" in
-                GLIBC_2.[0-9]|GLIBC_2.1[0-7]) ;;
-                *) echo "unsupported glibc symbol floor: $highest_glibc" >&2; exit 1 ;;
-              esac
-            '
       - name: Package deterministic archive
         shell: bash
         env:
@@ -329,9 +260,6 @@ jobs:
           test "$(jq -r '.tagName' <<<"$release_state")" = "$GITHUB_REF_NAME"
           release_assets=(
             "dist/larch-v$VERSION-aarch64-apple-darwin.tar.gz"
-            "dist/larch-v$VERSION-x86_64-apple-darwin.tar.gz"
-            "dist/larch-v$VERSION-aarch64-unknown-linux-gnu.tar.gz"
-            "dist/larch-v$VERSION-x86_64-unknown-linux-gnu.tar.gz"
             "dist/larch-v$VERSION-manifest.json"
             "dist/larch-v$VERSION-SHA256SUMS"
           )

@@ -115,9 +115,6 @@ resolve_target() {
     architecture="$(uname -m)"
     case "$os_name:$architecture" in
         Darwin:arm64|Darwin:aarch64) printf '%s\n' "aarch64-apple-darwin" ;;
-        Darwin:x86_64|Darwin:amd64) printf '%s\n' "x86_64-apple-darwin" ;;
-        Linux:arm64|Linux:aarch64) printf '%s\n' "aarch64-unknown-linux-gnu" ;;
-        Linux:x86_64|Linux:amd64) printf '%s\n' "x86_64-unknown-linux-gnu" ;;
         *) die "unsupported operating system or architecture: $os_name/$architecture" ;;
     esac
 }
@@ -220,10 +217,7 @@ write_expected_release_assets() {
     printf '%s\n' \
         "larch-v$version-SHA256SUMS" \
         "larch-v$version-aarch64-apple-darwin.tar.gz" \
-        "larch-v$version-aarch64-unknown-linux-gnu.tar.gz" \
-        "larch-v$version-manifest.json" \
-        "larch-v$version-x86_64-apple-darwin.tar.gz" \
-        "larch-v$version-x86_64-unknown-linux-gnu.tar.gz" | sort > "$output"
+        "larch-v$version-manifest.json" | sort > "$output"
 }
 
 verify_release_surface() {
@@ -250,22 +244,15 @@ validate_checksums() {
     local version="$2"
     local target="$3"
     awk -v version="$version" -v selected="$target" '
-        function target_at(asset_index) {
-            if (asset_index == 1) return "aarch64-apple-darwin"
-            if (asset_index == 2) return "x86_64-apple-darwin"
-            if (asset_index == 3) return "aarch64-unknown-linux-gnu"
-            if (asset_index == 4) return "x86_64-unknown-linux-gnu"
-            return ""
-        }
         function fail() { exit 1 }
         {
-            if (NR > 5 || length($0) < 67) fail()
+            if (NR > 2 || length($0) < 67) fail()
             digest = substr($0, 1, 64)
             separator = substr($0, 65, 2)
             name = substr($0, 67)
             if (digest !~ /^[0-9a-f]+$/ || length(digest) != 64 || separator != "  ") fail()
-            if (NR <= 4) {
-                target = target_at(NR)
+            if (NR == 1) {
+                target = "aarch64-apple-darwin"
                 expected = "larch-v" version "-" target ".tar.gz"
                 if (name != expected) fail()
                 if (target == selected) selected_digest = digest
@@ -275,7 +262,7 @@ validate_checksums() {
             }
         }
         END {
-            if (NR != 5 || selected_digest == "" || manifest_digest == "") exit 1
+            if (NR != 2 || selected_digest == "" || manifest_digest == "") exit 1
             print manifest_digest, selected_digest
         }
     ' "$path"
@@ -289,19 +276,6 @@ validate_manifest() {
     local selected_target="$5"
     awk -v version="$version" -v tag="$tag" -v commit="$source_commit" -v selected="$selected_target" '
         function fail() { exit 1 }
-        function target_at(asset_index) {
-            if (asset_index == 1) return "aarch64-apple-darwin"
-            if (asset_index == 2) return "x86_64-apple-darwin"
-            if (asset_index == 3) return "aarch64-unknown-linux-gnu"
-            if (asset_index == 4) return "x86_64-unknown-linux-gnu"
-            return ""
-        }
-        function kind_at(asset_index) { return asset_index <= 2 ? "macos" : "glibc" }
-        function floor_at(asset_index) {
-            if (asset_index == 1) return "11.0"
-            if (asset_index == 2) return "10.12"
-            return "2.17"
-        }
         function exact(expected) { if ($0 != expected) fail() }
         NR == 1 { exact("{"); next }
         NR == 2 { exact("  \"schema_version\": 1,"); next }
@@ -309,10 +283,9 @@ validate_manifest() {
         NR == 4 { exact("  \"tag\": \"" tag "\","); next }
         NR == 5 { exact("  \"source_commit\": \"" commit "\","); next }
         NR == 6 { exact("  \"assets\": ["); next }
-        NR >= 7 && NR <= 50 {
-            asset_index = int((NR - 7) / 11) + 1
-            position = (NR - 7) % 11 + 1
-            target = target_at(asset_index)
+        NR >= 7 && NR <= 17 {
+            position = NR - 6
+            target = "aarch64-apple-darwin"
             if (position == 1) exact("    {")
             else if (position == 2) exact("      \"target\": \"" target "\",")
             else if (position == 3) exact("      \"archive\": \"larch-v" version "-" target ".tar.gz\",")
@@ -333,18 +306,17 @@ validate_manifest() {
             }
             else if (position == 6) exact("      \"binary_path\": \"larch\",")
             else if (position == 7) exact("      \"minimum_os_or_libc\": {")
-            else if (position == 8) exact("        \"kind\": \"" kind_at(asset_index) "\",")
-            else if (position == 9) exact("        \"version\": \"" floor_at(asset_index) "\"")
+            else if (position == 8) exact("        \"kind\": \"macos\",")
+            else if (position == 9) exact("        \"version\": \"11.0\"")
             else if (position == 10) exact("      }")
-            else if (asset_index < 4) exact("    },")
             else exact("    }")
             next
         }
-        NR == 51 { exact("  ]"); next }
-        NR == 52 { exact("}"); next }
+        NR == 18 { exact("  ]"); next }
+        NR == 19 { exact("}"); next }
         { fail() }
         END {
-            if (NR != 52 || selected_size == "" || selected_digest == "") exit 1
+            if (NR != 19 || selected_size == "" || selected_digest == "") exit 1
             print selected_size, selected_digest
         }
     ' "$path"

@@ -32,18 +32,17 @@ owns contributor instructions for dependency changes.
 
 The tag-triggered Rust asset workflow checks out the exact tag commit. It
 requires the tag, `.claude-plugin/plugin.json`, and Cargo workspace version to
-agree. It builds and runs each supported target natively. Linux builds run
-inside digest-pinned `manylinux2014` images and reject symbols newer than glibc
-2.17. The workflow packages only `larch` and `LICENSE` with normalized archive
-metadata.
+agree. It builds and runs the only supported target, `aarch64-apple-darwin`,
+natively. The workflow packages only `larch` and `LICENSE` with normalized
+archive metadata.
 
 Each matrix job attests its archive through GitHub artifact attestations. The
 collector accepts only one archive and one metadata fragment for each required
 target. It rejects missing, duplicate, empty, unexpected, mismatched, or
 non-deterministic inputs. It recomputes archive sizes and SHA-256 digests,
-emits the schema-v1 manifest and checksum file, attests both, verifies all six
-attestations through the typed Rust GitHub attestation capability, and
-revalidates the final six-file allowlist before upload.
+emits the schema-v1 manifest and checksum file, attests both, verifies all
+three attestations through the typed Rust GitHub attestation capability, and
+revalidates the final three-file allowlist before upload.
 
 The attestation service verifies only `character-ai/larch` artifact provenance
 and immutable-release attestations. Domain callers cannot set a repository,
@@ -68,7 +67,7 @@ directly in Rust. It has no Python or `gh` fallback.
 
 GitHub provenance ties bytes to a commit and workflow, not source or
 infrastructure trust. Checksums index integrity, not trust. `/release` uploads
-only the validated six-file set to a mutable draft, gates merge on its digests
+only the validated three-file set to a mutable draft, gates merge on its digests
 and attestations, and preserves the tagged candidate through a merge commit. It
 rechecks ancestry and versions, publishes without Latest, verifies every
 immutable asset, then promotes. Failures resume the same draft or release.
@@ -77,7 +76,8 @@ Published tags and assets never change. Installation verifies separately.
 ### Bootstrap and atomic installation
 
 `scripts/larch.sh` is the only clean-install exec shim and uses no Python. It
-maps four targets and verifies the exact immutable release, tag commit, asset
+maps only Apple Silicon macOS to `aarch64-apple-darwin`, fails closed on every
+other host, and verifies the exact immutable release, tag commit, asset
 allowlist, build attestations, strict manifest and checksums, sizes, digests,
 platform identity, and raw USTAR layout. It rejects symlinks, special files,
 traversal, extra members, malformed archives, and trailing data before
@@ -270,7 +270,7 @@ clean-install execution land atomically.
 The release boundary exposes typed methods for bounded listing, duplicate-safe
 tag selection, policy reads and writes, draft create and update, publish,
 upload, and bounded download. Draft validation binds version, PR head, tag,
-exact run, mutable draft, six assets, digests, `LICENSE`, and attestations before
+exact run, mutable draft, three assets, digests, `LICENSE`, and attestations before
 merge. Tags use the closed typed Git adapter. Callers use `scripts/larch.sh`.
 They do not use Python, `gh`, raw Git, arbitrary HTTP, or a fallback.
 Publication and installation stay with their owning callers.
