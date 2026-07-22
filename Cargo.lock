@@ -2482,7 +2482,7 @@ dependencies = [
 
 [[package]]
 name = "larch-adapters"
-version = "54.0.1"
+version = "55.0.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -2514,7 +2514,7 @@ dependencies = [
 
 [[package]]
 name = "larch-cli"
-version = "54.0.1"
+version = "55.0.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "larch-core"
-version = "54.0.1"
+version = "55.0.0"
 dependencies = [
  "regex",
  "zip",
@@ -2543,7 +2543,7 @@ dependencies = [
 
 [[package]]
 name = "larch-lint"
-version = "54.0.1"
+version = "55.0.0"
 dependencies = [
  "assert_cmd",
  "automod",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "larch-test-support"
-version = "54.0.1"
+version = "55.0.0"
 dependencies = [
  "larch-core",
  "tempfile",
