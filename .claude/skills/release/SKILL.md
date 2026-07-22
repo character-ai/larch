@@ -3,7 +3,7 @@
 name: release
 description: "Use when cutting a larch release: create and tag a version candidate, validate its draft assets, merge it, publish immutable, and promote Latest."
 argument-hint: "[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]"
-allowed-tools: AskUserQuestion, Bash, Skill
+allowed-tools: AskUserQuestion, Bash
 disable-model-invocation: true
 ---
 
