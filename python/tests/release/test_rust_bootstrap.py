@@ -249,6 +249,9 @@ def _fixture(
 def _host_for_target(target: str) -> tuple[str, str]:
     mapping = {
         "aarch64-apple-darwin": ("Darwin", "arm64"),
+        "x86_64-apple-darwin": ("Darwin", "x86_64"),
+        "aarch64-unknown-linux-gnu": ("Linux", "aarch64"),
+        "x86_64-unknown-linux-gnu": ("Linux", "x86_64"),
     }
     return mapping[target]
 
@@ -328,16 +331,16 @@ def test_latest_stable_version_uses_the_bounded_bootstrap_surface(tmp_path: Path
 
 
 @pytest.mark.parametrize(
-    ("os_name", "architecture"),
+    ("os_name", "architecture", "detail"),
     [
-        ("FreeBSD", "x86_64"),
-        ("Darwin", "x86_64"),
-        ("Linux", "aarch64"),
-        ("Linux", "x86_64"),
+        ("FreeBSD", "x86_64", "architecture: FreeBSD/x86_64"),
+        ("Darwin", "x86_64", "for release install: x86_64-apple-darwin"),
+        ("Linux", "aarch64", "for release install: aarch64-unknown-linux-gnu"),
+        ("Linux", "x86_64", "for release install: x86_64-unknown-linux-gnu"),
     ],
 )
 def test_unsupported_target_fails_with_retry_guidance(
-    os_name: str, architecture: str, tmp_path: Path
+    os_name: str, architecture: str, detail: str, tmp_path: Path
 ) -> None:
     fixture = _fixture(tmp_path)
     environment = _environment(
@@ -348,8 +351,24 @@ def test_unsupported_target_fails_with_retry_guidance(
 
     assert result.returncode == 1
     assert "unsupported operating system or architecture" in result.stderr
+    assert detail in result.stderr
     assert "Retry the command" in result.stderr
     assert not (fixture.root / "bin" / "larch").exists()
+
+
+def test_larch_binary_override_works_on_non_release_hosts(tmp_path: Path) -> None:
+    """A locally built binary keeps working where releases do not ship (#7921)."""
+    fixture = _fixture(tmp_path, target="x86_64-unknown-linux-gnu")
+    override = tmp_path / "built-larch"
+    _ = override.write_bytes(_fake_binary(VERSION, fixture.target))
+    override.chmod(0o755)
+    environment = _environment(fixture, LARCH_BINARY=str(override))
+
+    result = _run(fixture, "example", "echo", "linux-dev", environment=environment)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ran:example echo linux-dev\n"
+    assert not (fixture.root / "bin").exists()
 
 
 def test_missing_required_tool_fails_closed_with_retry_guidance(tmp_path: Path) -> None:

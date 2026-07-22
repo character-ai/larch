@@ -115,7 +115,18 @@ resolve_target() {
     architecture="$(uname -m)"
     case "$os_name:$architecture" in
         Darwin:arm64|Darwin:aarch64) printf '%s\n' "aarch64-apple-darwin" ;;
+        Darwin:x86_64|Darwin:amd64) printf '%s\n' "x86_64-apple-darwin" ;;
+        Linux:arm64|Linux:aarch64) printf '%s\n' "aarch64-unknown-linux-gnu" ;;
+        Linux:x86_64|Linux:amd64) printf '%s\n' "x86_64-unknown-linux-gnu" ;;
         *) die "unsupported operating system or architecture: $os_name/$architecture" ;;
+    esac
+}
+
+require_release_install_target() {
+    local target="$1"
+    case "$target" in
+        aarch64-apple-darwin) ;;
+        *) die "unsupported operating system or architecture for release install: $target (larch releases ship only aarch64-apple-darwin)" ;;
     esac
 }
 
@@ -432,6 +443,7 @@ install_release_binary() {
     local staged_binary=""
     local previous_binary=""
 
+    require_release_install_target "$target"
     verify_release_surface "$version" "$tag"
     source_commit="$(gh api "repos/$RELEASE_REPO/commits/$tag" --jq '.sha')"
     case "$source_commit" in

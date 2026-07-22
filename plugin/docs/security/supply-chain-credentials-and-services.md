@@ -76,10 +76,11 @@ Published tags and assets never change. Installation verifies separately.
 ### Bootstrap and atomic installation
 
 `scripts/larch.sh` is the only clean-install exec shim and uses no Python. It
-maps only Apple Silicon macOS to `aarch64-apple-darwin`, fails closed on every
-other host, and verifies the exact immutable release, tag commit, asset
-allowlist, build attestations, strict manifest and checksums, sizes, digests,
-platform identity, and raw USTAR layout. It rejects symlinks, special files,
+maps the host target for binary identity checks, installs releases only on
+Apple Silicon macOS (`aarch64-apple-darwin`) and fails release install and
+preflight closed on every other host, and verifies the exact immutable
+release, tag commit, asset allowlist, build attestations, strict manifest and
+checksums, sizes, digests, platform identity, and raw USTAR layout. It rejects symlinks, special files,
 traversal, extra members, malformed archives, and trailing data before
 extracting only `larch`.
 
