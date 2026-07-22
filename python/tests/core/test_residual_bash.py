@@ -18,7 +18,7 @@ def _agent_lint_inventory(root: Path) -> set[str]:
 
 def test_manifest_includes_combine_issues_helper() -> None:
     paths = residual_bash.read_residual_paths(Path(__file__).resolve().parents[3])
-    assert ".claude/skills/combine-issues/scripts/search-implementing-issue.sh" in paths
+    assert "skills/combine-issues/scripts/search-implementing-issue.sh" in paths
 
 
 def test_agent_lint_inventory_covers_residual_bash() -> None:

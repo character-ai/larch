@@ -8384,6 +8384,12 @@ python = ["cleanup run"]
 rust = []
 
 [[callers]]
+path = "skills/combine-issues/SKILL.md"
+kind = "skill"
+python = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "issue add-blocked-by"]
+rust = ["gh resolve-repo"]
+
+[[callers]]
 path = "skills/deps/SKILL.md"
 kind = "skill"
 python = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "kv get", "untrusted file-block"]

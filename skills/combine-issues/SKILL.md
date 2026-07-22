@@ -9,7 +9,7 @@ allowed-tools: Bash, Read, Write
 
 # Combine Issues
 
-**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Reduce open issue count by merging related issues into combined ones. The primary goal is saving tokens — fewer, broader issues mean fewer `/design` + `/implement` execution cycles and less duplicated context loading.
 
@@ -45,10 +45,10 @@ Use `$COMBINE_TMPDIR/` for all body temp files. Never write to a hardcoded `/tmp
 <!-- step:1 — Fetch Eligible Issues -->
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues fetch
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues fetch
 ```
 
-Title-prefix filtering logic lives in `python/combine_issues.py` beside the fetch script; keep it in sync with `python/test_combine_issues.py`.
+Title-prefix filtering logic lives in `python/larch/issue/combine_issues.py`; keep it in sync with `python/tests/issue/test_combine_issues.py`.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open issues eligible for combination.` and stop.
 
@@ -71,7 +71,7 @@ Ask the user which groups to apply (e.g., "all", "1,3", or "none").
 For each approved group, write the combined body to `$COMBINE_TMPDIR/group-<N>.md`, then invoke:
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues apply \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues apply \
   --title "<combined title>" \
   --body-file "$COMBINE_TMPDIR/group-<N>.md" \
   --source-issues "<comma-separated issue numbers>"
@@ -89,7 +89,7 @@ Resolve the target repository once before OOS commands that require `--repo`:
 
 ```bash
 # lint-consecutive-bash: ok repo resolution and tempdir setup are separate documented setup steps
-REPO=$("${CLAUDE_PLUGIN_ROOT:-$PWD}/scripts/larch.sh" gh resolve-repo 2>/dev/null || true)
+REPO=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh resolve-repo 2>/dev/null || true)
 if [ -z "$REPO" ]; then
   REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
 fi
@@ -128,10 +128,10 @@ Set these variable paths under `$COMBINE_TMPDIR` before running any OOS step:
 <!-- step:oos-1 — Fetch OOS Issues -->
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues fetch --repo "$REPO" --oos
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues fetch --repo "$REPO" --oos
 ```
 
-OOS title-prefix filtering logic lives in `python/combine_issues.py` beside the fetch script.
+OOS title-prefix filtering logic lives in `python/larch/issue/combine_issues.py`.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open [OOS] issues found.` and stop.
 
@@ -150,13 +150,13 @@ For each issue, parse its body and extract the individual items. Then for each i
 2. If the file does not exist in the repo:
    a. Search for in-flight implementing work via the helper (never interpolate untrusted `Location:` text into shell command prose):
       ```bash
-      $PWD/.claude/skills/combine-issues/scripts/search-implementing-issue.sh \
+      "${CLAUDE_PLUGIN_ROOT}/skills/combine-issues/scripts/search-implementing-issue.sh" \
         --file-path "<repo-relative-path>"
       ```
       The helper sanitizes the path to `[A-Za-z0-9/._-]`, passes the sanitized full path to `gh issue list --json number,title,body --search` as a single argv element, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
    b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the helper output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
       ```bash
-      python3 "$PWD/python/cli.py" block-issue add-blocked-by <N> <M> --repo "$REPO" --operator-invoked
+      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" block-issue add-blocked-by <N> <M> --repo "$REPO" --operator-invoked
       ```
       On failure, still keep the item as **actual** (not blocked) and emit a warning.
    c. If `STATUS=none` or `STATUS=invalid_path`, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
@@ -165,7 +165,7 @@ For each issue, parse its body and extract the individual items. Then for each i
    - If the code the item describes has been removed or the issue is clearly fixed, mark **stale** and emit a discard message.
    - If uncertain, default to **actual** (keep the item).
 4. For each **actual** item that is **not blocked**, judge merit before adding it to the oos-3/oos-4 flat list:
-   - Reject only when the rejection has a concrete cause tied to code you read or to documented repo principles. Use `KARPATHY_CLAUDE.md` §2 and §3 as named anchors.
+   - Reject only when the rejection has a concrete cause tied to code you read or to documented repo principles. Use the simplicity-first (minimum code, nothing speculative) and surgical-changes (touch only what the task requires) principles as named anchors.
    - Proposed low-merit causes include speculative features, single-use abstractions, unrequested flexibility, defensive handling for impossible states, refactors of unbroken code, pure nits, lopsided cost/benefit, or concrete contradictions of documented decisions.
    - If the evidence is weak, subjective, or uncited, default to **keep**.
    - For each low-merit item, stage a proposed rejection with the source issue, item title, stable display key, and a 1-3 sentence cause. Do not combine, deduplicate, close, or discard the item until the oos-4 merit batch confirms rejection.
@@ -178,7 +178,7 @@ Do not call raw `gh issue close` from prompt prose. Reserve `python/cli.py combi
 If no kept items remain after actuality and merit checks and no proposed merit rejections are pending, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues close-stale \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-stale \
   --repo "$REPO" \
   --issues "<issue>" \
   --reason "not planned" \
@@ -253,7 +253,7 @@ Post-rescue regrouping:
 After approval and before dependency phases, close approved stale-only or fully discarded sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues close-stale \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-stale \
   --repo "$REPO" \
   --issues "<issue>" \
   --reason "not planned" \
@@ -267,7 +267,7 @@ The comment file must be redacted and should summarize only that issue's stale d
 For each approved group, write the combined body to `$COMBINE_TMPDIR/oos-group-<N>.md`, then invoke:
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues apply \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues apply \
   --repo "$REPO" \
   --title "<combined title>" \
   --body-file "$COMBINE_TMPDIR/oos-group-<N>.md" \
@@ -299,11 +299,11 @@ Materialize every dependency workflow JSON file before the first dependency comm
 Run the Python planner for inherited native dependencies. Do not redo remap, classification, dedupe, or source-eligibility logic in prompt prose.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues fetch-deps \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues fetch-deps \
   --repo "$REPO" \
   --issues "<all source issues>" > "$DEPS_JSON"
-python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$OPEN_ISSUES_JSON"
-python3 "$PWD/python/cli.py" combine-issues plan-inherited \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues list-open --repo "$REPO" > "$OPEN_ISSUES_JSON"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues plan-inherited \
   --repo "$REPO" \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
@@ -317,7 +317,7 @@ Use `plan-inherited` as the only source of remapped inherited edge classificatio
 
 - Mark sources with dependency read failures as not close-eligible.
 - Mark sources tied to unknown inherited classifications as not close-eligible.
-- Write `safe_edges` with `python3 "$PWD/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`.
+- Write `safe_edges` with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`.
 - Treat `satisfied_edges` as closed-blocker dependencies. Do not write them and do not treat them as close-blocking.
 - Record safe-edge write success, idempotent already-present success, write failures, and unresolved writes in one write-results JSON file.
 
@@ -343,8 +343,8 @@ Do not close sources tied to unresolved inherited exception decisions. Do not cl
 Refresh metadata before source closure, then rerun the inherited planner.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$REFRESHED_OPEN_ISSUES_JSON"
-python3 "$PWD/python/cli.py" combine-issues plan-inherited \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues list-open --repo "$REPO" > "$REFRESHED_OPEN_ISSUES_JSON"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues plan-inherited \
   --repo "$REPO" \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
@@ -361,7 +361,7 @@ Compare the refreshed plan with the initial plan by edge tuple. The refresh reso
 Compute closure eligibility in Python.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues close-eligible \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-eligible \
   --inherited-plan-file "$FINAL_INHERITED_PLAN_JSON" \
   --write-results-file "$WRITE_RESULTS_JSON" \
   --exception-decisions-file "$EXCEPTION_DECISIONS_JSON" \
@@ -374,7 +374,7 @@ Close only sources emitted in `eligible_by_combined`. Sources mapped to multiple
 `close-eligible` ignores `satisfied_edges`; closed-blocker dependencies do not require writes and do not block source closure.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues close-sources \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues close-sources \
   --repo "$REPO" \
   --combined-issue "<combined issue>" \
   --source-issues "<comma-separated eligible source issues>"
@@ -389,7 +389,7 @@ Run every partitioned `close-sources` invocation. Parse `CLOSED_ISSUES` and `PAR
 After source closure, refresh the full open-issue set for audit.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$AUDIT_OPEN_ISSUES_JSON"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues list-open --repo "$REPO" > "$AUDIT_OPEN_ISSUES_JSON"
 ```
 
 Hard-stop if audit `list-open` exits non-zero, or if its JSON status is not `ok`.
@@ -403,7 +403,7 @@ Build `decided_edges.json` separately from inherited rejected exception decision
 Run Tier-1 prose audit:
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues prose-audit \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues prose-audit \
   --repo "$REPO" \
   --combined-issues "$COMBINED_ISSUES_CSV" \
   --open-issues-file "$AUDIT_OPEN_ISSUES_JSON" \
@@ -427,7 +427,7 @@ If the bounded trigger set exceeds 50 pairs, skip Tier-2 for the excess and summ
 Plan audit writes in Python.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues plan-audit \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" combine-issues plan-audit \
   --prose-candidates-file "$PROSE_CANDIDATES_JSON" \
   --tier2-candidates-file "$TIER2_CANDIDATES_JSON" \
   --existing-edges-file "$EXISTING_EDGES_JSON" \
@@ -445,7 +445,7 @@ Approval-required audit edges include:
 - Audit exception edges where the client is non-OOS and the blocker is a newly combined `[OOS]` issue.
 - All Tier-2 semantic edges.
 
-Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `python3 "$PWD/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
+Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
 
 <!-- step:oos-10 — Dependency Summary -->
 

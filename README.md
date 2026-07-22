@@ -102,6 +102,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Remove stale larch session temp directories from <code>~/.cache/larch/sessions/</code>, <code>/tmp</code>, and the OS temp root <code>$TMPDIR</code> resolves to (a per-user path distinct from <code>/tmp</code> on macOS) by bounded nested-activity scan (<code>LARCH_CLEANUP_RETENTION_DAYS</code>, default 7): a directory is deleted only when the <code>find -maxdepth 5</code> nested scan finds no file newer than the cutoff, so a directory with fresh deep activity is retained even when its top-level mtime is stale. Reaps dangling <code>current-design-env-*.sh</code> symlinks. Always runnable regardless of concurrent Claude sessions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#combine-issues"><code>/combine-issues</code></a></td>
+      <td><code>[--oos]</code></td>
+    </tr>
+    <tr><td colspan="2">Combine related open issues into fewer broader ones (closing the sources) to reduce token spend. <code>--oos</code> operates only on <code>[OOS]</code>-prefixed issues, discards stale items, and proposes an aggressive combination scheme.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#deps"><code>/deps</code></a></td>
       <td><code>[--repo owner/name] [--pair-cap N]</code></td>
     </tr>
@@ -243,12 +249,6 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><code>--skill &lt;design|implement&gt; [&lt;verbal-description&gt;] [--repo owner/name] [--allow-concurrent]</code></td>
     </tr>
     <tr><td colspan="2">Audit recently-merged larch run logs for anomalies, file the chain-of-history audit-report issue, and propose bug-issue follow-ups that require explicit user direction before any filing.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#combine-issues"><code>/combine-issues</code></a></td>
-      <td><code>[--oos]</code></td>
-    </tr>
-    <tr><td colspan="2">Combine related open issues into fewer broader ones (closing the sources) to reduce token spend. <code>--oos</code> operates only on <code>[OOS]</code>-prefixed issues, discards stale items, and proposes an aggressive combination scheme.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#larch-size"><code>/larch-size</code></a></td>

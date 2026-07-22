@@ -5,7 +5,6 @@
 # Agent-lint validates every row as a regular .sh, .inc.bash, or .awk file.
 # Terminal shared libraries, retired non-thin utilities, verified-zero-consumer includes,
 # live orchestration bodies, and sourced helper libraries are intentionally absent.
-.claude/skills/combine-issues/scripts/search-implementing-issue.sh
 scripts/audit-edit-write.sh
 scripts/block-submodule-edit.sh
 scripts/check-stale-plugin.sh
@@ -63,6 +62,7 @@ scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 scripts/test-triage-structure.sh
+skills/combine-issues/scripts/search-implementing-issue.sh
 skills/design/scripts/design-clarify.sh
 skills/design/scripts/design-step3b-tail.sh
 skills/design/scripts/design-step5b-annotate.sh

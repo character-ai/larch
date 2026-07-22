@@ -18,6 +18,7 @@ child run whose manifest records the parent skill and run ID.
 - [`/block-issue`](#block-issue)
 - [`/bug`](#bug)
 - [`/cleanup`](#cleanup)
+- [`/combine-issues`](#combine-issues)
 - [`/deps`](#deps)
 - [`/design`](#design)
 - [`/difficulty-calibration`](#difficulty-calibration)
@@ -74,6 +75,14 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 
 Remove stale larch session temp directories from `~/.cache/larch/sessions/`, `/tmp`, and the OS temp root `$TMPDIR` resolves to (a per-user path distinct from `/tmp` on macOS, and where bare `tempfile.mkdtemp()`/`mkstemp()` calls actually land) by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Directories are removed only when no file within the bounded `find -maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old. Matching loose top-level files under either temp root are removed by top-level age and pattern match. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active. The optional `--run-id <ID>` overrides the auto-generated run identifier.
+
+### `/combine-issues`
+
+**Arguments**: `[--oos]`
+
+**Source**: [`skills/combine-issues/SKILL.md`](../skills/combine-issues/SKILL.md)
+
+Reduce open issue count by merging related open issues into combined ones (closing the sources), so fewer, broader issues mean fewer `/design` + `/implement` cycles. Good candidates share a code area, apply a similar change pattern across files, overlap in scope, or are small sequential dependencies. Post-combination `close-sources` comments include the durable `larch:combined-away` marker used by `/analyze-issues` combined-away docking; stale-only `close-stale` must not carry it. `--oos` switches to OOS mode: it operates only on issues whose title starts with `[OOS]`, checks each item for actuality and merit, discards stale items, stages low-merit rejections for approval, and proposes an aggressive combination scheme.
 
 ### `/design`
 
@@ -306,7 +315,6 @@ These skills live under `.claude/skills/` and are **dev-only**: they are not exp
 - [`/validate-merged`](#validate-merged)
 - [`/analyze-issues`](#analyze-issues)
 - [`/audit-runs`](#audit-runs)
-- [`/combine-issues`](#combine-issues)
 - [`/larch-size`](#larch-size)
 - [`/rebalance-tests`](#rebalance-tests)
 - [`/release`](#release)
@@ -356,14 +364,6 @@ Dev-only, report-only validation of recent first-parent merges for possible unfi
 **Source**: [`.claude/skills/audit-runs/SKILL.md`](../.claude/skills/audit-runs/SKILL.md)
 
 Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies, always file a chain-of-history audit-report issue, and record bug-issue candidates as proposals that are acted on only after explicit user direction in chat. The optional positional `<verbal-description>` selects which PRs to audit (`last N PRs`, `since last audit`, `since <ISO8601>`, `#N`); empty defaults to `since last audit`. `--repo` targets a repo (default `character-ai/larch`); `--allow-concurrent` overrides the shared 5-minute concurrency guard. The removed `--no-fix-issues` flag is rejected.
-
-### `/combine-issues`
-
-**Arguments**: `[--oos]`
-
-**Source**: [`.claude/skills/combine-issues/SKILL.md`](../.claude/skills/combine-issues/SKILL.md)
-
-Reduce open issue count by merging related open issues into combined ones (closing the sources), so fewer, broader issues mean fewer `/design` + `/implement` cycles. Good candidates share a code area, apply a similar change pattern across files, overlap in scope, or are small sequential dependencies. Post-combination `close-sources` comments include the durable `larch:combined-away` marker used by `/analyze-issues` combined-away docking; stale-only `close-stale` must not carry it. `--oos` switches to OOS mode: it operates only on issues whose title starts with `[OOS]`, checks each item for actuality and merit, discards stale items, stages low-merit rejections for approval, and proposes an aggressive combination scheme.
 
 ### `/larch-size`
 

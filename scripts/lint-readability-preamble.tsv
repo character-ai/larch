@@ -18,6 +18,7 @@ skills/alias/SKILL.md	orchestrator-inline	1
 skills/block-issue/SKILL.md	orchestrator-inline	1		
 skills/bug/SKILL.md	orchestrator-inline	1		
 skills/cleanup/SKILL.md	orchestrator-inline	1		
+skills/combine-issues/SKILL.md	orchestrator-inline	1		
 skills/deps/SKILL.md	orchestrator-inline	1		
 skills/difficulty-calibration/SKILL.md	orchestrator-inline	1		
 skills/fluff-analysis/SKILL.md	orchestrator-inline	1		
@@ -40,7 +41,6 @@ skills/implement/scripts/write-final-report.md	orchestrator-inline	1
 .claude/skills/agnix-fix/SKILL.md	orchestrator-inline	1		
 .claude/skills/analyze-issues/SKILL.md	orchestrator-inline	1		
 .claude/skills/audit-runs/SKILL.md	orchestrator-inline	1		
-.claude/skills/combine-issues/SKILL.md	orchestrator-inline	1		
 .claude/skills/larch-size/SKILL.md	orchestrator-inline	1		
 .claude/skills/rebalance-tests/SKILL.md	orchestrator-inline	1		
 .claude/skills/release/SKILL.md	orchestrator-inline	1		
