@@ -29,6 +29,21 @@ LEGACY_LABELS: frozenset[str] = frozenset(
 )
 
 
+def _verification_failures(text: str) -> list[str]:
+    failures: list[str] = []
+    verification_fence = (
+        f'python3 "${{CLAUDE_PLUGIN_ROOT}}/python/cli.py" verify skill-called {chr(92)}\n'
+        '  --sentinel-file "$TARGET_DIR/SKILL.md"'
+    )
+    if verification_fence not in text:
+        failures.append("(H.2) expected Step 4 verification to launch cli.py with python3")
+    if '"${CLAUDE_PLUGIN_ROOT}/python/cli.py verify skill-called"' in text:
+        failures.append(
+            "(H.3-neg) Step 4 must not quote the cli path and subcommand as one executable"
+        )
+    return failures
+
+
 def run(repo_root: Path) -> list[str]:
     failures: list[str] = []
     skill = repo_root / "skills/alias/SKILL.md"
@@ -72,16 +87,7 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(G) expected announce line to interpolate $TARGET_DIR")
     if '--sentinel-file "$TARGET_DIR/SKILL.md"' not in text:
         failures.append('(H.1) expected --sentinel-file "$TARGET_DIR/SKILL.md" in Step 4')
-    verification_fence = (
-        f'python3 "${{CLAUDE_PLUGIN_ROOT}}/python/cli.py" verify skill-called {chr(92)}\n'
-        '  --sentinel-file "$TARGET_DIR/SKILL.md"'
-    )
-    if verification_fence not in text:
-        failures.append("(H.2) expected Step 4 verification to launch cli.py with python3")
-    if '"${CLAUDE_PLUGIN_ROOT}/python/cli.py verify skill-called"' in text:
-        failures.append(
-            "(H.3-neg) Step 4 must not quote the cli path and subcommand as one executable"
-        )
+    failures.extend(_verification_failures(text))
     if "REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)" in text:
         failures.append(
             "(H.2-neg) old 'REPO_ROOT=$(git rev-parse ... || pwd -P)' still present in Step 4"

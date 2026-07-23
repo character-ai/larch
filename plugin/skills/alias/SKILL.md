@@ -182,7 +182,7 @@ Only include `--merge` in the args if `alias_merge=true`.
 After `/implement` returns, verify the alias SKILL.md actually landed on disk. The sentinel path uses the `$TARGET_DIR` resolved at Step 2 (no separate `git rev-parse` here: the resolved value is the single source of truth, fail-closed at Step 2 if git failed):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py verify skill-called" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called \
   --sentinel-file "$TARGET_DIR/SKILL.md"
 ```
 
