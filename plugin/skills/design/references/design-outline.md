@@ -107,7 +107,7 @@ When the operator chooses **Refine outline**:
 4. Reprint under `## Updated Design Outline`; changed sections only is acceptable.
 5. Re-fire the same Approve outline / Refine outline / Cancel prompt.
 
-Loop until the operator explicitly chooses **Approve outline** or **Cancel**. Free-form operator messages are refinement input, not cancellation or approval. **Refine outline** does **not** write `$DESIGN_TMPDIR/.outline-approved`.
+Repeat after refinement. End on **Approve outline** or **Cancel**. Other messages refine only. **Refine outline** does **not** write `$DESIGN_TMPDIR/.outline-approved`.
 If invariant violations remain after assessment, rewrite `design-outline.md` with the smallest fix, increment the remediation counter, and re-enter the presentation loop. Do not auto-approve until the invariant path is clean or absent/invalid handling succeeds.
 Bound the invariant outline remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-outline-remediation.count`, read on Step 1d.7 invariant entry, incremented per rewrite, mirroring Gate C. Hard-stop after the bound and record a warning.
 
