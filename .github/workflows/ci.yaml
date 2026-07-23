@@ -32,7 +32,7 @@ env:
 jobs:
   # External-tool linters only: markdownlint, jsonlint, and actionlint.
   # All local bash/python linters run in the parallel `lint-local` job.
-  # `agent-lint`, `agnix`, and `shellcheck` run in their dedicated jobs.
+  # `agent-lint`, `agnix`, `lintlang`, and `shellcheck` run in their dedicated jobs.
   # `gitleaks` working-tree scan moved to the `gitleaks` job to shed ~40s
   # from this job's critical path. Test harnesses run in the separate
   # `test-harnesses` job.
@@ -65,7 +65,7 @@ jobs:
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Run pre-commit linters (external tools)
         # Runs markdownlint, jsonlint, and actionlint only.
-        # `agent-lint`, `agnix`, and `shellcheck` run in dedicated jobs.
+        # `agent-lint`, `agnix`, `lintlang`, and `shellcheck` run in dedicated jobs.
         # `gitleaks` moved to the `gitleaks` job. Scoped ruff/pyright hooks
         # are covered by the Python jobs. Local bash/python linters run in
         # `lint-local`. If a dedicated job is removed, drop its hook
@@ -269,8 +269,8 @@ jobs:
           result="${{ needs.test-harnesses.result }}"
           [ "$result" = success ] || { echo "::error::test-harnesses result=$result"; exit 1; }
 
-  # agent-lint and agnix consolidated into one job so both run sequentially
-  # on a single runner instead of competing for two.
+  # Third-party agent/config linters run sequentially on one runner instead of
+  # competing for separate runners.
   agent-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -281,6 +281,11 @@ jobs:
             /*
             !/larch-logs/
           sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: .github/workflows/requirements-agent-linters.txt
       # The zhupanov/agent-lint action installs this same release asset via
       # single-shot curl. Install the pinned CLI directly so CI can cache it
       # and retry transient GitHub release-asset failures.
@@ -333,6 +338,15 @@ jobs:
         run: agnix --version
       - name: Run agnix
         run: agnix . --strict --target claude-code --config .agnix.toml
+      - name: Install lintlang
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
+        run: pip install -r .github/workflows/requirements-agent-linters.txt
+      - name: Verify lintlang
+        run: lintlang --version
+      - name: Run lintlang
+        run: lintlang scan agents .claude/agents skills .claude/skills --min-severity high --fail-on fail
 
   # Rust format, Clippy, repository-rule, and dependency-policy lane, modeled
   # on agent-lint's dedicated lint job. The aggregate rust-gate below is the
