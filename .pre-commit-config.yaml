@@ -228,7 +228,7 @@ repos:
         files: ^(Cargo\.(toml|lock)|deny\.toml|rust-toolchain\.toml|crates/.*(Cargo\.toml|\.rs))$
 
   - repo: https://github.com/zhupanov/agent-lint
-    rev: v3.0.1
+    rev: v4.0.2
     hooks:
       - id: agent-lint
         args: [--pedantic]
