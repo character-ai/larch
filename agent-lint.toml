@@ -1303,6 +1303,7 @@ conditional-sources = [
   "skills/design/references/flags.md",
   "skills/design/references/brainstorm.md",
   "skills/design/references/sentinel-host-table.md",
+  "skills/design/references/plan-review.md",
   "skills/shared/final-summary-emit.md",
   "skills/design/references/finalize-step5-failures.md",
   "skills/design/references/approval-gates-gate-a.md",
@@ -1325,9 +1326,19 @@ root-max-content-tokens = 26330
 closure-max-lines = 1680
 closure-max-tokens = 50434
 closure-max-content-tokens = 50307
-conditional-max-lines = 661
-conditional-max-tokens = 18524
-conditional-max-content-tokens = 18465
+# Issue #7936: the prior 661/18524/18465 conditional caps carried an
+# agent-lint v3.0.1 measurement artifact, not smaller reviewed content:
+# brainstorm.md and dialectic-clarifier.md (both branch-gated loads) were
+# misattributed to the always closure, while approval-gates-explicit.md
+# (a second-level Gate B load) and approval-gates-gate-b.md (a mainline
+# unconditional load) were over-counted transitively. The declared sources
+# never grew: their plain sum still equals the 777-line review retired with
+# python/skill-closure-baseline.json (#7593). Caps equal that sum plus
+# plan-review.md, the one SKILL.md-direct conditional load ("Load
+# plan-review.md only for maintainer editing work") missing from the list.
+conditional-max-lines = 790
+conditional-max-tokens = 19694
+conditional-max-content-tokens = 19622
 
 [[lint.prompt-source-budgets]]
 name = "implement"

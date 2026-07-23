@@ -148,7 +148,7 @@ Agent-lint's `--closure-report` emits the same named groups as stable JSON rows.
 Scope is narrow by design:
 
 - Count only `design`, `implement`, and `review` skill closures plus the fixed `panel-tier` source set.
-- Ratchet eager closure for all four targets. Ratchet conditional closure for `review` only.
+- Ratchet eager closure for all four targets. Ratchet conditional closure for the declared `conditional-sources` of `design`, `implement`, and `review`.
 - Count each skill `SKILL.md` plus direct always-loaded prompt-source references.
 - Do not recurse from a referenced file into its references.
 - Track conditional bullets, branch-only routing-table rows, other route-predicate contexts, and the `/implement` `Checks Failure Entry Macro` and `Durable Bail to Step 18 Macro` sections as conditional closure.
