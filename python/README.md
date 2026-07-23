@@ -96,7 +96,7 @@ Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, har
 
 ## Phase 4 scope note (branch hygiene)
 
-The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `scripts/test-plan-review-loop.sh`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.
+The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `make test-plan-review-loop`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.
 
 ## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
 
