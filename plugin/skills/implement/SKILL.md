@@ -615,7 +615,7 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 Step 7a composes no prompt-side public summary and never emits diagram fences. The helper owns silent `larch:diagrams` upsert through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" diagrams upsert`; the orchestrator parses only KVs and breadcrumbs.
 
 `python/cli.py implement step-7a` consolidates small/non-runtime classification, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r checkpoint, and pre-ship log flush. It emits a KV tail; do not duplicate those calls prompt-side.
-The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
+The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Contract: `skills/implement/scripts/step-7a.md`; `skills/implement/scripts/test-step-7a.sh` (`skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Bgjob foreground launch required — do not use Claude background mode. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step7a PGID=<n>`.**
 
