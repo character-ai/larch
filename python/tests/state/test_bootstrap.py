@@ -1718,3 +1718,28 @@ def test_refresh_gate_probe_updates_typed_reviewer_state(tmp_path: Path, monkeyp
     assert bootstrap._refresh_gate_probe(st) is None  # pyright: ignore[reportPrivateUsage]
     assert st.codex_present == "false"
     assert st.cursor_binary_found == "true"
+
+
+def test_emit_final_repo_root_prefers_session_value(tmp_path, capsys) -> None:
+    (tmp_path / "session-env.sh").write_text("REPO_ROOT=/persisted/root\n", encoding="utf-8")
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="infra"),
+        implement_tmpdir=str(tmp_path),
+    )
+    bootstrap._emit_final(st)  # pyright: ignore[reportPrivateUsage]
+    assert "REPO_ROOT=/persisted/root" in capsys.readouterr().out
+
+
+def test_emit_final_repo_root_falls_back_to_trust_boundary(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/claude/project")
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="infra"),
+        implement_tmpdir=str(tmp_path),
+    )
+    bootstrap._emit_final(st)  # pyright: ignore[reportPrivateUsage]
+    assert "REPO_ROOT=/claude/project" in capsys.readouterr().out
+
+
+def test_filtered_envelope_passes_repo_root() -> None:
+    out = bootstrap._filtered_envelope("REPO_ROOT=/some/root\n", resume=False)  # pyright: ignore[reportPrivateUsage]
+    assert "REPO_ROOT=/some/root" in out

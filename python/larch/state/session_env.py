@@ -119,6 +119,7 @@ RESTORE_FINALIZE_DEFAULTS = {
 }
 CALLER_ENV_KEYS = frozenset({
     "REPO",
+    "REPO_ROOT",
     "REPO_UNAVAILABLE",
     "CLAUDE_BINARY_FOUND",
     "CODEX_BINARY_FOUND",
@@ -2004,12 +2005,41 @@ def _ignore_placeholder_run_dirs(_: str, names: list[str]) -> set[str]:  # lint-
     return {name for name in names if _PLACEHOLDER_RUN_DIR_RE.match(name)}
 
 
+def _setup_repo_root(*, caller: dict[str, str], emissions: list[SetupEmission]) -> str:
+    """Resolve the operator repo root once at the session-setup trust boundary.
+
+    Tier order: caller-env value, then ``CLAUDE_PROJECT_DIR``/``REPO_ROOT``
+    env, then the setup process cwd (the invoking checkout). Each non-cwd tier
+    must pass the shared ``--repo-root`` validation (absolute, single-line,
+    bounded); an invalid tier falls through so no unvalidated value reaches
+    the line-oriented stdout grammar. Appends the ``REPO_ROOT`` stdout
+    emission and returns the resolved value.
+    """
+    repo_root = str(Path.cwd())
+    for candidate in (
+        caller.get("REPO_ROOT", "").strip(),
+        os.environ.get("CLAUDE_PROJECT_DIR", "").strip(),
+        os.environ.get("REPO_ROOT", "").strip(),
+    ):
+        if not candidate:
+            continue
+        try:
+            _validate_repo_root_value(value=candidate, flag="--repo-root")
+        except ValueError:
+            continue
+        repo_root = candidate
+        break
+    emissions.append(SetupEmission(kind="kv", key="REPO_ROOT", value=repo_root))
+    return repo_root
+
+
 def _setup_write_env_params(  # noqa: PLR0913 - session-env inputs stay explicit seams for one caller
     *,
     write_session_env: str,
     caller: dict[str, str],
     caller_env: str,
     repo_value: str,
+    repo_root: str,
     repo_unavailable: str,
     final_codex: str,
     final_cursor: str,
@@ -2043,6 +2073,7 @@ def _setup_write_env_params(  # noqa: PLR0913 - session-env inputs stay explicit
         output=write_session_env,
         repo_unavailable=repo_unavailable,
         repo=repo_value,
+        repo_root=repo_root,
         codex_present=final_codex,
         cursor_present=final_cursor,
         claude_binary_found=final_claude_bin,
@@ -2124,8 +2155,11 @@ def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip
         else:
             repo_value = _repo_from_gh_or_git(runner)
             repo_unavailable = "false" if repo_value else "true"
-        emissions.append(SetupEmission(kind="kv", key="REPO", value=repo_value))
-        emissions.append(SetupEmission(kind="kv", key="REPO_UNAVAILABLE", value=repo_unavailable))
+        emissions.extend((
+            SetupEmission(kind="kv", key="REPO", value=repo_value),
+            SetupEmission(kind="kv", key="REPO_UNAVAILABLE", value=repo_unavailable),
+        ))
+    repo_root = _setup_repo_root(caller=caller, emissions=emissions)
     final_codex = ""
     final_cursor = ""
     final_claude_bin = caller.get("CLAUDE_BINARY_FOUND", "")
@@ -2175,6 +2209,7 @@ def setup(  # noqa: PLR0913 - session-setup CLI flags are independent probe/skip
             caller=caller,
             caller_env=caller_env,
             repo_value=repo_value,
+            repo_root=repo_root,
             repo_unavailable=repo_unavailable,
             final_codex=final_codex,
             final_cursor=final_cursor,

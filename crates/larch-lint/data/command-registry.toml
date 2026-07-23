@@ -8392,7 +8392,7 @@ rust = ["gh resolve-repo"]
 [[callers]]
 path = "skills/deps/SKILL.md"
 kind = "skill"
-python = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "kv get", "untrusted file-block"]
+python = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps fetch", "deps plan", "deps resolve-repo", "deps write-proposals", "kv get", "session setup", "untrusted file-block"]
 rust = []
 
 [[callers]]
@@ -9034,7 +9034,7 @@ rust = []
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-python = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "verify skill-called"]
+python = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
 rust = []
 
 [[callers]]

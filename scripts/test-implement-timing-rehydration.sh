@@ -68,7 +68,7 @@ tmpdir_export='export IMPLEMENT_TMPDIR'
 # so it cannot carry the multi-line guard/export. It runs after Step 0 exports
 # CLAUDE_PLUGIN_ROOT, so it is exempt from the early-fence source guard/export.
 step_16_17_call='python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"'
-in_fence=False; start=0; body=[]; errors=[]; guard_count=0; awk_count=0
+in_fence=False; start=0; body=[]; errors=[]; guard_count=0; root_fallback_count=0
 for i,line in enumerate(lines,1):
     if line.lstrip().startswith('```bash'):
         in_fence=True; start=i; body=[]
@@ -80,18 +80,18 @@ for i,line in enumerate(lines,1):
         if '${CLAUDE_PLUGIN_ROOT}' in text and '$IMPLEMENT_TMPDIR' in text and tmpdir_export not in text and not exempt:
             errors.append(f'fence starting {start}: missing IMPLEMENT_TMPDIR export')
         guard_count += sum(1 for raw in body if raw.strip()==source_guard)
-        awk_count += sum(1 for raw in body if 'LARCH_CLAUDE_PLUGIN_ROOT=' in raw)
+        root_fallback_count += sum(1 for raw in body if '--print-plugin-root' in raw)
         in_fence=False
     elif in_fence:
         body.append(line)
 if guard_count == 0:
     errors.append('no plugin-root source guards found')
-if awk_count < 1:
-    errors.append(f'expected at least one pre-bootstrap awk fallback to remain, found {awk_count}')
+if root_fallback_count < 1:
+    errors.append(f'expected at least one pre-bootstrap plugin-root fallback to remain, found {root_fallback_count}')
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
-print(f'plugin-root guards={guard_count} awk-fallbacks={awk_count}')
+print(f'plugin-root guards={guard_count} root-fallbacks={root_fallback_count}')
 PY
 
 # Invariant E (#3425): closing marks stay inside step-18 Python finalize before teardown.

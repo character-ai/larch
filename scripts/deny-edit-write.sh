@@ -2,11 +2,13 @@
 # deny-edit-write.sh — token-gated skill-scoped PreToolUse hook. While a
 # recognized skill token has a fresh activation sentinel, Edit/Write/
 # NotebookEdit are permitted only when the tool's target path resolves to
-# an absolute path under canonical /tmp. Every other active outcome —
-# missing path, relative path, traversal, symlink cycle, resolution
-# failure, jq runtime failure — denies, so the repo working tree is not
-# written through this tool surface. Leaked, stale, tokenless, or unknown
-# registrations fail open before path parsing.
+# an absolute path under canonical /tmp or the larch cache sessions root
+# (the larch-owned session scratch tree that session-setup tmpdirs live
+# in). Every other active outcome — missing path, relative path,
+# traversal, symlink cycle, resolution failure, jq runtime failure —
+# denies, so the repo working tree is not written through this tool
+# surface. Leaked, stale, tokenless, or unknown registrations fail open
+# before path parsing.
 #
 # Stdin: JSON with .tool_input.file_path or .tool_input.notebook_path
 #        (absolute path). NotebookEdit uses notebook_path; fall back
@@ -25,8 +27,8 @@
 #      emit byte-identical output.
 #   3. every active error branch routes through block() which emits the
 #      deny envelope then exits 0 — no silent fall-through to empty stdout.
-#   4. active allow requires a positively proven canonical path under /tmp;
-#      any ambiguity denies.
+#   4. active allow requires a positively proven canonical path under /tmp
+#      or the larch cache sessions root; any ambiguity denies.
 #
 # Style mirrors scripts/block-submodule-edit.sh (stdin-JSON contract,
 # bounded symlink walk, nearest-existing-ancestor probe, `pwd -P`
@@ -51,6 +53,19 @@ activation_dir() {
     printf '%s/larch/deny-edit-write-active' "$XDG_CACHE_HOME"
   elif [[ -n "${HOME:-}" ]]; then
     printf '%s/.cache/larch/deny-edit-write-active' "$HOME"
+  else
+    return 1
+  fi
+}
+
+# Larch cache sessions root (session-setup tmpdirs). Mirrors activation_dir's
+# XDG resolution; absent or unresolvable roots simply drop the second allow
+# tier — /tmp policy is unaffected.
+sessions_root() {
+  if [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+    printf '%s/larch/sessions' "$XDG_CACHE_HOME"
+  elif [[ -n "${HOME:-}" ]]; then
+    printf '%s/.cache/larch/sessions' "$HOME"
   else
     return 1
   fi
@@ -89,10 +104,10 @@ block() {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: "The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp is not permitted."
+      permissionDecisionReason: "The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp or the larch session cache is not permitted."
     }
   }' 2>/dev/null) \
-    || json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+    || json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp or the larch session cache is not permitted."}}'
   hook_emit "$json"
   exit 0
 }
@@ -100,7 +115,7 @@ block() {
 # jq-absent static fallback. Byte-identical to the `jq -cn` output
 # above (same single reason literal).
 if ! command -v jq >/dev/null 2>&1; then
-  hook_emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+  hook_emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp or the larch session cache is not permitted."}}'
   exit 0
 fi
 
@@ -128,12 +143,18 @@ if [[ "$FILE_PATH" != /* ]]; then
   block
 fi
 
-# --- Canonicalize the allowed root once ---
+# --- Canonicalize the allowed roots once ---
 # /tmp is a symlink to /private/tmp on macOS; canonicalize so the
-# comparison below handles both layouts uniformly.
+# comparison below handles both layouts uniformly. The larch cache
+# sessions root is optional: when it does not exist yet, only the /tmp
+# tier applies.
 ALLOWED_ROOT=$(cd /tmp 2>/dev/null && pwd -P) || block
 if [[ -z "$ALLOWED_ROOT" ]]; then
   block
+fi
+ALLOWED_SESSIONS_ROOT=""
+if sessions_candidate=$(sessions_root); then
+  ALLOWED_SESSIONS_ROOT=$(cd "$sessions_candidate" 2>/dev/null && pwd -P) || ALLOWED_SESSIONS_ROOT=""
 fi
 
 # --- Resolve file_path through any symlink chain ---
@@ -180,9 +201,15 @@ fi
 PROBE_DIR=$(cd "$PROBE_DIR" 2>/dev/null && pwd -P) || block
 
 # --- Policy: allow only when the canonical probe dir is under the
-# canonical /tmp root. Exact equality OR $ALLOWED_ROOT/ prefix.
+# canonical /tmp root or the canonical larch cache sessions root.
+# Exact equality OR <root>/ prefix.
 if [[ "$PROBE_DIR" == "$ALLOWED_ROOT" ]] || [[ "$PROBE_DIR" == "$ALLOWED_ROOT"/* ]]; then
   exit 0
+fi
+if [[ -n "$ALLOWED_SESSIONS_ROOT" ]]; then
+  if [[ "$PROBE_DIR" == "$ALLOWED_SESSIONS_ROOT" ]] || [[ "$PROBE_DIR" == "$ALLOWED_SESSIONS_ROOT"/* ]]; then
+    exit 0
+  fi
 fi
 
 block

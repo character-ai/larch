@@ -21,6 +21,7 @@ Always emitted core keys:
 - `SESSION_TMPDIR`
 - `SESSION_ID`
 - `LARCH_RENDER_CACHE_DIR`
+- `REPO_ROOT` (operator repo root resolved once at setup: caller-env value, then `CLAUDE_PROJECT_DIR`/`REPO_ROOT` env, then the setup cwd)
 
 Emitted when `--check-reviewers` is used:
 

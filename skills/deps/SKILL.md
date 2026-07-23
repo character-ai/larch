@@ -56,11 +56,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CLONE_TAG=$(basename "$PWD")
-CLONE_TAG="${CLONE_TAG//[^A-Za-z0-9_-]/_}"
-CLONE_TAG="${CLONE_TAG:0:32}"
-[[ -z "$CLONE_TAG" ]] && CLONE_TAG="_"
-DEPS_TMPDIR=$(mktemp -d "/tmp/claude-deps-${CLONE_TAG}-XXXXXX")
+SETUP_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-deps --skip-preflight --skip-branch-check --skip-repo-check)
+printf '%s\n' "$SETUP_OUT"
+DEPS_TMPDIR=""
+while IFS= read -r setup_line; do case "$setup_line" in SESSION_TMPDIR=*) DEPS_TMPDIR="${setup_line#SESSION_TMPDIR=}" ;; esac; done <<< "$SETUP_OUT"
+[[ -n "$DEPS_TMPDIR" && -d "$DEPS_TMPDIR" ]] || { echo "**ERROR: session setup did not return SESSION_TMPDIR.**" >&2; exit 1; }
 
 RESOLVE_ARGS=()
 [[ -n "$REPO_ARG" ]] && RESOLVE_ARGS+=(--repo "$REPO_ARG")

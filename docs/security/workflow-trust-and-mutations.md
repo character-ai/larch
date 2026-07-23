@@ -269,8 +269,10 @@ an unsafe pre-existing tree.
 
 `/research` is best-effort read-only for the repository. Its skill-scoped
 `scripts/deny-edit-write.sh research` hook mechanically confines only Claude's
-matched `Edit`, `Write`, and `NotebookEdit` calls to canonical `/tmp` while a
-fresh activation sentinel exists. It does not cover `Bash`, child `Skill`
+matched `Edit`, `Write`, and `NotebookEdit` calls to canonical `/tmp` and the
+larch cache sessions root (`~/.cache/larch/sessions`, the larch-owned session
+scratch tree, so a nested `/issue` can write its session-setup tmpdir body
+files) while a fresh activation sentinel exists. It does not cover `Bash`, child `Skill`
 invocations, or external subprocesses. `allowed-tools` does not add confinement.
 
 Research Cursor and Codex lanes run against the working tree with write-capable

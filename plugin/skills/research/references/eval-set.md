@@ -24,7 +24,7 @@
 - **category**: lookup
 - **expected_provenance_count**: 2
 - **expected_keywords**: deny-edit-write.sh, activation sentinel, /tmp, PreToolUse, best-effort, Bash, external reviewers, workflow-trust-and-mutations.md
-- **notes**: Lookup; should cite `scripts/deny-edit-write.sh` for the activation-gated mechanical tier (Edit/Write/NotebookEdit confined to canonical `/tmp` only while `research-*` is fresh), name Bash + external Cursor/Codex reviewers as the prompt-enforced tier, and reference the focused workflow-security residual-risk framing.
+- **notes**: Lookup; should cite `scripts/deny-edit-write.sh` for the activation-gated mechanical tier (Edit/Write/NotebookEdit confined to canonical `/tmp` and the larch cache sessions root while `research-*` is fresh), name Bash + external Cursor/Codex reviewers as the prompt-enforced tier, and reference the focused workflow-security residual-risk framing.
 
 ### eval-3: larch-log-batch-slugs
 - **question**: What are the 11 canonical larch-log batch slugs in `/implement`, in assembly order, and which script defines them?
