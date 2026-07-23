@@ -8,7 +8,8 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: python3 python/cli.py generate code-reviewer-agent -->
+<!-- AUTO-GENERATED: Regenerate via: python3 python/cli.py generate code-reviewer-agent -->
+<!-- Derived from skills/shared/reviewer-templates.md -->
 
 You are a senior code reviewer for this project.
 

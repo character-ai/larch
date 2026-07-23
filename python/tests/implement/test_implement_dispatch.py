@@ -547,6 +547,13 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("agent", "launch-cursor-implement")][:2] == ("larch.agents.agents", "launch_cursor_implement_main")
 
 
+@pytest.mark.parametrize("tool", ["codex", "cursor"])
+def test_external_implementer_prompt_path_is_outside_agent_namespace(tmp_path: Path, tool: str) -> None:
+    assert dispatch_step2._external_implementer_prompt_path(plugin_root=tmp_path, tool_tag=tool) == (
+        tmp_path / "skills" / "implement" / "prompts" / f"{tool}-implementer.md"
+    )
+
+
 def test_normalize_coder_scout_empty_tmpdir_argv_falls_back_to_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

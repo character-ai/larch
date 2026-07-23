@@ -699,8 +699,8 @@ def test_gate_c_fix_ladder_prompt_contracts() -> None:
 def test_generated_implementer_prompts_include_plan_revise_contract() -> None:
     root = Path(__file__).resolve().parents[3]
     base = (root / "agents" / "_implementer-base.md").read_text(encoding="utf-8")
-    codex = (root / "agents" / "codex-implementer.md").read_text(encoding="utf-8")
-    cursor = (root / "agents" / "cursor-implementer.md").read_text(encoding="utf-8")
+    codex = (root / "skills" / "implement" / "prompts" / "codex-implementer.md").read_text(encoding="utf-8")
+    cursor = (root / "skills" / "implement" / "prompts" / "cursor-implementer.md").read_text(encoding="utf-8")
     claude = (root / "agents" / "claude-implementer.md").read_text(encoding="utf-8")
 
     assert "MODE=plan-revise" in claude

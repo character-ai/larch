@@ -118,7 +118,8 @@ External implementer launches use a fixed 7200-second wall-clock timeout. `skill
 **Edit-in-sync**:
 - `skills/implement/references/codex-manifest-schema.md` — manifest schema and bail-reason tokens.
 - `agents/_implementer-base.md` — inline `## Manifest JSON template` and self-validation prompt copied into both generated implementer prompts.
-- `agents/codex-implementer.md` — the system prompt this dispatcher invokes.
+- `skills/implement/prompts/codex-implementer.md` — the system prompt this dispatcher invokes.
+- `skills/implement/prompts/cursor-implementer.md` — the system prompt this dispatcher invokes.
 - `skills/implement/SKILL.md` Step 2 — the caller; any change to the KV envelope must be mirrored in Step 2's parser.
 - `python/test_implement_dispatch.py` — the offline harness; any new outcome / reason token must be exercised.
 - `python/cli.py plan scope-paths` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.

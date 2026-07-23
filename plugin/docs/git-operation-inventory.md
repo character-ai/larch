@@ -29,8 +29,8 @@ surface	owner	issue	operations
 Makefile	later-domain	#7685	merge-base
 agents/_implementer-base.md	later-domain	#7678	commit
 agents/claude-self-reviewer.md	later-domain	#7678	merge-base
-agents/codex-implementer.md	later-domain	#7678	commit
-agents/cursor-implementer.md	later-domain	#7678	commit
+skills/implement/prompts/codex-implementer.md	later-domain	#7681	commit
+skills/implement/prompts/cursor-implementer.md	later-domain	#7681	commit
 crates/larch-adapters/src/git/mod.rs	git-cli	#7671	closed-cli-owner
 crates/larch-adapters/src/git/repository.rs	gix-read	#7671	concrete-gix-owner
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read

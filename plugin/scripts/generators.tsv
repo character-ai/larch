@@ -11,6 +11,6 @@ generate reviewer-testing-agent	agents/reviewer-testing.md
 generate reviewer-security-agent	agents/reviewer-security.md
 generate reviewer-edge-cases-agent	agents/reviewer-edge-cases.md
 generate pre-rendered-reviewer-prompts	agents/pre-rendered/.manifest
-generate cursor-implementer	agents/cursor-implementer.md
-generate codex-implementer	agents/codex-implementer.md
+generate cursor-implementer	skills/implement/prompts/cursor-implementer.md
+generate codex-implementer	skills/implement/prompts/codex-implementer.md
 generate topology-docs	docs/topology.md

@@ -270,39 +270,39 @@ assert_not_contains "shared lint-fix prompt excludes Codex sandbox wording" \
 assert_contains "implementer base PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer PLR0911 checklist" \
-    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/codex-implementer.md"
+    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer PLR0911 checklist" \
-    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/cursor-implementer.md"
+    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base runtime type-validation guidance" \
     'Treat a declared type as the contract for internal values.' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "implementer base G-Py-11 suppression guidance" \
     'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer G-Py-11 suppression guidance" \
-    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/codex-implementer.md"
+    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer G-Py-11 suppression guidance" \
-    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/cursor-implementer.md"
+    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "cursor implementer pylint type-check suppression guidance" \
-    'pylint: disable=unidiomatic-typecheck' "$REPO_ROOT/agents/cursor-implementer.md"
+    'pylint: disable=unidiomatic-typecheck' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "cursor implementer pyright type-check suppression guidance" \
-    'type: ignore[reportUnnecessaryIsInstance]' "$REPO_ROOT/agents/cursor-implementer.md"
+    'type: ignore[reportUnnecessaryIsInstance]' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base architectural acknowledgment field" \
     '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer architectural acknowledgment field" \
-    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/codex-implementer.md"
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer architectural acknowledgment field" \
-    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/cursor-implementer.md"
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base architectural knowledge snapshot load" \
     '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer architectural knowledge snapshot load" \
-    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/codex-implementer.md"
+    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer architectural knowledge snapshot load" \
-    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/cursor-implementer.md"
+    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base architectural knowledge jq prefix" \
     'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer architectural knowledge jq prefix" \
-    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/agents/codex-implementer.md"
+    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer architectural knowledge jq prefix" \
-    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/agents/cursor-implementer.md"
+    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 
 # ── python/cli.py render plan-review runtime render smoke ────────────────────────
 

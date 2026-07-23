@@ -621,7 +621,7 @@ def _implement_resume_block(*, tool: str, answers_file: str) -> str:
 This is a RESUME of a prior /implement Step 2 attempt that ended in needs_qa.
 Operator answers to your prior questions are in: {answers_file}
 
-Per agents/{tool}-implementer.md "Resume protocol":
+Per skills/implement/prompts/{tool}-implementer.md "Resume protocol":
 1. Inspect git log origin/main..HEAD and git status FIRST.
 2. Read the answers file.
 3. If the answers are consistent with prior partial work, continue from there.

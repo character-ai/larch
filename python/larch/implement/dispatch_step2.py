@@ -271,6 +271,10 @@ def _dispatch_state(*, args: argparse.Namespace, repo_root: Path, tmpdir: Path, 
     )
 
 
+def _external_implementer_prompt_path(*, plugin_root: Path, tool_tag: str) -> Path:
+    return plugin_root / "skills" / "implement" / "prompts" / f"{tool_tag}-implementer.md"
+
+
 def _launcher_args(st: DispatchState) -> list[str]:
     args = [
         "agent",
@@ -290,7 +294,7 @@ def _launcher_args(st: DispatchState) -> list[str]:
         "--feature-file",
         str(st.feature_file),
         "--agent-prompt",
-        str(st.plugin_root / "agents" / f"{st.tool_tag}-implementer.md"),
+        str(_external_implementer_prompt_path(plugin_root=st.plugin_root, tool_tag=st.tool_tag)),
         "--timeout",
         "7200",
     ]
@@ -769,8 +773,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         if retry_coverage.fingerprint != completion_retry_fingerprint:
             return st.emit_bailed(_COMPLETION_RETRY_STATE_STALE)
     _append_architectural_knowledge_warnings(st)
-    if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():
-        _err(f"implement step2-dispatch: agent prompt missing: {plugin_root / 'agents' / (st.tool_tag + '-implementer.md')}")
+    prompt_path = _external_implementer_prompt_path(plugin_root=plugin_root, tool_tag=st.tool_tag)
+    if not prompt_path.is_file():
+        _err(f"implement step2-dispatch: external implementer prompt missing: {prompt_path}")
         return 2
 
     if st.spawn_coder_file.is_file():

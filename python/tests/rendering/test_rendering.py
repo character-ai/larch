@@ -15,6 +15,7 @@ from larch.core import config
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.rendering import rendering
+from larch.rendering import _rendering_generators as generators
 from larch.rendering import _rendering_helpers as helpers
 from larch.agents import review_dispatch
 from larch.review import voting
@@ -171,6 +172,16 @@ def test_generated_implementers_include_scout_sidecar(monkeypatch: pytest.Monkey
         assert "dyn-reuse" in text
         assert "plan-scope-insufficient-reuse-owner" in text
         assert "`needs_qa` resolves ambiguity only within approved scope" in text
+    for tool in ("codex", "cursor"):
+        assert generators.EXTERNAL_IMPLEMENTER_OUTPUT[tool].is_file()
+        assert not (REPO_ROOT / "agents" / f"{tool}-implementer.md").exists()
+
+
+def test_generated_reviewers_have_canonical_provenance_marker() -> None:
+    for verb in generators.REVIEWER_OUTPUT:
+        text = generators._reviewer_agent_text(verb)  # pyright: ignore[reportPrivateUsage]
+        assert "<!-- AUTO-GENERATED: Regenerate via:" in text
+        assert text.count(generators.REVIEWER_PROVENANCE) == 1
 
 
 def test_topology_header_uses_python_invocation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

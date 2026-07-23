@@ -1,16 +1,16 @@
 # Codex Implementer Manifest Schema
 
-**Consumer**: `/implement` Step 2 — `python/cli.py implement step2-dispatch` dispatcher (validation), `agents/codex-implementer.md` (production), and downstream Steps 4 / 8a / 9a / 9a.1 (consumption).
+**Consumer**: `/implement` Step 2 — `python/cli.py implement step2-dispatch` dispatcher (validation), `skills/implement/prompts/codex-implementer.md` (production), and downstream Steps 4 / 8a / 9a / 9a.1 (consumption).
 
 **Contract**: Single normative source for the JSON manifest Codex writes at `$IMPLEMENT_TMPDIR/manifest.json` after each implementation attempt. The dispatcher validates the manifest with `jq -e` per the rules below, then — on `status=complete` — uses `manifest.commit_message` to commit Codex's working-tree edits (`git add -A && git commit -F …`). Codex itself does NOT commit (it runs under `workspace-write` sandbox semantics that forbid `.git/` writes). Downstream SKILL.md steps consume only the validated, sanitized manifest — they never read Codex's transcript or run `git diff` to figure out what changed.
 
-**When to load**: when editing `python/cli.py implement step2-dispatch` (manifest validation), `agents/codex-implementer.md` / `agents/cursor-implementer.md` (production), or the Python ship driver Steps 8a / 9a / 9a.1 (consumption). The `/implement` orchestrator handles only the manifest path (`MANIFEST_PATH` / `--manifest-path`); it never parses manifest JSON in-prompt.
+**When to load**: when editing `python/cli.py implement step2-dispatch` (manifest validation), `skills/implement/prompts/codex-implementer.md` / `skills/implement/prompts/cursor-implementer.md` (production), or the Python ship driver Steps 8a / 9a / 9a.1 (consumption). The `/implement` orchestrator handles only the manifest path (`MANIFEST_PATH` / `--manifest-path`); it never parses manifest JSON in-prompt.
 
 ---
 
 ## Edit-in-sync note
 
-`agents/_implementer-base.md` carries an inline copy of the manifest shape under `## Manifest JSON template`, plus prompt-side `jq -e` checks under `## Self-validate before atomic rename`. Any schema change here MUST be mirrored there before regenerating `agents/codex-implementer.md` and `agents/cursor-implementer.md`; the duplicate exists so long-context implementer runs see the exact required JSON shape at manifest-write time. Keep the prompt-side `schema_version` predicate in the coercing form `(.schema_version | tostring) == "1"` to match dispatcher stringification, keep the `qa-pending.json.tmp` self-validation requirement in sync with the dispatcher `qa-pending-missing` gate, and require `architectural_acknowledgment` in the prompt-side manifest predicate whenever `step2-architectural-knowledge.env` records `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true`.
+`agents/_implementer-base.md` carries an inline copy of the manifest shape under `## Manifest JSON template`, plus prompt-side `jq -e` checks under `## Self-validate before atomic rename`. Any schema change here MUST be mirrored there before regenerating `skills/implement/prompts/codex-implementer.md` and `skills/implement/prompts/cursor-implementer.md`; the duplicate exists so long-context implementer runs see the exact required JSON shape at manifest-write time. Keep the prompt-side `schema_version` predicate in the coercing form `(.schema_version | tostring) == "1"` to match dispatcher stringification, keep the `qa-pending.json.tmp` self-validation requirement in sync with the dispatcher `qa-pending-missing` gate, and require `architectural_acknowledgment` in the prompt-side manifest predicate whenever `step2-architectural-knowledge.env` records `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true`.
 
 ## Schema
 
@@ -161,7 +161,7 @@ The `qa-pending.json` companion file (also atomic-written) carries the same `que
 Any change to this schema MUST be paired with edits in:
 
 - `python/cli.py implement step2-dispatch` — dispatcher validation (`jq -e` filters).
-- `agents/codex-implementer.md` — Codex prompt's manifest-writing instructions.
-- `agents/cursor-implementer.md` — Cursor prompt's manifest-writing instructions.
+- `skills/implement/prompts/codex-implementer.md` — Codex prompt's manifest-writing instructions.
+- `skills/implement/prompts/cursor-implementer.md` — Cursor prompt's manifest-writing instructions.
 - `skills/implement/SKILL.md` — Step 4 (commit verification), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks. Phase 1 (#3364) retired `/implement` Step 8a release notes; manifest `summary_bullets` feed PR summary / OOS only until `/release` owns release notes updates.
 - `python/test_implement_dispatch.py` — golden manifest fixtures.

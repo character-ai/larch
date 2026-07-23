@@ -190,6 +190,11 @@ REVIEWER_OUTPUT = {
 
 
 SPECIALIST_VERBS = frozenset(verb for verb in REVIEWER_OUTPUT if verb != "code-reviewer-agent")
+REVIEWER_PROVENANCE = "<!-- Derived from skills/shared/reviewer-templates.md -->"
+EXTERNAL_IMPLEMENTER_OUTPUT = {
+    "codex": REPO_ROOT / "skills" / "implement" / "prompts" / "codex-implementer.md",
+    "cursor": REPO_ROOT / "skills" / "implement" / "prompts" / "cursor-implementer.md",
+}
 
 
 def _render_wire_value_placeholders(text: str) -> str:
@@ -208,11 +213,15 @@ def _specialist_unique_body(verb: str) -> str:
     return body.split(marker, 1)[0].rstrip()
 
 
+def _reviewer_generation_header(verb: str) -> str:
+    return f"<!-- AUTO-GENERATED: Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n{REVIEWER_PROVENANCE}"
+
+
 def _reviewer_agent_text(verb: str) -> str:
     if verb in SPECIALIST_VERBS:
         unique = _specialist_unique_body(verb)
         shared = _extract_template_fragment(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", name="SPECIALIST_SHARED_SECTIONS")
-        return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(unique)}\n\n{_render_wire_value_placeholders(shared)}\n"
+        return f"{REVIEWER_FRONTMATTER[verb]}\n\n{_reviewer_generation_header(verb)}\n\n{_render_wire_value_placeholders(unique)}\n\n{_render_wire_value_placeholders(shared)}\n"
 
     body = _extract_generated_body(REPO_ROOT / "skills" / "shared" / "reviewer-templates.md", heading=REVIEWER_SECTION[verb])
     if verb == "code-reviewer-agent":
@@ -233,7 +242,7 @@ def _reviewer_agent_text(verb: str) -> str:
             inscope=["File path and line number(s) (if reviewing code) or the specific concern (if reviewing a plan)", "What the issue is", "Suggested fix (be specific)"],
             oos=["File path and line number(s) or the specific concern (use `<expected-path>:1` for absent-artifact observations)", "What the issue is", "Suggested fix"],
         )
-    return f"{REVIEWER_FRONTMATTER[verb]}\n\n<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Regenerate via: {AUTO_HEADER_BY_VERB[verb]} -->\n\n{_render_wire_value_placeholders(body)}\n"
+    return f"{REVIEWER_FRONTMATTER[verb]}\n\n{_reviewer_generation_header(verb)}\n\n{_render_wire_value_placeholders(body)}\n"
 
 
 def _diff_or_write(*, target: Path, text: str, check: bool, label: str) -> int:
@@ -371,7 +380,7 @@ def generate_codex_implementer_main(argv: list[str]) -> int:
     check, rc = _check_arg(argv)
     if rc:
         return rc
-    return _diff_or_write(target=REPO_ROOT / "agents" / "codex-implementer.md", text=_implementer_text("codex"), check=check, label="codex-implementer")
+    return _diff_or_write(target=EXTERNAL_IMPLEMENTER_OUTPUT["codex"], text=_implementer_text("codex"), check=check, label="codex-implementer")
 
 
 def generate_cursor_implementer_main(argv: list[str]) -> int:
@@ -379,7 +388,7 @@ def generate_cursor_implementer_main(argv: list[str]) -> int:
     check, rc = _check_arg(argv)
     if rc:
         return rc
-    return _diff_or_write(target=REPO_ROOT / "agents" / "cursor-implementer.md", text=_implementer_text("cursor"), check=check, label="cursor-implementer")
+    return _diff_or_write(target=EXTERNAL_IMPLEMENTER_OUTPUT["cursor"], text=_implementer_text("cursor"), check=check, label="cursor-implementer")
 
 
 def generate_pre_rendered_reviewer_prompts_main(argv: list[str]) -> int:
