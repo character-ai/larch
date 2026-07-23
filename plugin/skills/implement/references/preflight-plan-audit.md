@@ -81,7 +81,7 @@ Return the refuse result in chat after writing the file.
 
 **Model note**: the rubric + envelope grammar + few-shots below are the stable contract across model revisions.
 
-**Few-shot A — pass**: small issue; plan lists `scripts/foo.sh` and `Makefile`; numbered steps; acceptance “`make test-foo` passes”; no open decisions → `AUDIT=pass`.
+**Few-shot A — pass**: small issue; plan lists `scripts/<name>.sh` and `Makefile`; numbered steps; acceptance “`make test-foo` passes”; no open decisions → `AUDIT=pass`.
 
 **Few-shot B — refuse**: plan says “update docs” with no paths; acceptance empty → `AUDIT=refuse`, `REASONS=missing-files,vague-acceptance`, questions ask which doc paths and what measurable acceptance means.
 
