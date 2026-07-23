@@ -72,7 +72,6 @@ skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh
 skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh
 skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-fail.sh
 skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-validate-only.sh
-skills/design/scripts/test-auto-fix-plan-commands.sh
 skills/design/scripts/test-brainstorm-prompts.sh
 skills/design/scripts/test-design-clarify.sh
 skills/design/scripts/test-design-step3-entry.sh
