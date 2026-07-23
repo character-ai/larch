@@ -36,9 +36,8 @@ class _EmptyStore:
 
 def test_synchronized_repository_log_root_lists_once(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
-    config_dir = repo / ".larch"
-    config_dir.mkdir(parents=True)
-    _ = (config_dir / "config.toml").write_text(
+    repo.mkdir(parents=True)
+    _ = (repo / "config.toml").write_text(
         '[logs]\nuri = "s3://fixture-bucket/larch"\n',
         encoding="utf-8",
     )

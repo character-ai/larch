@@ -140,9 +140,9 @@ def _legacy_fixture(
         inventory.update(inventory_mutation)
     inventory_bytes = (json.dumps(inventory, sort_keys=True) + "\n").encode()
     inventory_key = "migration/test-inventory.json"
-    config_dir = tmp_path / "repo" / ".larch"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    _ = (config_dir / "config.toml").write_text(
+    config_path = tmp_path / "repo" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = config_path.write_text(
         "\n".join(
             [
                 "[logs]",

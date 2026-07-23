@@ -108,7 +108,7 @@ export LARCH_R2_ACCOUNT_ID="<32-lowercase-hex-account-id>"
 export LARCH_R2_ENDPOINT="https://${LARCH_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 ```
 
-Do not place credentials in `.larch/config.toml` or `LARCH_LOGS_URI`. See the
+Do not place credentials in `config.toml` or `LARCH_LOGS_URI`. See the
 [object-storage credential contract](security/supply-chain-credentials-and-services.md#object-storage-credentials-and-transport).
 
 ### Install
@@ -247,7 +247,7 @@ If you need stricter permissions instead (no `bypassPermissions`), drop that lin
 
 ### Configure run-log storage for every repo where you will run larch
 
-Create `.larch/config.toml` at the consumer repository root:
+Create `config.toml` at the consumer repository root:
 
 ```toml
 [logs]
