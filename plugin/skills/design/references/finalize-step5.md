@@ -18,7 +18,7 @@ Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches; Step 5b.5 writes
 
 **Session-backed authorization.** Step 5b `/larch:issue` OOS filing is session-backed. When constructing nested `issue create-one` args for session-backed filing, pass `--context-file "$DESIGN_TMPDIR/source-env.sh"`. The `source-env.sh` contains `LARCH_LIVE_MUTATION_OK=true` set by the real `/design` Step 0 driver. Manual OOS recovery via direct `issue create-one` must pass `--operator-invoked` instead of a context file. Dry-run paths are authorization-free and require neither flag.
 
-Bash stages, caps, and pre-checks file conflicts; prompt calls `/larch:issue`. Helpers: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-python/cli.py design file-oos-prepare|file-oos-annotate` (`test-file-design-oos.md`; Makefile `test-file-design-oos`).
+Stages conflicts; prompt calls `/larch:issue`. Helpers: `${CLAUDE_PLUGIN_ROOT}/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: Makefile `test-file-design-oos` (`test-file-design-oos.md`).
 
 Cross-session idempotency: after successful `annotate` with `ISSUES_FAILED=0`, the helper best-effort atomically caches `$DESIGN_TMPDIR/oos-issues-created.md` at `~/.cache/larch/design-oos-filed/<ISSUE_NUMBER>.md`. Later `/design` restores those URLs only when the in-session sentinel is missing or empty and the cache is non-empty; a non-empty in-session sentinel wins. `--clear-cross-session-cache` deletes the issue cache and priority-label sidecars. `ISSUE_NUMBER` comes from the environment, or `--issue-number` for tests.
 
