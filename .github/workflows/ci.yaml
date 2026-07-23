@@ -294,15 +294,15 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /usr/local/bin/agent-lint
-          key: agent-lint-bin-${{ runner.os }}-4.0.2
-      - name: Install agent-lint v4.0.2
+          key: agent-lint-bin-${{ runner.os }}-4.0.3
+      - name: Install agent-lint v4.0.3
         if: steps.cache-agent-lint.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
           curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
             -o "$tmp/agent-lint.tgz" \
-            https://github.com/zhupanov/agent-lint/releases/download/v4.0.2/agent-lint-v4.0.2-x86_64-unknown-linux-musl.tar.gz
+            https://github.com/zhupanov/agent-lint/releases/download/v4.0.3/agent-lint-v4.0.3-x86_64-unknown-linux-musl.tar.gz
           tar -xzf "$tmp/agent-lint.tgz" -C "$tmp"
           sudo install -m 0755 "$tmp/agent-lint" /usr/local/bin/agent-lint
           rm -rf "$tmp"
