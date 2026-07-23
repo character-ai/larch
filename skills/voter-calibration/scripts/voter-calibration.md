@@ -10,7 +10,7 @@ The analyzer scans these synchronized log patterns under the resolved corpus roo
 - `<corpus-root>/implement/*/round-*/findings-classification.tsv`
 - `<corpus-root>/review/*/review-findings-classification-round-*.tsv`
 
-By default, the analyzer resolves the current Git repository, requires `.larch/config.toml` or `LARCH_LOGS_URI`, synchronizes once, and reads the unpacked cache. `--log-root DIR` bypasses synchronization for offline fixture tests.
+By default, the analyzer resolves the current Git repository, requires `config.toml` or `LARCH_LOGS_URI`, synchronizes once, and reads the unpacked cache. `--log-root DIR` bypasses synchronization for offline fixture tests.
 
 ## Optional realized-outcome input
 

@@ -12,9 +12,7 @@ from larch.report import storage_config
 
 
 def _write_config(repo_root: Path, uri: str) -> None:
-    config_dir = repo_root / ".larch"
-    _ = config_dir.mkdir()
-    _ = (config_dir / "config.toml").write_text(f'[logs]\nuri = "{uri}"\n', encoding="utf-8")
+    _ = (repo_root / "config.toml").write_text(f'[logs]\nuri = "{uri}"\n', encoding="utf-8")
 
 
 def _result(*, returncode: int, stdout: str = "", stderr: str = "") -> proc.CommandResult:
@@ -66,10 +64,19 @@ def test_environment_storage_uri_overrides_repository_config(tmp_path: Path) -> 
     assert storage_root.uri == "s3://environment-root/override"
 
 
+def test_load_storage_root_does_not_use_former_larch_directory(tmp_path: Path) -> None:
+    legacy_directory = tmp_path / ".larch"
+    legacy_directory.mkdir()
+    _ = (legacy_directory / "config.toml").write_text(
+        '[logs]\nuri = "s3://legacy-root/larch"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(storage_config.StorageConfigurationError, match=r"config\.toml"):
+        _ = storage_config.load_storage_root(repo_root=tmp_path, environ={})
+
+
 def test_load_legacy_migration_descriptor_is_repository_scoped(tmp_path: Path) -> None:
-    config_dir = tmp_path / ".larch"
-    config_dir.mkdir()
-    _ = (config_dir / "config.toml").write_text("""[logs]
+    _ = (tmp_path / "config.toml").write_text("""[logs]
 uri = "s3://zhupanov/larch"
 
 [logs.legacy_migration]
@@ -90,9 +97,7 @@ inventory_sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 
 def test_load_legacy_migration_descriptor_rejects_other_storage_root(tmp_path: Path) -> None:
-    config_dir = tmp_path / ".larch"
-    config_dir.mkdir()
-    _ = (config_dir / "config.toml").write_text("""[logs]
+    _ = (tmp_path / "config.toml").write_text("""[logs]
 uri = "s3://zhupanov/larch"
 
 [logs.legacy_migration]

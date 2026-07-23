@@ -108,7 +108,7 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 ## Run-log lifecycle
 
-Every shipped skill resolves `.larch/config.toml` or `LARCH_LOGS_URI`, validates
+Every shipped skill resolves `config.toml` or `LARCH_LOGS_URI`, validates
 the storage root, and performs the provider bucket-root preflight before run
 work. Each invocation owns one skill name, run ID, staging tree, durable context,
 and terminal publication. Specialized design, implement, and review owners adopt

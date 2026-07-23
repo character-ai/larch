@@ -191,7 +191,7 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 ### Run-log object storage
 
 Each consumer repository must provide a larch storage root in
-`.larch/config.toml`:
+`config.toml`:
 
 ```toml
 [logs]
@@ -224,7 +224,7 @@ repository trust registry.
 The full URI, provider, archive, cache, sync, and error rules live in
 [Run-log storage contracts](run-log-archive.md).
 
-This repository's `.larch/config.toml` also contains a
+This repository's `config.toml` also contains a
 `[logs.legacy_migration]` table. It pins the verified one-time larch migration
 inventory and applies only to this repository and its exact configured storage
 root. Do not copy it into unrelated consumer repositories. Normal archives do

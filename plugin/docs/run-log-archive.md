@@ -12,7 +12,7 @@ migration must preserve this contract or version it explicitly.
 Resolve the storage root from the current repository in this order:
 
 1. Use a non-empty `LARCH_LOGS_URI`.
-2. Otherwise read `[logs].uri` from repository-root `.larch/config.toml`.
+2. Otherwise read `[logs].uri` from repository-root `config.toml`.
 3. Fail when neither source supplies a value. Do not infer a bucket, provider, or prefix.
 
 The environment value replaces the file value. The two values are not merged.
