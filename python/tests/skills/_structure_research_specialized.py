@@ -226,6 +226,8 @@ def run(repo_root: Path) -> list[str]:
         (skill, 'python/cli.py" research validate-citations', "[python cli] SKILL.md must pin research validate-citations at Step 2.5"),
         (research, 'python/cli.py" research banner', "[python cli] research-phase.md must pin research banner at Step 1.5"),
         (skill, "python/cli.py research render-findings-batch", "[python cli] SKILL.md must pin research render-findings-batch at Step 3"),
+        (skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$RESEARCH_TMPDIR/issue-completed.sentinel"', "[python cli] filing sentinel verification must launch cli.py with python3"),
+        (skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$RESEARCH_TMPDIR/research-issue.sentinel"', "[python cli] auto-issue sentinel verification must launch cli.py with python3"),
     ):
         contains(file, literal, label)
     for literal, label in (
