@@ -23,7 +23,7 @@ Positional: `ISSUE_A ISSUE_B` — plain issue numbers (≥1). Optional: `--repo 
 
 <!-- step:1 — Add blocked-by relationship -->
 
-Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the script (the script does not accept this flag). Script contract: `${CLAUDE_PLUGIN_ROOT}/python/issue_block.py`.
+Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the script (the script does not accept this flag). Script contract: `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/issue_block.py`.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" block-issue add-blocked-by $ARGUMENTS
