@@ -2441,3 +2441,48 @@ def test_setup_direct_writes_session_env_and_repo(tmp_path: Path, monkeypatch: p
     kv_keys = [e.key for e in result.stdout_emissions if e.kind == "kv"]
     assert "REPO" in kv_keys
     assert "REPO_UNAVAILABLE" in kv_keys
+
+
+def test_setup_emits_and_persists_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("REPO_ROOT", raising=False)
+    out = tmp_path / "session-env.sh"
+    result = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True, write_session_env=str(out))
+    assert result.exit_code == 0
+    kv = {e.key: e.value for e in result.stdout_emissions if e.kind == "kv"}
+    assert kv["REPO_ROOT"] == str(Path.cwd())
+    assert f"REPO_ROOT={Path.cwd()}" in out.read_text(encoding="utf-8")
+
+
+def test_setup_repo_root_prefers_caller_env_then_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/env/project")
+    caller = tmp_path / "caller.env"
+    caller.write_text("REPO_ROOT=/caller/root\n", encoding="utf-8")
+    with_caller = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True, caller_env=str(caller))
+    kv = {e.key: e.value for e in with_caller.stdout_emissions if e.kind == "kv"}
+    assert kv["REPO_ROOT"] == "/caller/root"
+    without_caller = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True)
+    kv2 = {e.key: e.value for e in without_caller.stdout_emissions if e.kind == "kv"}
+    assert kv2["REPO_ROOT"] == "/env/project"
+
+
+def test_setup_repo_root_rejects_relative_caller_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/env/project")
+    caller = tmp_path / "caller.env"
+    caller.write_text("REPO_ROOT=relative/root\n", encoding="utf-8")
+    result = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True, caller_env=str(caller))
+    kv = {e.key: e.value for e in result.stdout_emissions if e.kind == "kv"}
+    assert kv["REPO_ROOT"] == "/env/project"
+
+
+def test_setup_repo_root_skips_invalid_env_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Relative or newline-bearing env roots fall through instead of entering the stdout grammar (#7935)."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "relative/project")
+    monkeypatch.setenv("REPO_ROOT", "/forged\nCODEX_PRESENT=true")
+    result = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True)
+    kv = {e.key: e.value for e in result.stdout_emissions if e.kind == "kv"}
+    assert kv["REPO_ROOT"] == str(Path.cwd())

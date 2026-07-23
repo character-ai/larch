@@ -1015,7 +1015,7 @@ def run(repo_root: Path) -> list[str]:
             "PLAN_FILE",
             "Bootstrap edit gate (NEVER #21)",
             'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume',
-            "LARCH_CLAUDE_PLUGIN_ROOT=",
+            "--print-plugin-root",
             "Parse the resumed wrapper stdout before",
         ]:
             if needle not in bootstrap_recovery_text:

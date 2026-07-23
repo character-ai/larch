@@ -18,7 +18,8 @@ CACHE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-deny-edit-write-cache-XXXXXX")
 ACTIVATION_DIR="$CACHE_ROOT/larch/deny-edit-write-active"
 TEST_HOME="$CACHE_ROOT/home"
 mkdir -p "$TEST_HOME"
-trap 'rm -rf "$CACHE_ROOT" "${STUB_DIR:-}"' EXIT
+INVOKE_CACHE_ROOT=""
+trap 'rm -rf "$CACHE_ROOT" "${STUB_DIR:-}" "${NONTMP_CACHE_ROOT:-}"' EXIT
 
 if [[ ! -x "$HOOK" ]]; then
     echo "ERROR: hook script not found or not executable: $HOOK" >&2
@@ -72,12 +73,15 @@ PY
 
 invoke() {
     # Run the hook with the given JSON payload on stdin; echo stdout.
+    # INVOKE_CACHE_ROOT overrides the isolated cache for cases that need a
+    # fixture root guaranteed outside canonical /tmp.
     local token="$1"
     local payload="$2"
+    local cache_root="${INVOKE_CACHE_ROOT:-$CACHE_ROOT}"
     if [[ -n "$token" ]]; then
-        printf '%s' "$payload" | env XDG_CACHE_HOME="$CACHE_ROOT" HOME="$TEST_HOME" "$HOOK" "$token"
+        printf '%s' "$payload" | env XDG_CACHE_HOME="$cache_root" HOME="$TEST_HOME" "$HOOK" "$token"
     else
-        printf '%s' "$payload" | env XDG_CACHE_HOME="$CACHE_ROOT" HOME="$TEST_HOME" "$HOOK"
+        printf '%s' "$payload" | env XDG_CACHE_HOME="$cache_root" HOME="$TEST_HOME" "$HOOK"
     fi
 }
 
@@ -155,6 +159,42 @@ assert_allow "T2 Write /tmp file (new)" research "{\"tool_input\":{\"file_path\"
 TMP_EXISTING=$(mktemp "/tmp/test-deny-edit-write-existing-XXXXXX")
 assert_allow "T2b Write /tmp file (existing)" research "{\"tool_input\":{\"file_path\":\"$TMP_EXISTING\"}}"
 rm -f "$TMP_EXISTING"
+
+# T2c-T2f — larch cache sessions tier. The main CACHE_ROOT can itself live
+# under canonical /tmp (Linux ${TMPDIR:-/tmp}), where the /tmp tier would
+# mask these cases, so they run against a fixture cache root proven to sit
+# outside canonical /tmp, with its own fresh activation sentinel.
+NONTMP_CACHE_ROOT=$(mktemp -d "${HOME:-$REPO_ROOT}/.test-deny-edit-write-cache-XXXXXX")
+CANON_TMP=$(cd /tmp && pwd -P)
+CANON_NONTMP=$(cd "$NONTMP_CACHE_ROOT" && pwd -P)
+case "$CANON_NONTMP" in
+    "$CANON_TMP"|"$CANON_TMP"/*)
+        echo "FAIL: non-tmp fixture root landed under canonical /tmp: $CANON_NONTMP" >&2
+        exit 1
+        ;;
+esac
+mkdir -p "$NONTMP_CACHE_ROOT/larch/deny-edit-write-active"
+: > "$NONTMP_CACHE_ROOT/larch/deny-edit-write-active/research-$$"
+
+# T2c — Write under the larch cache sessions root allows (session-setup
+# tmpdirs, e.g. nested /issue under /bug or /research).
+SESSIONS_DIR="$NONTMP_CACHE_ROOT/larch/sessions/claude-issue-tag-abc123"
+mkdir -p "$SESSIONS_DIR"
+INVOKE_CACHE_ROOT="$NONTMP_CACHE_ROOT"
+assert_allow "T2c Write sessions-root file (new)" research "{\"tool_input\":{\"file_path\":\"$SESSIONS_DIR/bodies/item-1-body.txt\"}}"
+
+# T2d — a sibling under ~/.cache/larch outside sessions/ still denies
+# (the allow tier is the sessions root, not the whole larch cache).
+assert_deny "T2d Write larch-cache sibling" research "{\"tool_input\":{\"file_path\":\"$NONTMP_CACHE_ROOT/larch/deny-edit-write-active/evil.txt\"}}"
+
+# T2e — sessions-root traversal escaping the root denies.
+assert_deny "T2e traversal sessions/../ escape" research "{\"tool_input\":{\"file_path\":\"$NONTMP_CACHE_ROOT/larch/sessions/../evil.txt\"}}"
+
+# T2f — a missing sessions root drops the tier: the nearest existing
+# ancestor is outside both allowed roots, so the Write denies.
+rm -rf "$NONTMP_CACHE_ROOT/larch/sessions"
+assert_deny "T2f Write with sessions root absent" research "{\"tool_input\":{\"file_path\":\"$NONTMP_CACHE_ROOT/larch/sessions/claude-issue-x/body.txt\"}}"
+INVOKE_CACHE_ROOT=""
 
 # T3 — /tmp traversal denies (canonicalizes to /etc/passwd).
 assert_deny "T3 traversal /tmp/../etc/passwd" research '{"tool_input":{"file_path":"/tmp/../etc/passwd"}}'

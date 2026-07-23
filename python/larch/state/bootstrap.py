@@ -45,6 +45,7 @@ ROUTING_KEYS: tuple[str, ...] = (
     "DEFERRED",
     "ISSUE_NUMBER",
     "REPO",
+    "REPO_ROOT",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
     "codex_available",
@@ -86,6 +87,13 @@ def _emit_kv(*, key: str, value: str) -> None:
 
 def _err(message: str) -> None:
     print(message, file=sys.stderr)
+
+
+def _resolve_repo_root() -> str:
+    """Resolve the operator repo root once at the bootstrap trust boundary (#6880)."""
+    return (os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
+            or os.environ.get("REPO_ROOT", "").strip()
+            or str(Path.cwd()))
 
 
 def _install_statusline_best_effort() -> None:
@@ -190,6 +198,7 @@ export IMPLEMENT_TMPDIR
 export CLAUDE_PLUGIN_ROOT
 
 [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || { printf '%s\\n' 'larch-run.sh: CLAUDE_PLUGIN_ROOT could not be resolved' >&2; exit 2; }
+[ "${1:-}" = "--print-plugin-root" ] && { printf '%s\\n' "$CLAUDE_PLUGIN_ROOT"; exit 0; }
 [ "$#" -ge 1 ] || { printf '%s\\n' 'larch-run.sh: missing relative script path' >&2; exit 2; }
 
 script=$1
@@ -350,9 +359,7 @@ def _write_base_session_env(st: BootstrapState) -> None:
         session_env.write_env(session_env.WriteEnvParams(
             output=str(st.session_env()),
             repo=st.repo,
-            repo_root=(os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
-                       or os.environ.get("REPO_ROOT", "").strip()
-                       or str(Path.cwd())),
+            repo_root=_resolve_repo_root(),
             repo_unavailable=st.repo_unavailable or "false",
             codex_present=st.codex_present,
             cursor_present=st.cursor_present,
@@ -1148,6 +1155,7 @@ def _emit_final(st: BootstrapState) -> None:
         ("CURSOR_BINARY_FOUND", st.cursor_binary_found),
         ("REPO", st.repo),
         ("REPO_UNAVAILABLE", st.repo_unavailable),
+        ("REPO_ROOT", st.read_session(key="REPO_ROOT") or _resolve_repo_root()),
         ("codex_available", st.codex_available),
         ("cursor_available", st.cursor_available),
         ("ISSUE_NUMBER", st.issue_number_resolved or st.opts.issue_number),

@@ -89,7 +89,7 @@ fi
 printf 'BUG_DENY_ACTIVE_SENTINEL=%s\n' "$BUG_DENY_ACTIVE_SENTINEL"
 ```
 
-All scratch files and the `/issue` sentinel file must stay under `$BUG_TMPDIR`. This placement keeps the active skill-scoped `Write` hook on the allowed side of its canonical `/tmp` policy.
+All scratch files and the `/issue` sentinel file must stay under `$BUG_TMPDIR`. This placement keeps the active skill-scoped `Write` hook on the allowed side of its scratch-only policy (canonical `/tmp` or the larch cache sessions root).
 
 <!-- step:3 - Investigate -->
 ## Step 3 - Investigate

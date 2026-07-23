@@ -371,7 +371,7 @@ def sync_repository_run_logs(
 def main(argv: Sequence[str]) -> int:
     """Synchronize one repository cache and emit its machine envelope."""
     parser = argparse.ArgumentParser(prog="cli.py run-log sync")
-    _ = parser.add_argument("--repo-root", required=True)
+    _ = parser.add_argument("--repo-root", default=".")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:

@@ -32,7 +32,7 @@ new_count = 0
 saw_py_launcher = False
 
 CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
-AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
+ROOT_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -x "$IMPLEMENT_TMPDIR/larch-run.sh" ] && CLAUDE_PLUGIN_ROOT=$("$IMPLEMENT_TMPDIR/larch-run.sh" --print-plugin-root'
 LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
 EXPECTED_NEW = 31
@@ -46,7 +46,7 @@ def old_logical_commands(body):
             continue
         if stripped == CANONICAL_GUARD:
             continue
-        if stripped.startswith(AWK_FALLBACK_PREFIX):
+        if stripped.startswith(ROOT_FALLBACK_PREFIX):
             continue
         if stripped in {'export IMPLEMENT_TMPDIR', 'export CLAUDE_PLUGIN_ROOT'}:
             continue
@@ -77,8 +77,8 @@ def old_target_kind(cmd):
 def has_guard(body):
     return any(raw.strip() == CANONICAL_GUARD for _, raw in body)
 
-def has_awk(body):
-    return any(raw.strip().startswith(AWK_FALLBACK_PREFIX) for _, raw in body)
+def has_root_fallback(body):
+    return any(raw.strip().startswith(ROOT_FALLBACK_PREFIX) for _, raw in body)
 
 def nonblank_lines(body):
     return [(ln, raw) for ln, raw in body if raw.strip()]
@@ -94,12 +94,12 @@ def validate_old(start, end, body, commands, cmd, kind):
         errors.append(f'fence {start}-{end}: old-shape {kind} must have exactly one logical command, found {len(commands)}')
     if not has_guard(body):
         errors.append(f'fence {start}-{end}: old-shape {kind} missing canonical plugin-root.env guard')
-    awk = has_awk(body)
-    requires_awk = kind in {'structured-invocation', 'step-0-initial', 'dirty-tree-resume'}
-    if requires_awk and not awk:
-        errors.append(f'fence {start}-{end}: old-shape {kind} missing session-env awk fallback')
-    if not requires_awk and awk:
-        errors.append(f'fence {start}-{end}: old-shape {kind} must remain guard-only without awk fallback')
+    root_fallback = has_root_fallback(body)
+    requires_root_fallback = kind in {'structured-invocation', 'step-0-initial', 'dirty-tree-resume'}
+    if requires_root_fallback and not root_fallback:
+        errors.append(f'fence {start}-{end}: old-shape {kind} missing larch-run.sh --print-plugin-root fallback')
+    if not requires_root_fallback and root_fallback:
+        errors.append(f'fence {start}-{end}: old-shape {kind} must remain guard-only without a plugin-root fallback')
     if kind == 'step-0-initial' and '--mode initial' not in cmd:
         errors.append(f'fence {start}-{end}: Step 0 initial old-shape target missing --mode initial')
     if kind == 'step-0-initial' and 'LARCH_CLAUDE_PID="$PPID" ' not in cmd:
@@ -115,8 +115,8 @@ def validate_old(start, end, body, commands, cmd, kind):
 def validate_preflight_helper(start, end, body, commands, cmd):
     if not has_guard(body):
         errors.append(f'fence {start}-{end}: preflight-helper missing canonical plugin-root.env guard')
-    if has_awk(body):
-        errors.append(f'fence {start}-{end}: preflight-helper must not use session-env awk fallback')
+    if has_root_fallback(body):
+        errors.append(f'fence {start}-{end}: preflight-helper must not use a plugin-root fallback')
     if cmd.count('python/cli.py') != 1 or 'implement preflight' not in cmd:
         errors.append(f'fence {start}-{end}: preflight-helper must invoke python/cli.py implement preflight exactly once')
     required = [
@@ -397,6 +397,19 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
         result = run_launcher(launcher, target)
         if result.returncode != 2:
             fail(f"{label} target expected exit 2, got {result.returncode}")
+
+    print_root = run_launcher(launcher, "--print-plugin-root")
+    if print_root.returncode != 0 or print_root.stdout.strip() != str(fake_plugin):
+        fail(f"--print-plugin-root expected the resolved plugin root: rc={print_root.returncode} stdout={print_root.stdout!r} stderr={print_root.stderr!r}")
+
+    session_only = root / "impl-session-only"
+    session_only.mkdir()
+    (session_only / "session-env.sh").write_text(f"LARCH_CLAUDE_PLUGIN_ROOT={fake_plugin}\n", encoding="utf-8")
+    if not bootstrap._write_larch_run_sh(str(session_only)):
+        fail("failed to write session-only larch-run.sh")
+    session_root = run_launcher(session_only / "larch-run.sh", "--print-plugin-root")
+    if session_root.returncode != 0 or session_root.stdout.strip() != str(fake_plugin):
+        fail(f"--print-plugin-root session-env fallback failed: rc={session_root.returncode} stdout={session_root.stdout!r} stderr={session_root.stderr!r}")
 
     bootstrap_program = extract_root_awk_program(Path("python/larch/state/bootstrap.py").read_text(encoding="utf-8"))
     generated_program = extract_root_awk_program(launcher.read_text(encoding="utf-8"))

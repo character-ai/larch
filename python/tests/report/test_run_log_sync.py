@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import config
 from larch.report import run_log_archive, run_log_corpus, run_log_sync
 from larch.report.object_store import RemoteObject
 from larch.report.storage_config import StorageRoot
@@ -599,3 +600,14 @@ def test_manifestless_archive_without_exact_inventory_record_fails_closed(
         )
 
     assert store.download_calls == [key]
+
+
+def test_main_defaults_repo_root_to_cwd_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Omitted ``--repo-root`` starts discovery from the invoking cwd (#7935)."""
+    monkeypatch.chdir(tmp_path)
+    rc = run_log_sync.main([])
+    assert rc == config.EXIT_STORAGE_CONFIG
+    captured = capsys.readouterr()
+    assert "could not discover a Git repository root" in captured.err

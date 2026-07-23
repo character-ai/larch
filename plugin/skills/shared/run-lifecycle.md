@@ -27,7 +27,9 @@ fails or `LIFECYCLE_STARTED` is not `true`.
 
 Callers that already own a run ID pass `--run-id "<id>"`. Specialized owners
 also pass their absolute `--log-root` and `--adopt-existing` when rich artifact
-setup created the manifest first. The context file persists the validated
+setup created the manifest first. A specialized owner whose Step 0 `session
+setup` parse binds `REPO_ROOT` passes `--repo-root "$REPO_ROOT"` to the start
+and terminal commands instead of the generic fallback shown here. The context file persists the validated
 identity, staging root, and storage URI so later subprocesses rehydrate them
 without shell state.
 

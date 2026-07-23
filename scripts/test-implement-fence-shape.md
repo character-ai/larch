@@ -14,7 +14,7 @@ The dirty-tree recovery resume fence moved to `skills/implement/references/boots
 - The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
 - The helper is invoked through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight`.
 - Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
-- Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
+- Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed `larch-run.sh --print-plugin-root` fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
 - Step 0 initial and resume fences carry a `LARCH_CLAUDE_PID="$PPID"` environment-prefix assignment so the PID-keyed launcher matches later Bash-tool `$PPID` values.
 - The harness expects exactly two old-shape fences and twenty-two new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence and Step 7.r by the Step 6 composite instead of their own prompt-side fences; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
@@ -24,7 +24,7 @@ The dirty-tree recovery resume fence moved to `skills/implement/references/boots
 - Inline `session read-key` calls are banned from SKILL.md fences.
 - The `reship` and `ci-fix` Step 8+ branches must run `ship pre-fix-rebase` before stale-handoff clear or the ci-fixer subagent loop, except the documented phase14 continuation skip.
 - If any post-Step-0 fence targets `python/cli.py`, the harness also pins that the emitted launcher dispatches `.py` targets through `python3`.
-- The generated `larch-run.sh` sandbox pins `.sh` and `.py` argv passthrough, invalid-target rejection, awk fallback parity with `step-0-bootstrap.sh`, and resume partial-upgrade emission when `plugin-root.env` exists but `larch-run.sh` is absent.
+- The generated `larch-run.sh` sandbox pins `.sh` and `.py` argv passthrough, invalid-target rejection, `--print-plugin-root` resolution (plugin-root.env and session-env.sh tiers), awk fallback parity with `step-0-bootstrap.sh`, and resume partial-upgrade emission when `plugin-root.env` exists but `larch-run.sh` is absent.
 - The PID-keyed `implement-run-$PPID.sh` sandbox separately proves the stable runner reaches `larch-run.sh` when `IMPLEMENT_TMPDIR` is unset.
 
 ## Caller
