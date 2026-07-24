@@ -138,7 +138,7 @@ def test_mid_run_repository_identity_change_fails_before_publication(
             store=store,
         )
 
-    assert store.upload_calls == []
+    assert not store.upload_calls
 
 
 def test_manifest_storage_identity_mismatch_fails_before_terminal_writes(

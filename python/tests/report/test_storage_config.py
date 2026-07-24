@@ -290,6 +290,7 @@ def test_git_origin_derivation_supports_standard_syntax(
     [
         "https://user:secret@example.com/org/repo.git",
         "https://example.com:443/org/repo.git",
+        "ssh://example.com:notaport/org/repo.git",
         "file:///tmp/repo.git",
         "git@github.com:org/../repo.git",
         "git@github.com:org/-repo.git",

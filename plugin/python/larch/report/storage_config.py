@@ -335,15 +335,23 @@ def _repository_leaf(remote: str) -> str:
     path: str
     if "://" in remote:
         parsed: SplitResult = urlsplit(remote)
-        if (
+        try:
+            has_port: bool = parsed.port is not None
+        except ValueError:
+            has_port = True
+        unsupported_shape: bool = (
             parsed.scheme not in {"https", "ssh"}
             or not parsed.netloc
-            or parsed.password is not None
-            or (parsed.scheme == "https" and parsed.username is not None)
-            or parsed.port is not None
-            or parsed.query
-            or parsed.fragment
             or not parsed.path.startswith("/")
+        )
+        credential_bearing: bool = parsed.password is not None or (
+            parsed.scheme == "https" and parsed.username is not None
+        )
+        decorated: bool = has_port or bool(parsed.query) or bool(parsed.fragment)
+        if (
+            unsupported_shape
+            or credential_bearing
+            or decorated
         ):
             raise StorageConfigurationError(
                 "remote.origin.url uses unsupported or credential-bearing syntax; "
