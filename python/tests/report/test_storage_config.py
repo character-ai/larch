@@ -12,6 +12,7 @@ import pytest
 
 from larch.core import config, proc
 from larch.report import storage_config
+from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind
 
 
 def _write_config(
@@ -62,6 +63,34 @@ class FakeRunner:
         _ = timeout, cwd, env, check, stdout, stderr
         self.calls.append(tuple(argv))
         return self.results.pop(0)
+
+
+def test_gcs_checkout_build_failure_has_actionable_preflight_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage = storage_config.ToolRepositoryStorage(
+        storage_config.StorageBase("gs", "bucket"),
+        "larch",
+    )
+
+    class FailingStore:
+        def preflight_prefix(self) -> None:
+            raise ObjectStoreError(
+                ObjectStoreErrorKind.CONFIGURATION,
+                "gs",
+                "checkout-build",
+            )
+
+    def object_store_for(*_args: object, **_kwargs: object) -> FailingStore:
+        return FailingStore()
+
+    monkeypatch.setattr(storage_config, "object_store_for", object_store_for)
+
+    with pytest.raises(
+        storage_config.StoragePreflightError,
+        match="verify Cargo is installed",
+    ):
+        storage_config.preflight_tool_repository(storage=storage)
 
 
 def _load(

@@ -529,6 +529,11 @@ def preflight_tool_repository(
     try:
         object_store_for(storage, environ=environ, runner=runner).preflight_prefix()
     except ObjectStoreError as exc:
+        if storage.scheme == "gs" and exc.operation == "checkout-build":
+            raise StoragePreflightError(
+                "GCS storage preflight could not build the local checkout transport; "
+                "verify Cargo is installed and the locked larch-cli release build succeeds"
+            ) from exc
         if exc.kind.value == "configuration" and storage.scheme in {"s3", "r2"}:
             raise StoragePreflightError(
                 f"AWS CLI is required for {storage.scheme.upper()} storage preflight; "
