@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import cast
 import pytest
 from larch.core import config, proc
-from larch.report import object_store
 from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, object_store_for
 from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 _ACCOUNT = "0123456789abcdef0123456789abcdef"
@@ -56,7 +55,7 @@ def test_gcs_preflight_builds_fresh_checkout_before_verified_transport(
     plugin_root = tmp_path / "plugin"
     (plugin_root / ".git").mkdir(parents=True)
     entrypoint = plugin_root / "scripts" / "larch.sh"
-    monkeypatch.setattr(object_store, "larch_entrypoint", lambda: entrypoint)
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_ROOT, str(plugin_root))
     runner = FakeRunner(_result(), _result(payload={"unexpected": "output"}))
     storage = ToolRepositoryStorage(StorageBase("gs", "bucket"), "larch")
 
@@ -78,7 +77,7 @@ def test_gcs_preflight_reports_fresh_checkout_build_failure(
 ) -> None:
     plugin_root = tmp_path / "plugin"
     (plugin_root / ".git").mkdir(parents=True)
-    monkeypatch.setattr(object_store, "larch_entrypoint", lambda: plugin_root / "scripts" / "larch.sh")
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_ROOT, str(plugin_root))
     storage = ToolRepositoryStorage(StorageBase("gs", "bucket"), "larch")
 
     with pytest.raises(ObjectStoreError) as failure:
@@ -97,7 +96,7 @@ def test_gcs_preflight_rejects_symlinked_checkout_target(
     outside = tmp_path / "outside"
     outside.mkdir()
     (plugin_root / "target").symlink_to(outside, target_is_directory=True)
-    monkeypatch.setattr(object_store, "larch_entrypoint", lambda: plugin_root / "scripts" / "larch.sh")
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_ROOT, str(plugin_root))
     runner = FakeRunner()
     storage = ToolRepositoryStorage(StorageBase("gs", "bucket"), "larch")
 
