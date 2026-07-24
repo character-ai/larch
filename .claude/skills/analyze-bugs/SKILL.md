@@ -29,7 +29,7 @@ backfills older issues absent from a valid cache record.
 Before dispatch, require a clean checkout on `main` synchronized with
 `origin/main`. `analyze-bugs prefetch` keeps immutable evidence bundles under
 `$XDG_CACHE_HOME` and returns a mutable `LEDGER_PATH` under
-`$XDG_STATE_HOME/larch/analysis-state/<repo>/analyze-bugs/`. Use only that
+`$XDG_STATE_HOME/larch/analysis-state/v2/<client-repo>/<storage-origin-id>/analyze-bugs/`. Use only that
 printed ledger path in later stages. The first run imports the legacy cache
 ledger when present. Never commit, push, or open a PR for analyzer state.
 

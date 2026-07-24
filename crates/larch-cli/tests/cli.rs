@@ -124,7 +124,7 @@ fn object_store_contract() -> ObjectStoreContract {
 
 fn remote_object() -> RemoteObject {
     RemoteObject {
-        key: "larch/run-logs/design/fixture-run.tar.gz".into(),
+        key: "larch/larch/run-logs/design/fixture-run.tar.gz".into(),
         size: 7,
         etag: Some("fixture-etag".into()),
         version: Some("fixture-version".into()),
@@ -140,7 +140,7 @@ macro_rules! store_method {
 }
 
 impl ObjectStore for ObjectStoreFixture {
-    store_method!(preflight_bucket(_bucket: &'a str) -> (), Ok(()));
+    store_method!(preflight_prefix(_bucket: &'a str, _prefix: &'a str) -> (), Ok(()));
     store_method!(list_page(_bucket: &'a str, _prefix: &'a str, _token: Option<&'a str>) -> ObjectPage, Ok(ObjectPage { objects: vec![remote_object()], next_page_token: None }));
     store_method!(upload_create(_bucket: &'a str, _key: &'a str, _source: &'a Path) -> RemoteObject, Ok(remote_object()));
     store_method!(download(_bucket: &'a str, _key: &'a str, _destination: &'a Path) -> (), Ok(()));

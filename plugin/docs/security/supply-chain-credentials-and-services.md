@@ -187,6 +187,14 @@ and the hardened ADC boundary above. S3 and R2 use standard AWS credential
 resolution. R2 also requires a matching account ID and an HTTPS endpoint on the
 account's Cloudflare host.
 
+Repository-root `tools-config.toml` selects only a credential-free storage
+base. Larch derives the fixed `larch/<client-repo>/` scope from local Git
+origin. The provider credential remains the authority and should grant list,
+read, and create-only write only for approved tool and repository prefixes.
+Startup lists that exact prefix with a maximum of one result; it never lists the
+bucket root or writes a probe. The process ignores returned object names and
+reduces provider failures to credential-free classes.
+
 The provider-neutral transport accepts only validated bucket roots and object
 keys. Uploads are create-only. Downloads use a private temporary file and atomic
 promotion. Provider diagnostics are reduced to fixed, credential-free failure

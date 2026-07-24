@@ -149,7 +149,7 @@ def _patch_load(
     monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_pause.subprocess, "run", fake.run)  # type: ignore[attr-defined]
     monkeypatch.setattr(
-        design_pause.storage_config, "discover_storage_root", fake_storage_root
+        design_pause.storage_config, "discover_tool_repository_storage", fake_storage_root
     )
     monkeypatch.setattr(
         design_pause.run_log_publish,
@@ -346,14 +346,17 @@ def test_pause_save_uses_real_log_publish_path(
         )
         return result, 0
 
-    storage_root = run_lifecycle.storage_config.StorageRoot("s3", "test-bucket", "test-prefix")
+    storage_root = run_lifecycle.storage_config.ToolRepositoryStorage(
+        run_lifecycle.storage_config.StorageBase("s3", "test-bucket"),
+        "test-repo",
+    )
 
     def fake_storage_root(**_kwargs: object) -> object:
         return storage_root
 
     monkeypatch.setattr(
         run_lifecycle.storage_config,
-        "load_storage_root",
+        "load_tool_repository_storage",
         fake_storage_root,
     )
     _ = run_lifecycle.start_run(repo_root=repo, skill="design", run_id="RUN1", log_root=design / "larch-logs", storage_root=storage_root, preflight=lambda _root: None)

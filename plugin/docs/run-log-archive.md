@@ -9,46 +9,77 @@ migration must preserve this contract or version it explicitly.
 
 ## Configuration resolution
 
-Resolve the storage root from the current repository in this order:
+Discover the Git top level from the invocation's startup directory and read
+exactly `tools-config.toml` there. The repository-owned file is shared by
+independently configured tools: each tool owns one table named for the tool and
+ignores unrelated top-level tool tables. There are no shared fields, no global
+version, and no `client_repo` field.
 
-1. Use a non-empty `LARCH_LOGS_URI`.
-2. Otherwise read `[logs].uri` from repository-root `config.toml`.
-3. Fail when neither source supplies a value. Do not infer a bucket, provider, or prefix.
+Larch requires a strict table:
 
-The environment value replaces the file value. The two values are not merged.
-The resolved URI is the larch storage root. It is not the `run-logs/` prefix,
-an archive path, or a bucket-root URI.
+```toml
+[larch]
+storage_base_uri = "s3://zhupanov"
+```
 
-The checked-in configuration is `[logs]` with `uri = "s3://zhupanov/larch"`.
-This repository also owns a versioned `[logs.legacy_migration]` descriptor for
-the one-time historical larch migration. It pins the inventory key, inventory
-SHA-256, source commit, storage root, and schema. Consumer repositories without
-that descriptor do not enable legacy archive handling.
+The file and `[larch]` are required even when
+`LARCH_STORAGE_BASE_URI` replaces only `storage_base_uri` for the process.
+Reject non-empty `LARCH_LOGS_URI`; never probe `config.toml`,
+`.larch/config.toml`, or `tool-config.toml`. Reject a symlinked, unreadable, or
+malformed file and missing, duplicate, unknown, empty, padded, or type-invalid
+larch fields before workflow side effects or object-store requests.
 
-Accept only `gs://`, `s3://`, and `r2://`. Require a plain non-empty bucket
-authority and at least one non-empty prefix segment. Reject credentials, ports,
-queries, fragments, whitespace, control characters, empty segments, `.`, and
-`..`. Preserve accepted bucket and prefix text. Do not hash or silently rewrite
-it.
+`StorageBase` is a validated provider, bucket, and optional base prefix. Accept
+only `gs://`, `s3://`, and `r2://`, including bucket roots. Reject credentials,
+ports, queries, fragments, trailing slashes, whitespace, control characters,
+empty segments, `.`, and `..`. Preserve accepted bucket and prefix text.
+
+`ToolRepositoryStorage` adds the fixed tool `larch` and a derived client
+repository. Larch reads the repository's local `remote.origin.url`, accepts
+standard HTTPS, SSH URL, and SCP-like Git syntax, strips exactly one terminal
+`.git`, converts ASCII uppercase to lowercase, and otherwise requires a strict
+slug. It never uses a checkout or worktree directory name, a provider API,
+bucket text, config field, or environment override for repository identity.
+Missing, ambiguous, credential-bearing, port-bearing, or invalid origins fail
+without echoing embedded credentials.
 
 ## Remote and local layout
 
-For storage root `<URI>`, the only run-archive layout is
-`<URI>/run-logs/<skill-name>/<run-id>.tar.gz`. For the checked-in root, a design
-archive is `s3://zhupanov/larch/run-logs/design/<run-id>.tar.gz`.
+The remote schema is
+`<storage-base>/<tool-name>/<client-repo>/<data-type>/<data>`. The larch tool
+repository is `<base>/larch/<client-repo>`. The implemented data type is
+`run-logs`, so archives use
+`<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`.
+
+The checked-in base produces
+`s3://zhupanov/larch/larch/run-logs/design/<run-id>.tar.gz`. Other examples
+include
+`gs://character-tool-logs/larch/sre/run-logs/investigate/<run-id>.tar.gz`,
+`s3://company-data/prod/tools/larch/service-a/run-logs/review/<run-id>.tar.gz`,
+and `r2://tool-data/larch/service-a/run-logs/review/<run-id>.tar.gz`.
 
 Only skill directories exist directly below `run-logs/`. Mutable analyzer
-state, ledgers, reports, and measurements never appear there.
+state, ledgers, reports, measurements, indexes, and migration artifacts never
+appear there. Future data types must define their own object, collision,
+mutability, and retention contracts.
 
-The unpacked cache layout is
-`${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo-name>/<skill-name>/<run-id>/`.
+Define `storage_origin_id` as lowercase hexadecimal SHA-256 of the canonical
+tool repository URI's UTF-8 bytes. Local paths are:
 
-Keep repository, skill, and run names as validated literal directory names. Do
-not hash them. The cache is a private local copy, not a second publication
-target.
+```text
+${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/v2/
+  <client-repo>/<storage-origin-id>/<skill>/<run-id>/
 
-Content-pinned retry state lives outside the cache at
-`${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-pending/`.
+${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-pending/v2/
+  <client-repo>/<storage-origin-id>/<skill>/<run-id>/
+
+${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-locks/v2/
+  <client-repo>/<storage-origin-id>/<skill>/<run-id>.lock
+```
+
+The cache is private local state, not a publication target. Changing provider,
+bucket, base prefix, tool, or client repository selects a cold namespace. Old
+basename-keyed cache and state are neither renamed nor silently imported.
 
 ## Provider operations
 
@@ -56,21 +87,22 @@ Every provider implements the same operations:
 
 | Operation | Contract |
 |---|---|
-| `preflight_bucket` | List the bucket root and decide success from exit or provider status only. Ignore stdout. Do not list the configured prefix, inspect contents or permissions, call a head-bucket substitute, or write a probe object. |
+| `preflight_prefix` | List the exact `<tool>/<client-repo>/` prefix with a maximum of one result. Decide success from provider status only; ignore object names and provider diagnostics. Do not list the bucket root or write a probe object. |
 | `list` | List the requested prefix through every page. Return relative keys, byte sizes, and optional opaque ETag and version values. Reject malformed pages, repeated page tokens, and keys outside the configured root. |
 | `upload_create` | Create one object only if absent. Never replace an existing object. Return normalized metadata. |
 | `metadata` | Return normalized metadata for one exact key. |
 | `download` | Write to a private sibling temporary file and atomically promote it. Never merge with a destination. |
 
-For `s3://zhupanov/larch`, startup preflight is equivalent to
-`aws s3 ls s3://zhupanov`.
+For the checked-in base and repository, startup preflight lists only
+`larch/larch/` in bucket `zhupanov`.
 
 S3 and R2 use the AWS CLI transport and standard AWS credential discovery. R2
 also requires `LARCH_R2_ACCOUNT_ID` and `LARCH_R2_ENDPOINT`. The endpoint must
 be `https://<account-id>.r2.cloudflarestorage.com`, and the account ID must
 match the host. GCS uses the narrow Rust transport through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` and standard Google Application Default
-Credentials.
+Credentials. Credentials should grant list, read, and write only to approved
+tool and client-repository prefixes.
 
 ## Machine-readable errors
 
@@ -127,7 +159,7 @@ tree. It never merges with or replaces a destination. Cache entries contain ordi
 `python3 python/cli.py run-log publish --repo-root <root> --skill <skill>
 --run-id <run-id> --staging-root <tree>` persists the archive before attempting
 the create-only upload to `run-logs/<skill>/<run-id>.tar.gz`. Failed attempts
-remain under `${XDG_STATE_HOME:-$HOME/.local/state}/larch/run-log-pending/`
+remain under the storage-origin-specific `run-log-pending/v2` path
 with content-pinned retry metadata. Repeating the command may omit
 `--staging-root` when that pending state exists. When pending state already
 exists, the publisher retries and populates the cache from that archive. It
@@ -136,8 +168,7 @@ does not use a later mutable staging tree as the retry source.
 An existing remote key succeeds only when its downloaded bytes match the
 pending archive; different content fails closed. A new upload is verified by
 remote metadata. The normal success path copies the sanitized staging tree
-directly into
-`${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo>/<skill>/<run-id>/`,
+directly into the storage-origin-specific `run-logs/v2` cache,
 without downloading or decompressing the archive. Retry without staging safely
 materializes the durable archive instead. A per-run lock covers upload,
 collision verification, cache promotion, and atomic retirement of pending
@@ -152,25 +183,18 @@ per-run publication lock, replaced atomically after validation, and restored if
 repair fails. Interrupted download, materialization, promotion, and quarantine
 entries are removed before the next attempt.
 
-The checked-in legacy migration descriptor is a narrow compatibility boundary.
-Sync first applies the normal `archive-manifest.json` contract. Only a readable
-archive with no root archive manifest can trigger legacy lookup. Sync then
-downloads the pinned migration inventory at most once for that repository sync,
-verifies its SHA-256, and validates its bounded schema, source commit, storage
-root, object identities, source-file rows, and totals. The archive must have an
-exact inventory record, and its byte size and SHA-256 must match that record.
+Normal synchronization accepts only manifest-bearing archives. It does not read
+a legacy migration descriptor, inventory, or basename-keyed cache. The retained
+legacy descriptor parser is an explicit operator API for the coordinated
+historical migration only; it does not discover repository configuration or
+participate in normal sync.
 
-Legacy extraction accepts only inventory-covered regular PAX members with safe
-canonical paths, supported modes, matching sizes, and matching SHA-256 digests.
-It rejects links, devices, special files, collisions, traversal, extra or
-missing members, corrupt streams, and expansion-limit violations. After private
-extraction succeeds, sync writes a local schema-version-1
-`archive-manifest.json`, verifies the complete directory, and promotes it
-atomically. It never writes, replaces, renames, or deletes a remote object.
-Later syncs validate the local directory and perform listing only.
+Cut over while runs are frozen: land and release this runtime, drain v1 pending
+publications, complete and verify the object migration, commit the new config,
+prewarm a clean v2 cache, then resume. Roll back by restoring the prior plugin
+release and old remote prefixes. The old local cache and state remain untouched.
 
-The command returns the unpacked repository corpus at
-`${XDG_CACHE_HOME:-$HOME/.cache}/larch/run-logs/<repo>/`. The shared
+The command returns the unpacked storage-origin-specific repository corpus. The shared
 `run_log_corpus.synchronized_run_log_root` API performs the same one-time sync
 and returns that root. An analyzer must retain the returned path and use normal
 local file reads for all later files and waves in the same invocation.
@@ -186,7 +210,4 @@ I-Cutover-1. In one change, prove Rust parity against the shared fixtures,
 switch every production caller to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`,
 remove the Python registration and implementation, and prove clean-install
 execution. Do not add a compatibility shim, bridge, implementation selector,
-fallback, or dual-write period. Rust must consume the same repository-owned
-legacy migration descriptor and enforce the same inventory, archive, extraction,
-and synthesized-manifest validation contract. The hard cutover must not retain
-an undocumented Python-only exception.
+fallback, or dual-write period.

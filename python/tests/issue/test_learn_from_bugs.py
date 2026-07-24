@@ -14,6 +14,7 @@ from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
 from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX
+from larch.report import storage_config
 from test_support import RecordingRunner, RunCall
 
 
@@ -22,6 +23,18 @@ def _isolated_analysis_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
+    storage = storage_config.ToolRepositoryStorage(
+        storage_config.StorageBase("s3", "test-bucket"), "repository"
+    )
+
+    def load_storage(**_kwargs: object) -> storage_config.ToolRepositoryStorage:
+        return storage
+
+    monkeypatch.setattr(
+        storage_config,
+        "load_tool_repository_storage",
+        load_storage,
+    )
 
 
 def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:

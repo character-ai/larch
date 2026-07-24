@@ -421,4 +421,4 @@ default_status=0
   env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --min-votes 3 > "$FIX/default-root.md"
 ) 2> "$FIX/default-root.err" || default_status=$?
 [[ "$default_status" -eq 2 ]]
-grep -Fq 'storage configuration is missing' "$FIX/default-root.err"
+grep -Fq 'tools-config.toml: missing required file' "$FIX/default-root.err"

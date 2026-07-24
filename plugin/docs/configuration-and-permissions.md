@@ -190,20 +190,28 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ### Run-log object storage
 
-Each consumer repository must provide a larch storage root in
-`config.toml`:
+Each consumer repository must own a root `tools-config.toml` file and provide
+the larch storage base:
 
 ```toml
-[logs]
-uri = "s3://zhupanov/larch"
+[larch]
+storage_base_uri = "s3://zhupanov"
 ```
 
-`LARCH_LOGS_URI` overrides the file value for the process. It must contain the
-same complete storage-root shape. Do not set it to a bucket root, a
-`run-logs/` prefix, or an individual archive. Larch derives:
+The file is shared by independently configured tools. Each tool owns one table
+named for the tool and ignores unrelated tool tables. There is no global
+version and no configured `client_repo`. Larch requires the file and `[larch]`
+even when `LARCH_STORAGE_BASE_URI` overrides only
+`[larch].storage_base_uri`. A non-empty `LARCH_LOGS_URI` is rejected with
+migration guidance.
+
+The base may be a bucket root or include an optional base prefix. Larch derives
+the client repository from the final repository component of the local Git
+`remote.origin.url`, not from the checkout or worktree directory. It then
+derives:
 
 ```text
-s3://zhupanov/larch/run-logs/<skill>/<run-id>.tar.gz
+<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz
 ```
 
 Accepted schemes are `gs://`, `s3://`, and `r2://`. The value must not contain
@@ -215,20 +223,29 @@ discovery. R2 also requires a 32-character lowercase hexadecimal
 `LARCH_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`. GCS uses the
 Rust transport and Google ADC described below.
 
-The startup check lists the provider bucket root only. Success depends only on
-provider status. Larch ignores stdout, does not inspect objects or permissions,
-does not list the configured prefix, and does not write a probe object. Storage
-credentials remain process or provider inputs. Larch has no credential file or
-repository trust registry.
+The startup check lists at most one result under the exact
+`larch/<client-repo>/` prefix. Success depends only on provider status. Larch
+ignores stdout, does not inspect returned object names, does not list the bucket
+root, and does not write a probe object. Restrict provider credentials to the
+approved tool and repository prefixes. Storage credentials remain process or
+provider inputs. Larch has no credential file or repository trust registry.
 
 The full URI, provider, archive, cache, sync, and error rules live in
 [Run-log storage contracts](run-log-archive.md).
 
-This repository's `config.toml` also contains a
-`[logs.legacy_migration]` table. It pins the verified one-time larch migration
-inventory and applies only to this repository and its exact configured storage
-root. Do not copy it into unrelated consumer repositories. Normal archives do
-not use it.
+This repository's `tools-config.toml` contains only:
+
+```toml
+[larch]
+storage_base_uri = "s3://zhupanov"
+```
+
+The historical manifest-less archive migration is an explicit operator
+operation, not a normal sync fallback. Drain pending v1 publications before
+cutover. Land and release the new runtime while runs are frozen, complete and
+verify the object migration, commit the new config, prewarm a cold v2 cache,
+then resume. Roll back by restoring the prior plugin release and old remote
+prefixes; old basename-keyed local cache and state remain untouched.
 
 ### Google Application Default Credentials
 

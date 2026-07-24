@@ -60,12 +60,30 @@ lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `LISTED_ARCHIVES`, `PRESENT_RUNS`, `DOWNLOADED_RUNS`, `REPAIRED_RUNS`, and
 `SYNC_OK=true`. See [Run-log storage contracts](run-log-archive.md).
 
+Storage preflight and lifecycle start resolve repository-root
+`tools-config.toml`, derive the client repository from local Git origin, list
+at most one result under the exact `larch/<client-repo>/` prefix, and emit:
+
+```text
+STORAGE_BASE_URI=<canonical base>
+CLIENT_REPO=<derived repository name>
+TOOL_REPO_URI=<canonical base>/larch/<client-repo>
+RUN_LOGS_URI=<tool repository URI>/run-logs/
+PREFLIGHT_OK=true
+```
+
+Lifecycle start emits the first four values with its lifecycle envelope.
+Persisted context pins the same tool URI, client repository, and
+storage-origin ID; publication fails if config, environment, or Git identity
+changes mid-run.
+
 The universal lifecycle starts each invocation with a declared skill and either
-a caller-supplied `--run-id` or a generated UUID after the configured bucket
+a caller-supplied `--run-id` or a generated UUID after the configured prefix
 preflight succeeds. `--log-root <absolute-path>` selects specialized staging;
 `--adopt-existing` adopts a matching manifest already created there. The start
 envelope returns `CONTEXT_FILE`, whose durable JSON record binds repository,
-storage URI, skill, run ID, log root, and run directory. Child runs also record the
+tool repository URI, client repository, storage-origin ID, skill, run ID, log
+root, and run directory. Child runs also record the
 parent skill and run ID, but retain their own archive. Every terminal verb
 writes `final-report.md`, records a missing transcript as an execution issue
 when capture is unavailable, and attempts the same create-only publication.

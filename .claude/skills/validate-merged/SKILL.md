@@ -31,7 +31,7 @@ it launches one finder per selected merge and one refuter per candidate. The
 recommended first run is the default 48-hour, 20-merge window.
 
 Read the `STATE_PATH` returned by `validate-merged prepare`. It lives under
-`$XDG_STATE_HOME/larch/analysis-state/<repo>/validate-merged/`. State contains only
+`$XDG_STATE_HOME/larch/analysis-state/v2/<client-repo>/<storage-origin-id>/validate-merged/`. State contains only
 compact merge frontier and unresolved candidate identities, never issue bodies,
 diffs, transcripts, temporary paths, or raw agent output. Do not advance state
 until every enabled stage and the final report pass.

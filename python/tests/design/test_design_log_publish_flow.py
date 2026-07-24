@@ -14,8 +14,9 @@ import pytest
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
 from larch.report import run_lifecycle, run_log_publish as run_log_publisher, run_logs
-from larch.report.storage_config import StorageRoot
-from test_support import operator_repo_with_remote as _operator_repo_with_remote
+from larch.report import storage_config
+from larch.report.storage_config import StorageBase, ToolRepositoryStorage
+from test_support import operator_repo_with_remote as _base_operator_repo_with_remote
 from test_support import write_gh_pr_stub as _write_gh_stub
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
@@ -23,6 +24,21 @@ RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 
 def _git(*argv: str, cwd: Path) -> None:
     _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
+
+def _operator_repo_with_remote(tmp_path: Path) -> Path:
+    repo = _base_operator_repo_with_remote(tmp_path)
+    local_remote = subprocess.run(
+        ["git", "remote", "get-url", "origin"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    _git("remote", "set-url", "--push", "origin", local_remote, cwd=repo)
+    _git("remote", "set-url", "origin", "git@github.com:fixture/consumer.git", cwd=repo)
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://bucket"\n', encoding="utf-8"
+    )
+    _git("add", "tools-config.toml", cwd=repo)
+    _git("commit", "-q", "-m", "storage config", cwd=repo)
+    return repo
 
 
 def _operator_repo_with_guidelines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -95,6 +111,8 @@ elif args[:2] == ["s3api", "get-object"]:
     destination = Path(args[args.index("--key") + 2])
     shutil.copy2(root / key, destination)
     print("{}")
+elif args[:2] == ["s3api", "list-objects-v2"]:
+    print('{"Contents":[]}')
 elif args[:2] == ["s3", "ls"]:
     raise SystemExit(0)
 else:
@@ -105,7 +123,9 @@ else:
     aws_stub.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
-    env["LARCH_LOGS_URI"] = "s3://bucket/larch"
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://bucket"\n', encoding="utf-8"
+    )
     env["XDG_CACHE_HOME"] = str(bin_dir.parent / "cache")
     env["XDG_STATE_HOME"] = str(bin_dir.parent / "state")
     # The real cli is used for run-log init/commit + redact; all git writes are
@@ -161,7 +181,11 @@ else:
 
 
 def _cached_run(repo: Path, bin_dir: Path) -> Path:
-    return bin_dir.parent / "cache" / "larch" / "run-logs" / repo.name / "design" / RUN_ID
+    storage = storage_config.load_tool_repository_storage(repo_root=repo, environ={})
+    return (
+        bin_dir.parent / "cache" / "larch" / "run-logs" / "v2"
+        / storage.client_repo / storage.storage_origin_id / "design" / RUN_ID
+    )
 
 
 def _patch_archive_publish(
@@ -176,7 +200,7 @@ def _patch_archive_publish(
         _ = run_logs.log_init(log_root=staging_root, skill="design", run_id=RUN_ID)
         return run_lifecycle.LifecycleStart(
             repo_root=cache_dir.parent,
-            storage_root=StorageRoot("s3", "bucket", "larch"),
+            storage_root=ToolRepositoryStorage(StorageBase("s3", "bucket"), "consumer"),
             skill="design",
             run_id=RUN_ID,
             log_root=staging_root,
@@ -695,7 +719,10 @@ def test_log_publish_creates_cloud_archive_and_cache_without_git_mutation(tmp_pa
     summary = (cached / "final-summary.md").read_text(encoding="utf-8")
     assert "STALE-SENTINEL" not in summary
     assert "<!-- larch:run-summary v=1 -->" in summary
-    assert (tmp_path / "remote" / "larch" / "run-logs" / "design" / f"{RUN_ID}.tar.gz").is_file()
+    assert (
+        tmp_path / "remote" / "larch" / "consumer" / "run-logs"
+        / "design" / f"{RUN_ID}.tar.gz"
+    ).is_file()
     meta = (design / ".design-log-publish-metadata.env").read_text(encoding="utf-8")
     assert f"DESIGN_LOG_REMOTE_KEY=run-logs/design/{RUN_ID}.tar.gz" in meta
 
@@ -890,7 +917,11 @@ def test_log_publish_upload_failure_keeps_tree_clean_and_durable_pending(
         check=False,
     )
     assert status.stdout.strip() == "", status.stdout
-    pending = tmp_path / "state" / "larch" / "run-log-pending" / repo.name / "design" / RUN_ID
+    storage = storage_config.load_tool_repository_storage(repo_root=repo, environ={})
+    pending = (
+        tmp_path / "state" / "larch" / "run-log-pending" / "v2"
+        / storage.client_repo / storage.storage_origin_id / "design" / RUN_ID
+    )
     assert (pending / "archive.tar.gz").is_file()
     assert (pending / "retry.json").is_file()
 
@@ -1258,7 +1289,7 @@ def test_publish_design_logs_classifies_archive_finalization_failure(
     monkeypatch.setattr(design_log_publish_flow, "_copy_tree_redacted", _copy_ok)
     context = run_lifecycle.LifecycleStart(
         repo_root=tmp_path,
-        storage_root=StorageRoot("s3", "bucket", "larch"),
+        storage_root=ToolRepositoryStorage(StorageBase("s3", "bucket"), "consumer"),
         skill="design",
         run_id="RUN1",
         log_root=tmp_path / "logs",

@@ -70,12 +70,7 @@ def _timestamp(value: object, *, label: str) -> str:
 
 def state_path(root: Path) -> Path:
     repo_root = root.expanduser().resolve()
-    target = analysis_state.repository_state_root(repo_root=repo_root) / STATE_RELPATH
-    try:
-        _ = analysis_state.import_legacy_file(path=target, legacy_path=repo_root / config.LEGACY_VALIDATE_MERGED_STATE_RELPATH)
-    except analysis_state.AnalysisStateError as exc:
-        raise ValidateMergedError(str(exc)) from exc
-    return target
+    return analysis_state.repository_state_root(repo_root=repo_root) / STATE_RELPATH
 
 
 def _candidate_from_raw(raw: object) -> dict[str, str]:

@@ -1,9 +1,0 @@
-[logs]
-uri = "s3://zhupanov/larch"
-
-[logs.legacy_migration]
-schema = "larch-run-log-migration-inventory-v1"
-source_commit = "251642775413fd758139a4d547763a02902a17ec"
-storage_root = "s3://zhupanov/larch"
-inventory_key = "migration/inventory-v1-251642775413fd758139a4d547763a02902a17ec.json"
-inventory_sha256 = "e5cea85a48bd3177e8193bd1b143ed967635ebbadbd7b36f9619a8515c51f4a7"

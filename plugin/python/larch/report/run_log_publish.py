@@ -30,10 +30,13 @@ from larch.report.object_store import (
 )
 from larch.report.run_log_archive import RunArchiveMaterializationResult
 from larch.report.run_log_batch import validate_run_id_slug
-from larch.report.storage_config import StorageConfigurationError, StorageRoot
+from larch.report.storage_config import (
+    StorageConfigurationError,
+    ToolRepositoryStorage,
+)
 from larch.errors import ShipError
 
-_PENDING_SCHEMA_VERSION: Final = 1
+_PENDING_SCHEMA_VERSION: Final = 2
 _PENDING_ARCHIVE_NAME: Final = "archive.tar.gz"
 _PENDING_METADATA_NAME: Final = "retry.json"
 _ENV_XDG_CACHE_HOME: Final = "XDG_CACHE_HOME"
@@ -50,11 +53,12 @@ _PENDING_KEYS: Final = frozenset(
         "last_error",
         "manifest_sha256",
         "remote_key",
-        "repo_name",
+        "client_repo",
         "run_id",
         "schema_version",
         "skill",
-        "storage_uri",
+        "storage_origin_id",
+        "tool_repo_uri",
     }
 )
 
@@ -104,7 +108,7 @@ class PublicationRequest:
     """Immutable caller inputs for one run publication attempt."""
 
     repo_root: Path
-    storage_root: StorageRoot
+    storage_root: ToolRepositoryStorage
     skill: str
     run_id: str
     staging_root: Path | None
@@ -117,8 +121,9 @@ class PendingPublication:
     """Content-pinned durable retry record for one immutable object."""
 
     schema_version: int
-    storage_uri: str
-    repo_name: str
+    tool_repo_uri: str
+    client_repo: str
+    storage_origin_id: str
     skill: str
     run_id: str
     remote_key: str
@@ -171,13 +176,11 @@ def xdg_home(
 
 def repository_cache_root(
     *,
-    repo_root: Path,
+    storage: ToolRepositoryStorage,
     cache_home: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Path:
-    """Return the literal per-repository root for unpacked run archives."""
-    root: Path = larch_io.validate_trusted_directory(repo_root)
-    repo_name: str = validated_component(root.name, label="repository name", slug=False)
+    """Return the storage-origin-bound v2 root for unpacked run archives."""
     environment: Mapping[str, str] = os.environ if environ is None else environ
     resolved_cache_home: Path = cache_home or xdg_home(
         environ=environment,
@@ -186,7 +189,14 @@ def repository_cache_root(
     )
     if not resolved_cache_home.is_absolute():
         raise ValueError("publication cache home must be an absolute path")
-    return resolved_cache_home / "larch" / "run-logs" / repo_name
+    return (
+        resolved_cache_home
+        / "larch"
+        / "run-logs"
+        / "v2"
+        / storage.client_repo
+        / storage.storage_origin_id
+    )
 
 
 def publication_paths(
@@ -195,13 +205,12 @@ def publication_paths(
     environ: Mapping[str, str] | None = None,
 ) -> PublicationPaths:
     """Resolve the literal repository cache path and durable retry path."""
-    root: Path = larch_io.validate_trusted_directory(request.repo_root)
-    repo_name: str = validated_component(root.name, label="repository name", slug=False)
+    _ = larch_io.validate_trusted_directory(request.repo_root)
     skill_name: str = validated_component(request.skill, label="skill", slug=True)
     run_name: str = validated_component(request.run_id, label="run-id", slug=True)
     environment: Mapping[str, str] = os.environ if environ is None else environ
     cache_root: Path = repository_cache_root(
-        repo_root=root,
+        storage=request.storage_root,
         cache_home=request.cache_home,
         environ=environment,
     )
@@ -217,7 +226,9 @@ def publication_paths(
         resolved_state_home
         / "larch"
         / "run-log-pending"
-        / repo_name
+        / "v2"
+        / request.storage_root.client_repo
+        / request.storage_root.storage_origin_id
         / skill_name
         / run_name
     )
@@ -225,7 +236,9 @@ def publication_paths(
         resolved_state_home
         / "larch"
         / "run-log-locks"
-        / repo_name
+        / "v2"
+        / request.storage_root.client_repo
+        / request.storage_root.storage_origin_id
         / skill_name
         / f"{run_name}.lock"
     )
@@ -328,10 +341,17 @@ def _fsync_directory(path: Path) -> None:
 
 
 def _metadata_text(pending: PendingPublication) -> str:
-    return json.dumps(asdict(pending), ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    return (
+        json.dumps(
+            asdict(pending), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        + "\n"
+    )
 
 
-def _write_pending_metadata(paths: PublicationPaths, pending: PendingPublication) -> None:
+def _write_pending_metadata(
+    paths: PublicationPaths, pending: PendingPublication
+) -> None:
     larch_io.trusted_atomic_write(
         paths.pending_metadata,
         _metadata_text(pending),
@@ -351,8 +371,9 @@ def _parse_pending_metadata(text: str) -> PendingPublication:
     if frozenset(data) != _PENDING_KEYS:
         raise PublicationError("pending publication metadata has invalid fields")
     string_keys: tuple[str, ...] = (
-        "storage_uri",
-        "repo_name",
+        "tool_repo_uri",
+        "client_repo",
+        "storage_origin_id",
         "skill",
         "run_id",
         "remote_key",
@@ -363,12 +384,18 @@ def _parse_pending_metadata(text: str) -> PendingPublication:
     if any(not isinstance(data[key], str) for key in string_keys):
         raise PublicationError("pending publication metadata has invalid string fields")
     integer_keys: tuple[str, ...] = ("schema_version", "archive_size", "attempts")
-    if any(not isinstance(data[key], int) or isinstance(data[key], bool) for key in integer_keys):
-        raise PublicationError("pending publication metadata has invalid integer fields")
+    if any(
+        not isinstance(data[key], int) or isinstance(data[key], bool)
+        for key in integer_keys
+    ):
+        raise PublicationError(
+            "pending publication metadata has invalid integer fields"
+        )
     return PendingPublication(
         schema_version=cast("int", data["schema_version"]),
-        storage_uri=cast("str", data["storage_uri"]),
-        repo_name=cast("str", data["repo_name"]),
+        tool_repo_uri=cast("str", data["tool_repo_uri"]),
+        client_repo=cast("str", data["client_repo"]),
+        storage_origin_id=cast("str", data["storage_origin_id"]),
         skill=cast("str", data["skill"]),
         run_id=cast("str", data["run_id"]),
         remote_key=cast("str", data["remote_key"]),
@@ -385,13 +412,13 @@ def _validate_pending(
     paths: PublicationPaths,
     pending: PendingPublication,
     request: PublicationRequest,
-    repo_name: str,
 ) -> PendingPublication:
     expected_key: str = f"run-logs/{request.skill}/{request.run_id}.tar.gz"
     identity: tuple[object, ...] = (
         pending.schema_version,
-        pending.storage_uri,
-        pending.repo_name,
+        pending.tool_repo_uri,
+        pending.client_repo,
+        pending.storage_origin_id,
         pending.skill,
         pending.run_id,
         pending.remote_key,
@@ -399,26 +426,33 @@ def _validate_pending(
     expected_identity: tuple[object, ...] = (
         _PENDING_SCHEMA_VERSION,
         request.storage_root.uri,
-        repo_name,
+        request.storage_root.client_repo,
+        request.storage_root.storage_origin_id,
         request.skill,
         request.run_id,
         expected_key,
     )
     if identity != expected_identity:
-        raise PublicationError("pending publication identity does not match the live request")
+        raise PublicationError(
+            "pending publication identity does not match the live request"
+        )
     if (
         not _valid_sha256(pending.archive_sha256)
         or not _valid_sha256(pending.manifest_sha256)
         or pending.archive_size <= 0
         or pending.attempts < 0
     ):
-        raise PublicationError("pending publication metadata has invalid content identity")
+        raise PublicationError(
+            "pending publication metadata has invalid content identity"
+        )
     archive_sha256, archive_size = _sha256_regular_file(
         paths.pending_archive,
         root=paths.pending_dir,
     )
     if (archive_sha256, archive_size) != (pending.archive_sha256, pending.archive_size):
-        raise PublicationError("pending archive does not match its durable content identity")
+        raise PublicationError(
+            "pending archive does not match its durable content identity"
+        )
     return pending
 
 
@@ -432,7 +466,6 @@ def _load_pending(
     *,
     paths: PublicationPaths,
     request: PublicationRequest,
-    repo_name: str,
 ) -> PendingPublication:
     root: Path = larch_io.validate_trusted_directory(paths.pending_dir)
     text: str = larch_io.read_trusted_text(
@@ -444,7 +477,6 @@ def _load_pending(
         paths=paths,
         pending=_parse_pending_metadata(text),
         request=request,
-        repo_name=repo_name,
     )
 
 
@@ -452,7 +484,6 @@ def _create_pending(
     *,
     paths: PublicationPaths,
     request: PublicationRequest,
-    repo_name: str,
 ) -> PendingPublication:
     parent: Path = ensure_concurrent_directory(paths.pending_dir.parent)
     temporary: Path | None = Path(
@@ -461,7 +492,9 @@ def _create_pending(
     temporary.chmod(0o700)
     try:
         if request.staging_root is None:
-            raise PublicationError("a staging root is required to create a pending archive")
+            raise PublicationError(
+                "a staging root is required to create a pending archive"
+            )
         created = run_log_archive.create_run_archive(
             staging_root=request.staging_root,
             output_dir=temporary,
@@ -472,8 +505,9 @@ def _create_pending(
         _ = created.archive_path.rename(archive_path)
         pending = PendingPublication(
             schema_version=_PENDING_SCHEMA_VERSION,
-            storage_uri=request.storage_root.uri,
-            repo_name=repo_name,
+            tool_repo_uri=request.storage_root.uri,
+            client_repo=request.storage_root.client_repo,
+            storage_origin_id=request.storage_root.storage_origin_id,
             skill=request.skill,
             run_id=request.run_id,
             remote_key=f"run-logs/{request.skill}/{request.run_id}.tar.gz",
@@ -497,7 +531,6 @@ def _create_pending(
         return _load_pending(
             paths=paths,
             request=request,
-            repo_name=repo_name,
         )
     finally:
         if temporary is not None:
@@ -508,20 +541,19 @@ def _pending_for_request(
     *,
     paths: PublicationPaths,
     request: PublicationRequest,
-    repo_name: str,
 ) -> PendingPublication:
     if paths.pending_dir.exists() or paths.pending_dir.is_symlink():
         return _load_pending(
             paths=paths,
             request=request,
-            repo_name=repo_name,
         )
     if request.staging_root is None:
-        raise PublicationError("no durable pending archive exists and --staging-root was not provided")
+        raise PublicationError(
+            "no durable pending archive exists and --staging-root was not provided"
+        )
     return _create_pending(
         paths=paths,
         request=request,
-        repo_name=repo_name,
     )
 
 
@@ -542,8 +574,13 @@ def _matching_remote_exists(
         downloaded: Path = Path(handle.name)
     try:
         store.download(pending.remote_key, downloaded)
-        remote_sha256, remote_size = _sha256_regular_file(downloaded, root=paths.pending_dir)
-        return (remote_sha256, remote_size) == (pending.archive_sha256, pending.archive_size)
+        remote_sha256, remote_size = _sha256_regular_file(
+            downloaded, root=paths.pending_dir
+        )
+        return (remote_sha256, remote_size) == (
+            pending.archive_sha256,
+            pending.archive_size,
+        )
     finally:
         downloaded.unlink(missing_ok=True)
 
@@ -555,7 +592,9 @@ def _publish_remote(
     paths: PublicationPaths,
 ) -> RemotePublicationStatus:
     try:
-        uploaded: RemoteObject = store.upload_create(pending.remote_key, paths.pending_archive)
+        uploaded: RemoteObject = store.upload_create(
+            pending.remote_key, paths.pending_archive
+        )
     except ObjectStoreError as exc:
         if exc.kind is not ObjectStoreErrorKind.ALREADY_EXISTS:
             raise
@@ -565,7 +604,9 @@ def _publish_remote(
             ) from exc
         return RemotePublicationStatus.MATCHED
     if uploaded.key != pending.remote_key or uploaded.size != pending.archive_size:
-        raise PublicationError("create-only upload returned a mismatched object identity")
+        raise PublicationError(
+            "create-only upload returned a mismatched object identity"
+        )
     verified: RemoteObject = store.metadata(pending.remote_key)
     if verified.key != pending.remote_key or verified.size != pending.archive_size:
         raise PublicationError("uploaded remote object failed metadata verification")
@@ -580,32 +621,40 @@ def _cache_result(
 ) -> tuple[RunArchiveMaterializationResult, CachePublicationStatus]:
     _ = ensure_concurrent_directory(paths.cache_dir.parent)
     if paths.cache_dir.exists() or paths.cache_dir.is_symlink():
-        existing: RunArchiveMaterializationResult = run_log_archive.verify_materialized_run_directory(
+        existing: RunArchiveMaterializationResult = (
+            run_log_archive.verify_materialized_run_directory(
             run_dir=paths.cache_dir,
             expected_skill=pending.skill,
             expected_run_id=pending.run_id,
         )
+        )
         if existing.manifest_sha256 != pending.manifest_sha256:
-            raise PublicationError("existing cache directory contains different run content")
+            raise PublicationError(
+                "existing cache directory contains different run content"
+            )
         return existing, CachePublicationStatus.PRESENT
     if staging_root is not None:
         try:
-            promoted: RunArchiveMaterializationResult = run_log_archive.promote_staging_run_directory(
+            promoted: RunArchiveMaterializationResult = (
+                run_log_archive.promote_staging_run_directory(
                 staging_root=staging_root,
                 run_dir=paths.cache_dir,
                 expected_skill=pending.skill,
                 expected_run_id=pending.run_id,
                 expected_manifest_sha256=pending.manifest_sha256,
             )
+            )
         except run_log_archive.StagingManifestMismatchError:
             pass
         else:
             return promoted, CachePublicationStatus.PROMOTED
-    materialized: RunArchiveMaterializationResult = run_log_archive.materialize_run_archive(
+    materialized: RunArchiveMaterializationResult = (
+        run_log_archive.materialize_run_archive(
         archive_path=paths.pending_archive,
         run_dir=paths.cache_dir,
         expected_skill=pending.skill,
         expected_run_id=pending.run_id,
+    )
     )
     return materialized, CachePublicationStatus.MATERIALIZED
 
@@ -638,7 +687,6 @@ def publish_run(
 ) -> PublicationResult:
     """Publish one immutable archive and atomically populate its local cache."""
     root: Path = larch_io.validate_trusted_directory(request.repo_root)
-    repo_name: str = validated_component(root.name, label="repository name", slug=False)
     skill_name: str = validated_component(request.skill, label="skill", slug=True)
     run_name: str = validated_component(request.run_id, label="run-id", slug=True)
     normalized_request = replace(
@@ -657,11 +705,12 @@ def publish_run(
         else store
     )
     with publication_lock(paths.lock_file):
-        retrying_pending: bool = paths.pending_dir.exists() or paths.pending_dir.is_symlink()
+        retrying_pending: bool = (
+            paths.pending_dir.exists() or paths.pending_dir.is_symlink()
+        )
         pending: PendingPublication = _pending_for_request(
             paths=paths,
             request=normalized_request,
-            repo_name=repo_name,
         )
         pending = replace(pending, attempts=pending.attempts + 1, last_error="")
         _write_pending_metadata(paths, pending)
@@ -674,10 +723,14 @@ def publish_run(
             cache_result, cache_status = _cache_result(
                 paths=paths,
                 pending=pending,
-                staging_root=None if retrying_pending else normalized_request.staging_root,
+                staging_root=None
+                if retrying_pending
+                else normalized_request.staging_root,
             )
             if cache_result.manifest_sha256 != pending.manifest_sha256:
-                raise PublicationError("published cache failed manifest identity verification")
+                raise PublicationError(
+                    "published cache failed manifest identity verification"
+                )
         except (
             EOFError,
             ObjectStoreError,
@@ -687,7 +740,9 @@ def publish_run(
             TypeError,
             ValueError,
         ) as exc:
-            _write_pending_metadata(paths, replace(pending, last_error=_failure_token(exc)))
+            _write_pending_metadata(
+                paths, replace(pending, last_error=_failure_token(exc))
+            )
             raise
         _complete_pending(paths)
     return PublicationResult(
@@ -751,12 +806,12 @@ def main(argv: Sequence[str]) -> int:
             raise StorageConfigurationError(
                 f"could not discover a Git repository root from {requested_root}"
             )
-        storage_root: StorageRoot = storage_config.discover_storage_root(
-            start=repo_root
+        storage: ToolRepositoryStorage = (
+            storage_config.discover_tool_repository_storage(start=repo_root)
         )
         request = PublicationRequest(
             repo_root=repo_root,
-            storage_root=storage_root,
+            storage_root=storage,
             skill=args.skill,
             run_id=args.run_id,
             staging_root=Path(args.staging_root) if args.staging_root else None,
