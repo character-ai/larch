@@ -153,6 +153,13 @@ def _validated_inventory(
     return tuple(sorted(archives, key=lambda archive: archive.remote_key))
 
 
+def validated_remote_inventory(
+    objects: tuple[RemoteObject, ...],
+) -> tuple[RemoteRunArchive, ...]:
+    """Validate a complete provider listing for migration and cache sync."""
+    return _validated_inventory(objects)
+
+
 def _remove_entry(path: Path) -> None:
     try:
         mode: int = path.lstat().st_mode

@@ -211,6 +211,15 @@ Cloud run-log retention is append-only. No shipped runtime deletes or slims
 run-log content, creates a run-log Git branch, commit, push, or pull request,
 or configures remote lifecycle expiration.
 
+The operator-only `run-log migrate-layout` command is a bounded exception for
+creating the tool-first copies required by `character-ai/larch#7966`. Live mode
+accepts only the issue's exact S3 roots. It uses create-only writes, never
+deletes or overwrites remote objects, and verifies every downloaded target.
+Its published report contains identities, hashes, sizes, aggregate counts, and
+fixed status tokens. It excludes credentials, provider diagnostics, archive
+contents, and local absolute paths. The retained old prefixes remain rollback
+evidence until the separate cleanup issue passes its retention gates.
+
 The shared run lifecycle is the sole terminal archive publisher. Specialized
 design, implement, and review owners may select and stage richer artifacts, but
 they hand that one staging tree to the shared terminal boundary. That boundary

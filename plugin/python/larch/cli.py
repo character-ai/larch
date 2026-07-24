@@ -660,6 +660,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("run-log", "cleanup-implement-logs"): ("larch.report.cleanup_implement_logs", "main", False),
     ("run-log", "retro-v3-sweep"): ("larch.report.retro_v3_sweep", "main", False),
     ("run-log", "retro-fix-cursor"): ("larch.report.retro_fix_cursor", "main", False),
+    ("run-log", "migrate-layout"): ("larch.report.run_log_layout_migration", "main", True),
     ("run-log", "verify-completeness"): ("larch.report.run_logs", "verify_completeness_main", False),
     ("run-log", "append-failure"): ("larch.report.run_logs", "append_failure_main", False),
     ("run-log", "append-entry"): ("larch.report.run_logs", "append_entry_main", False),

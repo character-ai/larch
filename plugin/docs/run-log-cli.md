@@ -48,6 +48,7 @@ make a log public-safe. See the canonical
 - `run-log materialize`
 - `run-log publish`
 - `run-log sync`
+- `run-log migrate-layout plan|apply|verify`
 - `run-log lifecycle-start`
 - `run-log lifecycle-finalize`
 - `run-log lifecycle-failure`
@@ -88,6 +89,38 @@ parent skill and run ID, but retain their own archive. Every terminal verb
 writes `final-report.md`, records a missing transcript as an execution issue
 when capture is unavailable, and attempts the same create-only publication.
 Publication failure returns nonzero and retains the durable pending archive.
+
+## One-time tool-first S3 migration
+
+`run-log migrate-layout` is the operator-only command for
+`character-ai/larch#7966`. It migrates the frozen larch-tool corpora from:
+
+```text
+s3://zhupanov/larch/run-logs/
+s3://zhupanov/agent-lint/run-logs/
+```
+
+to:
+
+```text
+s3://zhupanov/larch/larch/run-logs/
+s3://zhupanov/larch/agent-lint/run-logs/
+```
+
+`plan` downloads, validates, and hashes every source archive. It writes a
+self-hashed canonical plan. `apply` requires
+`--authorize-live-migration`. It creates missing target objects, verifies each
+downloaded target, and writes a resumable report. `verify` requires
+`--authorize-report-publication`. It independently checks the complete source
+and target inventories, materializes every target with the normal reader, and
+publishes the final report create-only under `migration-reports/`.
+
+The command accepts only the issue's exact S3 roots in live mode. It never
+deletes or overwrites an object. Modern archives keep their exact bytes.
+Pinned legacy larch archives are rebuilt with a canonical root
+`archive-manifest.json`, then checked against the pinned source-member
+inventory. Keep the private work directory, plan, and partial report until
+verification succeeds so an interrupted apply can resume from the same plan.
 
 `exists` exits 0 only after argument, log-root, slug, and batch validation
 succeed. It sets `UNCHANGED=true` when the batch file exists.

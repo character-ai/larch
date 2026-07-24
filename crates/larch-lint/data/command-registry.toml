@@ -6117,6 +6117,18 @@ planning_issue = 7683
 
 [[commands]]
 domain = "run-log"
+verb = "migrate-layout"
+python_module = "larch.report.run_log_layout_migration"
+python_function = "main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7966
+
+[[commands]]
+domain = "run-log"
 verb = "publish"
 python_module = "larch.report.run_log_publish"
 python_function = "main"
