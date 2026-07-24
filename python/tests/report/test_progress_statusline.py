@@ -1133,14 +1133,14 @@ def test_statusline_launcher_serializes_cold_cache_render(tmp_path: Path, monkey
     launcher = home / ".cache" / "larch" / "statusline.sh"
     payload = json.dumps({"cwd": str(repo)})
     env = {**os.environ, "HOME": str(home), "LARCH_STATUSLINE_REFRESH_SECONDS": "5", "LARCH_TEST_RENDER_COUNT": str(count_path)}
-    first = subprocess.Popen(["bash", str(launcher)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
-    assert first.stdin is not None
-    _ = first.stdin.write(payload)
-    first.stdin.close()
-    time.sleep(0.05)
-    second = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
-    first_stdout = first.stdout.read() if first.stdout is not None else ""
-    assert first.wait() == 0
+    with subprocess.Popen(["bash", str(launcher)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env) as first:
+        assert first.stdin is not None
+        _ = first.stdin.write(payload)
+        first.stdin.close()
+        time.sleep(0.05)
+        second = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+        first_stdout = first.stdout.read() if first.stdout is not None else ""
+        assert first.wait() == 0
 
     assert second.returncode == 0
     assert first_stdout + second.stdout == "larch cold render\n"
