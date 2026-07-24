@@ -45,7 +45,9 @@ The migration writes its immutable audit report under
 `s3://zhupanov/larch/larch/migration-reports/`, outside `run-logs/`. It retains
 the old source prefixes and migration provenance for rollback. Issue
 `character-ai/larch#7967` owns any later source deletion after its retention
-and verification gates pass.
+and verification gates pass. See the
+[2026-07-24 operational record](run-log-layout-migration-2026-07-24.md) for
+the final plan, report, corpus totals, cache validation, and cutover evidence.
 
 ## Universal skill lifecycle
 
