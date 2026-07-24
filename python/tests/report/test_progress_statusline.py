@@ -1142,8 +1142,8 @@ def test_statusline_launcher_serializes_cold_cache_render(tmp_path: Path, monkey
     first_stdout = first.stdout.read() if first.stdout is not None else ""
     assert first.wait() == 0
 
-    assert first_stdout == "larch cold render\n"
     assert second.returncode == 0
+    assert first_stdout + second.stdout == "larch cold render\n"
     assert count_path.read_text(encoding="utf-8") == "rendered\n"
 
 
