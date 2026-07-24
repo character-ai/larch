@@ -1036,10 +1036,23 @@ def test_statusline_launcher_caches_render_for_refresh_period(tmp_path: Path, mo
     home = tmp_path / "home"
     repo = tmp_path / "repo"
     plugin = tmp_path / "plugin"
+    bin_dir = tmp_path / "bin"
     count_path = tmp_path / "render-count"
     repo.mkdir()
     (repo / ".claude").mkdir()
     (plugin / "python").mkdir(parents=True)
+    bin_dir.mkdir()
+    stat = bin_dir / "stat"
+    _ = stat.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "-f" ]; then\n'
+        "    printf 'File: fake GNU stat output\\n'\n"
+        "else\n"
+        "    /bin/date +%s\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    stat.chmod(0o755)
     _ = (plugin / "python" / "cli.py").write_text(
         "from pathlib import Path\n"
         "import os\n"
@@ -1053,7 +1066,7 @@ def test_statusline_launcher_caches_render_for_refresh_period(tmp_path: Path, mo
     assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
     launcher = home / ".cache" / "larch" / "statusline.sh"
     payload = json.dumps({"cwd": str(repo)})
-    env = {**os.environ, "HOME": str(home), "LARCH_TEST_RENDER_COUNT": str(count_path)}
+    env = {**os.environ, "HOME": str(home), "LARCH_TEST_RENDER_COUNT": str(count_path), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
     _ = env.pop("LARCH_STATUSLINE_REFRESH_SECONDS", None)
 
     first = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
