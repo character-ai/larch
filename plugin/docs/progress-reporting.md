@@ -31,7 +31,7 @@ Larch assumes one active larch run per clone. It does not add concurrency semant
 
 ## Installation and opt out
 
-Session setup and the `SessionStart` hook idempotently merge a larch-owned `statusLine` command into `.claude/settings.local.json` for the current clone. The project-local setting uses `refreshInterval: 2` and a stable launcher at `~/.cache/larch/statusline.sh`.
+Session setup and the `SessionStart` hook idempotently merge a larch-owned `statusLine` command into `.claude/settings.local.json` for the current clone. The project-local setting uses `refreshInterval: 2` and a stable launcher at `~/.cache/larch/statusline.sh`. The launcher caches each clone's rendered larch line for 5 seconds by default, including empty output, before it starts Python again. Set `LARCH_STATUSLINE_REFRESH_SECONDS` to a positive number of seconds to override the cache period. A progress update can take up to that period to appear.
 
 Set `LARCH_STATUSLINE_DISABLE=1` before session start to skip installation. If `.claude/settings.local.json` contains invalid JSON, a symlinked target, or a non-larch local `statusLine`, larch leaves it untouched.
 

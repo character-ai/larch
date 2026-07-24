@@ -1031,6 +1031,159 @@ def test_install_statusline_creates_settings_and_launcher(tmp_path: Path, monkey
     assert "sh -c" in launcher.read_text(encoding="utf-8")
 
 
+
+def test_statusline_launcher_caches_render_for_refresh_period(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    bin_dir = tmp_path / "bin"
+    count_path = tmp_path / "render-count"
+    repo.mkdir()
+    (repo / ".claude").mkdir()
+    (plugin / "python").mkdir(parents=True)
+    bin_dir.mkdir()
+    stat = bin_dir / "stat"
+    _ = stat.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "-f" ]; then\n'
+        "    printf 'File: fake GNU stat output\\n'\n"
+        "else\n"
+        "    /bin/date +%s\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    stat.chmod(0o755)
+    _ = (plugin / "python" / "cli.py").write_text(
+        "from pathlib import Path\n"
+        "import os\n"
+        "count = Path(os.environ['LARCH_TEST_RENDER_COUNT'])\n"
+        "count.write_text(str(int(count.read_text() if count.exists() else '0') + 1))\n"
+        "print('larch cached render')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    launcher = home / ".cache" / "larch" / "statusline.sh"
+    payload = json.dumps({"cwd": str(repo)})
+    env = {**os.environ, "HOME": str(home), "LARCH_TEST_RENDER_COUNT": str(count_path), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    _ = env.pop("LARCH_STATUSLINE_REFRESH_SECONDS", None)
+
+    first = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+    second = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+    assert first.stdout == second.stdout == "larch cached render\n"
+    assert count_path.read_text(encoding="utf-8") == "1"
+
+
+def test_statusline_launcher_caches_empty_render(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    count_path = tmp_path / "render-count"
+    repo.mkdir()
+    (repo / ".claude").mkdir()
+    (plugin / "python").mkdir(parents=True)
+    _ = (plugin / "python" / "cli.py").write_text(
+        "from pathlib import Path\n"
+        "import os\n"
+        "count = Path(os.environ['LARCH_TEST_RENDER_COUNT'])\n"
+        "count.write_text(str(int(count.read_text() if count.exists() else '0') + 1))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    launcher = home / ".cache" / "larch" / "statusline.sh"
+    payload = json.dumps({"cwd": str(repo)})
+    env = {**os.environ, "HOME": str(home), "LARCH_STATUSLINE_REFRESH_SECONDS": "5", "LARCH_TEST_RENDER_COUNT": str(count_path)}
+
+    first = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+    second = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+    assert first.stdout == second.stdout == ""
+    assert count_path.read_text(encoding="utf-8") == "1"
+
+
+def test_statusline_launcher_serializes_cold_cache_render(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    count_path = tmp_path / "render-count"
+    repo.mkdir()
+    (repo / ".claude").mkdir()
+    (plugin / "python").mkdir(parents=True)
+    _ = (plugin / "python" / "cli.py").write_text(
+        "from pathlib import Path\n"
+        "import os\n"
+        "import time\n"
+        "time.sleep(0.2)\n"
+        "with Path(os.environ['LARCH_TEST_RENDER_COUNT']).open('a', encoding='utf-8') as handle:\n"
+        "    _ = handle.write('rendered\\n')\n"
+        "print('larch cold render')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    launcher = home / ".cache" / "larch" / "statusline.sh"
+    payload = json.dumps({"cwd": str(repo)})
+    env = {**os.environ, "HOME": str(home), "LARCH_STATUSLINE_REFRESH_SECONDS": "5", "LARCH_TEST_RENDER_COUNT": str(count_path)}
+    with subprocess.Popen(["bash", str(launcher)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env) as first:
+        assert first.stdin is not None
+        _ = first.stdin.write(payload)
+        first.stdin.close()
+        time.sleep(0.05)
+        second = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+        first_stdout = first.stdout.read() if first.stdout is not None else ""
+        assert first.wait() == 0
+
+    assert second.returncode == 0
+    assert first_stdout + second.stdout == "larch cold render\n"
+    assert count_path.read_text(encoding="utf-8") == "rendered\n"
+
+
+def test_statusline_launcher_refreshes_stale_render(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    count_path = tmp_path / "render-count"
+    repo.mkdir()
+    (repo / ".claude").mkdir()
+    (plugin / "python").mkdir(parents=True)
+    _ = (plugin / "python" / "cli.py").write_text(
+        "from pathlib import Path\n"
+        "import os\n"
+        "count = Path(os.environ['LARCH_TEST_RENDER_COUNT'])\n"
+        "count.write_text(str(int(count.read_text() if count.exists() else '0') + 1))\n"
+        "print('larch refreshed render')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+    launcher = home / ".cache" / "larch" / "statusline.sh"
+    payload = json.dumps({"workspace": {"current_dir": str(repo)}})
+    env = {**os.environ, "HOME": str(home), "LARCH_STATUSLINE_REFRESH_SECONDS": "1", "LARCH_TEST_RENDER_COUNT": str(count_path)}
+    first = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+    cache_file = next((home / ".cache" / "larch" / "progress").glob("*/statusline-last"))
+    old = time.time() - 2
+    os.utime(cache_file, (old, old))
+    cache_lock = Path(f"{cache_file}.lock")
+    cache_lock.mkdir()
+    os.utime(cache_lock, (old, old))
+    second = subprocess.run(["bash", str(launcher)], input=payload, text=True, capture_output=True, check=False, env=env)
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+    assert first.stdout == second.stdout == "larch refreshed render\n"
+    assert count_path.read_text(encoding="utf-8") == "2"
+    assert not cache_lock.exists()
+
 def test_install_statusline_preserves_local_non_larch_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     repo = tmp_path / "repo"
