@@ -93,10 +93,10 @@ assert_no_hook_state() {
     fi
 }
 
-if jq -e --arg cmd 'hook-anti-read-poll.sh' '.hooks.PostToolUse[]? | select(.matcher == "Read|Bash") | .hooks[]? | select(.command | test($cmd))' "$HOOKS_JSON" >/dev/null 2>&1; then
-    pass 'hooks.json registers hook-anti-read-poll.sh under matcher Read|Bash'
+if jq -e --arg cmd 'hook-anti-read-poll.sh' '.hooks.PostToolUse[]? | select(.matcher == "Read") | .hooks[]? | select(.command | test($cmd))' "$HOOKS_JSON" >/dev/null 2>&1; then
+    pass 'hooks.json registers hook-anti-read-poll.sh under matcher Read'
 else
-    fail 'hooks.json must register hook-anti-read-poll.sh under matcher Read|Bash'
+    fail 'hooks.json must register hook-anti-read-poll.sh under matcher Read'
 fi
 
 assert_silent "$(run_hook 0 /tmp/file.md 0 /proj generic)" 'call 1 silent'
