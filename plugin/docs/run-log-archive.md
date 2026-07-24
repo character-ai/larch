@@ -101,8 +101,11 @@ also requires `LARCH_R2_ACCOUNT_ID` and `LARCH_R2_ENDPOINT`. The endpoint must
 be `https://<account-id>.r2.cloudflarestorage.com`, and the account ID must
 match the host. GCS uses the narrow Rust transport through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` and standard Google Application Default
-Credentials. Credentials should grant list, read, and write only to approved
-tool and client-repository prefixes.
+Credentials. In a local `.git` checkout without `LARCH_BINARY`, the Python
+adapter first runs the locked `larch-cli` release build and supplies the result
+to the shim through a process-scoped override. Installed plugins and explicit
+`LARCH_BINARY` overrides do not build. Credentials should grant list, read, and
+write only to approved tool and client-repository prefixes.
 
 ## Machine-readable errors
 

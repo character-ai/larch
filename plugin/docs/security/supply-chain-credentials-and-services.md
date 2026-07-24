@@ -90,12 +90,18 @@ An existing regular binary retains a hard-link rollback through post-install
 verification. A bounded `CLAUDE_PLUGIN_DATA/bootstrap.lock` serializes first
 use, reclaims revalidated dead-owner locks, and makes waiters re-check before
 downloading. Cleanup removes only process-owned state. Local `.git` checkouts
-require an explicit matching `LARCH_BINARY`.
+require an explicit matching `LARCH_BINARY` for direct shim use. The GCS
+run-log adapter may lazily run the locked `larch-cli` release build in that
+trusted checkout, then call the shim with the resulting path in a
+process-scoped `LARCH_BINARY`. It never downloads a release into the checkout,
+and installed plugin roots never take this build path.
 
 These controls do not defend against a hostile same-UID process that can rewrite
-plugin cache or data files. Runtime lints reject production Cargo,
-`bin/larch`, and `target/{debug,release}/larch`. Only verified bootstrap owners
-may execute them. The command registry also requires each live Rust-owned
+plugin cache or data files. Runtime lints reject `cargo run` and `cargo install`
+in production. They also reject `bin/larch` and
+`target/{debug,release}/larch` execution. The GCS adapter confines its
+`cargo build` output and does not execute the resulting binary directly. Only
+verified bootstrap owners may do that. The command registry requires each live Rust-owned
 selector to name a unique shared clean-install fixture. Those fixtures start
 without `bin/larch`, verify version and target before dispatch, and invoke the
 selector only through `scripts/larch.sh`. Issue-registry audit input is typed

@@ -205,6 +205,14 @@ LARCH_BINARY="$PWD/target/release/larch" \
 "$PWD/scripts/larch.sh" example echo "local build"
 ```
 
+The GCS run-log adapter is the narrow exception to the manual build step. When
+`CLAUDE_PLUGIN_ROOT` is a local `.git` checkout and `LARCH_BINARY` is unset,
+the adapter runs the same locked release build before its first GCS request,
+then supplies the result to `scripts/larch.sh` through a process-scoped
+`LARCH_BINARY`. This lets the mandatory `run-log lifecycle-start` command
+remain first on a fresh checkout. Direct `scripts/larch.sh` use still requires
+the explicit build and override above.
+
 `pwd -P` canonicalizes the staging parent because bootstrap path validation
 rejects a path whose existing ancestor is a symlink, and on macOS both
 `TMPDIR` (under `/var`) and the `/tmp` fallback are symlinks into `/private`.

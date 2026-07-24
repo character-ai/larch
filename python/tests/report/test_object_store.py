@@ -24,15 +24,17 @@ class FakeRunner:
         self.responses = list(responses)
         self.download = download
         self.calls: list[tuple[str, ...]] = []
+        self.call_kwargs: list[dict[str, object]] = []
     def run(self, argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         command = tuple(argv)
         self.calls.append(command)
+        self.call_kwargs.append(_kwargs)
         if self.download:
             marker, offset = (("--destination", 1) if "--destination" in command else ("--key", 2))
             _ = Path(command[command.index(marker) + offset]).write_bytes(b"archive")
         return self.responses.pop(0)
 def _store(scheme: str, runner: FakeRunner):
-    environ = {config.ENV_LARCH_R2_ACCOUNT_ID: _ACCOUNT, config.ENV_LARCH_R2_ENDPOINT: _ENDPOINT}
+    environ = {config.ENV_LARCH_BINARY: "/fixture/larch", config.ENV_LARCH_R2_ACCOUNT_ID: _ACCOUNT, config.ENV_LARCH_R2_ENDPOINT: _ENDPOINT}
     storage = ToolRepositoryStorage(StorageBase(scheme, "bucket"), "larch")
     return object_store_for(storage, environ=environ, runner=cast("proc.Runner", runner))
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
@@ -44,6 +46,65 @@ def test_preflight_lists_only_the_tool_repository_prefix(scheme: str) -> None:
     assert scheme == "gs" or runner.calls[0][runner.calls[0].index("--max-keys") + 1] == "1"
     with pytest.raises((ObjectStoreError, RuntimeError)):
         _store(scheme, FakeRunner(_result(1, {"objects": [{"key": "larch/larch/run"}]}))).preflight_prefix()
+
+
+def test_gcs_preflight_builds_fresh_checkout_before_verified_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    (plugin_root / ".git").mkdir(parents=True)
+    entrypoint = plugin_root / "scripts" / "larch.sh"
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_ROOT, str(plugin_root))
+    runner = FakeRunner(_result(), _result(payload={"unexpected": "output"}))
+    storage = ToolRepositoryStorage(StorageBase("gs", "bucket"), "larch")
+
+    object_store_for(storage, environ={}, runner=cast("proc.Runner", runner)).preflight_prefix()
+
+    assert runner.calls == [
+        (config.CARGO_CLI, "build", "--quiet", "--locked", "--release", "--package", "larch-cli", "--target-dir", str(plugin_root / "target")),
+        (str(entrypoint), "object-store", "gcs", "--operation", "preflight", "--bucket", "bucket", "--prefix", "larch/larch/"),
+    ]
+    assert runner.call_kwargs[0]["cwd"] == str(plugin_root)
+    runtime_environment = cast("dict[str, str]", runner.call_kwargs[1]["env"])
+    assert runtime_environment[config.ENV_CLAUDE_PLUGIN_ROOT] == str(plugin_root)
+    assert runtime_environment[config.ENV_LARCH_BINARY] == str(plugin_root / "target" / "release" / "larch")
+
+
+def test_gcs_preflight_reports_fresh_checkout_build_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    (plugin_root / ".git").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_ROOT, str(plugin_root))
+    storage = ToolRepositoryStorage(StorageBase("gs", "bucket"), "larch")
+
+    with pytest.raises(ObjectStoreError) as failure:
+        object_store_for(storage, environ={}, runner=cast("proc.Runner", FakeRunner(_result(1)))).preflight_prefix()
+
+    assert failure.value.kind is ObjectStoreErrorKind.CONFIGURATION
+    assert failure.value.operation == "checkout-build"
+
+
+def test_gcs_preflight_rejects_symlinked_checkout_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    (plugin_root / ".git").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (plugin_root / "target").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_ROOT, str(plugin_root))
+    runner = FakeRunner()
+    storage = ToolRepositoryStorage(StorageBase("gs", "bucket"), "larch")
+
+    with pytest.raises(ObjectStoreError) as failure:
+        object_store_for(storage, environ={}, runner=cast("proc.Runner", runner)).preflight_prefix()
+
+    assert failure.value.operation == "checkout-build"
+    assert not runner.calls
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
 def test_list_paginates_from_empty_prefix(scheme: str) -> None:
     if scheme == "gs":

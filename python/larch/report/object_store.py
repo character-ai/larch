@@ -27,8 +27,10 @@ class RemoteObject(NamedTuple):
 class CommandObjectStore:
     """S3/R2 CLI and verified GCS Rust-command adapter."""
 
-    def __init__(self, root: Any, runner: proc.Runner, endpoint: str | None = None) -> None:
+    def __init__(self, root: Any, runner: proc.Runner, endpoint: str | None = None, environ: Mapping[str, str] | None = None) -> None:
         self.root, self.runner, self.endpoint = root, runner, endpoint
+        self.environ: dict[str, str] = dict(os.environ if environ is None else environ)
+        self._gcs_runtime_environment: dict[str, str] | None = None
     def _key(self, relative: str, *, empty: bool = False) -> str:
         parts = relative.split("/") if relative else []
         invalid = relative.startswith("/") or (not relative and not empty)
@@ -46,8 +48,32 @@ class CommandObjectStore:
         return [config.AWS_CLI, *args, *(["--endpoint-url", self.endpoint] if self.endpoint else [])]
     def _gcs(self, operation: str, *args: str) -> list[str]:
         return [str(larch_entrypoint()), "object-store", "gcs", "--operation", operation, "--bucket", self.root.bucket, *args]
+    def _gcs_environment(self) -> Mapping[str, str]:
+        if self._gcs_runtime_environment is not None:
+            return self._gcs_runtime_environment
+        entrypoint: Path = larch_entrypoint()
+        plugin_root: Path = entrypoint.parent.parent
+        environment: dict[str, str] = dict(self.environ)
+        environment[config.ENV_CLAUDE_PLUGIN_ROOT] = str(plugin_root)
+        checkout_marker: Path = plugin_root / ".git"
+        if not environment.get(config.ENV_LARCH_BINARY) and (checkout_marker.exists() or checkout_marker.is_symlink()):
+            target_dir: Path = plugin_root / "target"
+            if target_dir.is_symlink():
+                raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, self.root.scheme, "checkout-build")
+            build: proc.CommandResult = self.runner.run(
+                [config.CARGO_CLI, "build", "--quiet", "--locked", "--release", "--package", "larch-cli", "--target-dir", str(target_dir)],
+                timeout=config.STORAGE_GCS_CHECKOUT_BUILD_TIMEOUT_SEC,
+                cwd=str(plugin_root),
+                env=environment,
+                check=False,
+            )
+            if build.returncode:
+                raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, self.root.scheme, "checkout-build")
+            environment[config.ENV_LARCH_BINARY] = str(target_dir / "release" / "larch")
+        self._gcs_runtime_environment = environment
+        return environment
     def _run(self, command: Sequence[str], operation: str) -> proc.CommandResult:
-        result = self.runner.run(command, timeout=300, check=False)
+        result = self.runner.run(command, timeout=300, env=self._gcs_environment() if self.root.scheme == "gs" else None, check=False)
         if result.returncode:
             raise _command_error(self.root.scheme, operation, result)
         return result
@@ -154,13 +180,13 @@ class CommandObjectStore:
 def object_store_for(root: Any, *, environ: Mapping[str, str] | None = None, runner: proc.Runner | None = None) -> CommandObjectStore:
     active = proc.ProcRunner() if runner is None else runner
     if root.scheme in {"s3", "gs"}:
-        return CommandObjectStore(root, active)
+        return CommandObjectStore(root, active, environ=environ)
     if root.scheme == "r2":
         environment = os.environ if environ is None else environ
         account = environment.get(config.ENV_LARCH_R2_ACCOUNT_ID, "")
         endpoint = environment.get(config.ENV_LARCH_R2_ENDPOINT, "")
         if _valid_r2_endpoint(account, endpoint):
-            return CommandObjectStore(root, active, endpoint)
+            return CommandObjectStore(root, active, endpoint, environ=environ)
     raise ObjectStoreError(ObjectStoreErrorKind.CONFIGURATION, root.scheme, "configure")
 def _valid_r2_endpoint(account: str, endpoint: str) -> bool:
     parsed = urlsplit(endpoint)

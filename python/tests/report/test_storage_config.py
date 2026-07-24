@@ -64,6 +64,27 @@ class FakeRunner:
         return self.results.pop(0)
 
 
+def test_gcs_checkout_build_failure_has_actionable_preflight_guidance(
+) -> None:
+    storage = storage_config.ToolRepositoryStorage(
+        storage_config.StorageBase("gs", "bucket"),
+        "larch",
+    )
+    runner = FakeRunner(_result(returncode=1))
+
+    with pytest.raises(
+        storage_config.StoragePreflightError,
+        match="verify Cargo is installed",
+    ):
+        storage_config.preflight_tool_repository(
+            storage=storage,
+            environ={},
+            runner=runner,
+        )
+
+    assert runner.calls[0][0] == config.CARGO_CLI
+
+
 def _load(
     repo_root: Path,
     *,
