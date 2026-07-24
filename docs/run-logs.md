@@ -23,6 +23,30 @@ retain that returned root for all reads. Their explicit `--log-root` options
 remain offline-fixture bypasses that do not load storage configuration or use
 the network.
 
+## Tool-first layout migration
+
+Issue `character-ai/larch#7966` migrates the retained repository-first S3
+corpora to the tool-first layout:
+
+```text
+s3://zhupanov/larch/run-logs/
+  -> s3://zhupanov/larch/larch/run-logs/
+s3://zhupanov/agent-lint/run-logs/
+  -> s3://zhupanov/larch/agent-lint/run-logs/
+```
+
+The relative key remains `run-logs/<skill>/<run-id>.tar.gz`. Modern larch and
+agent-lint archives are copied byte for byte. Historical manifest-less larch
+archives are validated against the pinned migration inventory and rebuilt with
+the current canonical archive manifest. Every target then passes the normal
+manifest-based materializer.
+
+The migration writes its immutable audit report under
+`s3://zhupanov/larch/larch/migration-reports/`, outside `run-logs/`. It retains
+the old source prefixes and migration provenance for rollback. Issue
+`character-ai/larch#7967` owns any later source deletion after its retention
+and verification gates pass.
+
 ## Universal skill lifecycle
 
 `skills/shared/run-lifecycle.md` defines the shared start and terminal contract,
