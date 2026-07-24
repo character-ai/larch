@@ -187,7 +187,7 @@ Use this one fragment for all three marker-producing paths: default mode after S
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
-Run the whole fragment as one Bash call. `learn-from-bugs state-publish` writes the reconciled marker under `$XDG_STATE_HOME/larch/analysis-state/<repo>/learn-from-bugs/` with private permissions and no Git mutation:
+Run the whole fragment as one Bash call. `learn-from-bugs state-publish` writes the reconciled marker under `$XDG_STATE_HOME/larch/analysis-state/v2/<client-repo>/<storage-origin-id>/learn-from-bugs/` with private permissions and no Git mutation:
 
 ```bash
 set -euo pipefail

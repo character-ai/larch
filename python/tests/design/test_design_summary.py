@@ -759,7 +759,15 @@ def test_published_run_logs_path_requires_completed_log_publication(tmp_path: Pa
     assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "N/A"  # pyright: ignore[reportPrivateUsage]
     repo = tmp_path / "repo"
     repo.mkdir()
-    _ = (repo / "config.toml").write_text('[logs]\nuri = "s3://bucket/root"\n', encoding="utf-8")
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/repo.git"],
+        cwd=repo,
+        check=True,
+    )
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://bucket"\n', encoding="utf-8"
+    )
     _ = (tmp_path / "source-env.sh").write_text(f"REPO_ROOT={repo}\n", encoding="utf-8")
     _ = result.write_text("LOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
     assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "provider `s3`, skill `design`, run ID `run-1`"  # pyright: ignore[reportPrivateUsage]

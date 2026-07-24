@@ -15,7 +15,10 @@ from typing import Protocol, cast
 from larch.core import config
 from larch.report import run_log_archive
 from larch.report.run_log_batch import validate_run_id_slug
-from larch.report.storage_config import LegacyMigrationDescriptor, StorageRoot
+from larch.report.storage_config import (
+    LegacyMigrationDescriptor,
+    StorageBase,
+)
 
 _INVENTORY_KEYS: frozenset[str] = frozenset(
     {"archives", "schema", "source_commit", "source_files", "storage_root", "totals"}
@@ -142,7 +145,7 @@ def _canonical_path(value: object, *, label: str) -> str:
 
 
 def _validated_archive_row(  # noqa: C901 - strict row validation stays transactional
-    raw: object, *, storage_root: StorageRoot
+    raw: object, *, storage_root: StorageBase
 ) -> _ArchiveRow:
     if not isinstance(raw, dict):
         raise TypeError("migration inventory archive row must be an object")
@@ -192,8 +195,10 @@ def _validated_archive_row(  # noqa: C901 - strict row validation stays transact
         )
         if not valid_identity:
             raise ValueError("migration inventory run archive identity is invalid")
-    elif skill is not None or run_id is not None or not relative_key.startswith(
-        "migration/"
+    elif (
+        skill is not None
+        or run_id is not None
+        or not relative_key.startswith("migration/")
     ):
         raise ValueError("migration inventory residual archive identity is invalid")
     return _ArchiveRow(
@@ -264,7 +269,7 @@ def parse_inventory(  # noqa: C901,PLR0912,PLR0915 - strict schema cross-checks 
     encoded: bytes,
     *,
     descriptor: LegacyMigrationDescriptor,
-    storage_root: StorageRoot,
+    storage_root: StorageBase,
 ) -> LegacyMigrationInventory:
     """Parse and cross-check a hash-verified migration inventory."""
     if len(encoded) > config.RUN_LOG_MIGRATION_INVENTORY_MAX_BYTES:
@@ -406,7 +411,9 @@ def _read_inventory_bytes(path: Path) -> bytes:
         if opened.st_size > config.RUN_LOG_MIGRATION_INVENTORY_MAX_BYTES:
             raise ValueError("migration inventory exceeds byte limit")
         with os.fdopen(descriptor, "rb", closefd=False) as handle:
-            encoded: bytes = handle.read(config.RUN_LOG_MIGRATION_INVENTORY_MAX_BYTES + 1)
+            encoded: bytes = handle.read(
+                config.RUN_LOG_MIGRATION_INVENTORY_MAX_BYTES + 1
+            )
         if len(encoded) != opened.st_size:
             raise ValueError("migration inventory changed while reading")
         return encoded
@@ -418,7 +425,7 @@ def download_and_parse_inventory(
     *,
     store: MigrationObjectStore,
     descriptor: LegacyMigrationDescriptor,
-    storage_root: StorageRoot,
+    storage_root: StorageBase,
     temporary_dir: Path,
 ) -> LegacyMigrationInventory:
     """Download one pinned inventory, verify its hash, and parse it strictly."""

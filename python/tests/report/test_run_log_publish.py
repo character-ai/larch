@@ -12,8 +12,12 @@ import pytest
 
 from larch.core import repo_roots
 from larch.report import run_log_archive, run_log_publish, run_logs, storage_config
-from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, RemoteObject
-from larch.report.storage_config import StorageRoot
+from larch.report.object_store import (
+    ObjectStoreError,
+    ObjectStoreErrorKind,
+    RemoteObject,
+)
+from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 
 
 class MemoryObjectStore:
@@ -35,7 +39,9 @@ class MemoryObjectStore:
                 self.fail_uploads -= 1
                 raise ObjectStoreError(ObjectStoreErrorKind.TRANSPORT, "fake", "upload")
             if key in self.objects:
-                raise ObjectStoreError(ObjectStoreErrorKind.ALREADY_EXISTS, "fake", "upload")
+                raise ObjectStoreError(
+                    ObjectStoreErrorKind.ALREADY_EXISTS, "fake", "upload"
+                )
             self.objects[key] = content
         return RemoteObject(key, len(content), "etag", None)
 
@@ -52,7 +58,9 @@ class MemoryObjectStore:
         return RemoteObject(key, len(content), "etag", None)
 
 
-def _fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path, StorageRoot]:
+def _fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path, ToolRepositoryStorage]:
     repo: Path = tmp_path / "literal repo"
     staging: Path = tmp_path / "staging"
     cache_home: Path = tmp_path / "cache"
@@ -61,9 +69,12 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path, StorageRoot]:
     staging.mkdir()
     nested: Path = staging / "nested"
     nested.mkdir()
-    _ = (staging / "manifest.json").write_text('{"issue_number":7818}\n', encoding="utf-8")
+    _ = (staging / "manifest.json").write_text(
+        '{"issue_number":7818}\n', encoding="utf-8"
+    )
     _ = (nested / "result.txt").write_text("published\n", encoding="utf-8")
-    return repo, staging, cache_home, state_home, StorageRoot("s3", "bucket", "larch")
+    storage = ToolRepositoryStorage(StorageBase("s3", "bucket"), "literal-repo")
+    return repo, staging, cache_home, state_home, storage
 
 
 def _publish(
@@ -72,7 +83,7 @@ def _publish(
     staging: Path | None,
     cache_home: Path,
     state_home: Path,
-    storage_root: StorageRoot,
+    storage_root: ToolRepositoryStorage,
     store: MemoryObjectStore,
 ) -> run_log_publish.PublicationResult:
     return run_log_publish.publish_run(
@@ -98,7 +109,9 @@ def _paths(
     return run_log_publish.publication_paths(
         request=run_log_publish.PublicationRequest(
             repo_root=repo,
-            storage_root=StorageRoot("s3", "bucket", "larch"),
+            storage_root=ToolRepositoryStorage(
+                StorageBase("s3", "bucket"), "literal-repo"
+            ),
             skill="implement",
             run_id="run-7818",
             staging_root=None,
@@ -123,9 +136,13 @@ def test_publish_uses_exact_key_and_promotes_staging_without_download(
     store = MemoryObjectStore()
 
     def unexpected_materialization(**_kwargs: object) -> object:
-        raise AssertionError("the normal publication path must not decompress its archive")
+        raise AssertionError(
+            "the normal publication path must not decompress its archive"
+        )
 
-    monkeypatch.setattr(run_log_archive, "materialize_run_archive", unexpected_materialization)
+    monkeypatch.setattr(
+        run_log_archive, "materialize_run_archive", unexpected_materialization
+    )
     result = _publish(
         repo=repo,
         staging=staging,
@@ -138,10 +155,23 @@ def test_publish_uses_exact_key_and_promotes_staging_without_download(
     assert result.remote_key == "run-logs/implement/run-7818.tar.gz"
     assert result.remote_status is run_log_publish.RemotePublicationStatus.CREATED
     assert result.cache_status is run_log_publish.CachePublicationStatus.PROMOTED
-    assert result.cache_dir == cache_home / "larch/run-logs/literal repo/implement/run-7818"
-    assert (result.cache_dir / "nested/result.txt").read_text(encoding="utf-8") == "published\n"
+    assert result.cache_dir == (
+        cache_home
+        / "larch"
+        / "run-logs"
+        / "v2"
+        / storage_root.client_repo
+        / storage_root.storage_origin_id
+        / "implement"
+        / "run-7818"
+    )
+    assert (result.cache_dir / "nested/result.txt").read_text(
+        encoding="utf-8"
+    ) == "published\n"
     assert store.download_calls == 0
-    assert not _paths(repo=repo, cache_home=cache_home, state_home=state_home).pending_dir.exists()
+    assert not _paths(
+        repo=repo, cache_home=cache_home, state_home=state_home
+    ).pending_dir.exists()
 
 
 def test_publish_log_run_finalizes_review_staging_without_git(
@@ -174,7 +204,16 @@ def test_publish_log_run_finalizes_review_staging_without_git(
     )
 
     assert result.remote_key == f"run-logs/review/{run_id}.tar.gz"
-    assert result.cache_dir == cache_home / "larch/run-logs/literal repo/review" / run_id
+    assert result.cache_dir == (
+        cache_home
+        / "larch"
+        / "run-logs"
+        / "v2"
+        / storage_root.client_repo
+        / storage_root.storage_origin_id
+        / "review"
+        / run_id
+    )
     assert scrub_violations == 1
     cached = (result.cache_dir / "review-round-summary.md").read_text(encoding="utf-8")
     assert raw_token not in cached
@@ -236,7 +275,9 @@ def test_retry_materializes_pending_archive_when_live_staging_changed(
             storage_root=storage_root,
             store=store,
         )
-    _ = (staging / "nested/result.txt").write_text("new terminal state\n", encoding="utf-8")
+    _ = (staging / "nested/result.txt").write_text(
+        "new terminal state\n", encoding="utf-8"
+    )
     result = _publish(
         repo=repo,
         staging=staging,
@@ -247,7 +288,9 @@ def test_retry_materializes_pending_archive_when_live_staging_changed(
     )
 
     assert result.cache_status is run_log_publish.CachePublicationStatus.MATERIALIZED
-    assert (result.cache_dir / "nested/result.txt").read_text(encoding="utf-8") == "published\n"
+    assert (result.cache_dir / "nested/result.txt").read_text(
+        encoding="utf-8"
+    ) == "published\n"
 
 
 def test_matching_remote_collision_is_idempotent_but_different_content_fails(
@@ -322,7 +365,9 @@ def test_cache_failure_after_upload_retries_from_archive_without_overwrite(
     def interrupted_promotion(**_kwargs: object) -> object:
         raise OSError("simulated cache promotion crash")
 
-    monkeypatch.setattr(run_log_archive, "promote_staging_run_directory", interrupted_promotion)
+    monkeypatch.setattr(
+        run_log_archive, "promote_staging_run_directory", interrupted_promotion
+    )
     with pytest.raises(OSError, match="simulated cache promotion crash"):
         _ = _publish(
             repo=repo,
@@ -335,7 +380,9 @@ def test_cache_failure_after_upload_retries_from_archive_without_overwrite(
     assert paths.pending_archive.is_file()
     assert len(store.objects) == 1
 
-    monkeypatch.setattr(run_log_archive, "promote_staging_run_directory", original_promote)
+    monkeypatch.setattr(
+        run_log_archive, "promote_staging_run_directory", original_promote
+    )
     result = _publish(
         repo=repo,
         staging=None,
@@ -413,7 +460,9 @@ def test_concurrent_publications_converge_on_one_remote_and_one_valid_cache(
         except BaseException as exc:  # test thread must surface every failure
             failures.append(exc)
 
-    threads: tuple[threading.Thread, ...] = tuple(threading.Thread(target=worker) for _ in range(2))
+    threads: tuple[threading.Thread, ...] = tuple(
+        threading.Thread(target=worker) for _ in range(2)
+    )
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -435,7 +484,9 @@ def test_concurrent_publications_converge_on_one_remote_and_one_valid_cache(
     assert not paths.pending_dir.exists()
 
 
-def test_pending_identity_mismatch_fails_closed_and_preserves_archive(tmp_path: Path) -> None:
+def test_pending_identity_mismatch_fails_closed_and_preserves_archive(
+    tmp_path: Path,
+) -> None:
     repo, staging, cache_home, state_home, storage_root = _fixture(tmp_path)
     store = MemoryObjectStore(fail_uploads=1)
     paths = _paths(repo=repo, cache_home=cache_home, state_home=state_home)
@@ -449,8 +500,12 @@ def test_pending_identity_mismatch_fails_closed_and_preserves_archive(tmp_path: 
             store=store,
         )
 
-    changed_root = StorageRoot("s3", "other-bucket", "larch")
-    with pytest.raises(run_log_publish.PublicationError, match="identity"):
+    changed_root = ToolRepositoryStorage(
+        StorageBase("s3", "other-bucket"), "literal-repo"
+    )
+    with pytest.raises(
+        run_log_publish.PublicationError, match="no durable pending archive"
+    ):
         _ = _publish(
             repo=repo,
             staging=None,
@@ -463,6 +518,75 @@ def test_pending_identity_mismatch_fails_closed_and_preserves_archive(tmp_path: 
     assert paths.pending_archive.is_file()
 
 
+def test_checkout_names_do_not_select_cache_or_mutable_state(tmp_path: Path) -> None:
+    cache_home = tmp_path / "cache"
+    state_home = tmp_path / "state"
+    first_repo = tmp_path / "same-name-a" / "checkout"
+    second_repo = tmp_path / "same-name-b" / "checkout"
+    first_repo.mkdir(parents=True)
+    second_repo.mkdir(parents=True)
+    shared_origin = ToolRepositoryStorage(StorageBase("s3", "bucket"), "shared-repo")
+    other_origin = ToolRepositoryStorage(StorageBase("s3", "bucket"), "other-repo")
+    changed_base = ToolRepositoryStorage(StorageBase("gs", "bucket"), "shared-repo")
+
+    shared_first = run_log_publish.publication_paths(
+        request=run_log_publish.PublicationRequest(
+            repo_root=first_repo,
+            storage_root=shared_origin,
+            skill="review",
+            run_id="run-1",
+            staging_root=None,
+            cache_home=cache_home,
+            state_home=state_home,
+        ),
+        environ={},
+    )
+    shared_second = run_log_publish.publication_paths(
+        request=run_log_publish.PublicationRequest(
+            repo_root=second_repo,
+            storage_root=shared_origin,
+            skill="review",
+            run_id="run-1",
+            staging_root=None,
+            cache_home=cache_home,
+            state_home=state_home,
+        ),
+        environ={},
+    )
+    unrelated = run_log_publish.publication_paths(
+        request=run_log_publish.PublicationRequest(
+            repo_root=second_repo,
+            storage_root=other_origin,
+            skill="review",
+            run_id="run-1",
+            staging_root=None,
+            cache_home=cache_home,
+            state_home=state_home,
+        ),
+        environ={},
+    )
+    different_base = run_log_publish.publication_paths(
+        request=run_log_publish.PublicationRequest(
+            repo_root=first_repo,
+            storage_root=changed_base,
+            skill="review",
+            run_id="run-1",
+            staging_root=None,
+            cache_home=cache_home,
+            state_home=state_home,
+        ),
+        environ={},
+    )
+
+    assert shared_first == shared_second
+    assert shared_first.cache_dir != unrelated.cache_dir
+    assert shared_first.pending_dir != unrelated.pending_dir
+    assert shared_first.lock_file != unrelated.lock_file
+    assert shared_first.cache_dir != different_base.cache_dir
+    assert shared_first.pending_dir != different_base.pending_dir
+    assert shared_first.lock_file != different_base.lock_file
+
+
 def test_publish_cli_returns_nonzero_without_clean_success_on_terminal_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -473,7 +597,7 @@ def test_publish_cli_returns_nonzero_without_clean_success_on_terminal_failure(
     def fake_repo_root(_start: Path) -> Path:
         return repo
 
-    def fake_storage_root(*, start: Path) -> StorageRoot:
+    def fake_storage_root(*, start: Path) -> ToolRepositoryStorage:
         assert start == repo
         return storage_root
 
@@ -481,7 +605,11 @@ def test_publish_cli_returns_nonzero_without_clean_success_on_terminal_failure(
         raise ObjectStoreError(ObjectStoreErrorKind.TRANSPORT, "fake", "upload")
 
     monkeypatch.setattr(repo_roots, "consumer_repo_root", fake_repo_root)
-    monkeypatch.setattr(storage_config, "discover_storage_root", fake_storage_root)
+    monkeypatch.setattr(
+        storage_config,
+        "discover_tool_repository_storage",
+        fake_storage_root,
+    )
     monkeypatch.setattr(run_log_publish, "publish_run", fail_publish)
 
     rc: int = run_log_publish.main(

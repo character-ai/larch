@@ -59,8 +59,20 @@ class CommandObjectStore:
         if not isinstance(value, dict):
             raise ObjectStoreError(ObjectStoreErrorKind.INVALID_RESPONSE, self.root.scheme, operation)
         return cast("dict[str, object]", value)
-    def preflight_bucket(self) -> None:
-        command = self._gcs("preflight") if self.root.scheme == "gs" else self._aws("s3", "ls", f"s3://{self.root.bucket}")
+    def preflight_prefix(self) -> None:
+        remote_prefix = self._list_prefix("")
+        command = (
+            self._gcs("preflight", "--prefix", remote_prefix)
+            if self.root.scheme == "gs"
+            else self._aws(
+                "s3api", "list-objects-v2",
+                "--bucket", self.root.bucket,
+                "--prefix", remote_prefix,
+                "--max-keys", "1",
+                "--no-paginate",
+                "--output", "json",
+            )
+        )
         _ = self._run(command, "preflight")
     def list_objects(self, prefix: str = "") -> tuple[RemoteObject, ...]:
         remote_prefix, token = self._list_prefix(prefix), None

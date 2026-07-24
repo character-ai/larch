@@ -28,15 +28,13 @@ from larch.errors import ShipError
 
 from larch.git import gh
 from larch.issue import issue_wire
-from larch.report import analysis_state, run_log_corpus
+from larch.report import analysis_state, run_log_corpus, storage_config
 from larch.review import voting
 from larch.review.review_types import parse_canonical_heading
 
 DEFAULT_VERIFY_CAP = 100
 LEDGER_PATH = Path("rejected-analysis/ledger.tsv")
 VERDICT_SIDECAR = Path("rejected-analysis/verdicts.tsv")
-LEGACY_LEDGER_PATH = Path("larch-logs/rejected-analysis-ledger.tsv")
-LEGACY_VERDICT_SIDECAR = Path("larch-logs/rejected-analysis-verdicts.tsv")
 INGEST_STATUS_FILE = "ingest-status.jsonl"
 FINDING_HASH_FIELDS = ("file_path", "concern")
 LEDGER_SCHEMA_VERSION = "1"
@@ -1001,6 +999,7 @@ def prepare(
     verify_cap: int = DEFAULT_VERIFY_CAP,
     repo_root: Path | str | None = None,
     state_root: Path | str | None = None,
+    storage: storage_config.ToolRepositoryStorage | None = None,
     runner: proc.Runner | None = None,
     open_issues: Sequence[OpenIssue] | None = (),
 ) -> PrepareResult:
@@ -1018,7 +1017,14 @@ def prepare(
             )
         root = discovered_root
         try:
-            logs = run_log_corpus.synchronized_repository_log_root(repo_root=root)
+            logs = (
+                run_log_corpus.synchronized_repository_log_root(repo_root=root)
+                if storage is None
+                else run_log_corpus.synchronized_repository_log_root(
+                    repo_root=root,
+                    storage=storage,
+                )
+            )
         except run_log_corpus.RunLogCorpusError as exc:
             raise RejectedAnalysisError(str(exc)) from exc
     else:
@@ -1030,8 +1036,6 @@ def prepare(
     active_runner = runner or proc.ProcRunner()
     issues = _query_open_issues(active_runner, repo_root=root) if open_issues is None else list(open_issues)
     ledger_path = mutable_root / LEDGER_PATH
-    if state_root is not None:
-        _ = analysis_state.import_legacy_file(path=ledger_path, legacy_path=root / LEGACY_LEDGER_PATH)
     committed_hashes = _read_ledger_hashes(ledger_path)
     all_findings: list[RejectedFinding] = []
     ledger_entries: list[LedgerEntry] = []
@@ -1091,6 +1095,7 @@ def prepare(
     _write_json(wd / "candidates.json", [_candidate_to_json(candidate) for candidate in candidates])
     _write_jsonl(wd / "drops.jsonl", [entry.to_row() for entry in ledger_entries])
     (wd / "repo-root.txt").write_text(str(root) + "\n", encoding="utf-8")
+    (wd / "state-root.txt").write_text(str(mutable_root) + "\n", encoding="utf-8")
     return PrepareResult(
         work_dir=wd,
         verify_count=len(candidates),
@@ -1480,9 +1485,6 @@ def record(
     root = Path(repo_root or Path.cwd()).resolve()
     mutable_root = Path(state_root).resolve() if state_root is not None else root
     ledger_path = mutable_root / LEDGER_PATH
-    if state_root is not None:
-        _ = analysis_state.import_legacy_file(path=ledger_path, legacy_path=root / LEGACY_LEDGER_PATH)
-        _ = analysis_state.import_legacy_file(path=mutable_root / VERDICT_SIDECAR, legacy_path=root / LEGACY_VERDICT_SIDECAR)
     pending_rows = _merge_ledger_rows(_read_ledger_entries(wd / "ledger-pending.tsv"))
     status_map = _load_ingest_status_map(wd)
     candidate_list = _load_candidates(wd)
@@ -1613,13 +1615,27 @@ def prepare_main(argv: list[str]) -> int:
         repo_root = repo_roots.consumer_repo_root(Path.cwd().resolve())
         if repo_root is None:
             raise RejectedAnalysisError("could not discover a Git repository root")
+        storage = (
+            None
+            if args.log_root
+            else storage_config.load_tool_repository_storage(repo_root=repo_root)
+        )
+        state_root = (
+            repo_root
+            if storage is None
+            else analysis_state.repository_state_root(
+                repo_root=repo_root,
+                storage=storage,
+            )
+        )
         result = prepare(
             days=args.days,
             log_root=args.log_root or None,
             work_dir=args.work_dir or None,
             verify_cap=args.verify_cap,
             repo_root=repo_root,
-            state_root=analysis_state.repository_state_root(repo_root=repo_root),
+            state_root=state_root,
+            storage=storage,
             open_issues=None,
         )
     except (RejectedAnalysisError, ValueError) as exc:
@@ -1678,6 +1694,14 @@ def _repo_root_from_work_dir(work_dir: Path) -> Path | None:
     return Path(text).resolve() if text else None
 
 
+def _state_root_from_work_dir(work_dir: Path) -> Path | None:
+    path = work_dir / "state-root.txt"
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    return Path(text).resolve() if text else None
+
+
 def record_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="rejected-analysis record")
     parser.add_argument("--work-dir", required=True)
@@ -1689,6 +1713,7 @@ def record_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     work_dir = Path(args.work_dir)
     repo_root = Path(args.repo_root).resolve() if args.repo_root else _repo_root_from_work_dir(work_dir)
+    state_root = _state_root_from_work_dir(work_dir)
     try:
         result = record(
             work_dir=args.work_dir,
@@ -1697,7 +1722,7 @@ def record_main(argv: list[str]) -> int:
             issues_failed=args.issues_failed,
             launch_failures=args.launch_failures,
             repo_root=repo_root,
-            state_root=analysis_state.repository_state_root(repo_root=repo_root) if repo_root else None,
+            state_root=state_root,
         )
     except RejectedAnalysisError as exc:
         logging_util.diagnostic(f"rejected-analysis record: {exc}")

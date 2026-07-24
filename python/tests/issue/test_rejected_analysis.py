@@ -127,6 +127,57 @@ def test_prepare_default_synced_corpus_matches_explicit_fixture(
     assert sync_calls == 1
 
 
+def test_prepare_main_log_root_bypasses_repository_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log_root = tmp_path / "offline-logs"
+    log_root.mkdir()
+    work_dir = tmp_path / "work"
+
+    def repo_root(_start: Path | str | None = None) -> Path:
+        return tmp_path
+
+    def no_open_issues(
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[ra.OpenIssue]:
+        return []
+
+    monkeypatch.setattr(
+        ra.repo_roots,
+        "consumer_repo_root",
+        repo_root,
+    )
+    monkeypatch.setattr(ra, "_query_open_issues", no_open_issues)
+
+    def fail_storage(**_kwargs: object) -> None:
+        raise AssertionError("offline --log-root must not load repository storage")
+
+    monkeypatch.setattr(
+        ra.storage_config,
+        "load_tool_repository_storage",
+        fail_storage,
+    )
+
+    assert (
+        ra.prepare_main(
+            [
+                "--days",
+                "7",
+                "--log-root",
+                str(log_root),
+                "--work-dir",
+                str(work_dir),
+            ]
+        )
+        == 0
+    )
+    assert (work_dir / "state-root.txt").read_text(encoding="utf-8").strip() == str(
+        tmp_path
+    )
+
+
 def test_prepare_keeps_one_yes_and_ledgers_zero_yes_oos_and_duplicates(tmp_path: Path) -> None:
     _write_implement_fixture(tmp_path, run_id="RUN-A", finding_id="FINDING_1", json_id="REJ_CR1_1", concern="Missing required check", path="python/foo.py:12")
     _write_implement_fixture(tmp_path, run_id="RUN-B", finding_id="FINDING_2", json_id="REJ_CR1_2", concern="Zero yes concern", path="python/bar.py:5", vote1="NO", vote2="NO")

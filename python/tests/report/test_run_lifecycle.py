@@ -16,8 +16,12 @@ import pytest
 
 from larch.core import alias_skill
 from larch.report import run_lifecycle, run_log_manifest, run_log_publish, run_logs
-from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, RemoteObject
-from larch.report.storage_config import StorageRoot
+from larch.report.object_store import (
+    ObjectStoreError,
+    ObjectStoreErrorKind,
+    RemoteObject,
+)
+from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 
 
 class MemoryObjectStore:
@@ -35,9 +39,7 @@ class MemoryObjectStore:
             self.upload_calls.append(key)
             if self.fail_uploads:
                 self.fail_uploads -= 1
-                raise ObjectStoreError(
-                    ObjectStoreErrorKind.TRANSPORT, "fake", "upload"
-                )
+                raise ObjectStoreError(ObjectStoreErrorKind.TRANSPORT, "fake", "upload")
             if key in self.objects:
                 raise ObjectStoreError(
                     ObjectStoreErrorKind.ALREADY_EXISTS, "fake", "upload"
@@ -54,7 +56,9 @@ class MemoryObjectStore:
 
 
 @pytest.fixture
-def lifecycle_fixture(tmp_path: Path) -> tuple[Path, dict[str, str], StorageRoot]:
+def lifecycle_fixture(
+    tmp_path: Path,
+) -> tuple[Path, dict[str, str], ToolRepositoryStorage]:
     repo = tmp_path / "consumer"
     repo.mkdir()
     _ = subprocess.run(
@@ -67,7 +71,11 @@ def lifecycle_fixture(tmp_path: Path) -> tuple[Path, dict[str, str], StorageRoot
         "XDG_STATE_HOME": str(tmp_path / "state"),
         "XDG_CACHE_HOME": str(tmp_path / "cache"),
     }
-    return repo, environment, StorageRoot("s3", "bucket", "larch")
+    return (
+        repo,
+        environment,
+        ToolRepositoryStorage(StorageBase("s3", "bucket"), "consumer"),
+    )
 
 
 def test_final_report_renderer_names_terminal_identity() -> None:
@@ -79,9 +87,100 @@ def test_final_report_renderer_names_terminal_identity() -> None:
     assert "Outcome: `success`" in report
 
 
+@pytest.mark.parametrize("changed_identity", ["storage-base", "git-origin"])
+def test_mid_run_repository_identity_change_fails_before_publication(
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+    changed_identity: str,
+) -> None:
+    repo, environment, _storage = lifecycle_fixture
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/consumer.git"],
+        cwd=repo,
+        check=True,
+    )
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://bucket"\n',
+        encoding="utf-8",
+    )
+    started = run_lifecycle.start_run(
+        repo_root=repo,
+        skill="status",
+        run_id=f"identity-change-{changed_identity}",
+        environ=environment,
+        preflight=lambda _storage: None,
+    )
+    if changed_identity == "storage-base":
+        _ = (repo / "tools-config.toml").write_text(
+            '[larch]\nstorage_base_uri = "gs://other-bucket"\n',
+            encoding="utf-8",
+        )
+    else:
+        _ = subprocess.run(
+            [
+                "git",
+                "remote",
+                "set-url",
+                "origin",
+                "git@github.com:fixture/other-repository.git",
+            ],
+            cwd=repo,
+            check=True,
+        )
+    store = MemoryObjectStore()
+
+    with pytest.raises(run_lifecycle.RunLifecycleError):
+        _ = run_lifecycle.finish_run(
+            repo_root=repo,
+            skill="status",
+            run_id=started.run_id,
+            outcome="failure",
+            environ=environment,
+            store=store,
+        )
+
+    assert not store.upload_calls
+
+
+def test_manifest_storage_identity_mismatch_fails_before_terminal_writes(
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+) -> None:
+    repo, environment, storage_root = lifecycle_fixture
+    started = run_lifecycle.start_run(
+        repo_root=repo,
+        skill="status",
+        run_id="manifest-identity-change",
+        environ=environment,
+        storage_root=storage_root,
+        preflight=lambda _storage: None,
+    )
+    manifest_path = started.run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["tool_repo_uri"] = "s3://other/larch/consumer"
+    _ = manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(
+        run_lifecycle.RunLifecycleError,
+        match="configured storage or Git origin changed",
+    ):
+        _ = run_lifecycle.finish_run(
+            repo_root=repo,
+            skill="status",
+            run_id=started.run_id,
+            outcome="failure",
+            environ=environment,
+            storage_root=storage_root,
+            store=MemoryObjectStore(),
+        )
+
+    assert not (started.run_dir / run_lifecycle.UNIVERSAL_FINAL_REPORT).exists()
+
+
 @pytest.mark.parametrize("outcome", ["success", "failure", "cancelled", "early-return"])
 def test_reference_skill_publishes_every_terminal_outcome(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot], outcome: str
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+    outcome: str,
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     preflights: list[str] = []
@@ -121,25 +220,59 @@ def test_reference_skill_publishes_every_terminal_outcome(
 
 @pytest.mark.parametrize("skill", ["implement", "design", "review"])
 def test_specialized_staging_has_one_identity_context_and_terminal_upload(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot], skill: str
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+    skill: str,
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     run_id = f"{skill}-specialized-run"
     log_root = repo.parent / f"{skill}-session" / "larch-logs"
     _ = run_logs.log_init(log_root=log_root, skill=skill, run_id=run_id)
-    started = run_lifecycle.start_run(repo_root=repo, skill=skill, run_id=run_id, log_root=log_root, adopt_existing=True, environ=environment, storage_root=storage_root, preflight=lambda _root: None)
+    started = run_lifecycle.start_run(
+        repo_root=repo,
+        skill=skill,
+        run_id=run_id,
+        log_root=log_root,
+        adopt_existing=True,
+        environ=environment,
+        storage_root=storage_root,
+        preflight=lambda _root: None,
+    )
     artifact = started.run_dir / "specialized-artifact.txt"
     _ = artifact.write_text(f"{skill} artifact\n", encoding="utf-8")
     context = json.loads(started.context_file.read_text(encoding="utf-8"))
     store = MemoryObjectStore()
-    terminal = run_lifecycle.finish_run(repo_root=repo, skill=skill, run_id=run_id, outcome="success", environ=environment, storage_root=storage_root, store=store)
-    assert (context["skill"], context["run_id"], context["log_root"], store.upload_calls, started.context_file.exists(), (terminal.publication.cache_dir / artifact.name).read_text(encoding="utf-8")) == (skill, run_id, str(log_root), [f"run-logs/{skill}/{run_id}.tar.gz"], False, f"{skill} artifact\n")
+    terminal = run_lifecycle.finish_run(
+        repo_root=repo,
+        skill=skill,
+        run_id=run_id,
+        outcome="success",
+        environ=environment,
+        storage_root=storage_root,
+        store=store,
+    )
+    assert (
+        context["skill"],
+        context["run_id"],
+        context["log_root"],
+        store.upload_calls,
+        started.context_file.exists(),
+        (terminal.publication.cache_dir / artifact.name).read_text(encoding="utf-8"),
+    ) == (
+        skill,
+        run_id,
+        str(log_root),
+        [f"run-logs/{skill}/{run_id}.tar.gz"],
+        False,
+        f"{skill} artifact\n",
+    )
 
 
-@pytest.mark.parametrize(("parent_skill", "child_skill"), [("f", "implement"), ("implement", "review")])
+@pytest.mark.parametrize(
+    ("parent_skill", "child_skill"), [("f", "implement"), ("implement", "review")]
+)
 @pytest.mark.parametrize("child_outcome", ["success", "failure"])
 def test_alias_target_and_nested_review_record_parent_child_ids(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot],
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
     parent_skill: str,
     child_skill: str,
     child_outcome: str,
@@ -147,7 +280,7 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
 
-    def preflight(_root: StorageRoot) -> None:
+    def preflight(_root: ToolRepositoryStorage) -> None:
         return
 
     start_run = run_lifecycle.start_run
@@ -166,13 +299,22 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
         skill: str, run_id: str, parent_context: Path | None = None
     ) -> run_lifecycle.LifecycleStart:
         argv = [
-            "--repo-root", str(repo), "--skill", skill, "--run-id", run_id,
+            "--repo-root",
+            str(repo),
+            "--skill",
+            skill,
+            "--run-id",
+            run_id,
         ]
         if parent_context:
             argv.extend(["--lifecycle-parent-context", str(parent_context)])
         assert run_lifecycle.start_main(argv) == 0
         return run_lifecycle.load_run_context(
-            repo_root=repo, skill=skill, run_id=run_id, environ=environment
+            repo_root=repo,
+            skill=skill,
+            run_id=run_id,
+            environ=environment,
+            storage_root=storage_root,
         )
 
     parent = start_from_skill_call(parent_skill, f"{parent_skill}-parent-run")
@@ -180,10 +322,23 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
     if parent_skill == "f":
         generated = StringIO()
         with redirect_stdout(generated):
-            assert alias_skill.generate_main([
-                "--name", "f", "--target", "implement", "--target-dir", "/tmp/skills/f",
-                "--flags", "", "--version", "test",
-            ]) == 0
+            assert (
+                alias_skill.generate_main(
+                    [
+                        "--name",
+                        "f",
+                        "--target",
+                        "implement",
+                        "--target-dir",
+                        "/tmp/skills/f",
+                        "--flags",
+                        "",
+                        "--version",
+                        "test",
+                    ]
+                )
+                == 0
+            )
         call_args = next(
             line.removeprefix("- args: ")
             for line in generated.getvalue().splitlines()
@@ -191,8 +346,12 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
         )
         parsed_args = shlex.split(call_args)
         assert parsed_args[:2] == ["--lifecycle-parent-context", "$CONTEXT_FILE"]
-        child_parent_context = Path(parsed_args[1].replace("$CONTEXT_FILE", str(parent.context_file)))
-    child = start_from_skill_call(child_skill, f"{child_skill}-child-run", child_parent_context)
+        child_parent_context = Path(
+            parsed_args[1].replace("$CONTEXT_FILE", str(parent.context_file))
+        )
+    child = start_from_skill_call(
+        child_skill, f"{child_skill}-child-run", child_parent_context
+    )
     store = MemoryObjectStore()
 
     child_terminal = run_lifecycle.finish_run(
@@ -224,16 +383,22 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
             encoding="utf-8"
         )
     )
-    assert (parent_manifest["skill"], child_manifest["skill"], child_manifest["terminal_outcome"]) == (parent_skill, child_skill, child_outcome)
+    assert (
+        parent_manifest["skill"],
+        child_manifest["skill"],
+        child_manifest["terminal_outcome"],
+    ) == (parent_skill, child_skill, child_outcome)
     assert child_manifest["run_id"] == child.run_id
     assert child_manifest["parent_skill"] == parent.skill
     assert child_manifest["parent_run_id"] == parent.run_id
-    assert child_terminal.publication.remote_key != parent_terminal.publication.remote_key
+    assert (
+        child_terminal.publication.remote_key != parent_terminal.publication.remote_key
+    )
     assert len(store.objects) == 2
 
 
 def test_upload_failure_is_loud_and_retry_uses_durable_pending_archive(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot]
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     started = run_lifecycle.start_run(
@@ -269,9 +434,21 @@ def test_upload_failure_is_loud_and_retry_uses_durable_pending_archive(
     )
     assert paths.pending_archive.is_file()
     assert started.run_dir.is_dir()
-    manifest_before_restart = (started.run_dir / "manifest.json").read_text(encoding="utf-8")
-    _ = run_lifecycle.start_run(repo_root=repo, skill=started.skill, run_id=started.run_id, adopt_existing=True, environ=environment, storage_root=storage_root, preflight=lambda _root: None)
-    assert (started.run_dir / "manifest.json").read_text(encoding="utf-8") == manifest_before_restart
+    manifest_before_restart = (started.run_dir / "manifest.json").read_text(
+        encoding="utf-8"
+    )
+    _ = run_lifecycle.start_run(
+        repo_root=repo,
+        skill=started.skill,
+        run_id=started.run_id,
+        adopt_existing=True,
+        environ=environment,
+        storage_root=storage_root,
+        preflight=lambda _root: None,
+    )
+    assert (started.run_dir / "manifest.json").read_text(
+        encoding="utf-8"
+    ) == manifest_before_restart
 
     retried = run_lifecycle.finish_run(
         repo_root=repo,
@@ -287,7 +464,7 @@ def test_upload_failure_is_loud_and_retry_uses_durable_pending_archive(
 
 
 def test_parent_metadata_must_be_complete(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot]
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     with pytest.raises(ValueError, match="provided together"):
@@ -302,7 +479,7 @@ def test_parent_metadata_must_be_complete(
 
 
 def test_universal_artifacts_extend_existing_skill_requirements(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot]
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     started = run_lifecycle.start_run(
@@ -313,7 +490,9 @@ def test_universal_artifacts_extend_existing_skill_requirements(
         storage_root=storage_root,
         preflight=lambda _root: None,
     )
-    _ = (started.run_dir / "code-review-tally.json").write_text("{}\n", encoding="utf-8")
+    _ = (started.run_dir / "code-review-tally.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
     manifest = run_log_manifest.Manifest.from_json(
         json.loads((started.run_dir / "manifest.json").read_text(encoding="utf-8"))
     )
@@ -332,7 +511,7 @@ def test_universal_artifacts_extend_existing_skill_requirements(
 
 
 def test_design_adopts_universal_ndjson_waiver_without_contract_fork(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot]
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     started = run_lifecycle.start_run(
@@ -358,7 +537,7 @@ def test_design_adopts_universal_ndjson_waiver_without_contract_fork(
 
 
 def test_parent_identity_is_immutable_after_start(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot]
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
 ) -> None:
     repo, environment, storage_root = lifecycle_fixture
     started = run_lifecycle.start_run(
@@ -389,7 +568,7 @@ def test_parent_identity_is_immutable_after_start(
     ],
 )
 def test_terminal_cli_converts_publication_exceptions_to_loud_failure(
-    lifecycle_fixture: tuple[Path, dict[str, str], StorageRoot],
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     error: Exception,

@@ -40,11 +40,16 @@ EXIT_INTERNAL_ERROR: Final = 1
 EXIT_STORAGE_CONFIG: Final = EXIT_USAGE
 EXIT_STORAGE_PREFLIGHT: Final = EXIT_INTERNAL_ERROR
 ENV_LARCH_LOGS_URI: Final = "LARCH_LOGS_URI"
-STORAGE_CONFIG_RELPATH: Final = "config.toml"
+ENV_LARCH_STORAGE_BASE_URI: Final = "LARCH_STORAGE_BASE_URI"
+STORAGE_CONFIG_RELPATH: Final = "tools-config.toml"
+LARCH_TOOL_NAME: Final = "larch"
+STORAGE_BASE_URI_FIELD: Final = "storage_base_uri"
+RUN_LOGS_DATA_TYPE: Final = "run-logs"
 STORAGE_URI_SCHEMES: Final[tuple[str, ...]] = ("gs", "r2", "s3")
 AWS_CLI: Final = "aws"
 AWS_CLI_NOT_FOUND_EXIT_CODE: Final = 127
 STORAGE_PREFLIGHT_TIMEOUT_SEC: Final = 30
+STORAGE_GIT_IDENTITY_TIMEOUT_SEC: Final = 10
 RUN_LOG_ARCHIVE_MAX_MEMBERS: Final = 10_000
 RUN_LOG_ARCHIVE_MAX_MEMBER_BYTES: Final = 256 * 1024 * 1024
 RUN_LOG_ARCHIVE_MAX_EXPANDED_BYTES: Final = 1024 * 1024 * 1024
@@ -305,14 +310,12 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
 )))
 
 # Repository-scoped mutable analyzer state. Paths are relative to
-# $XDG_STATE_HOME/larch/analysis-state/<repo>/, never larch-logs/.
+# $XDG_STATE_HOME/larch/analysis-state/v2/<client>/<storage-origin-id>/,
+# never larch-logs/.
 LEARN_FROM_BUGS_NUDGE_THRESHOLD: Final = 25
 LEARN_FROM_BUGS_STATE_RELPATH: Final = "learn-from-bugs/state.json"
 ANALYZE_BUGS_STATE_RELPATH: Final = "analyze-bugs/state.json"
 VALIDATE_MERGED_STATE_RELPATH: Final = "validate-merged/state.json"
-LEGACY_LEARN_FROM_BUGS_STATE_RELPATH: Final = "larch-logs/shared/learn-from-bugs-state.json"
-LEGACY_ANALYZE_BUGS_STATE_RELPATH: Final = "larch-logs/shared/analyze-bugs-state.json"
-LEGACY_VALIDATE_MERGED_STATE_RELPATH: Final = "larch-logs/shared/validate-merged-state.json"
 
 # Transient retry defaults shared with python/retry.py.
 TRANSIENT_RETRY_MAX_ATTEMPTS: Final = 3

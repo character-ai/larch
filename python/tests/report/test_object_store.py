@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 from larch.core import config, proc
 from larch.report.object_store import ObjectStoreError, ObjectStoreErrorKind, object_store_for
-from larch.report.storage_config import StorageRoot
+from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 _ACCOUNT = "0123456789abcdef0123456789abcdef"
 _ENDPOINT = f"https://{_ACCOUNT}.r2.cloudflarestorage.com"
 _CONTRACT_PATH = Path(__file__).parents[3] / "tests/fixtures/run-log-object-store-contract-v1.json"
@@ -33,28 +33,30 @@ class FakeRunner:
         return self.responses.pop(0)
 def _store(scheme: str, runner: FakeRunner):
     environ = {config.ENV_LARCH_R2_ACCOUNT_ID: _ACCOUNT, config.ENV_LARCH_R2_ENDPOINT: _ENDPOINT}
-    return object_store_for(StorageRoot(scheme, "bucket", "larch"), environ=environ, runner=cast("proc.Runner", runner))
+    storage = ToolRepositoryStorage(StorageBase(scheme, "bucket"), "larch")
+    return object_store_for(storage, environ=environ, runner=cast("proc.Runner", runner))
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
-def test_preflight_uses_bucket_root_exit_status_only(scheme: str) -> None:
+def test_preflight_lists_only_the_tool_repository_prefix(scheme: str) -> None:
     runner = FakeRunner(_result(payload={"unexpected": "output"}))
-    _store(scheme, runner).preflight_bucket()
-    assert "larch" not in runner.calls[0]
+    _store(scheme, runner).preflight_prefix()
+    assert "larch/larch/" in runner.calls[0]
     assert "bucket" in " ".join(runner.calls[0])
+    assert scheme == "gs" or runner.calls[0][runner.calls[0].index("--max-keys") + 1] == "1"
     with pytest.raises((ObjectStoreError, RuntimeError)):
-        _store(scheme, FakeRunner(_result(1, {"objects": [{"key": "larch/run"}]}))).preflight_bucket()
+        _store(scheme, FakeRunner(_result(1, {"objects": [{"key": "larch/larch/run"}]}))).preflight_prefix()
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
 def test_list_paginates_from_empty_prefix(scheme: str) -> None:
     if scheme == "gs":
-        pages = ({"objects": [{"key": "larch/a", "size": 1}], "next_page_token": "two"}, {"objects": [{"key": "larch/b", "size": 2}]})
+        pages = ({"objects": [{"key": "larch/larch/a", "size": 1}], "next_page_token": "two"}, {"objects": [{"key": "larch/larch/b", "size": 2}]})
     else:
-        pages = ({"Contents": [{"Key": "larch/a", "Size": 1}], "NextContinuationToken": "two"}, {"Contents": [{"Key": "larch/b", "Size": 2}]})
+        pages = ({"Contents": [{"Key": "larch/larch/a", "Size": 1}], "NextContinuationToken": "two"}, {"Contents": [{"Key": "larch/larch/b", "Size": 2}]})
     runner = FakeRunner(*(_result(payload=page) for page in pages))
     objects = _store(scheme, runner).list_objects()
     assert [(item.key, item.size) for item in objects] == [("a", 1), ("b", 2)]
-    assert "larch/" in runner.calls[0]
+    assert "larch/larch/" in runner.calls[0]
     assert "two" in runner.calls[1]
     assert scheme == "gs" or "--no-paginate" in runner.calls[0]
-    outside = {"objects": [{"key": "larch/../outside", "size": 1}]} if scheme == "gs" else {"Contents": [{"Key": "larch/../outside", "Size": 1}]}
+    outside = {"objects": [{"key": "larch/larch/../outside", "size": 1}]} if scheme == "gs" else {"Contents": [{"Key": "larch/larch/../outside", "Size": 1}]}
     with pytest.raises(ObjectStoreError):
         _ = _store(scheme, FakeRunner(_result(payload=outside))).list_objects()
 
@@ -63,13 +65,13 @@ def test_list_paginates_from_empty_prefix(scheme: str) -> None:
 def test_list_paginates_the_complete_run_log_prefix(scheme: str) -> None:
     if scheme == "gs":
         pages = (
-            {"objects": [{"key": "larch/run-logs/design/run-a.tar.gz", "size": 1}], "next_page_token": "two"},
-            {"objects": [{"key": "larch/run-logs/review/run-b.tar.gz", "size": 2}]},
+            {"objects": [{"key": "larch/larch/run-logs/design/run-a.tar.gz", "size": 1}], "next_page_token": "two"},
+            {"objects": [{"key": "larch/larch/run-logs/review/run-b.tar.gz", "size": 2}]},
         )
     else:
         pages = (
-            {"Contents": [{"Key": "larch/run-logs/design/run-a.tar.gz", "Size": 1}], "NextContinuationToken": "two"},
-            {"Contents": [{"Key": "larch/run-logs/review/run-b.tar.gz", "Size": 2}]},
+            {"Contents": [{"Key": "larch/larch/run-logs/design/run-a.tar.gz", "Size": 1}], "NextContinuationToken": "two"},
+            {"Contents": [{"Key": "larch/larch/run-logs/review/run-b.tar.gz", "Size": 2}]},
         )
     runner = FakeRunner(*(_result(payload=page) for page in pages))
 
@@ -79,13 +81,13 @@ def test_list_paginates_the_complete_run_log_prefix(scheme: str) -> None:
         "run-logs/design/run-a.tar.gz",
         "run-logs/review/run-b.tar.gz",
     ]
-    assert "larch/run-logs/" in runner.calls[0]
+    assert "larch/larch/run-logs/" in runner.calls[0]
     assert "two" in runner.calls[1]
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
 def test_upload_is_create_only(scheme: str, tmp_path: Path) -> None:
     source = tmp_path / "archive"
     _ = source.write_bytes(b"archive")
-    payload = {"key": "larch/run", "size": 7} if scheme == "gs" else {"ETag": "tag"}
+    payload = {"key": "larch/larch/run", "size": 7} if scheme == "gs" else {"ETag": "tag"}
     runner = FakeRunner(_result(payload=payload))
     assert _store(scheme, runner).upload_create("run", source).key == "run"
     command = runner.calls[0]
@@ -93,11 +95,11 @@ def test_upload_is_create_only(scheme: str, tmp_path: Path) -> None:
     assert scheme != "r2" or command[command.index("--endpoint-url") + 1] == _ENDPOINT
     if scheme == "r2":
         with pytest.raises(ObjectStoreError) as failure:
-            _ = object_store_for(StorageRoot("r2", "bucket", "larch"), environ={}, runner=cast("proc.Runner", FakeRunner()))
+            _ = object_store_for(ToolRepositoryStorage(StorageBase("r2", "bucket"), "larch"), environ={}, runner=cast("proc.Runner", FakeRunner()))
         assert failure.value.kind is ObjectStoreErrorKind.CONFIGURATION
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
 def test_metadata_and_download_normalize_providers(scheme: str, tmp_path: Path) -> None:
-    payload = {"key": "larch/run", "size": 7, "etag": "tag", "version": "2"} if scheme == "gs" else {"ContentLength": 7, "ETag": "tag", "VersionId": "2"}
+    payload = {"key": "larch/larch/run", "size": 7, "etag": "tag", "version": "2"} if scheme == "gs" else {"ContentLength": 7, "ETag": "tag", "VersionId": "2"}
     item = _store(scheme, FakeRunner(_result(payload=payload))).metadata("run")
     assert (item.key, item.size, item.etag, item.version) == ("run", 7, "tag", "2")
     destination = tmp_path / "archive"
@@ -112,7 +114,7 @@ def test_gcs_transport_matches_shared_machine_contract(tmp_path: Path) -> None:
     assert contract["schema_version"] == 1
     remote = cast("dict[str, object]", contract["remote_object"])
     page = cast("dict[str, object]", contract["list_page"])
-    key = str(remote["key"]).removeprefix("larch/")
+    key = str(remote["key"]).removeprefix("larch/larch/")
 
     listed = _store("gs", FakeRunner(_result(payload=page))).list_objects("run-logs/")
     assert listed[0]._asdict() == {

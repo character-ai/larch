@@ -89,6 +89,7 @@ python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/final_report.py	later-domain	#7683	rev-parse
 python/larch/report/run_log_commit.py	later-domain	#7683	add,clean,commit,diff,reset,restore,rev-parse,status,symbolic-ref
 python/larch/report/run_log_flush.py	later-domain	#7683	diff
+python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic
 python/larch/research/research_eval.py	later-domain	#7684	dynamic
 python/larch/review/_raf_util.py	later-domain	#7679	status

@@ -21,6 +21,12 @@ still passes through the run-log trim, temporary-path redaction, secret scrub,
 and publication checks described in the canonical
 [run-log security contract](security/artifacts-redaction-and-publication.md#run-logs-and-breadcrumbs).
 
+Batch names are relative to the lifecycle-owned staging tree. They never select
+or reconstruct remote storage. The shared lifecycle routes the terminal archive
+to `<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`; analyzers
+read batches only below the storage-origin-bound corpus root returned by the
+shared synchronizer.
+
 `architectural-invariant-outcome` is a replace-mode `.json` batch with the
 `json-object` sanitizer. It writes
 `larch-logs/implement/<RUN_ID>/architectural-invariant-outcome.json` when an

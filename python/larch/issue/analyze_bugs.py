@@ -1342,7 +1342,6 @@ def prefetch(
     checkout = repo_roots.consumer_repo_root() or Path.cwd().resolve()
     state_root = Path(state_root_arg).expanduser().resolve() if state_root_arg else analysis_state.repository_state_root(repo_root=checkout)
     ledger_path = state_root / "analyze-bugs" / _sanitize_repo_slug(repo) / "ledger.jsonl"
-    _ = analysis_state.import_legacy_file(path=ledger_path, legacy_path=repo_root / "ledger.jsonl")
     rows = [
         build_bundle_record(runner=runner, issue=issue, repo=repo, evidence_ref=evidence_ref, run_dir=run_dir, diff_cap=diff_cap, body_cap=body_cap)
         for issue in issues

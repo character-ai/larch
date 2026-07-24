@@ -8,6 +8,21 @@ The configured storage root, deterministic archive, provider, cache, sync,
 error, and Rust-handoff contracts are defined in
 [Run-log storage contracts](run-log-archive.md).
 
+Every writer and default reader resolves one pinned tool repository per
+invocation from repository-root `tools-config.toml` and local Git origin:
+
+```text
+<storage-base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz
+```
+
+The base may be an S3, GCS, or R2 bucket root or include an optional prefix.
+The client repository is derived from `remote.origin.url`; checkout and
+worktree names do not affect it. Synchronization returns a v2 cache root bound
+to the SHA-256 identity of the canonical tool repository URI. Analysis skills
+retain that returned root for all reads. Their explicit `--log-root` options
+remain offline-fixture bypasses that do not load storage configuration or use
+the network.
+
 ## Universal skill lifecycle
 
 `skills/shared/run-lifecycle.md` defines the shared start and terminal contract,

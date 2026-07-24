@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 from larch import io as larch_io
-from larch.report import run_log_publish
+from larch.report import run_log_publish, storage_config
 
 _ENV_XDG_STATE_HOME: Final = "XDG_STATE_HOME"
 MISSING_DIGEST: Final = "missing"
@@ -34,13 +34,18 @@ class StateSnapshot:
 def repository_state_root(
     *,
     repo_root: Path,
+    storage: storage_config.ToolRepositoryStorage | None = None,
     state_home: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Path:
     """Return the literal repository root for mutable analyzer state."""
     trusted_repo = larch_io.validate_trusted_directory(repo_root)
-    repo_name = run_log_publish.validated_component(
-        trusted_repo.name, label="repository name", slug=False
+    active_storage: storage_config.ToolRepositoryStorage = (
+        storage
+        if storage is not None
+        else storage_config.load_tool_repository_storage(
+            repo_root=trusted_repo, environ=environ
+        )
     )
     environment = os.environ if environ is None else environ
     resolved_home = state_home or run_log_publish.xdg_home(
@@ -50,12 +55,20 @@ def repository_state_root(
     )
     if not resolved_home.is_absolute():
         raise ValueError("analysis state home must be an absolute path")
-    return resolved_home.expanduser().resolve() / "larch" / "analysis-state" / repo_name
+    return (
+        resolved_home.expanduser().resolve()
+        / "larch"
+        / "analysis-state"
+        / "v2"
+        / active_storage.client_repo
+        / active_storage.storage_origin_id
+    )
 
 
-def state_path(
+def state_path(  # noqa: PLR0913 - state identity, owner, home, and environment remain explicit.
     *,
     repo_root: Path,
+    storage: storage_config.ToolRepositoryStorage | None = None,
     owner: str,
     name: str,
     state_home: Path | None = None,
@@ -69,16 +82,20 @@ def state_path(
     )
     return (
         repository_state_root(
-            repo_root=repo_root, state_home=state_home, environ=environ
+            repo_root=repo_root,
+            storage=storage,
+            state_home=state_home,
+            environ=environ,
         )
         / owner_name
         / file_name
     )
 
 
-def output_path(
+def output_path(  # noqa: PLR0913 - output creation shares the explicit state-path boundary.
     *,
     repo_root: Path,
+    storage: storage_config.ToolRepositoryStorage | None = None,
     owner: str,
     name: str,
     state_home: Path | None = None,
@@ -86,6 +103,7 @@ def output_path(
 ) -> Path:
     path = state_path(
         repo_root=repo_root,
+        storage=storage,
         owner=owner,
         name=name,
         state_home=state_home,
@@ -171,16 +189,3 @@ def append_bytes(path: Path, data: bytes) -> None:
     with state_lock(path):
         current = _snapshot_unlocked(path).data or b""
         _atomic_write_unlocked(path, current + data)
-
-
-def import_legacy_file(*, path: Path, legacy_path: Path) -> StateSnapshot:
-    """Import a regular legacy file once, then ignore later legacy changes."""
-    with state_lock(path):
-        current = _snapshot_unlocked(path)
-        if current.data is not None:
-            return current
-        legacy = _snapshot_unlocked(legacy_path)
-        if legacy.data is None:
-            return current
-        _atomic_write_unlocked(path, legacy.data)
-        return StateSnapshot(legacy.data, legacy.digest)

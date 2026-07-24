@@ -16,9 +16,12 @@ from pathlib import Path
 from typing import Protocol
 
 from larch.core import config, repo_roots
-from larch.report import run_log_archive, run_log_migration, run_log_publish, storage_config
+from larch.report import run_log_archive, run_log_publish, storage_config
 from larch.report.object_store import ObjectStoreError, RemoteObject, object_store_for
-from larch.report.storage_config import StorageConfigurationError, StorageRoot
+from larch.report.storage_config import (
+    StorageConfigurationError,
+    ToolRepositoryStorage,
+)
 
 _REMOTE_PREFIX = "run-logs/"
 _ARCHIVE_SUFFIX = ".tar.gz"
@@ -50,7 +53,7 @@ class RunLogSyncRequest:
     """Immutable inputs for one repository-scoped synchronization."""
 
     repo_root: Path
-    storage_root: StorageRoot
+    storage_root: ToolRepositoryStorage
     cache_home: Path | None = None
     state_home: Path | None = None
 
@@ -96,43 +99,6 @@ class RepositorySyncResult:
     @property
     def repaired_count(self) -> int:
         return sum(run.status is CacheSyncStatus.REPAIRED for run in self.runs)
-
-
-class _LegacyMigrationLoader:
-    """Lazily download a repository-scoped migration inventory at most once."""
-
-    def __init__(self, *, request: RunLogSyncRequest, store: SyncObjectStore, temporary_dir: Path) -> None:
-        self._request = request
-        self._store = store
-        self._temporary_dir = temporary_dir
-        self._attempted = False
-        self._inventory: run_log_migration.LegacyMigrationInventory | None = None
-
-    def archive_for(self, remote_key: str) -> run_log_archive.LegacyRunArchive:
-        if not self._attempted:
-            self._attempted = True
-            try:
-                descriptor = storage_config.load_legacy_migration_descriptor(
-                    repo_root=self._request.repo_root, storage_root=self._request.storage_root,
-                )
-            except StorageConfigurationError as exc:
-                raise RunLogSyncError("legacy migration descriptor is invalid") from exc
-            if descriptor is None:
-                raise RunLogSyncError(
-                    "manifest-less run archive is not recognized by a repository migration descriptor"
-                )
-            self._inventory = run_log_migration.download_and_parse_inventory(
-                store=self._store, descriptor=descriptor, storage_root=self._request.storage_root,
-                temporary_dir=self._temporary_dir,
-            )
-        if self._inventory is None:
-            raise RunLogSyncError("legacy migration inventory is unavailable")
-        record: run_log_archive.LegacyRunArchive | None = self._inventory.archive_for(remote_key)
-        if record is None:
-            raise RunLogSyncError(
-                "manifest-less run archive is not recognized by the pinned migration inventory"
-            )
-        return record
 
 
 def _remote_run_archive(remote: RemoteObject) -> RemoteRunArchive:
@@ -227,7 +193,6 @@ def _download_and_materialize(
     store: SyncObjectStore,
     archive: RemoteRunArchive,
     cache_dir: Path,
-    migration: _LegacyMigrationLoader,
 ) -> None:
     with tempfile.NamedTemporaryFile(
         dir=cache_dir.parent,
@@ -243,17 +208,12 @@ def _download_and_materialize(
             raise RunLogSyncError(
                 f"downloaded archive does not match listed size: {archive.remote_key!r}"
             )
-        try:
-            _ = run_log_archive.materialize_run_archive(
-                archive_path=archive_path, run_dir=cache_dir,
-                expected_skill=archive.skill, expected_run_id=archive.run_id,
-            )
-        except run_log_archive.MissingArchiveManifestError:
-            legacy: run_log_archive.LegacyRunArchive = migration.archive_for(archive.remote_key)
-            _ = run_log_archive.materialize_legacy_run_archive(
-                archive_path=archive_path, run_dir=cache_dir,
-                expected_skill=archive.skill, expected_run_id=archive.run_id, legacy=legacy,
-            )
+        _ = run_log_archive.materialize_run_archive(
+            archive_path=archive_path,
+            run_dir=cache_dir,
+            expected_skill=archive.skill,
+            expected_run_id=archive.run_id,
+        )
     finally:
         archive_path.unlink(missing_ok=True)
 
@@ -264,7 +224,6 @@ def _sync_archive(
     archive: RemoteRunArchive,
     store: SyncObjectStore,
     environ: Mapping[str, str] | None,
-    migration: _LegacyMigrationLoader,
 ) -> SyncedRun:
     paths: run_log_publish.PublicationPaths = run_log_publish.publication_paths(
         request=run_log_publish.PublicationRequest(
@@ -302,7 +261,6 @@ def _sync_archive(
                 store=store,
                 archive=archive,
                 cache_dir=paths.cache_dir,
-                migration=migration,
             )
         except (
             EOFError,
@@ -347,21 +305,17 @@ def sync_repository_run_logs(
         active_store.list_objects(_REMOTE_PREFIX)
     )
     corpus_root: Path = run_log_publish.repository_cache_root(
-        repo_root=request.repo_root,
+        storage=request.storage_root,
         cache_home=request.cache_home,
         environ=environ,
     )
     _ = run_log_publish.ensure_concurrent_directory(corpus_root)
-    migration = _LegacyMigrationLoader(
-        request=request, store=active_store, temporary_dir=corpus_root,
-    )
     runs: tuple[SyncedRun, ...] = tuple(
         _sync_archive(
             request=request,
             archive=archive,
             store=active_store,
             environ=environ,
-            migration=migration,
         )
         for archive in inventory
     )
@@ -383,13 +337,13 @@ def main(argv: Sequence[str]) -> int:
             raise StorageConfigurationError(
                 f"could not discover a Git repository root from {requested_root}"
             )
-        storage_root: StorageRoot = storage_config.discover_storage_root(
-            start=repo_root
+        storage: ToolRepositoryStorage = (
+            storage_config.discover_tool_repository_storage(start=repo_root)
         )
         result: RepositorySyncResult = sync_repository_run_logs(
             request=RunLogSyncRequest(
                 repo_root=repo_root,
-                storage_root=storage_root,
+                storage_root=storage,
             )
         )
     except StorageConfigurationError as exc:

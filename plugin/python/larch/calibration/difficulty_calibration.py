@@ -16,7 +16,7 @@ from typing import cast
 
 from larch.calibration import difficulty
 from larch.core import repo_roots
-from larch.report import analysis_state, run_log_corpus
+from larch.report import analysis_state, run_log_corpus, storage_config
 from larch.report.report_tokens_cost import display_rates
 from larch.report.report_tokens_models import (
     VendorName,
@@ -928,11 +928,16 @@ def analyze_main(argv: list[str] | None = None) -> int:
             print("ERROR: could not discover a Git repository root for run-log synchronization", file=sys.stderr)
             return 2
         try:
-            log_root = run_log_corpus.synchronized_repository_log_root(repo_root=repo_root)
-        except run_log_corpus.RunLogCorpusError as exc:
+            storage = storage_config.load_tool_repository_storage(repo_root=repo_root)
+            log_root = run_log_corpus.synchronized_repository_log_root(
+                repo_root=repo_root, storage=storage
+            )
+        except (run_log_corpus.RunLogCorpusError, storage_config.StorageConfigurationError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-        state_root = analysis_state.repository_state_root(repo_root=repo_root)
+        state_root = analysis_state.repository_state_root(
+            repo_root=repo_root, storage=storage
+        )
     if not log_root.is_dir():
         print(f"ERROR: --log-root is missing or not a directory: {log_root}", file=sys.stderr)
         return 2

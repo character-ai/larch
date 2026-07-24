@@ -321,7 +321,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
         return _load_fail_clear(issue=issue, repo=repo, error="legacy-git-snapshot")
     try:
         repo_root = Path(repo_top)
-        storage_root = storage_config.discover_storage_root(start=repo_root)
+        storage_root = storage_config.discover_tool_repository_storage(start=repo_root)
         publication_paths = run_log_publish.publication_paths(
             request=run_log_publish.PublicationRequest(
                 repo_root=repo_root,

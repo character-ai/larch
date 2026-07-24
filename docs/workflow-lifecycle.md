@@ -108,15 +108,19 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 ## Run-log lifecycle
 
-Every shipped skill resolves `config.toml` or `LARCH_LOGS_URI`, validates
-the storage root, and performs the provider bucket-root preflight before run
-work. Each invocation owns one skill name, run ID, staging tree, durable context,
-and terminal publication. Specialized design, implement, and review owners adopt
-their rich staging trees into that same lifecycle. Nested and alias calls publish
-separate parent-linked archives; nested review is a child of its implement run.
+Every shipped skill requires root `tools-config.toml` and `[larch]`, derives
+the client repository from local `remote.origin.url`, resolves one
+`ToolRepositoryStorage`, and performs a prefix-scoped provider preflight before
+run work. Each invocation pins the base URI, client repository, canonical tool
+repository URI, and storage-origin ID in its durable context. A config,
+environment, or Git-origin change before publication fails closed.
+Specialized design, implement, and review owners adopt their rich staging trees
+into that same lifecycle. Nested and alias calls publish separate parent-linked
+archives; nested review is a child of its implement run.
 
 Terminal paths sanitize the final staging tree and publish exactly one
-create-only object at `<URI>/run-logs/<skill>/<run-id>.tar.gz`. Success also
+create-only object at
+`<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`. Success also
 requires a validated unpacked cache directory. Failure returns nonzero and
 keeps a content-pinned pending archive for retry. No run-log path creates a Git
 branch, commit, push, pull request, or merge.

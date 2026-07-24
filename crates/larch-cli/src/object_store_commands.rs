@@ -76,7 +76,7 @@ async fn execute(arguments: &GcsArguments, store: &dyn ObjectStore) -> ExitCode 
         .unwrap_or_else(|| Path::new(""));
     let result = match arguments.operation {
         GcsOperation::Preflight => store
-            .preflight_bucket(&arguments.bucket)
+            .preflight_prefix(&arguments.bucket, arguments.prefix.as_deref().unwrap_or(""))
             .await
             .map(|()| json!({})),
         GcsOperation::List => store

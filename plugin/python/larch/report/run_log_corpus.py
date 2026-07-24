@@ -266,9 +266,10 @@ def synchronized_run_log_root(
     ).corpus_root
 
 
-def synchronized_repository_log_root(
+def synchronized_repository_log_root(  # noqa: PLR0913 - sync dependencies and pinned storage are injectable.
     *,
     repo_root: Path,
+    storage: storage_config.ToolRepositoryStorage | None = None,
     store: run_log_sync.SyncObjectStore | None = None,
     environ: Mapping[str, str] | None = None,
     cache_home: Path | None = None,
@@ -276,14 +277,18 @@ def synchronized_repository_log_root(
 ) -> Path:
     """Load repository config, synchronize once, and return the cache log root."""
     try:
-        storage_root: storage_config.StorageRoot = storage_config.load_storage_root(
-            repo_root=repo_root,
-            environ=environ,
+        active_storage: storage_config.ToolRepositoryStorage = (
+            storage
+            if storage is not None
+            else storage_config.load_tool_repository_storage(
+                repo_root=repo_root,
+                environ=environ,
+            )
         )
         return synchronized_run_log_root(
             request=run_log_sync.RunLogSyncRequest(
                 repo_root=repo_root,
-                storage_root=storage_root,
+                storage_root=active_storage,
                 cache_home=cache_home,
                 state_home=state_home,
             ),

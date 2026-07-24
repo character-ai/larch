@@ -43,12 +43,17 @@ impl<S: StorageStub + 'static> GoogleCloudStorage<S> {
     }
 }
 impl<S: StorageStub + 'static> ObjectStore for GoogleCloudStorage<S> {
-    fn preflight_bucket<'a>(&'a self, bucket: &'a str) -> ObjectStoreFuture<'a, ()> {
+    fn preflight_prefix<'a>(
+        &'a self,
+        bucket: &'a str,
+        prefix: &'a str,
+    ) -> ObjectStoreFuture<'a, ()> {
         Box::pin(async move {
             transport(
                 self.control
                     .list_objects()
                     .set_parent(bucket_name(bucket))
+                    .set_prefix(prefix)
                     .set_page_size(1)
                     .send()
                     .await,

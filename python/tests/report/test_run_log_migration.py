@@ -9,7 +9,10 @@ from typing import cast
 import pytest
 
 from larch.report import run_log_migration
-from larch.report.storage_config import LegacyMigrationDescriptor, StorageRoot
+from larch.report.storage_config import (
+    LegacyMigrationDescriptor,
+    StorageBase,
+)
 
 
 def _descriptor() -> LegacyMigrationDescriptor:
@@ -66,7 +69,7 @@ def _parse(payload: dict[str, object]) -> run_log_migration.LegacyMigrationInven
     return run_log_migration.parse_inventory(
         json.dumps(payload).encode(),
         descriptor=_descriptor(),
-        storage_root=StorageRoot("s3", "bucket", "larch"),
+        storage_root=StorageBase("s3", "bucket", "larch"),
     )
 
 
@@ -89,7 +92,7 @@ def test_parse_inventory_rejects_duplicate_json_keys() -> None:
         _ = run_log_migration.parse_inventory(
             duplicate,
             descriptor=_descriptor(),
-            storage_root=StorageRoot("s3", "bucket", "larch"),
+            storage_root=StorageBase("s3", "bucket", "larch"),
         )
 
 

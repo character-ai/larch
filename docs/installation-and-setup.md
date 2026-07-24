@@ -108,7 +108,8 @@ export LARCH_R2_ACCOUNT_ID="<32-lowercase-hex-account-id>"
 export LARCH_R2_ENDPOINT="https://${LARCH_R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 ```
 
-Do not place credentials in `config.toml` or `LARCH_LOGS_URI`. See the
+Do not place credentials in `tools-config.toml` or
+`LARCH_STORAGE_BASE_URI`. See the
 [object-storage credential contract](security/supply-chain-credentials-and-services.md#object-storage-credentials-and-transport).
 
 ### Install
@@ -247,21 +248,28 @@ If you need stricter permissions instead (no `bypassPermissions`), drop that lin
 
 ### Configure run-log storage for every repo where you will run larch
 
-Create `config.toml` at the consumer repository root:
+Create `tools-config.toml` at the consumer repository root:
 
 ```toml
-[logs]
-uri = "<URI>"
+[larch]
+storage_base_uri = "<base-URI>"
 ```
-Example `<URI>` value: `s3://my-bucket-for-larch-logs/my-client-repo-a`.
+Example base values are `s3://my-bucket-for-tool-data`,
+`gs://my-bucket/prod/tools`, and `r2://my-bucket`. A base stops before the
+tool name. Larch derives the client repository from local
+`remote.origin.url`, then writes
+`<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`. Clone and
+worktree directory names do not affect that identity.
 
-The URI is the larch storage root. Larch writes archives below
-`run-logs/<skill>/<run-id>.tar.gz`, so the example does not end in
-`run-logs/`. Set `LARCH_LOGS_URI` before starting larch to replace the file
-value for that process. Accepted schemes are `s3://`, `gs://`, and `r2://`.
+The repository-owned file may contain tables for other tools. Larch owns and
+strictly validates only `[larch]`; it ignores unrelated tool tables. There is
+no global version and no `client_repo` field. The file and `[larch]` remain
+required when `LARCH_STORAGE_BASE_URI` overrides only the base value for one
+process. Accepted schemes are `s3://`, `gs://`, and `r2://`.
 
-At skill startup, larch lists only the bucket root and ignores the listing
-output. It does not probe the configured prefix or attempt a write. See
+At skill startup, larch lists at most one object under the exact
+`larch/<client-repo>/` prefix and ignores the listing output. It does not list
+the bucket root or attempt a write. See
 [Configuration and Permissions](configuration-and-permissions.md#run-log-object-storage)
 and the [language-neutral storage contract](run-log-archive.md).
 

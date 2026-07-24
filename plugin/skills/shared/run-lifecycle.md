@@ -21,17 +21,18 @@ duplicate, missing, or later flags fail. When set, pass
 The lifecycle CLI validates it and derives the immutable parent; no other parent
 IDs or environment variables are allowed.
 
-Parse `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `CONTEXT_FILE`, `STORAGE_URI`, and
-`LIFECYCLE_STARTED` from stdout without `eval` or `source`. Stop if the command
-fails or `LIFECYCLE_STARTED` is not `true`.
+Parse `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `CONTEXT_FILE`,
+`STORAGE_BASE_URI`, `CLIENT_REPO`, `TOOL_REPO_URI`, `RUN_LOGS_URI`,
+`PREFLIGHT_OK`, and `LIFECYCLE_STARTED` from stdout without `eval` or `source`.
+Stop if the command fails or either success value is not `true`.
 
 Callers that already own a run ID pass `--run-id "<id>"`. Specialized owners
 also pass their absolute `--log-root` and `--adopt-existing` when rich artifact
 setup created the manifest first. A specialized owner whose Step 0 `session
 setup` parse binds `REPO_ROOT` passes `--repo-root "$REPO_ROOT"` to the start
 and terminal commands instead of the generic fallback shown here. The context file persists the validated
-identity, staging root, and storage URI so later subprocesses rehydrate them
-without shell state.
+identity, staging root, canonical tool repository URI, and storage-origin ID so
+later subprocesses rehydrate them without shell state.
 
 After start succeeds, run exactly one matching terminal command before the
 skill returns. A terminal command must succeed with `LIFECYCLE_FLUSHED=true`.

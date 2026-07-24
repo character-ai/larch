@@ -592,7 +592,7 @@ def required_artifacts_for_run(
     repo_root: Path | None = None,
 ) -> list[RequiredArtifact]:
     artifacts: list[RequiredArtifact] = []
-    if manifest.extra and manifest.extra.get("lifecycle_schema_version") == 1:
+    if manifest.extra and manifest.extra.get("lifecycle_schema_version") in {1, 2}:
         artifacts.extend([
             RequiredArtifact(
                 slug="final-report",
@@ -722,7 +722,7 @@ def verify_run_log_completeness(
     if manifest is None:
         return False, ["manifest.json"]
     universal = bool(
-        manifest.extra and manifest.extra.get("lifecycle_schema_version") == 1
+        manifest.extra and manifest.extra.get("lifecycle_schema_version") in {1, 2}
     )
     execution_issues_path = _committed_execution_issues_path(
         run_dir, skill, universal=universal

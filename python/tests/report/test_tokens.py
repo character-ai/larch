@@ -16,6 +16,7 @@ import pytest
 from larch.core import config
 from larch.report import report_tokens_scan
 from larch.report import run_log_corpus
+from larch.report import storage_config
 from larch.report import tokens
 from larch.report.report_tokens_models import RunRecord, VendorTotals
 
@@ -24,10 +25,23 @@ from larch.report.report_tokens_models import RunRecord, VendorTotals
 def _fixture_corpus_root(  # pyright: ignore[reportUnusedFunction]  # pytest invokes this autouse fixture by registration
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def _sync(*, repo_root: Path) -> Path:
+    storage_root = storage_config.ToolRepositoryStorage(
+        storage_config.StorageBase("s3", "fixture-bucket"), "fixture-repo"
+    )
+
+    def _sync(*, repo_root: Path, storage: storage_config.ToolRepositoryStorage | None = None) -> Path:
+        _ = storage
         return repo_root / "larch-logs"
 
+    def _load_storage(**_kwargs: object) -> storage_config.ToolRepositoryStorage:
+        return storage_root
+
     monkeypatch.setattr(run_log_corpus, "synchronized_repository_log_root", _sync)
+    monkeypatch.setattr(
+        storage_config,
+        "load_tool_repository_storage",
+        _load_storage,
+    )
 
 
 def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1134,7 +1148,8 @@ def test_measure_cache_efficiency_writes_ranked_sections(tmp_path: Path, monkeyp
     sync_calls = 0
     cache_root = tmp_path / "cache" / "larch2"
 
-    def _sync(*, repo_root: Path) -> Path:
+    def _sync(*, repo_root: Path, storage: storage_config.ToolRepositoryStorage | None = None) -> Path:
+        _ = storage
         nonlocal sync_calls
         assert repo_root == repo
         sync_calls += 1
@@ -1715,7 +1730,8 @@ def test_measure_panel_cost_reads_synced_cache_and_writes_analyzer_state(
     )
     sync_calls = 0
 
-    def _sync(*, repo_root: Path) -> Path:
+    def _sync(*, repo_root: Path, storage: storage_config.ToolRepositoryStorage | None = None) -> Path:
+        _ = storage
         nonlocal sync_calls
         assert repo_root == repo
         sync_calls += 1
@@ -1728,7 +1744,14 @@ def test_measure_panel_cost_reads_synced_cache_and_writes_analyzer_state(
 
     out = tokens.measure_panel_cost()
 
-    assert out == tmp_path / "state/larch/analysis-state/consumer/measure-panel-cost/2026-07-20.tsv"
+    expected_storage = storage_config.ToolRepositoryStorage(
+        storage_config.StorageBase("s3", "fixture-bucket"), "fixture-repo"
+    )
+    assert out == (
+        tmp_path / "state/larch/analysis-state/v2/fixture-repo"
+        / expected_storage.storage_origin_id
+        / "measure-panel-cost/2026-07-20.tsv"
+    )
     assert "agents/orchestrator-aggregator.md" in out.read_text(encoding="utf-8")
     assert sync_calls == 1
 

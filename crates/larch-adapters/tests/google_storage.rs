@@ -44,9 +44,17 @@ impl DataStub for Data {
 impl ControlStub for Control {
     async fn list_objects(
         &self,
-        _request: ListObjectsRequest,
+        request: ListObjectsRequest,
         _options: ControlOptions,
     ) -> google_cloud_storage::Result<Response<ListObjectsResponse>> {
+        assert_eq!(request.parent, "projects/_/buckets/bucket");
+        if request.prefix == "larch/client/" {
+            assert_eq!(request.page_size, 1);
+            assert!(request.page_token.is_empty());
+        } else {
+            assert_eq!(request.prefix, "larch/");
+            assert_eq!(request.page_token, "page");
+        }
         Ok(Response::from(
             ListObjectsResponse::new()
                 .set_objects([object()])
@@ -77,7 +85,10 @@ fn store() -> GoogleCloudStorage<Data> {
 #[tokio::test]
 async fn operations_and_failures_preserve_the_neutral_contract() {
     let store = store();
-    store.preflight_bucket("bucket").await.expect("preflight");
+    store
+        .preflight_prefix("bucket", "larch/client/")
+        .await
+        .expect("preflight");
     let page = store
         .list_page("bucket", "larch/", Some("page"))
         .await

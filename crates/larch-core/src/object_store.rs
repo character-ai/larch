@@ -32,7 +32,11 @@ pub type ObjectStoreFuture<'a, T> =
 
 /// Narrow object transport port. Workflow policy remains outside adapters.
 pub trait ObjectStore: Send + Sync {
-    fn preflight_bucket<'a>(&'a self, bucket: &'a str) -> ObjectStoreFuture<'a, ()>;
+    fn preflight_prefix<'a>(
+        &'a self,
+        bucket: &'a str,
+        prefix: &'a str,
+    ) -> ObjectStoreFuture<'a, ()>;
     fn list_page<'a>(
         &'a self,
         bucket: &'a str,

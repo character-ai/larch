@@ -15,6 +15,7 @@ from larch.core import architectural_guidelines as ag
 from larch.core import config
 from larch.issue import audit_runs, learn_from_bugs
 from larch.core.proc import CommandResult
+from larch.report import storage_config
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +23,14 @@ def _isolated_analysis_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
+    storage = storage_config.ToolRepositoryStorage(
+        storage_config.StorageBase("s3", "test-bucket"), "r"
+    )
+    monkeypatch.setattr(
+        storage_config,
+        "load_tool_repository_storage",
+        lambda **_kwargs: storage,
+    )
 
 
 
@@ -98,6 +107,7 @@ def _write_learn_from_bugs_state(
     scan_started_at: str | None = "2026-07-09T01:00:00Z",
 ) -> None:
     marker = learn_from_bugs.state_path(root)
+    marker.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object] = {
         "schema_version": 1,
         "run_date": run_date,
@@ -114,6 +124,19 @@ def _write_learn_from_bugs_state(
 
 def _gh_issue_rows(count: int, *, title: str = "[BUG] fixed", closed_at: str = "2026-07-09T02:00:00Z") -> str:
     return json.dumps([{"number": n + 1, "title": title, "closedAt": closed_at} for n in range(count)])
+
+
+def test_learn_from_bugs_state_does_not_import_legacy_repository_state(
+    tmp_path: Path,
+) -> None:
+    legacy = tmp_path / "larch-logs" / "shared" / "learn-from-bugs-state.json"
+    legacy.parent.mkdir(parents=True)
+    _ = legacy.write_text('{"schema_version":1}\n', encoding="utf-8")
+
+    marker = learn_from_bugs.state_path(tmp_path)
+
+    assert not marker.exists()
+    assert legacy.read_text(encoding="utf-8") == '{"schema_version":1}\n'
 
 
 def test_bugs_backlog_nudge_missing_marker_prints_never_run_without_gh(
@@ -133,6 +156,7 @@ def test_bugs_backlog_nudge_symlink_marker_is_unusable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     marker = learn_from_bugs.state_path(tmp_path)
+    marker.parent.mkdir(parents=True, exist_ok=True)
     marker.symlink_to(tmp_path / "target.json")
 
     def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:

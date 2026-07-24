@@ -522,17 +522,33 @@ def test_default_synced_corpus_matches_explicit_fixture(
     synced_out = tmp_path / "synced.md"
     sync_calls = 0
 
-    def _sync(*, repo_root: Path) -> Path:
+    storage_root = dc.storage_config.ToolRepositoryStorage(
+        dc.storage_config.StorageBase("s3", "fixture-bucket"), "fixture-repo"
+    )
+
+    def _sync(*, repo_root: Path, storage: dc.storage_config.ToolRepositoryStorage) -> Path:
+        _ = storage
         nonlocal sync_calls
         assert repo_root == tmp_path
         sync_calls += 1
         return cache_root
 
-    def _state_root(*, repo_root: Path) -> Path:
+    def _state_root(*, repo_root: Path, storage: dc.storage_config.ToolRepositoryStorage) -> Path:
+        _ = storage
         assert repo_root == tmp_path
         return root
 
     monkeypatch.setattr(dc.repo_roots, "consumer_repo_root", lambda: tmp_path)
+    def _load_storage(
+        **_kwargs: object,
+    ) -> dc.storage_config.ToolRepositoryStorage:
+        return storage_root
+
+    monkeypatch.setattr(
+        dc.storage_config,
+        "load_tool_repository_storage",
+        _load_storage,
+    )
     monkeypatch.setattr(dc.run_log_corpus, "synchronized_repository_log_root", _sync)
     monkeypatch.setattr(dc.analysis_state, "repository_state_root", _state_root)
 

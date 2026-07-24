@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.report import run_log_corpus
+from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 
 if TYPE_CHECKING:
     from larch.report.object_store import RemoteObject
@@ -37,8 +39,13 @@ class _EmptyStore:
 def test_synchronized_repository_log_root_lists_once(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
-    _ = (repo / "config.toml").write_text(
-        '[logs]\nuri = "s3://fixture-bucket/larch"\n',
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/repo.git"],
+        cwd=repo, check=True,
+    )
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://fixture-bucket"\n',
         encoding="utf-8",
     )
     store = _EmptyStore()
@@ -50,7 +57,11 @@ def test_synchronized_repository_log_root_lists_once(tmp_path: Path) -> None:
         state_home=tmp_path / "state",
     )
 
-    assert log_root == tmp_path / "cache" / "larch" / "run-logs" / "repo"
+    storage = ToolRepositoryStorage(StorageBase("s3", "fixture-bucket"), "repo")
+    assert log_root == (
+        tmp_path / "cache" / "larch" / "run-logs" / "v2"
+        / "repo" / storage.storage_origin_id
+    )
     assert store.list_calls == 1
 
 
@@ -59,7 +70,7 @@ def test_synchronized_repository_log_root_requires_config(tmp_path: Path) -> Non
     repo.mkdir()
     store = _EmptyStore()
 
-    with pytest.raises(run_log_corpus.RunLogCorpusError, match="storage configuration is missing"):
+    with pytest.raises(run_log_corpus.RunLogCorpusError, match=r"tools-config\.toml"):
         _ = run_log_corpus.synchronized_repository_log_root(
             repo_root=repo,
             store=store,

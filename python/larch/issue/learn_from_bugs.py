@@ -261,10 +261,10 @@ def state_path(root: Path) -> Path:
     if not root_path.is_absolute():
         root_path = Path.cwd() / root_path
     root_path = root_path.resolve()
-    target = analysis_state.repository_state_root(repo_root=root_path) / config.LEARN_FROM_BUGS_STATE_RELPATH
-    if not target.exists() and not target.is_symlink():
-        _ = analysis_state.import_legacy_file(path=target, legacy_path=root_path / config.LEGACY_LEARN_FROM_BUGS_STATE_RELPATH)
-    return target
+    return (
+        analysis_state.repository_state_root(repo_root=root_path)
+        / config.LEARN_FROM_BUGS_STATE_RELPATH
+    )
 
 
 def _int_field(payload: Mapping[str, object], key: str, default: int) -> int:
