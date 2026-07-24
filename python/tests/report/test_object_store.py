@@ -104,7 +104,7 @@ def test_gcs_preflight_rejects_symlinked_checkout_target(
         object_store_for(storage, environ={}, runner=cast("proc.Runner", runner)).preflight_prefix()
 
     assert failure.value.operation == "checkout-build"
-    assert runner.calls == []
+    assert not runner.calls
 @pytest.mark.parametrize("scheme", ["s3", "gs", "r2"])
 def test_list_paginates_from_empty_prefix(scheme: str) -> None:
     if scheme == "gs":
