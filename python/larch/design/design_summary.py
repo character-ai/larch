@@ -186,6 +186,9 @@ def _published_run_logs_path(*, design_tmpdir: Path, run_id: str) -> str:
         repo_root=Path(repo_root_raw) if repo_root_raw else None,
         skill="design",
         run_id=run_id,
+        lifecycle_manifest=(
+            design_tmpdir / "larch-logs" / "design" / run_id / "manifest.json"
+        ),
     )
 
 

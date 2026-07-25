@@ -602,6 +602,22 @@ def test_validate_pin_table_rejects_duplicates() -> None:
         validate_pin_table(bad)
 
 
+def test_status_pins_run_log_storage_rendering_contract() -> None:
+    text = _read_text("skills/status/SKILL.md")
+
+    assert (
+        "Run-log storage: disabled (<RUN_LOG_STORAGE_REASON>)" in text
+    )
+    assert (
+        "Print `Run-log storage: accessible` only when "
+        "`RUN_LOG_STORAGE=enabled` and `STORAGE_PREFLIGHT=ok`." in text
+    )
+    assert (
+        "If the script exits non-zero, surface the error message and do not "
+        "invent status values." in text
+    )
+
+
 def test_validate_pin_table_rejects_empty_needle() -> None:
     bad = (
         StructurePin(skill="t", label="x", path="a", kind="contains", needle=""),

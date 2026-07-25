@@ -12,23 +12,54 @@ import subprocess
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
+import pytest
 from larch.design import design_pause
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
 from larch.report import run_lifecycle
+from larch.report.storage_config import StorageBase, ToolRepositoryStorage
 from test_support import operator_repo_with_remote as _operator_repo_with_remote
 from test_support import write_gh_pr_stub as _write_gh_stub
-
-if TYPE_CHECKING:
-    import pytest
 
 # Marker delimiters mirror design_pause._PAUSE_START / _PAUSE_END (a stable wire format). Using
 # literals here keeps the test from reaching into private module members; a delimiter mismatch
 # would make _parse_pause_payload return no-pause-marker and fail these tests loudly.
 _MARKER_START = "<!-- larch:design-pause:start -->"
 _MARKER_END = "<!-- larch:design-pause:end -->"
+
+
+def _patch_enabled_pause_context(
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    run_id: str = "RUN1",
+) -> None:
+    repo = tmp_path / "pause-repo"
+    repo.mkdir(exist_ok=True)
+    context = run_lifecycle.LifecycleStart(
+        repo_root=repo,
+        storage_root=ToolRepositoryStorage(StorageBase("s3", "bucket"), "repo"),
+        skill="design",
+        run_id=run_id,
+        log_root=tmp_path / "logs",
+        run_dir=tmp_path / "logs" / "design" / run_id,
+        context_file=tmp_path / "context.json",
+    )
+    monkeypatch.setattr(
+        design_pause,
+        "repo_root_probe",
+        lambda: SimpleNamespace(stdout=str(repo)),
+    )
+
+    def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
+        return context
+
+    monkeypatch.setattr(
+        design_pause.run_lifecycle,
+        "load_run_context",
+        fake_load_context,
+    )
 
 
 def test_parse_pause_payload_normalizes_keys_before_last_value_selection() -> None:
@@ -139,8 +170,12 @@ def _patch_load(
             raise ValueError("invalid cached archive")
         return SimpleNamespace(run_dir=cache_dir)
 
-    def fake_storage_root(**_kwargs: object) -> object:
-        return object()
+    def fake_storage_resolution(
+        **_kwargs: object,
+    ) -> run_lifecycle.storage_config.RunLogStorageResolution:
+        return run_lifecycle.storage_config.injected_storage_resolution(
+            ToolRepositoryStorage(StorageBase("s3", "bucket"), "repo")
+        )
 
     def fake_publication_paths(**_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(cache_dir=cache_dir)
@@ -149,7 +184,9 @@ def _patch_load(
     monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_pause.subprocess, "run", fake.run)  # type: ignore[attr-defined]
     monkeypatch.setattr(
-        design_pause.storage_config, "discover_tool_repository_storage", fake_storage_root
+        design_pause.storage_config,
+        "discover_run_log_storage",
+        fake_storage_resolution,
     )
     monkeypatch.setattr(
         design_pause.run_log_publish,
@@ -215,6 +252,7 @@ def test_pause_load_no_pause_marker(
 def test_pause_save_writes_marker_on_publish_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
+    _patch_enabled_pause_context(monkeypatch=monkeypatch, tmp_path=tmp_path)
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
@@ -251,6 +289,77 @@ def test_pause_save_writes_marker_on_publish_success(
     assert publish_call[publish_call.index("--outcome") + 1] == "paused"
     assert "PAUSE_OK=true" in out
     assert (design / "pause-state.txt").is_file()
+
+
+def test_pause_save_rejects_disabled_storage_before_marker_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "source-env.sh").write_text(
+        "export SESSION_ID=RUN1\n", encoding="utf-8"
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    context = run_lifecycle.LifecycleStart(
+        repo_root=repo,
+        storage_resolution=run_lifecycle.storage_config.RunLogStorageResolution(
+            mode="disabled",
+            reason="config-file-missing",
+            storage=None,
+            client_repo="repo",
+            local_namespace_id="a" * 64,
+        ),
+        skill="design",
+        run_id="RUN1",
+        log_root=tmp_path / "logs",
+        run_dir=tmp_path / "logs" / "design" / "RUN1",
+        context_file=tmp_path / "context.json",
+    )
+    monkeypatch.setattr(
+        design_pause,
+        "repo_root_probe",
+        lambda: SimpleNamespace(stdout=str(repo)),
+    )
+
+    def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
+        return context
+
+    monkeypatch.setattr(
+        design_pause.run_lifecycle,
+        "load_run_context",
+        fake_load_context,
+    )
+
+    def unexpected_mutation(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("disabled pause must not publish or write a marker")
+
+    monkeypatch.setattr(design_pause.subprocess, "run", unexpected_mutation)
+
+    assert (
+        design_pause.pause_save_main(
+            [
+                "--design-tmpdir",
+                str(design),
+                "--issue",
+                "9",
+                "--repo",
+                "owner/repo",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "PAUSE_OK=false",
+        "ERROR=run-log-storage-disabled",
+    ]
+    assert "Cross-session /design pause requires configured run-log storage" in (
+        captured.err
+    )
+    assert not (design / "pause-state.txt").exists()
 
 
 def test_pause_save_uses_real_log_publish_path(
@@ -315,6 +424,8 @@ def test_pause_save_uses_real_log_publish_path(
 
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")  # type: ignore[attr-defined]
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))  # type: ignore[attr-defined]
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))  # type: ignore[attr-defined]
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))  # type: ignore[attr-defined]
 
     def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
         return "issue body\n"
@@ -359,7 +470,21 @@ def test_pause_save_uses_real_log_publish_path(
         "load_tool_repository_storage",
         fake_storage_root,
     )
-    _ = run_lifecycle.start_run(repo_root=repo, skill="design", run_id="RUN1", log_root=design / "larch-logs", storage_root=storage_root, preflight=lambda _root: None)
+    started = run_lifecycle.start_run(repo_root=repo, skill="design", run_id="RUN1", log_root=design / "larch-logs", storage_root=storage_root, preflight=lambda _root: None)
+    monkeypatch.setattr(
+        design_pause,
+        "repo_root_probe",
+        lambda: SimpleNamespace(stdout=str(repo)),
+    )
+
+    def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
+        return started
+
+    monkeypatch.setattr(
+        design_pause.run_lifecycle,
+        "load_run_context",
+        fake_load_context,
+    )
     monkeypatch.setattr(run_lifecycle.run_log_publish, "publish_log_run", fake_publish_log_run)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
@@ -395,6 +520,7 @@ def test_pause_save_redacts_pause_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
     # Guard 7: the local pause-state.txt payload is written through redact secrets.
+    _patch_enabled_pause_context(monkeypatch=monkeypatch, tmp_path=tmp_path)
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / "source-env.sh").write_text(
@@ -836,6 +962,11 @@ def test_pause_save_deactivates_run_on_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
     """pause_save_main calls deactivate_run with the effective run ID on success."""
+    _patch_enabled_pause_context(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        run_id="effective-run-42",
+    )
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")

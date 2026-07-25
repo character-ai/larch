@@ -15,7 +15,13 @@ from typing import Any
 import pytest
 
 from larch.core import alias_skill
-from larch.report import run_lifecycle, run_log_manifest, run_log_publish, run_logs
+from larch.report import (
+    run_lifecycle,
+    run_log_manifest,
+    run_log_publish,
+    run_logs,
+    storage_config,
+)
 from larch.report.object_store import (
     ObjectStoreError,
     ObjectStoreErrorKind,
@@ -162,7 +168,7 @@ def test_manifest_storage_identity_mismatch_fails_before_terminal_writes(
 
     with pytest.raises(
         run_lifecycle.RunLifecycleError,
-        match="configured storage or Git origin changed",
+        match="publication or repository identity changed",
     ):
         _ = run_lifecycle.finish_run(
             repo_root=repo,
@@ -206,6 +212,7 @@ def test_reference_skill_publishes_every_terminal_outcome(
     assert preflights == [storage_root.uri]
     assert terminal.outcome == outcome
     assert not started.run_dir.exists()
+    assert terminal.publication is not None
     cache = terminal.publication.cache_dir
     manifest = json.loads((cache / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["skill"] == "status"
@@ -250,6 +257,7 @@ def test_specialized_staging_has_one_identity_context_and_terminal_upload(
         storage_root=storage_root,
         store=store,
     )
+    assert terminal.publication is not None
     assert (
         context["skill"],
         context["run_id"],
@@ -372,6 +380,8 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
         storage_root=storage_root,
         store=store,
     )
+    assert child_terminal.publication is not None
+    assert parent_terminal.publication is not None
 
     child_manifest = json.loads(
         (child_terminal.publication.cache_dir / "manifest.json").read_text(
@@ -533,6 +543,7 @@ def test_design_adopts_universal_ndjson_waiver_without_contract_fork(
         store=MemoryObjectStore(),
     )
 
+    assert terminal.publication is not None
     assert (terminal.publication.cache_dir / "execution-issues.ndjson").is_file()
 
 
@@ -558,6 +569,173 @@ def test_parent_identity_is_immutable_after_start(
             run_id=started.run_id,
             updates={"parent_run_id": "other-parent"},
         )
+
+
+def test_disabled_lifecycle_skips_provider_and_stays_disabled_when_config_appears(
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, environment, _storage_root = lifecycle_fixture
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/consumer.git"],
+        cwd=repo,
+        check=True,
+    )
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+    def unexpected_preflight(**_kwargs: object) -> None:
+        pytest.fail("disabled start called provider preflight")
+
+    monkeypatch.setattr(
+        storage_config,
+        "preflight_tool_repository",
+        unexpected_preflight,
+    )
+    run_id = "disabled-lifecycle"
+
+    assert (
+        run_lifecycle.start_main(
+            [
+                "--repo-root",
+                str(repo),
+                "--skill",
+                "status",
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 0
+    )
+    started_output = capsys.readouterr()
+    assert started_output.err == (
+        "**⚠ Run-log publication is disabled (config-file-missing). This skill "
+        "will run, but no remote run-log archive or synchronized cache entry "
+        "will be created.**\n"
+    )
+    start_values = {
+        line.split("=", 1)[0]: line.split("=", 1)[1]
+        for line in started_output.out.splitlines()
+        if "=" in line
+    }
+    assert start_values["RUN_LOG_STORAGE"] == "disabled"
+    assert start_values["STORAGE_PREFLIGHT"] == "skipped-disabled"
+    assert start_values["PREFLIGHT_OK"] == "true"
+    assert start_values["TOOL_REPO_URI"] == ""
+    run_dir = Path(start_values["RUN_DIR"])
+    context_file = Path(start_values["CONTEXT_FILE"])
+
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://newly-configured"\n',
+        encoding="utf-8",
+    )
+
+    def unexpected_publish(**_kwargs: object) -> tuple[object, int]:
+        pytest.fail("disabled terminalization called archive publication")
+
+    monkeypatch.setattr(run_log_publish, "publish_log_run", unexpected_publish)
+
+    assert (
+        run_lifecycle.finalize_main(
+            [
+                "--repo-root",
+                str(repo),
+                "--skill",
+                "status",
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 0
+    )
+    terminal_output = capsys.readouterr()
+    assert terminal_output.err == (
+        "**⚠ Run-log publication skipped because storage was disabled at "
+        "lifecycle start (config-file-missing).**\n"
+    )
+    terminal_lines = terminal_output.out.splitlines()
+    assert "RUN_LOG_PUBLICATION=skipped-disabled" in terminal_lines
+    assert "LIFECYCLE_FLUSHED=false" in terminal_lines
+    assert "LIFECYCLE_TERMINALIZED=true" in terminal_lines
+    assert not any(
+        line.startswith(("REMOTE_KEY=", "ARCHIVE_SHA256=", "CACHE_DIR="))
+        for line in terminal_lines
+    )
+    assert not run_dir.exists()
+    assert not context_file.exists()
+
+
+def test_disabled_nested_lifecycle_preserves_parent_metadata(
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+) -> None:
+    repo, environment, _storage_root = lifecycle_fixture
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/consumer.git"],
+        cwd=repo,
+        check=True,
+    )
+    parent = run_lifecycle.start_run(
+        repo_root=repo,
+        skill="implement",
+        run_id="disabled-parent",
+        environ=environment,
+    )
+    child = run_lifecycle.start_run(
+        repo_root=repo,
+        skill="review",
+        run_id="disabled-child",
+        parent_context=parent.context_file,
+        environ=environment,
+    )
+
+    child_manifest = json.loads(
+        (child.run_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert parent.storage_resolution.mode == "disabled"
+    assert child.storage_resolution.mode == "disabled"
+    assert child.run_id != parent.run_id
+    assert child_manifest["parent_skill"] == parent.skill
+    assert child_manifest["parent_run_id"] == parent.run_id
+
+
+@pytest.mark.parametrize(
+    "outcome", ["success", "failure", "cancelled", "early-return"]
+)
+def test_disabled_lifecycle_terminalizes_every_outcome_without_publication(
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    repo, environment, _storage_root = lifecycle_fixture
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/consumer.git"],
+        cwd=repo,
+        check=True,
+    )
+    started = run_lifecycle.start_run(
+        repo_root=repo,
+        skill="status",
+        run_id=f"disabled-{outcome}",
+        environ=environment,
+    )
+
+    def unexpected_publish(**_kwargs: object) -> tuple[object, int]:
+        pytest.fail("disabled terminalization called publication")
+
+    monkeypatch.setattr(run_log_publish, "publish_log_run", unexpected_publish)
+    terminal = run_lifecycle.finish_run(
+        repo_root=repo,
+        skill=started.skill,
+        run_id=started.run_id,
+        outcome=outcome,
+        environ=environment,
+    )
+
+    assert terminal.outcome == outcome
+    assert terminal.storage_mode == "disabled"
+    assert terminal.publication is None
+    assert not started.run_dir.exists()
+    assert not started.context_file.exists()
 
 
 @pytest.mark.parametrize(
@@ -586,5 +764,9 @@ def test_terminal_cli_converts_publication_exceptions_to_loud_failure(
 
     captured = capsys.readouterr()
     assert rc != 0
-    assert captured.out == "LIFECYCLE_FLUSHED=false\n"
+    assert captured.out.splitlines() == [
+        "RUN_LOG_PUBLICATION=failed",
+        "LIFECYCLE_FLUSHED=false",
+        "LIFECYCLE_TERMINALIZED=false",
+    ]
     assert "run lifecycle finalize failed" in captured.err

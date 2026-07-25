@@ -771,6 +771,75 @@ def test_published_run_logs_path_requires_completed_log_publication(tmp_path: Pa
     _ = (tmp_path / "source-env.sh").write_text(f"REPO_ROOT={repo}\n", encoding="utf-8")
     _ = result.write_text("LOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
     assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "provider `s3`, skill `design`, run ID `run-1`"  # pyright: ignore[reportPrivateUsage]
+    (repo / "tools-config.toml").unlink()
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "no archive published because run-log storage was disabled, skill `design`, run ID `run-1`"  # pyright: ignore[reportPrivateUsage]
+    manifest = tmp_path / "larch-logs" / "design" / "run-1" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text(
+        json.dumps(
+            {
+                "lifecycle_schema_version": 3,
+                "publication_mode": "disabled",
+                "storage_resolution_reason": "config-file-missing",
+                "skill": "design",
+                "run_id": "run-1",
+                "local_namespace_id": "a" * 64,
+                "storage_base_uri": None,
+                "tool_repo_uri": None,
+                "storage_origin_id": None,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://new-config"\n', encoding="utf-8"
+    )
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "no archive published because run-log storage was disabled, skill `design`, run ID `run-1`"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_published_run_logs_path_rejects_mismatched_disabled_manifest(
+    tmp_path: Path,
+) -> None:
+    result = tmp_path / ".design-publish-result.env"
+    _ = result.write_text("LOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/repo.git"],
+        cwd=repo,
+        check=True,
+    )
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://configured"\n', encoding="utf-8"
+    )
+    _ = (tmp_path / "source-env.sh").write_text(
+        f"REPO_ROOT={repo}\n", encoding="utf-8"
+    )
+    manifest = tmp_path / "larch-logs" / "design" / "run-1" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text(
+        json.dumps(
+            {
+                "lifecycle_schema_version": 3,
+                "publication_mode": "disabled",
+                "storage_resolution_reason": "config-file-missing",
+                "skill": "other-skill",
+                "run_id": "run-1",
+                "local_namespace_id": "a" * 64,
+                "storage_base_uri": None,
+                "tool_repo_uri": None,
+                "storage_origin_id": None,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert design_summary._published_run_logs_path(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path, run_id="run-1"
+    ) == "provider `s3`, skill `design`, run ID `run-1`"
 
 
 def test_render_final_summary_redacts_spliced_detail(

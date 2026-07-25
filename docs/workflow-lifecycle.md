@@ -108,21 +108,24 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 ## Run-log lifecycle
 
-Every shipped skill requires root `tools-config.toml` and `[larch]`, derives
-the client repository from local `remote.origin.url`, resolves one
-`ToolRepositoryStorage`, and performs a prefix-scoped provider preflight before
-run work. Each invocation pins the base URI, client repository, canonical tool
-repository URI, and storage-origin ID in its durable context. A config,
-environment, or Git-origin change before publication fails closed.
-Specialized design, implement, and review owners adopt their rich staging trees
-into that same lifecycle. Nested and alias calls publish separate parent-linked
-archives; nested review is a child of its implement run.
+Every shipped skill derives the client repository from local
+`remote.origin.url` and resolves run-log storage once. Valid
+`tools-config.toml` or `LARCH_STORAGE_BASE_URI` enables storage and a
+prefix-scoped provider preflight. Missing configuration disables remote
+publication without blocking run work; invalid present configuration and
+configured provider failures still fail closed. Each invocation pins mode,
+reason, client repository, and either canonical storage identity or a local
+repository namespace digest in its durable context. Specialized design,
+implement, and review owners adopt their rich staging trees into that same
+lifecycle. Nested and alias calls retain separate parent-linked run identities.
 
-Terminal paths sanitize the final staging tree and publish exactly one
+Enabled terminal paths sanitize the final staging tree and publish exactly one
 create-only object at
 `<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`. Success also
 requires a validated unpacked cache directory. Failure returns nonzero and
-keeps a content-pinned pending archive for retry. No run-log path creates a Git
+keeps a content-pinned pending archive for retry. Disabled terminal paths write
+universal terminal artifacts, skip archive, provider, cache, and pending-state
+operations, then clean staging. No run-log path creates a Git
 branch, commit, push, pull request, or merge.
 
 The enforceable owner registry is

@@ -56,7 +56,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Direct design planning and plan reviews](docs/collaborative-sketches.md)** — Step 2b drafts the plan directly, then the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews it.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, and rejected findings.
-- **[Tracked runs](docs/run-logs.md)** — Every skill invocation publishes one terminal archive below the derived tool and client-repository root, such as `s3://zhupanov/larch/larch/run-logs/<skill>/<run-id>.tar.gz`. Nested and alias invocations keep distinct parent-linked archives. `/implement` keeps tracking issues slim with marker-keyed summary comments.
+- **[Tracked runs](docs/run-logs.md)** — Every skill invocation keeps local lifecycle bookkeeping. With run-log storage enabled, it publishes one terminal archive below the derived tool and client-repository root, such as `s3://zhupanov/larch/larch/run-logs/<skill>/<run-id>.tar.gz`. Without storage configuration, it warns and completes without a remote archive, synchronized cache entry, or pending publication. Nested and alias invocations keep distinct parent-linked run identities.
 - **[Progress statusline](docs/progress-reporting.md)** — clone-local breadcrumbs show live larch progress without adding report text to model context.
 - **Tiered architectural knowledge** — Optional `ARCHITECTURAL_INVARIANTS.md` and `ARCHITECTURAL_GUIDELINES.md` files are supplied to authoring agents plus the dedicated code-review compliance specialist and `/design` Architecture/Standards reviewer as untrusted, scope-bound evidence.
 
@@ -153,7 +153,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#pause"><code>/pause</code></a></td>
       <td></td>
     </tr>
-    <tr><td colspan="2">Pause a running <code>/design</code>; saves state to GitHub for cross-session resume. Source: <a href="skills/pause/SKILL.md"><code>skills/pause/SKILL.md</code></a>.</td></tr>
+    <tr><td colspan="2">Pause a running <code>/design</code>; saves state to GitHub for cross-session resume when run-log storage is configured. Source: <a href="skills/pause/SKILL.md"><code>skills/pause/SKILL.md</code></a>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#rejected-analysis"><code>/rejected-analysis</code></a></td>

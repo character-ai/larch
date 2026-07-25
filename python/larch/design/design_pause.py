@@ -19,7 +19,13 @@ from larch.git import gh
 from larch.core import proc
 from larch.core import redact
 from larch.core.repo_roots import repo_root_probe
-from larch.report import progress_file, run_log_archive, run_log_publish, storage_config
+from larch.report import (
+    progress_file,
+    run_lifecycle,
+    run_log_archive,
+    run_log_publish,
+    storage_config,
+)
 from larch.state.session_env import validate_design_tmpdir
 
 
@@ -201,6 +207,33 @@ def pause_save_main(argv: Sequence[str]) -> int:
     if not run_id or not _RUN_RE.fullmatch(run_id):
         _emit([("PAUSE_OK", "false"), ("ERROR", "invalid-run-id")])
         return 0
+    repo_top = repo_root_probe().stdout.strip()
+    if not repo_top:
+        _emit([("PAUSE_OK", "false"), ("ERROR", "not-git-worktree")])
+        return 0
+    try:
+        lifecycle_context = run_lifecycle.load_run_context(
+            repo_root=Path(repo_top),
+            skill="design",
+            run_id=run_id,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        run_lifecycle.RunLifecycleError,
+        storage_config.StorageConfigurationError,
+    ):
+        _emit([("PAUSE_OK", "false"), ("ERROR", "lifecycle-context-unavailable")])
+        return 0
+    if lifecycle_context.storage_resolution.mode == "disabled":
+        print(
+            "Cross-session /design pause requires configured run-log storage; "
+            "configure [larch].storage_base_uri or set LARCH_STORAGE_BASE_URI.",
+            file=sys.stderr,
+        )
+        _emit([("PAUSE_OK", "false"), ("ERROR", "run-log-storage-disabled")])
+        return 0
 
     step = _determine_step(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
     body = gh.issue_view_body(proc, issue, repo=repo or gh.resolve_repo(proc) or "")
@@ -321,7 +354,26 @@ def pause_load_main(argv: Sequence[str]) -> int:
         return _load_fail_clear(issue=issue, repo=repo, error="legacy-git-snapshot")
     try:
         repo_root = Path(repo_top)
-        storage_root = storage_config.discover_tool_repository_storage(start=repo_root)
+        storage_resolution = storage_config.discover_run_log_storage(
+            start=repo_root
+        )
+        if storage_resolution.mode == "disabled":
+            print(
+                "Cross-session /design resume requires configured run-log "
+                "storage; configure [larch].storage_base_uri or set "
+                "LARCH_STORAGE_BASE_URI.",
+                file=sys.stderr,
+            )
+            _emit(
+                [
+                    ("LOAD_OK", "false"),
+                    ("ERROR", "run-log-storage-disabled"),
+                ]
+            )
+            return 0
+        storage_root = storage_config.require_enabled_storage(
+            storage_resolution
+        )
         publication_paths = run_log_publish.publication_paths(
             request=run_log_publish.PublicationRequest(
                 repo_root=repo_root,

@@ -293,12 +293,23 @@ def _publish_terminal_archive(
     publication_values: dict[str, str] = _parse_kv(publish.stdout or "")
     cache_dir_raw: str = publication_values.get("CACHE_DIR", "")
     cache_dir: Path | None = Path(cache_dir_raw) if cache_dir_raw else None
-    postcondition_ok: bool = (
-        publish.returncode == 0
+    published: bool = (
+        publication_values.get("RUN_LOG_PUBLICATION") == "published"
         and publication_values.get("LIFECYCLE_FLUSHED") == "true"
         and bool(publication_values.get("REMOTE_KEY"))
         and cache_dir is not None
         and cache_dir.is_dir()
+    )
+    skipped_disabled: bool = (
+        publication_values.get("RUN_LOG_PUBLICATION") == "skipped-disabled"
+        and publication_values.get("LIFECYCLE_FLUSHED") == "false"
+        and not publication_values.get("REMOTE_KEY")
+        and cache_dir is None
+    )
+    postcondition_ok: bool = (
+        publish.returncode == 0
+        and publication_values.get("LIFECYCLE_TERMINALIZED") == "true"
+        and (published or skipped_disabled)
     )
     if not postcondition_ok:
         print(

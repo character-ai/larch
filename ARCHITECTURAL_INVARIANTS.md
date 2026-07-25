@@ -80,9 +80,12 @@ A command becomes Rust-owned only in the change that proves Rust implementation 
 
 ### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string
 
-Every terminal run-log flush must durably publish the run's required artifact set (session
-transcript, voted-finding bodies, final report) or record the omission as a
-category-keyed execution issue that flushes into the durable run log. A
+When publication is enabled, every terminal run-log flush must durably publish
+the run's required artifact set (session transcript, voted-finding bodies,
+final report) or record the omission as a category-keyed execution issue that
+flushes into the durable run log. Storage-disabled terminalization is an
+explicit no-publication path and never claims a durable flush. It still writes
+the universal terminal artifacts needed for orderly local completion. A
 capture failure that exists only as a status value inside the session tmpdir is
 invisible to every audit surface and is a defect of the flush, not acceptable
 drift. Evidence of violation: every post-migration /implement run recorded
