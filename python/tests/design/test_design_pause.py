@@ -10,10 +10,12 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from larch.core import repo_roots
 from larch.design import design_pause
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
@@ -27,6 +29,13 @@ from test_support import write_gh_pr_stub as _write_gh_stub
 # would make _parse_pause_payload return no-pause-marker and fail these tests loudly.
 _MARKER_START = "<!-- larch:design-pause:start -->"
 _MARKER_END = "<!-- larch:design-pause:end -->"
+
+
+def _repo_probe(repo: Path) -> Callable[..., SimpleNamespace]:
+    def probe(**_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(stdout=str(repo), returncode=0)
+
+    return probe
 
 
 def _patch_enabled_pause_context(
@@ -47,9 +56,9 @@ def _patch_enabled_pause_context(
         context_file=tmp_path / "context.json",
     )
     monkeypatch.setattr(
-        design_pause,
+        repo_roots,
         "repo_root_probe",
-        lambda: SimpleNamespace(stdout=str(repo)),
+        _repo_probe(repo),
     )
 
     def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
@@ -319,9 +328,9 @@ def test_pause_save_rejects_disabled_storage_before_marker_write(
         context_file=tmp_path / "context.json",
     )
     monkeypatch.setattr(
-        design_pause,
+        repo_roots,
         "repo_root_probe",
-        lambda: SimpleNamespace(stdout=str(repo)),
+        _repo_probe(repo),
     )
 
     def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
@@ -472,9 +481,9 @@ def test_pause_save_uses_real_log_publish_path(
     )
     started = run_lifecycle.start_run(repo_root=repo, skill="design", run_id="RUN1", log_root=design / "larch-logs", storage_root=storage_root, preflight=lambda _root: None)
     monkeypatch.setattr(
-        design_pause,
+        repo_roots,
         "repo_root_probe",
-        lambda: SimpleNamespace(stdout=str(repo)),
+        _repo_probe(repo),
     )
 
     def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
