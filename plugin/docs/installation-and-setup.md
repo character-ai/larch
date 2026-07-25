@@ -254,9 +254,10 @@ If you need stricter permissions instead (no `bypassPermissions`), drop that lin
 
 - **macOS keychain auth.** If `CURSOR_API_KEY` is unset and Cursor's keychain entry is missing or stale, larch fails with a specific, actionable error instead of Cursor's cryptic `Security process exited with code: 45`. See [macOS keychain interactions](macos-keychain-interactions.md) for the full mechanism and the fix.
 
-### Configure run-log storage for every repo where you will run larch
+### Optionally configure run-log storage
 
-Create `tools-config.toml` at the consumer repository root:
+To publish remote run-log archives, create `tools-config.toml` at the consumer
+repository root:
 
 ```toml
 [larch]
@@ -271,11 +272,20 @@ worktree directory names do not affect that identity.
 
 The repository-owned file may contain tables for other tools. Larch owns and
 strictly validates only `[larch]`; it ignores unrelated tool tables. There is
-no global version and no `client_repo` field. The file and `[larch]` remain
-required when `LARCH_STORAGE_BASE_URI` overrides only the base value for one
-process. Accepted schemes are `s3://`, `gs://`, and `r2://`.
+no global version and no `client_repo` field. A non-empty
+`LARCH_STORAGE_BASE_URI` may enable storage without the file, `[larch]`, or
+`storage_base_uri`. A present file is always validated first, so an override
+does not hide a malformed, symlinked, unreadable, or otherwise invalid file.
+Accepted schemes are `s3://`, `gs://`, and `r2://`.
 
-At skill startup, larch lists at most one object under the exact
+When the file, `[larch]`, or `storage_base_uri` is absent and no override is
+set, remote publication is disabled. Skills still run and keep local lifecycle
+bookkeeping. They warn at startup and terminalization, then remove staging
+without creating a remote archive, synchronized cache entry, or pending
+publication. Invalid present configuration still fails. Configured but
+inaccessible storage still blocks startup.
+
+When storage is enabled, skill startup lists at most one object under the exact
 `larch/<client-repo>/` prefix and ignores the listing output. It does not list
 the bucket root or attempt a write. See
 [Configuration and Permissions](configuration-and-permissions.md#run-log-object-storage)
@@ -285,6 +295,7 @@ and the [language-neutral storage contract](run-log-archive.md).
 Run `/status` in a `claude` session. Expect a report like this:
 ```
 larch v52.4.17
+Run-log storage: accessible
 ┌────────┬───────┐
 │  Tool  │ State │
 ├────────┼───────┤
@@ -293,6 +304,10 @@ larch v52.4.17
 │ Cursor │ ok    │
 └────────┴───────┘
 ```
+
+Without storage configuration, expect `Run-log storage: disabled
+(<reason>)`. A configured but inaccessible provider stops `/status` during
+lifecycle startup instead of reporting it as accessible.
 
 ## Upgrade
 Run the `/upgrade-larch` skill in your `claude` session. It verifies the exact

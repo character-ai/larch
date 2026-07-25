@@ -456,6 +456,9 @@ def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = Fals
         repo_root=Path(repo_root_raw) if repo_root_raw else None,
         skill="implement",
         run_id=run_id,
+        lifecycle_manifest=(
+            implement_tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
+        ),
     )
     if existing:
         kept = [

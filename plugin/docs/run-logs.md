@@ -1,15 +1,24 @@
 # Larch Run Logs
 
-On a default `/implement --merge` run, Step 18 publishes one immutable `.tar.gz` archive and promotes the same sanitized tree into the unpacked local cache. The archive is the durable source of truth for voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. `/implement` does not add run-log files or commits to the business PR.
+On a default `/implement --merge` run with storage enabled, Step 18 publishes one immutable `.tar.gz` archive and promotes the same sanitized tree into the unpacked local cache. The archive is the durable source of truth for voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. `/implement` does not add run-log files or commits to the business PR.
 
-Exceptions: `repo_unavailable=true` and `--no-logs-commit` produce no archive. Fork dry-run mode (`--forked`) does not create a tracking issue. Session-derived content passes through secrets and tmpdir-path redaction, and a scrub failure blocks publication. The scrubber is pattern-based, so operators should still avoid sensitive prompt content and treat archives as sensitive. See the canonical [artifact classification and redaction contract](security/artifacts-redaction-and-publication.md#run-logs-and-breadcrumbs).
+Missing storage configuration is an intentional publication opt-out. The
+lifecycle warns at startup and terminalization, keeps local staging and
+bookkeeping during the run, and removes them after successful terminalization.
+It creates no archive, synchronized cache entry, or pending publication.
+`repo_unavailable=true` and the separate `--no-logs-commit` flag also produce
+no archive; their existing semantics do not become storage-disabled mode. Fork
+dry-run mode (`--forked`) does not create a tracking issue. Session-derived
+content passes through secrets and tmpdir-path redaction before enabled
+publication, and a scrub failure blocks publication.
 
 The configured storage root, deterministic archive, provider, cache, sync,
 error, and Rust-handoff contracts are defined in
 [Run-log storage contracts](run-log-archive.md).
 
-Every writer and default reader resolves one pinned tool repository per
-invocation from repository-root `tools-config.toml` and local Git origin:
+Every writer resolves one pinned publication mode and client repository per
+invocation. Enabled mode resolves the tool repository from repository-root
+`tools-config.toml` or `LARCH_STORAGE_BASE_URI` plus local Git origin:
 
 ```text
 <storage-base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz
@@ -21,7 +30,9 @@ worktree names do not affect it. Synchronization returns a v2 cache root bound
 to the SHA-256 identity of the canonical tool repository URI. Analysis skills
 retain that returned root for all reads. Their explicit `--log-root` options
 remain offline-fixture bypasses that do not load storage configuration or use
-the network.
+the network. Without an explicit local corpus, analyzers require enabled
+storage and fail with configuration guidance instead of returning an empty
+corpus.
 
 ## Tool-first layout migration
 
@@ -53,23 +64,28 @@ the final plan, report, corpus totals, cache validation, and cutover evidence.
 
 `skills/shared/run-lifecycle.md` defines the shared start and terminal contract,
 and `skills/shared/run-lifecycle-ownership.tsv` assigns each skill its start and
-terminal owner. Each invocation owns one explicit run ID under its declared skill. A nested invocation stores
-its parent's skill and run ID in its manifest without sharing the parent's run
-directory or archive. The universal minimum is `manifest.json`,
+terminal owner. Each invocation owns one explicit run ID under its declared
+skill. A nested invocation stores its parent's skill and run ID in its manifest
+without sharing the parent's run directory. Enabled parent and child runs
+publish distinct archives. Disabled parent and child runs retain distinct
+local IDs and parent metadata without a remote URI. The universal minimum is `manifest.json`,
 `final-report.md`, and `execution-issues.ndjson`. When session transcript
 capture is unavailable, the execution-issues record names that omission before
-terminal publication, as required by I-Flush-1.
+enabled publication or disabled cleanup. I-Flush-1 requires durable
+completeness only when publication is enabled.
 
 Specialized owners may adopt an existing rich staging tree by passing the same
 run ID and an absolute `--log-root`. The lifecycle stores that choice in a
-durable context file, so terminal publication does not depend on inherited shell
-state. Design, implement, and review use this adoption path and keep their rich
-artifacts in the one lifecycle-owned tree.
+durable context file, so terminalization does not depend on inherited shell
+state. The context pins publication mode, resolution reason, client repository,
+and either canonical storage identity or a repository-root-derived local
+namespace digest. Design, implement, and review use this adoption path and keep
+their rich artifacts in the one lifecycle-owned tree.
 
 The inventory includes public skills, shipped aliases, internal child skills,
-and dev-only skills. An alias publishes under the alias name, then passes its
-identity to the target as parent metadata. Nested review publishes a separate
-review archive linked to its implement parent. The lifecycle lint rejects
+and dev-only skills. An alias owns a run under the alias name, then passes its
+identity to the target as parent metadata. Nested review owns a separate child
+run linked to its implement parent. The lifecycle lint rejects
 temporary migration markers, incomplete declarations, unregistered specialized
 owners, and direct archive publishers outside the shared terminal owner.
 
@@ -77,8 +93,9 @@ owners, and direct archive publishers outside the shared terminal owner.
 
 Issue-anchored `larch:plan` blocks list the repository files that a
 `/implement` run is expected to touch. Run logs are not repository files.
-Current workflows stage them under the session root, publish one remote
-archive, and promote one unpacked cache copy. They create no log branch,
+Current workflows stage them under the session root. Enabled runs publish one
+remote archive and promote one unpacked cache copy. Disabled runs clean local
+staging after terminalization. Neither mode creates a log branch,
 commit, push, pull request, or merge.
 
 ## Directory structure
@@ -156,7 +173,7 @@ larch-logs/                 # session staging only
       checks-digest-sizes.tsv
 ```
 
-`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before archive publication. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so durable logs preserve schema shape without exposing operator-local absolute paths.
+`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before archive publication. Universal lifecycle schema version 3 records publication mode and resolution identity. The underlying run-log manifest schema remains version 2 and keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so durable logs preserve schema shape without exposing operator-local absolute paths.
 
 Bgjob result envs and daemon logs are session-local routing inputs before
 run-log capture. They record `BGJOB_RC`, step-specific KVs, stdout, stderr, and

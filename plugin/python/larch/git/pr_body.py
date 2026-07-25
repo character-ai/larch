@@ -1041,6 +1041,9 @@ def post_tracking_issue(
         repo_root=Path(repo_root_raw) if repo_root_raw else None,
         skill="implement",
         run_id=run,
+        lifecycle_manifest=(
+            implement_tmpdir / "larch-logs" / "implement" / run / "manifest.json"
+        ),
     )
     lines = [f"Run ID: `{run}`", f"Run log: {log_reference}", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
     if force_requested == "true":

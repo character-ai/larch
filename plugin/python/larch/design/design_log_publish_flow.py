@@ -396,6 +396,18 @@ def _publish_design_logs(
     except run_lifecycle.TERMINAL_EXCEPTIONS as exc:
         print(f"design log-publish: archive publication failed: {exc}", file=sys.stderr)
         return (False, "", "", str(pre_scrub_violations))
+    if terminal.publication is None:
+        print(
+            "**⚠ Run-log publication skipped because storage was disabled at "
+            f"lifecycle start ({terminal.storage_reason}).**",
+            file=sys.stderr,
+        )
+        return (
+            True,
+            "",
+            "",
+            str(terminal.secret_scrub_violations),
+        )
     return (
         True,
         terminal.publication.remote_key,

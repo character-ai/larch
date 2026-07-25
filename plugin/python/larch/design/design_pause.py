@@ -16,10 +16,14 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.git import gh
-from larch.core import proc
-from larch.core import redact
-from larch.core.repo_roots import repo_root_probe
-from larch.report import progress_file, run_log_archive, run_log_publish, storage_config
+from larch.core import proc, redact, repo_roots
+from larch.report import (
+    progress_file,
+    run_lifecycle,
+    run_log_archive,
+    run_log_publish,
+    storage_config,
+)
 from larch.state.session_env import validate_design_tmpdir
 
 
@@ -66,6 +70,37 @@ def _resolve_repo(*, repo_arg: str, source_env: Path) -> str:
     if from_source:
         return from_source
     return gh.resolve_repo(proc) or ""
+
+
+def _pause_save_storage_error(*, run_id: str) -> str | None:
+    """Return a pause-admission error before any GitHub marker mutation."""
+    if not run_id or not _RUN_RE.fullmatch(run_id):
+        return "invalid-run-id"
+    repo_top = repo_roots.repo_root_probe().stdout.strip()
+    if not repo_top:
+        return "not-git-worktree"
+    try:
+        lifecycle_context = run_lifecycle.load_run_context(
+            repo_root=Path(repo_top),
+            skill="design",
+            run_id=run_id,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        run_lifecycle.RunLifecycleError,
+        storage_config.StorageConfigurationError,
+    ):
+        return "lifecycle-context-unavailable"
+    if lifecycle_context.storage_resolution.mode != "disabled":
+        return None
+    print(
+        "Cross-session /design pause requires configured run-log storage; "
+        "configure [larch].storage_base_uri or set LARCH_STORAGE_BASE_URI.",
+        file=sys.stderr,
+    )
+    return "run-log-storage-disabled"
 
 
 def _determine_step(*, design_tmpdir: Path, plugin_root: Path) -> str:
@@ -198,8 +233,9 @@ def pause_save_main(argv: Sequence[str]) -> int:
         _emit([("PAUSE_OK", "false"), ("ERROR", "invalid-repo")])
         return 0
     run_id = _source_env_get(path=source_env, key="SESSION_ID") or os.environ.get("SESSION_ID", "")
-    if not run_id or not _RUN_RE.fullmatch(run_id):
-        _emit([("PAUSE_OK", "false"), ("ERROR", "invalid-run-id")])
+    storage_error = _pause_save_storage_error(run_id=run_id)
+    if storage_error is not None:
+        _emit([("PAUSE_OK", "false"), ("ERROR", storage_error)])
         return 0
 
     step = _determine_step(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
@@ -313,7 +349,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
     if not _RUN_RE.fullmatch(run_id):
         return _load_fail_clear(issue=issue, repo=repo, error="invalid-run-id")
 
-    repo_top = repo_root_probe().stdout.strip()
+    repo_top = repo_roots.repo_root_probe().stdout.strip()
     if not repo_top:
         _emit([("LOAD_OK", "false"), ("ERROR", "not-git-worktree")])
         return 0
@@ -321,7 +357,26 @@ def pause_load_main(argv: Sequence[str]) -> int:
         return _load_fail_clear(issue=issue, repo=repo, error="legacy-git-snapshot")
     try:
         repo_root = Path(repo_top)
-        storage_root = storage_config.discover_tool_repository_storage(start=repo_root)
+        storage_resolution = storage_config.discover_run_log_storage(
+            start=repo_root
+        )
+        if storage_resolution.mode == "disabled":
+            print(
+                "Cross-session /design resume requires configured run-log "
+                "storage; configure [larch].storage_base_uri or set "
+                "LARCH_STORAGE_BASE_URI.",
+                file=sys.stderr,
+            )
+            _emit(
+                [
+                    ("LOAD_OK", "false"),
+                    ("ERROR", "run-log-storage-disabled"),
+                ]
+            )
+            return 0
+        storage_root = storage_config.require_enabled_storage(
+            storage_resolution
+        )
         publication_paths = run_log_publish.publication_paths(
             request=run_log_publish.PublicationRequest(
                 repo_root=repo_root,

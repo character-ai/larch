@@ -190,8 +190,8 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ### Run-log object storage
 
-Each consumer repository must own a root `tools-config.toml` file and provide
-the larch storage base:
+Remote run-log publication is optional. A consumer repository may provide a
+root `tools-config.toml` with the larch storage base:
 
 ```toml
 [larch]
@@ -200,10 +200,24 @@ storage_base_uri = "s3://zhupanov"
 
 The file is shared by independently configured tools. Each tool owns one table
 named for the tool and ignores unrelated tool tables. There is no global
-version and no configured `client_repo`. Larch requires the file and `[larch]`
-even when `LARCH_STORAGE_BASE_URI` overrides only
-`[larch].storage_base_uri`. A non-empty `LARCH_LOGS_URI` is rejected with
-migration guidance.
+version and no configured `client_repo`. Resolution applies this order:
+
+1. Reject a non-empty `LARCH_LOGS_URI` with migration guidance.
+2. If `tools-config.toml` exists, require a regular, non-symlinked, readable,
+   valid TOML file. Require `[larch]`, when present, to be a table with no
+   unknown keys. A present `storage_base_uri` must be a strict non-empty
+   string.
+3. A non-empty `LARCH_STORAGE_BASE_URI` enables storage and overrides a valid
+   file value. It does not hide invalid present configuration.
+4. Without an override, a missing file, missing `[larch]`, or omitted
+   `storage_base_uri` disables publication with reason
+   `config-file-missing`, `larch-table-missing`, or
+   `storage-base-uri-omitted`. A valid field enables publication with reason
+   `repository-config`.
+
+Larch always derives and validates the client repository from
+`remote.origin.url`. Disabled storage does not relax Git-root or repository
+identity requirements.
 
 The base may be a bucket root or include an optional base prefix. Larch derives
 the client repository from the final repository component of the local Git
@@ -215,7 +229,10 @@ derives:
 ```
 
 Accepted schemes are `gs://`, `s3://`, and `r2://`. The value must not contain
-credentials. Missing or invalid configuration fails before run work starts.
+credentials. Invalid present configuration fails before run work starts.
+Missing configuration disables remote publication. Skills warn, retain local
+staging and bookkeeping during the invocation, then terminalize without a
+remote archive, synchronized cache, or pending publication.
 
 S3 and R2 require the AWS CLI on `PATH` and use standard AWS credential
 discovery. R2 also requires a 32-character lowercase hexadecimal
@@ -223,7 +240,7 @@ discovery. R2 also requires a 32-character lowercase hexadecimal
 `LARCH_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`. GCS uses the
 Rust transport and Google ADC described below.
 
-The startup check lists at most one result under the exact
+When storage is enabled, the startup check lists at most one result under the exact
 `larch/<client-repo>/` prefix. Success depends only on provider status. Larch
 ignores stdout, does not inspect returned object names, does not list the bucket
 root, and does not write a probe object. Restrict provider credentials to the
