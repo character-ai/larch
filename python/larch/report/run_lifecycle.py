@@ -32,10 +32,10 @@ from larch.report.run_log_publish import (
     PublicationRequest,
     PublicationResult,
 )
-from larch.report.storage_config import ToolRepositoryStorage
+from larch.report.storage_config import RunLogStorageResolution, ToolRepositoryStorage
 
-LIFECYCLE_SCHEMA_VERSION: Final = 2
-LIFECYCLE_CONTEXT_SCHEMA_VERSION: Final = 2
+LIFECYCLE_SCHEMA_VERSION: Final = 3
+LIFECYCLE_CONTEXT_SCHEMA_VERSION: Final = 3
 LIFECYCLE_CONTEXT_BASENAME: Final = "context.json"
 UNIVERSAL_FINAL_REPORT: Final = "final-report.md"
 UNIVERSAL_EXECUTION_ISSUES: Final = "execution-issues.ndjson"
@@ -73,26 +73,67 @@ TERMINAL_EXCEPTIONS: Final = (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class LifecycleStart:
     """Validated state created for one skill invocation."""
 
     repo_root: Path
-    storage_root: ToolRepositoryStorage
+    storage_resolution: RunLogStorageResolution
     skill: str
     run_id: str
     log_root: Path
     run_dir: Path
     context_file: Path
 
+    def __init__(  # noqa: PLR0913 - compatibility initializer retains the prior enabled-storage seam.
+        self,
+        repo_root: Path,
+        storage_resolution: RunLogStorageResolution | None = None,
+        skill: str = "",
+        run_id: str = "",
+        log_root: Path | None = None,
+        run_dir: Path | None = None,
+        context_file: Path | None = None,
+        *,
+        storage_root: ToolRepositoryStorage | None = None,
+    ) -> None:
+        """Build pinned state while accepting the prior enabled-only test seam."""
+        if storage_resolution is not None and storage_root is not None:
+            raise ValueError(
+                "provide storage_resolution or storage_root, not both"
+            )
+        resolution: RunLogStorageResolution
+        if storage_resolution is not None:
+            resolution = storage_resolution
+        elif storage_root is not None:
+            resolution = storage_config.injected_storage_resolution(storage_root)
+        else:
+            raise ValueError("lifecycle start requires a storage resolution")
+        if log_root is None or run_dir is None or context_file is None:
+            raise ValueError("lifecycle start requires staging and context paths")
+        object.__setattr__(self, "repo_root", repo_root)
+        object.__setattr__(self, "storage_resolution", resolution)
+        object.__setattr__(self, "skill", skill)
+        object.__setattr__(self, "run_id", run_id)
+        object.__setattr__(self, "log_root", log_root)
+        object.__setattr__(self, "run_dir", run_dir)
+        object.__setattr__(self, "context_file", context_file)
+
+    @property
+    def storage_root(self) -> ToolRepositoryStorage:
+        """Return enabled provider storage for storage-dependent consumers."""
+        return storage_config.require_enabled_storage(self.storage_resolution)
+
 
 @dataclass(frozen=True)
 class LifecycleTerminal:
-    """Verified terminal publication result for one skill invocation."""
+    """Verified terminalization result for one skill invocation."""
 
     outcome: str
-    publication: PublicationResult
+    publication: PublicationResult | None
     secret_scrub_violations: int
+    storage_mode: storage_config.RunLogStorageMode = "enabled"
+    storage_reason: storage_config.RunLogStorageReason = "injected-storage"
 
 
 def _utc_now() -> str:
@@ -119,37 +160,57 @@ def _state_home(environ: Mapping[str, str]) -> Path:
 def lifecycle_log_root(
     *,
     repo_root: Path,
-    storage: ToolRepositoryStorage,
+    resolution: RunLogStorageResolution,
     environ: Mapping[str, str] | None = None,
 ) -> Path:
     """Return the durable mutable staging root for universal skill runs."""
     environment = os.environ if environ is None else environ
     _ = _validated_repo_root(repo_root)
+    namespace_id: str = (
+        resolution.storage.storage_origin_id
+        if resolution.storage is not None
+        else str(resolution.local_namespace_id)
+    )
+    namespace_kind: str = (
+        "storage-origins" if resolution.storage is not None else "local-repositories"
+    )
     return (
         _state_home(environment)
         / "larch"
         / "run-lifecycle"
-        / "v2"
-        / storage.client_repo
-        / storage.storage_origin_id
+        / "v3"
+        / resolution.client_repo
+        / namespace_kind
+        / namespace_id
         / "staging"
     )
 
 
 def _context_file(
     *,
-    storage: ToolRepositoryStorage,
+    resolution: RunLogStorageResolution,
     skill: str,
     run_id: str,
     environ: Mapping[str, str],
 ) -> Path:
+    namespace_id: str = (
+        resolution.storage.storage_origin_id
+        if resolution.storage is not None
+        else str(resolution.local_namespace_id)
+    )
+    namespace_kind: str = (
+        "storage-origins"
+        if resolution.storage is not None
+        else "local-repositories"
+    )
     return (
         _state_home(environ)
         / "larch"
         / "run-lifecycle"
-        / "v2"
-        / storage.client_repo
-        / storage.storage_origin_id
+        / "v3"
+        / resolution.client_repo
+        / namespace_kind
+        / namespace_id
         / "contexts"
         / skill
         / run_id
@@ -158,16 +219,23 @@ def _context_file(
 
 
 def _write_context(*, started: LifecycleStart) -> None:
+    resolution: RunLogStorageResolution = started.storage_resolution
+    storage: ToolRepositoryStorage | None = resolution.storage
     larch_io.atomic_write(
         started.context_file,
         json.dumps(
             {
                 "schema_version": LIFECYCLE_CONTEXT_SCHEMA_VERSION,
                 "repo_root": str(started.repo_root),
-                "storage_base_uri": started.storage_root.base.uri,
-                "client_repo": started.storage_root.client_repo,
-                "tool_repo_uri": started.storage_root.uri,
-                "storage_origin_id": started.storage_root.storage_origin_id,
+                "publication_mode": resolution.mode,
+                "storage_resolution_reason": resolution.reason,
+                "storage_base_uri": storage.base.uri if storage is not None else None,
+                "client_repo": resolution.client_repo,
+                "tool_repo_uri": storage.uri if storage is not None else None,
+                "storage_origin_id": (
+                    storage.storage_origin_id if storage is not None else None
+                ),
+                "local_namespace_id": resolution.local_namespace_id,
                 "skill": started.skill,
                 "run_id": started.run_id,
                 "log_root": str(started.log_root),
@@ -195,19 +263,63 @@ def load_run_context(
     root = _validated_repo_root(repo_root)
     skill_name = run_log_publish.validated_component(skill, label="skill", slug=True)
     run_name = run_log_publish.validated_component(run_id, label="run-id", slug=True)
-    active_storage = storage_root or storage_config.load_tool_repository_storage(
-        repo_root=root, environ=environment
+    client_repo: str = (
+        storage_root.client_repo
+        if storage_root is not None
+        else storage_config.derive_client_repo(repo_root=root)
     )
-    context_file = _context_file(
-        storage=active_storage,
+    local_resolution = RunLogStorageResolution(
+        mode="disabled",
+        reason="config-file-missing",
+        storage=None,
+        client_repo=client_repo,
+        local_namespace_id=storage_config.local_namespace_id(root),
+    )
+    disabled_context_file: Path = _context_file(
+        resolution=local_resolution,
         skill=skill_name,
         run_id=run_name,
         environ=environment,
     )
+    if disabled_context_file.is_symlink():
+        raise RunLifecycleError(
+            f"lifecycle context is missing or unsafe: {disabled_context_file}"
+        )
+    disabled_context_exists: bool = disabled_context_file.exists()
+    if disabled_context_exists and not disabled_context_file.is_file():
+        raise RunLifecycleError(
+            f"lifecycle context is missing or unsafe: {disabled_context_file}"
+        )
+
+    active_resolution: RunLogStorageResolution
+    context_file: Path
+    if disabled_context_exists:
+        context_file = disabled_context_file
+        active_resolution = local_resolution
+    else:
+        active_resolution = (
+            storage_config.injected_storage_resolution(storage_root)
+            if storage_root is not None
+            else storage_config.resolve_run_log_storage(
+                repo_root=root, environ=environment
+            )
+        )
+        context_file = _context_file(
+            resolution=active_resolution,
+            skill=skill_name,
+            run_id=run_name,
+            environ=environment,
+        )
     _require_lifecycle(
         not context_file.is_symlink() and context_file.is_file(),
         f"lifecycle context is missing or unsafe: {context_file}",
     )
+    try:
+        larch_io.assert_no_symlink_path_or_ancestors(context_file)
+    except OSError as exc:
+        raise RunLifecycleError(
+            f"lifecycle context is missing or unsafe: {context_file}"
+        ) from exc
     raw: object = json.loads(context_file.read_text(encoding="utf-8"))
     _require_lifecycle(isinstance(raw, dict), "lifecycle context must be a JSON object")
     data = cast("dict[str, object]", raw)
@@ -221,34 +333,68 @@ def load_run_context(
         all(data.get(key) == value for key, value in expected.items()),
         "lifecycle context identity mismatch",
     )
-    tool_repo_uri = data.get("tool_repo_uri")
-    client_repo = data.get("client_repo")
-    storage_origin_id = data.get("storage_origin_id")
-    storage_base_uri = data.get("storage_base_uri")
+    publication_mode: object = data.get("publication_mode")
+    resolution_reason: object = data.get("storage_resolution_reason")
+    context_client_repo: object = data.get("client_repo")
     log_root_raw, run_dir_raw = data.get("log_root"), data.get("run_dir")
     _require_lifecycle(
-        all(
-            isinstance(value, str) and value
-            for value in (
-                tool_repo_uri,
-                client_repo,
-                storage_origin_id,
-                storage_base_uri,
-                log_root_raw,
-                run_dir_raw,
+        publication_mode in {"enabled", "disabled"}
+        and isinstance(resolution_reason, str)
+        and isinstance(context_client_repo, str)
+        and context_client_repo == client_repo
+        and isinstance(log_root_raw, str)
+        and bool(log_root_raw)
+        and isinstance(run_dir_raw, str)
+        and bool(run_dir_raw),
+        "lifecycle context paths or publication identity are missing",
+    )
+    if publication_mode == "disabled":
+        _require_lifecycle(
+            context_file == disabled_context_file
+            and resolution_reason in storage_config.DISABLED_STORAGE_REASONS
+            and data.get("local_namespace_id")
+            == local_resolution.local_namespace_id
+            and data.get("tool_repo_uri") is None
+            and data.get("storage_origin_id") is None
+            and data.get("storage_base_uri") is None,
+            "disabled lifecycle context identity mismatch",
+        )
+        active_resolution = RunLogStorageResolution(
+            mode="disabled",
+            reason=cast("storage_config.RunLogStorageReason", resolution_reason),
+            storage=None,
+            client_repo=client_repo,
+            local_namespace_id=local_resolution.local_namespace_id,
+        )
+    else:
+        tool_repo_uri: object = data.get("tool_repo_uri")
+        storage_origin_id: object = data.get("storage_origin_id")
+        storage_base_uri: object = data.get("storage_base_uri")
+        _require_lifecycle(
+            all(
+                isinstance(value, str) and value
+                for value in (
+                    tool_repo_uri,
+                    storage_origin_id,
+                    storage_base_uri,
+                )
             )
-        ),
-        "lifecycle context paths or storage identity are missing",
-    )
-    storage = storage_config.parse_tool_repository_uri(
-        str(tool_repo_uri), expected_client_repo=str(client_repo)
-    )
-    _require_lifecycle(
-        storage == active_storage
-        and storage.base.uri == storage_base_uri
-        and storage.storage_origin_id == storage_origin_id,
-        "configured storage or Git origin changed after lifecycle start",
-    )
+            and data.get("local_namespace_id") is None,
+            "enabled lifecycle storage identity is missing",
+        )
+        context_storage: ToolRepositoryStorage = (
+            storage_config.parse_tool_repository_uri(
+                str(tool_repo_uri), expected_client_repo=client_repo
+            )
+        )
+        _require_lifecycle(
+            active_resolution.mode == "enabled"
+            and active_resolution.storage == context_storage
+            and active_resolution.reason == resolution_reason
+            and context_storage.base.uri == storage_base_uri
+            and context_storage.storage_origin_id == storage_origin_id,
+            "configured storage or Git origin changed after lifecycle start",
+        )
     log_root = Path(str(log_root_raw))
     run_dir = Path(str(run_dir_raw))
     _require_lifecycle(
@@ -256,7 +402,13 @@ def load_run_context(
         "lifecycle context staging path mismatch",
     )
     return LifecycleStart(
-        root, storage, skill_name, run_name, log_root, run_dir, context_file
+        root,
+        active_resolution,
+        skill_name,
+        run_name,
+        log_root,
+        run_dir,
+        context_file,
     )
 
 
@@ -265,7 +417,7 @@ def _parent_identity_from_context(
     repo_root: Path,
     context_file: Path,
     environ: Mapping[str, str],
-    storage: ToolRepositoryStorage,
+    resolution: RunLogStorageResolution,
 ) -> tuple[str, str]:
     _require_lifecycle(
         context_file.is_absolute()
@@ -287,7 +439,7 @@ def _parent_identity_from_context(
         skill=cast("str", data["skill"]),
         run_id=cast("str", data["run_id"]),
         environ=environ,
-        storage_root=storage,
+        storage_root=resolution.storage,
     )
     _require_lifecycle(
         parent.context_file == context_file, "parent lifecycle context path mismatch"
@@ -326,12 +478,16 @@ def start_run(  # noqa: PLR0913 - lifecycle boundary validates identity, adoptio
     storage_root: ToolRepositoryStorage | None = None,
     preflight: Callable[[ToolRepositoryStorage], None] = _preflight_storage,
 ) -> LifecycleStart:
-    """Preflight storage and create a unique, isolated skill-run staging tree."""
+    """Resolve publication, preflight when enabled, and create local staging."""
     environment = os.environ if environ is None else environ
     root = _validated_repo_root(repo_root)
     skill_name = run_log_publish.validated_component(skill, label="skill", slug=True)
-    active_storage = storage_root or storage_config.load_tool_repository_storage(
-        repo_root=root, environ=environment
+    active_resolution: RunLogStorageResolution = (
+        storage_config.injected_storage_resolution(storage_root)
+        if storage_root is not None
+        else storage_config.resolve_run_log_storage(
+            repo_root=root, environ=environment
+        )
     )
     if parent_context is not None:
         if parent_skill or parent_run_id:
@@ -342,16 +498,17 @@ def start_run(  # noqa: PLR0913 - lifecycle boundary validates identity, adoptio
             repo_root=root,
             context_file=parent_context,
             environ=environment,
-            storage=active_storage,
+            resolution=active_resolution,
         )
     _validate_parent(parent_skill=parent_skill, parent_run_id=parent_run_id)
-    preflight(active_storage)
+    if active_resolution.storage is not None:
+        preflight(active_resolution.storage)
     selected_run_id = run_id or str(uuid.uuid4())
     run_name = run_log_publish.validated_component(
         selected_run_id, label="run-id", slug=True
     )
     selected_log_root = log_root or lifecycle_log_root(
-        repo_root=root, storage=active_storage, environ=environment
+        repo_root=root, resolution=active_resolution, environ=environment
     )
     _require_lifecycle(
         selected_log_root.is_absolute(), "lifecycle log root must be absolute"
@@ -390,35 +547,53 @@ def start_run(  # noqa: PLR0913 - lifecycle boundary validates identity, adoptio
         "new lifecycle manifest identity mismatch",
     )
     if manifest.get("lifecycle_schema_version") == LIFECYCLE_SCHEMA_VERSION:
+        storage: ToolRepositoryStorage | None = active_resolution.storage
         _require_lifecycle(
-            manifest.get("tool_repo_uri") == active_storage.uri
-            and manifest.get("client_repo") == active_storage.client_repo
-            and manifest.get("storage_origin_id") == active_storage.storage_origin_id,
-            "configured storage or Git origin changed after lifecycle start",
+            manifest.get("publication_mode") == active_resolution.mode
+            and manifest.get("storage_resolution_reason")
+            == active_resolution.reason
+            and manifest.get("client_repo") == active_resolution.client_repo
+            and manifest.get("tool_repo_uri")
+            == (storage.uri if storage is not None else None)
+            and manifest.get("storage_origin_id")
+            == (storage.storage_origin_id if storage is not None else None)
+            and manifest.get("storage_base_uri")
+            == (storage.base.uri if storage is not None else None)
+            and manifest.get("local_namespace_id")
+            == active_resolution.local_namespace_id,
+            "run-log publication or repository identity changed after lifecycle start",
         )
     else:
+        storage = active_resolution.storage
         _ = run_log_manifest._update_manifest_v2(  # noqa: SLF001 - sibling lifecycle owns this manifest transition.
             path=init.path,
             updates={
                 "status": config.MANIFEST_STATUS_IN_PROGRESS,
                 "lifecycle_schema_version": LIFECYCLE_SCHEMA_VERSION,
-                "storage_base_uri": active_storage.base.uri,
-                "client_repo": active_storage.client_repo,
-                "tool_repo_uri": active_storage.uri,
-                "storage_origin_id": active_storage.storage_origin_id,
+                "publication_mode": active_resolution.mode,
+                "storage_resolution_reason": active_resolution.reason,
+                "storage_base_uri": (
+                    storage.base.uri if storage is not None else None
+                ),
+                "client_repo": active_resolution.client_repo,
+                "tool_repo_uri": storage.uri if storage is not None else None,
+                "storage_origin_id": (
+                    storage.storage_origin_id if storage is not None else None
+                ),
+                "local_namespace_id": active_resolution.local_namespace_id,
                 "terminal_outcome": None,
                 "finished_at": None,
             },
         )
     context_file = _context_file(
-        storage=active_storage,
+        resolution=active_resolution,
         skill=skill_name,
         run_id=run_name,
         environ=environment,
     )
     started = LifecycleStart(
         root,
-        active_storage,
+        active_resolution,
         skill_name,
         run_name,
         selected_log_root,
@@ -435,7 +610,7 @@ def start_run(  # noqa: PLR0913 - lifecycle boundary validates identity, adoptio
             skill=skill_name,
             run_id=run_name,
             environ=environment,
-            storage_root=active_storage,
+            storage_root=active_resolution.storage,
         )
         _require_lifecycle(
             existing == started, "existing lifecycle context does not match adoption"
@@ -535,6 +710,27 @@ def _write_terminal_artifacts(  # noqa: PLR0913 - terminal identity inputs stay 
     )
 
 
+def _manifest_matches_resolution(
+    *, manifest: Mapping[str, object], resolution: RunLogStorageResolution
+) -> bool:
+    storage: ToolRepositoryStorage | None = resolution.storage
+    publication_identity_matches: bool = (
+        manifest.get("publication_mode") == resolution.mode
+        and manifest.get("storage_resolution_reason") == resolution.reason
+        and manifest.get("client_repo") == resolution.client_repo
+        and manifest.get("local_namespace_id") == resolution.local_namespace_id
+    )
+    storage_identity_matches: bool = (
+        manifest.get("tool_repo_uri")
+        == (storage.uri if storage is not None else None)
+        and manifest.get("storage_origin_id")
+        == (storage.storage_origin_id if storage is not None else None)
+        and manifest.get("storage_base_uri")
+        == (storage.base.uri if storage is not None else None)
+    )
+    return publication_identity_matches and storage_identity_matches
+
+
 def finish_run(  # noqa: PLR0913 - publication dependencies stay explicit and injectable.
     *,
     repo_root: Path,
@@ -546,22 +742,19 @@ def finish_run(  # noqa: PLR0913 - publication dependencies stay explicit and in
     store: ObjectStore | None = None,
     pre_scrub_violations: int = 0,
 ) -> LifecycleTerminal:
-    """Record one terminal outcome and loudly publish its immutable archive."""
+    """Record one terminal outcome and publish only when start pinned storage."""
     if outcome not in frozenset(_OUTCOME_BY_ACTION.values()):
         raise ValueError(f"unsupported lifecycle outcome: {outcome}")
     environment = os.environ if environ is None else environ
     root = _validated_repo_root(repo_root)
     skill_name = run_log_publish.validated_component(skill, label="skill", slug=True)
     run_name = run_log_publish.validated_component(run_id, label="run-id", slug=True)
-    active_storage = storage_root or storage_config.load_tool_repository_storage(
-        repo_root=root, environ=environment
-    )
     started = load_run_context(
         repo_root=root,
         skill=skill_name,
         run_id=run_name,
         environ=environment,
-        storage_root=active_storage,
+        storage_root=storage_root,
     )
     log_root = started.log_root
     run_dir = started.run_dir
@@ -572,14 +765,13 @@ def finish_run(  # noqa: PLR0913 - publication dependencies stay explicit and in
     manifest_path, manifest = _terminal_manifest(
         run_dir=run_dir, skill=skill_name, run_id=run_name
     )
-    if (
-        started.storage_root != active_storage
-        or manifest.get("tool_repo_uri") != active_storage.uri
-        or manifest.get("client_repo") != active_storage.client_repo
-        or manifest.get("storage_origin_id") != active_storage.storage_origin_id
+    resolution: RunLogStorageResolution = started.storage_resolution
+    active_storage: ToolRepositoryStorage | None = resolution.storage
+    if not _manifest_matches_resolution(
+        manifest=manifest, resolution=resolution
     ):
         raise RunLifecycleError(
-            "configured storage or Git origin changed after lifecycle start"
+            "run-log publication or repository identity changed after lifecycle start"
         )
     _write_terminal_artifacts(
         run_dir=run_dir,
@@ -589,25 +781,42 @@ def finish_run(  # noqa: PLR0913 - publication dependencies stay explicit and in
         run_id=run_name,
         outcome=outcome,
     )
-    publication, violations = run_log_publish.publish_log_run(
-        request=PublicationRequest(
-            repo_root=root,
-            storage_root=active_storage,
-            skill=skill_name,
-            run_id=run_name,
-            staging_root=None,
-        ),
-        log_root=log_root,
-        pre_scrub_violations=pre_scrub_violations,
-        store=store,
-        environ=environment,
-    )
-    with suppress(OSError):
-        shutil.rmtree(run_dir)
-    with suppress(OSError):
+    publication: PublicationResult | None = None
+    violations: int = pre_scrub_violations
+    if active_storage is not None:
+        publication, violations = run_log_publish.publish_log_run(
+            request=PublicationRequest(
+                repo_root=root,
+                storage_root=active_storage,
+                skill=skill_name,
+                run_id=run_name,
+                staging_root=None,
+            ),
+            log_root=log_root,
+            pre_scrub_violations=pre_scrub_violations,
+            store=store,
+            environ=environment,
+        )
+    if active_storage is None:
         shutil.rmtree(started.context_file.parent)
+        _require_lifecycle(
+            not started.context_file.parent.exists(),
+            "disabled lifecycle context cleanup did not complete",
+        )
+        shutil.rmtree(run_dir)
+        _require_lifecycle(
+            not run_dir.exists(),
+            "disabled lifecycle staging cleanup did not complete",
+        )
+    else:
+        with suppress(OSError):
+            shutil.rmtree(run_dir)
+        with suppress(OSError):
+            shutil.rmtree(started.context_file.parent)
     return LifecycleTerminal(
         outcome=outcome,
+        storage_mode=resolution.mode,
+        storage_reason=resolution.reason,
         publication=publication,
         secret_scrub_violations=violations,
     )
@@ -664,10 +873,24 @@ def start_main(argv: Sequence[str]) -> int:
     print(f"LOG_ROOT={result.log_root}")
     print(f"RUN_DIR={result.run_dir}")
     print(f"CONTEXT_FILE={result.context_file}")
-    print(f"STORAGE_BASE_URI={result.storage_root.base.uri}")
-    print(f"CLIENT_REPO={result.storage_root.client_repo}")
-    print(f"TOOL_REPO_URI={result.storage_root.uri}")
-    print(f"RUN_LOGS_URI={result.storage_root.run_logs_uri}")
+    resolution: RunLogStorageResolution = result.storage_resolution
+    storage: ToolRepositoryStorage | None = resolution.storage
+    if storage is None:
+        print(
+            "**⚠ Run-log publication is disabled "
+            f"({resolution.reason}). This skill will run, but no remote run-log "
+            "archive or synchronized cache entry will be created.**",
+            file=sys.stderr,
+        )
+    print(f"RUN_LOG_STORAGE={resolution.mode}")
+    print(f"RUN_LOG_STORAGE_REASON={resolution.reason}")
+    print(f"STORAGE_BASE_URI={storage.base.uri if storage is not None else ''}")
+    print(f"CLIENT_REPO={resolution.client_repo}")
+    print(f"TOOL_REPO_URI={storage.uri if storage is not None else ''}")
+    print(f"RUN_LOGS_URI={storage.run_logs_uri if storage is not None else ''}")
+    print(
+        f"STORAGE_PREFLIGHT={'ok' if storage is not None else 'skipped-disabled'}"
+    )
     print("PREFLIGHT_OK=true")
     print("LIFECYCLE_STARTED=true")
     return config.EXIT_OK
@@ -689,21 +912,38 @@ def _terminal_main(argv: Sequence[str], *, action: str) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
     except storage_config.StorageConfigurationError as exc:
+        print("RUN_LOG_PUBLICATION=failed")
         print("LIFECYCLE_FLUSHED=false")
+        print("LIFECYCLE_TERMINALIZED=false")
         print(f"run lifecycle {action} failed: {exc}", file=sys.stderr)
         return config.EXIT_STORAGE_CONFIG
     except TERMINAL_EXCEPTIONS as exc:
+        print("RUN_LOG_PUBLICATION=failed")
         print("LIFECYCLE_FLUSHED=false")
+        print("LIFECYCLE_TERMINALIZED=false")
         print(f"run lifecycle {action} failed: {exc}", file=sys.stderr)
         return config.EXIT_INTERNAL_ERROR
     print(f"RUN_ID={args.run_id}")
     print(f"SKILL={args.skill}")
     print(f"OUTCOME={result.outcome}")
-    print(f"REMOTE_KEY={result.publication.remote_key}")
-    print(f"ARCHIVE_SHA256={result.publication.archive_sha256}")
-    print(f"CACHE_DIR={result.publication.cache_dir}")
-    print(f"SECRET_SCRUB_VIOLATIONS={result.secret_scrub_violations}")
-    print("LIFECYCLE_FLUSHED=true")
+    print(f"RUN_LOG_STORAGE={result.storage_mode}")
+    print(f"RUN_LOG_STORAGE_REASON={result.storage_reason}")
+    if result.publication is None:
+        print(
+            "**⚠ Run-log publication skipped because storage was disabled at "
+            f"lifecycle start ({result.storage_reason}).**",
+            file=sys.stderr,
+        )
+        print("RUN_LOG_PUBLICATION=skipped-disabled")
+        print("LIFECYCLE_FLUSHED=false")
+    else:
+        print(f"REMOTE_KEY={result.publication.remote_key}")
+        print(f"ARCHIVE_SHA256={result.publication.archive_sha256}")
+        print(f"CACHE_DIR={result.publication.cache_dir}")
+        print(f"SECRET_SCRUB_VIOLATIONS={result.secret_scrub_violations}")
+        print("RUN_LOG_PUBLICATION=published")
+        print("LIFECYCLE_FLUSHED=true")
+    print("LIFECYCLE_TERMINALIZED=true")
     return config.EXIT_OK
 
 

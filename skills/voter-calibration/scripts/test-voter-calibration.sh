@@ -415,10 +415,11 @@ worktree="$FIX/worktree"
 mkdir -p "$worktree"
 cp -R "$FIX/larch-logs" "$worktree/larch-logs"
 git -C "$worktree" init -q
+git -C "$worktree" remote add origin git@github.com:example/larch.git
 default_status=0
 (
   cd "$worktree"
   env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --min-votes 3 > "$FIX/default-root.md"
 ) 2> "$FIX/default-root.err" || default_status=$?
 [[ "$default_status" -eq 2 ]]
-grep -Fq 'tools-config.toml: missing required file' "$FIX/default-root.err"
+grep -Fq 'run-log storage is disabled; configure [larch].storage_base_uri or set LARCH_STORAGE_BASE_URI' "$FIX/default-root.err"

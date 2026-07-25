@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import json
 import os
 import re
 import sys
@@ -12,7 +13,7 @@ import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, Literal, cast
 from urllib.parse import SplitResult, urlsplit
 
 from larch.core import config, proc
@@ -24,9 +25,31 @@ _ASCII_DELETE: Final = 127
 _SHA256_HEX_LENGTH: Final = 64
 _GIT_COMMIT_HEX_LENGTH: Final = 40
 _TOOL_REPOSITORY_SUFFIX_PARTS: Final = 2
+_DISABLED_LIFECYCLE_SCHEMA_VERSION: Final = 3
 _CLIENT_REPO_RE: Final = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 _SCP_REMOTE_RE: Final = re.compile(
     r"^(?:(?P<user>[A-Za-z0-9._-]+)@)?(?P<host>[^/:@\s]+):(?P<path>[^:\s]+)$"
+)
+_LOCAL_NAMESPACE_DOMAIN: Final = b"larch-run-log-local-namespace-v1\0"
+
+RunLogStorageMode = Literal["enabled", "disabled"]
+RunLogStorageReason = Literal[
+    "environment-override",
+    "repository-config",
+    "injected-storage",
+    "config-file-missing",
+    "larch-table-missing",
+    "storage-base-uri-omitted",
+]
+ENABLED_STORAGE_REASONS: Final[frozenset[str]] = frozenset(
+    {"environment-override", "repository-config", "injected-storage"}
+)
+DISABLED_STORAGE_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "config-file-missing",
+        "larch-table-missing",
+        "storage-base-uri-omitted",
+    }
 )
 
 
@@ -104,6 +127,35 @@ class ToolRepositoryStorage:
 
 
 @dataclass(frozen=True)
+class RunLogStorageResolution:
+    """Pinned enabled or disabled run-log publication state."""
+
+    mode: RunLogStorageMode
+    reason: RunLogStorageReason
+    storage: ToolRepositoryStorage | None
+    client_repo: str
+    local_namespace_id: str | None
+
+    def __post_init__(self) -> None:
+        enabled: bool = self.mode == "enabled"
+        valid_reason: bool = (
+            self.reason in ENABLED_STORAGE_REASONS
+            if enabled
+            else self.reason in DISABLED_STORAGE_REASONS
+        )
+        if (
+            not valid_reason
+            or enabled != (self.storage is not None)
+            or enabled == (self.local_namespace_id is not None)
+            or (
+                self.storage is not None
+                and self.storage.client_repo != self.client_repo
+            )
+        ):
+            raise ValueError("inconsistent run-log storage resolution")
+
+
+@dataclass(frozen=True)
 class LegacyMigrationDescriptor:
     """Operator-supplied trust anchor for one historical migration inventory."""
 
@@ -114,12 +166,71 @@ class LegacyMigrationDescriptor:
     inventory_sha256: str
 
 
-def run_log_reference(*, repo_root: Path | None, skill: str, run_id: str) -> str:
+def _pins_disabled_publication(
+    manifest: Mapping[str, object], *, skill: str, run_id: str
+) -> bool:
+    """Return whether a lifecycle manifest pins this run to disabled storage."""
+    if manifest.get("lifecycle_schema_version") != _DISABLED_LIFECYCLE_SCHEMA_VERSION:
+        return False
+    if manifest.get("publication_mode") != "disabled":
+        return False
+    if manifest.get("storage_resolution_reason") not in DISABLED_STORAGE_REASONS:
+        return False
+    if manifest.get("skill") != skill or manifest.get("run_id") != run_id:
+        return False
+    local_namespace: object = manifest.get("local_namespace_id")
+    if (
+        not isinstance(local_namespace, str)
+        or re.fullmatch(r"[0-9a-f]{64}", local_namespace) is None
+    ):
+        return False
+    return all(
+        manifest.get(field) is None
+        for field in ("storage_base_uri", "tool_repo_uri", "storage_origin_id")
+    )
+
+
+def run_log_reference(
+    *,
+    repo_root: Path | None,
+    skill: str,
+    run_id: str,
+    lifecycle_manifest: Path | None = None,
+) -> str:
     """Render a provider-neutral run identity for public summaries."""
+    if (
+        lifecycle_manifest is not None
+        and not lifecycle_manifest.is_symlink()
+        and lifecycle_manifest.is_file()
+    ):
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            raw_manifest: object = json.loads(
+                lifecycle_manifest.read_text(encoding="utf-8")
+            )
+            if (
+                isinstance(raw_manifest, dict)
+                and _pins_disabled_publication(
+                    cast("dict[str, object]", raw_manifest),
+                    skill=skill,
+                    run_id=run_id,
+                )
+            ):
+                return (
+                    "no archive published because run-log storage was disabled, "
+                    f"skill `{skill}`, run ID `{run_id}`"
+                )
     provider: str = "unknown"
     if repo_root is not None:
         with contextlib.suppress(StorageConfigurationError):
-            provider = load_tool_repository_storage(repo_root=repo_root).scheme
+            resolution: RunLogStorageResolution = resolve_run_log_storage(
+                repo_root=repo_root
+            )
+            if resolution.mode == "disabled":
+                return (
+                    "no archive published because run-log storage was disabled, "
+                    f"skill `{skill}`, run ID `{run_id}`"
+                )
+            provider = require_enabled_storage(resolution).scheme
     return f"provider `{provider}`, skill `{skill}`, run ID `{run_id}`"
 
 
@@ -248,17 +359,19 @@ def parse_tool_repository_uri(
     return storage
 
 
-def _load_repository_config(repo_root: Path) -> dict[str, object]:
+def _load_repository_config(repo_root: Path) -> dict[str, object] | None:
     config_path: Path = repo_root / config.STORAGE_CONFIG_RELPATH
     repo_label: str = repo_root.name or str(repo_root)
     if config_path.is_symlink():
         raise StorageConfigurationError(
             f"{config.STORAGE_CONFIG_RELPATH}: refusing symlink in Git repository {repo_label}"
         )
+    if not config_path.exists():
+        return None
     if not config_path.is_file():
         raise StorageConfigurationError(
-            f"{config.STORAGE_CONFIG_RELPATH}: missing required file in Git repository "
-            f"{repo_label}; add [larch] with storage_base_uri"
+            f"{config.STORAGE_CONFIG_RELPATH}: must be a regular file in Git repository "
+            f"{repo_label}"
         )
     try:
         with config_path.open("rb") as handle:
@@ -276,35 +389,131 @@ def _load_repository_config(repo_root: Path) -> dict[str, object]:
 
 def _configured_storage_base(
     *, repo_root: Path, environ: Mapping[str, str]
-) -> StorageBase:
-    raw_data: dict[str, object] = _load_repository_config(repo_root)
-    raw_larch: object = raw_data.get(config.LARCH_TOOL_NAME)
-    repo_label: str = repo_root.name or str(repo_root)
-    if not isinstance(raw_larch, dict):
-        raise StorageConfigurationError(
-            f"{config.STORAGE_CONFIG_RELPATH}: missing required [larch] table; "
-            f"larch cannot run in Git repository {repo_label}; add [larch] with storage_base_uri"
-        )
-    larch_table: dict[str, object] = cast("dict[str, object]", raw_larch)
-    if frozenset(larch_table) != frozenset({config.STORAGE_BASE_URI_FIELD}):
-        raise StorageConfigurationError(
-            f"{config.STORAGE_CONFIG_RELPATH}: [larch] must contain only "
-            f"{config.STORAGE_BASE_URI_FIELD}"
-        )
-    configured: object = larch_table.get(config.STORAGE_BASE_URI_FIELD)
-    if not isinstance(configured, str):
-        raise StorageConfigurationError(
-            f"{config.STORAGE_CONFIG_RELPATH}: "
-            f"[larch].{config.STORAGE_BASE_URI_FIELD} must be a string"
-        )
+) -> tuple[StorageBase | None, RunLogStorageReason]:
     legacy_override: str = environ.get(config.ENV_LARCH_LOGS_URI, "")
     if legacy_override:
         raise StorageConfigurationError(
             f"{config.ENV_LARCH_LOGS_URI} is no longer supported; remove it and use "
             f"{config.ENV_LARCH_STORAGE_BASE_URI} for a base-only override"
         )
+
+    raw_data: dict[str, object] | None = _load_repository_config(repo_root)
+    repo_label: str = repo_root.name or str(repo_root)
+    configured_base: StorageBase | None = None
+    disabled_reason: RunLogStorageReason
+    if raw_data is None:
+        disabled_reason = "config-file-missing"
+    elif config.LARCH_TOOL_NAME not in raw_data:
+        disabled_reason = "larch-table-missing"
+    else:
+        raw_larch: object = raw_data[config.LARCH_TOOL_NAME]
+        if not isinstance(raw_larch, dict):
+            raise StorageConfigurationError(
+                f"{config.STORAGE_CONFIG_RELPATH}: [larch] must be a table in Git "
+                f"repository {repo_label}"
+            )
+        larch_table: dict[str, object] = cast("dict[str, object]", raw_larch)
+        unknown_keys: frozenset[str] = frozenset(larch_table) - frozenset(
+            {config.STORAGE_BASE_URI_FIELD}
+        )
+        if unknown_keys:
+            raise StorageConfigurationError(
+                f"{config.STORAGE_CONFIG_RELPATH}: [larch] must contain only "
+                f"{config.STORAGE_BASE_URI_FIELD}"
+            )
+        if config.STORAGE_BASE_URI_FIELD not in larch_table:
+            disabled_reason = "storage-base-uri-omitted"
+        else:
+            configured: object = larch_table[config.STORAGE_BASE_URI_FIELD]
+            if not isinstance(configured, str):
+                raise StorageConfigurationError(
+                    f"{config.STORAGE_CONFIG_RELPATH}: "
+                    f"[larch].{config.STORAGE_BASE_URI_FIELD} must be a string"
+                )
+            configured_base = parse_storage_base_uri(configured)
+            disabled_reason = "storage-base-uri-omitted"
+
     override: str = environ.get(config.ENV_LARCH_STORAGE_BASE_URI, "")
-    return parse_storage_base_uri(override or configured)
+    if override:
+        return parse_storage_base_uri(override), "environment-override"
+    if configured_base is not None:
+        return configured_base, "repository-config"
+    return None, disabled_reason
+
+
+def local_namespace_id(repo_root: Path) -> str:
+    """Bind disabled staging to one validated absolute repository root."""
+    if not repo_root.is_absolute():
+        raise StorageConfigurationError(
+            "repository root must be absolute before resolving run-log storage"
+        )
+    try:
+        resolved: Path = repo_root.resolve(strict=True)
+    except OSError as exc:
+        raise StorageConfigurationError(
+            "repository root could not be resolved before run-log staging"
+        ) from exc
+    if not resolved.is_dir():
+        raise StorageConfigurationError(
+            "repository root must be a directory before run-log staging"
+        )
+    return hashlib.sha256(
+        _LOCAL_NAMESPACE_DOMAIN + os.fsencode(str(resolved))
+    ).hexdigest()
+
+
+def resolve_run_log_storage(
+    *,
+    repo_root: Path,
+    environ: Mapping[str, str] | None = None,
+    runner: proc.Runner | None = None,
+) -> RunLogStorageResolution:
+    """Resolve publication once while preserving strict present-config validation."""
+    environment: Mapping[str, str] = os.environ if environ is None else environ
+    base, reason = _configured_storage_base(
+        repo_root=repo_root, environ=environment
+    )
+    client_repo: str = derive_client_repo(repo_root=repo_root, runner=runner)
+    if base is None:
+        return RunLogStorageResolution(
+            mode="disabled",
+            reason=reason,
+            storage=None,
+            client_repo=client_repo,
+            local_namespace_id=local_namespace_id(repo_root),
+        )
+    return RunLogStorageResolution(
+        mode="enabled",
+        reason=reason,
+        storage=ToolRepositoryStorage(base=base, client_repo=client_repo),
+        client_repo=client_repo,
+        local_namespace_id=None,
+    )
+
+
+def require_enabled_storage(
+    resolution: RunLogStorageResolution,
+) -> ToolRepositoryStorage:
+    """Return provider storage or fail with actionable configuration guidance."""
+    if resolution.mode != "enabled" or resolution.storage is None:
+        raise StorageConfigurationError(
+            "run-log storage is disabled; configure [larch].storage_base_uri or set "
+            "LARCH_STORAGE_BASE_URI"
+        )
+    return resolution.storage
+
+
+def injected_storage_resolution(
+    storage: ToolRepositoryStorage,
+) -> RunLogStorageResolution:
+    """Wrap test- or caller-pinned provider storage in an enabled resolution."""
+    return RunLogStorageResolution(
+        mode="enabled",
+        reason="injected-storage",
+        storage=storage,
+        client_repo=storage.client_repo,
+        local_namespace_id=None,
+    )
 
 
 def validate_client_repo(value: str) -> str:
@@ -418,13 +627,14 @@ def load_tool_repository_storage(
     environ: Mapping[str, str] | None = None,
     runner: proc.Runner | None = None,
 ) -> ToolRepositoryStorage:
-    """Require repository config and derive the fixed larch/client namespace."""
-    environment: Mapping[str, str] = os.environ if environ is None else environ
-    base: StorageBase = _configured_storage_base(
-        repo_root=repo_root, environ=environment
+    """Require enabled storage and derive the fixed larch/client namespace."""
+    return require_enabled_storage(
+        resolve_run_log_storage(
+            repo_root=repo_root,
+            environ=environ,
+            runner=runner,
+        )
     )
-    client_repo: str = derive_client_repo(repo_root=repo_root, runner=runner)
-    return ToolRepositoryStorage(base=base, client_repo=client_repo)
 
 
 def discover_tool_repository_storage(
@@ -434,14 +644,32 @@ def discover_tool_repository_storage(
     root_resolver: Callable[[Path | None], Path | None] = consumer_repo_root,
     runner: proc.Runner | None = None,
 ) -> ToolRepositoryStorage:
-    """Resolve the startup Git root, then pin config and origin identity."""
+    """Resolve the startup Git root, then require enabled provider storage."""
+    return require_enabled_storage(
+        discover_run_log_storage(
+            start=start,
+            environ=environ,
+            root_resolver=root_resolver,
+            runner=runner,
+        )
+    )
+
+
+def discover_run_log_storage(
+    *,
+    start: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    root_resolver: Callable[[Path | None], Path | None] = consumer_repo_root,
+    runner: proc.Runner | None = None,
+) -> RunLogStorageResolution:
+    """Resolve the startup Git root and pin enabled or disabled publication."""
     repo_root: Path | None = root_resolver(start)
     if repo_root is None:
         location: str = str(start) if start is not None else str(Path.cwd())
         raise StorageConfigurationError(
             f"could not discover a Git repository root from startup CWD {location}"
         )
-    return load_tool_repository_storage(
+    return resolve_run_log_storage(
         repo_root=repo_root, environ=environ, runner=runner
     )
 
@@ -555,17 +783,24 @@ def storage_preflight_main(argv: Sequence[str]) -> int:
         return int(exc.code) if isinstance(exc.code, int) else config.EXIT_USAGE
     start: Path | None = Path(args.repo_root) if args.repo_root else None
     try:
-        storage: ToolRepositoryStorage = discover_tool_repository_storage(start=start)
-        preflight_tool_repository(storage=storage)
+        resolution: RunLogStorageResolution = discover_run_log_storage(start=start)
+        if resolution.storage is not None:
+            preflight_tool_repository(storage=resolution.storage)
     except StorageConfigurationError as exc:
         print(f"storage preflight failed: {exc}", file=sys.stderr)
         return config.EXIT_STORAGE_CONFIG
     except StoragePreflightError as exc:
         print(f"storage preflight failed: {exc}", file=sys.stderr)
         return config.EXIT_STORAGE_PREFLIGHT
-    print(f"STORAGE_BASE_URI={storage.base.uri}")
-    print(f"CLIENT_REPO={storage.client_repo}")
-    print(f"TOOL_REPO_URI={storage.uri}")
-    print(f"RUN_LOGS_URI={storage.run_logs_uri}")
+    storage: ToolRepositoryStorage | None = resolution.storage
+    print(f"RUN_LOG_STORAGE={resolution.mode}")
+    print(f"RUN_LOG_STORAGE_REASON={resolution.reason}")
+    print(f"STORAGE_BASE_URI={storage.base.uri if storage is not None else ''}")
+    print(f"CLIENT_REPO={resolution.client_repo}")
+    print(f"TOOL_REPO_URI={storage.uri if storage is not None else ''}")
+    print(f"RUN_LOGS_URI={storage.run_logs_uri if storage is not None else ''}")
+    print(
+        f"STORAGE_PREFLIGHT={'ok' if storage is not None else 'skipped-disabled'}"
+    )
     print("PREFLIGHT_OK=true")
     return config.EXIT_OK

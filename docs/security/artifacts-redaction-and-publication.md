@@ -281,11 +281,15 @@ caches remain private operator state. Moving an archive to object storage does
 not broaden who should receive it.
 
 This boundary applies to every public, alias, internal child, and dev-only skill
-archive. A durable lifecycle context binds the selected staging root to one
-repository, canonical tool repository URI, derived client repository,
-storage-origin ID, skill, and run ID before publication. A config, environment,
-or Git-origin change before publication fails closed. Parent-child metadata identifies run relationships but does not change
-the classification, redaction, or publication rules for either archive.
+when publication is enabled. A durable lifecycle context binds the selected
+staging root to one repository, publication mode and reason, derived client
+repository, skill, and run ID. Enabled contexts also pin the canonical tool
+repository URI and storage-origin ID. A config, environment, Git-origin, or
+storage-origin change before enabled publication fails closed. Disabled
+contexts instead pin a repository-root-derived local namespace digest. They
+never carry a fake provider or URI, and adding configuration later does not
+enable publication for that run. Parent-child metadata identifies run
+relationships but does not change the classification or publication mode.
 
 `python/cli.py run-log sync` treats the remote inventory and downloaded archives
 as untrusted. It accepts only the exact `run-logs/<skill>/<run-id>.tar.gz`
@@ -309,22 +313,32 @@ changes cannot reuse another origin's cache, locks, pending publication, or
 analyzer state. Treat its ledgers, retry bundles, and generated reports as
 untrusted private operator state. See [Analyzer state](../analysis-state.md).
 
-`/design` and standalone `/review` require storage preflight before session
-work. Their terminal paths preserve the existing design allowlists, review
-round artifacts, breadcrumbs, completeness checks, and secret scrub before
-publishing `run-logs/<skill>/<run-id>.tar.gz`. A failure returns nonzero and
-retains a content-pinned pending archive; retry publishes that exact content
-even if the live staging tree changed. Success requires both the immutable
-remote object and the verified unpacked cache. Pause snapshots retain design
-completion sentinels and resume only from a verified cache. These converted
-paths do not create log branches, commits, pushes, pull requests, or merges.
+`/design` and standalone `/review` resolve storage before session work.
+Enabled storage runs the exact prefix-scoped preflight and preserves the
+existing design allowlists, review round artifacts, breadcrumbs, completeness
+checks, and secret scrub before publishing
+`run-logs/<skill>/<run-id>.tar.gz`. A failure returns nonzero and retains a
+content-pinned pending archive; retry publishes that exact content even if the
+live staging tree changed. Enabled success requires both the immutable remote
+object and the verified unpacked cache.
+
+Disabled storage skips provider construction, archive creation, upload,
+verification, cache promotion, and pending state. Local staging and
+bookkeeping remain active until terminalization, which writes universal
+terminal artifacts and removes the run and context. Errors retain diagnostic
+state. `/design` cross-session pause and resume still require a verified
+published cache, so pause rejects disabled storage before it writes a GitHub
+marker. Neither mode creates log branches, commits, pushes, pull requests, or
+merges.
 
 For `/implement`, intermediate flushes update only the session staging tree.
-Step 18 captures the transcript, performs a final execution-issues flush,
-validates completeness, and scrubs the full tree before creating the archive.
-Teardown requires a verified remote object and unpacked local cache. A final
-flush, identity, upload, or cache-verification failure returns nonzero and
-retains the session plus any content-pinned pending archive for retry.
+Step 18 captures the transcript and performs a final execution-issues flush.
+Enabled mode validates completeness and scrubs the full tree before creating
+the archive. Teardown then requires a verified remote object and unpacked local
+cache. Disabled mode terminalizes without archive or cache fields and reports
+`RUN_LOG_PUBLICATION=skipped-disabled`. A final flush, identity, upload, or
+cache-verification failure returns nonzero and retains the session plus any
+content-pinned pending archive for retry.
 
 ## Public GitHub Publication
 
@@ -344,9 +358,11 @@ token-free diagnostic.
 
 PR bodies embed only sanitized diagrams or placeholders and pass through the
 PR creation redactor before `gh pr create`. Tracking issues carry slim,
-marker-keyed summaries that name the provider, skill, and run ID. Full run
-payloads live in remote archives, not issue comments. Tracking title, body, and
-comment writes redact paths and secrets before GitHub receives them.
+marker-keyed summaries that name the provider, skill, and run ID when an
+archive exists. Full run payloads live in remote archives, not issue comments.
+When storage is disabled, public summaries state that no archive was published
+instead of naming provider `unknown` or a fake location. Tracking title, body,
+and comment writes redact paths and secrets before GitHub receives them.
 
 The `larch:diagrams` publisher accepts source files from approved temporary
 roots unless the operator explicitly allows another path. It validates the

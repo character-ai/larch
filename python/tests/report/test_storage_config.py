@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 import subprocess
 import tomllib
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -124,7 +124,9 @@ def test_load_derives_tool_repository_and_run_logs_uri(
     assert len(storage.storage_origin_id) == 64
 
 
-def test_base_override_requires_config_and_changes_only_base(tmp_path: Path) -> None:
+def test_base_override_enables_without_config_and_changes_only_base(
+    tmp_path: Path,
+) -> None:
     storage = _load(
         tmp_path,
         uri="s3://file-root/base",
@@ -134,16 +136,14 @@ def test_base_override_requires_config_and_changes_only_base(tmp_path: Path) -> 
 
     missing = tmp_path / "missing"
     missing.mkdir()
-    with pytest.raises(
-        storage_config.StorageConfigurationError, match="missing required file"
-    ):
-        _ = storage_config.load_tool_repository_storage(
-            repo_root=missing,
-            environ={config.ENV_LARCH_STORAGE_BASE_URI: "gs://override"},
-            runner=FakeRunner(
-                _result(stdout="git@github.com:character-ai/larch.git\n")
-            ),
-        )
+    override = storage_config.load_tool_repository_storage(
+        repo_root=missing,
+        environ={config.ENV_LARCH_STORAGE_BASE_URI: "gs://override"},
+        runner=FakeRunner(
+            _result(stdout="git@github.com:character-ai/larch.git\n")
+        ),
+    )
+    assert override.uri == "gs://override/larch/larch"
 
 
 def test_legacy_environment_override_is_rejected_with_guidance(tmp_path: Path) -> None:
@@ -161,6 +161,159 @@ def test_legacy_environment_override_is_rejected_with_guidance(tmp_path: Path) -
         )
 
 
+@pytest.mark.parametrize(
+    ("config_text", "reason"),
+    [
+        (None, "config-file-missing"),
+        ("[sre]\nvalue = 1\n", "larch-table-missing"),
+        ("[larch]\n", "storage-base-uri-omitted"),
+    ],
+)
+def test_optional_configuration_has_distinct_disabled_reasons(
+    tmp_path: Path,
+    config_text: str | None,
+    reason: str,
+) -> None:
+    if config_text is not None:
+        _ = (tmp_path / "tools-config.toml").write_text(
+            config_text, encoding="utf-8"
+        )
+    resolution = storage_config.resolve_run_log_storage(
+        repo_root=tmp_path,
+        environ={},
+        runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+    )
+
+    assert resolution.mode == "disabled"
+    assert resolution.reason == reason
+    assert resolution.storage is None
+    assert resolution.client_repo == "repo"
+    assert resolution.local_namespace_id is not None
+    assert len(resolution.local_namespace_id) == 64
+
+
+@pytest.mark.parametrize(
+    "configured",
+    ["", " ", " s3://bucket", "https://bucket"],
+)
+def test_present_invalid_value_does_not_degrade_to_disabled(
+    tmp_path: Path, configured: str
+) -> None:
+    _write_config(tmp_path, configured)
+    with pytest.raises(storage_config.StorageConfigurationError):
+        _ = storage_config.resolve_run_log_storage(
+            repo_root=tmp_path,
+            environ={},
+            runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+        )
+
+
+def test_environment_override_does_not_hide_invalid_present_config(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "tools-config.toml").write_text(
+        "[larch\n", encoding="utf-8"
+    )
+    with pytest.raises(
+        storage_config.StorageConfigurationError, match="malformed TOML"
+    ):
+        _ = storage_config.resolve_run_log_storage(
+            repo_root=tmp_path,
+            environ={config.ENV_LARCH_STORAGE_BASE_URI: "s3://override"},
+            runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+        )
+
+
+def test_environment_override_does_not_hide_unreadable_present_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "tools-config.toml"
+    _write_config(tmp_path)
+    original_open = Path.open
+
+    def unreadable_config(
+        path: Path,
+        mode: str = "r",
+        buffering: int = -1,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> Any:
+        if path == config_path:
+            raise PermissionError("fixture denies config read")
+        return original_open(
+            path,
+            mode=mode,
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+
+    monkeypatch.setattr(Path, "open", unreadable_config)
+    with pytest.raises(
+        storage_config.StorageConfigurationError, match="cannot read"
+    ):
+        _ = storage_config.resolve_run_log_storage(
+            repo_root=tmp_path,
+            environ={config.ENV_LARCH_STORAGE_BASE_URI: "s3://override"},
+            runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+        )
+
+
+def test_environment_override_does_not_hide_symlinked_present_config(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "actual.toml"
+    _ = target.write_text(
+        '[larch]\nstorage_base_uri = "s3://bucket"\n', encoding="utf-8"
+    )
+    (tmp_path / "tools-config.toml").symlink_to(target)
+    with pytest.raises(
+        storage_config.StorageConfigurationError, match="refusing symlink"
+    ):
+        _ = storage_config.resolve_run_log_storage(
+            repo_root=tmp_path,
+            environ={config.ENV_LARCH_STORAGE_BASE_URI: "s3://override"},
+            runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+        )
+
+
+@pytest.mark.parametrize(
+    "config_text",
+    [
+        "[larch]\nstorage_base_uri = 7\n",
+        "[larch]\nunknown = true\n",
+        "larch = false\n",
+    ],
+)
+def test_invalid_present_larch_shape_fails(
+    tmp_path: Path, config_text: str
+) -> None:
+    _ = (tmp_path / "tools-config.toml").write_text(
+        config_text, encoding="utf-8"
+    )
+    with pytest.raises(storage_config.StorageConfigurationError):
+        _ = storage_config.resolve_run_log_storage(
+            repo_root=tmp_path,
+            environ={},
+            runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+        )
+
+
+def test_non_regular_config_is_rejected(tmp_path: Path) -> None:
+    (tmp_path / "tools-config.toml").mkdir()
+    with pytest.raises(
+        storage_config.StorageConfigurationError, match="regular file"
+    ):
+        _ = storage_config.resolve_run_log_storage(
+            repo_root=tmp_path,
+            environ={},
+            runner=FakeRunner(_result(stdout="git@github.com:org/repo.git\n")),
+        )
+
+
 @pytest.mark.parametrize("former", ["config.toml", "tool-config.toml"])
 def test_former_or_singular_config_names_are_not_probed(
     tmp_path: Path, former: str
@@ -168,16 +321,15 @@ def test_former_or_singular_config_names_are_not_probed(
     _ = (tmp_path / former).write_text(
         '[larch]\nstorage_base_uri = "s3://ignored"\n', encoding="utf-8"
     )
-    with pytest.raises(
-        storage_config.StorageConfigurationError, match=r"tools-config\.toml"
-    ):
-        _ = storage_config.load_tool_repository_storage(
-            repo_root=tmp_path,
-            environ={},
-            runner=FakeRunner(
-                _result(stdout="git@github.com:character-ai/larch.git\n")
-            ),
-        )
+    resolution = storage_config.resolve_run_log_storage(
+        repo_root=tmp_path,
+        environ={},
+        runner=FakeRunner(
+            _result(stdout="git@github.com:character-ai/larch.git\n")
+        ),
+    )
+    assert resolution.mode == "disabled"
+    assert resolution.reason == "config-file-missing"
 
 
 def test_dot_larch_config_is_not_probed(tmp_path: Path) -> None:
@@ -186,16 +338,15 @@ def test_dot_larch_config_is_not_probed(tmp_path: Path) -> None:
     _ = (legacy_directory / "config.toml").write_text(
         '[larch]\nstorage_base_uri = "s3://ignored"\n', encoding="utf-8"
     )
-    with pytest.raises(
-        storage_config.StorageConfigurationError, match=r"tools-config\.toml"
-    ):
-        _ = storage_config.load_tool_repository_storage(
-            repo_root=tmp_path,
-            environ={},
-            runner=FakeRunner(
-                _result(stdout="git@github.com:character-ai/larch.git\n")
-            ),
-        )
+    resolution = storage_config.resolve_run_log_storage(
+        repo_root=tmp_path,
+        environ={},
+        runner=FakeRunner(
+            _result(stdout="git@github.com:character-ai/larch.git\n")
+        ),
+    )
+    assert resolution.mode == "disabled"
+    assert resolution.reason == "config-file-missing"
 
 
 def test_config_is_strict_for_larch_and_ignores_other_tools(tmp_path: Path) -> None:
@@ -223,28 +374,19 @@ def test_config_is_strict_for_larch_and_ignores_other_tools(tmp_path: Path) -> N
         )
 
 
-def test_missing_larch_table_error_is_actionable(tmp_path: Path) -> None:
+def test_missing_larch_table_disables_storage(tmp_path: Path) -> None:
     _ = (tmp_path / "tools-config.toml").write_text(
         "[sre]\nvalue = 1\n", encoding="utf-8"
     )
-    with pytest.raises(storage_config.StorageConfigurationError) as failure:
-        _ = storage_config.load_tool_repository_storage(
-            repo_root=tmp_path,
-            environ={},
-            runner=FakeRunner(
-                _result(stdout="git@github.com:character-ai/larch.git\n")
-            ),
-        )
-    message = str(failure.value)
-    assert all(
-        token in message
-        for token in (
-            "Git repository",
-            "tools-config.toml",
-            "[larch]",
-            "storage_base_uri",
-        )
+    resolution = storage_config.resolve_run_log_storage(
+        repo_root=tmp_path,
+        environ={},
+        runner=FakeRunner(
+            _result(stdout="git@github.com:character-ai/larch.git\n")
+        ),
     )
+    assert resolution.mode == "disabled"
+    assert resolution.reason == "larch-table-missing"
 
 
 def test_symlinked_config_is_rejected(tmp_path: Path) -> None:
@@ -410,8 +552,8 @@ def test_preflight_machine_envelope_names_derived_namespaces(
     )
     preflighted: list[storage_config.ToolRepositoryStorage] = []
 
-    def discover_storage(**_kwargs: object) -> storage_config.ToolRepositoryStorage:
-        return storage
+    def discover_storage(**_kwargs: object) -> storage_config.RunLogStorageResolution:
+        return storage_config.injected_storage_resolution(storage)
 
     def preflight_storage(**kwargs: object) -> None:
         preflighted.append(
@@ -423,7 +565,7 @@ def test_preflight_machine_envelope_names_derived_namespaces(
 
     monkeypatch.setattr(
         storage_config,
-        "discover_tool_repository_storage",
+        "discover_run_log_storage",
         discover_storage,
     )
     monkeypatch.setattr(
@@ -436,10 +578,59 @@ def test_preflight_machine_envelope_names_derived_namespaces(
 
     assert preflighted == [storage]
     assert capsys.readouterr().out.splitlines() == [
+        "RUN_LOG_STORAGE=enabled",
+        "RUN_LOG_STORAGE_REASON=injected-storage",
         "STORAGE_BASE_URI=s3://company-data/prod/tools",
         "CLIENT_REPO=service-a",
         "TOOL_REPO_URI=s3://company-data/prod/tools/larch/service-a",
         "RUN_LOGS_URI=s3://company-data/prod/tools/larch/service-a/run-logs/",
+        "STORAGE_PREFLIGHT=ok",
+        "PREFLIGHT_OK=true",
+    ]
+
+
+def test_disabled_preflight_skips_provider_and_emits_explicit_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    resolution = storage_config.RunLogStorageResolution(
+        mode="disabled",
+        reason="config-file-missing",
+        storage=None,
+        client_repo="service-a",
+        local_namespace_id="a" * 64,
+    )
+
+    def discover_disabled(
+        **_kwargs: object,
+    ) -> storage_config.RunLogStorageResolution:
+        return resolution
+
+    monkeypatch.setattr(
+        storage_config,
+        "discover_run_log_storage",
+        discover_disabled,
+    )
+
+    def unexpected_preflight(**_kwargs: object) -> None:
+        pytest.fail("disabled storage must not call provider preflight")
+
+    monkeypatch.setattr(
+        storage_config,
+        "preflight_tool_repository",
+        unexpected_preflight,
+    )
+
+    assert storage_config.storage_preflight_main(["--repo-root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "RUN_LOG_STORAGE=disabled",
+        "RUN_LOG_STORAGE_REASON=config-file-missing",
+        "STORAGE_BASE_URI=",
+        "CLIENT_REPO=service-a",
+        "TOOL_REPO_URI=",
+        "RUN_LOGS_URI=",
+        "STORAGE_PREFLIGHT=skipped-disabled",
         "PREFLIGHT_OK=true",
     ]
 

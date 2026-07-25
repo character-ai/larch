@@ -16,16 +16,20 @@ Replace-mode batches must use `run-log write`.
 The registry includes the durable implement, review, design, token, timing,
 execution-issue, transcript, vendor-diagnostic, and checks-digest telemetry carriers.
 
-Registration defines the allowed published shape. Every session-derived batch
-still passes through the run-log trim, temporary-path redaction, secret scrub,
-and publication checks described in the canonical
+Registration defines the allowed shape when publication is enabled. Every
+session-derived batch still passes through the run-log trim, temporary-path
+redaction, secret scrub, and publication checks described in the canonical
 [run-log security contract](security/artifacts-redaction-and-publication.md#run-logs-and-breadcrumbs).
 
 Batch names are relative to the lifecycle-owned staging tree. They never select
-or reconstruct remote storage. The shared lifecycle routes the terminal archive
-to `<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`; analyzers
-read batches only below the storage-origin-bound corpus root returned by the
-shared synchronizer.
+or reconstruct remote storage. With storage enabled, the shared lifecycle
+routes the terminal archive to
+`<base>/larch/<client-repo>/run-logs/<skill>/<run-id>.tar.gz`. With storage
+disabled, writers continue to use the same local batches during the run, then
+successful terminalization removes staging without an archive, synchronized
+cache, or pending publication. Analyzers use an explicit local `--log-root` or
+the storage-origin-bound corpus root returned by the shared synchronizer. They
+never treat disabled storage as an empty corpus.
 
 `architectural-invariant-outcome` is a replace-mode `.json` batch with the
 `json-object` sanitizer. It writes

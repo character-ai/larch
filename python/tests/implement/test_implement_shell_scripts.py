@@ -184,12 +184,23 @@ def main() -> int:
         if publish_rc != 0:
             print("publication failed: stub upload failure", file=sys.stderr)
             return publish_rc
+        if os.environ.get("STEP18_STUB_STORAGE_DISABLED") == "true":
+            print("RUN_LOG_STORAGE=disabled")
+            print("RUN_LOG_STORAGE_REASON=config-file-missing")
+            print("RUN_LOG_PUBLICATION=skipped-disabled")
+            print("LIFECYCLE_FLUSHED=false")
+            print("LIFECYCLE_TERMINALIZED=true")
+            return 0
         cache = Path(os.environ["IMPLEMENT_TMPDIR"]) / "published-cache"
         cache.mkdir(parents=True, exist_ok=True)
         print("REMOTE_KEY=run-logs/implement/RUN1.tar.gz")
         print("ARCHIVE_SHA256=" + "a" * 64)
         print(f"CACHE_DIR={cache}")
+        print("RUN_LOG_STORAGE=enabled")
+        print("RUN_LOG_STORAGE_REASON=repository-config")
+        print("RUN_LOG_PUBLICATION=published")
         print("LIFECYCLE_FLUSHED=true")
+        print("LIFECYCLE_TERMINALIZED=true")
         return 0
     if args[:2] == ["token", "report"]:
         log("token report")
@@ -955,6 +966,36 @@ def test_step18_finalize_body_and_teardown(tmp_path: Path) -> None:
     assert "SESSION_TRANSCRIPT_STATUS=captured" in text, "finalize transcript status relay"
     assert log_text.index("capture-transcript") < log_text.index("flush-safety-net")
     assert log_text.index("flush-safety-net") < log_text.index("run-log lifecycle-")
+
+
+def test_step18_accepts_disabled_terminalization_without_remote_fields(
+    tmp_path: Path,
+) -> None:
+    plugin = _make_step18_plugin(tmp_path)
+    impl = _make_step18_impl(tmp_path, "disabled-terminalization")
+    out = tmp_path / "disabled-terminalization.out"
+    log = tmp_path / "disabled-terminalization.log"
+    result = _run_step18(
+        tmp_path,
+        impl,
+        plugin,
+        out_path=out,
+        log_path=log,
+        args=["--phase", "finalize", "--step17-emitted", "false"],
+        extra_env={
+            "STEP18_STUB_STORAGE_DISABLED": "true",
+            "STEP18_STUB_BODY": "# Final body\n",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "RUN_LOG_PUBLICATION=skipped-disabled" in result.stdout
+    assert "LIFECYCLE_FLUSHED=false" in result.stdout
+    assert "LIFECYCLE_TERMINALIZED=true" in result.stdout
+    assert "RUN_LOG_PUBLISH_OK=true" in result.stdout
+    assert "REMOTE_KEY=" not in result.stdout
+    assert "CACHE_DIR=" not in result.stdout
+    assert "durable pending state" not in result.stderr
 
 
 @pytest.mark.parametrize(

@@ -62,33 +62,69 @@ lists the configured `run-logs/` prefix once and emits `CORPUS_ROOT`,
 `SYNC_OK=true`. See [Run-log storage contracts](run-log-archive.md).
 
 Storage preflight and lifecycle start resolve repository-root
-`tools-config.toml`, derive the client repository from local Git origin, list
-at most one result under the exact `larch/<client-repo>/` prefix, and emit:
+`tools-config.toml` plus the environment and derive the client repository from
+local Git origin. Enabled storage lists at most one result under the exact
+`larch/<client-repo>/` prefix. Disabled storage invokes no provider command.
+Both emit:
 
 ```text
-STORAGE_BASE_URI=<canonical base>
+RUN_LOG_STORAGE=<enabled|disabled>
+RUN_LOG_STORAGE_REASON=<closed-reason-token>
+STORAGE_BASE_URI=<canonical base or empty>
 CLIENT_REPO=<derived repository name>
-TOOL_REPO_URI=<canonical base>/larch/<client-repo>
-RUN_LOGS_URI=<tool repository URI>/run-logs/
+TOOL_REPO_URI=<canonical tool repository URI or empty>
+RUN_LOGS_URI=<run-logs URI or empty>
+STORAGE_PREFLIGHT=<ok|skipped-disabled>
 PREFLIGHT_OK=true
 ```
 
-Lifecycle start emits the first four values with its lifecycle envelope.
-Persisted context pins the same tool URI, client repository, and
-storage-origin ID; publication fails if config, environment, or Git identity
-changes mid-run.
+Lifecycle start adds `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `CONTEXT_FILE`,
+and `LIFECYCLE_STARTED=true`. In disabled mode it prints:
+
+```text
+**⚠ Run-log publication is disabled (<reason>). This skill will run, but no remote run-log archive or synchronized cache entry will be created.**
+```
+
+Persisted context pins publication mode, reason, client repository, and either
+the enabled canonical storage identity or disabled local namespace ID. An
+enabled run fails if config, environment, Git origin, or storage identity
+changes. A disabled run stays disabled even if configuration appears later.
 
 The universal lifecycle starts each invocation with a declared skill and either
-a caller-supplied `--run-id` or a generated UUID after the configured prefix
-preflight succeeds. `--log-root <absolute-path>` selects specialized staging;
+a caller-supplied `--run-id` or a generated UUID after lifecycle admission
+succeeds. `--log-root <absolute-path>` selects specialized staging;
 `--adopt-existing` adopts a matching manifest already created there. The start
 envelope returns `CONTEXT_FILE`, whose durable JSON record binds repository,
-tool repository URI, client repository, storage-origin ID, skill, run ID, log
-root, and run directory. Child runs also record the
-parent skill and run ID, but retain their own archive. Every terminal verb
-writes `final-report.md`, records a missing transcript as an execution issue
-when capture is unavailable, and attempts the same create-only publication.
-Publication failure returns nonzero and retains the durable pending archive.
+publication identity, skill, run ID, log root, and run directory. Child runs
+also record the parent skill and run ID, but retain their own run identity.
+Every terminal verb writes `final-report.md` and records a missing transcript
+as an execution issue when capture is unavailable.
+
+Enabled success emits `RUN_LOG_PUBLICATION=published`,
+`LIFECYCLE_FLUSHED=true`, and `LIFECYCLE_TERMINALIZED=true` with verified
+remote and cache fields. Disabled success invokes no archive, provider, cache,
+or pending-publication operation. It warns:
+
+```text
+**⚠ Run-log publication skipped because storage was disabled at lifecycle start (<reason>).**
+```
+
+It then emits:
+
+```text
+RUN_ID=<run-id>
+SKILL=<skill>
+OUTCOME=<terminal-outcome>
+RUN_LOG_STORAGE=disabled
+RUN_LOG_STORAGE_REASON=<closed-reason-token>
+RUN_LOG_PUBLICATION=skipped-disabled
+LIFECYCLE_FLUSHED=false
+LIFECYCLE_TERMINALIZED=true
+```
+
+Disabled success removes staging and context. Terminal errors retain diagnostic
+state, emit `RUN_LOG_PUBLICATION=failed`, `LIFECYCLE_FLUSHED=false`, and
+`LIFECYCLE_TERMINALIZED=false`, then return nonzero.
 
 ## One-time tool-first S3 migration
 
@@ -134,8 +170,9 @@ does not commit or publish that snapshot. Skip and failure paths emit
 `SESSION_TRANSCRIPT_STATUS=<status>`.
 
 Implement Step 18 captures the transcript before its final execution-issues
-flush. A failed final flush or archive publication returns nonzero and retains
-the session; only a verified remote object plus unpacked cache permits teardown.
+flush. A failed final flush or enabled archive publication returns nonzero and
+retains the session. Teardown accepts either a verified remote object plus
+unpacked cache or successful `skipped-disabled` terminalization.
 
 `verify skill-called` preserves the `VERIFIED=true|false` and `REASON=<token>`
 contract. Malformed regex faults exit 1 with stderr only.
@@ -176,10 +213,11 @@ dividing by summed cache-read.
 Step 0 adopts `$IMPLEMENT_TMPDIR/larch-logs` into the lifecycle under the
 implement run ID. Step 18 runs the matching lifecycle terminal verb after its
 execution-issue and transcript safety nets. The shared terminal owner validates
-and sanitizes that final staging tree. A successful
-call creates one immutable remote object and one validated unpacked cache
+and sanitizes that final staging tree when publication is enabled. Enabled
+success creates one immutable remote object and one validated unpacked cache
 directory. A failed upload returns nonzero, retains the durable pending archive,
 and stops teardown. Re-entry retries the content-pinned pending archive.
+Disabled success creates none of those artifacts and cleans staging.
 
 ## Git isolation
 

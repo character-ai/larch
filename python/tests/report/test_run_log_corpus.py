@@ -65,12 +65,23 @@ def test_synchronized_repository_log_root_lists_once(tmp_path: Path) -> None:
     assert store.list_calls == 1
 
 
-def test_synchronized_repository_log_root_requires_config(tmp_path: Path) -> None:
+def test_synchronized_repository_log_root_requires_enabled_storage(
+    tmp_path: Path,
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/repo.git"],
+        cwd=repo,
+        check=True,
+    )
     store = _EmptyStore()
 
-    with pytest.raises(run_log_corpus.RunLogCorpusError, match=r"tools-config\.toml"):
+    with pytest.raises(
+        run_log_corpus.RunLogCorpusError,
+        match="run-log storage is disabled; configure",
+    ):
         _ = run_log_corpus.synchronized_repository_log_root(
             repo_root=repo,
             store=store,

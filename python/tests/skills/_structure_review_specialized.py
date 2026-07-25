@@ -156,7 +156,7 @@ def run(repo_root: Path) -> list[str]:
         ("review log-phase", "(18) SKILL.md must reference review log-phase in Step 4 — filing wiring drifted"),
         ("run-log lifecycle-start", "(18) standalone review lifecycle start must preflight archive storage"),
         ("run-log lifecycle-finalize --repo-root", "(18) standalone review must publish through the lifecycle boundary"),
-        ("Require exit zero and `LIFECYCLE_FLUSHED=true`", "(18) standalone review must fail closed on publication failure"),
+        ("Require exit zero, `LIFECYCLE_TERMINALIZED=true`", "(18) standalone review must fail closed on publication failure"),
     ): require(skill, needle, label)
     if "/umbrella" in skill_text: failures.append("(19) SKILL.md must not reference '/umbrella' — removed umbrella composition must not return")
 

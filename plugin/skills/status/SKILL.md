@@ -25,13 +25,16 @@ Parse all KV pairs from stdout without `eval`/`source`. Extract at minimum:
 `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `DEGRADED`, the
 optional `CODEX_PROBE_DETAIL`, plus model-pin keys `CURSOR_MODEL_PINS`,
 `CODEX_MODEL_PINS`, and optional `CURSOR_MODEL_PIN_DETAIL` /
-`CODEX_MODEL_PIN_DETAIL`.
+`CODEX_MODEL_PIN_DETAIL`. Retain `RUN_LOG_STORAGE`,
+`RUN_LOG_STORAGE_REASON`, and `STORAGE_PREFLIGHT` from the shared lifecycle
+start.
 
 <!-- step:2 — Render and report -->
 
 Render a human-readable status report using the parsed values:
 
 - **Version**: `LARCH_PLUGIN_VERSION`
+- **Run-log storage**: when `RUN_LOG_STORAGE=disabled`, print `Run-log storage: disabled (<RUN_LOG_STORAGE_REASON>)`. Print `Run-log storage: accessible` only when `RUN_LOG_STORAGE=enabled` and `STORAGE_PREFLIGHT=ok`.
 - **Codex**: translate `CODEX_STATE` — `ok` → `ok`; `binary-missing` → `binary not found on PATH`; `probe-failed` with `CODEX_PROBE_DETAIL` → render that detail; other `probe-failed` → `binary found but runtime probe failed`; `unknown` → `probe did not run`
 - **Cursor**: same translation using `CURSOR_STATE`
 - **Cursor model pins** (when `CURSOR_MODEL_PINS` is present): `ok` → `model pins: ok`; `unknown-id` → `model pin unknown: <CURSOR_MODEL_PIN_DETAIL>` (names the id and owning config constant); `list-failed` → `model list failed: <CURSOR_MODEL_PIN_DETAIL>`; `unparseable` → `model list unparseable`; `skipped` → omit (vendor probe was not `ok`)

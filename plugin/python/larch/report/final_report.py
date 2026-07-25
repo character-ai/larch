@@ -985,6 +985,13 @@ def _run_log_reference(*, session: Path, run_id: str) -> str:
         repo_root=Path(repo_root_raw) if repo_root_raw else None,
         skill="implement",
         run_id=run_id,
+        lifecycle_manifest=(
+            session.parent
+            / "larch-logs"
+            / "implement"
+            / run_id
+            / "manifest.json"
+        ),
     )
 
 

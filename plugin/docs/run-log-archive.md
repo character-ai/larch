@@ -15,19 +15,32 @@ independently configured tools: each tool owns one table named for the tool and
 ignores unrelated top-level tool tables. There are no shared fields, no global
 version, and no `client_repo` field.
 
-Larch requires a strict table:
+Remote publication uses a strict table:
 
 ```toml
 [larch]
 storage_base_uri = "s3://zhupanov"
 ```
 
-The file and `[larch]` are required even when
-`LARCH_STORAGE_BASE_URI` replaces only `storage_base_uri` for the process.
-Reject non-empty `LARCH_LOGS_URI`; never probe `config.toml`,
-`.larch/config.toml`, or `tool-config.toml`. Reject a symlinked, unreadable, or
-malformed file and missing, duplicate, unknown, empty, padded, or type-invalid
-larch fields before workflow side effects or object-store requests.
+Resolve storage once at lifecycle start:
+
+1. Reject non-empty `LARCH_LOGS_URI`.
+2. If `tools-config.toml` exists, reject a symlink, non-regular path,
+   unreadable file, malformed TOML, non-table `[larch]`, unknown `[larch]`
+   keys, or an empty, padded, invalid, or type-invalid
+   `[larch].storage_base_uri`.
+3. A non-empty `LARCH_STORAGE_BASE_URI` overrides a valid file value and may
+   enable storage when the file, table, or field is absent. It never hides an
+   invalid present file.
+4. Without the override, a missing file, missing `[larch]`, or omitted field
+   disables storage with reason `config-file-missing`,
+   `larch-table-missing`, or `storage-base-uri-omitted`. A valid file field
+   enables storage with reason `repository-config`.
+
+Never probe `config.toml`, `.larch/config.toml`, or `tool-config.toml`.
+Disabled mode carries no fake bucket, URI, provider, or
+`ToolRepositoryStorage`. Provider-dependent commands fail with guidance to
+configure `[larch].storage_base_uri` or `LARCH_STORAGE_BASE_URI`.
 
 `StorageBase` is a validated provider, bucket, and optional base prefix. Accept
 only `gs://`, `s3://`, and `r2://`, including bucket roots. Reject credentials,
@@ -42,6 +55,13 @@ slug. It never uses a checkout or worktree directory name, a provider API,
 bucket text, config field, or environment override for repository identity.
 Missing, ambiguous, credential-bearing, port-bearing, or invalid origins fail
 without echoing embedded credentials.
+
+Disabled staging uses a SHA-256 namespace derived from the validated absolute
+repository root with the versioned
+`larch-run-log-local-namespace-v1` domain separator. Only the digest appears
+in path components. Lifecycle manifests and contexts pin publication mode,
+resolution reason, client repository, and either this local namespace ID or
+the enabled canonical storage fields and storage-origin ID.
 
 ## Remote and local layout
 
@@ -93,7 +113,11 @@ Every provider implements the same operations:
 | `metadata` | Return normalized metadata for one exact key. |
 | `download` | Write to a private sibling temporary file and atomically promote it. Never merge with a destination. |
 
-For the checked-in base and repository, startup preflight lists only
+When storage is disabled, startup skips provider construction and provider
+commands, emits `STORAGE_PREFLIGHT=skipped-disabled`, and admits the workflow.
+When storage is enabled, startup fails closed on every configuration,
+credential, CLI, network, bucket, or prefix-access error. For the checked-in
+base and repository, startup preflight lists only
 `larch/larch/` in bucket `zhupanov`.
 
 S3 and R2 use the AWS CLI transport and standard AWS credential discovery. R2
@@ -178,6 +202,12 @@ collision verification, cache promotion, and atomic retirement of pending
 state. Any failure returns nonzero, retains pending state, and prevents clean
 workflow success.
 
+`run-log publish`, `run-log sync`, migration commands, and analyzer-state
+operations require enabled storage. They never treat disabled storage as an
+empty remote corpus. Analysis commands with an explicit `--log-root` continue
+to read that local corpus without storage or network access. Without a local
+corpus, analysis fails with actionable storage guidance.
+
 `python3 python/cli.py run-log sync --repo-root <root>` lists the complete
 `run-logs/` remote prefix once, including every provider pagination page. It
 downloads and safely materializes only runs without a valid local directory.
@@ -201,6 +231,8 @@ The command returns the unpacked storage-origin-specific repository corpus. The 
 `run_log_corpus.synchronized_run_log_root` API performs the same one-time sync
 and returns that root. An analyzer must retain the returned path and use normal
 local file reads for all later files and waves in the same invocation.
+Cross-session `/design` pause and resume require this verified published cache.
+Pause rejects disabled storage before writing a GitHub pause marker.
 
 ## Rust handoff
 

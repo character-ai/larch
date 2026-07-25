@@ -22,21 +22,39 @@ The lifecycle CLI validates it and derives the immutable parent; no other parent
 IDs or environment variables are allowed.
 
 Parse `RUN_ID`, `SKILL`, `LOG_ROOT`, `RUN_DIR`, `CONTEXT_FILE`,
-`STORAGE_BASE_URI`, `CLIENT_REPO`, `TOOL_REPO_URI`, `RUN_LOGS_URI`,
+`RUN_LOG_STORAGE`, `RUN_LOG_STORAGE_REASON`, `STORAGE_BASE_URI`,
+`CLIENT_REPO`, `TOOL_REPO_URI`, `RUN_LOGS_URI`, `STORAGE_PREFLIGHT`,
 `PREFLIGHT_OK`, and `LIFECYCLE_STARTED` from stdout without `eval` or `source`.
-Stop if the command fails or either success value is not `true`.
+Stop if the command fails, either success value is not `true`, or the storage
+state is not one of these pairs:
+
+- `RUN_LOG_STORAGE=enabled` and `STORAGE_PREFLIGHT=ok`
+- `RUN_LOG_STORAGE=disabled` and `STORAGE_PREFLIGHT=skipped-disabled`
+
+Disabled storage is an intentional local-only mode. Keep run-log staging and
+bookkeeping active. Do not invent provider, URI, remote, cache, or pending
+publication values.
 
 Callers that already own a run ID pass `--run-id "<id>"`. Specialized owners
 also pass their absolute `--log-root` and `--adopt-existing` when rich artifact
 setup created the manifest first. A specialized owner whose Step 0 `session
 setup` parse binds `REPO_ROOT` passes `--repo-root "$REPO_ROOT"` to the start
-and terminal commands instead of the generic fallback shown here. The context file persists the validated
-identity, staging root, canonical tool repository URI, and storage-origin ID so
-later subprocesses rehydrate them without shell state.
+and terminal commands instead of the generic fallback shown here. The context
+file persists the validated identity, staging root, publication mode and
+reason, client repository, and either the enabled storage identity or disabled
+local namespace ID. Later subprocesses rehydrate that pinned state without
+shell state.
 
 After start succeeds, run exactly one matching terminal command before the
-skill returns. A terminal command must succeed with `LIFECYCLE_FLUSHED=true`.
-Treat a nonzero exit or any other value as a loud publication failure.
+skill returns. Require exit zero, `LIFECYCLE_TERMINALIZED=true`, and one valid
+terminal pair:
+
+- `RUN_LOG_PUBLICATION=published` and `LIFECYCLE_FLUSHED=true`
+- `RUN_LOG_PUBLICATION=skipped-disabled` and `LIFECYCLE_FLUSHED=false`
+
+Treat any other combination as a loud terminal failure. The
+`skipped-disabled` pair is successful terminalization, not a publication
+failure, and has no pending remote state.
 
 - Success: `run-log lifecycle-finalize`
 - Failure: `run-log lifecycle-failure`

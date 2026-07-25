@@ -187,6 +187,24 @@ def step0_session_entry_main(argv: Sequence[str]) -> int:
             )
         print("**⚠ /design: run-log storage preflight failed; aborting before session setup**", file=sys.stderr)
         return storage_preflight.returncode
+    storage_kv = _parse_stdout_kv(storage_preflight.stdout)
+    storage_mode = storage_kv.get("RUN_LOG_STORAGE", [""])[-1]
+    storage_state = storage_kv.get("STORAGE_PREFLIGHT", [""])[-1]
+    valid_storage_state = (
+        storage_mode == "enabled" and storage_state == "ok"
+    ) or (
+        storage_mode == "disabled" and storage_state == "skipped-disabled"
+    )
+    if (
+        storage_kv.get("PREFLIGHT_OK", [""])[-1] != "true"
+        or not valid_storage_state
+    ):
+        print(
+            "**⚠ /design: run-log storage preflight returned an invalid state; "
+            "aborting before session setup**",
+            file=sys.stderr,
+        )
+        return config.EXIT_INTERNAL_ERROR
     return step0_session_main(argv)
 
 

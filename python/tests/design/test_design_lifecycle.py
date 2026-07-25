@@ -692,6 +692,41 @@ def test_step0_session_entry_fails_before_setup_when_storage_preflight_fails(
     assert "storage unavailable" in capsys.readouterr().err
 
 
+def test_step0_session_entry_accepts_disabled_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    plugin_root.mkdir()
+    attempted_setup = False
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        assert "storage-preflight" in argv
+        stdout = (
+            "RUN_LOG_STORAGE=disabled\n"
+            "RUN_LOG_STORAGE_REASON=config-file-missing\n"
+            "STORAGE_PREFLIGHT=skipped-disabled\n"
+            "PREFLIGHT_OK=true\n"
+        )
+        return CommandResult(tuple(argv), 0, stdout, "", 0.0)
+
+    def fake_session(_argv: Sequence[str]) -> int:
+        nonlocal attempted_setup
+        attempted_setup = True
+        return 0
+
+    monkeypatch.setattr(proc_module, "run", fake_run)
+    monkeypatch.setattr(repo_roots, "consumer_repo_root", lambda _path: tmp_path)
+    monkeypatch.setattr(design_step0, "step0_session_main", fake_session)
+
+    rc = design_step0.step0_session_entry_main(
+        ["--claude-pid", "123", "--plugin-root", str(plugin_root), "--"]
+    )
+
+    assert rc == 0
+    assert attempted_setup
+
+
 def test_step0_session_threads_repo_root_to_design_env_and_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()

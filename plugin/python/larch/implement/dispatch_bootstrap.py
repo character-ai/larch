@@ -263,6 +263,22 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:  # noqa: C901, P
             result.stdout = (result.stdout or "") + lifecycle.stdout
         if lifecycle.stderr:
             result.stderr = (result.stderr or "") + lifecycle.stderr
+        lifecycle_values = _parse_kv(lifecycle.stdout or "")
+        lifecycle_storage_ok = (
+            lifecycle_values.get("RUN_LOG_STORAGE") == "enabled"
+            and lifecycle_values.get("STORAGE_PREFLIGHT") == "ok"
+        ) or (
+            lifecycle_values.get("RUN_LOG_STORAGE") == "disabled"
+            and lifecycle_values.get("STORAGE_PREFLIGHT") == "skipped-disabled"
+        )
         if lifecycle.returncode != 0:
             result.returncode = lifecycle.returncode
+        elif (
+            lifecycle_values.get("LIFECYCLE_STARTED") != "true"
+            or not lifecycle_storage_ok
+        ):
+            result.returncode = config.EXIT_INTERNAL_ERROR
+            result.stderr = (result.stderr or "") + (
+                "step-0-bootstrap: lifecycle start returned an invalid storage state\n"
+            )
     return _forward_result(result)

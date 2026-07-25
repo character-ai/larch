@@ -668,7 +668,14 @@ def test_step0_bootstrap_adopts_lifecycle_unless_logs_are_disabled(tmp_path: Pat
         calls.append(args)
         if args[:2] == ["bootstrap", "invoke"]:
             return subprocess.CompletedProcess(args, 0, f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=run-7887\nISSUE_NUMBER=7887\n", "")
-        return subprocess.CompletedProcess(args, 0, "LIFECYCLE_STARTED=true\n", "")
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            "RUN_LOG_STORAGE=enabled\n"
+            "STORAGE_PREFLIGHT=ok\n"
+            "LIFECYCLE_STARTED=true\n",
+            "",
+        )
 
     monkeypatch.setitem(dispatch_bootstrap.__dict__, "_invoke_cli", fake_invoke)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(_REPO_ROOT))
