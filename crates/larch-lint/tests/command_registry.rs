@@ -747,3 +747,105 @@ fn migration_issue_audit_checks_both_directions_and_plan_mentions() {
             "migration-issue-command-drift issue=#9999 command=fixture run",
         ));
 }
+
+#[test]
+fn migration_issue_audit_rejects_malformed_schema_duplicate_and_unsorted_input() {
+    let repository = TempRepo::new();
+    repository.commit_all();
+    let input = repository.path().join("audit.json");
+
+    for (body, error) in [
+        (
+            r#"{"schema_version":2,"rollout_enabled":false,"issues":[]}"#,
+            "unsupported schema_version 2; expected 1",
+        ),
+        (
+            r#"{"schema_version":1,"rollout_enabled":false,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":null,"plan_commands":[]},{"number":7661,"state":"closed","executable_leaf":false,"command":null,"plan_commands":[]}]}"#,
+            "issue numbers must be positive and unique",
+        ),
+        (
+            r#"{"schema_version":1,"rollout_enabled":false,"issues":[{"number":0,"state":"open","executable_leaf":true,"command":null,"plan_commands":[]}]}"#,
+            "issue numbers must be positive and unique",
+        ),
+        (
+            r#"{"schema_version":1,"rollout_enabled":false,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":{"domain":"Fixture","verb":"run"},"plan_commands":[]}]}"#,
+            "invalid audit command domain token",
+        ),
+        (
+            r#"{"schema_version":1,"rollout_enabled":false,"issues":[{"number":7661,"state":"open","executable_leaf":true,"command":null,"plan_commands":[{"domain":"fixture","verb":"run"},{"domain":"fixture","verb":"run"}]}]}"#,
+            "plan_commands must be sorted and unique",
+        ),
+    ] {
+        fs::write(&input, body).expect("write audit input");
+        TempRepo::command_from(repository.path())
+            .args([
+                "command-registry",
+                "audit",
+                "--input",
+                input.to_str().expect("UTF-8 input path"),
+            ])
+            .assert()
+            .code(2)
+            .stdout("")
+            .stderr(predicate::str::contains(error));
+    }
+}
+
+#[test]
+fn ledger_rejects_invalid_schema_command_and_caller_shapes() {
+    let schema = TempRepo::new();
+    prepare(&schema, "schema_version = 1\n");
+    schema.commit_all();
+    TempRepo::command_from(schema.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains("unsupported schema_version 1"));
+
+    let invalid_command = TempRepo::new();
+    prepare(
+        &invalid_command,
+        &command_row("python", "pending", "pending", "pending")
+            .replace("domain = \"fixture\"", "domain = \"Fixture\""),
+    );
+    invalid_command.commit_all();
+    TempRepo::command_from(invalid_command.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains("invalid domain token \"Fixture\""));
+
+    let invalid_caller = TempRepo::new();
+    let mut ledger = command_row("python", "pending", "pending", "pending");
+    ledger.push_str(
+        "\n[[callers]]\npath = \"../outside\"\nkind = \"skill\"\npython = []\nrust = []\n",
+    );
+    prepare(&invalid_caller, &ledger);
+    invalid_caller.commit_all();
+    TempRepo::command_from(invalid_caller.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains(
+            "unsafe caller path \"../outside\"",
+        ));
+
+    let unsorted = TempRepo::new();
+    let mut ledger = command_row("python", "pending", "pending", "pending");
+    ledger.push_str(
+        "\n[[callers]]\npath = \"skills/example/SKILL.md\"\nkind = \"skill\"\npython = [\"fixture run\", \"fixture run\"]\nrust = []\n",
+    );
+    prepare(&unsorted, &ledger);
+    unsorted.commit_all();
+    TempRepo::command_from(unsorted.path())
+        .args(["rule", "command-registry"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains(
+            "skills/example/SKILL.md python selectors must be sorted and unique",
+        ));
+}

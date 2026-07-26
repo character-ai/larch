@@ -174,6 +174,22 @@ fn ordinary_upgrade_preflights_then_preserves_the_active_old_root() {
 }
 
 #[test]
+fn upgrade_queries_the_driver_for_latest_stable_when_no_expected_version_is_set() {
+    let harness = Harness::new();
+    harness
+        .command()
+        .env_remove("LARCH_EXPECTED_STABLE_VERSION")
+        .arg("upgrade-larch")
+        .arg("run")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("LARCH_NEW_VERSION_INSTALLED=true"));
+    let log = fs::read_to_string(&harness.log).expect("log");
+    assert!(log.contains("bootstrap --latest-stable-version"));
+    assert!(log.contains("bootstrap --preflight-release 2.0.0"));
+}
+
+#[test]
 fn release_step7_can_keep_execution_and_installed_roots_separate() {
     let harness = Harness::new();
     harness
@@ -249,6 +265,61 @@ fn marketplace_migration_removes_only_the_legacy_clone_and_reinstalls() {
     let log = fs::read_to_string(&harness.log).expect("log");
     assert!(log.contains(&format!("claude plugin marketplace add {SOURCE}")));
     assert!(log.contains("claude plugin install larch@larch-local"));
+}
+
+#[test]
+fn marketplace_migration_refuses_a_symlinked_clone_before_mutating() {
+    let harness = Harness::new();
+    harness.set("marketplace", "legacy");
+    let clone = harness
+        .home
+        .join(".claude/plugins/marketplaces/larch-local");
+    fs::create_dir_all(clone.parent().expect("clone parent")).expect("clone parent");
+    let target = harness.home.join("outside-marketplace");
+    fs::create_dir_all(&target).expect("symlink target");
+    std::os::unix::fs::symlink(&target, &clone).expect("clone symlink");
+
+    harness
+        .command()
+        .arg("upgrade-larch")
+        .arg("run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Marketplace migration refused a symlinked marketplace clone",
+        ));
+    let log = fs::read_to_string(&harness.log).expect("log");
+    assert!(!log.contains("claude plugin marketplace remove larch-local"));
+    assert_eq!(
+        fs::read_to_string(harness.state.join("installed")).expect("installed"),
+        "1.0.0"
+    );
+}
+
+#[test]
+fn upgrade_rejects_relative_home_and_plugin_data_paths_before_children_run() {
+    let harness = Harness::new();
+    harness
+        .command()
+        .env("HOME", "relative-home")
+        .arg("upgrade-larch")
+        .arg("run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "HOME must be an absolute safe path",
+        ));
+    harness
+        .command()
+        .env("CLAUDE_PLUGIN_DATA", "relative-data")
+        .arg("upgrade-larch")
+        .arg("run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "CLAUDE_PLUGIN_DATA must be an absolute safe path",
+        ));
+    assert!(!harness.log.exists(), "no child command should run");
 }
 
 #[test]

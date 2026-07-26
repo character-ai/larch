@@ -199,6 +199,79 @@ fn set_version_rejects_every_inconsistent_old_version() {
 }
 
 #[test]
+fn set_version_rejects_invalid_workspace_members_and_dependency_ownership() {
+    let empty_members = release_repository(true);
+    replace(
+        empty_members.path(),
+        "Cargo.toml",
+        "members = [\"crates/larch-cli\", \"crates/larch-core\"]",
+        "members = []",
+    );
+    assert_inconsistent(
+        empty_members.path(),
+        "Cargo.toml workspace members are invalid",
+    );
+
+    let missing_member = release_repository(true);
+    fs::remove_file(missing_member.path().join("crates/larch-core/Cargo.toml"))
+        .expect("remove member manifest");
+    assert_inconsistent(
+        missing_member.path(),
+        "required release version file is missing or unsafe: crates/larch-core/Cargo.toml",
+    );
+
+    let locally_versioned = release_repository(true);
+    replace(
+        locally_versioned.path(),
+        "crates/larch-core/Cargo.toml",
+        "version.workspace = true",
+        "version = \"1.2.3\"",
+    );
+    assert_inconsistent(
+        locally_versioned.path(),
+        "workspace member version ownership is invalid: crates/larch-core",
+    );
+
+    let duplicate_name = release_repository(true);
+    replace(
+        duplicate_name.path(),
+        "crates/larch-core/Cargo.toml",
+        "name = \"larch-core\"",
+        "name = \"larch-cli\"",
+    );
+    assert_inconsistent(
+        duplicate_name.path(),
+        "Cargo workspace member names are not unique",
+    );
+
+    let alias = release_repository(true);
+    replace(
+        alias.path(),
+        "Cargo.toml",
+        "larch-core = {",
+        "core-alias = {",
+    );
+    assert_inconsistent(
+        alias.path(),
+        "workspace path dependency name mismatch: core-alias",
+    );
+
+    let duplicate_lock = release_repository(true);
+    fs::write(
+        duplicate_lock.path().join("Cargo.lock"),
+        format!(
+            "{}\n[[package]]\nname = \"larch-core\"\nversion = \"1.2.3\"\n",
+            read(duplicate_lock.path(), "Cargo.lock")
+        ),
+    )
+    .expect("duplicate lock record");
+    assert_inconsistent(
+        duplicate_lock.path(),
+        "Cargo.lock workspace package version mismatch: larch-core",
+    );
+}
+
+#[test]
 fn set_version_rolls_back_an_interruption_at_every_write_boundary() {
     for boundary in 1..=4 {
         let repository = release_repository(true);

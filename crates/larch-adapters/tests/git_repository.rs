@@ -494,6 +494,143 @@ fn conflicts_are_only_unmerged_and_preserve_all_index_stages() {
 }
 
 #[test]
+fn range_blob_and_conflict_stage_queries_match_git() {
+    let Some(repository) = fixture(GitFixture::Refs, GitObjectFormat::Sha1) else {
+        return;
+    };
+    repository.write("dir/file.txt", b"nested\n").unwrap();
+    git_ok(&repository, ["add", "--all"]);
+    git_ok(&repository, ["commit", "--quiet", "-m", "nested subject"]);
+
+    let reader = GixRepository::open(repository.root()).unwrap();
+    let include = git_id(&repository, ["rev-parse", "HEAD"]);
+    let exclude = git_id(&repository, ["rev-parse", "HEAD~1"]);
+    assert_eq!(
+        reader.commit_count_range(&exclude, &include).unwrap(),
+        git_line(&repository, ["rev-list", "--count", "HEAD~1..HEAD"])
+            .iter()
+            .fold(0_u64, |value, byte| value * 10 + u64::from(byte - b'0'))
+    );
+    assert_eq!(
+        reader.commit_subjects_range(&exclude, &include).unwrap(),
+        vec![b"nested subject".to_vec()]
+    );
+    assert_eq!(
+        reader
+            .blob_at_commit(&include, &GitPath::new("dir/file.txt"))
+            .unwrap(),
+        Some(b"nested\n".to_vec())
+    );
+    assert_eq!(
+        reader
+            .blob_at_commit(&include, &GitPath::new("missing.txt"))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        reader
+            .blob_at_commit(&include, &GitPath::new(""))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::InvalidInput
+    );
+    assert_eq!(
+        reader
+            .blob_at_commit(&include, &GitPath::new("dir"))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::ObjectType
+    );
+
+    let Some(conflict) = fixture(GitFixture::Conflict, GitObjectFormat::Sha1) else {
+        return;
+    };
+    let conflict_reader = GixRepository::open(conflict.root()).unwrap();
+    for stage in 1..=3 {
+        let spec = format!(":{stage}:tracked.txt");
+        assert_eq!(
+            conflict_reader.stage_blob(b"tracked.txt", stage).unwrap(),
+            git_bytes(&conflict, ["show", spec.as_str()])
+        );
+    }
+    assert_eq!(
+        conflict_reader
+            .stage_blob(b"tracked.txt", 0)
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::InvalidInput
+    );
+    assert_eq!(
+        conflict_reader
+            .stage_blob(b"missing.txt", 1)
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::RevisionNotFound
+    );
+}
+
+#[test]
+fn repository_covers_optional_refs_and_compatibility_status() {
+    let Some(repository) = fixture(GitFixture::Refs, GitObjectFormat::Sha1) else {
+        return;
+    };
+    git_ok(
+        &repository,
+        ["symbolic-ref", "refs/heads/current", "refs/heads/main"],
+    );
+    let reader = GixRepository::open(repository.root()).unwrap();
+    assert_eq!(
+        reader.upstream(&RefName::new("refs/heads/topic")).unwrap(),
+        None
+    );
+    assert_eq!(
+        reader
+            .upstream(&RefName::new("refs/tags/v1"))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::InvalidRef
+    );
+    assert!(reader.references().unwrap().iter().any(|reference| {
+        reference.name.as_bytes() == b"refs/heads/current"
+            && reference.target == ReferenceTarget::Symbolic(RefName::new("refs/heads/main"))
+    }));
+    assert_eq!(
+        reader
+            .resolve_revision(&Revision::new(""))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::InvalidInput
+    );
+    assert_eq!(
+        reader
+            .resolve_revision(&Revision::new("HEAD:tracked.txt"))
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::UnsupportedRevision
+    );
+
+    let Some(filtered) = fixture(GitFixture::AttributesAndFilters, GitObjectFormat::Sha1) else {
+        return;
+    };
+    let filtered_reader = GixRepository::open(filtered.root()).unwrap();
+    assert!(
+        filtered_reader
+            .local_status(&StatusOptions::default())
+            .is_ok()
+    );
+
+    let head_tree = git_id(&repository, ["rev-parse", "HEAD^{tree}"]);
+    git_ok(&repository, ["config", "diff.fixture.textconv", "cat"]);
+    assert_eq!(
+        reader
+            .tree_changes(&head_tree, &head_tree)
+            .unwrap_err()
+            .kind(),
+        RepositoryErrorKind::UnsupportedSemantics
+    );
+}
+
+#[test]
 fn tree_changes_report_names_statuses_modes_and_configured_rewrites() {
     let Some(repository) = fixture(GitFixture::Refs, GitObjectFormat::Sha1) else {
         return;
