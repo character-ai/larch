@@ -152,6 +152,143 @@ fn rebase_no_push_skips_when_branch_is_already_fresh() {
 }
 
 #[test]
+fn rebase_no_push_replays_nonconflicting_work_on_advanced_main() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    publish_main(temp.path(), &repo, "origin");
+    git(&repo, &["checkout", "-b", "topic"]);
+    fs::write(repo.join("topic.txt"), "topic\n").expect("write topic");
+    git(&repo, &["add", "topic.txt"]);
+    git(&repo, &["commit", "-m", "topic work"]);
+
+    git(&repo, &["checkout", "main"]);
+    fs::write(repo.join("main.txt"), "main\n").expect("write main");
+    git(&repo, &["add", "main.txt"]);
+    git(&repo, &["commit", "-m", "main work"]);
+    git(&repo, &["push", "origin", "main"]);
+    git(&repo, &["checkout", "topic"]);
+
+    larch()
+        .args(["push", "rebase", "--no-push"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("");
+    git(
+        &repo,
+        &["merge-base", "--is-ancestor", "origin/main", "HEAD"],
+    );
+    assert_eq!(
+        fs::read_to_string(repo.join("topic.txt")).expect("topic survives"),
+        "topic\n"
+    );
+    assert_fsck_clean(&repo);
+}
+
+#[test]
+fn rebase_pushes_a_rebased_branch_with_a_force_with_lease() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    publish_main(temp.path(), &repo, "origin");
+    git(&repo, &["checkout", "-b", "topic"]);
+    fs::write(repo.join("topic.txt"), "topic\n").expect("write topic");
+    git(&repo, &["add", "topic.txt"]);
+    git(&repo, &["commit", "-m", "topic work"]);
+
+    larch()
+        .args(["push", "rebase"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("");
+
+    let local = StdCommand::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repo)
+        .output()
+        .expect("read local head");
+    let remote = StdCommand::new("git")
+        .args(["ls-remote", "--heads", "origin", "topic"])
+        .current_dir(&repo)
+        .output()
+        .expect("read remote head");
+    let local = String::from_utf8(local.stdout).expect("local head UTF-8");
+    let remote = String::from_utf8(remote.stdout).expect("remote head UTF-8");
+    assert!(
+        remote.starts_with(local.trim()),
+        "remote topic must name the rebased local head: {remote}"
+    );
+    assert_fsck_clean(&repo);
+}
+
+#[test]
+fn rebase_updates_an_existing_remote_branch_after_main_advances() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    publish_main(temp.path(), &repo, "origin");
+    git(&repo, &["checkout", "-b", "topic"]);
+    fs::write(repo.join("topic.txt"), "topic\n").expect("write topic");
+    git(&repo, &["add", "topic.txt"]);
+    git(&repo, &["commit", "-m", "topic work"]);
+    git(&repo, &["push", "origin", "topic"]);
+
+    git(&repo, &["checkout", "main"]);
+    fs::write(repo.join("main.txt"), "main\n").expect("write main");
+    git(&repo, &["add", "main.txt"]);
+    git(&repo, &["commit", "-m", "main work"]);
+    git(&repo, &["push", "origin", "main"]);
+    git(&repo, &["checkout", "topic"]);
+
+    larch()
+        .args(["push", "rebase"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("");
+
+    let remote = StdCommand::new("git")
+        .args(["ls-remote", "--heads", "origin", "topic"])
+        .current_dir(&repo)
+        .output()
+        .expect("read remote topic");
+    let local = StdCommand::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repo)
+        .output()
+        .expect("read local topic");
+    assert!(
+        String::from_utf8(remote.stdout)
+            .expect("remote topic UTF-8")
+            .starts_with(
+                String::from_utf8(local.stdout)
+                    .expect("local topic UTF-8")
+                    .trim()
+            ),
+        "remote topic must advance to the rebased local head"
+    );
+    assert_fsck_clean(&repo);
+}
+
+#[test]
+fn rebase_continue_requires_an_active_rebase() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+
+    larch()
+        .args([
+            "push",
+            "rebase",
+            "--continue",
+            "--no-push",
+            "--keep-on-conflict",
+        ])
+        .current_dir(&repo)
+        .assert()
+        .code(3)
+        .stdout("REBASE_ERROR=--continue called but no rebase is in progress\n");
+}
+
+#[test]
 fn rebase_no_push_skip_if_pushed_detects_published_branch() {
     let temp = TempDir::new().expect("tempdir");
     let repo = init_repo(temp.path());
@@ -294,6 +431,89 @@ fn checkpoint_probe_auto_resolves_trivial_larch_logs_conflict() {
     assert_eq!(
         fs::read_to_string(repo.join("src.txt")).expect("read src"),
         "topic-src\n"
+    );
+    assert_fsck_clean(&repo);
+}
+
+#[test]
+fn checkpoint_probe_removes_a_trivial_file_deleted_upstream_and_skips_the_empty_commit() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    fs::create_dir_all(repo.join("larch-logs")).expect("create larch logs");
+    fs::write(repo.join("larch-logs/run.md"), "base\n").expect("write base log");
+    git(&repo, &["add", "larch-logs/run.md"]);
+    git(&repo, &["commit", "-m", "seed log"]);
+    publish_main(temp.path(), &repo, "origin");
+
+    git(&repo, &["checkout", "-b", "topic"]);
+    fs::write(repo.join("larch-logs/run.md"), "topic\n").expect("write topic log");
+    git(&repo, &["commit", "-am", "topic log"]);
+    git(&repo, &["checkout", "main"]);
+    git(&repo, &["rm", "larch-logs/run.md"]);
+    git(&repo, &["commit", "-m", "remove upstream log"]);
+    git(&repo, &["push", "origin", "main"]);
+    git(&repo, &["checkout", "topic"]);
+
+    let assert = larch()
+        .args([
+            "push",
+            "checkpoint-probe",
+            "4.r",
+            "commit (impl)",
+            "--base-remote",
+            "origin",
+            "--base-ref",
+            "main",
+        ])
+        .current_dir(&repo)
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.starts_with(
+            "REBASE_RC=0\nREBASE_OUTCOME=ok\nROUTE=continue\nCHECKPOINT_NEXT=continue\n"
+        ),
+        "unexpected routing rows: {stdout}"
+    );
+    assert!(!repo.join("larch-logs/run.md").exists());
+    assert!(!rebase_in_progress(&repo), "rebase should finish");
+    assert_fsck_clean(&repo);
+}
+
+#[test]
+fn rebase_honors_branch_push_remote_when_publishing_a_new_branch() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+    publish_main(temp.path(), &repo, "origin");
+    let fork = temp.path().join("fork.git");
+    git(
+        temp.path(),
+        &["init", "--bare", fork.to_str().expect("fork path")],
+    );
+    git(
+        &repo,
+        &["remote", "add", "fork", fork.to_str().expect("fork path")],
+    );
+    git(&repo, &["checkout", "-b", "topic"]);
+    git(&repo, &["config", "branch.topic.pushRemote", "fork"]);
+    fs::write(repo.join("topic.txt"), "topic\n").expect("write topic");
+    git(&repo, &["add", "topic.txt"]);
+    git(&repo, &["commit", "-m", "topic work"]);
+
+    larch()
+        .args(["push", "rebase"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("");
+    let fork_ref = StdCommand::new("git")
+        .args(["ls-remote", "--heads", "fork", "topic"])
+        .current_dir(&repo)
+        .output()
+        .expect("read fork topic");
+    assert!(
+        !fork_ref.stdout.is_empty(),
+        "topic must be pushed to its configured push remote"
     );
     assert_fsck_clean(&repo);
 }

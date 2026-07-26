@@ -1089,6 +1089,107 @@ mod tests {
     }
 
     #[test]
+    fn actions_mutations_reconcile_uncertain_responses() {
+        const RUN_ONE: &str = r#"{"id":1,"status":"completed","conclusion":"success","head_sha":"abc","event":"push","run_attempt":1}"#;
+        const RUN_TWO: &str = r#"{"id":1,"status":"completed","conclusion":"success","head_sha":"abc","event":"push","run_attempt":2}"#;
+        const RUNS_ONE: &str = r#"{"workflow_runs":[{"id":1,"status":"completed","conclusion":"success","head_sha":"abc","event":"workflow_dispatch","run_attempt":1}]}"#;
+        const RUNS_TWO: &str = r#"{"workflow_runs":[{"id":2,"status":"queued","conclusion":null,"head_sha":"abc","event":"workflow_dispatch","run_attempt":1}]}"#;
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        runtime.block_on(async {
+            let cancellation = crate::runtime::Cancellation::new();
+            let repository = repository();
+            let rerun = queued_service(vec![
+                response(200, "application/json", RUN_ONE),
+                response(503, "application/json", ""),
+                response(200, "application/json", RUN_TWO),
+            ]);
+            assert_eq!(
+                rerun
+                    .rerun_workflow(&repository, 1, true, &cancellation)
+                    .await
+                    .expect("reconciled rerun"),
+                GitHubMutationOutcome::Reconciled
+            );
+
+            let dispatch = queued_service(vec![
+                response(200, "application/json", RUNS_ONE),
+                response(503, "application/json", ""),
+                response(200, "application/json", RUNS_TWO),
+            ]);
+            let request = WorkflowDispatchRequest {
+                repository,
+                workflow: "ci.yml".to_owned(),
+                git_reference: "main".to_owned(),
+            };
+            assert_eq!(
+                dispatch
+                    .dispatch_workflow(&request, &cancellation)
+                    .await
+                    .expect("reconciled dispatch"),
+                GitHubMutationOutcome::Reconciled
+            );
+        });
+    }
+
+    #[test]
+    fn actions_fail_closed_for_invalid_inputs_and_response_contracts() {
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        runtime.block_on(async {
+            let cancellation = crate::runtime::Cancellation::new();
+            let repository = repository();
+            let empty = queued_service(Vec::new());
+            for result in [
+                empty.workflow_run(&repository, 0, &cancellation).await.map(|_| ()),
+                empty.workflow_jobs(&repository, 0, &cancellation).await.map(|_| ()),
+                empty.check_runs(&repository, "", &cancellation).await.map(|_| ()),
+            ] {
+                assert_eq!(
+                    result.expect_err("invalid input").kind(),
+                    GitHubActionsErrorKind::InvalidInput
+                );
+            }
+            let invalid_dispatch = WorkflowDispatchRequest {
+                repository: repository.clone(),
+                workflow: "ci.yml".to_owned(),
+                git_reference: "main\n".to_owned(),
+            };
+            assert_eq!(
+                empty
+                    .dispatch_workflow(&invalid_dispatch, &cancellation)
+                    .await
+                    .expect_err("invalid dispatch")
+                    .kind(),
+                GitHubActionsErrorKind::InvalidInput
+            );
+
+            let wrong_content_type = queued_service(vec![response(
+                200,
+                "text/plain",
+                r#"{"id":1,"status":"completed","conclusion":"success","head_sha":"abc","event":"push"}"#,
+            )]);
+            assert_eq!(
+                wrong_content_type
+                    .workflow_run(&repository, 1, &cancellation)
+                    .await
+                    .expect_err("content type")
+                    .kind(),
+                GitHubActionsErrorKind::Response
+            );
+
+            let wrong_log_content_type =
+                queued_service(vec![response(200, "application/json", "{}")]);
+            assert_eq!(
+                wrong_log_content_type
+                    .download_workflow_logs(&repository, 1, &cancellation)
+                    .await
+                    .expect_err("log content type")
+                    .kind(),
+                GitHubActionsErrorKind::Response
+            );
+        });
+    }
+
+    #[test]
     fn run_filters_preserve_every_current_filter_and_bound_page_size() {
         let route = runs_route(
             &repository(),

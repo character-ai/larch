@@ -140,3 +140,53 @@ pub fn semver(value: &str) -> Option<(u64, u64, u64)> {
             .all(|byte| byte.is_ascii_digit() || byte == b'.'))
     .then_some((major, minor, patch))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_and_exit_preserve_success_and_failure_classes() {
+        let mut published = None;
+        assert_eq!(
+            command(
+                Ok::<_, String>(7),
+                |value| Ok(value + 1),
+                |value| {
+                    published = Some(value);
+                }
+            ),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(published, Some(8));
+
+        assert_eq!(
+            command::<(), _>(
+                Err("service unavailable\nwith detail".to_owned()),
+                |()| Ok(()),
+                |()| {}
+            ),
+            ExitCode::FAILURE
+        );
+        assert_eq!(exit(Ok(())), ExitCode::SUCCESS);
+        assert_eq!(exit(Err("operation failed".to_owned())), ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn release_identity_parsers_accept_only_the_shared_contract() {
+        assert_eq!(release_tag("1.2.3"), Some("v1.2.3".to_owned()));
+        assert_eq!(release_tag("01.2.3"), None);
+        assert_eq!(parse_pr("42"), Some(42));
+        assert_eq!(parse_pr("0"), None);
+        assert_eq!(parse_pr("+42"), None);
+
+        let repo = repo_slug("character-ai/larch").expect("repository slug");
+        assert_eq!(repo.owner(), "character-ai");
+        assert_eq!(repo.repo(), "larch");
+        assert_eq!(repo_slug("character-ai/larch/extra"), None);
+
+        assert_eq!(semver("1.2.3"), Some((1, 2, 3)));
+        assert_eq!(semver("1.2.3.4"), None);
+        assert_eq!(semver("1.2.x"), None);
+    }
+}

@@ -1,6 +1,6 @@
 mod support;
 
-use std::fs;
+use std::{fs, path::Path};
 
 use predicates::prelude::*;
 use support::TempRepo;
@@ -18,6 +18,32 @@ fn all_resolves_root_from_a_nested_working_directory() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn all_validates_the_live_repository() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    TempRepo::command_from(root)
+        .arg("all")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn command_registry_report_validates_the_live_repository() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    TempRepo::command_from(root)
+        .args(["command-registry", "report"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with(
+            "## Rust command migration progress\n",
+        ))
         .stderr(predicate::str::is_empty());
 }
 
@@ -969,6 +995,62 @@ fn result_env_key_parity_reports_divergent_siblings() {
         .stdout(predicate::str::contains(
             "slot.env writer missing key B present in sibling writers",
         ));
+}
+
+#[test]
+fn result_env_key_parity_supports_literal_forms_and_multiline_writers() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/a/src/lib.rs",
+        b"fn emit(helper: Helper) {\n    helper.phase_driver_write_result_env(\n        &std::path::PathBuf::from(\"state/slot.env\"),\n        &[(\"A\", \"1\"), ((\"B\"), \"2\"), (\"C\", \"3\")],\n    );\n}\n",
+    );
+    repository.write(
+        "crates/b/src/lib.rs",
+        b"fn emit(root: std::path::PathBuf) {\n    write_result_env(\n        root.join(\"slot.env\"),\n        vec![pair(\"A\", \"1\")],\n    );\n}\n",
+    );
+    repository.write(
+        "crates/c/src/lib.rs",
+        b"fn emit() {\n    write_result_env(\"slot.env\", [(\"A\", \"1\"), (\"B\", \"2\"), (\"C\", \"3\")]);\n    write_result_env(\"slot.env\", [(\"A\", \"1\")]);\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "result-env-key-parity"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crates/b/src/lib.rs:2: slot.env writer missing key B present in sibling writers",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/b/src/lib.rs:2: slot.env writer missing key C present in sibling writers",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/c/src/lib.rs:3: slot.env writer missing key B present in sibling writers",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/c/src/lib.rs:3: slot.env writer missing key C present in sibling writers",
+        ));
+}
+
+#[test]
+fn result_env_key_parity_skips_dynamic_or_non_result_env_writers() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/a/src/lib.rs",
+        b"fn emit(path: &str, rows: &[(&str, &str)]) {\n    write_result_env(path, [(\"A\", \"1\")]);\n    write_result_env(\"slot.env\", rows);\n    write_result_env(\"not-result.txt\", [(\"A\", \"1\")]);\n}\n",
+    );
+    repository.write(
+        "crates/b/src/lib.rs",
+        b"fn emit() {\n    write_result_env(\"slot.env\", [(\"A\", \"1\"), (\"B\", \"2\")]);\n}\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "result-env-key-parity"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty());
 }
 
 #[test]

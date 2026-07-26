@@ -14,6 +14,8 @@ const TAG: &str = "v1.2.3";
 const SOURCE_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const TARGETS: [&str; 1] = ["aarch64-apple-darwin"];
 
+type FragmentMutation = fn(&mut serde_json::Value);
+
 #[test]
 fn package_matches_golden_bytes_and_is_deterministic() {
     let root = TempDir::new().expect("temp");
@@ -289,6 +291,347 @@ fn asset_candidate_requires_matching_versions() {
         .assert()
         .failure()
         .stderr(predicates::str::contains("does not match plugin version"));
+}
+
+#[test]
+fn asset_candidate_rejects_malformed_metadata_and_identity_inputs() {
+    let root = TempDir::new().expect("temp");
+    let missing = root.path().join("missing");
+    larch()
+        .args(candidate_args(&missing, TAG, SOURCE_COMMIT))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("repo root is not readable"));
+
+    fs::create_dir(root.path().join(".claude-plugin")).expect("plugin dir");
+    fs::write(root.path().join(".claude-plugin/plugin.json"), "[]\n").expect("plugin");
+    larch()
+        .args(candidate_args(root.path(), TAG, SOURCE_COMMIT))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "plugin manifest must be a JSON object",
+        ));
+
+    fs::write(
+        root.path().join(".claude-plugin/plugin.json"),
+        "{\"version\":42}\n",
+    )
+    .expect("plugin");
+    fs::write(
+        root.path().join("Cargo.toml"),
+        "[workspace]\n[workspace.package]\nversion = \"1.2.3\"\n",
+    )
+    .expect("cargo");
+    larch()
+        .args(candidate_args(root.path(), TAG, SOURCE_COMMIT))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "plugin manifest version must be a string",
+        ));
+
+    fs::write(
+        root.path().join(".claude-plugin/plugin.json"),
+        "{\"version\":\"1.2.3\"}\n",
+    )
+    .expect("plugin");
+    fs::write(root.path().join("Cargo.toml"), "[workspace]\ninvalid = [\n").expect("cargo");
+    larch()
+        .args(candidate_args(root.path(), TAG, SOURCE_COMMIT))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Cargo.toml has no valid workspace package version",
+        ));
+
+    fs::write(
+        root.path().join("Cargo.toml"),
+        "[workspace]\n[workspace.package]\nversion = \"1.2.3\"\n",
+    )
+    .expect("cargo");
+    larch()
+        .args(candidate_args(root.path(), "v1.2.4", SOURCE_COMMIT))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("does not match plugin version"));
+    larch()
+        .args(candidate_args(root.path(), TAG, "not-a-commit"))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("source commit must be"));
+}
+
+#[test]
+fn package_rejects_unsafe_inputs_and_output_roots() {
+    let root = TempDir::new().expect("temp");
+    let (binary, license) = write_inputs(root.path());
+    fs::write(&binary, "").expect("empty binary");
+    larch()
+        .args(package_args(
+            &binary,
+            &license,
+            &root.path().join("empty-binary"),
+            TARGETS[0],
+        ))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "release executable must not be empty",
+        ));
+
+    let (binary, license) = write_inputs(root.path());
+    let empty_license = root.path().join("empty-license");
+    fs::write(&empty_license, "").expect("empty license");
+    larch()
+        .args(package_args(
+            &binary,
+            &empty_license,
+            &root.path().join("empty-license-output"),
+            TARGETS[0],
+        ))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("license must not be empty"));
+
+    let output_file = root.path().join("output-file");
+    fs::write(&output_file, "not a directory\n").expect("output file");
+    larch()
+        .args(package_args(&binary, &license, &output_file, TARGETS[0]))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "asset output root must be a real directory",
+        ));
+}
+
+#[test]
+fn collect_and_validate_reject_unsafe_directory_shapes() {
+    let root = TempDir::new().expect("temp");
+    let (incoming, license) = package_all(root.path());
+
+    let stale_output = root.path().join("stale-output");
+    fs::create_dir_all(&stale_output).expect("stale output");
+    fs::write(stale_output.join("stale"), "unexpected\n").expect("stale entry");
+    larch()
+        .args(collect_args(&incoming, &stale_output, &license))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "asset output contains unexpected entries",
+        ));
+
+    let input_file = root.path().join("input-file");
+    fs::write(&input_file, "not a directory\n").expect("input file");
+    larch()
+        .args(collect_args(
+            &input_file,
+            &root.path().join("input-file-output"),
+            &license,
+        ))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "asset input root must be a real directory",
+        ));
+
+    let output = root.path().join("release");
+    larch()
+        .args(collect_args(&incoming, &output, &license))
+        .assert()
+        .success();
+    fs::create_dir(output.join("unexpected-directory")).expect("directory");
+    larch()
+        .args(validate_args(&output, &license))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "final asset set must not contain directories",
+        ));
+}
+
+#[test]
+fn validate_rejects_malformed_manifest_records_and_non_ascii_checksums() {
+    let root = TempDir::new().expect("temp");
+    let (incoming, license) = package_all(root.path());
+    let clean = root.path().join("clean");
+    larch()
+        .args(collect_args(&incoming, &clean, &license))
+        .assert()
+        .success();
+    let manifest_name = format!("larch-v{VERSION}-manifest.json");
+
+    let schema = root.path().join("bad-schema");
+    copy_tree(&clean, &schema);
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(schema.join(&manifest_name)).expect("manifest"))
+            .expect("json");
+    manifest["schema_version"] = serde_json::Value::from(0);
+    fs::write(
+        schema.join(&manifest_name),
+        serde_json::to_string(&manifest).expect("json"),
+    )
+    .expect("write manifest");
+    larch()
+        .args(validate_args(&schema, &license))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "release manifest schema version mismatch",
+        ));
+
+    let path = root.path().join("bad-path");
+    copy_tree(&clean, &path);
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(path.join(&manifest_name)).expect("manifest"))
+            .expect("json");
+    manifest["assets"][0]["archive"] = serde_json::Value::String("../asset.tar.gz".into());
+    fs::write(
+        path.join(&manifest_name),
+        serde_json::to_string(&manifest).expect("json"),
+    )
+    .expect("write manifest");
+    larch()
+        .args(validate_args(&path, &license))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("archive must be a basename"));
+
+    let checksum = root.path().join("non-ascii-checksum");
+    copy_tree(&clean, &checksum);
+    fs::write(
+        checksum.join(format!("larch-v{VERSION}-SHA256SUMS")),
+        [0xff],
+    )
+    .expect("checksum");
+    larch()
+        .args(validate_args(&checksum, &license))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "checksum file must be readable ASCII",
+        ));
+}
+
+#[test]
+fn collect_rejects_fragment_identity_contract_and_platform_drift() {
+    let root = TempDir::new().expect("temp");
+    let (incoming, license) = package_all(root.path());
+    let fragment_name = format!("larch-v{VERSION}-{}.asset.json", TARGETS[0]);
+
+    let cases: [(&str, FragmentMutation, &str); 5] = [
+        (
+            "schema",
+            |fragment| fragment["fragment_schema_version"] = serde_json::Value::from(0),
+            "fragment schema version mismatch",
+        ),
+        (
+            "identity",
+            |fragment| fragment["plugin_version"] = serde_json::Value::String("9.9.9".into()),
+            "fragment release identity mismatch",
+        ),
+        (
+            "commit",
+            |fragment| {
+                fragment["source_commit"] =
+                    serde_json::Value::String("b".repeat(SOURCE_COMMIT.len()));
+            },
+            "fragment source commit mismatch",
+        ),
+        (
+            "target",
+            |fragment| {
+                fragment["asset"]["target"] = serde_json::Value::String("other-target".into());
+            },
+            "asset fragment larch-v1.2.3-aarch64-apple-darwin.asset.json has an unsupported target",
+        ),
+        (
+            "platform",
+            |fragment| {
+                fragment["asset"]["minimum_os_or_libc"] =
+                    serde_json::json!({"kind": "macos", "version": "12.0"});
+            },
+            "fragment minimum platform mismatch",
+        ),
+    ];
+
+    for (name, mutate, expected) in cases {
+        let input = root.path().join(name);
+        copy_tree(&incoming, &input);
+        let fragment = input
+            .join(format!("build-{}", TARGETS[0]))
+            .join(&fragment_name);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&fragment).expect("fragment")).expect("json");
+        mutate(&mut value);
+        fs::write(&fragment, serde_json::to_string(&value).expect("json")).expect("fragment");
+
+        larch()
+            .args(collect_args(
+                &input,
+                &root.path().join(format!("{name}-out")),
+                &license,
+            ))
+            .assert()
+            .failure()
+            .stderr(predicates::str::contains(expected));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn collect_and_validate_reject_symlinked_asset_boundaries() {
+    use std::os::unix::fs::symlink;
+
+    let root = TempDir::new().expect("temp");
+    let (incoming, license) = package_all(root.path());
+    let symlinked_input = root.path().join("symlinked-input");
+    copy_tree(&incoming, &symlinked_input);
+    symlink(
+        "larch-v1.2.3-aarch64-apple-darwin.tar.gz",
+        symlinked_input
+            .join(format!("build-{}", TARGETS[0]))
+            .join("linked-archive"),
+    )
+    .expect("input symlink");
+    larch()
+        .args(collect_args(
+            &symlinked_input,
+            &root.path().join("symlinked-output"),
+            &license,
+        ))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("asset input contains a symlink"));
+
+    let output = root.path().join("release");
+    larch()
+        .args(collect_args(&incoming, &output, &license))
+        .assert()
+        .success();
+    let checksum = output.join(format!("larch-v{VERSION}-SHA256SUMS"));
+    fs::remove_file(&checksum).expect("remove checksum");
+    symlink(&license, &checksum).expect("final asset symlink");
+    larch()
+        .args(validate_args(&output, &license))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "final asset must not be a symlink",
+        ));
+}
+
+fn candidate_args(root: &Path, tag: &str, source_commit: &str) -> Vec<String> {
+    vec![
+        "release".into(),
+        "asset-candidate".into(),
+        "--repo-root".into(),
+        root.display().to_string(),
+        "--tag".into(),
+        tag.into(),
+        "--source-commit".into(),
+        source_commit.into(),
+    ]
 }
 
 fn package_all(root: &Path) -> (PathBuf, PathBuf) {

@@ -617,6 +617,97 @@ fn sync_local_main_updates_a_feature_checkout() {
     git(&repo, &["fsck", "--full", "--no-dangling"]);
 }
 
+#[test]
+fn sync_local_main_reports_noop_absence_and_argument_failures() {
+    let temp = TempDir::new().expect("tempdir");
+    let bare = temp.path().join("origin.git");
+    let repo = init_repo(temp.path());
+    git(
+        temp.path(),
+        &["init", "--bare", bare.to_str().expect("bare path")],
+    );
+    attach_origin(&repo, &bare);
+    git(&repo, &["checkout", "-b", "feature"]);
+
+    larch()
+        .args(["git", "sync-local-main"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("RESULT=already_current\n")
+        .stderr("");
+    larch()
+        .args(["git", "sync-local-main", "--unknown"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("cli.py git sync-local-main: unknown argument\n");
+    larch()
+        .args(["git", "sync-local-main"])
+        .current_dir(temp.path())
+        .assert()
+        .success()
+        .stdout("RESULT=absent\n")
+        .stderr("");
+}
+
+#[test]
+fn git_command_argument_and_remote_probe_failures_are_stable() {
+    let temp = TempDir::new().expect("tempdir");
+    let repo = init_repo(temp.path());
+
+    larch()
+        .args(["git", "check-main-sync", "--unexpected"])
+        .current_dir(&repo)
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr("check-main-sync.sh: unknown flag: --unexpected\n");
+    larch()
+        .args(["git", "current-branch", "--unexpected"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-current-branch.sh: unknown argument: --unexpected\n");
+    larch()
+        .args(["git", "branch-info", "--unexpected"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-branch-info.sh: unknown argument: --unexpected\n");
+    larch()
+        .args(["git", "show-stage", "--stage", "4", "--file", "file.txt"])
+        .current_dir(&repo)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("git-show-stage.sh: --stage must be 1, 2, or 3 (got: 4)\n");
+    larch()
+        .args(["git", "check-remote-branch", "--branch"])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("STATE=error\nRC=1\nERROR=--branch is required\n")
+        .stderr("");
+    larch()
+        .args([
+            "git",
+            "check-remote-branch",
+            "--branch",
+            "main",
+            "--remote",
+            "origin:x",
+        ])
+        .current_dir(&repo)
+        .assert()
+        .success()
+        .stdout("STATE=error\nRC=1\nERROR=invalid remote name\n")
+        .stderr("");
+}
+
 fn git_stdout(cwd: &Path, args: &[&str]) -> String {
     let output = StdCommand::new("git")
         .args(args)
