@@ -907,6 +907,18 @@ def add_sub_issue(  # noqa: PLR0913 - CLI mutation authorization inputs remain e
         child_id = lookup.stdout.strip()
         if lookup.returncode != 0 or not _positive_int(value=child_id):
             return _sub_issue_failure(parent=parent, child=child, message=f"child-id lookup failed for #{child}: {lookup.stderr or child_id}")
+    return _add_sub_issue_with_retry(parent=parent, child=child, child_id=child_id, repo=repo, sleep_fn=sleep_fn)
+
+
+def _add_sub_issue_with_retry(
+    *,
+    parent: str,
+    child: str,
+    child_id: str,
+    repo: str,
+    sleep_fn: Callable[[float], None],
+) -> SubIssueResult:
+    """Add the relation with bounded retries, then prove it by a fresh read-back."""
     last_error = "unknown error"
     for attempt in range(3):
         if attempt == 1:

@@ -36,6 +36,13 @@
   },
   {
     "file": "larch/git/gh.py",
+    "qualified_symbol": "issue_add_sub_issue",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/git/gh.py",
     "qualified_symbol": "issue_comment_patch",
     "callee": "NamedTemporaryFile",
     "occurrence": 1,
