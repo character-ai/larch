@@ -7069,6 +7069,8 @@ def test_step2_dispatch_governance_uses_base_target(
             str(tmp / "feature-description.txt"),
             "--coder",
             "codex",
+            "--codex-binary-found",
+            "true",
         ]
     )
 
