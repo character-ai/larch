@@ -854,6 +854,7 @@ def validate_plan_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--source-kind", choices=("plan", "composed"))
     parser.add_argument("--design-tmpdir")
+    parser.add_argument("--require-executable-facets", action="store_true")
     args = parser.parse_args(argv)
     plan = Path(args.plan_file)
     if not plan.is_file():
@@ -872,9 +873,15 @@ def validate_plan_main(argv: list[str]) -> int:
             break
     if difficulty_defects == 0 and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "").strip() == "1" and not difficulty.trailing_plan_difficulty(plan_text):
         difficulty_defects = 1
-    status = "defects-found" if summary.defect_count or difficulty_defects else summary.status
+    facet_defects = (
+        plan_grammar.validate_plan_facets(plan_text=plan_text).defects
+        if args.require_executable_facets
+        else ()
+    )
+    total_defects = summary.defect_count + difficulty_defects + len(facet_defects)
+    status = "defects-found" if total_defects else summary.status
     emit_kv(key="VALIDATE_STATUS", value=status)
-    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(summary.defect_count + difficulty_defects))
+    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(total_defects))
     emit_kv(key="VALIDATE_SKIPPED_COUNT", value=str(summary.skipped_count))
     emit_kv(key="VALIDATE_UNSAFE_TOKEN_COUNT", value=str(summary.unsafe_token_count))
     design_tmpdir_raw = args.design_tmpdir or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
@@ -890,6 +897,8 @@ def validate_plan_main(argv: list[str]) -> int:
     log_text = summary.log_text
     if difficulty_defects:
         log_text += "DEFECT plan kind=difficulty-metadata\n"
+    for token in facet_defects:
+        log_text += f"DEFECT plan kind=executable-plan-contract token={token}\n"
     if ok and design_tmpdir and design_tmpdir.is_dir():
         log_path = design_tmpdir / "validate-plan-commands.log"
         _atomic_write(path=log_path, text=log_text)

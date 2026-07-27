@@ -90,6 +90,45 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
     assert "STEP2B5_NEXT_ACTION=under-threshold" in result_env
 
 
+def test_postplan_rejects_missing_executable_facets_before_review(
+    tmp_path: Path,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text(
+        "## Plan\n\n"
+        "## Files to modify/create\n\n"
+        "### UPDATED: README.md\n\n"
+        "## Approach\n\nUpdate guidance.\n\n"
+        "## Testing strategy\n\nRun focused tests.\n\n"
+        "## Acceptance\n\nFocused tests pass.\n\n"
+        "diff_lines: 12\n",
+        encoding="utf-8",
+    )
+    _ = (design / "run-params.json").write_text(
+        run_params_json(overrides={"partition_requested": False}),
+        encoding="utf-8",
+    )
+
+    rc = design_postplan.postplan_emit_main(
+        ["--design-tmpdir", str(design), "--with-plan-size"]
+    )
+
+    result_env = (design / ".design-postplan-emit-result.env").read_text(
+        encoding="utf-8"
+    )
+    log = (design / "validate-plan-commands.log").read_text(encoding="utf-8")
+    assert rc == 10
+    assert "VALIDATE_STATUS=defects-found" in result_env
+    assert "VALIDATE_DEFECT_COUNT=3" in result_env
+    for token in (
+        "missing-ordered-implementation",
+        "missing-closed-decisions",
+        "missing-breaking-migration",
+    ):
+        assert f"kind=executable-plan-contract token={token}" in log
+
+
 def test_postplan_with_plan_size_writes_design_difficulty_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     _postplan_fixture(design, partition_requested=False)
@@ -143,6 +182,7 @@ def _patch_postplan_cli(
         if args[:2] == ("plan-review", "emit"):
             return _completed(args, stdout="EMIT_PLAN_STATUS=ok\nDIFF_LINES=12\n")
         if args[:2] == ("plan", "validate"):
+            assert "--require-executable-facets" in args
             return _completed(args, stdout="VALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=0\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\n")
         if args[:2] == ("plan", "check-size"):
             return _completed(args, rc=check_size_rc, stdout=check_size_stdout, stderr=check_size_stderr)

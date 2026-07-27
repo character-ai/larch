@@ -201,6 +201,60 @@ def test_validate_plan_require_difficulty_stays_trailing_only(tmp_path: Path) ->
     assert "DEFECT plan kind=difficulty-metadata" in (tmp_path / "validate-plan-commands.log").read_text(encoding="utf-8")
 
 
+def test_validate_plan_can_require_executable_facets_at_draft_time(
+    tmp_path: Path,
+) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text(
+        "## Plan\n\n"
+        "## Files to modify/create\n\n"
+        "### UPDATED: README.md\n\n"
+        "## Approach\n\nUpdate guidance.\n\n"
+        "## Testing strategy\n\nRun focused tests.\n\n"
+        "## Acceptance\n\nFocused tests pass.\n\n"
+        "diff_lines: 12\n",
+        encoding="utf-8",
+    )
+
+    cp = run_cli(
+        "plan",
+        "validate",
+        "--plan-file",
+        str(plan),
+        "--repo-root",
+        str(REPO_ROOT),
+        "--design-tmpdir",
+        str(tmp_path),
+        "--require-executable-facets",
+    )
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    log = (tmp_path / "validate-plan-commands.log").read_text(encoding="utf-8")
+
+    assert cp.returncode == 0, cp.stderr
+    assert out["VALIDATE_STATUS"] == "defects-found"
+    assert out["VALIDATE_DEFECT_COUNT"] == "3"
+    for token in (
+        "missing-ordered-implementation",
+        "missing-closed-decisions",
+        "missing-breaking-migration",
+    ):
+        assert f"kind=executable-plan-contract token={token}" in log
+
+
+def test_autofix_prompt_can_repair_executable_plan_contract(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+
+    prompt = plan_quality._render_autofix_prompt(
+        plan=plan,
+        log_text="DEFECT plan kind=executable-plan-contract token=missing-ordered-implementation\n",
+        require_executable_facets=True,
+    )
+
+    assert "command-validation and executable-plan-contract defects" in prompt
+    assert "`## Ordered implementation` with at least one numbered step" in prompt
+
+
 _TRAILER_AWK_PARSE_CASES = [
     ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", 3, "100", "50", "true"),
     ("none-present", "body\ndiff_lines: 1\n", 0, None, None, "false"),
@@ -431,6 +485,7 @@ def test_validator_autofix_calls_helper_in_process(tmp_path: Path, monkeypatch: 
     assert rc == 0
     assert calls
     assert "--plan-file" in calls[0]
+    assert "--require-executable-facets" in calls[0]
     assert "AUTOFIX_STATUS=ok" in out
     assert "FIXED_BY=codex" in out
 

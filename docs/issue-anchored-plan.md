@@ -47,6 +47,9 @@ that will become that block) that satisfies:
   safe non-escaping parents. Defect tokens: `empty-plan-glob`,
   `missing-updated-plan-path`, `existing-new-plan-path`, `unsafe-plan-path`.
 
+`/design` Step 2b applies the M1 shape check during postplan validation, before
+plan review and Gate C. Publish applies the complete M1 and M2 contract again.
+
 `/implement --force` may skip semantic plan review and the `[DESIGNED]` title
 prefix. It cannot admit a missing or malformed plan, and it never materializes
 raw issue prose or the issue title as a plan.

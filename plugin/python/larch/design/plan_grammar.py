@@ -302,7 +302,14 @@ def grammar_prompt() -> str:
     """Return compact drafting guidance from the shared registries."""
     kinds = ", ".join(f"`### {kind}:`" for kind in HEADING_KINDS)
     optional = ", ".join(f"`{key}: <value>`" for key in OPTIONAL_SIZE_TRAILER_KEYS)
-    return f"Use per-file headings {kinds}. End with `difficulty: <TRIVIAL|MODERATE|HARD>`, optional {optional}, and terminal `diff_lines: <N>`."
+    return (
+        f"Use per-file headings {kinds}. Include non-empty "
+        "`## Closed decisions and ownership`, `## Acceptance`, and "
+        "`## Breaking changes and migration` sections. Include "
+        "`## Ordered implementation` with at least one numbered step. End with "
+        f"`difficulty: <TRIVIAL|MODERATE|HARD>`, optional {optional}, and "
+        "terminal `diff_lines: <N>`."
+    )
 
 
 # --- Executable plan contract (M1 shape + M2 repository scope) ---
@@ -450,6 +457,11 @@ def _m1_facet_defects(plan_text: str) -> set[str]:
     return defects
 
 
+def validate_plan_facets(*, plan_text: str) -> PlanValidationResult:
+    """Validate executable-plan M1 shape facets without repository path checks."""
+    return PlanValidationResult(defects=_ordered_defects(_m1_facet_defects(plan_text)))
+
+
 def _is_glob_path(path: str) -> bool:
     return _GLOB_META_RE.search(path) is not None
 
@@ -550,7 +562,7 @@ def validate_plan_contract(
 ) -> PlanValidationResult:
     """Validate executable-plan facets and repository-scope paths (no marker check)."""
     found: set[str] = set()
-    found.update(_m1_facet_defects(plan_text))
+    found.update(validate_plan_facets(plan_text=plan_text).defects)
     found.update(
         _m2_path_defects(
             plan_text=plan_text, repo_root=repo_root, tracked_paths=tracked_paths

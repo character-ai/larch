@@ -134,6 +134,19 @@ def test_valid_plan_contract_has_no_defects(repo_root: Path) -> None:
     result = plan_grammar.validate_plan_contract(plan_text=_valid_plan(), repo_root=repo_root)
     assert result.ok
     assert not result.defects
+    assert plan_grammar.validate_plan_facets(plan_text=_valid_plan()).ok
+
+
+def test_grammar_prompt_requires_executable_plan_sections() -> None:
+    prompt = plan_grammar.grammar_prompt()
+    for heading in (
+        "## Closed decisions and ownership",
+        "## Ordered implementation",
+        "## Acceptance",
+        "## Breaking changes and migration",
+    ):
+        assert f"`{heading}`" in prompt
+    assert "at least one numbered step" in prompt
 
 
 def test_missing_plan_block_and_multiple_blocks(repo_root: Path) -> None:

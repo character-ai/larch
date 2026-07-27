@@ -317,6 +317,7 @@ Produce a plan that includes:
 
 - **Files to modify/create**: Use one section with per-file headings. Each heading names exactly one path and starts with `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:`; use `### MAY_UPDATE:` for conditional scope. At least one ASCII space must follow `###`; extra space before `:` is tolerated. Concatenated forms like `###NEW:` are not scout / plan-size headings.
 - **Approach**: Describe strategy. For behavior changes, include **Reuse and ownership**: name searched owners or siblings, the chosen or new canonical owner, and scope each extraction owner firm or `### MAY_UPDATE:`. Exempt docs, data, generated output, and fixtures.
+- **Executable plan contract**: Include non-empty `## Closed decisions and ownership`, `## Acceptance`, and `## Breaking changes and migration` sections. Include `## Ordered implementation` with at least one numbered step. Keep Acceptance concrete and verifiable, separate from Testing strategy. Write `None.` under Breaking changes and migration when no migration is needed.
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.
