@@ -51,6 +51,17 @@ mk_design() {
     --approve-requested false --output "$d/run-params.json" >/dev/null
   {
     printf '%s\n' '# Plan'
+    printf '%s\n' '## Files to modify/create'
+    printf '%s\n' '### UPDATED: README.md'
+    printf '%s\n' '## Closed decisions and ownership'
+    printf '%s\n' 'Keep the existing Gate B owner.'
+    printf '%s\n' '## Ordered implementation'
+    printf '%s\n' '1. Apply the accepted finding.'
+    printf '%s\n' '## Acceptance'
+    printf '%s\n' 'The Gate B harness passes.'
+    printf '%s\n' '## Breaking changes and migration'
+    printf '%s\n' 'None.'
+    printf '%s\n' '## Approach'
     i=1
     while [ "$i" -le "$body_lines" ]; do
       printf 'line %s\n' "$i"
@@ -95,6 +106,17 @@ EOF
 python3 "$CLI" plan-review gate-b-dedup --design-tmpdir "$D_APPLY" --snapshot-trailers >/dev/null
 {
   printf '%s\n' '# Plan'
+  printf '%s\n' '## Files to modify/create'
+  printf '%s\n' '### UPDATED: README.md'
+  printf '%s\n' '## Closed decisions and ownership'
+  printf '%s\n' 'Keep the existing Gate B owner.'
+  printf '%s\n' '## Ordered implementation'
+  printf '%s\n' '1. Apply the accepted finding.'
+  printf '%s\n' '## Acceptance'
+  printf '%s\n' 'The Gate B harness passes.'
+  printf '%s\n' '## Breaking changes and migration'
+  printf '%s\n' 'None.'
+  printf '%s\n' '## Approach'
   printf '%s\n' 'line 1'
   printf '%s\n' 'line 1'
   printf '%s\n' 'Retry failed validator auto-fix attempts from the original plan snapshot only.'

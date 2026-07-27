@@ -556,6 +556,15 @@ def _build_acceptance_section(body_lines: list[str]) -> str:
     return f"## Acceptance\n\n{body}" if body else "## Acceptance\n\nSee Testing strategy in plan."
 
 
+def _acceptance_fragment_for_composition(
+    *, plan_text: str, body_lines: list[str]
+) -> str:
+    facets = plan_grammar.validate_plan_facets(plan_text=plan_text)
+    if "missing-acceptance" not in facets.defects:
+        return ""
+    return f"\n{_build_acceptance_section(body_lines)}\n"
+
+
 def _auto_compose_plan_md(design_tmpdir: Path) -> None:
     """Write composed-plan.md from plan.txt when the file is missing or empty.
 
@@ -584,9 +593,11 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
         )
     body_lines = _strip_leading_plan_header(body_lines)
     body_text = "".join(body_lines).rstrip()
-    acceptance_section = _build_acceptance_section(body_lines)
+    acceptance_fragment = _acceptance_fragment_for_composition(
+        plan_text=raw, body_lines=body_lines
+    )
     trailer_text = "".join(trailer_lines).rstrip("\n")
-    composed = f"## Plan\n\n{body_text}\n\n{acceptance_section}\n"
+    composed = f"## Plan\n\n{body_text}\n{acceptance_fragment}"
     if trailer_text:
         composed += f"\n{trailer_text}\n"
     try:

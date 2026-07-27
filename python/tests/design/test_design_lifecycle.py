@@ -4973,6 +4973,26 @@ def test_step5c_auto_compose_basic(tmp_path: Path) -> None:
     assert "diff_lines: 5" in composed
 
 
+def test_step5c_auto_compose_does_not_duplicate_existing_acceptance(
+    tmp_path: Path,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text(
+        "## Approach\n\nDo the thing.\n\n"
+        "## Testing strategy\n\nRun tests.\n\n"
+        "## Acceptance\n\nThe focused test passes.\n\n"
+        "diff_lines: 5\n",
+        encoding="utf-8",
+    )
+
+    design_step5c._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert composed.count("## Acceptance") == 1
+    assert "The focused test passes." in composed
+
+
 def test_step5c_auto_compose_noop_when_file_exists(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -6328,6 +6348,28 @@ def test_compose_drafter_prompt_matches_inline_reuse_and_ownership_duty(tmp_path
     assert "name searched owners or siblings" in inline
     assert "scope each extraction owner firm or `### MAY_UPDATE:`" in inline
     assert "Exempt docs, data, generated output, and fixtures" in inline
+
+
+def test_compose_drafter_prompt_matches_inline_executable_plan_contract(
+    tmp_path: Path,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    design_step2b._compose_drafter_prompt(design_tmpdir=design, plugin_root=CLI.parent.parent)  # pyright: ignore[reportPrivateUsage]
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    inline = (CLI.parent.parent / "skills" / "design" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    for heading in (
+        "## Closed decisions and ownership",
+        "## Ordered implementation",
+        "## Acceptance",
+        "## Breaking changes and migration",
+    ):
+        assert f"`{heading}`" in prompt
+        assert f"`{heading}`" in inline
+    assert "at least one numbered step" in prompt
+    assert "at least one numbered step" in inline
 
 
 def _step2b_design_fixture(design: Path) -> None:

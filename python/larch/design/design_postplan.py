@@ -274,6 +274,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         str(design_tmpdir),
         "--repo-root",
         str(repo_root_arg),
+        "--require-executable-facets",
         env=validate_env,
     )
     validate_kv = _parse_kv((validate.stdout or "") + "\n" + (validate.stderr or ""))

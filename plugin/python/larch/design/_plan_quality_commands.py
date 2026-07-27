@@ -847,6 +847,30 @@ def validate_plan_commands_main(argv: list[str]) -> int:
     return 0
 
 
+def _plan_validation_outcome(
+    *,
+    summary: ValidationSummary,
+    difficulty_defects: int,
+    plan_text: str,
+    require_executable_facets: bool,
+) -> tuple[str, int, str]:
+    facet_defects = (
+        plan_grammar.validate_plan_facets(plan_text=plan_text).defects
+        if require_executable_facets
+        else ()
+    )
+    total_defects = summary.defect_count + difficulty_defects + len(facet_defects)
+    status = "defects-found" if total_defects else summary.status
+    log_text = summary.log_text
+    if difficulty_defects:
+        log_text += "DEFECT plan kind=difficulty-metadata\n"
+    log_text += "".join(
+        f"DEFECT plan kind=executable-plan-contract token={token}\n"
+        for token in facet_defects
+    )
+    return status, total_defects, log_text
+
+
 def validate_plan_main(argv: list[str]) -> int:
     quiet_init(argv0="plan validate")
     parser = argparse.ArgumentParser(prog="cli.py plan validate")
@@ -854,6 +878,7 @@ def validate_plan_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--source-kind", choices=("plan", "composed"))
     parser.add_argument("--design-tmpdir")
+    parser.add_argument("--require-executable-facets", action="store_true")
     args = parser.parse_args(argv)
     plan = Path(args.plan_file)
     if not plan.is_file():
@@ -872,9 +897,14 @@ def validate_plan_main(argv: list[str]) -> int:
             break
     if difficulty_defects == 0 and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "").strip() == "1" and not difficulty.trailing_plan_difficulty(plan_text):
         difficulty_defects = 1
-    status = "defects-found" if summary.defect_count or difficulty_defects else summary.status
+    status, total_defects, log_text = _plan_validation_outcome(
+        summary=summary,
+        difficulty_defects=difficulty_defects,
+        plan_text=plan_text,
+        require_executable_facets=args.require_executable_facets,
+    )
     emit_kv(key="VALIDATE_STATUS", value=status)
-    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(summary.defect_count + difficulty_defects))
+    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(total_defects))
     emit_kv(key="VALIDATE_SKIPPED_COUNT", value=str(summary.skipped_count))
     emit_kv(key="VALIDATE_UNSAFE_TOKEN_COUNT", value=str(summary.unsafe_token_count))
     design_tmpdir_raw = args.design_tmpdir or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
@@ -887,9 +917,6 @@ def validate_plan_main(argv: list[str]) -> int:
     if ok and design_tmpdir is not None:
         argv_overrides[config.ENV_DESIGN_TMPDIR] = str(design_tmpdir)
     ctx = Ctx.from_mapping({**os.environ, **argv_overrides})
-    log_text = summary.log_text
-    if difficulty_defects:
-        log_text += "DEFECT plan kind=difficulty-metadata\n"
     if ok and design_tmpdir and design_tmpdir.is_dir():
         log_path = design_tmpdir / "validate-plan-commands.log"
         _atomic_write(path=log_path, text=log_text)
