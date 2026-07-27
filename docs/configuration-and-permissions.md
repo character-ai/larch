@@ -50,11 +50,13 @@ named domain issue cuts them over atomically.
 "Skill(larch:research)",
 "Skill(larch:review)",
 "Skill(larch:set-up-forked-open-source-repo)",
+"Skill(larch:umbrella)",
 "Skill(rejected-analysis)",
 "Skill(report-tokens)",
 "Skill(research)",
 "Skill(review)",
-"Skill(set-up-forked-open-source-repo)"
+"Skill(set-up-forked-open-source-repo)",
+"Skill(umbrella)"
 ```
 
 Strict-permissions consumers invoking `/rejected-analysis` also need `Skill(issue)` and `Skill(larch:issue)` for the child filing skill, plus Agent tool authorization and the external reviewer binaries used by `python/cli.py agent launch-review`.

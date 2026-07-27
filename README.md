@@ -13,7 +13,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Support Skills
 
-- Manage issues and their dependencies: `/issue`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
+- Manage issues and their dependencies: `/issue`, `/umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
 - Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 

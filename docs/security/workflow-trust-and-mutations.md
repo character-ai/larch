@@ -422,3 +422,7 @@ manifest materialization, mirror-copy failure, and checkpoint refusal.
 - Dry-run, mutation authorization, and test-deny controls apply only to their
   documented entry points. They do not restrict arbitrary code with the same
   credentials.
+
+## Umbrella
+
+`/umbrella` treats input issue text, draft records, agent output, and child `/issue` output as untrusted. It applies one explicit approval gate; `--skip-approve` changes only that presentation wait. The skill persists immutable leaf identities and in-flight state before filing, confirms the child sentinel and machine counters, performs live authorization and freshness checks for every mutation, redacts outbound public content, and reads back the final native graph. Ambiguous recovery, incomplete dependency analysis, failed redaction, or missing verification stops the run without a replacement create.

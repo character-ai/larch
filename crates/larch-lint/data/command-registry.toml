@@ -3430,6 +3430,18 @@ planning_issue = 7681
 
 [[commands]]
 domain = "issue"
+verb = "add-sub-issue"
+python_module = "larch.issue.issue_create"
+python_function = "add_sub_issue_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "issue"
 verb = "add-blocked-by"
 python_module = "larch.issue.issue_create"
 python_function = "add_blocked_by_main"
@@ -7398,6 +7410,90 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7682
+
+[[commands]]
+domain = "umbrella"
+verb = "mark-in-flight"
+python_module = "larch.issue.umbrella"
+python_function = "mark_in_flight_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "mutate"
+python_module = "larch.issue.umbrella"
+python_function = "mutate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "persist-proposal"
+python_module = "larch.issue.umbrella"
+python_function = "persist_proposal_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "prepare"
+python_module = "larch.issue.umbrella"
+python_function = "prepare_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "reconcile-in-flight"
+python_module = "larch.issue.umbrella"
+python_function = "reconcile_in_flight_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "record-resolved"
+python_module = "larch.issue.umbrella"
+python_function = "record_resolved_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "verify"
+python_module = "larch.issue.umbrella"
+python_function = "verify_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
 
 [[commands]]
 domain = "untrusted"

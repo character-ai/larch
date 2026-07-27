@@ -23,14 +23,14 @@ You have only `Read`, `Grep`, and `Glob`. You cannot modify files, run commands,
 
 The orchestrator makes one or two calls to you:
 
-- **Call 1 — Tier-1 triage.** The spawn prompt names the snapshot TSV path, the per-item body file paths, `ITEMS_TOTAL`, the count of non-malformed items, and the flag context (`no_dep_llm`, `blocked_by_issue`). Read the snapshot TSV and each non-malformed item's body file with `Read`. Emit CAND rows in the grammar below, then stop.
+- **Call 1 — Tier-1 triage.** The spawn prompt names the snapshot TSV path, the per-item body file paths, `ITEMS_TOTAL`, the count of non-malformed items, and the flag context (`no_dep_llm`, `blocked_by_issue`, `dependency_only`, `excluded_issue`). Read the snapshot TSV and each non-malformed item's body file with `Read`. Emit CAND rows in the grammar below, then stop.
 - **Call 2 — Phase 2 verdicts.** When `SendMessage` is available, the orchestrator continues the same subagent with the candidates corpus path (plus `CANDIDATES`, `ITEMS_TOTAL`, and the per-item titles/body-file paths carried from Call 1). When `SendMessage` is unavailable, the orchestrator fresh-spawns you for Call 2 with the snapshot TSV, the corpus path, and the body files together. Read the corpus with `Read` when `CANDIDATES` is non-empty, and read each non-malformed new-item body. Emit one verdict line plus zero or more dependency-edge lines per non-malformed item, then stop.
 
 If a path you are handed is missing or unreadable, emit nothing for the affected item and stop. Do not fabricate verdicts or CAND rows for evidence you could not open.
 
 ## Call 1 — Tier-1 output grammar
 
-Count the open-state rows in the snapshot. If more than 500 open rows, retain only the 500 most-recent (highest-numbered open issues) and emit a single `NOTE: dep-triage capped at 500 most-recent open titles; <N> older issues skipped.` line before the CAND rows (the orchestrator surfaces this as a stderr warning). For each non-malformed new item `i`, walk every title in the (possibly capped) snapshot and emit dup-candidate and dep-candidate flags.
+Count the open-state rows in the snapshot. If more than 500 open rows, retain only the 500 most-recent (highest-numbered open issues) and emit a single `NOTE: dep-triage capped at 500 most-recent open titles; <N> older issues skipped.` line before the CAND rows (the orchestrator surfaces this as a stderr warning). For each non-malformed new item `i`, walk every title in the (possibly capped) snapshot and emit dup-candidate and dep-candidate flags. When `dependency_only=true`, emit no duplicate candidates or duplicate verdicts; analyze only dependency edges and treat unreadable or incomplete required evidence as an explicit failed analysis result. Always ignore `excluded_issue` in both calls.
 
 For each flag, emit one row in this exact syntax:
 
@@ -50,7 +50,7 @@ If no candidates look suspicious in either category for any item, emit zero CAND
 
 ## Call 2 — Phase 2 output grammar
 
-For each non-malformed new item, emit exactly one verdict line plus zero or more dependency-edge lines. **When `no_dep_llm=true`, emit only the verdict line — omit all `ITEM_<i>_BLOCKED_BY`, `ITEM_<i>_BLOCKS`, and `ITEM_<i>_DEPS_RATIONALE` lines.**
+For each non-malformed new item, emit exactly one verdict line plus zero or more dependency-edge lines. **When `dependency_only=true`, emit `ITEM_<i>_VERDICT=CREATE` plus complete validated dependency edges only; never emit `DUPLICATE` or duplicate fields. When `no_dep_llm=true`, emit only the verdict line — omit all `ITEM_<i>_BLOCKED_BY`, `ITEM_<i>_BLOCKS`, and `ITEM_<i>_DEPS_RATIONALE` lines.**
 
 Verdict lines:
 

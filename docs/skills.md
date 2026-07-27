@@ -44,6 +44,7 @@ permissions or hooks only to silence the compatibility warning.
 - [`/fluff-analysis`](#fluff-analysis)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
+- [`/umbrella`](#umbrella)
 - [`/learn-from-bugs`](#learn-from-bugs)
 - [`/pause`](#pause)
 - [`/rejected-analysis`](#rejected-analysis)
@@ -182,6 +183,12 @@ Measure voter agreement, severity spread, Calibration Score, and chronic outlier
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
 Full implementation workflow spanning design through PR merge. Preflight consumes the **positional** GitHub `<issue-N>` after `/design` has written `larch:plan` into that issue's body. Step 5 invokes `review-and-fix step5`, which uses a hard ceiling of **2** rounds for every tier, does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix CLI` → `review core`: TRIVIAL launches singles, MODERATE/HARD launch pairs, round 2 prunes on round-1 productivity, prune-to-empty converges, and the **review panel** uses **three static specialists per vendor** plus at most one dynamic archetype pair. Reviewer dispatch uses `--no-fallback`, so missing vendors drop rows instead of cross-vendor or Claude reviewer backfill. Voting still runs each review round with fixed Codex-primary archetype voters for validity, plan-fidelity, and pragmatism, each falling through to Cursor then Claude. When both externals are unavailable, Step 5 falls back to a single Claude voter in binding-single tier. `--merge` enables CI+merge; `--forked` is mutually exclusive with `--merge`. `--force` skips the item 4 plan-adequacy audit entirely, so no `AUDIT=refuse` exists on that path; it downgrades only the documented force Preflight gates to warn-and-proceed with loud warnings and does not affect coder selection (mutually exclusive with `--draft`; compatible with `--merge`); default is off. `--self-review` skips the external review panel and runs Step 5 via a Claude Agent-tool self-reviewer subagent instead. `--self-implement` forces `coder=claude` (independent of `--force`); ordinary Step 2.4 Claude-fallback plan work always runs via `larch:claude-implementer` whether or not `--self-implement` is set; `--difficulty <tier>` sets the starting review tier and is still subject to the audit upgrade; default is off. Preflight audit refusal exits **3** (distinct from flag/plan hard errors, which exit **2**).
+
+### `/umbrella`
+
+**Source**: [`skills/umbrella/SKILL.md`](../skills/umbrella/SKILL.md)
+
+Create or resume a flat `[UMBRELLA]` issue from an open issue number or a verbal task. One approval precedes all mutations; `--skip-approve` follows the same durable proposal, sentinel, and graph-verification path. Direct leaves use `[LEAF OF N]` titles and begin with the fixed instruction to read umbrella `#N` in full. Default `/issue` filing deduplicates leaves; `--no-dedup` uses dependency-only analysis and fails closed if analysis is incomplete. Proposal state persists `pending`, `in-flight`, and resolved leaves so a resume reconciles only an exact title/body match before creating anything else. The final graph is one level deep: every resolved leaf is a native sub-issue and blocks the umbrella. Untrusted issue text, proposal records, and child output never authorize a mutation without freshness, authorization, redaction, sentinel, and read-back checks.
 
 ### `/issue`
 

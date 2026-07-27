@@ -279,6 +279,16 @@ reset_activation
 stale_activation triage
 assert_allow "T12i stale triage sentinel stays inactive" triage "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 
+# T12j — umbrella has the same isolated scratch-only token contract.
+reset_activation
+activate umbrella
+assert_deny "T12j umbrella token denies repo path" umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+assert_allow "T12k umbrella token allows canonical /tmp" umbrella "{\"tool_input\":{\"file_path\":\"$TMP_FILE\"}}"
+assert_allow "T12l umbrella sentinel does not activate triage token" triage "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+reset_activation
+stale_activation umbrella
+assert_allow "T12m stale umbrella sentinel stays inactive" umbrella "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+
 # T13 — activation is PID-agnostic; a foreign-PID sentinel activates.
 reset_activation
 activate research 999999

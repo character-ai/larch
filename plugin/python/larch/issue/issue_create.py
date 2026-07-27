@@ -102,6 +102,17 @@ class BlockedByResult:
 
 
 @dataclass(frozen=True)
+class SubIssueResult:
+    """The verified outcome of adding one direct native sub-issue link."""
+
+    parent: str
+    child: str
+    added: bool
+    error: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
 class CleanupResult:
     """The best-effort outcome of closing an orphaned issue."""
 
@@ -837,6 +848,131 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
             sleep_fn=sleep_fn,
         )
     )
+
+
+def _sub_issue_failure(*, parent: str, child: str, message: str, code: int = 2) -> SubIssueResult:
+    return SubIssueResult(
+        parent=parent,
+        child=child,
+        added=False,
+        error=_flat_error(text=message),
+        exit_code=code,
+    )
+
+
+def _sub_issue_read_back(*, parent: str, child: str, repo: str) -> bool:
+    result = gh.issue_sub_issues_read(proc, parent, repo=repo)
+    if result.returncode != 0:
+        return False
+    try:
+        rows: object = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(rows, list):
+        return False
+    return any(isinstance(row, dict) and str(row.get("number") or "") == child for row in rows)
+
+
+def add_sub_issue(  # noqa: PLR0913 - CLI mutation authorization inputs remain explicit at the boundary.
+    *,
+    parent: str,
+    child: str,
+    child_id: str = "",
+    repo: str = "",
+    context_file: Path | None = None,
+    operator_invoked: bool = False,
+    run_id: str = "",
+    trusted_root: Path | None = None,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> SubIssueResult:
+    """Add a direct sub-issue relation, then prove it by a fresh read-back."""
+    if not _positive_int(value=parent) or not _positive_int(value=child):
+        return _sub_issue_failure(parent=parent, child=child, message="parent-issue and child-issue must be positive integers", code=1)
+    if child_id and not _positive_int(value=child_id):
+        return _sub_issue_failure(parent=parent, child=child, message="child-id must be a positive integer when provided", code=1)
+    authorized, auth_reason = _session_env.check_live_mutation_auth(
+        context_file=context_file,
+        operator_mode=operator_invoked,
+        run_id=run_id,
+        trusted_root=trusted_root,
+    )
+    if not authorized:
+        return _sub_issue_failure(parent=parent, child=child, message=f"{config.LIVE_MUTATION_REFUSAL_REASON}:{auth_reason}", code=config.EXIT_MUTATION_REFUSED)
+    if not repo:
+        repo = _resolve_repo()
+    if not repo:
+        return _sub_issue_failure(parent=parent, child=child, message="could not determine repo")
+    if not child_id:
+        lookup = _gh_read(["api", f"/repos/{repo}/issues/{child}", "--jq", ".id"])
+        child_id = lookup.stdout.strip()
+        if lookup.returncode != 0 or not _positive_int(value=child_id):
+            return _sub_issue_failure(parent=parent, child=child, message=f"child-id lookup failed for #{child}: {lookup.stderr or child_id}")
+    last_error = "unknown error"
+    for attempt in range(3):
+        if attempt == 1:
+            sleep_fn(10)
+        elif attempt == THIRD_ATTEMPT:
+            sleep_fn(30)
+        result = gh.issue_add_sub_issue(proc, parent, int(child_id), repo=repo)
+        detail = result.stderr or result.stdout
+        if result.returncode == 0 or (
+            re.search(r"HTTP 422", detail, re.IGNORECASE) and IDEMPOTENT_RE.search(detail)
+        ):
+            if _sub_issue_read_back(parent=parent, child=child, repo=repo):
+                return SubIssueResult(parent=parent, child=child, added=True)
+            return _sub_issue_failure(parent=parent, child=child, message="sub-issue relation read-back failed")
+        if re.search(r"HTTP 404|status 404|404 Not Found", detail, re.IGNORECASE):
+            return _sub_issue_failure(parent=parent, child=child, message=f"feature-unavailable: {detail}")
+        last_error = detail
+    return _sub_issue_failure(parent=parent, child=child, message=f"all 3 attempts failed: {last_error}")
+
+
+def emit_sub_issue_result(result: SubIssueResult) -> int:
+    if result.added:
+        logging_util.emit_kv(key="SUB_ISSUE_ADDED", value="true")
+    else:
+        if result.exit_code == config.EXIT_MUTATION_REFUSED:
+            logging_util.emit_kv(key=config.LIVE_MUTATION_REFUSAL_STATUS, value="true")
+        logging_util.emit_kv(key="SUB_ISSUE_FAILED", value="true")
+    logging_util.emit_kv(key="PARENT", value=result.parent)
+    logging_util.emit_kv(key="CHILD", value=result.child)
+    if result.error:
+        logging_util.emit_kv(key="ERROR", value=logging_util.sanitize_diagnostic_line(result.error))
+    return result.exit_code
+
+
+def add_sub_issue_main(argv: list[str], sleep_fn: Callable[[float], None] = time.sleep) -> int:
+    values: dict[str, str] = {}
+    flags: set[str] = set()
+    index = 0
+    value_flags = {"--parent-issue", "--child-issue", "--child-id", "--repo", "--context-file", "--run-id", "--trusted-root"}
+    while index < len(argv):
+        arg = argv[index]
+        if arg in value_flags and index + 1 < len(argv):
+            values[arg] = argv[index + 1]
+            index += 2
+        elif arg == "--operator-invoked":
+            flags.add(arg)
+            index += 1
+        else:
+            warn(f"Unknown option: {arg}")
+            return 1
+    parent = values.get("--parent-issue", "")
+    child = values.get("--child-issue", "")
+    if not parent or not child:
+        warn("Usage: add-sub-issue --parent-issue N --child-issue M [--child-id ID] [--repo OWNER/REPO]")
+        return 1
+    return emit_sub_issue_result(add_sub_issue(
+        parent=parent,
+        child=child,
+        child_id=values.get("--child-id", ""),
+        repo=values.get("--repo", ""),
+        context_file=Path(values["--context-file"]) if "--context-file" in values else None,
+        operator_invoked="--operator-invoked" in flags,
+        run_id=values.get("--run-id", ""),
+        trusted_root=Path(values["--trusted-root"]) if "--trusted-root" in values else None,
+        sleep_fn=sleep_fn,
+    ))
 
 
 def _title_archival(title: str) -> bool:
