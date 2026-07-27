@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from larch import io as larch_io
 from larch.core import architectural_guidelines
 from larch.core import config
 from larch.core import proc
@@ -284,9 +285,10 @@ def _stage_vendor_failure_diagnostics(*, ctx: RunContext, log_root: Path, strict
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
         raise ShipError(f"vendor diagnostics refresh exited {result.returncode}: {detail or 'no detail'}")
-    values = {
-        key: value for token in (result.stdout or "").split() if "=" in token for key, value in (token.split("=", 1),)
-    }
+    values = larch_io.parse_kv(
+        "\n".join((result.stdout or "").split()),
+        duplicate_policy="last",
+    )
     if values.get("FLUSH_STATUS") == "flushed" and values.get("BATCH_WRITTEN") != "true":
         raise ShipError("vendor diagnostics refresh did not stage its non-empty batch")
 
