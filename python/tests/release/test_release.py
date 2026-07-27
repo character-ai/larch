@@ -155,6 +155,19 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
         assert f"{worktree_prefix}{verb}" in skill
 
 
+def test_release_skill_step5_candidate_fence_has_timeout_override() -> None:
+    skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
+    step = skill.index("## Step 5 — Validate the candidate draft, then merge")
+    timeout = skill.index(
+        "Set Bash `timeout: 420000` (7 minutes) on this fence.", step
+    )
+    fence = skill.index("```bash", step)
+    commit = skill.index('git commit -m "Release v${NEW_VERSION}"', fence)
+    fence_end = skill.index("```", fence + len("```bash"))
+
+    assert step < timeout < fence < commit < fence_end
+
+
 def test_release_skill_step7_upgrade_run_sets_the_driver_env_contract() -> None:
     skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
     # The canonicalized parent is load-bearing: macOS TMPDIR lives under the

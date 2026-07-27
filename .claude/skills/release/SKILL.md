@@ -167,6 +167,9 @@ The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a pre
 
 ## Step 5 — Validate the candidate draft, then merge
 
+Set Bash `timeout: 420000` (7 minutes) on this fence. The release build and
+`git commit` pre-commit checks can exceed the orchestrator default.
+
 ```bash
 # lint-consecutive-bash: ok PR creation must finish before candidate staging
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
