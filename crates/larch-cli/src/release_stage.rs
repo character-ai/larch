@@ -1,18 +1,20 @@
 //! Checked draft-release staging and validation over typed Git and GitHub ports.
 
-use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode};
+use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode, time::Duration};
 
 use larch_adapters::{
     GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest, PushRequest, SecureTempDir,
     TagMutationRequest, TemporaryRoot,
+    clock::TokioClock,
     github::{
         AttestationOperations, DraftReleaseInput, OctocrabAttestationTransport,
         OctocrabReleaseTransport, ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState,
         ReleaseOperations, RepoSlug,
     },
+    runtime::Cancellation,
 };
 use larch_core::{
-    ArtifactAttestationRequest, GitHubActionsService, GitHubRepositoryRef, GitPath,
+    ArtifactAttestationRequest, AsyncClock, GitHubActionsService, GitHubRepositoryRef, GitPath,
     ReleaseAssetSubject, ReleaseSourceCommit, ReleaseState, ReleaseTag, RepositoryErrorKind,
     RepositoryRead, Revision, SafeText, WorkflowRun, WorkflowRunFilters, emit_kv,
     resolve_tag_object_id,
@@ -21,6 +23,10 @@ use larch_core::{
 use crate::{release_assets, release_common};
 
 const ASSET_WORKFLOW: &str = "rust-release-assets.yaml";
+const ASSET_RUN_REGISTRATION_TIMEOUT: Duration = Duration::from_secs(60);
+const ASSET_RUN_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const ASSET_RUN_NOT_REGISTERED: &str = "tag-triggered asset workflow run is not registered";
+const ASSET_RUN_WAIT_CANCELLED: &str = "asset workflow run registration wait cancelled";
 
 pub fn ensure_policy(repo: &str) -> ExitCode {
     release_common::command(
@@ -120,6 +126,7 @@ trait Services {
         repo: &GitHubRepositoryRef,
         filters: &WorkflowRunFilters,
     ) -> Result<Vec<WorkflowRun>, String>;
+    fn wait_for_asset_run_poll(&self, duration: Duration) -> Result<(), String>;
     fn download_asset(&self, repo: &RepoSlug, asset_id: u64, size: u64) -> Result<Vec<u8>, String>;
     fn verify_artifact(&self, request: &ArtifactAttestationRequest) -> Result<(), String>;
 }
@@ -304,6 +311,15 @@ impl Services for ProductionServices {
             .map_err(|error| error.to_string())
     }
 
+    fn wait_for_asset_run_poll(&self, duration: Duration) -> Result<(), String> {
+        let clock = TokioClock::new();
+        self.runtime.block_on(wait_for_asset_run_poll(
+            &clock,
+            &self.cancellation,
+            duration,
+        ))
+    }
+
     fn download_asset(&self, repo: &RepoSlug, asset_id: u64, size: u64) -> Result<Vec<u8>, String> {
         let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
         self.runtime
@@ -436,12 +452,36 @@ fn asset_run_with(
         commit: Some(source_commit.to_owned()),
         limit: 10,
     };
-    services
-        .workflow_runs(&repository, &filters)?
-        .into_iter()
-        .filter(|run| run.head_sha == source_commit)
-        .max_by_key(|run| run.database_id)
-        .ok_or_else(|| "tag-triggered asset workflow run is not registered".to_owned())
+    let mut waited = Duration::ZERO;
+    loop {
+        if let Some(run) = services
+            .workflow_runs(&repository, &filters)?
+            .into_iter()
+            .filter(|run| run.head_sha == source_commit)
+            .max_by_key(|run| run.database_id)
+        {
+            return Ok(run);
+        }
+        if waited >= ASSET_RUN_REGISTRATION_TIMEOUT {
+            return Err(ASSET_RUN_NOT_REGISTERED.to_owned());
+        }
+        let delay =
+            ASSET_RUN_POLL_INTERVAL.min(ASSET_RUN_REGISTRATION_TIMEOUT.saturating_sub(waited));
+        services.wait_for_asset_run_poll(delay)?;
+        waited = waited.saturating_add(delay);
+    }
+}
+
+async fn wait_for_asset_run_poll(
+    clock: &impl AsyncClock,
+    cancellation: &Cancellation,
+    duration: Duration,
+) -> Result<(), String> {
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => Err(ASSET_RUN_WAIT_CANCELLED.to_owned()),
+        () = clock.sleep(duration) => Ok(()),
+    }
 }
 
 fn validate_candidate_with(
@@ -592,8 +632,15 @@ fn require_safe_file(path: &Path, message: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use larch_core::RemoteAsset;
-    use std::{cell::RefCell, collections::BTreeMap, io::Write as _};
+    use larch_adapters::runtime::LarchRuntime;
+    use larch_core::{MonotonicClock, RemoteAsset};
+    use larch_test_support::TestClock;
+    use std::{
+        cell::{Cell, RefCell},
+        collections::{BTreeMap, VecDeque},
+        io::Write as _,
+        time::SystemTime,
+    };
 
     const SOURCE: &str = "1111111111111111111111111111111111111111";
     const OTHER: &str = "2222222222222222222222222222222222222222";
@@ -609,7 +656,9 @@ mod tests {
         releases: RefCell<Vec<Option<ReleaseState>>>,
         created: RefCell<usize>,
         updated: RefCell<usize>,
-        runs: Vec<WorkflowRun>,
+        runs: RefCell<VecDeque<Vec<WorkflowRun>>>,
+        workflow_run_queries: Cell<usize>,
+        clock: TestClock,
         downloads: BTreeMap<u64, Vec<u8>>,
         attestation_error: Option<String>,
     }
@@ -629,7 +678,9 @@ mod tests {
                 releases: RefCell::new(Vec::new()),
                 created: RefCell::new(0),
                 updated: RefCell::new(0),
-                runs: Vec::new(),
+                runs: RefCell::new(VecDeque::from([Vec::new()])),
+                workflow_run_queries: Cell::new(0),
+                clock: TestClock::new(SystemTime::UNIX_EPOCH),
                 downloads: BTreeMap::new(),
                 attestation_error: None,
             }
@@ -710,7 +761,17 @@ mod tests {
             _repo: &GitHubRepositoryRef,
             _filters: &WorkflowRunFilters,
         ) -> Result<Vec<WorkflowRun>, String> {
-            Ok(self.runs.clone())
+            self.workflow_run_queries
+                .set(self.workflow_run_queries.get() + 1);
+            let mut runs = self.runs.borrow_mut();
+            if runs.len() > 1 {
+                return Ok(runs.pop_front().expect("run response queue is not empty"));
+            }
+            Ok(runs.front().cloned().unwrap_or_default())
+        }
+        fn wait_for_asset_run_poll(&self, duration: Duration) -> Result<(), String> {
+            self.clock.advance(duration);
+            Ok(())
         }
         fn download_asset(
             &self,
@@ -865,8 +926,12 @@ mod tests {
 
     #[test]
     fn asset_run_selects_only_the_exact_commit_and_highest_run_id() {
-        let mut services = FakeServices {
-            runs: vec![run(10, SOURCE), run(12, OTHER), run(11, SOURCE)],
+        let services = FakeServices {
+            runs: RefCell::new(VecDeque::from([vec![
+                run(10, SOURCE),
+                run(12, OTHER),
+                run(11, SOURCE),
+            ]])),
             ..FakeServices::default()
         };
         assert_eq!(
@@ -875,11 +940,72 @@ mod tests {
                 .database_id,
             11
         );
-        services.runs = vec![run(12, OTHER)];
+        assert_eq!(services.workflow_run_queries.get(), 1);
+        assert_eq!(services.clock.now().elapsed(), Duration::ZERO);
+    }
+
+    #[test]
+    fn asset_run_polls_until_the_run_is_registered() {
+        let services = FakeServices {
+            runs: RefCell::new(VecDeque::from([
+                vec![run(12, OTHER)],
+                vec![run(13, SOURCE)],
+            ])),
+            ..FakeServices::default()
+        };
+        assert_eq!(
+            asset_run_with(&services, "character-ai/larch", "v1.2.3", SOURCE)
+                .expect("delayed run")
+                .database_id,
+            13
+        );
+        assert_eq!(services.workflow_run_queries.get(), 2);
+        assert_eq!(services.clock.now().elapsed(), ASSET_RUN_POLL_INTERVAL);
+    }
+
+    #[test]
+    fn asset_run_stops_after_the_registration_timeout() {
+        let services = FakeServices {
+            runs: RefCell::new(VecDeque::from([vec![run(12, OTHER)]])),
+            ..FakeServices::default()
+        };
         assert_eq!(
             asset_run_with(&services, "character-ai/larch", "v1.2.3", SOURCE),
-            Err("tag-triggered asset workflow run is not registered".to_owned())
+            Err(ASSET_RUN_NOT_REGISTERED.to_owned())
         );
+        assert_eq!(services.workflow_run_queries.get(), 13);
+        assert_eq!(
+            services.clock.now().elapsed(),
+            ASSET_RUN_REGISTRATION_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn asset_run_poll_wait_observes_duration_and_cancellation() {
+        let runtime = LarchRuntime::current_thread().expect("test runtime");
+        let clock = TestClock::new(SystemTime::UNIX_EPOCH);
+        let cancellation = Cancellation::new();
+
+        assert_eq!(
+            runtime.block_on(wait_for_asset_run_poll(
+                &clock,
+                &cancellation,
+                ASSET_RUN_POLL_INTERVAL,
+            )),
+            Ok(())
+        );
+        assert_eq!(clock.now().elapsed(), ASSET_RUN_POLL_INTERVAL);
+
+        cancellation.cancel();
+        assert_eq!(
+            runtime.block_on(wait_for_asset_run_poll(
+                &clock,
+                &cancellation,
+                ASSET_RUN_POLL_INTERVAL,
+            )),
+            Err(ASSET_RUN_WAIT_CANCELLED.to_owned())
+        );
+        assert_eq!(clock.now().elapsed(), ASSET_RUN_POLL_INTERVAL);
     }
 
     #[test]
