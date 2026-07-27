@@ -6,16 +6,16 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.core import config
+from larch.core.proc import CommandResult
 from larch.git import gh
 from larch.git import git
 from larch.git import merge as merge_module
 from larch.report import run_log_manifest, run_log_flush
-from larch.core.proc import CommandResult
-from larch.core.run_context import RunContext
 from test_support import (
     PR_VIEW_OPEN_JSON,
     RecordingRunner,
@@ -23,6 +23,9 @@ from test_support import (
     make_run_context,
     merge_admin_responses,
 )
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MERGE_SH = REPO_ROOT / "scripts" / "merge-pr.sh"
@@ -286,14 +289,12 @@ def test_bash_flush_recovery_k1_emits_admin_merged(tmp_path: Path) -> None:
     assert "MERGE_RESULT=admin_merged" in completed.stdout
 
 
-def test_flush_recovery_mixed_emits_error(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_flush_recovery_mixed_emits_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """N1: mixed flush + non-flush commits refuse merge."""
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner(responses=_flush_recovery_responses())
+
     def fake_log_subjects(*_a: object, **_k: object) -> git.LogSubjects:
         return git.LogSubjects(
             (f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run", "Fix bug"),
@@ -302,17 +303,14 @@ def test_flush_recovery_mixed_emits_error(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects)
-    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_log_flush, "refresh_postmerge_snapshot", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
     assert "aaaa1111" in out.error
 
 
-def test_flush_recovery_cap_emits_error(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_flush_recovery_cap_emits_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """P1: more than five flush commits refuse merge."""
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -321,26 +319,25 @@ def test_flush_recovery_cap_emits_error(
         for index in range(config.FLUSH_RECOVERY_MAX_COMMITS + 1)
     )
     runner = RecordingRunner(responses=_flush_recovery_responses())
+
     def fake_log_subjects_cap(*_a: object, **_k: object) -> git.LogSubjects:
         return git.LogSubjects(subjects)
 
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_cap)
-    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_log_flush, "refresh_postmerge_snapshot", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
 
 
-def test_flush_recovery_non_log_paths_emits_error(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_flush_recovery_non_log_paths_emits_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """N2a: flush-subject range touching non-log paths refuses merge."""
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner(responses=_flush_recovery_responses())
+
     def fake_log_subjects_paths(*_a: object, **_k: object) -> git.LogSubjects:
         return git.LogSubjects((f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run",))
 
@@ -351,7 +348,7 @@ def test_flush_recovery_non_log_paths_emits_error(
     monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_paths)
     monkeypatch.setattr(git, "diff_name_only", fake_diff_name_only)
-    monkeypatch.setattr(run_log_flush, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_log_flush, "refresh_postmerge_snapshot", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
     out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR

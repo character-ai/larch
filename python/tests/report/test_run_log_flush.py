@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from larch.calibration import difficulty
@@ -26,6 +27,13 @@ def _write_manifest(run_dir: Path, *, skill: str = "implement", steps_ran: dict[
     }
     run_dir.mkdir(parents=True, exist_ok=True)
     _ = (run_dir / "manifest.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _write_terminal_artifacts(run_dir: Path) -> None:
+    _ = (run_dir / "final-summary.md").write_text("# Final\n", encoding="utf-8")
+    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    _ = (run_dir / "timing-report.json").write_text("{}", encoding="utf-8")
+    _ = (run_dir / "execution-issues.ndjson").write_text("", encoding="utf-8")
 
 
 def _patch_commit_seams(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
@@ -121,10 +129,157 @@ def test_refresh_difficulty_record_merges_resolution_fields(
     assert data["escalations"][0]["round"] == 2
 
 
+def test_prepare_terminal_snapshot_orders_complete_final_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_id = "run-abc"
+    run_dir = tmp_path / "larch-logs" / "implement" / run_id
+    run_dir.mkdir(parents=True)
+    ctx = make_run_context(run_id=run_id, tmpdir=str(tmp_path), manifest_path=str(run_dir / "manifest.json"))
+    events: list[str] = []
+    updates: list[dict[str, object]] = []
+    recovery = SimpleNamespace(recovery_ok=True, manifest=SimpleNamespace(steps_ran={}))
+
+    def write_final_report(**_kwargs: object) -> None:
+        events.append("final-report")
+        _ = (run_dir / "final-summary.md").write_text("# Final\n", encoding="utf-8")
+
+    def render_ledgers(**_kwargs: object) -> None:
+        events.append("token-timing-ledgers")
+        _ = (run_dir / "token-report.json").write_text("{}\n", encoding="utf-8")
+        _ = (run_dir / "timing-report.json").write_text("{}\n", encoding="utf-8")
+
+    def capture(**_kwargs: object) -> run_log_flush.TranscriptCaptureResult:
+        events.append("transcript")
+        path = run_dir / "session-transcript.jsonl"
+        _ = path.write_text("{}\n", encoding="utf-8")
+        return run_log_flush.TranscriptCaptureResult(status="captured", path=path, source_configured=True)
+
+    def flush_issues(**_kwargs: object) -> None:
+        events.append("execution-issues")
+        _ = (run_dir / "execution-issues.ndjson").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(run_log_flush, "_load_refresh_session_env", lambda _tmpdir: None)
+    monkeypatch.setattr(run_log_flush, "_refresh_context", lambda **_kwargs: ctx)
+    monkeypatch.setattr(run_log_flush, "load_or_recover_manifest_checked", lambda _ctx: recovery)
+    monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", lambda **_kwargs: events.append("difficulty"))
+    monkeypatch.setattr(run_log_flush, "_write_final_report", write_final_report)
+    monkeypatch.setattr(
+        run_log_flush, "_reconcile_stalled_summary_backstop", lambda **_kwargs: events.append("stalled-summary")
+    )
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", render_ledgers)
+    monkeypatch.setattr(
+        run_log_flush, "_render_token_timing_batches", lambda **_kwargs: events.append("derived-token-timing")
+    )
+    monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", lambda **_kwargs: events.append("vendor"))
+    monkeypatch.setattr(run_log_flush, "_stage_invariant_ship_outcome", lambda **_kwargs: events.append("invariant"))
+    monkeypatch.setattr(run_log_flush, "_stage_guideline_ship_outcome", lambda **_kwargs: events.append("guideline"))
+    monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", lambda **_kwargs: events.append("ship-handoff"))
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", capture)
+    monkeypatch.setattr(run_log_flush, "_terminal_execution_issues_flush", flush_issues)
+    monkeypatch.setattr(
+        run_log_flush, "_reconcile_terminal_manifest_from_ctx", lambda _ctx: events.append("manifest-reconcile")
+    )
+    monkeypatch.setattr(run_log_flush, "update_manifest", lambda _ctx, **kwargs: updates.append(kwargs))
+
+    result = run_log_flush.prepare_terminal_snapshot(
+        runner=object(),  # type: ignore[arg-type]
+        tmpdir=tmp_path,
+        run_id=run_id,
+    )
+
+    assert result.ok is True
+    assert result.transcript_status == "captured"
+    assert events == [
+        "difficulty",
+        "final-report",
+        "stalled-summary",
+        "token-timing-ledgers",
+        "derived-token-timing",
+        "vendor",
+        "invariant",
+        "guideline",
+        "ship-handoff",
+        "transcript",
+        "execution-issues",
+        "final-report",
+        "manifest-reconcile",
+    ]
+    assert updates == [{"steps_ran": {"step18": True}}]
+
+
+def test_prepare_terminal_snapshot_failure_preserves_staging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_id = "run-abc"
+    run_dir = tmp_path / "larch-logs" / "implement" / run_id
+    run_dir.mkdir(parents=True)
+    prior = run_dir / "session-transcript.jsonl"
+    _ = prior.write_text('{"prior":true}\n', encoding="utf-8")
+    ctx = make_run_context(run_id=run_id, tmpdir=str(tmp_path), manifest_path=str(run_dir / "manifest.json"))
+    recovery = SimpleNamespace(recovery_ok=True, manifest=SimpleNamespace(steps_ran={}))
+    recorded: list[str] = []
+
+    monkeypatch.setattr(run_log_flush, "_load_refresh_session_env", lambda _tmpdir: None)
+    monkeypatch.setattr(run_log_flush, "_refresh_context", lambda **_kwargs: ctx)
+    monkeypatch.setattr(run_log_flush, "load_or_recover_manifest_checked", lambda _ctx: recovery)
+    monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_write_final_report", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_invariant_ship_outcome", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_guideline_ship_outcome", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        run_log_flush,
+        "capture_session_transcript",
+        lambda **_kwargs: run_log_flush.TranscriptCaptureResult(
+            status="source-file-missing", path=prior, source_configured=True
+        ),
+    )
+    monkeypatch.setattr(
+        run_log_flush, "_record_terminal_snapshot_failure", lambda *, message, **_kwargs: recorded.append(message)
+    )
+
+    result = run_log_flush.prepare_terminal_snapshot(
+        runner=object(),  # type: ignore[arg-type]
+        tmpdir=tmp_path,
+        run_id=run_id,
+    )
+
+    assert result.ok is False
+    assert result.transcript_status == "source-file-missing"
+    assert recorded == [
+        "terminal transcript refresh failed: status=source-file-missing; "
+        "the prior staged transcript was retained when available"
+    ]
+    assert prior.read_text(encoding="utf-8") == '{"prior":true}\n'
+
+
+def test_unconfigured_terminal_transcript_requires_artifact_or_recorded_waiver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_id = "run-abc"
+    ctx = make_run_context(run_id=run_id, tmpdir=str(tmp_path), manifest_path="")
+    monkeypatch.delenv("LARCH_CLAUDE_SOURCE_FILE", raising=False)
+    monkeypatch.setattr(
+        run_log_flush,
+        "_capture_transcript_append_warning",
+        lambda **_kwargs: False,
+    )
+
+    result = run_log_flush.capture_session_transcript(ctx=ctx, runner=object())  # type: ignore[arg-type]
+
+    assert result.status == "source-not-configured"
+    assert result.artifact_present is False
+    assert result.omission_recorded is False
+    assert result.ok is False
+
+
 def test_run_log_commit_all_required_artifacts_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _write_manifest(run_dir)
-    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    _write_manifest(run_dir, steps_ran={"step18": True})
+    _write_terminal_artifacts(run_dir)
     _ = (run_dir / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
 
     result, copied = _commit_tmp_run(tmp_path, monkeypatch)
@@ -135,8 +290,8 @@ def test_run_log_commit_all_required_artifacts_present(tmp_path: Path, monkeypat
 
 def test_run_log_commit_allows_recorded_transcript_omission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _write_manifest(run_dir)
-    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    _write_manifest(run_dir, steps_ran={"step18": True})
+    _write_terminal_artifacts(run_dir)
     body = "- **Step 7a: session-transcript status=write-failed:** source file disappeared"
     _ = (run_dir / "execution-issues.ndjson").write_text(
         json.dumps({"category": "Warnings", "body": body}) + "\n",
@@ -151,8 +306,8 @@ def test_run_log_commit_allows_recorded_transcript_omission(tmp_path: Path, monk
 
 def test_run_log_commit_fails_silent_transcript_omission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _write_manifest(run_dir)
-    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    _write_manifest(run_dir, steps_ran={"step18": True})
+    _write_terminal_artifacts(run_dir)
 
     result, copied = _commit_tmp_run(tmp_path, monkeypatch)
 
@@ -163,8 +318,8 @@ def test_run_log_commit_fails_silent_transcript_omission(tmp_path: Path, monkeyp
 
 def test_run_log_commit_rejects_session_local_status_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    _write_manifest(run_dir)
-    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    _write_manifest(run_dir, steps_ran={"step18": True})
+    _write_terminal_artifacts(run_dir)
     _ = (tmp_path / "execution-issues.md").write_text(
         "### Warnings\n- **Step 7a: session-transcript status=write-failed:** source file disappeared\n",
         encoding="utf-8",
@@ -243,9 +398,8 @@ def test_parse_preterminal_outcome_label_targets_run_heading() -> None:
     )
 
 
-def test_flush_logs_pre_stages_preterminal_forbidden_label_without_publishing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_stages_preterminal_forbidden_label_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
@@ -255,21 +409,20 @@ def test_flush_logs_pre_stages_preterminal_forbidden_label_without_publishing(
         tmpdir=str(tmp_path),
         manifest_path=str(run_dir / "manifest.json"),
     )
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
 
     def fail_commit(**_kwargs: object) -> CommandResult:
         raise AssertionError("mutable refresh must not publish through Git")
 
     monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
-    skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
     assert skip.skipped is False
 
 
-def test_flush_logs_pre_stages_neutral_preterminal_label_without_publishing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_stages_neutral_preterminal_label_without_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
@@ -280,7 +433,7 @@ def test_flush_logs_pre_stages_neutral_preterminal_label_without_publishing(
         manifest_path=str(run_dir / "manifest.json"),
     )
     commits: list[str] = []
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
 
     def fake_commit(**_kwargs: object) -> CommandResult:
         commits.append("commit")
@@ -288,13 +441,13 @@ def test_flush_logs_pre_stages_neutral_preterminal_label_without_publishing(
 
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)
 
-    skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
     assert skip.skipped is False
     assert not commits
 
 
-def test_flush_logs_pre_keeps_incomplete_tree_mutable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refresh_logs_checkpoint_keeps_incomplete_tree_mutable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
     _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
@@ -303,24 +456,24 @@ def test_flush_logs_pre_keeps_incomplete_tree_mutable(tmp_path: Path, monkeypatc
         tmpdir=str(tmp_path),
         manifest_path=str(run_dir / "manifest.json"),
     )
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
     _ = _patch_commit_seams(monkeypatch, tmp_path)
 
-    skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path / "repo"))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path / "repo"))
 
     assert skip.skipped is False
 
 
-def test_refresh_run_logs_main_prints_incomplete_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_refresh_run_logs_main_prints_incomplete_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     state = tmp_path / "finalize-state.sh"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     monkeypatch.setattr(
         run_log_flush,
-        "flush_logs_pre",
+        "refresh_logs_checkpoint",
         lambda **_kwargs: RefreshSkip(
-            skipped=True,
-            reason=config.REFRESH_SKIP_RUN_LOG_INCOMPLETE,
-            error="missing transcript",
+            skipped=True, reason=config.REFRESH_SKIP_RUN_LOG_INCOMPLETE, error="missing transcript"
         ),
     )
 
@@ -330,43 +483,39 @@ def test_refresh_run_logs_main_prints_incomplete_reason(tmp_path: Path, monkeypa
     assert "REFRESH_COMMITTED=false REASON=run-log-incomplete ERROR=missing transcript" in capsys.readouterr().out
 
 
-def test_larch_log_flush_main_keeps_incomplete_tree_mutable(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_run_log_checkpoint_main_keeps_incomplete_tree_mutable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
     _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
     _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
     _ = _patch_commit_seams(monkeypatch, tmp_path)
 
-    rc = run_log_flush.larch_log_flush_main([])
+    rc = run_log_flush.run_log_checkpoint_main([])
 
     assert rc == 0
     assert capsys.readouterr().err == ""
 
 
-def test_larch_log_flush_main_stages_preterminal_forbidden_label(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_run_log_checkpoint_main_stages_preterminal_forbidden_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
     _ = (run_dir / "final-summary.md").write_text("## /implement final summary: bailed\n", encoding="utf-8")
     _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda **_kwargs: None)
 
     def fail_commit(**_kwargs: object) -> CommandResult:
         raise AssertionError("pre-terminal guard should skip commit")
 
     monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
-    rc = run_log_flush.larch_log_flush_main([])
+    rc = run_log_flush.run_log_checkpoint_main([])
 
     assert rc == 0
     assert capsys.readouterr().err == ""
@@ -398,4 +547,6 @@ def test_run_log_commit_missing_run_dir_preserves_noop(tmp_path: Path, monkeypat
     assert result.returncode == 0
     assert result.returncode != config.RUN_LOG_INCOMPLETE_RC
     assert copied == ["copy-called"]
+
+
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false

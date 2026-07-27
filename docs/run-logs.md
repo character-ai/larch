@@ -1,6 +1,6 @@
 # Larch Run Logs
 
-On a default `/implement --merge` run with storage enabled, Step 18 publishes one immutable `.tar.gz` archive and promotes the same sanitized tree into the unpacked local cache. The archive is the durable source of truth for voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. `/implement` does not add run-log files or commits to the business PR.
+On a default `/implement --merge` run with storage enabled, Step 18 closes the live ledgers, rebuilds the complete terminal snapshot, publishes one immutable `.tar.gz` archive, and promotes the same sanitized tree into the unpacked local cache. Step 19 then restores and removes session state without writing logs. The archive is the durable source of truth for voting tallies, code-review tally counters (`code-review-tally.json` self-review `accepted_count` / `rejected_count`), `review-findings-full.jsonl`, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. `/implement` does not add run-log files or commits to the business PR.
 
 Missing storage configuration is an intentional publication opt-out. The
 lifecycle warns at startup and terminalization, keeps local staging and
@@ -531,8 +531,8 @@ archives retain their terminal status.
 
 ### parent-issue.md
 
-**Mode**: replace. **Written**: **Step 0** materialization tail and refreshed at the pre-ship log flush when
-present.
+**Mode**: replace. **Written**: **Step 0** materialization tail and refreshed by
+local recovery checkpoints and the Step 18 terminal snapshot when present.
 
 Tracking-issue sentinel with the adopted or created issue number and run ID.
 This is the session-scope idempotency source for tracking issue recovery.
@@ -547,7 +547,8 @@ review-change checks.
 
 ### codex-impl-transcript.txt and related Codex setup files
 
-**Mode**: replace. **Written**: Step 7a pre-ship log flush when present.
+**Mode**: replace. **Written**: local recovery checkpoints and the Step 18
+terminal snapshot when present.
 
 `codex-impl-transcript.txt` is the external implementer transcript,
 `codex-impl-transcript-prompt.txt` is the prompt sidecar,
@@ -663,15 +664,15 @@ Summary statistics for the run: number of accepted and rejected OOS items, filed
 
 ### vendor-failure-diagnostics.txt
 
-**Mode**: replace. **Written**: Step 7a pre-ship flush via `scripts/flush-vendor-failure-diagnostics.sh`, when at least one vendor-agent slot logged a failure diagnostic during the run.
+**Mode**: replace. **Written**: Step 18 terminal snapshot via `scripts/flush-vendor-failure-diagnostics.sh`, when at least one vendor-agent slot logged a failure diagnostic during the run.
 
-Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_failure_diagnostics` in `python/larch/agents/agents.py`. Each slot entry is redacted (tmpdir paths and secrets) before being staged as a part under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`; the flush helper concatenates all parts and writes the combined `vendor-failure-diagnostics.txt` batch. CI launchers (`python3 python/cli.py agent launch-codex-ci`, `python3 python/cli.py agent launch-cursor-ci`, `python3 python/cli.py agent launch-claude-ci`) and implement launchers (`agent launch-codex-implement`, `agent launch-cursor-implement`) feed this batch; reviewer launchers (`agent launch-review`) also contribute when `IMPLEMENT_TMPDIR` is set. **Availability caveat**: runs that bail before Step 7a (e.g., Step 2 dispatcher stall or Step 5 review stall) do not flush this batch; diagnostic parts then remain in the session tmpdir and are removed at Step 18 cleanup. The batch is absent from the published archive for such early-bail runs.
+Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_failure_diagnostics` in `python/larch/agents/agents.py`. Each slot entry is redacted before being staged under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`. The terminal snapshot helper concatenates the full parts set and writes `vendor-failure-diagnostics.txt`. CI launchers (`python3 python/cli.py agent launch-codex-ci`, `python3 python/cli.py agent launch-cursor-ci`, `python3 python/cli.py agent launch-claude-ci`) and implement launchers (`agent launch-codex-implement`, `agent launch-cursor-implement`) feed this batch; reviewer launchers (`agent launch-review`) also contribute when `IMPLEMENT_TMPDIR` is set. Early bail, failure, cancel, and stall paths that reach Step 18 use the same aggregation owner.
 
 ### token-report.json
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. The agentic Claude CI-fix delegate reconstructs `RunContext` and requires `--repo-root`, so rebase/push retries refresh the batch through `run_logs.flush_logs_pre` before force-push or rebase preparation. `ci-fix-exhausted` pairs with Step 12d operator bail. Stall recovery does not auto-resume the ship step for that token.
+**Mode**: replace. **Written**: mutable recovery checkpoints during ship and rebuilt after the closing Step 18 token mark. The agentic Claude CI-fix delegate reconstructs `RunContext` and requires `--repo-root`, so rebase/push retries refresh the batch through `run_logs.refresh_logs_checkpoint` before force-push or rebase preparation. `ci-fix-exhausted` pairs with Step 12d operator bail. Stall recovery does not auto-resume the ship step for that token.
 
-Structured per-step Claude and external-vendor token usage for the session. The pre-ship flush captures cost up through implementation and review.
+Structured per-step Claude and external-vendor token usage for the session. The terminal render includes work after Step 7a plus the closing logs-flush mark.
 
 ### timing-report.json
 
@@ -683,19 +684,19 @@ JSON reports may include an additive `rounds` array on a matching per-step row. 
 
 ### execution-issues.ndjson
 
-**Mode**: append (NDJSON records). **Written**: Step 2 (Q/A entries, progressive), Step 7a (pre-ship log flush of `execution-issues.md`), later external-implementer / pre-push refreshes when new entries are added after Step 7a, and Step 18's safety net when the normal flush path was missed.
+**Mode**: append (NDJSON records). **Written**: Step 2 (Q/A entries, progressive), the Step 7a local checkpoint, later external-implementer and pre-push checkpoints, and the Step 18 terminal tail.
 
-Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively. Step 7a performs the primary staging flush; later refreshes append only the unflushed tail. Step 18 runs the final safety net before archive publication. This batch is the durable audit trail for follow-up work and operational events.
+Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively. Intermediate checkpoints append only the unrecorded tail. Step 18 performs the final non-truncating append before publication. This batch is the durable audit trail for follow-up work and operational events.
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: `/implement` Step 7a remains the primary green-path capture point, with Step 18 as a best-effort finalization safety net for bail and stall paths that reach teardown first. `/design` captures once inside the shared `design log-publish` entry point, so Step 5c, clarify, and pause-save publish paths use the same hook. Standalone `/review` captures before cleanup and publishes staged batches so the transcript survives tmpdir removal. Historical archives are not backfilled.
+**Mode**: replace. **Written**: `/implement` Step 18 recaptures from the configured source on every terminal path, including normal green runs that completed Step 7a. `/design` captures once inside the shared `design log-publish` entry point, so Step 5c, clarify, and pause-save publish paths use the same hook. Standalone `/review` captures before cleanup and publishes staged batches so the transcript survives tmpdir removal. Historical archives are not backfilled.
 
 A filtered, machine-readable rendering of the Claude Code session, produced by `python3 python/cli.py run-log render-session-transcript` from the raw session JSONL. **Schema v3.** The first line is a `{"v": 3, "source_basename": ..., "turns": N, ...}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, errored/warned `tool_result` entries, and sanitized reference `Read` stubs with normalized `file_path` values only. File contents, other `tool_call` blocks, and non-error `tool_result` blocks are omitted. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before publication.
 
 **Accepted capability loss (v3)**: full tool-sequence reconstruction for clean runs is not possible from the published transcript. The retained reference `Read` stubs support aggregate reference-heatmap measurements, not detailed incident forensics.
 
-The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output. The run continues when capture cannot produce a transcript. For `/implement` runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `python/render_session_transcript.md` for the complete schema.
+The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including `captured`, `suppressed-no-logs-commit`, `render-failed`, and `render-empty`. A terminal recapture failure retains the prior staged transcript when available, reports the failure, blocks publication, and preserves the session for retry. For `/implement` runs whose manifest records `steps_ran.step18=true`, `session-transcript.jsonl` is part of the required-file completeness manifest. When no source is configured, the execution issue names the missing artifact so I-Flush-1 can waive it. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `python/render_session_transcript.md` for the complete schema.
 
 `python3 python/cli.py token measure-references-heatmap` synchronizes once, then starts with a `transcript_coverage` section that reports transcript-bearing runs, total runs, missing transcript runs, and the coverage ratio per skill before the per-reference heatmap rows. A skill with transcripts and zero reference reads is reported as measured zero data, not as missing data.
 
@@ -782,9 +783,9 @@ failure surface.
 
 For `/implement`, the tracking summary is first rendered during Step 8+ PR
 creation with placeholder PR fields, then refreshed with the live URL and again
-during Step 18 terminal cleanup. The terminal archive contains the final
-`final-summary.md`. Runs that never reach PR creation still run terminal cleanup
-and may refresh the tracking summary with `PR: N/A`.
+during Step 18 terminal snapshot preparation. The terminal archive contains the
+final `final-summary.md`. Runs that never reach PR creation still run terminal
+snapshot preparation and may refresh the tracking summary with `PR: N/A`.
 
 For `/design`, `python/cli.py design log-publish` renders `final-summary.md`
 before publishing the run tree. Step 5c and clarify follow with a post-publish

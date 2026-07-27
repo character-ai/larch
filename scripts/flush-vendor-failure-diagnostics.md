@@ -32,8 +32,8 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
    nothing is flushed and no batch is written. A successful run with no
    vendor-agent failures publishes nothing for this batch (preserves #3534 intent).
 2. **Idempotent derive**: the canonical `$tmpdir/vendor-failure-diagnostics.txt`
-   is overwritten from the full sorted parts set on every flush, so repeated
-   repeated flushes converge. The batch slug is `replace` mode
+   is overwritten from the full sorted parts set on every checkpoint, so
+   repeated checkpoints converge. The batch slug is `replace` mode
    (`docs/run-log-batches.md`) for the same reason.
 3. **Stage only**: `python3 python/cli.py run-log write` stages the batch under
    the log root. The archive publisher owns final validation, sanitization, and
@@ -46,12 +46,11 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 
 ## Callers
 
-Called best-effort before run-log staging refreshes:
-- `skills/implement/scripts/step-7a.sh` (pre-ship flush)
-- `python3 python/cli.py run-log flush`
+Called by mutable checkpoints and terminal snapshot preparation:
+
+- `python3 python/cli.py run-log checkpoint`
 - `python3 python/cli.py run-log refresh`
-- `python3 python/cli.py implement-finalize` teardown (safety net, mirrors
-  `flush_execution_issues_safety_net`, F13)
+- `/implement` Step 18 terminal snapshot preparation
 
 ## Invariants
 

@@ -1,16 +1,18 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportPrivateUsage=false
-"""Flush and finalization operations for larch run-logs."""
+"""Checkpoint and terminal snapshot operations for larch run logs."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
-from contextlib import suppress
+from contextlib import redirect_stdout, suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -55,6 +57,30 @@ from larch.report.run_log_manifest import (
     update_manifest,
     validate_run_id_slug,
 )
+
+
+@dataclass(frozen=True)
+class TranscriptCaptureResult:
+    status: str
+    path: Path | None
+    source_configured: bool
+    artifact_present: bool = False
+    omission_recorded: bool = False
+
+    @property
+    def ok(self) -> bool:
+        if self.source_configured:
+            return self.status in {"captured", "suppressed-no-logs-commit"}
+        return self.artifact_present or self.omission_recorded
+
+
+@dataclass(frozen=True)
+class TerminalSnapshotResult:
+    ok: bool
+    transcript_status: str
+    error: str = ""
+
+
 _write_batch = _write_batch_impl
 
 
@@ -80,31 +106,52 @@ def _write_report_json(*, path: Path, data: dict[str, object]) -> None:
     _ = tmp.replace(path)
 
 
-def _render_ledger_reports(*, runner: Runner, ctx: RunContext, log_root: Path) -> None:
-    """Re-render token/timing JSON from ledgers (python3 python/cli.py run-log refresh parity)."""
+def _render_ledger_reports(*, runner: Runner, ctx: RunContext, log_root: Path, strict: bool = False) -> None:
+    """Re-render token and timing JSON from their live ledgers."""
     _ = runner
     run_id = effective_run_id(ctx)
     if not run_id:
+        if strict:
+            raise ShipError("terminal ledger refresh requires a run id")
         return
     tmpdir = Path(ctx.tmpdir)
     token_path = tmpdir / "token-report-refresh.json"
     timing_path = tmpdir / "timing-report-refresh.json"
     env = _report_subprocess_env(ctx)
-    with suppress(Exception):
+    errors: list[str] = []
+    try:
         rendered = tokens.token_report(mode="full", fmt="json", env=env)
         if isinstance(rendered, dict):
             _write_report_json(path=token_path, data=rendered)
+        elif strict:
+            errors.append("token report renderer returned no JSON object")
+    except Exception as exc:
+        errors.append(f"token report render failed: {exc}")
     if token_path.is_file():
-        with suppress(Exception):
+        try:
             _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="token-report", input_file=str(token_path))
-    with suppress(Exception):
+        except (OSError, ShipError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"token report staging failed: {exc}")
+    elif strict:
+        errors.append("token-report.json source was not produced")
+    try:
         ledger = timing.resolve_timing_ledger_path(env=env)
         if ledger is not None:
             data = timing.TimingReport(ledger).render_json(env=env)
             _write_report_json(path=timing_path, data=data)
+        elif strict:
+            errors.append("timing ledger was unavailable")
+    except Exception as exc:
+        errors.append(f"timing report render failed: {exc}")
     if timing_path.is_file():
-        with suppress(Exception):
+        try:
             _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="timing-report", input_file=str(timing_path))
+        except (OSError, ShipError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"timing report staging failed: {exc}")
+    elif strict:
+        errors.append("timing-report.json source was not produced")
+    if strict and errors:
+        raise ShipError("; ".join(errors))
 
 
 def _should_flush_execution_issues(
@@ -212,27 +259,36 @@ def write_final_report_comment(*, runner: Runner, ctx: RunContext) -> None:
         raise ShipError(msg)
 
 
-def _stage_vendor_failure_diagnostics(*, ctx: RunContext, log_root: Path) -> None:
+def _stage_vendor_failure_diagnostics(*, ctx: RunContext, log_root: Path, strict: bool = False) -> None:
     run_id = effective_run_id(ctx)
     if not run_id:
+        if strict:
+            raise ShipError("terminal vendor diagnostics refresh requires a run id")
         return
     script = _REPO_ROOT / "scripts" / "flush-vendor-failure-diagnostics.sh"
     if not script.is_file():
+        if strict:
+            raise ShipError("vendor diagnostics checkpoint helper is unavailable")
         return
-    with suppress(Exception):
-        _ = proc.run(
-            [
-                "bash",
-                str(script),
-                "--tmpdir",
-                ctx.tmpdir,
-                "--run-id",
-                run_id,
-                "--log-root",
-                str(log_root),
-            ],
+    try:
+        result = proc.run(
+            ["bash", str(script), "--tmpdir", ctx.tmpdir, "--run-id", run_id, "--log-root", str(log_root)],
             cwd=str(_REPO_ROOT),
         )
+    except Exception as exc:
+        if strict:
+            raise ShipError(f"vendor diagnostics refresh failed: {exc}") from exc
+        return
+    if not strict:
+        return
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ShipError(f"vendor diagnostics refresh exited {result.returncode}: {detail or 'no detail'}")
+    values = {
+        key: value for token in (result.stdout or "").split() if "=" in token for key, value in (token.split("=", 1),)
+    }
+    if values.get("FLUSH_STATUS") == "flushed" and values.get("BATCH_WRITTEN") != "true":
+        raise ShipError("vendor diagnostics refresh did not stage its non-empty batch")
 
 
 def _stage_guideline_ship_outcome(*, ctx: RunContext, log_root: Path) -> None:
@@ -273,14 +329,14 @@ def _stage_invariant_ship_outcome(*, ctx: RunContext, log_root: Path) -> None:
         raise ShipError(f"invariant outcome staging failed: {exc}") from exc
 
 
-def _stage_ship_route_handoff(*, ctx: RunContext, log_root: Path) -> None:
+def _stage_ship_route_handoff(*, ctx: RunContext, log_root: Path, strict: bool = False) -> None:
     run_id = effective_run_id(ctx)
     if not run_id:
         return
     handoff = Path(ctx.tmpdir) / ".ship-route-exit-handoff.env"
     if not handoff.is_file():
         return
-    with suppress(Exception):
+    try:
         _ = _write_batch(
             log_root=log_root,
             skill="implement",
@@ -288,6 +344,9 @@ def _stage_ship_route_handoff(*, ctx: RunContext, log_root: Path) -> None:
             batch="ship-route-exit-handoff",
             input_file=str(handoff),
         )
+    except (OSError, ShipError, ValueError, json.JSONDecodeError) as exc:
+        if strict:
+            raise ShipError(f"ship route handoff staging failed: {exc}") from exc
 
 
 def _read_finalize_kv(*, tmpdir: Path, key: str) -> str:
@@ -463,8 +522,9 @@ def _reconcile_stalled_summary_backstop(*, ctx: RunContext, strict_final_report:
         raise ShipError(msg)
 
 
-def _stage_pre_commit(
-    *, runner: Runner,
+def _stage_local_checkpoint(
+    *,
+    runner: Runner,
     ctx: RunContext,
     log_root: Path,
     cwd: str | None = None,
@@ -473,7 +533,7 @@ def _stage_pre_commit(
 ) -> None:
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
-    if mode in {"refresh", "flush"}:
+    if mode in {"refresh", "checkpoint"}:
         _refresh_difficulty_record(ctx=ctx, log_root=log_root, cwd=cwd)
     if mode == "refresh":
         _render_execution_issues_batch(
@@ -586,11 +646,8 @@ def _preterminal_outcome_refresh_skip(ctx: RunContext) -> RefreshSkip | None:
     )
 
 
-def flush_logs_pre(
-    *, runner: Runner,
-    ctx: RunContext,
-    cwd: str | None = None,
-    strict_final_report: bool = False,
+def refresh_logs_checkpoint(
+    *, runner: Runner, ctx: RunContext, cwd: str | None = None, strict_final_report: bool = False
 ) -> RefreshSkip:
     """Refresh the mutable implement staging tree without publishing it."""
     skip = _pre_push_probe(ctx)
@@ -602,13 +659,8 @@ def flush_logs_pre(
     manifest = recovery.manifest
     log_root = Path(ctx.tmpdir) / "larch-logs"
     try:
-        _stage_pre_commit(
-            runner=runner,
-            ctx=ctx,
-            log_root=log_root,
-            cwd=cwd,
-            mode="refresh",
-            strict_final_report=strict_final_report,
+        _stage_local_checkpoint(
+            runner=runner, ctx=ctx, log_root=log_root, cwd=cwd, mode="refresh", strict_final_report=strict_final_report
         )
     except ShipError as exc:
         if strict_final_report:
@@ -631,11 +683,8 @@ def flush_logs_pre(
     return RefreshSkip(skipped=False, reason="")
 
 
-def flush_logs_post(
-    ctx: RunContext,
-    *,
-    merge_result: str | None = None,
-    runner: Runner | None = None,
+def refresh_postmerge_snapshot(
+    ctx: RunContext, *, merge_result: str | None = None, runner: Runner | None = None
 ) -> RefreshSkip:
     """Post-merge tmpdir-only flush; terminal publication remains Step 18-owned."""
     recovery = load_or_recover_manifest_checked(ctx)
@@ -688,57 +737,83 @@ def flush_logs_post(
 
 
 def finalize_postmerge_logs(
-    ctx: RunContext,
-    *,
-    merge_result: str | None = None,
-    runner: Runner | None = None,
+    ctx: RunContext, *, merge_result: str | None = None, runner: Runner | None = None
 ) -> RefreshSkip:
     """Central postmerge finalization path: recover, write done/pr, then report."""
-    return flush_logs_post(ctx, merge_result=merge_result, runner=runner)
+    return refresh_postmerge_snapshot(ctx, merge_result=merge_result, runner=runner)
 
 
 def capture_session_transcript(
-    *, ctx: RunContext,
-    runner: Runner,
-    defer_commit: bool = False,
-) -> Path | None:
-    """Copy refresh transcript into run tree with redaction (defer-commit parity)."""
+    *, ctx: RunContext, runner: Runner, defer_commit: bool = False, warning_step_label: str = "pre-push-refresh"
+) -> TranscriptCaptureResult:
+    """Copy the current transcript into the run tree and report the capture result."""
     _ = runner
     run_id = effective_run_id(ctx)
     if not run_id:
-        return None
+        return TranscriptCaptureResult(status="run-id-missing", path=None, source_configured=False)
     log_root = Path(ctx.tmpdir) / "larch-logs"
     issue_log = Path(ctx.tmpdir) / "execution-issues.md"
     source = os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")
     no_logs = _read_state_kv(state_file=ctx.state_file, key="NO_LOGS_COMMIT") or ("true" if ctx.no_logs_commit else "false")
+    existing = log_root / "implement" / run_id / "session-transcript.jsonl"
+    status = "source-not-configured"
+    omission_recorded = False
     if source:
-        _ = capture_transcript_main([
-            "--source-file",
-            source,
-            "--log-root",
-            str(log_root),
-            "--tmpdir",
-            str(ctx.tmpdir),
-            "--skill",
-            "implement",
-            "--run-id",
-            run_id,
-            "--no-logs-commit",
-            no_logs,
-            "--execution-issues-log",
-            str(issue_log),
-            "--warning-step-label",
-            "pre-push-refresh",
-            "--refresh-mode",
-            "true",
-            "--defer-commit",
-            "true" if defer_commit else "false",
-        ])
+        output = io.StringIO()
+        with redirect_stdout(output):
+            _ = capture_transcript_main(
+                [
+                    "--source-file",
+                    source,
+                    "--log-root",
+                    str(log_root),
+                    "--tmpdir",
+                    str(ctx.tmpdir),
+                    "--skill",
+                    "implement",
+                    "--run-id",
+                    run_id,
+                    "--no-logs-commit",
+                    no_logs,
+                    "--execution-issues-log",
+                    str(issue_log),
+                    "--warning-step-label",
+                    warning_step_label,
+                    "--refresh-mode",
+                    "true",
+                    "--defer-commit",
+                    "true" if defer_commit else "false",
+                ]
+            )
+        rendered = output.getvalue()
+        if rendered:
+            sys.stdout.write(rendered)
+        for line in rendered.splitlines():
+            if line.startswith("SESSION_TRANSCRIPT_STATUS="):
+                status = line.partition("=")[2].strip() or "unknown"
+                break
+    else:
+        print("SESSION_TRANSCRIPT_STATUS=source-not-configured")
+        if not existing.is_file():
+            omission_recorded = _capture_transcript_append_warning(
+                issues_log=issue_log,
+                step_label=warning_step_label,
+                status=status,
+                message=(
+                    "LARCH_CLAUDE_SOURCE_FILE was not configured; session-transcript.jsonl could not be refreshed."
+                ),
+            )
     # Do NOT copy session-transcript-refresh.txt into the run tree: it is a
     # volatile in-loop snapshot that duplicates the canonical batch in nearly
     # all runs (issue #3708 Phase 1).
     out = Path(ctx.tmpdir) / "session-transcript-refresh.txt"
-    return out if out.is_file() else None
+    return TranscriptCaptureResult(
+        status=status,
+        path=out if out.is_file() else (existing if existing.is_file() else None),
+        source_configured=bool(source),
+        artifact_present=existing.is_file(),
+        omission_recorded=omission_recorded,
+    )
 
 
 def _capture_transcript_append_warning(
@@ -746,12 +821,15 @@ def _capture_transcript_append_warning(
     step_label: str,
     status: str,
     message: str,
-) -> None:
+) -> bool:
     if issues_log is None:
-        return
+        return False
     entry = f"- **Step {step_label}: session-transcript status={status}:** {message}"
-    with suppress(OSError):
+    try:
         _append_execution_issue(log_file=issues_log, category="Warnings", entry=entry)
+    except OSError:
+        return False
+    return True
 
 
 def _capture_transcript_emit(
@@ -952,21 +1030,141 @@ def _refresh_context(*, tmpdir: Path, state_file: Path, run_id: str) -> RunConte
         state_file=str(state_file),
         no_logs_commit=_read_kv_file(path=state_file, key="NO_LOGS_COMMIT") == "true",
         merge_result=_read_kv_file(path=state_file, key="MERGE_RESULT"),
+        stall_tracking=_read_kv_file(path=state_file, key="STALL_TRACKING") == "true",
+        stall_step=_read_kv_file(path=state_file, key="STALL_STEP"),
     )
 
 
-def _emit_flush_failure_warning(result: CommandResult) -> int:
-    if result.returncode == 0:
-        return 0
-    detail = result.stderr.strip()
-    if detail:
-        print(
-            f"WARN: larch-log flush failed: rc={result.returncode}: {detail}",
-            file=sys.stderr,
+def _terminal_execution_issues_flush(*, ctx: RunContext, run_id: str) -> None:
+    log_root = Path(ctx.tmpdir) / "larch-logs"
+    issue_log = Path(ctx.tmpdir) / "execution-issues.md"
+    rc, status, _records, detail = execution_issues.flush_execution_issues_safety_net(
+        log_root=log_root,
+        run_id=run_id,
+        issue_log=issue_log,
+        step_label="18",
+        source_label="execution-issues.md terminal snapshot",
+    )
+    if rc != 0 or status not in {"ok", "skip", "no-records"}:
+        raise ShipError(
+            f"terminal execution-issues checkpoint failed: status={status} rc={rc} detail={detail or 'none'}"
         )
-    else:
-        print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
-    return result.returncode
+    batch = log_root / "implement" / run_id / "execution-issues.ndjson"
+    if not batch.exists():
+        batch.parent.mkdir(parents=True, exist_ok=True)
+        batch.touch()
+
+
+def _record_terminal_snapshot_failure(*, ctx: RunContext, message: str) -> None:
+    issue_log = Path(ctx.tmpdir) / "execution-issues.md"
+    bounded = " ".join(message.split())[:1000]
+    try:
+        _append_execution_issue(
+            log_file=issue_log, category="Tool Failures", entry=f"- **Step 18 terminal snapshot**: {bounded}"
+        )
+    except OSError:
+        return
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return
+    with suppress(OSError, ShipError):
+        _terminal_execution_issues_flush(ctx=ctx, run_id=run_id)
+
+
+def _verify_terminal_snapshot_files(*, ctx: RunContext, transcript: TranscriptCaptureResult) -> None:
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        raise ShipError("terminal snapshot verification requires a run id")
+    run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id
+    required = ("final-summary.md", "token-report.json", "timing-report.json", "execution-issues.ndjson")
+    missing = [name for name in required if not (run_dir / name).is_file()]
+    transcript_path = run_dir / "session-transcript.jsonl"
+    if transcript.source_configured and not transcript_path.is_file():
+        missing.append("session-transcript.jsonl")
+    if missing:
+        raise ShipError(f"terminal snapshot missing required files: {', '.join(missing)}")
+
+
+def prepare_terminal_snapshot(
+    *, runner: Runner, tmpdir: Path, run_id: str, cwd: str | None = None, no_logs_commit: bool = False
+) -> TerminalSnapshotResult:
+    """Prepare the complete mutable snapshot immediately before publication."""
+    if not validate_run_id_slug(run_id):
+        return TerminalSnapshotResult(
+            ok=False, transcript_status="not-attempted", error="terminal snapshot requires a valid run id"
+        )
+    state_file = tmpdir / "finalize-state.sh"
+    _load_refresh_session_env(tmpdir)
+    ctx = _refresh_context(tmpdir=tmpdir, state_file=state_file, run_id=run_id).with_(no_logs_commit=no_logs_commit)
+    transcript = TranscriptCaptureResult(status="not-attempted", path=None, source_configured=False)
+    log_root = tmpdir / "larch-logs"
+    run_dir = log_root / "implement" / run_id
+    try:
+        recovery = load_or_recover_manifest_checked(ctx)
+        if not recovery.recovery_ok:
+            raise ShipError("terminal manifest recovery failed")
+        run_dir.mkdir(parents=True, exist_ok=True)
+        _refresh_difficulty_record(ctx=ctx, log_root=log_root, cwd=cwd)
+        _write_final_report(runner=runner, ctx=ctx, skip_tracking_upsert=True)
+        _reconcile_stalled_summary_backstop(ctx=ctx, strict_final_report=True)
+        _render_ledger_reports(runner=runner, ctx=ctx, log_root=log_root, strict=True)
+        _render_token_timing_batches(ctx=ctx, log_root=log_root)
+        _stage_vendor_failure_diagnostics(ctx=ctx, log_root=log_root, strict=True)
+        _stage_invariant_ship_outcome(ctx=ctx, log_root=log_root)
+        _stage_guideline_ship_outcome(ctx=ctx, log_root=log_root)
+        _stage_ship_route_handoff(ctx=ctx, log_root=log_root, strict=True)
+        transcript = capture_session_transcript(ctx=ctx, runner=runner, defer_commit=True, warning_step_label="18")
+        if not transcript.ok:
+            raise ShipError(
+                f"terminal transcript refresh failed: status={transcript.status}; "
+                "the prior staged transcript was retained when available"
+            )
+        _terminal_execution_issues_flush(ctx=ctx, run_id=run_id)
+        _write_final_report(runner=runner, ctx=ctx, skip_tracking_upsert=True)
+        _reconcile_terminal_manifest_from_ctx(ctx)
+        recovery = load_or_recover_manifest_checked(ctx)
+        if not recovery.recovery_ok:
+            raise ShipError("terminal manifest reload failed")
+        steps_update = dict(recovery.manifest.steps_ran)
+        steps_update["step18"] = True
+        updates: dict[str, object] = {"steps_ran": steps_update}
+        if ctx.stall_tracking:
+            updates["stalled_at_step"] = ctx.stall_step or "unknown"
+        _ = update_manifest(ctx, **updates)
+        _verify_terminal_snapshot_files(ctx=ctx, transcript=transcript)
+    except (OSError, ShipError, ValueError, json.JSONDecodeError) as exc:
+        error = " ".join(str(exc).split()) or exc.__class__.__name__
+        _record_terminal_snapshot_failure(ctx=ctx, message=error)
+        return TerminalSnapshotResult(ok=False, transcript_status=transcript.status, error=error)
+    return TerminalSnapshotResult(ok=True, transcript_status=transcript.status)
+
+
+def terminal_snapshot_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py run-log prepare-terminal-snapshot", add_help=False)
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--repo-root", default="")
+    parser.add_argument("--no-logs-commit", choices=("true", "false"), default="false")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        print("TERMINAL_SNAPSHOT_STATUS=failed")
+        print("TERMINAL_SNAPSHOT_ERROR=usage-error")
+        return 2
+    tmpdir = Path(args.implement_tmpdir)
+    if not tmpdir.is_absolute() or not tmpdir.is_dir() or tmpdir.is_symlink():
+        print("TERMINAL_SNAPSHOT_STATUS=failed")
+        print("TERMINAL_SNAPSHOT_ERROR=invalid-implement-tmpdir")
+        return 2
+    cwd = args.repo_root or None
+    result = prepare_terminal_snapshot(
+        runner=proc, tmpdir=tmpdir, run_id=args.run_id, cwd=cwd, no_logs_commit=args.no_logs_commit == "true"
+    )
+    print(f"TERMINAL_SNAPSHOT_STATUS={'prepared' if result.ok else 'failed'}")
+    print(f"TERMINAL_SNAPSHOT_ERROR={result.error}")
+    if result.ok:
+        return 0
+    return config.EXIT_INTERNAL_ERROR
 
 
 def refresh_run_logs_main(argv: list[str]) -> int:
@@ -998,7 +1196,7 @@ def refresh_run_logs_main(argv: list[str]) -> int:
         return 0
     _load_refresh_session_env(tmpdir)
     ctx = _refresh_context(tmpdir=tmpdir, state_file=state_file, run_id=run_id)
-    skip = flush_logs_pre(runner=proc, ctx=ctx, cwd=str(Path.cwd()))
+    skip = refresh_logs_checkpoint(runner=proc, ctx=ctx, cwd=str(Path.cwd()))
     if skip.skipped:
         if skip.reason in {
             config.REFRESH_SKIP_COMMIT_FAILED,
@@ -1020,9 +1218,9 @@ def refresh_run_logs_main(argv: list[str]) -> int:
     return 0
 
 
-def larch_log_flush_main(argv: list[str]) -> int:
+def run_log_checkpoint_main(argv: list[str]) -> int:
     if argv:
-        print(f"python3 python/cli.py run-log flush: unknown argument: {argv[0]}", file=sys.stderr)
+        print(f"python3 python/cli.py run-log checkpoint: unknown argument: {argv[0]}", file=sys.stderr)
         return 0
     tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not tmpdir or os.environ.get("LARCH_NO_LOGS_COMMIT") == "true":
@@ -1049,9 +1247,11 @@ def larch_log_flush_main(argv: list[str]) -> int:
         repo_unavailable=False,
     )
     try:
-        _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, cwd=str(Path.cwd()), mode="flush")
+        _stage_local_checkpoint(runner=proc, ctx=ctx, log_root=log_root, cwd=str(Path.cwd()), mode="checkpoint")
     except Exception as exc:
-        print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
+        print(f"WARN: run-log checkpoint failed: {exc}", file=sys.stderr)
         return config.EXIT_INTERNAL_ERROR
     return 0
+
+
 # pyright: reportArgumentType=false

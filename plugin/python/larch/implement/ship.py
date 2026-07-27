@@ -350,20 +350,11 @@ def _destall_pre_pr_reentry(
 
 
 def _flush_guideline_outcome_before_pr(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str,
-    resume: ResumePlan,
-    require_invariant_match: bool = False,
+    *, runner: Runner, ctx: RunContext, cwd: str, resume: ResumePlan, require_invariant_match: bool = False
 ) -> None:
     step = "pr-create-guideline-outcome-refresh"
     try:
-        refresh = run_log_flush.flush_logs_pre(
-            runner=runner,
-            ctx=ctx.with_(state_file=None),
-            cwd=cwd,
-        )
+        refresh = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
     except (OSError, ShipError) as exc:
         detail = logging_util.sanitize_diagnostic_line(str(exc).strip())
         refresh = run_log_manifest.RefreshSkip(
@@ -1373,12 +1364,7 @@ def _emergency_repair_transient_recovery_result(
     )
 
 
-def run_ship(
-    ctx: RunContext,
-    *,
-    runner: Runner = proc,
-    cwd: str | None = None,
-) -> ShipResult:
+def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) -> ShipResult:
     prior_state_file = os.environ.get("SHIP_PR_STATE_FILE")
     state_file = ctx.state_file or (str(Path(ctx.tmpdir) / "ship-pr-state.sh") if ctx.tmpdir else "")
     if state_file:
@@ -1479,7 +1465,9 @@ def run_ship(
             if not preflight.ok:
                 postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
             else:
-                refresh: run_log_manifest.RefreshSkip = run_log_flush.flush_logs_pre(runner=runner, ctx=fresh_context.with_(state_file=None), cwd=repo_root)
+                refresh: run_log_manifest.RefreshSkip = run_log_flush.refresh_logs_checkpoint(
+                    runner=runner, ctx=fresh_context.with_(state_file=None), cwd=repo_root
+                )
                 if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
                     _breadcrumb(step="warning", detail=f"postbump refresh skipped: {refresh.reason}")
                 postbump = finalize.postbump(runner=runner, ctx=fresh_context, cwd=repo_root)

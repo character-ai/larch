@@ -95,8 +95,6 @@ def _guideline_outcome_payload(
     }
 
 
-
-
 def test_write_batch_uses_cache_scratch_when_log_root_is_under_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -301,15 +299,14 @@ def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert calls["nofollow"] is True
 
 
-def test_flush_logs_pre_state_file_less_does_not_require_repo_cwd(tmp_path: Path) -> None:
+def test_refresh_logs_checkpoint_state_file_less_does_not_require_repo_cwd(tmp_path: Path) -> None:
     runner = RecordingRunner()
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path), cwd=None)
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path), cwd=None)
     assert not skip.skipped
 
 
-def test_flush_logs_pre_state_file_less_stages_without_git_commit(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_refresh_logs_checkpoint_state_file_less_stages_without_git_commit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runner = RecordingRunner()
 
@@ -328,24 +325,24 @@ def test_flush_logs_pre_state_file_less_stages_without_git_commit(
 
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
     assert runner.git_commits == 0
 
 
-def test_flush_logs_pre_skips_post_merge(tmp_path: Path) -> None:
+def test_refresh_logs_checkpoint_skips_post_merge(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("MERGE_RESULT=merged\nRUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner()
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path, str(state)))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path, str(state)))
     assert skip.reason == config.REFRESH_SKIP_POST_MERGE
 
 
-def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
+def test_refresh_postmerge_snapshot_no_git_commit(tmp_path: Path) -> None:
     runner = RecordingRunner()
     ctx = _ctx(tmp_path).with_(pr_number=17)
     _ = run_log_manifest.init_run(ctx)
-    _ = run_log_flush.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_MERGED)
+    _ = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=config.MERGE_RESULT_MERGED)
     assert runner.git_commits == 0
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -354,9 +351,8 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     assert "pr_number" not in manifest["steps_ran"]
 
 
-def test_flush_logs_post_does_not_write_done_manifest_before_reports(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_refresh_postmerge_snapshot_does_not_write_done_manifest_before_reports(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     ctx = _ctx(tmp_path).with_(pr_number=17)
     _ = run_log_manifest.init_run(ctx)
@@ -366,10 +362,8 @@ def test_flush_logs_post_does_not_write_done_manifest_before_reports(
 
     monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)
     monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)  # type: ignore[arg-type]
-    skip = run_log_flush.flush_logs_post(
-        ctx,
-        merge_result=config.MERGE_RESULT_MERGED,
-        runner=RecordingRunner(),
+    skip = run_log_flush.refresh_postmerge_snapshot(
+        ctx, merge_result=config.MERGE_RESULT_MERGED, runner=RecordingRunner()
     )
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -378,9 +372,8 @@ def test_flush_logs_post_does_not_write_done_manifest_before_reports(
     assert "pr_number" not in manifest
 
 
-def test_flush_logs_post_manifest_write_oserror_returns_recovery_skip(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_refresh_postmerge_snapshot_manifest_write_oserror_returns_recovery_skip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     ctx = _ctx(tmp_path)
     _ = run_log_manifest.init_run(ctx)
@@ -390,15 +383,15 @@ def test_flush_logs_post_manifest_write_oserror_returns_recovery_skip(
 
     monkeypatch.setattr(run_log_manifest, "_write_manifest", boom)
     monkeypatch.setattr(run_log_flush, "_write_manifest", boom)  # type: ignore[arg-type]
-    skip = run_log_flush.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_MERGED)
+    skip = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=config.MERGE_RESULT_MERGED)
     assert skip.skipped is True
     assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_flush_logs_post_leaves_partial_on_failed_merge(tmp_path: Path) -> None:
+def test_refresh_postmerge_snapshot_leaves_partial_on_failed_merge(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _ = run_log_manifest.init_run(ctx)
-    _ = run_log_flush.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_ERROR)
+    _ = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=config.MERGE_RESULT_ERROR)
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_PARTIAL
@@ -658,18 +651,12 @@ def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
     assert run_logs.path_under_repo(repo_root=tmp_path, rel_path="docs/plan.md")
 
 
-@pytest.mark.parametrize(
-    "merge_result",
-    ["merged", "admin_merged", "already_merged"],
-)
-def test_flush_logs_pre_skips_post_merge_matrix(
-    tmp_path: Path,
-    merge_result: str,
-) -> None:
+@pytest.mark.parametrize("merge_result", ["merged", "admin_merged", "already_merged"])
+def test_refresh_logs_checkpoint_skips_post_merge_matrix(tmp_path: Path, merge_result: str) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text(f"MERGE_RESULT={merge_result}\nRUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner()
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path, str(state)))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path, str(state)))
     assert skip.reason == config.REFRESH_SKIP_POST_MERGE
 
 
@@ -681,15 +668,11 @@ def test_flush_logs_pre_skips_post_merge_matrix(
         ("RUN_ID=../bad\n", config.REFRESH_SKIP_INVALID_RUN_ID),
     ],
 )
-def test_flush_logs_pre_skip_reason_tokens(
-    tmp_path: Path,
-    line: str,
-    reason: str,
-) -> None:
+def test_refresh_logs_checkpoint_skip_reason_tokens(tmp_path: Path, line: str, reason: str) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text(line, encoding="utf-8")
     runner = RecordingRunner()
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path, str(state)))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=_ctx(tmp_path, str(state)))
     assert skip.skipped
     assert skip.reason == reason
 
@@ -948,9 +931,8 @@ def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:
     assert not (run_dir / "timing-report-refresh.json").exists()
 
 
-def test_flush_logs_pre_happy_path_stages_without_git_commit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_happy_path_stages_without_git_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -987,11 +969,11 @@ def test_flush_logs_pre_happy_path_stages_without_git_commit(
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
     runner = RecordingRunner()
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx, cwd=str(tmp_path / "repo"))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
     assert not commits
     manifest = json.loads(
@@ -1002,9 +984,8 @@ def test_flush_logs_pre_happy_path_stages_without_git_commit(
     assert "step9a1" not in manifest["steps_ran"]
 
 
-def test_flush_logs_pre_update_manifest_failure_returns_recovery_skip(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_refresh_logs_checkpoint_update_manifest_failure_returns_recovery_skip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1016,15 +997,12 @@ def test_flush_logs_pre_update_manifest_failure_returns_recovery_skip(
 
     monkeypatch.setattr(run_log_manifest, "update_manifest", fail_update)
     monkeypatch.setattr(run_log_flush, "update_manifest", fail_update)  # type: ignore[arg-type]
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert skip.skipped is True
     assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_flush_logs_pre_does_not_call_git_commit(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_refresh_logs_checkpoint_does_not_call_git_commit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
@@ -1040,7 +1018,7 @@ def test_flush_logs_pre_does_not_call_git_commit(
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert skip.skipped is False
 
 
@@ -1091,7 +1069,6 @@ def test_step9a1_heuristic_matrix(
     assert run_log_flush._step9a1_heuristic(ctx) is expected  # pyright: ignore[reportPrivateUsage]
 
 
-
 def test_step9a1_heuristic_manifest_explicit_values(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1105,9 +1082,8 @@ def test_step9a1_heuristic_manifest_explicit_values(tmp_path: Path) -> None:
     assert run_log_flush._step9a1_heuristic(ctx) is False  # pyright: ignore[reportPrivateUsage]
 
 
-def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_downgrades_stale_step9a1_true_with_ndjson_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1127,23 +1103,23 @@ def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
+
     def noop_commit(*_args: object, **_kwargs: object) -> CommandResult:
         return CommandResult(("",), 0, "", "", 0.0)
 
     monkeypatch.setattr(run_log_commit, "_commit_run", noop_commit)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_log_flush, "_commit_run", noop_commit, raising=False)  # type: ignore[arg-type]
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip.skipped
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["steps_ran"]["step9a1"] is False
 
 
-def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_multi_flush_shipping_then_pr_created(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
@@ -1166,11 +1142,11 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
         "_commit_run",
         lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0), raising=False)  # type: ignore[arg-type]
 
-    skip1 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
+    skip1 = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip1.skipped
     final1 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     heading1 = final1.split(":", 1)[-1].split("\n", 1)[0].strip()
@@ -1182,7 +1158,9 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
         encoding="utf-8",
     )
 
-    skip2 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+    skip2 = run_log_flush.refresh_logs_checkpoint(
+        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
+    )
     assert not skip2.skipped
     final2 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     heading2 = final2.split(":", 1)[-1].split("\n", 1)[0].strip()
@@ -1192,10 +1170,8 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
     assert manifest["steps_ran"].get("step8") is True
 
 
-
-def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_rewrites_stalled_summary_after_clean_pr_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
@@ -1225,7 +1201,9 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)  # type: ignore[arg-type]
 
-    skip1 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+    skip1 = run_log_flush.refresh_logs_checkpoint(
+        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
+    )
     assert not skip1.skipped
     stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert ": stalled" in stalled_summary
@@ -1237,7 +1215,9 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
         encoding="utf-8",
     )
 
-    skip2 = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+    skip2 = run_log_flush.refresh_logs_checkpoint(
+        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
+    )
 
     assert not skip2.skipped
     recovered_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
@@ -1469,9 +1449,8 @@ def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
     assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
 
 
-def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_retains_reloaded_step8_after_final_report_reconcile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1494,21 +1473,20 @@ def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_log_commit, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0), raising=False)  # type: ignore[arg-type]
 
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
 
     assert not skip.skipped
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["steps_ran"]["step8"] is True
 
 
-def test_flush_logs_pre_strict_final_report_error_returns_recovery_failed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_strict_final_report_error_returns_recovery_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1520,15 +1498,16 @@ def test_flush_logs_pre_strict_final_report_error_returns_recovery_failed(
 
     monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)  # type: ignore[arg-type]
 
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+    skip = run_log_flush.refresh_logs_checkpoint(
+        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
+    )
 
     assert skip.skipped
     assert skip.reason == run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED
 
 
-def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refresh_logs_checkpoint_strict_final_report_skips_tracking_upsert(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1552,12 +1531,14 @@ def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_log_commit, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0), raising=False)  # type: ignore[arg-type]
 
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+    skip = run_log_flush.refresh_logs_checkpoint(
+        runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True
+    )
 
     assert not skip.skipped
     assert seen == [True, True]
@@ -1610,10 +1591,7 @@ def test_read_state_kv_unreadable_file_returns_empty(tmp_path: Path) -> None:
     assert run_log_manifest.read_state_kv(state_file=str(state), key="RUN_ID") == ""
 
 
-def test_flush_logs_pre_stages_without_repo_cwd(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_refresh_logs_checkpoint_stages_without_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
@@ -1631,7 +1609,7 @@ def test_flush_logs_pre_stages_without_repo_cwd(
     monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
     monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
     runner = RecordingRunner()
-    skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx, cwd=None)
+    skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx, cwd=None)
     assert not skip.skipped
 
 
@@ -2125,10 +2103,8 @@ def test_larch_log_append_rebases_root_relative_log_root_and_record_file(
     assert (session / "larch-logs" / "implement" / "run-abc" / "execution-issues.ndjson").read_text(encoding="utf-8") == '{"message":"ok"}\n'
 
 
-def test_larch_log_flush_warns_when_stage_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+def test_run_log_checkpoint_warns_when_stage_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.delenv("LARCH_NO_LOGS_COMMIT", raising=False)
@@ -2137,19 +2113,17 @@ def test_larch_log_flush_warns_when_stage_fails(
     def fail_stage(*_args: object, **_kwargs: object) -> None:
         raise OSError("stage unavailable")
 
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", fail_stage)
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", fail_stage)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", fail_stage)
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", fail_stage)  # type: ignore[arg-type]
 
-    rc = run_log_flush.larch_log_flush_main([])
+    rc = run_log_flush.run_log_checkpoint_main([])
 
     assert rc == config.EXIT_INTERNAL_ERROR
-    assert "WARN: larch-log flush failed: stage unavailable" in capsys.readouterr().err
+    assert "WARN: run-log checkpoint failed: stage unavailable" in capsys.readouterr().err
 
 
 def test_larch_log_flush_does_not_call_git_commit(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.delenv("LARCH_NO_LOGS_COMMIT", raising=False)
@@ -2164,12 +2138,12 @@ def test_larch_log_flush_does_not_call_git_commit(
             0.0,
         )
 
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_log_commit, "_commit_run", fail_commit)
-    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_stage_local_checkpoint", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit, raising=False)
 
-    rc = run_log_flush.larch_log_flush_main([])
+    rc = run_log_flush.run_log_checkpoint_main([])
 
     assert rc == 0
     assert capsys.readouterr().err == ""
@@ -2361,7 +2335,6 @@ def test_write_round_owns_dynamic_archetype_inside_round(tmp_path: Path) -> None
     assert not (tmp_path / "larch-logs" / "shared").exists()
 
 
-
 def test_write_round_commits_panel_prompt_sizes(tmp_path: Path) -> None:
     source = tmp_path / "source-round"
     source.mkdir()
@@ -2388,6 +2361,7 @@ def test_write_round_commits_panel_prompt_sizes(tmp_path: Path) -> None:
     committed = tmp_path / "larch-logs" / "implement" / "run-abc" / "round-1" / "panel-prompt-sizes.tsv"
     assert committed.is_file()
     assert "prompt_bytes" in committed.read_text(encoding="utf-8")
+
 
 def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
     assert run_log_batch._round_artifact_included("voting-tally-degraded-attempt-1.md")  # pyright: ignore[reportPrivateUsage]
@@ -2573,16 +2547,15 @@ def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
     assert ["git", "clean", "-fd", "--", f"{rel}/token-report-refresh.json"] in runner.calls
 
 
-def test_flush_logs_pre_does_not_probe_git_volatile_state(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_refresh_logs_checkpoint_does_not_probe_git_volatile_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     def fake_commit(*_a: object, **_k: object) -> CommandResult:
         return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
 
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit, raising=False)
-    skip = run_log_flush.flush_logs_pre(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
+    skip = run_log_flush.refresh_logs_checkpoint(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
 
 
@@ -3255,16 +3228,13 @@ def _write_run_manifest(run_dir: Path, *, skill: str, steps_ran: dict[str, objec
 def test_artifact_present_or_waived_matches_implement_capture_warning(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
     _write_run_manifest(run_dir, skill="implement")
-    body = "- **Step 7a: session-transcript status=write-failed:** source file disappeared"
+    body = "- **Step 18: session-transcript status=write-failed:** source file disappeared"
     _ = (run_dir / "execution-issues.ndjson").write_text(
         json.dumps({"category": "Warnings", "body": body}) + "\n",
         encoding="utf-8",
     )
     artifact = run_log_manifest.RequiredArtifact(
-        slug="session-transcript",
-        relative_path="session-transcript.jsonl",
-        skill="implement",
-        condition="step7a",
+        slug="session-transcript", relative_path="session-transcript.jsonl", skill="implement", condition="step18"
     )
 
     assert run_log_manifest.artifact_present_or_waived(
@@ -3300,14 +3270,11 @@ def test_artifact_present_or_waived_ignores_live_tmpdir_warning(tmp_path: Path) 
     _write_run_manifest(run_dir, skill="implement")
     live_issue_log = tmp_path / "execution-issues.md"
     _ = live_issue_log.write_text(
-        "### Warnings\n- **Step 7a: session-transcript status=write-failed:** source file disappeared\n",
+        "### Warnings\n- **Step 18: session-transcript status=write-failed:** source file disappeared\n",
         encoding="utf-8",
     )
     artifact = run_log_manifest.RequiredArtifact(
-        slug="session-transcript",
-        relative_path="session-transcript.jsonl",
-        skill="implement",
-        condition="step7a",
+        slug="session-transcript", relative_path="session-transcript.jsonl", skill="implement", condition="step18"
     )
 
     assert not run_log_manifest.artifact_present_or_waived(
@@ -4303,4 +4270,6 @@ def test_log_append_failure_sanitizes_diagram_capture(tmp_path: Path) -> None:
     assert "->>" not in text
     assert "subgraph" not in text
     assert "stderr" in text
+
+
 # pyright: reportUnusedCallResult=false

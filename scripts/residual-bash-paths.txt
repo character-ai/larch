@@ -98,6 +98,7 @@ skills/implement/scripts/step-7a.sh
 skills/implement/scripts/step-8-seed-initial.sh
 skills/implement/scripts/step-8-ship.sh
 skills/implement/scripts/step-18.sh
+skills/implement/scripts/step-19.sh
 skills/implement/scripts/step-architectural-guidelines-write-compose.sh
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh
 skills/implement/scripts/step-architectural-invariants-write-compose.sh

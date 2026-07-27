@@ -182,12 +182,13 @@ remove stale tail sidecars. Batch collection deduplicates repeated root-cause
 tails.
 
 Per-slot `*.failure-diag` files combine bounded diagnostic sources for local
-recovery. They remain session-private. The implement pre-ship flush redacts
-their selected content into `vendor-failure-diagnostics.txt`, which becomes a
-published run-log batch. The per-slot byte cap is owned by
-`vendor_failure_diag_byte_cap`. The composed batch has no second aggregate
-cap, so the slot cap and registered-slot set bound its inputs. Runs that stop
-before the flush and research validation runs keep these diagnostics local.
+recovery. They remain session-private. Implement Step 18 terminal snapshot
+preparation redacts their selected content into
+`vendor-failure-diagnostics.txt`, which becomes a published run-log batch. The
+per-slot byte cap is owned by `vendor_failure_diag_byte_cap`. The composed batch
+has no second aggregate cap, so the slot cap and registered-slot set bound its
+inputs. Paths that do not reach terminalization and research validation runs
+keep these diagnostics local.
 
 CI and lint repair surfaces pass only bounded, redacted evidence to delegated
 fixers. Design and ship diagnostics persist raw captures only in the session
@@ -331,14 +332,17 @@ published cache, so pause rejects disabled storage before it writes a GitHub
 marker. Neither mode creates log branches, commits, pushes, pull requests, or
 merges.
 
-For `/implement`, intermediate flushes update only the session staging tree.
-Step 18 captures the transcript and performs a final execution-issues flush.
-Enabled mode validates completeness and scrubs the full tree before creating
-the archive. Teardown then requires a verified remote object and unpacked local
-cache. Disabled mode terminalizes without archive or cache fields and reports
-`RUN_LOG_PUBLICATION=skipped-disabled`. A final flush, identity, upload, or
-cache-verification failure returns nonzero and retains the session plus any
-content-pinned pending archive for retry.
+For `/implement`, intermediate writes, appends, refreshes, and checkpoints
+update only the session staging tree. Step 18 closes the ledgers, rebuilds the
+complete terminal snapshot, recaptures the transcript whenever a source is
+configured, and performs the final execution-issues append. Enabled mode
+validates completeness and scrubs the full tree before creating the archive.
+Disabled mode terminalizes without archive or cache fields and reports
+`RUN_LOG_PUBLICATION=skipped-disabled`; explicit `--no-logs-commit` reports
+`skipped-suppressed`. A snapshot, identity, upload, or cache-verification
+failure returns nonzero, does not authorize Step 19 cleanup, and retains the
+session plus any content-pinned pending archive for retry. Step 19 requires the
+terminalization record and performs no log writes.
 
 ## Public GitHub Publication
 

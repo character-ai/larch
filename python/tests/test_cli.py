@@ -336,18 +336,39 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     cases = [
         (["dirty-tree", "checkpoint"], "larch.state.dirty_tree", "checkpoint_main"),
         (["checks", "repair-loop", "--help"], "larch.implement.checks", "checks_repair_loop_main"),
-        (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "larch.state.session_env", "resolve_implement_tmpdir_main"),
+        (
+            ["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"],
+            "larch.state.session_env",
+            "resolve_implement_tmpdir_main",
+        ),
         (["ship", "pre-driver"], "larch.implement.implement_dispatch", "ship_pre_driver_main"),
-        (["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"], "larch.implement.implement_dispatch", "ship_pre_fix_rebase_main"),
+        (
+            ["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"],
+            "larch.implement.implement_dispatch",
+            "ship_pre_fix_rebase_main",
+        ),
         (["ship", "route-exit"], "larch.implement.implement_dispatch", "ship_route_exit_main"),
-        (["architectural-assessment", "materialize", "--kind", "guidelines"], "larch.implement.architectural_assessment", "materialize_main"),
-        (["architectural-assessment", "submit", "--kind", "guidelines", "--state", "clean", "--note-file", "/tmp/x"], "larch.implement.architectural_assessment", "submit_main"),
+        (
+            ["architectural-assessment", "materialize", "--kind", "guidelines"],
+            "larch.implement.architectural_assessment",
+            "materialize_main",
+        ),
+        (
+            ["architectural-assessment", "submit", "--kind", "guidelines", "--state", "clean", "--note-file", "/tmp/x"],
+            "larch.implement.architectural_assessment",
+            "submit_main",
+        ),
         (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
         (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
         (["implement", "step-6-entry"], "larch.implement.implement_dispatch", "step6_entry_main"),
         (["implement", "step-8-oos-checkpoint"], "larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),
-        (["implement", "step-18-gate-finalize"], "larch.implement.implement_dispatch", "step_18_gate_finalize_main"),
+        (
+            ["implement", "step-18-gate-logs-flush"],
+            "larch.implement.implement_dispatch",
+            "step_18_gate_logs_flush_main",
+        ),
         (["implement", "step-18"], "larch.implement.implement_dispatch", "step_18_main"),
+        (["implement", "step-19"], "larch.implement.implement_dispatch", "step_19_main"),
         (["run-log", "validate-run-id", "--run-id=-abc123"], "larch.report.run_logs", "larch_log_validate_run_id_main"),
     ]
     for argv, module_name, func_name in cases:

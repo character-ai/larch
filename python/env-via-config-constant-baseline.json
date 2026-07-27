@@ -1207,7 +1207,7 @@
   },
   {
     "file": "larch/report/run_log_flush.py",
-    "qualified_symbol": "larch_log_flush_main",
+    "qualified_symbol": "run_log_checkpoint_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "get",
@@ -1216,7 +1216,7 @@
   },
   {
     "file": "larch/report/run_log_flush.py",
-    "qualified_symbol": "larch_log_flush_main",
+    "qualified_symbol": "run_log_checkpoint_main",
     "env_name": "LARCH_NO_LOGS_COMMIT",
     "constant": "ENV_LARCH_NO_LOGS_COMMIT",
     "access": "get",

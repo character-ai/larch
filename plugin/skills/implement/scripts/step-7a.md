@@ -1,6 +1,6 @@
 # step-7a.sh
 
-`step-7a.sh` is the direct `/implement` Step 7a orchestration helper; active prompt-side Step 7a now launches the Python entrypoint with `--bgjob-launch true`. It rehydrates session context, handles code-flow diagram generation and `larch:diagrams` comment upsert, runs the 7a.r rebase checkpoint, and performs the pre-ship run-log flush before Step 8.
+`step-7a.sh` is the direct `/implement` Step 7a orchestration helper; active prompt-side Step 7a launches the Python entrypoint with `--bgjob-launch true`. It rehydrates session context, handles code-flow diagram generation and `larch:diagrams` comment upsert, runs the 7a.r rebase checkpoint, and checkpoints pending execution issues before Step 8.
 
 ## Interface
 
@@ -22,11 +22,10 @@ skills/implement/scripts/step-7a.sh \
 | `DIAGRAM_STATUS` | `ok`, `skipped`, `failed`, or `skip` (`skip` means the small/non-runtime classifier skipped generation) |
 | `DIAGRAM_PATH` | Absolute path to `code-flow-diagram.md`, or empty |
 | `COMMENT_URL` | Tracking issue comment URL, or empty when upsert is gated, skipped, or failed |
-| `SESSION_TRANSCRIPT_STATUS` | Relayed `run-log capture-transcript` status lines, when emitted |
-| `LOG_FLUSH_STATUS` | `ok`, `degraded`, or `skipped-no-logs-commit`; rebase failure emits the same real flush status as success paths |
+| `LOG_CHECKPOINT_STATUS` | `ok`, `degraded`, or `skip`; this is a local execution-issues checkpoint and never publication |
 | `STEP_7A_BAIL_REASON` | Empty on non-argument paths; `argv`, `missing-implement-tmpdir`, or `invalid-implement-tmpdir` on argument validation errors |
 
-The helper re-emits the `scripts/larch.sh push checkpoint-probe` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
+The helper re-emits the rebase checkpoint-probe KV envelope before its final KV tail.
 
 ## Exit Codes
 
@@ -40,11 +39,11 @@ The helper re-emits the `scripts/larch.sh push checkpoint-probe` and `run-log ca
 
 ## Bail Reasons
 
-Argument validation may emit `argv`, `missing-implement-tmpdir`, or `invalid-implement-tmpdir`. Diagram generation, comment upsert, rebase probe, and log flush degradation do not set a bail reason; they append warnings or tool failures and continue.
+Argument validation may emit `argv`, `missing-implement-tmpdir`, or `invalid-implement-tmpdir`. Diagram generation, comment upsert, rebase probe, and checkpoint degradation do not set a bail reason; they append warnings or tool failures and continue.
 
 ## Invariants
 
-- Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, Code Flow generation, shared diagrams-comment upsert, 7a.r rebase probe, pre-ship log flush, final KV tail.
+- Phases stay in this order: rehydrate, token/timing marks, classifier, Code Flow generation, shared diagrams-comment upsert, 7a.r rebase probe, execution-issues checkpoint, final KV tail.
 - The classifier, diagram generator, and 7a.r rebase probe use module-level `base_remote` / `base_ref`, defaulting to `origin/main` and switching to `upstream/main` when `--forked-target true` is on argv or when `LARCH_FORKED_TARGET=true` is rehydrated from `$IMPLEMENT_TMPDIR/session-env.sh` during session-key lookup.
 - `LARCH_FORKED_TARGET` has no direct shell-environment fallback; only argv and the session-env file are honored.
 - When `REPO` or `UPSTREAM_REPO` is present in `$IMPLEMENT_TMPDIR/session-env.sh`, Step 7a threads the resolved owner/repo to `python/cli.py diagrams upsert` via `--repo`.
@@ -52,7 +51,8 @@ Argument validation may emit `argv`, `missing-implement-tmpdir`, or `invalid-imp
 - When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
-- The pre-ship log flush runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still flushing diagnostics when inputs allow.
+- The local execution-issues checkpoint runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still staging pending issues when inputs allow.
+- Step 7a does not render terminal token, timing, vendor, or transcript batches and never invokes the retired `run-log commit` command. Step 18 owns that complete snapshot.
 - The helper does not write a `diagrams` larch-log batch.
 - With `--bgjob-launch true`, the Python entrypoint truncates the merge-result env and starts bgjob step slug `implement-step7a`. The child mirrors required KVs into the merge-result env for the final bgjob `DONE` gate.
 
@@ -72,9 +72,3 @@ Keep this file aligned with:
 - `skills/implement/SKILL.md` Step 7a
 - `skills/implement/scripts/test-step-7a.sh`
 - `python/tests/implement/test_step_7a.py` (behavioral authority)
-
-## Vendor failure-diagnostics flush (#3713)
-
-Calls `scripts/flush-vendor-failure-diagnostics.sh` (best-effort, no commit)
-before terminal archive publication so the `vendor-failure-diagnostics` batch carries any
-vendor-agent failure carriers staged this run. No-op when no failures occurred.

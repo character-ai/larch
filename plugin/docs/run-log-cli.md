@@ -37,8 +37,9 @@ make a log public-safe. See the canonical
 - `run-log append`
 - `run-log exists`
 - `run-log manifest`
-- `run-log flush`
+- `run-log checkpoint`
 - `run-log refresh`
+- `run-log prepare-terminal-snapshot`
 - `run-log capture-transcript`
 - `run-log verify-completeness`
 - `run-log append-entry`
@@ -166,13 +167,25 @@ an implement refresh now updates only the mutable session staging tree. It
 does not commit or publish that snapshot. Skip and failure paths emit
 `REFRESH_COMMITTED=false REASON=<token>`.
 
+`run-log checkpoint` stages a narrow mutable recovery snapshot. It does not
+terminalize the lifecycle or publish an archive.
+
+`run-log prepare-terminal-snapshot` is the Step 18 preparation owner. After the
+closing token and timing marks, it refreshes the final summary, token and timing
+reports, vendor diagnostics, architectural outcome batches, ship handoff,
+session transcript, execution issues, and manifest reachability. It emits
+`TERMINAL_SNAPSHOT_STATUS=prepared|failed` and the exact
+`SESSION_TRANSCRIPT_STATUS`. Failure returns nonzero and preserves staging.
+
 `run-log capture-transcript` always exits 0 for terminal statuses and emits
 `SESSION_TRANSCRIPT_STATUS=<status>`.
 
-Implement Step 18 captures the transcript before its final execution-issues
-flush. A failed final flush or enabled archive publication returns nonzero and
-retains the session. Teardown accepts either a verified remote object plus
-unpacked cache or successful `skipped-disabled` terminalization.
+Implement Step 18 always attempts transcript capture when a source is
+configured, then appends the final execution-issues tail. A failed snapshot or
+enabled archive publication returns nonzero and retains the session. Step 19
+cleanup requires `$IMPLEMENT_TMPDIR/.run-log-terminalized`, which Step 18 writes
+only after a verified remote object plus unpacked cache, successful
+`skipped-disabled` terminalization, or explicit `skipped-suppressed` state.
 
 `verify skill-called` preserves the `VERIFIED=true|false` and `REASON=<token>`
 contract. Malformed regex faults exit 1 with stderr only.
@@ -211,13 +224,14 @@ dividing by summed cache-read.
 ## Implement archive publication
 
 Step 0 adopts `$IMPLEMENT_TMPDIR/larch-logs` into the lifecycle under the
-implement run ID. Step 18 runs the matching lifecycle terminal verb after its
-execution-issue and transcript safety nets. The shared terminal owner validates
-and sanitizes that final staging tree when publication is enabled. Enabled
-success creates one immutable remote object and one validated unpacked cache
-directory. A failed upload returns nonzero, retains the durable pending archive,
-and stops teardown. Re-entry retries the content-pinned pending archive.
-Disabled success creates none of those artifacts and cleans staging.
+implement run ID. Step 18 prepares the complete final snapshot, then runs the
+matching lifecycle terminal verb exactly once. The shared terminal owner
+validates and sanitizes that final staging tree when publication is enabled.
+Enabled success creates one immutable remote object and one validated unpacked
+cache directory. A failed upload returns nonzero, retains the durable pending
+archive, and blocks Step 19. Re-entry retries the content-pinned pending
+archive. Disabled success creates none of those artifacts and records its
+terminal state before Step 19 removes session material.
 
 ## Git isolation
 

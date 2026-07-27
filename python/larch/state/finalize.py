@@ -18,7 +18,6 @@ from typing import cast
 from larch.core import config, process_identity
 from larch import io as larch_io
 from larch.bgjob import registry as bgjob_registry
-from larch.issue import execution_issues
 from larch.report import progress_file
 from larch.git import gh
 from larch.git import git
@@ -588,51 +587,6 @@ def _write_stalled_sentinel(
     return True
 
 
-def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:
-    _ = runner, cwd
-    run_id = run_log_manifest.effective_run_id(ctx)
-    if not run_id or ctx.repo_unavailable:
-        return True
-    run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id
-    writer = logging_util.BreadcrumbWriter()
-    try:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        issue_log = Path(ctx.tmpdir) / "execution-issues.md"
-        log_root = Path(ctx.tmpdir) / "larch-logs"
-        rc, _status, _records, _append_log = execution_issues.flush_execution_issues_safety_net(
-            log_root=log_root,
-            run_id=run_id,
-            issue_log=issue_log,
-            step_label="teardown",
-            source_label="execution-issues.md teardown safety-net",
-        )
-        if rc != 0:
-            writer.emit(
-                f"teardown log flush: execution-issues safety net failed: exit {rc}",
-                quiet=False,
-            )
-    except OSError as exc:
-        writer.emit(f"teardown log flush: execution-issues safety net failed: {exc}", quiet=False)
-    try:
-        recovery = run_log_manifest.load_or_recover_manifest_checked(ctx)
-    except (OSError, ShipError) as exc:
-        writer.emit(f"teardown log flush: manifest recovery failed: {exc}", quiet=False)
-        recovery = run_log_manifest.ManifestRecovery(
-            run_log_manifest.Manifest(status=config.MANIFEST_STATUS_PARTIAL, version="1", run_id=run_id, steps_ran={}),
-            recovery_ok=False,
-        )
-    if recovery.recovery_ok and ctx.stall_tracking:
-        try:
-            _ = run_log_manifest.update_manifest(
-                ctx,
-                stalled_at_step=ctx.stall_step or "unknown",
-            )
-        except (OSError, ShipError) as exc:
-            writer.emit(f"teardown log flush: stalled manifest update failed: {exc}", quiet=False)
-            recovery = run_log_manifest.ManifestRecovery(recovery.manifest, recovery_ok=False)
-    return recovery.recovery_ok
-
-
 _STALE_LIVE_COVERAGE_MISMATCH = "coverage artifact does not match live repository inputs"
 
 
@@ -674,12 +628,7 @@ def _teardown_disposition_link_kind(
         return "part-of" if record and record.disposition == "proceed-partial" else "closes"
 
 
-def teardown(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str | None = None,
-) -> FinalizeResult:
+def teardown(*, runner: Runner, ctx: RunContext, cwd: str | None = None) -> FinalizeResult:
     """Terminal cleanup; preserves artifacts on stalled runs."""
     tmpdir = Path(ctx.tmpdir)
     persisted_repo_root = progress_file.resolve_persisted_repo_root(tmpdir=tmpdir)
@@ -715,10 +664,8 @@ def teardown(
     stash_ref = ""
     sentinel_written = False
     teardown_run_id = run_log_manifest.effective_run_id(ctx)
-    if teardown_run_id:
-        _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
-        if not bgjob_registry.has_live_entry(repo_root=persisted_repo_root, run_id=teardown_run_id):
-            _ = progress_file.deactivate_run(persisted_repo_root, teardown_run_id)
+    if teardown_run_id and not bgjob_registry.has_live_entry(repo_root=persisted_repo_root, run_id=teardown_run_id):
+        _ = progress_file.deactivate_run(persisted_repo_root, teardown_run_id)
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:
@@ -770,6 +717,7 @@ def cache_sessions_root() -> Path:
 
 read_finalize_state = session_env.read_finalize_state
 write_finalize_state_merged = session_env.write_finalize_state_merged
+
 
 def _write_finalize_text_safely(*, target: Path, text: str) -> None:
     try:
@@ -1004,6 +952,7 @@ def write_finalize_state(*, ctx: RunContext, path: str | Path) -> None:
         target=target,
         text="".join(f"{key}={value}\n" for key, value in data.items()),
     )
+
 
 # ---------------------------------------------------------------------------
 # C4c CLI surfaces

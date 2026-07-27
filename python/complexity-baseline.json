@@ -3666,24 +3666,8 @@
   {
     "file": "larch/implement/step_7a.py",
     "code": "C901",
-    "qualified_symbol": "_run_log_flush",
-    "metric": 14,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/implement/step_7a.py",
-    "code": "C901",
     "qualified_symbol": "_run_step7a_inner",
     "metric": 19,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/implement/step_7a.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_run_log_flush",
-    "metric": 13,
     "added_at": "legacy",
     "history": []
   },
@@ -5694,16 +5678,22 @@
   {
     "file": "larch/report/run_log_flush.py",
     "code": "C901",
-    "qualified_symbol": "capture_transcript_main",
-    "metric": 18,
-    "added_at": "legacy",
-    "history": []
+    "qualified_symbol": "_render_ledger_reports",
+    "metric": 16,
+    "added_at": "2026-07-27",
+    "history": [
+      {
+        "date": "2026-07-27",
+        "metric": 16
+      }
+    ],
+    "reason": "Issue #7995 adds the explicit terminal snapshot and cleanup split."
   },
   {
     "file": "larch/report/run_log_flush.py",
     "code": "C901",
-    "qualified_symbol": "flush_logs_pre",
-    "metric": 14,
+    "qualified_symbol": "capture_transcript_main",
+    "metric": 18,
     "added_at": "legacy",
     "history": []
   },
@@ -5742,15 +5732,7 @@
   {
     "file": "larch/report/run_log_flush.py",
     "code": "PLR0911",
-    "qualified_symbol": "flush_logs_pre",
-    "metric": 12,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/report/run_log_flush.py",
-    "code": "PLR0911",
-    "qualified_symbol": "larch_log_flush_main",
+    "qualified_symbol": "refresh_logs_checkpoint",
     "metric": 7,
     "added_at": "legacy",
     "history": []
@@ -5766,16 +5748,22 @@
   {
     "file": "larch/report/run_log_flush.py",
     "code": "PLR0912",
-    "qualified_symbol": "capture_transcript_main",
-    "metric": 18,
-    "added_at": "legacy",
-    "history": []
+    "qualified_symbol": "_render_ledger_reports",
+    "metric": 15,
+    "added_at": "2026-07-27",
+    "history": [
+      {
+        "date": "2026-07-27",
+        "metric": 15
+      }
+    ],
+    "reason": "Issue #7995 adds the explicit terminal snapshot and cleanup split."
   },
   {
     "file": "larch/report/run_log_flush.py",
     "code": "PLR0912",
-    "qualified_symbol": "flush_logs_pre",
-    "metric": 13,
+    "qualified_symbol": "capture_transcript_main",
+    "metric": 18,
     "added_at": "legacy",
     "history": []
   },
@@ -5790,7 +5778,7 @@
   {
     "file": "larch/report/run_log_flush.py",
     "code": "PLR0913",
-    "qualified_symbol": "_stage_pre_commit",
+    "qualified_symbol": "_stage_local_checkpoint",
     "metric": 6,
     "added_at": "legacy",
     "history": []

@@ -25,6 +25,7 @@ _STEP8_HELPER = _IMPLEMENT_SCRIPTS / "step-8-ship.sh"
 _STEP8_GUARD = _IMPLEMENT_SCRIPTS / "step-8-python-guard.sh"
 _STEP8_SEEDER = _IMPLEMENT_SCRIPTS / "step-8-seed-initial.sh"
 _STEP18_HELPER = _IMPLEMENT_SCRIPTS / "step-18.sh"
+_STEP19_HELPER = _IMPLEMENT_SCRIPTS / "step-19.sh"
 _CLI = _REPO / "python" / "cli.py"
 _REAL_PYTHON = sys.executable
 _BASH = shutil.which("bash") or "/bin/bash"
@@ -161,10 +162,36 @@ def implement_step18(args: list[str]) -> int:
     return step_18_main(args)
 
 
+def implement_step19(args: list[str]) -> int:
+    # Delegate to real Python step-19; nested verbs stay on this stub cli.
+    real_python = Path(os.environ["STEP18_REAL_REPO"]) / "python"
+    if str(real_python) not in sys.path:
+        sys.path.insert(0, str(real_python))
+    from larch.implement.implement_dispatch import step_19_main
+
+    return step_19_main(args)
+
+
+def prepare_terminal_snapshot(args: list[str]) -> int:
+    log("prepare-terminal-snapshot " + " ".join(args))
+    rc = int(os.environ.get("STEP18_STUB_SNAPSHOT_RC") or "0")
+    if rc != 0:
+        print("SESSION_TRANSCRIPT_STATUS=failed")
+        print("TERMINAL_SNAPSHOT_STATUS=failed")
+        print("TERMINAL_SNAPSHOT_ERROR=stub snapshot failure")
+        return rc
+    print("SESSION_TRANSCRIPT_STATUS=captured")
+    print("TERMINAL_SNAPSHOT_STATUS=prepared")
+    print("TERMINAL_SNAPSHOT_ERROR=")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     if args[:2] == ["implement", "step-18"]:
         return implement_step18(args[2:])
+    if args[:2] == ["implement", "step-19"]:
+        return implement_step19(args[2:])
     if args[:2] == ["session", "read-key"]:
         return read_key(args[2:])
     if args[:2] == ["kv", "get"]:
@@ -174,6 +201,8 @@ def main() -> int:
     if args[:2] == ["run-log", "append-failure"]:
         log("append-failure " + " ".join(args[2:]))
         return 0
+    if args[:2] == ["run-log", "prepare-terminal-snapshot"]:
+        return prepare_terminal_snapshot(args[2:])
     if len(args) >= 2 and args[0] == "run-log" and args[1] in {
         "lifecycle-cancel",
         "lifecycle-failure",
@@ -223,7 +252,7 @@ def main() -> int:
         return 0
     if args[:2] == ["session", "restore-finalize-state"]:
         log("restore-finalize-state " + " ".join(args[2:]))
-        return 0
+        return int(os.environ.get("STEP18_STUB_RESTORE_RC") or "0")
     if args[:2] == ["session", "clear-implement-pointer"]:
         log("clear-implement-pointer " + " ".join(args[2:]))
         return 0
@@ -833,6 +862,21 @@ exec /bin/cat "$@"
     return result
 
 
+def _run_step19(
+    impl: Path, plugin: Path, *, log_path: Path, extra_env: Mapping[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    env = {
+        "IMPLEMENT_TMPDIR": str(impl),
+        "CLAUDE_PLUGIN_ROOT": str(plugin),
+        "STEP18_STUB_LOG": str(log_path),
+        "STEP18_REAL_REPO": str(_REPO),
+        "PYTHONPATH": str(_REPO / "python"),
+    }
+    if extra_env:
+        env.update(extra_env)
+    return _run_bash(_STEP19_HELPER, env=env, args=["--implement-tmpdir", str(impl)])
+
+
 def test_step18_gate_clear(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "gate-clear")
@@ -915,7 +959,7 @@ def test_step18_gate_predicate_active(tmp_path: Path, value: str) -> None:
     assert _kv("STALL_RECOVERY_REQUIRED", result.stdout) == "true", f"predicate active {value}"
 
 
-def test_step18_finalize_body_and_teardown(tmp_path: Path) -> None:
+def test_step18_logs_flush_body_then_step19_teardown(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "finalize-body")
     out = tmp_path / "finalize-body.out"
@@ -926,7 +970,7 @@ def test_step18_finalize_body_and_teardown(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_BODY": "# Final body\nDetails\n"},
     )
     assert result.returncode == 0
@@ -940,37 +984,32 @@ def test_step18_finalize_body_and_teardown(tmp_path: Path) -> None:
     )
     assert "# Final body" in text, "finalize body marker content"
     assert _count_literal("# Final body", text) == 1, "finalize body raw duplicate check"
-    assert "ISSUE_URL=https://example.test/issues/1" in text, "teardown issue tail relay"
-    assert "RENAME_BRANCH=skipped" in text, "teardown rename tail relay"
-    assert "RENAME_STATUS=ok" in text, "teardown rename status relay"
-    assert "STASH_REF=refs/stash/test" in text, "teardown stash relay"
-    assert "SENTINEL_WRITTEN=true" in text, "teardown sentinel relay"
-    assert "FINALIZE_SUBCOMMAND=teardown" in text, "teardown subcommand relay"
-    assert "FINALIZE_WARNINGS=none" in text, "teardown warnings relay"
+    assert "FINALIZE_SUBCOMMAND=teardown" not in text
+    assert (impl / ".run-log-terminalized").is_file()
     log_text = log.read_text(encoding="utf-8")
     assert "step18b sentinel=false argv=final-report step18b --implement-tmpdir" in log_text, (
         "finalize step18b invocation"
     )
     assert "--step17-emitted false" in log_text, "finalize false step17 flag forwarding"
-    assert "flush-safety-net --log-root" in log_text, "finalize flush safety net"
-    assert "--run-id RUN1" in log_text, "finalize safety net run id"
-    assert "capture-transcript --source-file source.jsonl --log-root" in log_text, (
-        "finalize transcript capture"
-    )
-    assert "--skill implement --run-id RUN1 --defer-commit true" in log_text, (
-        "finalize transcript capture argv"
-    )
-    assert "teardown sentinel=before argv=implement-finalize teardown --state-file" in log_text, (
-        "finalize teardown invocation"
-    )
+    assert "prepare-terminal-snapshot --implement-tmpdir" in log_text
+    assert "--run-id RUN1 --no-logs-commit false" in log_text
+    assert "teardown sentinel=" not in log_text
     assert "SESSION_TRANSCRIPT_STATUS=captured" in text, "finalize transcript status relay"
-    assert log_text.index("capture-transcript") < log_text.index("flush-safety-net")
-    assert log_text.index("flush-safety-net") < log_text.index("run-log lifecycle-")
+    assert log_text.index("prepare-terminal-snapshot") < log_text.index("run-log lifecycle-")
+
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
+    assert "ISSUE_URL=https://example.test/issues/1" in cleanup.stdout
+    assert "RENAME_BRANCH=skipped" in cleanup.stdout
+    assert "RENAME_STATUS=ok" in cleanup.stdout
+    assert "STASH_REF=refs/stash/test" in cleanup.stdout
+    assert "SENTINEL_WRITTEN=true" in cleanup.stdout
+    assert "FINALIZE_SUBCOMMAND=teardown" in cleanup.stdout
+    assert "FINALIZE_WARNINGS=none" in cleanup.stdout
+    assert "teardown sentinel=before argv=implement-finalize teardown --state-file" in log.read_text(encoding="utf-8")
 
 
-def test_step18_accepts_disabled_terminalization_without_remote_fields(
-    tmp_path: Path,
-) -> None:
+def test_step18_accepts_disabled_terminalization_without_remote_fields(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "disabled-terminalization")
     out = tmp_path / "disabled-terminalization.out"
@@ -981,11 +1020,8 @@ def test_step18_accepts_disabled_terminalization_without_remote_fields(
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
-        extra_env={
-            "STEP18_STUB_STORAGE_DISABLED": "true",
-            "STEP18_STUB_BODY": "# Final body\n",
-        },
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
+        extra_env={"STEP18_STUB_STORAGE_DISABLED": "true", "STEP18_STUB_BODY": "# Final body\n"},
     )
 
     assert result.returncode == 0
@@ -1002,16 +1038,11 @@ def test_step18_accepts_disabled_terminalization_without_remote_fields(
     ("failure_env", "returncode", "status_kv", "stderr_text", "published"),
     [
         ("STEP18_STUB_PUBLISH_RC", 9, "RUN_LOG_PUBLISH_OK=false", "durable pending state", True),
-        ("STEP18_STUB_FLUSH_RC", 7, "RUN_LOG_FINAL_FLUSH_OK=false", "final execution-issues flush failed", False),
+        ("STEP18_STUB_SNAPSHOT_RC", 7, "RUN_LOG_FINAL_FLUSH_OK=false", "terminal snapshot preparation failed", False),
     ],
 )
 def test_step18_terminal_log_failure_preserves_session(
-    tmp_path: Path,
-    failure_env: str,
-    returncode: int,
-    status_kv: str,
-    stderr_text: str,
-    published: bool,
+    tmp_path: Path, failure_env: str, returncode: int, status_kv: str, stderr_text: str, published: bool
 ) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "terminal-log-failure")
@@ -1024,7 +1055,7 @@ def test_step18_terminal_log_failure_preserves_session(
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={failure_env: str(returncode)},
     )
 
@@ -1034,7 +1065,7 @@ def test_step18_terminal_log_failure_preserves_session(
     assert stderr_text in result.stderr
     log_text = log.read_text(encoding="utf-8")
     assert ("run-log lifecycle-" in log_text) is published
-    assert "flush-safety-net" in log_text
+    assert "prepare-terminal-snapshot" in log_text
     assert "teardown" not in log_text
     assert impl.is_dir()
 
@@ -1052,20 +1083,25 @@ def test_step18_no_logs_commit_skips_archive_publication(tmp_path: Path) -> None
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
 
     assert result.returncode == 0
     assert "RUN_LOG_PUBLISH_SKIPPED=no-logs-commit" in result.stdout
     log_text = log.read_text(encoding="utf-8")
-    assert "capture-transcript" not in log_text
-    assert "flush-safety-net" not in log_text
+    assert "prepare-terminal-snapshot" in log_text
+    assert "--run-id RUN1 --no-logs-commit true" in log_text
     assert "run-log lifecycle-" not in log_text
-    assert "teardown" in log_text
+    assert "teardown" not in log_text
+    assert (impl / ".run-log-terminalized").is_file()
+
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
+    assert "teardown sentinel=" in log.read_text(encoding="utf-8")
 
 
-def test_step18_step7a_complete_skips_transcript_recapture(tmp_path: Path) -> None:
+def test_step18_step7a_complete_still_prepares_terminal_snapshot(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "step7a-complete")
     (impl / "bgjob").mkdir()
@@ -1078,13 +1114,13 @@ def test_step18_step7a_complete_skips_transcript_recapture(tmp_path: Path) -> No
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
     log_text = log.read_text(encoding="utf-8")
-    assert "flush-safety-net" in log_text, "step7a-complete still flushes execution issues"
-    assert "capture-transcript" not in log_text, "step7a-complete skips transcript recapture"
+    assert "prepare-terminal-snapshot" in log_text
+    assert "SESSION_TRANSCRIPT_STATUS=captured" in result.stdout
 
 
 def test_step18_step17_present_suppresses_body(tmp_path: Path) -> None:
@@ -1098,7 +1134,7 @@ def test_step18_step17_present_suppresses_body(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "true"],
+        args=["--phase", "logs-flush", "--step17-emitted", "true"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
@@ -1122,7 +1158,7 @@ def test_step18_step18b_failure_tolerance(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_WFR_RC": "7", "STEP18_STUB_EMIT_BODY": "true"},
     )
     assert result.returncode == 0
@@ -1132,8 +1168,9 @@ def test_step18_step18b_failure_tolerance(tmp_path: Path) -> None:
     )
     log_text = log.read_text(encoding="utf-8")
     assert "append-failure" in log_text, "step18b failure append log"
-    assert "token mark Step 18 — done" in log_text, "step18b failure closing mark"
-    assert "teardown sentinel=" in log_text, "step18b failure teardown"
+    assert "token mark Step 18 — logs flush" in log_text
+    assert "prepare-terminal-snapshot" in log_text
+    assert "teardown sentinel=" not in log_text
 
 
 def test_step18_marker_cat_failure_tolerance(tmp_path: Path) -> None:
@@ -1147,7 +1184,7 @@ def test_step18_marker_cat_failure_tolerance(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_CAT_FAIL": "true", "STEP18_STUB_EMIT_BODY": "true"},
     )
     assert result.returncode == 0
@@ -1158,11 +1195,11 @@ def test_step18_marker_cat_failure_tolerance(tmp_path: Path) -> None:
         "marker failure lacks balanced end marker"
     )
     log_text = log.read_text(encoding="utf-8")
-    assert "token mark Step 18 — done" in log_text, "marker failure closing mark"
-    assert "teardown sentinel=" in log_text, "marker failure teardown"
+    assert "token mark Step 18 — logs flush" in log_text
+    assert "teardown sentinel=" not in log_text
 
 
-def test_step18_restore_missing_finalize_state(tmp_path: Path) -> None:
+def test_step19_restore_missing_finalize_state(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "restore-missing")
     (impl / "finalize-state.sh").unlink()
@@ -1174,16 +1211,19 @@ def test_step18_restore_missing_finalize_state(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
+    assert "restore-finalize-state" not in log.read_text(encoding="utf-8")
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
     assert "restore-finalize-state --implement-tmpdir" in log.read_text(encoding="utf-8"), (
         "restore missing finalize state"
     )
 
 
-def test_step18_restore_ship_stall_truthy(tmp_path: Path) -> None:
+def test_step19_restore_ship_stall_truthy(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "restore-stall")
     _ = (impl / "ship-pr-state.sh").write_text(
@@ -1198,16 +1238,19 @@ def test_step18_restore_ship_stall_truthy(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
+    assert "restore-finalize-state" not in log.read_text(encoding="utf-8")
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
     assert "restore-finalize-state --implement-tmpdir" in log.read_text(encoding="utf-8"), (
         "restore ship stall truthy"
     )
 
 
-def test_step18_restore_ship_bail_truthy(tmp_path: Path) -> None:
+def test_step19_restore_ship_bail_truthy(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "restore-bail")
     _ = (impl / "ship-pr-state.sh").write_text(
@@ -1222,16 +1265,19 @@ def test_step18_restore_ship_bail_truthy(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
+    assert "restore-finalize-state" not in log.read_text(encoding="utf-8")
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
     assert "restore-finalize-state --implement-tmpdir" in log.read_text(encoding="utf-8"), (
         "restore ship bail truthy"
     )
 
 
-def test_step18_restore_stall_step_mismatch(tmp_path: Path) -> None:
+def test_step19_restore_stall_step_mismatch(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "restore-mismatch")
     _ = (impl / "ship-pr-state.sh").write_text(
@@ -1250,27 +1296,29 @@ def test_step18_restore_stall_step_mismatch(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
     log_text = log.read_text(encoding="utf-8")
     assert "restore-finalize-state --implement-tmpdir" in log_text, "restore stall step mismatch"
-    mark_line = _line_no("token mark Step 18 — done", log_text)
-    flush_line = _line_no("flush-safety-net", log_text)
-    capture_line = _line_no("capture-transcript", log_text)
+    mark_line = _line_no("token mark Step 18 — logs flush", log_text)
+    snapshot_line = _line_no("prepare-terminal-snapshot", log_text)
+    publish_line = _line_no("run-log lifecycle-", log_text)
     restore_line = _line_no("restore-finalize-state", log_text)
     teardown_line = _line_no("teardown sentinel=", log_text)
-    assert all(line is not None for line in (mark_line, flush_line, capture_line, restore_line, teardown_line)), (
+    assert all(line is not None for line in (mark_line, snapshot_line, publish_line, restore_line, teardown_line)), (
         "ordering log missing expected rows"
     )
-    assert mark_line < capture_line, "closing mark must precede transcript safety net"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
-    assert capture_line < flush_line, "transcript safety net must precede the final execution-issues flush"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
-    assert flush_line < restore_line, "execution-issues flush must precede restore-finalize-state"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert mark_line < snapshot_line  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert snapshot_line < publish_line  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert publish_line < restore_line  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
     assert restore_line < teardown_line, "restore-finalize-state must precede teardown"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
 
 
-def test_step18_restore_aligned_skips(tmp_path: Path) -> None:
+def test_step19_restore_aligned_skips(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "restore-aligned")
     _ = (impl / "ship-pr-state.sh").write_text(
@@ -1289,16 +1337,18 @@ def test_step18_restore_aligned_skips(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
     assert "restore-finalize-state" not in log.read_text(encoding="utf-8"), (
         "restore aligned should skip"
     )
 
 
-def test_step18_restore_read_key_failure_still_teardown(tmp_path: Path) -> None:
+def test_step19_restore_command_failure_still_tears_down(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "restore-read-key-failure")
     _ = (impl / "ship-pr-state.sh").write_text(
@@ -1317,17 +1367,17 @@ def test_step18_restore_read_key_failure_still_teardown(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
-        extra_env={
-            "STEP18_STUB_EMIT_BODY": "false",
-            "STEP18_STUB_READ_KEY_FAIL_KEY": "STALL_TRACKING",
-        },
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
+        extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
+    cleanup = _run_step19(impl, plugin, log_path=log, extra_env={"STEP18_STUB_RESTORE_RC": "7"})
+    assert cleanup.returncode == 0
+    assert "restore-finalize-state failed" in cleanup.stderr
     log_text = log.read_text(encoding="utf-8")
-    assert "teardown sentinel=" in log_text, "restore read-key failure still tears down"
+    assert "teardown sentinel=" in log_text
     assert "restore-finalize-state --implement-tmpdir" in log_text, (
-        "restore read-key failure uses default and continues"
+        "restore command failure should be attempted before teardown"
     )
 
 
@@ -1347,7 +1397,7 @@ def test_step18_no_run_id_fails_before_safety_nets_and_teardown(tmp_path: Path) 
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false", "RUN_ID": ""},
     )
     assert result.returncode == config.EXIT_INTERNAL_ERROR
@@ -1361,7 +1411,7 @@ def test_step18_no_run_id_fails_before_safety_nets_and_teardown(tmp_path: Path) 
     assert impl.is_dir()
 
 
-def test_step18_post_terminal_finalize(tmp_path: Path) -> None:
+def test_step18_post_terminal_logs_flush(tmp_path: Path) -> None:
     plugin = _make_step18_plugin(tmp_path)
     impl = _make_step18_impl(tmp_path, "post-terminal")
     _ = (impl / "ship-pr-state.sh").write_text(
@@ -1380,14 +1430,15 @@ def test_step18_post_terminal_finalize(tmp_path: Path) -> None:
         plugin,
         out_path=out,
         log_path=log,
-        args=["--phase", "finalize", "--step17-emitted", "false"],
+        args=["--phase", "logs-flush", "--step17-emitted", "false"],
         extra_env={"STEP18_STUB_EMIT_BODY": "false"},
     )
     assert result.returncode == 0
-    assert "STALL_RECOVERY_REQUIRED" not in result.stdout, (
-        "post-terminal finalize must not re-run gate"
-    )
-    assert "FINALIZE_SUBCOMMAND=teardown" in result.stdout, "post-terminal teardown tail relay"
+    assert "STALL_RECOVERY_REQUIRED" not in result.stdout, "post-terminal logs flush must not re-run gate"
+    assert "FINALIZE_SUBCOMMAND=teardown" not in result.stdout
+    cleanup = _run_step19(impl, plugin, log_path=log)
+    assert cleanup.returncode == 0
+    assert "FINALIZE_SUBCOMMAND=teardown" in cleanup.stdout
 
 
 def _token_prop_env() -> dict[str, str]:

@@ -10,9 +10,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from larch.issue import execution_issues
 from larch.state import finalize
-from larch.report import run_log_flush, run_log_manifest, progress_file
+from larch.report import run_log_manifest, progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
@@ -159,7 +158,7 @@ def test_postmerge_stalls_when_local_branch_delete_fails(tmp_path: Path) -> None
     assert result.branch_deleted is False
 
 
-def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> None:
+def test_teardown_stall_preserves_tmpdir_without_recreating_log_staging(tmp_path: Path) -> None:
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     runner = RecordingRunner(
@@ -181,71 +180,22 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
     assert result.status == "stalled-preserved"
     assert tmp_path.exists()
     assert (git_dir / "larch-stalled-run.txt").is_file()
-    manifest = json.loads(
-        (tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json").read_text(
-            encoding="utf-8",
-        ),
-    )
-    assert manifest["stalled_at_step"] == "12"
+    assert not (tmp_path / "larch-logs").exists()
 
 
-def test_teardown_log_flush_uses_safety_net_not_render_batch(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    render_called = False
-    safety_net_called = False
+def test_teardown_does_not_create_run_log_staging(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
+    monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
+    monkeypatch.setattr(progress_file, "deactivate_run", lambda *_args, **_kwargs: True)
 
-    def spy_render(*_args: object, **_kwargs: object) -> None:
-        nonlocal render_called
-        render_called = True
-
-    def spy_safety_net(**_kwargs: object) -> tuple[int, str, int, str]:
-        nonlocal safety_net_called
-        safety_net_called = True
-        return 0, "skip", 0, ""
-
-    monkeypatch.setattr(run_log_flush, "render_execution_issues_batch", spy_render)
-    monkeypatch.setattr(execution_issues, "flush_execution_issues_safety_net", spy_safety_net)
-
-    runner = RecordingRunner()
-    _ = finalize._teardown_log_flush(
-        runner=runner,
-        ctx=_ctx(tmp_path, no_logs_commit=True),
-        cwd=str(tmp_path),
-    )
-    assert not render_called
-    assert safety_net_called
-
-
-def test_teardown_log_flush_failure_does_not_skip_stash_or_sentinel(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    git_dir = tmp_path / ".git"
-    git_dir.mkdir()
-
-    def fail_recovery(*_a: object, **_k: object) -> run_log_manifest.ManifestRecovery:
-        raise ShipError("lost")
-
-    monkeypatch.setattr(run_log_manifest, "load_or_recover_manifest_checked", fail_recovery)
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("gh", "issue", "view"), 0, '{"title":"Existing title","state":"OPEN"}\n', "", 0.01),
-            CommandResult(("gh", "issue", "edit"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, " M file\n", "", 0.01),
-            CommandResult(("git", "stash"), 0, "", "", 0.01),
-            CommandResult(("git", "stash", "list"), 0, "stash@{0} larch-stalled-1-12\n", "", 0.01),
-            CommandResult(("git", "rev-parse", "--git-dir"), 0, ".git\n", "", 0.01),
-        ],
-    )
     result = finalize.teardown(
-        runner=runner,
-        ctx=_ctx(tmp_path, stall_tracking=True, stall_step="12", no_logs_commit=True),
+        runner=RecordingRunner(),
+        ctx=_ctx(tmp_path, done_rename_applied=True, no_logs_commit=True, repo_unavailable=True),
         cwd=str(tmp_path),
     )
-    assert result.status == "stalled-preserved"
-    assert result.sentinel_written is True
+
+    assert result.status == "cleanup-skipped"
+    assert not (tmp_path / "larch-logs").exists()
 
 
 def test_postbump_clears_unknown_legacy_checkpoint(tmp_path: Path) -> None:
@@ -950,9 +900,7 @@ def test_implement_finalize_accepts_cache_root_state_file(
     assert "FINALIZE_SUBCOMMAND=teardown" in capsys.readouterr().out
 
 
-def test_teardown_deactivates_run_before_tmpdir_removal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_teardown_deactivates_run_before_tmpdir_removal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Teardown calls deactivate_run with the effective run ID."""
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
@@ -966,13 +914,9 @@ def test_teardown_deactivates_run_before_tmpdir_removal(
 
     monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
 
-    def fake_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
-        return True
-
     def fake_kill(*, runner: Runner, ctx: RunContext) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
         return True
 
-    monkeypatch.setattr(finalize, "_teardown_log_flush", fake_flush)
     monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill)
 
     result = finalize.teardown(runner=runner, ctx=ctx, cwd=str(tmp_path))
@@ -981,9 +925,7 @@ def test_teardown_deactivates_run_before_tmpdir_removal(
     assert deactivate_calls[0][1] == "run-abc"
 
 
-def test_teardown_uses_persisted_repo_root_outside_clone(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_teardown_uses_persisted_repo_root_outside_clone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     outside = tmp_path / "outside"
@@ -992,7 +934,6 @@ def test_teardown_uses_persisted_repo_root_outside_clone(
     (tmp_path / "session-env.sh").write_text(f"REPO_ROOT={repo}\nLARCH_RUN_ID=run-abc\n", encoding="utf-8")
     deactivate_calls: list[tuple[object, str]] = []
 
-    monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kwargs: True)
     monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
     monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
     monkeypatch.setattr(progress_file, "deactivate_run", lambda repo_root, run_id: deactivate_calls.append((repo_root, run_id)) or True)
@@ -1005,9 +946,7 @@ def test_teardown_uses_persisted_repo_root_outside_clone(
 _STALE_LIVE = "coverage artifact does not match live repository inputs"
 
 
-def _stub_teardown_side_effects(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> list[str]:
+def _stub_teardown_side_effects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     crumbs: list[str] = []
 
     class _Writer:
@@ -1019,7 +958,6 @@ def _stub_teardown_side_effects(
         encoding="utf-8",
     )
     monkeypatch.setattr(finalize.logging_util, "BreadcrumbWriter", _Writer)
-    monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kwargs: True)
     monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
     monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
     monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)

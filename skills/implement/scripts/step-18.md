@@ -1,125 +1,89 @@
 # step-18.sh
 
-`step-18.sh` is the active two-phase Step 18 wrapper for `/implement`.
-It replaces the retired Step 18a gate, Step 18b final-report, and Step 18 finalizer shell wrappers.
+`step-18.sh` is the two-phase terminal log wrapper for `/implement` Step 18.
+It never restores repository state or invokes teardown.
 
 ## Invocation
 
 Gate phase:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" \
+  skills/implement/scripts/step-18.sh \
+  --phase gate \
+  --stall-tracking-memory "${STALL_TRACKING:-false}"
 ```
 
-Finalize phase:
+Terminal logs phase:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" \
+  skills/implement/scripts/step-18.sh \
+  --phase logs-flush \
+  --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
 ```
 
-Step 18a.5 remains prompt-side between gate clearance and `--phase finalize`.
-The no-stall path therefore uses two Bash calls, down from the three retired wrappers.
-The stall path exits after the gate so the orchestrator can run `stall-recovery.md`.
-After terminal recovery, the orchestrator must not re-run `--phase gate`; it proceeds to Step 18a.5, usually skipped, and then `--phase finalize` even when disk `STALL_TRACKING=true` remains.
+The normal path uses the composite
+`python/cli.py implement step-18-gate-logs-flush`. The standalone phases remain
+for the active-stall breakout path.
 
 ## Gate phase
 
-The gate resolves four layers: memory, `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`.
-It emits these KVs on stdout without `larch_quiet_init`:
+The gate resolves the in-memory, `ship-pr-state.sh`, `finalize-state.sh`, and
+`session-env.sh` stall layers plus the abandoned-checks marker. It emits the
+`STALL_TRACKING_*` KVs and `STALL_RECOVERY_REQUIRED=true|false`. Active recovery
+remains prompt-side and must finish before the terminal logs phase starts.
 
-- `STALL_TRACKING_MEMORY=...`
-- `STALL_TRACKING_DISK=...`
-- `STALL_TRACKING_FINALIZE=...`
-- `STALL_TRACKING_SESSION=...`
-- `STALL_RECOVERY_REQUIRED=true|false`
+## Logs flush phase
 
-The helper `_stall_layer_active` is the pinned predicate.
-A layer is active when its value is non-empty and not exactly `false`.
-Values such as `true`, `1`, `yes`, and arbitrary non-empty strings are active.
-Only empty and `false` are inactive.
-
-## Finalize phase
-
-The finalize phase never re-runs the active-stall gate.
-The wrapper passes `--step17-emitted "$STEP17_EMITTED"` to Step 18b. This explicit value overrides stale sentinel presence. When `--step17-emitted true` is passed, the wrapper also writes `$IMPLEMENT_TMPDIR/.step17-emitted` before calling Step 18b so the sentinel remains available for diagnostics and deduplication.
-
-The wrapper calls the live Step 18b path only:
+The logs phase runs the Step 18b final-report refresh, records closing token and
+timing marks, then invokes:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" \
+  run-log prepare-terminal-snapshot \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+  --run-id "$RUN_ID"
 ```
 
-When `.step16-16a-done` is absent (terminal stall recover-then-report path), Step 18b runs rejected-findings replay and best-effort Slack notify through `python/cli.py implement step-16-16a` before `final-report write`. Green-path Step 16-17 runs write `.step16-16a-done` after Step 16/16a even when Step 17 fails, so Step 18b does not duplicate those side effects.
+The preparer refreshes the final summary, token and timing reports, vendor
+failure diagnostics, architectural outcome batches, ship-route handoff,
+session transcript, and execution-issues tail. Transcript capture runs whenever
+a source is configured, including a normal path with a completed Step 7a. A
+failed recapture keeps the prior staged transcript when one exists, reports the
+exact `SESSION_TRANSCRIPT_STATUS`, returns
+`RUN_LOG_FINAL_FLUSH_OK=false`, and preserves the session.
 
-That call runs under `set +e` with explicit rc capture.
-The wrapper relays `EMIT_BODY`, `WFR_RC`, `STEP17_EMITTED_PRESENT`, and `SNAPSHOT_OK` on stdout.
-A non-zero Step 18b rc is appended to `execution-issues.md` best-effort, but it does not prevent closing token/timing marks or teardown.
-The retired wrapper's dormant `cleanup.sh --help`, `token report --full`, and `Step 18 — cleanup` telemetry mark are not part of this path.
+After complete snapshot preparation, Step 18 invokes exactly one matching
+lifecycle terminal verb. Enabled storage publishes one create-only archive.
+Disabled storage emits `RUN_LOG_PUBLICATION=skipped-disabled`. Explicit
+`NO_LOGS_COMMIT=true` emits
+`RUN_LOG_PUBLICATION=skipped-suppressed`. Every successful state writes
+`$IMPLEMENT_TMPDIR/.run-log-terminalized`, which is the Step 19 cleanup fence.
+
+Publication or verification failure returns nonzero without writing that fence.
+The orchestrator must not run Step 19 on failure.
 
 ## Marker body handoff
 
-When archive publication succeeds (or `NO_LOGS_COMMIT=true` explicitly suppresses it), `EMIT_BODY=true`, `WFR_RC=0`, and `summary-final.md` is non-empty, `print_summary_markers` prints the body between whole-line markers before teardown:
+After successful terminalization, `EMIT_BODY=true`, `WFR_RC=0`, and a non-empty
+`summary-final.md` cause the wrapper to emit the body between:
 
 - `---LARCH-SUMMARY-FINAL-BEGIN---`
 - `---LARCH-SUMMARY-FINAL-END---`
 
-The marker helper mirrors `implement step-16-17` and runs under `set +e`.
-A failed `cat` of `summary-final.md` must not prevent closing marks, restore-finalize-state, or teardown (#3425).
-On successful marker emission, the wrapper touches `$IMPLEMENT_TMPDIR/.step17-emitted` for harness parity.
-The orchestrator owns top-chat emission by parsing captured finalize stdout only.
-There is no post-teardown Read fallback.
-If `EMIT_BODY=true` and `WFR_RC=0` but markers are absent or invalid, the orchestrator prints `**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**`.
-
-## Closing marks, safety nets, restore, and teardown
-
-Closing token and timing reports and `Step 18 — done` marks run before teardown because teardown removes `$IMPLEMENT_TMPDIR`, which is the ledger root (#3425).
-Before the safety nets run, the wrapper resolves `RUN_ID` from `read_session_key LARCH_RUN_ID`, matching production `session-env.sh` and the closeout path.
-After the closing marks, the wrapper runs both Step 18 safety nets when `RUN_ID` is available:
-
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log capture-transcript --source-file "$LARCH_CLAUDE_SOURCE_FILE" --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --defer-commit true --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" --warning-step-label "18"
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net --log-root "$IMPLEMENT_TMPDIR/larch-logs" --run-id "$RUN_ID" --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md"
-```
-
-Transcript capture is best effort and append-only. The execution-issues flush
-runs afterward so transcript failures enter the archive; flush failure returns
-nonzero and retains the session for retry. The transcript capture uses
-`--defer-commit true`; Step 18 owns final validation and archive publication.
-Step 7a remains the primary green-path transcript and execution-issues capture point.
-Step 18 runs transcript capture only when `bgjob/implement-step7a.result.env` is absent, so green-path runs do not recapture after Step 7a.
-Step 18 covers bail and stall paths that reach finalization before Step 7a.
-After both safety nets succeed, Step 18 selects the terminal outcome and invokes
-the matching shared lifecycle terminal verb. The lifecycle publisher validates
-and sanitizes the final staging tree before archive creation.
-Successful publication verifies both the remote object and the unpacked local
-cache before teardown. Upload or verification failure returns nonzero, emits
-`RUN_LOG_PUBLISH_OK=false`, and retains the session plus durable pending archive
-for retry. `NO_LOGS_COMMIT=true` emits
-`RUN_LOG_PUBLISH_SKIPPED=no-logs-commit` and proceeds to teardown.
-Then the copied `_restore_finalize=false` gate compares `ship-pr-state.sh` and `finalize-state.sh`.
-The compare reads use guarded `session read-key` defaults, so malformed or unreadable state files do not abort teardown under `set -e`.
-It invokes `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"` when `finalize-state.sh` is missing, ship stall or bail state is truthy, or `STALL_STEP` differs.
-
-Teardown uses the exact argv pin:
-
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
-```
-
-The wrapper relays teardown stdout tail records before teardown deletes the tmpdir.
-The orchestrator relays `ISSUE_URL`, `RENAME_BRANCH`, `RENAME_STATUS`, `STASH_REF`, `SENTINEL_WRITTEN`, `FINALIZE_SUBCOMMAND`, `FINALIZE_WARNINGS`, and sibling tail KVs verbatim from captured finalize stdout.
+The orchestrator caches the body, runs Step 19, relays the teardown tail, then
+emits the cached body as the final chat text. There is no disk fallback after
+cleanup.
 
 ## Stream contract
 
-Do not call `larch_quiet_init` in this wrapper.
-Stall KVs, `STALL_RECOVERY_REQUIRED`, Step 18b KVs, marker lines, and teardown tail records must remain on captured Bash stdout.
-
-## Harness
-
-`python/tests/implement/test_implement_shell_scripts.py` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues and transcript safety nets, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
-Shell-wrapper cases previously housed in `test-write-final-report.sh` moved to that pytest module.
-SKILL.md missing-marker and no-Read prose pins remain owned by structure/callsite harnesses, not the Step 18 pytest nodes.
+Do not call `larch_quiet_init`. Stall KVs, terminal snapshot KVs, lifecycle KVs,
+Step 18b KVs, and marker lines remain on captured stdout.
 
 ## Edit in sync
 
-Update `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, `scripts/test-implement-fence-shape.sh`, `scripts/test-render-cost-line-callsites.sh`, `skills/implement/scripts/test-write-final-report.sh`, `python/tests/implement/test_implement_shell_scripts.py`, `agent-lint.toml`, `python/migrated-scripts.tsv`, and `docs/linting.md` when this contract changes.
+Update `skills/implement/SKILL.md`, `skills/implement/scripts/step-19.md`,
+`python/larch/implement/dispatch_step18.py`,
+`python/larch/implement/dispatch_step19.py`, the focused tests, runtime
+projection, and `docs/linting.md` when this contract changes.

@@ -33,6 +33,7 @@ from larch.implement import (
     dispatch_manifest,
     dispatch_ship,
     dispatch_step18,
+    dispatch_step19,
     dispatch_step2,
     dispatch_recovery,
     self_edit_log,
@@ -538,7 +539,11 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step-5-review")][:2] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-6-entry")][:2] == ("larch.implement.implement_dispatch", "step6_entry_main")
     assert _REGISTRY[("implement", "step-8-ship")][:2] == ("larch.implement.implement_dispatch", "step8_ship_main")
-    assert _REGISTRY[("implement", "step-18-gate-finalize")][:2] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
+    assert _REGISTRY[("implement", "step-18-gate-logs-flush")][:2] == (
+        "larch.implement.implement_dispatch",
+        "step_18_gate_logs_flush_main",
+    )
+    assert _REGISTRY[("implement", "step-19")][:2] == ("larch.implement.implement_dispatch", "step_19_main")
     assert _REGISTRY[("implement", "run-step-checks")][:2] == ("larch.implement.implement_dispatch", "run_step_checks_main")
     assert _REGISTRY[("ship", "pre-driver")][:2] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
@@ -2373,51 +2378,42 @@ def _install_step18_normalize(
     monkeypatch.setattr(dispatch_step18, "_run_cli_capture", fake_capture)
 
 
-def _install_step18_finalize(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    calls: list[list[str]],
-    rc: int = 0,
-    stdout: str = "EMIT_BODY=false\n",
+def _install_step18_logs_flush(
+    monkeypatch: pytest.MonkeyPatch, *, calls: list[list[str]], rc: int = 0, stdout: str = "EMIT_BODY=false\n"
 ) -> None:
-    def fake_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
-        calls.append([
-            "step-18-finalize",
-            str(implement_tmpdir),
-            "--step17-emitted",
-            step17_emitted,
-        ])
+    def fake_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
+        calls.append(["step-18-logs-flush", str(implement_tmpdir), "--step17-emitted", step17_emitted])
         if stdout:
             sys.stdout.write(stdout)
             sys.stdout.flush()
         if rc:
-            sys.stderr.write("finalize stderr\n")
+            sys.stderr.write("logs flush stderr\n")
             sys.stderr.flush()
         return rc
 
-    monkeypatch.setattr(dispatch_step18, "_step18_finalize", fake_finalize)
+    monkeypatch.setattr(dispatch_step18, "_step18_logs_flush", fake_logs_flush)
 
 
-def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_no_stall_runs_logs_flush_and_forwards_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("STALL_TRACKING", "false")
     normalize_calls: list[list[str]] = []
-    finalize_calls: list[list[str]] = []
+    logs_flush_calls: list[list[str]] = []
     _install_step18_normalize(monkeypatch, succeeded=False, calls=normalize_calls)
-    _install_step18_finalize(monkeypatch, calls=finalize_calls, stdout="---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n")
+    _install_step18_logs_flush(
+        monkeypatch,
+        calls=logs_flush_calls,
+        stdout="---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n",
+    )
 
-    assert implement_dispatch.step_18_gate_finalize_main([
-        "--implement-tmpdir",
-        str(tmp),
-        "--stall-tracking-memory",
-        "",
-        "--step17-emitted",
-        "true",
-    ]) == 0
+    assert (
+        implement_dispatch.step_18_gate_logs_flush_main(
+            ["--implement-tmpdir", str(tmp), "--stall-tracking-memory", "", "--step17-emitted", "true"]
+        )
+        == 0
+    )
 
     captured = capsys.readouterr()
     assert "STALL_TRACKING_MEMORY=false\n" in captured.out
@@ -2425,7 +2421,7 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
     assert "⏩ 18a: stall recovery; no stall detected\n" in captured.out
     assert "IMPLEMENT_OUTCOME_SUCCEEDED=false\n" in captured.out
     assert "---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n" in captured.out
-    assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert captured.out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
     assert normalize_calls == [[
         "stall-recovery",
         "normalize-outcome",
@@ -2434,36 +2430,27 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
         "--in-memory-stall-tracking",
         "false",
     ]]
-    assert finalize_calls == [[
-        "step-18-finalize",
-        str(tmp),
-        "--step17-emitted",
-        "true",
-    ]]
+    assert logs_flush_calls == [["step-18-logs-flush", str(tmp), "--step17-emitted", "true"]]
 
 
-def test_step18_gate_finalize_empty_tmpdir_argv_falls_back_to_env(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     monkeypatch.setenv("STALL_TRACKING", "false")
-    finalize_calls: list[list[str]] = []
+    logs_flush_calls: list[list[str]] = []
     _install_step18_normalize(monkeypatch, succeeded=False)
-    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", ""]) == 0
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", ""]) == 0
 
-    assert finalize_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert logs_flush_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
 
 
-def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_active_stall_breaks_out_without_logs_flush(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     (tmp / "ship-pr-state.sh").write_text("STALL_TRACKING=1\n", encoding="utf-8")
@@ -2479,7 +2466,7 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
         lambda *_a, **_k: pytest.fail("finalize should not run for active stall"),
     )
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
 
     captured = capsys.readouterr()
     assert "STALL_TRACKING_DISK=1\n" in captured.out
@@ -2487,10 +2474,8 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
     assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
 
 
-def test_step18_gate_finalize_refuses_terminal_shipping_without_pr(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_refuses_terminal_shipping_without_pr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     _install_step18_normalize(monkeypatch, succeeded=False, outcome="shipping", pr_number="")
@@ -2500,7 +2485,9 @@ def test_step18_gate_finalize_refuses_terminal_shipping_without_pr(
         lambda *_a, **_k: pytest.fail("finalize must not run for terminal shipping without a PR"),
     )
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == config.EXIT_INTERNAL_ERROR
+    assert (
+        implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == config.EXIT_INTERNAL_ERROR
+    )
 
     captured = capsys.readouterr()
     assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping\n" in captured.out
@@ -2521,10 +2508,8 @@ def test_step18_gate_finalize_refuses_terminal_shipping_without_pr(
     assert "Step 18 terminal gate" in execution_issues
 
 
-def test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_abandoned_checks_bgjob_breaks_out_without_logs_flush(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setattr(dispatch_step18, "_abandoned_checks_bgjob_stall_step", lambda _tmpdir: "3")
@@ -2540,7 +2525,7 @@ def test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize
         lambda *_a, **_k: pytest.fail("finalize should not run for active stall"),
     )
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
 
     captured = capsys.readouterr()
     assert "STALL_TRACKING_ABANDONED_MARKER=true\n" in captured.out
@@ -2549,75 +2534,116 @@ def test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize
     assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
 
 
-def test_step18_gate_finalize_outcome_false_skips_filing_even_with_evidence(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_outcome_false_skips_filing_even_with_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     (tmp / "stall-recovery-escalation-fallback.tsv").write_text("site=step8\n", encoding="utf-8")
     _install_step18_normalize(monkeypatch, succeeded=False)
-    finalize_calls: list[list[str]] = []
-    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+    logs_flush_calls: list[list[str]] = []
+    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
 
-    assert finalize_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert logs_flush_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
 
 
-def test_step18_gate_finalize_terminal_sentinel_skips_filing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_terminal_sentinel_skips_filing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     (tmp / "stall-recovery-terminal-report.env").write_text("TERMINAL=true\n", encoding="utf-8")
     (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
     _install_step18_normalize(monkeypatch, succeeded=True)
-    finalize_calls: list[list[str]] = []
-    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+    logs_flush_calls: list[list[str]] = []
+    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
 
-    assert finalize_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert logs_flush_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
 
 
-def test_step18_gate_finalize_escalation_success_sentinel_skips_filing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_escalation_success_sentinel_skips_filing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     (tmp / "stall-recovery-escalation-success.env").write_text("FILED=true\n", encoding="utf-8")
     (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
     _install_step18_normalize(monkeypatch, succeeded=True)
-    finalize_calls: list[list[str]] = []
-    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+    logs_flush_calls: list[list[str]] = []
+    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
 
-    assert finalize_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert logs_flush_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
 
 
-def test_step18_gate_finalize_preserves_finalize_rc(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_step18_gate_logs_flush_preserves_logs_flush_rc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     _install_step18_normalize(monkeypatch, succeeded=False)
-    finalize_calls: list[list[str]] = []
-    _install_step18_finalize(monkeypatch, calls=finalize_calls, rc=9, stdout="EMIT_BODY=true\n")
+    logs_flush_calls: list[list[str]] = []
+    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls, rc=9, stdout="EMIT_BODY=true\n")
 
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 9
+    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 9
 
     captured = capsys.readouterr()
     assert "EMIT_BODY=true\n" in captured.out
-    assert "finalize stderr\n" in captured.err
-    assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert "logs flush stderr\n" in captured.err
+    assert captured.out.rstrip().endswith("NEXT_ACTION=logs-flush-failed")
+
+
+def test_step19_refuses_cleanup_without_terminalization_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    monkeypatch.setattr(
+        dispatch_step19, "_run_cli_forward", lambda *_args, **_kwargs: pytest.fail("teardown must not run")
+    )
+
+    assert implement_dispatch.step_19_main(["--implement-tmpdir", str(tmp)]) == config.EXIT_INTERNAL_ERROR
+
+    captured = capsys.readouterr()
+    assert "CLEANUP_BLOCKED=run-log-not-terminalized" in captured.out
+    assert "terminalization is not recorded" in captured.err
+
+
+def test_step19_runs_only_cleanup_after_terminalization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    (tmp / ".run-log-terminalized").write_text(
+        "RUN_LOG_TERMINALIZED=true\nRUN_LOG_PUBLICATION=published\nLIFECYCLE_TERMINALIZED=true\n", encoding="utf-8"
+    )
+    invoked: list[list[str]] = []
+    forwarded: list[list[str]] = []
+
+    def fake_invoke(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        invoked.append(list(args))
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    def fake_forward(args: Sequence[str], **_kwargs: object) -> int:
+        forwarded.append(list(args))
+        return 0
+
+    monkeypatch.setattr(dispatch_step19, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_step19, "_run_cli_forward", fake_forward)
+
+    assert implement_dispatch.step_19_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert not any(call[:1] == ["run-log"] for call in invoked + forwarded)
+    assert invoked == [["session", "clear-implement-pointer", "--claude-pid", str(os.getppid())]]
+    assert forwarded == [
+        [
+            "implement-finalize",
+            "teardown",
+            "--state-file",
+            str(tmp / "finalize-state.sh"),
+            "--implement-tmpdir",
+            str(tmp),
+        ]
+    ]
 
 
 def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
@@ -6794,6 +6820,8 @@ def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.M
     assert cmd[cmd.index("--workspace") + 1] == str(resolved)
     assert "--" not in cmd
     assert captured["stderr_path"] == tmp_path / "sidecar.log"
+
+
 def _auth_lines(out: str) -> int:
     return sum(1 for line in out.splitlines() if line.startswith("ORCHESTRATOR_EDIT_AUTHORITY="))
 
@@ -8668,8 +8696,8 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(_run_external, "external_auth_verdict", fake_verdict)
     monkeypatch.setattr(_run_external, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 2)
-    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: object())  # noqa: ARG005
-    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda **_kwargs: object())
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda **_kwargs: None)
     result = _run_external._run_external_agent_with_auth_retries(
         tool="codex",
         output=output,
@@ -8683,6 +8711,7 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_parse_kv_keeps_first_duplicate_stdout_value() -> None:
     assert implement_dispatch._parse_kv("STATUS=first\nSTATUS=second\nBAD-key=no\n") == {"STATUS": "first"}
+
 
 def _complete_manifest(*, ack: str | None = None) -> dict[str, object]:
     data: dict[str, object] = {

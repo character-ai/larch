@@ -4,9 +4,7 @@ import subprocess
 
 import pytest
 
-from larch.core import config
 from larch.implement import step_7a
-from larch.report.run_log_manifest import RefreshSkip
 
 
 def _no_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
@@ -14,7 +12,7 @@ def _no_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
     return False
 
 
-def _successful_log_flush(*_args: object, **_kwargs: object) -> str:
+def _successful_log_checkpoint(*_args: object, **_kwargs: object) -> str:
     return "ok"
 
 
@@ -22,7 +20,9 @@ def _successful_subprocess(*_args: object, **_kwargs: object) -> subprocess.Comp
     return subprocess.CompletedProcess([], 0, "", "")
 
 
-def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     merge_env = tmp_path / "bgjob" / "implement-step7a.merge.env"
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
@@ -30,19 +30,12 @@ def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path
         _ = (base_remote, base_ref)
         return True
 
-    def fake_run_log_flush(
-        implement_tmpdir: Path,
-        *,
-        run_id: str,
-        no_logs_commit: bool,
-        claude_source_file: str,
-        defer_git_commit: bool = False,
-    ) -> str:
-        _ = (implement_tmpdir, run_id, no_logs_commit, claude_source_file, defer_git_commit)
+    def fake_log_checkpoint(implement_tmpdir: Path, *, run_id: str) -> str:
+        _ = (implement_tmpdir, run_id)
         return "skip"
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", fake_is_small_non_runtime_change)
-    monkeypatch.setattr(step_7a, "_run_log_flush", fake_run_log_flush)
+    monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", fake_log_checkpoint)
     with patch.object(step_7a, "subprocess") as mock_subprocess, patch.object(
         step_7a.rust_runtime,
         "checkpoint_probe",
@@ -130,38 +123,29 @@ def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture
         _ = diagram.write_text("## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n", encoding="utf-8")
         return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
-        step_7a.pr_body,
-        "generate_code_flow_diagram",
-        side_effect=fake_generate_code_flow_diagram,
-    ), patch.object(
-        step_7a.run_log_flush,
-        "flush_logs_pre",
-    ) as mock_flush, patch.object(
-        step_7a,
-        "subprocess",
-    ), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=False),
+        patch.object(step_7a.pr_body, "generate_code_flow_diagram", side_effect=fake_generate_code_flow_diagram),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="skip"),
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
-        mock_flush.return_value.skipped = True
-        mock_flush.return_value.reason = "no-repo-cwd"
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 0
     out = capsys.readouterr().out
     assert "DIAGRAM_STATUS=" in out
-    assert "LOG_FLUSH_STATUS=" in out
+    assert "LOG_CHECKPOINT_STATUS=" in out
     assert (tmp_path / "code-flow-diagram.md").is_file()
 
 
-def test_step7a_skips_run_log_commit_after_preterminal_refresh_skip(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, ...]] = []
     _ = (tmp_path / "execution-issues.md").write_text("", encoding="utf-8")
 
@@ -169,41 +153,26 @@ def test_step7a_skips_run_log_commit_after_preterminal_refresh_skip(
         calls.append(args)
         return subprocess.CompletedProcess(args, 0, "", "")
 
+    def fake_subprocess_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["python"], 0, "", "")
+
+    def fake_flush_execution_issues(**_kwargs: object) -> tuple[int, str, int, str]:
+        return 0, "ok", 0, ""
+
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(
-        step_7a.run_log_flush,
-        "_render_token_timing_batches",
-        lambda *_args, **_kwargs: None,  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+        step_7a.execution_issues,
+        "flush_execution_issues",
+        fake_flush_execution_issues,
     )
-    monkeypatch.setattr(
-        step_7a.run_log_flush,
-        "_stage_vendor_failure_diagnostics",
-        lambda *_args, **_kwargs: None,  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    )
-    monkeypatch.setattr(
-        step_7a.run_log_flush,
-        "flush_logs_pre",
-        lambda **_kwargs: RefreshSkip(  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-            skipped=True,
-            reason=config.REFRESH_SKIP_PRETERMINAL_OUTCOME,
-            error="pre-terminal label stalled",
-        ),
-    )
-    monkeypatch.setattr(
-        step_7a.subprocess,
-        "run",
-        lambda *args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(step_7a.subprocess, "run", fake_subprocess_run)
+
+    status = step_7a._checkpoint_execution_issues(  # pyright: ignore[reportPrivateUsage]
+        tmp_path, run_id="run-1"
     )
 
-    status = step_7a._run_log_flush(  # pyright: ignore[reportPrivateUsage]
-        tmp_path,
-        run_id="run-1",
-        no_logs_commit=False,
-        claude_source_file="",
-    )
-
-    assert status == "degraded"
-    assert ("run-log", "commit") not in [call[:2] for call in calls]
+    assert status == "ok"
+    assert calls == [("token", "mark", "Step 8 — ship PR")]
 
 
 def test_step7a_main_empty_tmpdir_argv_falls_back_to_env(
@@ -246,7 +215,9 @@ def test_step7a_main_empty_tmpdir_argv_falls_back_to_env(
     assert seen["run_id"] == "run-7"
 
 
-def test_step7a_skips_diagram_for_small_non_runtime_change(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step7a_skips_diagram_for_small_non_runtime_change(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
     def fake_is_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
@@ -254,11 +225,15 @@ def test_step7a_skips_diagram_for_small_non_runtime_change(tmp_path: Path, capsy
         return True
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", fake_is_small_non_runtime_change)
-    with patch.object(step_7a, "_run_log_flush", return_value="skip"), patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="skip"),
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
@@ -274,15 +249,16 @@ def test_step7a_honors_issue_number_and_run_id(tmp_path: Path, capsys: pytest.Ca
         encoding="utf-8",
     )
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_log_flush",
-        return_value="skip",
-    ), patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="skip"),
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path, issue_number="42", run_id="run-42")
@@ -294,15 +270,16 @@ def test_step7a_honors_issue_number_and_run_id(tmp_path: Path, capsys: pytest.Ca
 def test_step7a_reads_run_id_from_session_env_when_session_id_absent(tmp_path: Path) -> None:
     _ = (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=run-99\n", encoding="utf-8")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_log_flush",
-        return_value="skip",
-    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="skip") as mock_flush,
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
@@ -312,7 +289,9 @@ def test_step7a_reads_run_id_from_session_env_when_session_id_absent(tmp_path: P
     assert mock_flush.call_args.kwargs["run_id"] == "run-99"
 
 
-def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")
     reason = "generation-failed rc=7 tail=timeout after 600s"
@@ -324,15 +303,17 @@ def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: 
         _ = (implement_tmpdir / "code-flow-diagram.failure.log").write_text("returncode: 7\nstderr: timeout after 600s\n", encoding="utf-8")
         return step_7a.pr_body.CodeFlowDiagramResult(1, "failed", "", reason)
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
-        step_7a.pr_body,
-        "generate_code_flow_diagram",
-        side_effect=fake_generate_code_flow_diagram,
-    ), patch.object(step_7a, "_run_log_flush", return_value="ok"), patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=False),
+        patch.object(step_7a.pr_body, "generate_code_flow_diagram", side_effect=fake_generate_code_flow_diagram),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="ok"),
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
@@ -350,19 +331,27 @@ def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: 
     assert not copied_log.exists()
 
 
-def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     reason = "generation-failed rc=7 tail=timeout after 600s"
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
-        step_7a.pr_body,
-        "generate_code_flow_diagram",
-        return_value=step_7a.pr_body.CodeFlowDiagramResult(1, "failed", "", reason),
-    ), patch.object(step_7a, "_run_log_flush", return_value="ok") as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=1, stdout="REBASE_OUTCOME=conflict\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=False),
+        patch.object(
+            step_7a.pr_body,
+            "generate_code_flow_diagram",
+            return_value=step_7a.pr_body.CodeFlowDiagramResult(1, "failed", "", reason),
+        ),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="ok") as mock_flush,
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=1, stdout="REBASE_OUTCOME=conflict\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
@@ -371,42 +360,46 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
     out = capsys.readouterr().out
     assert "DIAGRAM_STATUS=failed" in out
     assert f"DIAGRAM_REASON={reason}" in out
-    assert "LOG_FLUSH_STATUS=ok" in out
+    assert "LOG_CHECKPOINT_STATUS=ok" in out
     mock_flush.assert_called_once()
 
 
-def test_step7a_rebase_failure_defers_git_commit_flush(tmp_path: Path) -> None:
+def test_step7a_rebase_failure_still_checkpoints_execution_issues(tmp_path: Path) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_log_flush",
-        return_value="ok",
-    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=1, stdout="REBASE_OUTCOME=conflict\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="ok") as mock_flush,
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=1, stdout="REBASE_OUTCOME=conflict\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 1
-    assert mock_flush.call_args.kwargs["defer_git_commit"] is True
+    mock_flush.assert_called_once_with(tmp_path, run_id="run-1")
 
 
-def test_step7a_rebase_failure_flushes_and_preserves_probe_rc(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_rebase_failure_flushes_and_preserves_probe_rc(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_log_flush",
-        return_value="degraded",
-    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=3, stdout="REBASE_OUTCOME=failed\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="degraded") as mock_flush,
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=3, stdout="REBASE_OUTCOME=failed\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
@@ -414,89 +407,89 @@ def test_step7a_rebase_failure_flushes_and_preserves_probe_rc(tmp_path: Path, ca
     out = capsys.readouterr().out
     assert rc == 3
     assert "REBASE_OUTCOME=failed" in out
-    assert "LOG_FLUSH_STATUS=degraded" in out
+    assert "LOG_CHECKPOINT_STATUS=degraded" in out
     mock_flush.assert_called_once()
 
 
-def test_step7a_rebase_failure_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_rebase_failure_no_logs_commit_still_checkpoints(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_log_flush",
-        return_value="skipped-no-logs-commit",
-    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=3, stdout="REBASE_OUTCOME=failed\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="ok") as mock_flush,
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=3, stdout="REBASE_OUTCOME=failed\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path, no_logs_commit=True)
 
     out = capsys.readouterr().out
     assert rc == 3
-    assert "LOG_FLUSH_STATUS=skipped-no-logs-commit" in out
-    assert mock_flush.call_args.kwargs["no_logs_commit"] is True
+    assert "LOG_CHECKPOINT_STATUS=ok" in out
+    mock_flush.assert_called_once_with(tmp_path, run_id="run-1")
 
 
-def test_step7a_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_no_logs_commit_does_not_suppress_local_checkpoint(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_log_flush",
-        return_value="skipped-no-logs-commit",
-    ) as mock_flush, patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_checkpoint_execution_issues", return_value="ok") as mock_flush,
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path, no_logs_commit=True)
 
     assert rc == 0
-    assert "LOG_FLUSH_STATUS=skipped-no-logs-commit" in capsys.readouterr().out
-    mock_flush.assert_called_once()
+    assert "LOG_CHECKPOINT_STATUS=ok" in capsys.readouterr().out
+    mock_flush.assert_called_once_with(tmp_path, run_id="run-1")
 
 
-def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_does_not_capture_terminal_transcript(tmp_path: Path) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("LARCH_CLAUDE_SOURCE_FILE=/tmp/source.jsonl\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
 
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-        if len(args) >= 2 and args[0] == "run-log" and args[1] == "capture-transcript":
-            return subprocess.CompletedProcess(args, 0, "SESSION_TRANSCRIPT_STATUS=captured\n", "")
+        calls.append(args)
         return subprocess.CompletedProcess(args, 0, "", "")
 
-    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
-        step_7a,
-        "_run_cli",
-        side_effect=fake_run_cli,
-    ), patch.object(step_7a.execution_issues, "flush_execution_issues", return_value=(0, "ok", 0, "")), patch.object(
-        step_7a.run_log_flush,
-        "_render_token_timing_batches",
-    ), patch.object(
-        step_7a.run_log_flush,
-        "_stage_vendor_failure_diagnostics",
-    ), patch.object(step_7a, "subprocess"), patch.object(
-        step_7a.rust_runtime,
-        "checkpoint_probe",
-        return_value=step_7a.rust_runtime.CheckpointProbeOutput(
-            exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+    with (
+        patch.object(step_7a, "_is_small_non_runtime_change", return_value=True),
+        patch.object(step_7a, "_run_cli", side_effect=fake_run_cli),
+        patch.object(step_7a.execution_issues, "flush_execution_issues", return_value=(0, "ok", 0, "")),
+        patch.object(step_7a, "subprocess"),
+        patch.object(
+            step_7a.rust_runtime,
+            "checkpoint_probe",
+            return_value=step_7a.rust_runtime.CheckpointProbeOutput(
+                exit_code=0, stdout="REBASE_OUTCOME=skipped\n", stderr="", routing={}, advisory_lines=()
+            ),
         ),
     ):
         rc = step_7a.run_step7a(tmp_path)
 
     assert rc == 0
-    assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out
+    assert not any(call[:2] == ("run-log", "capture-transcript") for call in calls)
 
 
 def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=owner/repo\n", encoding="utf-8")
@@ -529,7 +522,7 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
-    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", _successful_log_checkpoint)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
     rc = step_7a.run_step7a(tmp_path, issue_number="42")
@@ -558,8 +551,7 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
 
 
 def test_step7a_rehydrates_fork_target_for_generation_and_checkpoint(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text(
@@ -594,7 +586,7 @@ def test_step7a_rehydrates_fork_target_for_generation_and_checkpoint(
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
-    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", _successful_log_checkpoint)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
     assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
@@ -603,12 +595,16 @@ def test_step7a_rehydrates_fork_target_for_generation_and_checkpoint(
     assert checkpoint_calls == [("7a.r", "diagrams", "upstream", "main")]
 
 
-@pytest.mark.parametrize(("status", "reason"), [("skipped", "br-in-participant-alias"), ("skipped", "dollar-in-participant-alias"), ("skipped", "unclosed-frontmatter")])
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        ("skipped", "br-in-participant-alias"),
+        ("skipped", "dollar-in-participant-alias"),
+        ("skipped", "unclosed-frontmatter"),
+    ],
+)
 def test_step7a_sanitizer_skip_clears_stale_artifacts_and_omits_upsert(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    status: str,
-    reason: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: str, reason: str
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")
@@ -629,7 +625,7 @@ def test_step7a_sanitizer_skip_clears_stale_artifacts_and_omits_upsert(
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
-    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", _successful_log_checkpoint)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
     assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
@@ -640,9 +636,7 @@ def test_step7a_sanitizer_skip_clears_stale_artifacts_and_omits_upsert(
 
 
 def test_step7a_upsert_failure_keeps_checkpoint_and_exit_success(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
@@ -671,7 +665,7 @@ def test_step7a_upsert_failure_keeps_checkpoint_and_exit_success(
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
-    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", _successful_log_checkpoint)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
     assert step_7a.run_step7a(tmp_path, issue_number="42") == 0
@@ -680,8 +674,7 @@ def test_step7a_upsert_failure_keeps_checkpoint_and_exit_success(
 
 
 def test_step7a_empty_issue_number_skips_upsert_but_runs_checkpoint(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
@@ -708,7 +701,7 @@ def test_step7a_empty_issue_number_skips_upsert_but_runs_checkpoint(
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
-    monkeypatch.setattr(step_7a, "_run_log_flush", _successful_log_flush)
+    monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", _successful_log_checkpoint)
     monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
 
     assert step_7a.run_step7a(tmp_path) == 0
@@ -729,4 +722,6 @@ def test_step7a_argument_failures_emit_terminal_contract(
     output = capsys.readouterr().out
     assert f"STEP_7A_BAIL_REASON={reason}" in output
     assert "REBASE_OUTCOME=skipped" in output
+
+
 # pyright: reportPrivateUsage=false
