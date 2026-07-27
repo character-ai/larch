@@ -391,6 +391,64 @@ def _owner_block(*rows: str) -> str:
     return "\n".join(("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->")) + "\n"
 
 
+@pytest.mark.parametrize(
+    "migration_text",
+    [
+        "No breaking changes to existing behavior.",
+        "The change is additive and uses existing contracts.",
+        "None.\n\nConfidence: high",
+        "N/A.",
+        "No migration is required.",
+        "No new shared adapter is created.",
+        "There is no need for a new shared adapter.",
+        "Add a flag through the existing adapter.",
+        "Create adapter tests for existing behavior.",
+        "Add client compatibility through the existing adapter.",
+    ],
+)
+def test_additive_migration_does_not_require_owner_block(migration_text: str) -> None:
+    plan = _plan_inner().replace(
+        "- Fixture owns this plan.",
+        "- Reuse the existing command registry.",
+    ).replace("None.\n\n", f"{migration_text}\n\n")
+
+    assert not mg.migration_requires_owner_block(plan_inner=plan)
+
+
+def test_additive_migration_passes_owner_admission_without_block() -> None:
+    plan = _plan_inner().replace(
+        "- Fixture owns this plan.",
+        "- Reuse the existing command registry and typed adapter.",
+    ).replace("None.\n\n", "No breaking changes to existing behavior.\n\n")
+    body = compose_named_block(marker="plan", inner=plan)
+
+    verdict = mg.evaluate_owner_admission(
+        RecordingRunner(responses=[]), issue="7983", repo="o/r", body=body
+    )
+
+    assert verdict.ok
+
+
+@pytest.mark.parametrize(
+    "migration_text",
+    [
+        "Creates a new shared adapter for migration.",
+        "Add a shared registry for command discovery.",
+        "Introduce a typed runtime resolver.",
+        "A state machine will be created for migration.",
+        "Create a new shared\nadapter for migration.",
+        "Create a shared adapter module for migration.",
+        "No breaking changes and adds a new shared adapter.",
+    ],
+)
+def test_affirmative_shared_owner_creation_requires_block(
+    migration_text: str,
+) -> None:
+    plan = _plan_inner().replace("None.\n\n", f"{migration_text}\n\n")
+
+    assert mg.migration_requires_owner_block(plan_inner=plan)
+
+
 def test_migration_shared_owner_requires_block() -> None:
     plan = _plan_inner().replace(
         "None.\n\n", "Creates a new shared adapter for migration.\n\n"

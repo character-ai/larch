@@ -45,8 +45,41 @@ _RECEIPT_RE: Final = re.compile(
 )
 _SHA256_HEX_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SHA1_HEX_RE: Final = re.compile(r"^[0-9a-f]{40}$")
-_SHARED_OWNER_RE: Final = re.compile(
-    r"\b(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)\b",
+_SHARED_OWNER_PATTERN: Final = (
+    r"(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)"
+)
+_OWNER_MODIFIER_PATTERN: Final = (
+    r"(?:(?!(?:against|current|existing|for|from|in|into|on|through|to|using|via|with)\b)"
+    r"[A-Za-z0-9_-]+[ \t]+)"
+)
+_OWNER_DECLARATION_SUFFIX_PATTERN: Final = (
+    r"(?=[ \t]*(?:$|[,(:]|\b(?:and|as|backs|becomes|class|component|for|handles|"
+    r"implementation|is|layer|library|module|owns|package|provides|replaces|routes|"
+    r"service|that|to|type|which|will|with)\b))"
+)
+_SHARED_OWNER_CREATION_RE: Final = re.compile(
+    rf"(?:\b(?:add(?:s|ed|ing)?|build(?:s|ing)?|built|creat(?:e|es|ed|ing)|"
+    rf"defin(?:e|es|ed|ing)|establish(?:es|ed|ing)?|introduc(?:e|es|ed|ing))\b"
+    rf"[ \t]+(?:(?:an?|the)[ \t]+)?(?:{_OWNER_MODIFIER_PATTERN}){{0,5}}"
+    rf"{_SHARED_OWNER_PATTERN}\b{_OWNER_DECLARATION_SUFFIX_PATTERN}"
+    rf"|\bnew[ \t]+(?:{_OWNER_MODIFIER_PATTERN}){{0,4}}{_SHARED_OWNER_PATTERN}\b"
+    rf"{_OWNER_DECLARATION_SUFFIX_PATTERN}"
+    rf"|\b{_SHARED_OWNER_PATTERN}\b[^.!?;\n]{{0,64}}?"
+    r"\b(?:(?:is|are|gets?)[ \t]+|will[ \t]+be[ \t]+)"
+    r"(?:added|built|created|defined|established|introduced)\b)",
+    re.IGNORECASE,
+)
+_OWNER_CREATION_CLAUSE_RE: Final = re.compile(
+    r"(?:[.!?;]+|\n[ \t]*\n|,[ \t]+(?:and|but|however)\b|\b(?:but|however)\b)",
+    re.IGNORECASE,
+)
+_NEGATED_CREATION_RE: Final = re.compile(
+    r"\b(?:neither|never|no|not|without)\b",
+    re.IGNORECASE,
+)
+_NEGATED_CREATION_PREFIX_RE: Final = re.compile(
+    r"(?:\b(?:neither|never|no|not|without)\b(?:[ \t]+[A-Za-z0-9_-]+){0,2}"
+    r"|\bno[ \t]+need[ \t]+(?:for|to)(?:[ \t]+(?:an?|the))?)[ \t]*$",
     re.IGNORECASE,
 )
 _IMPLEMENTING_PREFIX: Final = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
@@ -868,26 +901,51 @@ def validate_receipt_freshness(
     return FreshnessVerdict(reasons=tuple(reasons))
 
 
-def migration_requires_owner_block(*, plan_inner: str) -> bool:
-    """Return whether migration prose declares a new shared runtime owner."""
-    events = list(plan_grammar.iter_heading_events(plan_inner))
+def _migration_section_text(*, plan_inner: str) -> str:
+    """Return the fence-aware migration section without trailing plan metadata."""
     in_migration = False
     migration_lines: list[str] = []
-    for event in events:
+    for event in plan_grammar.iter_heading_events(plan_inner):
         if event.generic_level_two:
             in_migration = event.text.strip().casefold() == "## breaking changes and migration"
             continue
         if in_migration:
+            stripped: str = event.text.strip()
             if any(
-                event.text.strip().startswith(f"{key}:")
+                stripped.startswith(f"{key}:")
                 for key in plan_grammar.TRAILER_KEYS
-            ):
+            ) or stripped.casefold().startswith("confidence:"):
                 break
             migration_lines.append(event.text)
-    migration_text = "\n".join(migration_lines).strip()
-    if not migration_text or migration_text.casefold().rstrip(".") in {"none", "no migration"}:
-        return False
-    return _SHARED_OWNER_RE.search(plan_inner) is not None
+    return "\n".join(migration_lines).strip()
+
+
+def _creation_is_negated(*, clause: str, match: re.Match[str]) -> bool:
+    """Return whether local prose negates one candidate creation declaration."""
+    prefix: str = clause[: match.start()].rsplit(",", maxsplit=1)[-1]
+    return (
+        _NEGATED_CREATION_PREFIX_RE.search(prefix) is not None
+        or _NEGATED_CREATION_RE.search(match.group(0)) is not None
+    )
+
+
+def _clause_creates_shared_owner(*, clause: str) -> bool:
+    """Return whether one prose clause affirmatively creates a shared owner."""
+    normalized: str = " ".join(clause.split())
+    for match in _SHARED_OWNER_CREATION_RE.finditer(normalized):
+        if not _creation_is_negated(clause=normalized, match=match):
+            return True
+    return False
+
+
+def migration_requires_owner_block(*, plan_inner: str) -> bool:
+    """Return whether migration prose declares a new shared runtime owner."""
+    migration_text: str = _migration_section_text(plan_inner=plan_inner)
+    return any(
+        _clause_creates_shared_owner(clause=clause)
+        for clause in _OWNER_CREATION_CLAUSE_RE.split(migration_text)
+        if clause.strip()
+    )
 
 
 def _reuse_source_snapshot(
