@@ -921,6 +921,30 @@ def _render_autofix_prompt(
     return "\n".join(lines) + "\n"
 
 
+def _write_autofix_prompt(
+    *,
+    run_dir: Path,
+    plan: Path,
+    original_log: Path,
+    require_executable_facets: bool,
+) -> Path:
+    prompt = run_dir / "prompt.md"
+    log_text = (
+        original_log.read_text(encoding="utf-8", errors="replace")
+        if original_log.is_file()
+        else ""
+    )
+    _atomic_write(
+        path=prompt,
+        text=_render_autofix_prompt(
+            plan=plan,
+            log_text=log_text,
+            require_executable_facets=require_executable_facets,
+        ),
+    )
+    return prompt
+
+
 def _dispatch_vendor_fix(
     *,
     vendor: str,
@@ -1441,15 +1465,11 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         run_dir.mkdir(parents=True, exist_ok=True)
         backup = run_dir / "target-before"
         shutil.copy2(plan, backup)
-        prompt = run_dir / "prompt.md"
-        log_text = original_log.read_text(encoding="utf-8", errors="replace") if original_log.is_file() else ""
-        _atomic_write(
-            path=prompt,
-            text=_render_autofix_prompt(
-                plan=plan,
-                log_text=log_text,
-                require_executable_facets=args.require_executable_facets,
-            ),
+        prompt = _write_autofix_prompt(
+            run_dir=run_dir,
+            plan=plan,
+            original_log=original_log,
+            require_executable_facets=args.require_executable_facets,
         )
         tmpdir_before = run_dir / "tmpdir-before.manifest"
         tmpdir_after = run_dir / "tmpdir-after.manifest"
