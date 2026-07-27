@@ -13,6 +13,7 @@ from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError
 from larch.git import gh
+from larch.git import git
 from larch.git import rebase
 from larch.outcomes import Outcome
 from larch.report import run_log_flush, run_log_manifest
@@ -223,6 +224,9 @@ def _ship_rebase_phase(
     repo = (working.repo or "").strip()
     if issue and repo and not working.repo_unavailable:
         try:
+            base_target_sha = git.rev_parse(
+                runner, f"{base_remote}/{base_ref}", cwd=cwd
+            )
             body = migration_governance.read_issue_body(
                 runner, issue=issue, repo=repo, cwd=cwd
             )
@@ -233,6 +237,7 @@ def _ship_rebase_phase(
                 body=body,
                 repo_root=Path(cwd),
                 cwd=cwd,
+                head_sha=base_target_sha,
             )
         except ShipError as exc:
             return ShipRebasePhaseResult(

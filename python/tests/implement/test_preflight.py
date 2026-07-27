@@ -50,6 +50,9 @@ def _stub_migration_governance_ok(monkeypatch: pytest.MonkeyPatch) -> None:  # p
         return "o/r"
 
     monkeypatch.setattr(preflight.gh, "resolve_repo", _resolve_repo)
+    monkeypatch.setattr(
+        preflight.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
+    )
 
 
 def _write(handle: object, text: str) -> None:
@@ -85,6 +88,53 @@ def test_read_kv_lines_uses_last_duplicate_value() -> None:
     assert preflight._read_kv_lines("ADMISSION_RESULT=old\nADMISSION_RESULT=latest\n") == {  # pyright: ignore[reportPrivateUsage]
         "ADMISSION_RESULT": "latest"
     }
+
+
+@pytest.mark.parametrize(
+    ("forked_target", "expected_ref"),
+    [(False, "origin/main"), (True, "upstream/main")],
+)
+def test_migration_governance_status_uses_base_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forked_target: bool,
+    expected_ref: str,
+) -> None:
+    resolved_refs: list[str] = []
+    evaluated_heads: list[object] = []
+
+    def fake_rev_parse(
+        _runner: object, ref: str, *, cwd: str | None = None
+    ) -> str:
+        assert cwd == str(tmp_path)
+        resolved_refs.append(ref)
+        return "b" * 40
+
+    def passing_gate(
+        *_args: Any, **kwargs: Any
+    ) -> migration_governance.GovernanceGateVerdict:
+        evaluated_heads.append(kwargs.get("head_sha"))
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=()),
+        )
+
+    monkeypatch.setattr(preflight.git, "rev_parse", fake_rev_parse)
+    monkeypatch.setattr(
+        migration_governance, "evaluate_governance_gate", passing_gate
+    )
+
+    status = preflight._migration_governance_status(
+        issue="3",
+        repo="o/r",
+        issue_body="body",
+        repo_root=tmp_path,
+        forked_target=forked_target,
+    )
+
+    assert status is None
+    assert resolved_refs == [expected_ref]
+    assert evaluated_heads == ["b" * 40]
 
 
 def _fake_completed(argv: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:

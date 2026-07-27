@@ -746,15 +746,23 @@ def _activate_tracking_lease(st: BootstrapState) -> bool:
     lease_initialized = False
     repo = ""
     try:
+        repo_root = _resolve_repo_root()
+        base_target_sha = git.rev_parse(
+            proc, "origin/main", cwd=repo_root
+        )
         repo = st.repo or gh.resolve_repo(proc) or ""
         if not repo:
             raise OSError("repository unavailable for implementation lease")
         _ = tracking_issue.initialize_implementation_lease(
             proc,
             run=tracking_issue.ImplementationLeaseRun(
-                issue=st.issue_number_resolved, repo=repo, run_id=st.run_id
+                issue=st.issue_number_resolved,
+                repo=repo,
+                run_id=st.run_id,
+                cwd=repo_root,
             ),
             branch=st.branch_name,
+            head_sha=base_target_sha,
         )
         lease_initialized = True
         current_title = gh.issue_view_template_read(

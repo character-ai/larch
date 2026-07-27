@@ -15,6 +15,7 @@ import pytest
 
 from larch import cli
 from larch.core import config
+from larch.issue import issue_mutation, issue_wire, migration_governance
 from larch.issue import tracking_issue
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
@@ -144,6 +145,87 @@ def test_link_pr_closes_no_prefix_collision() -> None:
     linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert "Closes #421" in linked
     assert "Closes #42\n" in linked
+
+
+def test_initialize_lease_pins_both_gates_to_supplied_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt = migration_governance.PlanReceipt(
+        plan_sha256="1" * 64,
+        base_sha="a" * 40,
+        blockers_sha256="2" * 64,
+        owners_sha256="3" * 64,
+    )
+    plan_body = issue_wire.compose_named_block(
+        marker="plan", inner="## Plan\n\nImplement the test."
+    )
+    body = migration_governance.upsert_receipt(body=plan_body, receipt=receipt)
+    before = issue_mutation.IssueSnapshot(
+        repository="o/r",
+        issue="7",
+        title="[DESIGNED] Test",
+        body=body,
+        labels=frozenset(),
+        state="OPEN",
+        updated_at="2026-07-26T00:00:00Z",
+    )
+    evaluated_heads: list[object] = []
+
+    def passing_gate(
+        *_args: object, **kwargs: object
+    ) -> migration_governance.GovernanceGateVerdict:
+        evaluated_heads.append(kwargs.get("head_sha"))
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=()),
+        )
+
+    def update_lease(
+        _runner: object, **kwargs: object
+    ) -> issue_mutation.VerifiedIssueMutation:
+        after = issue_mutation.IssueSnapshot(
+            repository=before.repository,
+            issue=before.issue,
+            title=before.title,
+            body=str(kwargs["body"]),
+            labels=before.labels,
+            state=before.state,
+            updated_at="2026-07-26T00:00:01Z",
+        )
+        return issue_mutation.VerifiedIssueMutation(
+            before=before,
+            after=after,
+            fields=frozenset(
+                {issue_mutation.MutationField.IMPLEMENTATION_LEASE}
+            ),
+        )
+
+    def read_snapshot(
+        _runner: object, **_kwargs: object
+    ) -> issue_mutation.IssueSnapshot:
+        return before
+
+    monkeypatch.setattr(
+        tracking_issue.issue_mutation, "read_snapshot", read_snapshot
+    )
+    monkeypatch.setattr(
+        tracking_issue.issue_mutation, "update_implementation_lease", update_lease
+    )
+    monkeypatch.setattr(
+        migration_governance, "evaluate_governance_gate", passing_gate
+    )
+
+    lease = tracking_issue.initialize_implementation_lease(
+        RecordingRunner(),
+        run=tracking_issue.ImplementationLeaseRun(
+            issue="7", repo="o/r", run_id="run-7", cwd=str(tmp_path)
+        ),
+        branch="feature/test",
+        head_sha="b" * 40,
+    )
+
+    assert lease.base == "a" * 40
+    assert evaluated_heads == ["b" * 40, "b" * 40]
 
 
 def test_rename_strips_legacy_prefix(monkeypatch: pytest.MonkeyPatch) -> None:

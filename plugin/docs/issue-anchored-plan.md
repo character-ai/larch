@@ -316,9 +316,11 @@ Hash inputs:
 | `base_sha` | `HEAD` at publish time |
 
 Base-scope freshness fingerprints declared plan paths (globs expanded against
-tracked files at the SHA) plus owner keys. Main advancing alone does not stale
-a plan; only in-scope path or owner-key drift between `base_sha` and current
-`HEAD` emits `stale-plan-base-scope`.
+tracked files at the SHA) plus owner keys. `/implement` compares `base_sha`
+with its base target (`origin/main`, or `upstream/main` when fork state is
+available), not the feature-branch `HEAD`. Main advancing alone does not stale
+a plan; only in-scope path or owner-key drift emits
+`stale-plan-base-scope`.
 
 Native blocker fields are exactly `Native blocker:` / `Native blockers:`
 (fence-aware). Parity tokens:

@@ -42,6 +42,7 @@ from larch.calibration import difficulty
 from larch.core.proc import CommandResult
 from larch.core import process_identity
 from larch.core import logging_util
+from larch.issue import migration_governance
 from larch.outcomes import Outcome
 from larch.report import run_log_batch
 from larch.state import finalize
@@ -7000,6 +7001,84 @@ def _complete_manifest_payload(*, path: str = "implemented.txt", commit_message:
         "oos_observations": [],
         "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
     }
+
+
+@pytest.mark.parametrize(
+    ("forked_target", "expected_ref"),
+    [("false", "origin/main"), ("true", "upstream/main")],
+)
+def test_step2_dispatch_governance_uses_base_target(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    forked_target: str,
+    expected_ref: str,
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    (tmp / "session-env.sh").write_text(
+        f"ISSUE_NUMBER=7992\nREPO=o/r\nFORKED_TARGET={forked_target}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3])
+    )
+    resolved_refs: list[str] = []
+    evaluated_heads: list[object] = []
+    launcher_calls = 0
+
+    def fake_rev_parse(
+        _runner: object, ref: str, *, cwd: str | None = None
+    ) -> str:
+        assert cwd == str(repo)
+        resolved_refs.append(ref)
+        return "b" * 40
+
+    def stale_gate(
+        *_args: Any, **kwargs: Any
+    ) -> migration_governance.GovernanceGateVerdict:
+        evaluated_heads.append(kwargs.get("head_sha"))
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(
+                reasons=(migration_governance.REASON_STALE_PLAN_BODY,)
+            ),
+        )
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(dispatch_step2.git, "rev_parse", fake_rev_parse)
+    monkeypatch.setattr(
+        migration_governance, "read_issue_body", lambda *_a, **_k: "body"
+    )
+    monkeypatch.setattr(
+        migration_governance, "evaluate_governance_gate", stale_gate
+    )
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    rc = implement_dispatch.step2_dispatch_main(
+        [
+            "--tmpdir",
+            str(tmp),
+            "--plan-file",
+            str(tmp / "plan.txt"),
+            "--feature-file",
+            str(tmp / "feature-description.txt"),
+            "--coder",
+            "codex",
+        ]
+    )
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=migration-governance-stale" in out
+    assert launcher_calls == 0
+    assert resolved_refs == [expected_ref]
+    assert evaluated_heads == ["b" * 40]
 
 
 def test_step2_dispatch_qa_loop_exceeded(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
