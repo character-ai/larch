@@ -3266,11 +3266,36 @@ verb = "step-18-gate-finalize"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step_18_gate_finalize_main"
 machine_stdout = true
+owner = "retired"
+implementation_parity = "not-applicable"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7681
+migration_issue = 7995
+
+[[commands]]
+domain = "implement"
+verb = "step-18-gate-logs-flush"
+python_module = "larch.implement.implement_dispatch"
+python_function = "step_18_gate_logs_flush_main"
+machine_stdout = true
 owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7681
+planning_issue = 7995
+
+[[commands]]
+domain = "implement"
+verb = "step-19"
+python_module = "larch.implement.implement_dispatch"
+python_function = "step_19_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7995
 
 [[commands]]
 domain = "implement"
@@ -5997,6 +6022,18 @@ planning_issue = 7683
 
 [[commands]]
 domain = "run-log"
+verb = "checkpoint"
+python_module = "larch.report.run_log_flush"
+python_function = "run_log_checkpoint_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7995
+
+[[commands]]
+domain = "run-log"
 verb = "cleanup-implement-logs"
 python_module = "larch.report.cleanup_implement_logs"
 python_function = "main"
@@ -6025,11 +6062,12 @@ verb = "flush"
 python_module = "larch.report.run_log_flush"
 python_function = "larch_log_flush_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "retired"
+implementation_parity = "not-applicable"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7683
+migration_issue = 7995
 
 [[commands]]
 domain = "run-log"
@@ -6138,6 +6176,18 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7966
+
+[[commands]]
+domain = "run-log"
+verb = "prepare-terminal-snapshot"
+python_module = "larch.report.run_log_flush"
+python_function = "terminal_snapshot_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7995
 
 [[commands]]
 domain = "run-log"
@@ -8332,7 +8382,7 @@ rust = []
 [[callers]]
 path = "python/larch/report/run_log_flush.py"
 kind = "python-runtime"
-python = ["run-log flush", "run-log refresh"]
+python = ["run-log checkpoint"]
 rust = []
 
 [[callers]]
@@ -8734,7 +8784,7 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-finalize", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos disposition-checkpoint", "oos file", "plan-block read", "render run-summary", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
 rust = ["git current-branch", "push branch", "push checkpoint-probe", "push rebase"]
 
 [[callers]]
@@ -8830,7 +8880,7 @@ rust = []
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-python = ["execution-issues flush", "final-report write", "pr checks", "run-log flush", "run-log refresh", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
+python = ["execution-issues flush", "final-report write", "pr checks", "run-log checkpoint", "run-log refresh", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
 rust = []
 
 [[callers]]
@@ -8846,15 +8896,15 @@ python = ["bgjob wait", "checks lint-fix", "stall-recovery classify", "stall-rec
 rust = []
 
 [[callers]]
-path = "skills/implement/references/step18-cleanup.md"
+path = "skills/implement/references/step18-logs-flush.md"
 kind = "skill"
-python = ["final-report step18b", "final-report write", "implement step-18-gate-finalize", "implement-finalize teardown", "session read-key", "token *"]
+python = ["implement step-18-gate-logs-flush"]
 rust = []
 
 [[callers]]
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
-python = ["bgjob wait", "dirty-tree scope-check", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "run-log flush", "token check-budget"]
+python = ["bgjob wait", "dirty-tree scope-check", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "run-log checkpoint", "token check-budget"]
 rust = ["git commit"]
 
 [[callers]]
@@ -8986,13 +9036,25 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-18.md"
 kind = "skill"
-python = ["execution-issues flush-safety-net", "final-report step18b", "implement step-16-16a", "implement-finalize teardown", "run-log capture-transcript", "session restore-finalize-state"]
+python = ["implement step-18-gate-logs-flush", "run-log prepare-terminal-snapshot"]
 rust = []
 
 [[callers]]
 path = "skills/implement/scripts/step-18.sh"
 kind = "skill"
 python = ["implement step-18"]
+rust = []
+
+[[callers]]
+path = "skills/implement/scripts/step-19.md"
+kind = "skill"
+python = ["implement step-19"]
+rust = []
+
+[[callers]]
+path = "skills/implement/scripts/step-19.sh"
+kind = "skill"
+python = ["implement step-19"]
 rust = []
 
 [[callers]]
@@ -9053,7 +9115,7 @@ rust = []
 path = "skills/implement/scripts/step-7a.md"
 kind = "skill"
 python = ["diagrams upsert", "tracking-issue upsert-summary"]
-rust = ["push checkpoint-probe"]
+rust = []
 
 [[callers]]
 path = "skills/implement/scripts/step-7a.sh"
@@ -9268,7 +9330,7 @@ rust = []
 [[callers]]
 path = "skills/shared/final-summary-emit.md"
 kind = "skill"
-python = ["implement step-16-17", "implement step-18-gate-finalize"]
+python = ["implement step-16-17", "implement step-18-gate-logs-flush"]
 rust = []
 
 [[callers]]

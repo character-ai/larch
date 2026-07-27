@@ -1,5 +1,5 @@
 # pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false
-"""Step 18 gate/finalize: stall layer resolution and final cleanup."""
+"""Step 18: resolve stalls, prepare the terminal snapshot, and publish it."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from larch.implement.dispatch_helpers import (
     _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
-    _run_cli_forward,
 )
 from larch.implement.dispatch_leg import _run_cli_capture
 from larch.issue import execution_issues
@@ -34,9 +33,6 @@ _TERMINAL_SHIPPING_REFUSAL_REASON = "step18-terminal-shipping-without-pr"
 _TERMINAL_SHIPPING_REFUSAL_ENTRY = (
     "- **Step 18 terminal gate**: refused terminal `shipping` without PR evidence; "
     "preserved the session for stall recovery."
-)
-_TRUTHY = frozenset(
-    {"1", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On"}
 )
 _LIFECYCLE_VERB_BY_ACTION = {
     "cancel": "lifecycle-cancel",
@@ -205,22 +201,6 @@ def _print_summary_markers(implement_tmpdir: Path) -> int:
     return 0
 
 
-def _should_restore_finalize(implement_tmpdir: Path) -> bool:
-    ship_state = implement_tmpdir / "ship-pr-state.sh"
-    if not ship_state.is_file():
-        return False
-    finalize_state = implement_tmpdir / "finalize-state.sh"
-    if not finalize_state.is_file():
-        return True
-    ship_stall = _read_kv_file(path=ship_state, key="STALL_TRACKING", default="false")
-    ship_bail = _read_kv_file(path=ship_state, key="BAIL_NEEDS_USER_INPUT", default="false")
-    ship_step = _read_kv_file(path=ship_state, key="STALL_STEP", default="")
-    final_step = _read_kv_file(path=finalize_state, key="STALL_STEP", default="")
-    if ship_stall in _TRUTHY or ship_bail in _TRUTHY:
-        return True
-    return bool(ship_step) and ship_step != final_step
-
-
 def _terminal_publication_suppressed(implement_tmpdir: Path) -> bool:
     for name in ("finalize-state.sh", "run-flags.sh", "session-env.sh"):
         if _read_kv_file(path=implement_tmpdir / name, key="NO_LOGS_COMMIT", default="false") == "true":
@@ -263,12 +243,20 @@ def _terminal_lifecycle_action(*, implement_tmpdir: Path, wfr_rc: str) -> str:
     return "finalize"
 
 
-def _publish_terminal_archive(
-    *, implement_tmpdir: Path, run_id: str, lifecycle_action: str
-) -> int:
-    if _terminal_publication_suppressed(implement_tmpdir):
-        _emit_kv(key="RUN_LOG_PUBLISH_SKIPPED", value="no-logs-commit")
-        return 0
+def _write_terminalization_record(*, implement_tmpdir: Path, publication: str) -> bool:
+    try:
+        larch_io.atomic_write(
+            path=implement_tmpdir / ".run-log-terminalized",
+            text=(f"RUN_LOG_TERMINALIZED=true\nRUN_LOG_PUBLICATION={publication}\nLIFECYCLE_TERMINALIZED=true\n"),
+            nofollow=True,
+            mode=0o600,
+        )
+    except OSError:
+        return False
+    return True
+
+
+def _publish_terminal_archive(*, implement_tmpdir: Path, run_id: str, lifecycle_action: str) -> int:
     repo_root: Path | None = _terminal_publication_repo_root(implement_tmpdir)
     if repo_root is None:
         print("Step 18: run-log publication failed: persisted REPO_ROOT is unavailable", file=sys.stderr)
@@ -319,6 +307,14 @@ def _publish_terminal_archive(
         )
         _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
         return publish.returncode or config.EXIT_INTERNAL_ERROR
+    publication = publication_values.get("RUN_LOG_PUBLICATION", "")
+    if not _write_terminalization_record(implement_tmpdir=implement_tmpdir, publication=publication):
+        print(
+            "Step 18: run-log publication succeeded, but terminalization could not be recorded for cleanup.",
+            file=sys.stderr,
+        )
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return config.EXIT_INTERNAL_ERROR
     if publish.stdout:
         sys.stdout.write(publish.stdout)
         if not publish.stdout.endswith("\n"):
@@ -329,52 +325,79 @@ def _publish_terminal_archive(
 
 
 def _complete_terminal_run_log(*, implement_tmpdir: Path, run_id: str, emit_body: str, wfr_rc: str) -> int:
-    if _terminal_publication_suppressed(implement_tmpdir):
-        _emit_kv(key="RUN_LOG_PUBLISH_SKIPPED", value="no-logs-commit")
-    elif not run_id:
-        print("Step 18: run-log publication failed: LARCH_RUN_ID is unavailable", file=sys.stderr)
-        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
-        return config.EXIT_INTERNAL_ERROR
+    suppressed = _terminal_publication_suppressed(implement_tmpdir)
+    repo_root = _terminal_publication_repo_root(implement_tmpdir)
+    prepare_rc = _prepare_terminal_snapshot(
+        implement_tmpdir=implement_tmpdir, run_id=run_id, suppressed=suppressed, repo_root=repo_root
+    )
+    if prepare_rc != 0:
+        return prepare_rc
+    if suppressed:
+        publish_rc = _record_suppressed_terminalization(implement_tmpdir=implement_tmpdir)
     else:
-        source_file = os.environ.get("LARCH_CLAUDE_SOURCE_FILE") or _read_session_key_default(
-            implement_tmpdir=implement_tmpdir, key="LARCH_CLAUDE_SOURCE_FILE", default=""
-        )
-        if source_file and not (implement_tmpdir / "bgjob" / "implement-step7a.result.env").is_file():
-            capture = _run_cli_capture([
-                "run-log", "capture-transcript",
-                "--source-file", source_file, "--log-root", str(implement_tmpdir / "larch-logs"),
-                "--skill", "implement", "--run-id", run_id, "--defer-commit", "true",
-                "--execution-issues-log", str(implement_tmpdir / "execution-issues.md"), "--warning-step-label", "18",
-            ])
-            for line in (capture.stdout or "").splitlines():
-                if line.startswith("SESSION_TRANSCRIPT_STATUS="):
-                    print(line)
-        flush = _invoke_cli([
-            "execution-issues", "flush-safety-net",
-            "--log-root", str(implement_tmpdir / "larch-logs"), "--run-id", run_id,
-            "--issue-log", str(implement_tmpdir / "execution-issues.md"),
-        ])
-        if flush.returncode != 0:
-            print(
-                f"Step 18: final execution-issues flush failed (rc={flush.returncode}); "
-                "the session staging tree was retained for retry.",
-                file=sys.stderr,
-            )
-            _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="false")
-            return flush.returncode
-        _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="true")
-        publish_rc: int = _publish_terminal_archive(
+        publish_rc = _publish_terminal_archive(
             implement_tmpdir=implement_tmpdir,
             run_id=run_id,
-            lifecycle_action=_terminal_lifecycle_action(
-                implement_tmpdir=implement_tmpdir, wfr_rc=wfr_rc
-            ),
+            lifecycle_action=_terminal_lifecycle_action(implement_tmpdir=implement_tmpdir, wfr_rc=wfr_rc),
         )
-        if publish_rc != 0:
-            return publish_rc
+    if publish_rc != 0:
+        return publish_rc
     summary = implement_tmpdir / "summary-final.md"
     if emit_body == "true" and wfr_rc == "0" and summary.is_file() and summary.stat().st_size > 0:
         _ = _print_summary_markers(implement_tmpdir)
+    return 0
+
+
+def _prepare_terminal_snapshot(*, implement_tmpdir: Path, run_id: str, suppressed: bool, repo_root: Path | None) -> int:
+    if not run_id:
+        print("Step 18: run-log publication failed: LARCH_RUN_ID is unavailable", file=sys.stderr)
+        _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="false")
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return config.EXIT_INTERNAL_ERROR
+    prepare_args = [
+        "run-log",
+        "prepare-terminal-snapshot",
+        "--implement-tmpdir",
+        str(implement_tmpdir),
+        "--run-id",
+        run_id,
+        "--no-logs-commit",
+        str(suppressed).lower(),
+    ]
+    if repo_root is not None:
+        prepare_args.extend(["--repo-root", str(repo_root)])
+    prepare = _run_cli_capture(prepare_args, cwd=repo_root)
+    if prepare.stderr:
+        sys.stderr.write(prepare.stderr)
+        sys.stderr.flush()
+    prepare_values = _parse_kv(prepare.stdout or "")
+    for line in (prepare.stdout or "").splitlines():
+        if line.startswith(("SESSION_TRANSCRIPT_STATUS=", "TERMINAL_SNAPSHOT_")):
+            print(line)
+    prepared = prepare.returncode == 0 and prepare_values.get("TERMINAL_SNAPSHOT_STATUS") == "prepared"
+    if not prepared:
+        print(
+            f"Step 18: terminal snapshot preparation failed (rc={prepare.returncode}); "
+            "the session staging tree was retained for retry.",
+            file=sys.stderr,
+        )
+        _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="false")
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return prepare.returncode or config.EXIT_INTERNAL_ERROR
+    _emit_kv(key="RUN_LOG_FINAL_FLUSH_OK", value="true")
+    return 0
+
+
+def _record_suppressed_terminalization(*, implement_tmpdir: Path) -> int:
+    _emit_kv(key="RUN_LOG_PUBLISH_SKIPPED", value="no-logs-commit")
+    _emit_kv(key="RUN_LOG_PUBLICATION", value="skipped-suppressed")
+    _emit_kv(key="LIFECYCLE_FLUSHED", value="false")
+    _emit_kv(key="LIFECYCLE_TERMINALIZED", value="true")
+    if not _write_terminalization_record(implement_tmpdir=implement_tmpdir, publication="skipped-suppressed"):
+        print("Step 18: suppressed terminalization could not be recorded for cleanup.", file=sys.stderr)
+        _emit_kv(key="RUN_LOG_PUBLISH_OK", value="false")
+        return config.EXIT_INTERNAL_ERROR
+    _emit_kv(key="RUN_LOG_PUBLISH_OK", value="true")
     return 0
 
 
@@ -392,7 +415,7 @@ def _step18_gate(*, implement_tmpdir: Path, stall_tracking_memory: str) -> int:
     return 0
 
 
-def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
+def _step18_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
     if step17_emitted == "true":
         (implement_tmpdir / ".step17-emitted").touch()
 
@@ -436,8 +459,8 @@ def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
     _ = _invoke_cli(["token", "report", "--since-last-mark", "--terse"])
     timing_env = {**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}
     _ = _run_cli_capture(["timing", "report", "--since-last-mark", "--terse"], env=timing_env)
-    _ = _invoke_cli(["token", "mark", "Step 18 — done"])
-    _ = _run_cli_capture(["timing", "mark", "Step 18 — done"], env=timing_env)
+    _ = _invoke_cli(["token", "mark", "Step 18 — logs flush"])
+    _ = _run_cli_capture(["timing", "mark", "Step 18 — logs flush"], env=timing_env)
 
     run_id = os.environ.get("RUN_ID") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default="")
     run_log_rc = _complete_terminal_run_log(
@@ -448,24 +471,12 @@ def _step18_finalize(*, implement_tmpdir: Path, step17_emitted: str) -> int:
     )
     if run_log_rc != 0:
         return run_log_rc
-
-    if _should_restore_finalize(implement_tmpdir):
-        restore = _invoke_cli(["session", "restore-finalize-state", "--implement-tmpdir", str(implement_tmpdir)])
-        if restore.returncode != 0:
-            print("**⚠ Step 18: restore-finalize-state.sh failed; proceeding to teardown.**", file=sys.stderr)
-
-    claude_pid = os.environ.get("LARCH_CLAUDE_PID") or str(os.getppid())
-    _ = _invoke_cli(["session", "clear-implement-pointer", "--claude-pid", claude_pid])
-    return _run_cli_forward([
-        "implement-finalize", "teardown",
-        "--state-file", str(implement_tmpdir / "finalize-state.sh"),
-        "--implement-tmpdir", str(implement_tmpdir),
-    ])
+    return 0
 
 
 def step_18_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement step-18")
-    parser.add_argument("--phase", choices=("gate", "finalize"), default="gate")
+    parser.add_argument("--phase", choices=("gate", "logs-flush"), default="gate")
     parser.add_argument("--stall-tracking-memory", default="")
     parser.add_argument("--step17-emitted", choices=("true", "false"), default="false")
     args = parser.parse_args(argv)
@@ -484,18 +495,21 @@ def step_18_main(argv: list[str] | None = None) -> int:
         os.environ["RUN_ID"] = run_id
     if args.phase == "gate":
         return _step18_gate(implement_tmpdir=implement_tmpdir, stall_tracking_memory=args.stall_tracking_memory)
-    return _step18_finalize(implement_tmpdir=implement_tmpdir, step17_emitted=args.step17_emitted)
+    return _step18_logs_flush(implement_tmpdir=implement_tmpdir, step17_emitted=args.step17_emitted)
 
 
-def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement step-18-gate-finalize")
+def step_18_gate_logs_flush_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-18-gate-logs-flush")
     parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--stall-tracking-memory", default="")
     parser.add_argument("--step17-emitted", choices=("true", "false"), default="false")
     args = parser.parse_args(argv)
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
-        print("implement step-18-gate-finalize: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
+        print(
+            "implement step-18-gate-logs-flush: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set",
+            file=sys.stderr,
+        )
         return 2
     implement_tmpdir = Path(raw_tmpdir)
     os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
@@ -522,10 +536,10 @@ def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="OUTCOME", value="stalled")
         _emit_kv(key="NEXT_ACTION", value="tool-failure")
         if not persisted:
-            print("implement step-18-gate-finalize: cannot persist terminal shipping refusal", file=sys.stderr)
+            print("implement step-18-gate-logs-flush: cannot persist terminal shipping refusal", file=sys.stderr)
         return config.EXIT_INTERNAL_ERROR
 
     _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
-    finalize_rc = _step18_finalize(implement_tmpdir=implement_tmpdir, step17_emitted=args.step17_emitted)
-    _emit_kv(key="NEXT_ACTION", value="finalize-done")
-    return finalize_rc
+    logs_flush_rc = _step18_logs_flush(implement_tmpdir=implement_tmpdir, step17_emitted=args.step17_emitted)
+    _emit_kv(key="NEXT_ACTION", value="logs-flush-done" if logs_flush_rc == 0 else "logs-flush-failed")
+    return logs_flush_rc

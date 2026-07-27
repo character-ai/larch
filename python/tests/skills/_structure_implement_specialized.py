@@ -1,12 +1,62 @@
 """Ported implement structure checks from test-implement-structure.sh."""
+
 # pylint: disable=multiple-statements,subprocess-run-check,chained-comparison
 from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from ._structure_label_inventory import assertion_labels
+
+
+def _check_terminal_references(
+    *,
+    checks: list[str],
+    skill: str,
+    forbid: Callable[[str, str, str], None],
+) -> None:
+    logs_flush_ref = Path("skills/implement/references/step18-logs-flush.md").read_text()
+    for needle in [
+        "Resolve `STALL_TRACKING` from the in-memory value",
+        "`run-log prepare-terminal-snapshot` owns the last mutable log writes",
+        "`steps_ran.step18=true`",
+        "`$IMPLEMENT_TMPDIR/.run-log-terminalized`",
+    ]:
+        if needle not in logs_flush_ref:
+            checks.append(f"step18-logs-flush.md missing terminal authority {needle!r}")
+
+    cleanup_ref = Path("skills/implement/references/step19-cleanup.md").read_text()
+    for needle in [
+        "`CLEANUP_BLOCKED=run-log-not-terminalized`",
+        "It does not invoke `run-log`",
+        "Relay the teardown tail from captured Step 19 stdout",
+    ]:
+        if needle not in cleanup_ref:
+            checks.append(f"step19-cleanup.md missing cleanup authority {needle!r}")
+    for needle in [
+        "If eligible, Main Claude reads",
+        "/larch:issue --input-file",
+        "Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result",
+        "compose-report --report-kind escalation-success",
+        "prepare-terminal-snapshot",
+    ]:
+        if needle in cleanup_ref:
+            checks.append(f"step19-cleanup.md retains log or filing work {needle!r}")
+
+    if Path("skills/implement/references/step18a5-filing.md").is_file():
+        checks.append("step18a5-filing.md must be deleted: escalation-success filing removed from /implement")
+    forbid(
+        skill,
+        "Resolve `STALL_TRACKING` from four layers",
+        "SKILL four-layer STALL_TRACKING detail moved to cleanup ref",
+    )
+    forbid(
+        skill,
+        "compose-report --report-kind escalation-success",
+        "SKILL Step 18a.5 procedure body moved to cleanup ref",
+    )
 
 
 def run(repo_root: Path) -> list[str]:
@@ -68,9 +118,14 @@ def run(repo_root: Path) -> list[str]:
         require(skill, registry_ref, "SKILL pointer for extracted script registry")
         # New mandatory references.
         for ref in [
-            "rebase-checkpoint-routing.md","phantom-probe.md","ship-pr-exit-matrix.md","step18-cleanup.md",
+            "rebase-checkpoint-routing.md",
+            "phantom-probe.md",
+            "ship-pr-exit-matrix.md",
+            "step18-logs-flush.md",
+            "step19-cleanup.md",
             "ship-pr-oos-checkpoint-router.md",
-            "bootstrap-recovery.md","self-review.md",
+            "bootstrap-recovery.md",
+            "self-review.md",
         ]:
             path=f"skills/implement/references/{ref}"
             if not Path(path).is_file():
@@ -153,7 +208,6 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "single-line envelope", "SKILL must not describe single-line envelope")
         forbid(skill, "full seven-key envelope", "SKILL must not require envelope on exit 2")
 
-
         launcher = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
         bootstrap_recovery_read = "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely."
         self_review_read = "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely."
@@ -169,8 +223,9 @@ def run(repo_root: Path) -> list[str]:
             "python/cli.py ship pre-driver",
             "skills/implement/scripts/step-8-ship.sh",
             "skills/implement/scripts/step-8-oos-checkpoint.sh",
-            'python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
-            'skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
+            'python/cli.py implement step-18-gate-logs-flush --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
+            'skills/implement/scripts/step-18.sh --phase logs-flush --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
+            'skills/implement/scripts/step-19.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
         ]:
             require(skill, launcher + script, f"SKILL launcher wrapper {script}")
 
@@ -186,7 +241,21 @@ def run(repo_root: Path) -> list[str]:
             forbid(skill, needle, "wrapperized SKILL")
 
         # Script/md sibling and executable coverage for new wrappers.
-        wrappers = ["step-0-bootstrap","step-0-degraded-gate","step-2-post-dispatch","run-step-checks","step-5-review","step-5-resume","step-6-entry","step-8-python-guard","step-8-seed-initial","step-8-ship","step-8-oos-checkpoint","step-18"]
+        wrappers = [
+            "step-0-bootstrap",
+            "step-0-degraded-gate",
+            "step-2-post-dispatch",
+            "run-step-checks",
+            "step-5-review",
+            "step-5-resume",
+            "step-6-entry",
+            "step-8-python-guard",
+            "step-8-seed-initial",
+            "step-8-ship",
+            "step-8-oos-checkpoint",
+            "step-18",
+            "step-19",
+        ]
         for name in wrappers:
             sh=Path(f"skills/implement/scripts/{name}.sh")
             md=Path(f"skills/implement/scripts/{name}.md")
@@ -225,11 +294,25 @@ def run(repo_root: Path) -> list[str]:
         require("skills/implement/scripts/step-18.sh", 'implement step-18 "$@"', "step-18 wrapper delegates to Python")
         forbid("skills/implement/scripts/step-18.sh", "print_summary_markers", "step-18 wrapper must not retain finalize helpers")
         require("python/larch/implement/dispatch_step18.py", "def step_18_main", "step-18 Python entry present")
-        require("python/larch/implement/dispatch_step18.py", "def _step18_finalize", "step-18 finalize owned by Python")
+        require(
+            "python/larch/implement/dispatch_step18.py", "def _step18_logs_flush", "step-18 logs flush owned by Python"
+        )
         require("python/larch/implement/dispatch_step18.py", "---LARCH-SUMMARY-FINAL-BEGIN---", "step-18 begin marker in Python")
-        require("python/larch/implement/dispatch_step18.py", "restore-finalize-state", "step-18 restore finalize argv in Python")
-        require("python/larch/implement/dispatch_step18.py", "implement-finalize", "step-18 teardown argv in Python")
+        forbid(
+            "python/larch/implement/dispatch_step18.py",
+            "restore-finalize-state",
+            "step-18 must not restore cleanup state",
+        )
+        forbid("python/larch/implement/dispatch_step18.py", "implement-finalize", "step-18 must not invoke teardown")
         require("python/larch/implement/dispatch_step18.py", "final-report", "step-18 live step18b path in Python")
+        require("skills/implement/scripts/step-19.sh", 'implement step-19 "$@"', "step-19 wrapper delegates to Python")
+        require("python/larch/implement/dispatch_step19.py", "def step_19_main", "step-19 Python entry present")
+        require(
+            "python/larch/implement/dispatch_step19.py",
+            "restore-finalize-state",
+            "step-19 restore finalize argv in Python",
+        )
+        require("python/larch/implement/dispatch_step19.py", "implement-finalize", "step-19 teardown argv in Python")
         forbid("skills/implement/scripts/step-18.sh", 'cleanup.sh" --help', "step-18 must not resurrect cleanup smoke")
         forbid("skills/implement/scripts/step-18.sh", "token report --full", "step-18 must not resurrect full token report")
         forbid("skills/implement/scripts/step-18.sh", "Step 18 — cleanup", "step-18 must not resurrect cleanup telemetry mark")
@@ -255,9 +338,16 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/cli.py", '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True)', "ship pre-driver CLI registry")
         require("python/larch/cli.py", '"ship_pre_driver_main", True),', "ship pre-driver machine stdout contract")
         require("python/larch/cli.py", "NEXT_ACTION=stall", "ship pre-driver pre-version stall fast path")
-        require("python/larch/cli.py", '("implement", "step-18-gate-finalize"): ("larch.implement.implement_dispatch", "step_18_gate_finalize_main", True)', "Step 18 composite CLI registry")
-        require("python/larch/cli.py", '"step_18_gate_finalize_main", True),', "Step 18 composite machine stdout contract")
-        require("python/larch/implement/dispatch_step18.py", "def step_18_gate_finalize_main", "Step 18 composite handler")
+        require("python/larch/cli.py", '("implement", "step-18-gate-logs-flush"): (', "Step 18 composite CLI registry")
+        require("python/larch/cli.py", '"step_18_gate_logs_flush_main",', "Step 18 composite machine stdout contract")
+        require(
+            "python/larch/cli.py",
+            '("implement", "step-19"): ("larch.implement.implement_dispatch", "step_19_main", True)',
+            "Step 19 CLI registry",
+        )
+        require(
+            "python/larch/implement/dispatch_step18.py", "def step_18_gate_logs_flush_main", "Step 18 composite handler"
+        )
         require("python/larch/implement/dispatch_ship.py", "def ship_pre_driver_main", "ship pre-driver handler")
         require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-python-guard"]', "ship pre-driver runs guard first")
         require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-seed-initial"]', "ship pre-driver conditional seeder")
@@ -410,46 +500,96 @@ def run(repo_root: Path) -> list[str]:
         require(skill, "skills/shared/final-summary-emit.md", "SKILL shared final-summary emit pointer")
         require(skill, "markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`", "SKILL implement marker pair binding")
         require(skill, "captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout", "SKILL Step 17 captured foreground stdout source")
-        require(skill, "captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout", "SKILL Step 18 composite stdout source")
-        require(skill, "captured foreground `step-18.sh --phase finalize` Bash wrapper stdout", "SKILL Step 18 captured foreground stdout source")
+        require(
+            skill,
+            "captured foreground `python/cli.py implement step-18-gate-logs-flush` Bash wrapper stdout",
+            "SKILL Step 18 composite stdout source",
+        )
+        require(
+            skill,
+            "captured foreground `step-18.sh --phase logs-flush` Bash wrapper stdout",
+            "SKILL Step 18 captured foreground stdout source",
+        )
         require(skill, "not asynchronous notification output", "SKILL implement source is not task notification output")
         require(skill, "Read fallback `forbidden`", "SKILL Read fallback forbidden binding")
         require(skill, "sidecar follow-on `forbidden`", "SKILL sidecar follow-on forbidden binding")
         require(skill, "do not Read that file on the Step 17 primary path", "SKILL no Read-tool Step 17 primary path")
-        require(skill, "Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir.", "SKILL Step 18 no Read fallback")
+        require(skill, "Never Read or use a disk cache to reconstruct it.", "SKILL Step 18 no Read fallback")
         require(skill, "**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**", "SKILL Step 18 composite missing-marker warning")
-        require(skill, "**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**", "SKILL Step 18 finalize missing-marker warning")
-        require(skill, "Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on the stall-recovery path.", "SKILL Step 18 dual tail relay")
-        cleanup_read = "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely."
+        require(
+            skill,
+            "**⚠ Step 18: EMIT_BODY=true but marker pair missing from logs-flush stdout.**",
+            "SKILL Step 18 logs-flush missing-marker warning",
+        )
+        require(skill, "Relay teardown tail records verbatim from captured Step 19 stdout.", "SKILL Step 19 tail relay")
+        logs_flush_read = "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-logs-flush.md` completely."
+        require_near(
+            skill,
+            logs_flush_read,
+            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-logs-flush',
+            "Step 18 logs-flush read before composite fence",
+            1600,
+        )
+        cleanup_read = "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step19-cleanup.md` completely."
         require_near(
             skill,
             cleanup_read,
-            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize',
-            "Step 18 cleanup read before composite fence",
-            1600,
+            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-19.sh',
+            "Step 19 cleanup read before cleanup fence",
+            1000,
         )
         forbid(skill, "#### Step 18a.5 — Escalation-success report gate", "SKILL Step 18a.5 section must be removed")
-        require(skill, "During active recovery before `CLEARED=true`, do not run the standalone `--phase finalize` fence.", "SKILL stall-recovery skip standalone finalize during active recovery")
-        require(skill, "After successful recovery (`CLEARED=true`), run the standalone `step-18.sh --phase finalize` fence.", "SKILL stall-recovery run standalone finalize after cleared")
-        require(skill, "Proceed without re-running `python/cli.py implement step-18-gate-finalize` after terminal recovery completes.", "SKILL Step 18a no composite re-run after terminal recovery")
+        require(
+            skill,
+            "During active recovery before `CLEARED=true`, do not run the standalone `--phase logs-flush` fence.",
+            "SKILL stall-recovery skip standalone logs flush during active recovery",
+        )
+        require(
+            skill,
+            "After successful recovery (`CLEARED=true`), run the standalone `step-18.sh --phase logs-flush` fence.",
+            "SKILL stall-recovery run standalone logs flush after cleared",
+        )
+        require(
+            skill,
+            "Proceed without re-running `python/cli.py implement step-18-gate-logs-flush` after terminal recovery completes.",
+            "SKILL Step 18a no composite re-run after terminal recovery",
+        )
         require(skill, "Parse `STALL_RECOVERY_REQUIRED` and the four `STALL_TRACKING_*` KVs from captured composite stdout immediately after the composite fence returns.", "SKILL Step 18a parses stall KVs from composite stdout")
         require(skill, "Branch primarily on `NEXT_ACTION=stall-recovery`", "SKILL Step 18a primary stall branch trigger")
         forbid(skill, "Use the gate phase below", "SKILL retired gate-phase prose")
         forbid(skill, "skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory", "SKILL retired standalone gate fence")
         require(skill, "**Escalation recording owners.**", "SKILL escalation recording owners preserved")
         require(skill, "Repeat any external reviewer warnings from earlier", "SKILL Step 18b warnings preserved")
-        require(skill, "Cap the per-run token/timing ledgers **before** teardown removes them.", "SKILL #3425 closing marks preserved")
+        require(
+            skill,
+            "Cap the token and timing ledgers before terminal snapshot rendering.",
+            "SKILL #3425 closing marks preserved",
+        )
         forbid(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', "SKILL Step 18 Read fallback removed")
         require("python/larch/state/closeout.py", ".step17-printed", "step-16-17 owns .step17-printed")
         require(skill, "When the shared profile caches a non-empty marker body, retain it as the Step 17 cache for deferred terminal emit.", "SKILL Step 17 caches marker body for deferred emit")
-        require(skill, "The wrapper writes `.step17-emitted` before Step 18b when `--step17-emitted true`, and touches it before teardown when it emits markers.", "SKILL Step 18 .step17-emitted wrapper ownership")
-        require(skill, "Do not write `$IMPLEMENT_TMPDIR/.step17-emitted` after finalize returns.", "SKILL Step 18 no post-finalize sentinel write")
+        require(
+            skill, "`STEP17_EMITTED_PRESENT` is informational only.", "SKILL Step 18 .step17-emitted wrapper ownership"
+        )
+        require(
+            skill,
+            "Do not set it merely because a stale `$IMPLEMENT_TMPDIR/.step17-emitted` exists without a current Step 17 cache.",
+            "SKILL Step 18 stale sentinel rejection",
+        )
         require("python/larch/state/closeout.py", "step17_rc == 0 and _summary_nonempty(tmpdir)", "step-16-17 marker gate uses Step 17 rc and non-empty summary")
         require(skill, "Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.", "SKILL stale-summary marker gate")
         require(skill, "Use `true` only when a non-empty Step 17 marker body was cached for deferred terminal emit; otherwise use `false`.", "SKILL Step 18 step17 emitted binding uses cache only")
-        require(skill, "Tail relay precedes terminal marker emit; final marker body emission happens after teardown with no following tool call.", "SKILL tail relay precedes terminal emit")
-        require(skill, "terminal chat emit must use that post-Step-18b marker body even if a Step 17 cache exists", "SKILL Step 18 refreshed body precedence")
-        require(skill, "when `EMIT_BODY=false` and a non-empty Step 17 cache exists, terminal chat emit uses the Step 17 cache", "SKILL Step 17 cache precedence")
+        require(
+            skill,
+            "Tail relay precedes terminal marker emit. The selected marker body is the final text with no following tool call.",
+            "SKILL tail relay precedes terminal emit",
+        )
+        require(
+            skill,
+            "a valid non-empty Step 18 marker body wins when `EMIT_BODY=true` and `WFR_RC=0`",
+            "SKILL Step 18 refreshed body precedence",
+        )
+        require(skill, "a non-empty Step 17 cache wins when `EMIT_BODY=false`", "SKILL Step 17 cache precedence")
         forbid(skill, "Do NOT use a Bash `cat` or Python tool call to print the summary body", "retired Step 17 Bash-cat prohibition string")
         forbid(skill, "via Bash `cat` whose output is then re-emitted as orchestrator text", "SKILL must not sanction Bash cat for summary emit")
 
@@ -595,7 +735,7 @@ def run(repo_root: Path) -> list[str]:
                 "Post-driver `stall`",
                 "**`tool-failure`**",
                 "python/cli.py ship seed-initial-state` owns the canonical initial",
-                "CI_PASSED=true` does not append execution-issues",
+                "CI_PASSED=true` does not append execution issues",
                 "## Terminal manifest contract",
                 "Terminal runs must leave explicit `steps_ran` values through `python/cli.py final-report write`.",
                 "skills/implement/scripts/write-final-report.md",
@@ -822,7 +962,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "ship-pr-ci-fix.md", "SKILL retired ci-fix child reference")
         forbid(skill, "run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`", "SKILL retired matrix CI-fix authority")
         forbid(skill, "autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`", "SKILL retired matrix CI-fix authority substring")
-        forbid(skill, "Follow `step18-cleanup.md` for the escalation-success report procedure", "SKILL retired Step 18a.5 cleanup procedure pointer")
+        forbid(skill, "step18-cleanup.md", "SKILL retired Step 18 cleanup reference")
         for needle in [
             "After the OOS pipeline",
             "run the OOS pipeline when needed",
@@ -865,36 +1005,10 @@ def run(repo_root: Path) -> list[str]:
         ]:
             require(skill, needle, "NEVER #14/#15 Python OOS split pin")
         require("skills/implement/references/oos-pipeline.md", "Do not ask the operator for confirmation before the batch call, and do not use `AskUserQuestion` here. Accepted non-security OOS disposition is automatic for this checkpoint.", "legacy OOS pipeline must not ask confirmation before issue batch")
-        cleanup_ref = Path("skills/implement/references/step18-cleanup.md").read_text()
-        for needle in [
-            "Resolve `STALL_TRACKING` from four layers",
-            "Mode-specific reminders (`--draft`, `--merge`",
-            "The `larch-tokens-&lt;slug&gt;.jsonl` token ledger",
-        ]:
-            if needle not in cleanup_ref:
-                checks.append(f"step18-cleanup.md missing relocated authority {needle!r}")
-        for needle in [
-            "stall-recovery-escalation-success.env",
-            "Escalation evidence is only",
-            "step18a5-filing.md",
-            "Breakout teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches.",
-        ]:
-            if needle in cleanup_ref:
-                checks.append(f"step18-cleanup.md must not retain removed escalation-filing authority {needle!r}")
-        for needle in [
-            "If eligible, Main Claude reads",
-            "/larch:issue --input-file",
-            "Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result",
-            "compose-report --report-kind escalation-success",
-        ]:
-            if needle in cleanup_ref:
-                checks.append(f"step18-cleanup.md retains moved filing body {needle!r}")
-        step18a5_filing = Path("skills/implement/references/step18a5-filing.md")
-        if step18a5_filing.is_file():
-            checks.append("step18a5-filing.md must be deleted: escalation-success filing removed from /implement")
-        forbid(skill, "Resolve `STALL_TRACKING` from four layers", "SKILL four-layer STALL_TRACKING detail moved to cleanup ref")
-        forbid(skill, "compose-report --report-kind escalation-success", "SKILL Step 18a.5 procedure body moved to cleanup ref")
-        forbid(skill, "Normal teardown is owned by `step-18.sh --phase finalize`", "SKILL Step 18b extended teardown prose moved to cleanup ref")
+        _check_terminal_references(checks=checks, skill=skill, forbid=forbid)
+        forbid(
+            skill, "Normal teardown is owned by `step-18.sh --phase finalize`", "SKILL retired Step 18 teardown prose"
+        )
         forbid(skill, "Mode-specific reminders (`--draft`, `--merge`", "SKILL Step 18b warning replay detail moved to cleanup ref")
         forbid(skill, "The `larch-tokens-&lt;slug&gt;.jsonl` token ledger", "SKILL closing marks rationale moved to cleanup ref")
         stall_ref = Path("skills/implement/references/stall-recovery.md").read_text()
@@ -927,14 +1041,10 @@ def run(repo_root: Path) -> list[str]:
             'architectural-assessment submit --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <kind> --state <state> --note-file "$IMPLEMENT_TMPDIR/assessment-note-<kind>.md"',
             "SKILL first-submit command must stay unchanged and free of --allow-exception (#7216)",
         )
-        for needle in [
-            "_should_restore_finalize",
-            "restore-finalize-state",
-            "implement-finalize",
-            "DESIGN_TMPDIR",
-            "LARCH_TIMING_SKILL",
-        ]:
+        for needle in ["DESIGN_TMPDIR", "LARCH_TIMING_SKILL"]:
             require("python/larch/implement/dispatch_step18.py", needle, f"step-18 {needle}")
+        for needle in ["_should_restore_finalize", "restore-finalize-state", "implement-finalize"]:
+            require("python/larch/implement/dispatch_step19.py", needle, f"step-19 {needle}")
         # Thin wrapper must not retain the old Bash finalize body.
         for needle in [
             "_restore_finalize=false",
@@ -1064,6 +1174,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "Skip the `git-commit.sh` invocation.", "Step 4 skip prose must not reference git-commit.sh")
         # The fabricated skill-local commit helper path must not appear under skills/implement/.
         import subprocess
+
         fabricated_commit_helper = "skills/implement/scripts/" + "git-commit.sh"
         r = subprocess.run(
             ["git", "grep", "-rl", fabricated_commit_helper, "--", "skills/implement/"],
@@ -1089,11 +1200,10 @@ def run(repo_root: Path) -> list[str]:
         for retired_basename in ["commit-review-fixes.md", "write-rejected-findings.md", "check-review-changes.md"]:
             forbid(skill, retired_basename, f"SKILL must not cite retired {retired_basename}")
 
-
         return checks
     finally:
         os.chdir(prev)
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 385
+LEGACY_ASSERTION_LABEL_COUNT = 391

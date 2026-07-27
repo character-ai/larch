@@ -24,6 +24,7 @@ from larch.core.retry import with_transient_retry
 from larch.core.run_context import RunContext
 from larch.core import proc
 
+
 @dataclass(frozen=True)
 class MergeResult:
     result: str
@@ -166,18 +167,9 @@ def merge_pr(
     return merge_outcome
 
 
-def _post_flush(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    merge_result: str,
-) -> MergeResult | None:
+def _post_flush(*, runner: Runner, ctx: RunContext, merge_result: str) -> MergeResult | None:
     try:
-        skip = run_log_flush.flush_logs_post(
-            ctx,
-            merge_result=merge_result,
-            runner=runner,
-        )
+        skip = run_log_flush.refresh_postmerge_snapshot(ctx, merge_result=merge_result, runner=runner)
     except ShipError as exc:
         return MergeResult(
             result=config.MERGE_RESULT_ERROR,

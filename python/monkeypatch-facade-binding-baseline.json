@@ -4294,48 +4294,75 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize",
+    "qualified_symbol": "test_step18_gate_logs_flush_abandoned_checks_bgjob_breaks_out_without_logs_flush",
     "facade_module": "larch.implement.dispatch_step18",
     "attribute": "_abandoned_checks_bgjob_stall_step",
     "defining_module": "larch.state._tokens",
     "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize",
+    "qualified_symbol": "test_step18_gate_logs_flush_abandoned_checks_bgjob_breaks_out_without_logs_flush",
     "facade_module": "larch.implement.dispatch_step18",
     "attribute": "_run_cli_capture",
     "defining_module": "larch.implement.dispatch_leg",
     "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize",
+    "qualified_symbol": "test_step18_gate_logs_flush_abandoned_checks_bgjob_breaks_out_without_logs_flush",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_run_cli_capture",
     "defining_module": "larch.implement.dispatch_leg",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step18_gate_finalize_active_stall_breaks_out_without_finalize",
+    "qualified_symbol": "test_step18_gate_logs_flush_active_stall_breaks_out_without_logs_flush",
     "facade_module": "larch.implement.dispatch_step18",
     "attribute": "_run_cli_capture",
     "defining_module": "larch.implement.dispatch_leg",
     "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step18_gate_finalize_active_stall_breaks_out_without_finalize",
+    "qualified_symbol": "test_step18_gate_logs_flush_active_stall_breaks_out_without_logs_flush",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_run_cli_capture",
     "defining_module": "larch.implement.dispatch_leg",
     "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step19_refuses_cleanup_without_terminalization_record",
+    "facade_module": "larch.implement.dispatch_step19",
+    "attribute": "_run_cli_forward",
+    "defining_module": "larch.implement.dispatch_helpers",
+    "occurrence": 1,
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step19_runs_only_cleanup_after_terminalization",
+    "facade_module": "larch.implement.dispatch_step19",
+    "attribute": "_invoke_cli",
+    "defining_module": "larch.implement.dispatch_helpers",
+    "occurrence": 1,
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step19_runs_only_cleanup_after_terminalization",
+    "facade_module": "larch.implement.dispatch_step19",
+    "attribute": "_run_cli_forward",
+    "defining_module": "larch.implement.dispatch_helpers",
+    "occurrence": 2,
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
@@ -7084,6 +7111,33 @@
   },
   {
     "file": "tests/report/test_run_log_flush.py",
+    "qualified_symbol": "test_prepare_terminal_snapshot_failure_preserves_staging",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "load_or_recover_manifest_checked",
+    "defining_module": "larch.report.run_log_manifest",
+    "occurrence": 3,
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
+  },
+  {
+    "file": "tests/report/test_run_log_flush.py",
+    "qualified_symbol": "test_prepare_terminal_snapshot_orders_complete_final_refresh",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "load_or_recover_manifest_checked",
+    "defining_module": "larch.report.run_log_manifest",
+    "occurrence": 3,
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
+  },
+  {
+    "file": "tests/report/test_run_log_flush.py",
+    "qualified_symbol": "test_prepare_terminal_snapshot_orders_complete_final_refresh",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "update_manifest",
+    "defining_module": "larch.report.run_log_manifest",
+    "occurrence": 16,
+    "reason": "Issue #7995 tests patch terminal snapshot and cleanup seams in their consuming modules."
+  },
+  {
+    "file": "tests/report/test_run_log_flush.py",
     "qualified_symbol": "test_refresh_difficulty_record_merges_resolution_fields",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "effective_run_id",
@@ -7107,24 +7161,6 @@
     "attribute": "_update_manifest_v2",
     "defining_module": "larch.report.run_log_manifest",
     "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_post_manifest_write_oserror_returns_recovery_skip",
-    "facade_module": "larch.report.run_log_flush",
-    "attribute": "_write_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/report/test_run_logs.py",
-    "qualified_symbol": "test_flush_logs_pre_update_manifest_failure_returns_recovery_skip",
-    "facade_module": "larch.report.run_log_flush",
-    "attribute": "update_manifest",
-    "defining_module": "larch.report.run_log_manifest",
-    "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -7241,6 +7277,24 @@
     "facade_module": "larch.report.run_log_commit",
     "attribute": "_REPO_ROOT",
     "defining_module": "larch.report.run_log_batch",
+    "occurrence": 2,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/report/test_run_logs.py",
+    "qualified_symbol": "test_refresh_logs_checkpoint_update_manifest_failure_returns_recovery_skip",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "update_manifest",
+    "defining_module": "larch.report.run_log_manifest",
+    "occurrence": 2,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/report/test_run_logs.py",
+    "qualified_symbol": "test_refresh_postmerge_snapshot_manifest_write_oserror_returns_recovery_skip",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "_write_manifest",
+    "defining_module": "larch.report.run_log_manifest",
     "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },

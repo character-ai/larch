@@ -7,17 +7,15 @@
 # `$tmpdir/vendor-failure-diagnostics.parts/` via
 # `append_vendor_failure_diagnostics` (`python/agents.py`).
 # This helper derives the canonical `$tmpdir/vendor-failure-diagnostics.txt` by
-# overwriting it from the full parts set on every flush, so repeated pre-commit
-# flushes (step-7a pre-ship, larch-log-flush, refresh-run-logs, implement-finalize
-# teardown) converge idempotently.
+# overwriting it from the full parts set on every checkpoint, so repeated local
+# checkpoints and the Step 18 terminal snapshot converge idempotently.
 #
 # Clear-after-success: when no parts exist, no batch is written — a successful
 # run with no vendor-agent failures commits nothing (preserves #3534 intent).
 #
-# This helper never makes a git commit. `larch-log.sh write` only stages the
-# batch under the log root; the surrounding flush/refresh sites own the commit
-# (and `larch-log.sh commit` itself enforces the post-merge sentinel guard,
-# NEVER #16).
+# This helper never makes a Git commit or publishes an archive. `run-log write`
+# only stages the batch under the mutable log root. Step 18 owns terminal
+# publication.
 
 set -euo pipefail
 

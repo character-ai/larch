@@ -22,6 +22,7 @@ from larch.state import stall_recovery
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state
 from larch.implement.ship_result import ShipResult, _write_terminal_finalize_if_terminal
 
+
 @dataclass(frozen=True)
 class ShipReconciliationCounters:
     iteration: int = 0
@@ -119,11 +120,8 @@ def reconcile_staged_stalled_summary_if_recovered(
         or not _live_recovered_outcome(ctx)
     ):
         return None
-    refresh = run_log_flush.flush_logs_pre(
-        runner=runner,
-        ctx=ctx.with_(state_file=None),
-        cwd=cwd,
-        strict_final_report=True,
+    refresh = run_log_flush.refresh_logs_checkpoint(
+        runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd, strict_final_report=True
     )
     if refresh.skipped:
         if allow_post_merge_skip and refresh.reason == config.REFRESH_SKIP_POST_MERGE:
@@ -216,20 +214,12 @@ def _write_terminal_state(
     )
 
 
-def _publish_post_pr_terminal_snapshot(
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str,
-) -> None:
+def _publish_post_pr_terminal_snapshot(*, runner: Runner, ctx: RunContext, cwd: str) -> None:
     if ctx.pr_number is None:
         return
     with suppress(Exception):
-        _ = run_log_flush.flush_logs_pre(
-            runner=runner,
-            ctx=ctx.with_(state_file=None),
-            cwd=cwd,
-            strict_final_report=True,
+        _ = run_log_flush.refresh_logs_checkpoint(
+            runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd, strict_final_report=True
         )
 
 

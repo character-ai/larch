@@ -54,7 +54,7 @@ below.
 | `python/cli.py run-log` | — | — | ✅ implement | **D** | Keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied in `round_artifact_included` (batch is the sole durable path; F14). |
 | `python/plan_review.py` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
-| `python/cli.py run-log flush` | — | — | ✅ | **D** | Archive-tail flush. |
+| `python/cli.py run-log checkpoint` | — | — | ✅ | **D** | Mutable recovery checkpoint. |
 | `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
 | `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |

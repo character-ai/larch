@@ -68,9 +68,12 @@ flowchart TD
         REBASE -->|No| MERGE[Merge PR]
         MERGE --> CLEANUP[Local cleanup]
         CLEANUP --> VERIFY[Verify main]
+        VERIFY --> POST_ISSUE
     end
 
-    POST_ISSUE --> DONE([Complete])
+    POST_ISSUE --> LOGS_FLUSH[Step 18: logs flush]
+    LOGS_FLUSH --> SESSION_CLEANUP[Step 19: session cleanup]
+    SESSION_CLEANUP --> DONE([Complete])
 ```
 
 ## Standalone Usage
@@ -127,6 +130,14 @@ keeps a content-pinned pending archive for retry. Disabled terminal paths write
 universal terminal artifacts, skip archive, provider, cache, and pending-state
 operations, then clean staging. No run-log path creates a Git
 branch, commit, push, pull request, or merge.
+
+`/implement` exposes this boundary as two distinct steps. Step 18, `logs flush`,
+closes the token and timing ledgers, rebuilds every mutable or derived terminal
+batch, captures the current transcript, appends the execution-issues tail, and
+invokes exactly one lifecycle terminal verb. It records terminalization only
+after enabled publication, storage-disabled completion, or explicit operator
+suppression succeeds. Step 19, `cleanup`, requires that record before it
+restores or removes session state. Cleanup performs no run-log writes.
 
 The enforceable owner registry is
 `skills/shared/run-lifecycle-ownership.tsv`. Its specialized row replaces the

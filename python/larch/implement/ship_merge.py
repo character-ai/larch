@@ -168,7 +168,9 @@ def _ship_rebase_phase(
         transient_retries=transient_retries,
     )
     _breadcrumb(step="rebase", detail="Flush+Push")
-    pre_rebase: run_log_manifest.RefreshSkip = run_log_flush.flush_logs_pre(runner=runner, ctx=working.with_(state_file=None), cwd=cwd)
+    pre_rebase: run_log_manifest.RefreshSkip = run_log_flush.refresh_logs_checkpoint(
+        runner=runner, ctx=working.with_(state_file=None), cwd=cwd
+    )
     if (
         pre_rebase.skipped
         and pre_rebase.reason != run_log_manifest.REFRESH_SKIP_RECOVERY_FAILED

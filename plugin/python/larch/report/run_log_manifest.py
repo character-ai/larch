@@ -339,6 +339,10 @@ def _step8_reached(ctx: _ReachabilityContext) -> bool:
     )
 
 
+def _step18_reached(ctx: _ReachabilityContext) -> bool:
+    return ctx.manifest_data.steps_ran.get("step18") is True
+
+
 def _step9a1_bail_skip(ctx: _ReachabilityContext) -> bool:
     return _final_summary_bail_signal_without_pr_evidence(
         run_dir=ctx.run_dir,
@@ -377,6 +381,8 @@ def _condition_reached(ctx: _ReachabilityContext, *, condition: str, chain: bool
         reached = _step7a_reached(ctx)
     elif condition == "step8":
         reached = _step8_reached(ctx)
+    elif condition == "step18":
+        reached = _step18_reached(ctx)
     elif condition == "step9a1":
         reached = _step9a1_reached(ctx, chain=chain)
     elif condition == "exn-agg-validate-fail":
@@ -461,31 +467,43 @@ def _required_implement_artifacts(*, run_dir: Path, manifest: Manifest) -> list[
     manifest_pr_number = _manifest_field(manifest=manifest, key="pr_number")
     rows: list[RequiredArtifact] = []
     if _verify_condition_reached(
-        condition="step7a",
+        condition="step18",
         run_dir=run_dir,
         manifest_data=manifest,
         manifest_status=manifest_status,
         manifest_pr_number=manifest_pr_number,
     ):
-        rows.append(RequiredArtifact(
-            slug=config.RUN_LOG_BATCH_SESSION_TRANSCRIPT,
-            relative_path="session-transcript.jsonl",
-            skill="implement",
-            condition="step7a",
-        ))
-    if _verify_condition_reached(
-        condition="step8",
-        run_dir=run_dir,
-        manifest_data=manifest,
-        manifest_status=manifest_status,
-        manifest_pr_number=manifest_pr_number,
-    ):
-        rows.append(RequiredArtifact(
-            slug="final-summary",
-            relative_path="final-summary.md",
-            skill="implement",
-            condition="step8",
-        ))
+        rows.extend(
+            [
+                RequiredArtifact(
+                    slug="final-summary", relative_path="final-summary.md", skill="implement", condition="step18"
+                ),
+                RequiredArtifact(
+                    slug=config.RUN_LOG_BATCH_TOKEN_REPORT,
+                    relative_path="token-report.json",
+                    skill="implement",
+                    condition="step18",
+                ),
+                RequiredArtifact(
+                    slug=config.RUN_LOG_BATCH_TIMING_REPORT,
+                    relative_path="timing-report.json",
+                    skill="implement",
+                    condition="step18",
+                ),
+                RequiredArtifact(
+                    slug="execution-issues",
+                    relative_path="execution-issues.ndjson",
+                    skill="implement",
+                    condition="step18",
+                ),
+                RequiredArtifact(
+                    slug=config.RUN_LOG_BATCH_SESSION_TRANSCRIPT,
+                    relative_path="session-transcript.jsonl",
+                    skill="implement",
+                    condition="step18",
+                ),
+            ]
+        )
     if _implement_code_review_voting_reached(run_dir):
         rows.append(RequiredArtifact(
             slug="review-findings-full",

@@ -1867,10 +1867,7 @@ def test_stage_and_push_defer_rebase_aborts_rust_failure(tmp_path: Any) -> None:
     assert not any(call[:2] == ("git", "rebase") for call in runner.calls)
 
 
-def test_stage_and_push_warning_refreshes_before_normal_push(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
+def test_stage_and_push_warning_refreshes_before_normal_push(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     commit_script = "cli.py git commit"
     responses = {
         ("git", "add", "--", "fixed.py"): ok(("git", "add")),
@@ -1894,7 +1891,7 @@ def test_stage_and_push_warning_refreshes_before_normal_push(
         order.append("callback")
         return True
 
-    monkeypatch.setattr(ci_monitor.run_log_flush, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.run_log_flush, "refresh_logs_checkpoint", fake_flush)
     monkeypatch.setattr(ci_monitor.git, "push", fake_push)
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -1913,10 +1910,7 @@ def test_stage_and_push_warning_refreshes_before_normal_push(
     assert order == ["callback", "flush", "push"]
 
 
-def test_stage_and_push_warning_refresh_skip_blocks_push(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
+def test_stage_and_push_warning_refresh_skip_blocks_push(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     commit_script = "cli.py git commit"
     responses = {
         ("git", "add", "--", "fixed.py"): ok(("git", "add")),
@@ -1940,7 +1934,7 @@ def test_stage_and_push_warning_refresh_skip_blocks_push(
         order.append("callback")
         return True
 
-    monkeypatch.setattr(ci_monitor.run_log_flush, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.run_log_flush, "refresh_logs_checkpoint", fake_flush)
     monkeypatch.setattr(ci_monitor.git, "push", fake_push)
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -2023,8 +2017,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
 
 
 def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     responses = {
         ("git", "rev-parse", "HEAD"): ok(("git", "rev-parse"), "head\n"),
@@ -2044,7 +2037,7 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
     def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
         return True
 
-    monkeypatch.setattr(ci_monitor.run_log_flush, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.run_log_flush, "refresh_logs_checkpoint", fake_flush)
     monkeypatch.setattr(ci_monitor.git, "force_push_recovery", fake_force_push_recovery)
     monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
     runner = RecordingRunner(responses)
@@ -2192,7 +2185,6 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
-
 def test_run_ci_fix_pending_retry_defers_guidelines_to_compose_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2242,6 +2234,7 @@ def test_run_ci_fix_pending_retry_defers_guidelines_to_compose_gate(
         "before-callback",
         ("callback-return", False),
     ]
+
 
 def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
     head = "deadbeef" * 5

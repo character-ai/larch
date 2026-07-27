@@ -1168,12 +1168,7 @@ def _warn_refresh_skip_before_ci_push(*, skip: run_log_manifest.RefreshSkip, war
 
 
 def _refresh_run_logs_before_ci_push(
-    *,
-    runner: Runner,
-    ctx: RunContext | None,
-    cwd: str | None,
-    warning_logged: bool,
-    refresh_required: bool,
+    *, runner: Runner, ctx: RunContext | None, cwd: str | None, warning_logged: bool, refresh_required: bool
 ) -> bool:
     if not refresh_required:
         return True
@@ -1183,7 +1178,7 @@ def _refresh_run_logs_before_ci_push(
             return False
         return True
     try:
-        skip = run_log_flush.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
+        skip = run_log_flush.refresh_logs_checkpoint(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
     except (OSError, ShipError) as exc:
         if warning_logged:
             detail = logging_util.sanitize_diagnostic_line(redact.redact(str(exc)))
@@ -1267,7 +1262,6 @@ def _on_named_branch(runner: Runner, *, cwd: str | None) -> bool:
     return result.returncode == 0
 
 
-
 def resolve_failed_run_id_once(
     runner: Runner,
     *,
@@ -1299,6 +1293,7 @@ def prepare_failure_evidence(
     return wait_for_ci_ready(
         runner, run_id=run_id, repo=repo, cwd=cwd, sleep_fn=sleep_fn, clock=clock
     )
+
 
 def _outer_backoff_seconds(attempt_index: int) -> float:
     base = 2 * (2 ** max(0, attempt_index - 1))
@@ -1880,6 +1875,7 @@ def monitor(
         goto=False,
         step=StepResult(outcome=Outcome.STALLED, detail=decision.action),
     )
+
 
 # Backward-compatible private alias for existing focused tests and callers.
 _wait_for_ci_ready = wait_for_ci_ready

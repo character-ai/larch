@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cleanup.sh — Step 18 cleanup-tmpdir wrapper.
+# cleanup.sh — Step 19 cleanup-tmpdir wrapper.
 
 set -euo pipefail
 

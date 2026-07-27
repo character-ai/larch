@@ -16,14 +16,13 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core import run_context
-from larch.git import pr_body
-from larch.core.repo_roots import plugin_root
-from larch.issue import execution_issues
-from larch.implement.dispatch_helpers import result_env_capture_rows
 from larch.core import proc
 from larch.core import rust_runtime
-from larch.report import run_log_batch, run_log_flush, run_log_manifest
+from larch.core.repo_roots import plugin_root
+from larch.git import pr_body
+from larch.issue import execution_issues
+from larch.implement.dispatch_helpers import result_env_capture_rows
+from larch.report import run_log_batch
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
 _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
@@ -77,7 +76,7 @@ def _emit_arg_failure(*, bail_reason: str) -> int:
     emit(key="DIAGRAM_REASON", value="")
     emit(key="DIAGRAM_PATH", value="")
     emit(key="COMMENT_URL", value="")
-    emit(key="LOG_FLUSH_STATUS", value="skip")
+    emit(key="LOG_CHECKPOINT_STATUS", value="skip")
     emit(key="STEP_7A_BAIL_REASON", value=bail_reason)
     emit(key="REBASE_OUTCOME", value="skipped")
     return 2
@@ -142,28 +141,7 @@ def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
         entry=f"- **Step 7a — code flow diagram**: {message}"    )
 
 
-def _refresh_skip_blocks_direct_commit(refresh: run_log_manifest.RefreshSkip) -> bool:
-    error: str = refresh.error.lower() if refresh.error else ""
-    if not refresh.skipped:
-        return False
-    if refresh.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME:
-        return True
-    return (
-        refresh.skipped
-        and refresh.reason == config.REFRESH_SKIP_COMMIT_FAILED
-        and "pre-terminal" in error
-    )
-
-
-def _run_log_flush(
-    implement_tmpdir: Path,
-    *,
-    run_id: str,
-    no_logs_commit: bool,
-    claude_source_file: str,
-    defer_git_commit: bool = False,
-) -> str:
-    log_flush_status = "ok"
+def _checkpoint_execution_issues(implement_tmpdir: Path, *, run_id: str) -> str:
     _run_cli("token", "mark", "Step 8 — ship PR")
     env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
     subprocess.run(
@@ -179,87 +157,12 @@ def _run_log_flush(
         log_root=log_root,
         run_id=run_id,
         issue_log=issue_log,
+        step_label="7a",
+        source_label="execution-issues.md Step 7a checkpoint",
     )
-    if rc != 0 or status not in {"ok", "skip", "already-flushed", "no-records"}:
-        log_flush_status = "degraded"
-    ctx = run_context.RunContext(
-        branch="",
-        issue="",
-        repo="",
-        run_id=run_id,
-        tmpdir=str(implement_tmpdir),
-        merge=False,
-        draft=False,
-        forked=False,
-        manifest_path=str(log_root / "implement" / run_id / "manifest.json"),
-        tool_label="",
-        no_admin_fallback=False,
-        repo_unavailable=False,
-        no_logs_commit=no_logs_commit,
-    )
-    with_context = ctx.with_(state_file=None)
-    try:
-        run_log_flush._render_token_timing_batches(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-        run_log_flush._stage_vendor_failure_diagnostics(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    except Exception:
-        log_flush_status = "degraded"
-    if claude_source_file:
-        capture = _run_cli(
-            "run-log",
-            "capture-transcript",
-            "--source-file",
-            claude_source_file,
-            "--log-root",
-            str(log_root),
-            "--tmpdir",
-            str(implement_tmpdir),
-            "--skill",
-            "implement",
-            "--run-id",
-            run_id,
-            "--no-logs-commit",
-            str(no_logs_commit).lower(),
-            "--defer-commit",
-            "true",
-            "--execution-issues-log",
-            str(issue_log),
-        )
-        if capture.returncode != 0:
-            log_flush_status = "degraded"
-        for line in capture.stdout.splitlines():
-            if line.startswith("SESSION_TRANSCRIPT_STATUS="):
-                _emit_line(line)
-    rc2, status2, _, _ = execution_issues.flush_execution_issues(
-        log_root=log_root,
-        run_id=run_id,
-        issue_log=issue_log,
-        step_label="7a-post-transcript",
-        source_label="execution-issues.md post-transcript refresh",
-    )
-    if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
-        log_flush_status = "degraded"
-    if not no_logs_commit and not defer_git_commit:
-        refresh = run_log_flush.flush_logs_pre(runner=proc, ctx=with_context, cwd=str(Path.cwd()))
-        if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
-            log_flush_status = "degraded"
-        if not _refresh_skip_blocks_direct_commit(refresh):
-            commit = _run_cli(
-                "run-log",
-                "commit",
-                "--log-root",
-                str(log_root),
-                "--tmpdir",
-                str(implement_tmpdir),
-                "--skill",
-                "implement",
-                "--run-id",
-                run_id,
-            )
-            if commit.returncode != 0:
-                log_flush_status = "degraded"
-    elif log_flush_status == "ok":
-        log_flush_status = "skipped-no-logs-commit"
-    return log_flush_status
+    if rc == 0 and status in {"ok", "skip", "already-flushed", "no-records"}:
+        return "ok"
+    return "degraded"
 
 
 def _generate_code_flow_diagram(
@@ -343,6 +246,7 @@ def _run_step7a_inner(
     base_remote: str = "origin",
     base_ref: str = "main",
 ) -> int:
+    _ = no_logs_commit  # Terminal publication suppression is owned by Step 18.
     session_env = implement_tmpdir / "session-env.sh"
     if not issue_number:
         issue_number = _read_kv(path=session_env, key="LARCH_ISSUE_NUMBER")
@@ -364,8 +268,6 @@ def _run_step7a_inner(
             repo = _read_kv(path=session_env, key="REPO")
         if not repo:
             repo = _read_kv(path=session_env, key="UPSTREAM_REPO")
-    claude_source = _read_kv(path=session_env, key="LARCH_CLAUDE_SOURCE_FILE")
-
     _run_cli("token", "mark", "Step 7a — pre-ship")
     # lint-subprocess-via-runner: ok timing-mark needs LARCH_TIMING_SKILL env; _run_cli does not support custom env
     subprocess.run(
@@ -416,19 +318,13 @@ def _run_step7a_inner(
     for line in probe.stdout.splitlines():
         if line.strip():
             _emit_line(line)
-    log_flush_status = _run_log_flush(
-        implement_tmpdir,
-        run_id=run_id,
-        no_logs_commit=no_logs_commit,
-        claude_source_file=claude_source,
-        defer_git_commit=probe.exit_code != 0,
-    )
+    log_checkpoint_status = _checkpoint_execution_issues(implement_tmpdir, run_id=run_id)
     if probe.exit_code != 0:
         emit(key="DIAGRAM_STATUS", value=diagram_status)
         emit(key="DIAGRAM_REASON", value=diagram_reason)
         emit(key="DIAGRAM_PATH", value=diagram_path)
         emit(key="COMMENT_URL", value=comment_url)
-        emit(key="LOG_FLUSH_STATUS", value=log_flush_status)
+        emit(key="LOG_CHECKPOINT_STATUS", value=log_checkpoint_status)
         emit(key="STEP_7A_BAIL_REASON", value=bail)
         emit(key="REBASE_OUTCOME", value="conflict" if probe.exit_code == 1 else "failed")
         return probe.exit_code
@@ -441,7 +337,7 @@ def _run_step7a_inner(
     emit(key="DIAGRAM_REASON", value=diagram_reason)
     emit(key="DIAGRAM_PATH", value=diagram_path)
     emit(key="COMMENT_URL", value=comment_url)
-    emit(key="LOG_FLUSH_STATUS", value=log_flush_status)
+    emit(key="LOG_CHECKPOINT_STATUS", value=log_checkpoint_status)
     emit(key="STEP_7A_BAIL_REASON", value=bail)
     emit(key="REBASE_OUTCOME", value=rebase_outcome)
     return 0

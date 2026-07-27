@@ -94,20 +94,23 @@ if errors:
 print(f'plugin-root guards={guard_count} root-fallbacks={root_fallback_count}')
 PY
 
-# Invariant E (#3425): closing marks stay inside step-18 Python finalize before teardown.
+# Invariant E (#3425): closing marks stay inside Step 18 before terminal
+# snapshot preparation, while teardown remains Step 19-owned.
 finalizer="python/larch/implement/dispatch_step18.py"
-done_mark_line=$(awk '/Step 18 — done/ {print NR; exit}' "$finalizer")
-teardown_line=$(awk '/implement-finalize/ {print NR; exit}' "$finalizer")
-[ -n "$done_mark_line" ] || fail 'dispatch_step18.py lacks Step 18 done mark'
-[ -n "$teardown_line" ] || fail 'dispatch_step18.py lacks implement-finalize teardown'
-[ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in dispatch_step18.py'
+cleanup="python/larch/implement/dispatch_step19.py"
+done_mark_line=$(awk '/Step 18 — logs flush/ {print NR; exit}' "$finalizer")
+snapshot_call_line=$(awk '/run_log_rc = _complete_terminal_run_log/ {print NR; exit}' "$finalizer")
+[ -n "$done_mark_line" ] || fail 'dispatch_step18.py lacks Step 18 logs-flush mark'
+[ -n "$snapshot_call_line" ] || fail 'dispatch_step18.py lacks terminal snapshot call'
+[ "$done_mark_line" -lt "$snapshot_call_line" ] || fail 'Step 18 logs-flush mark must precede terminal snapshot preparation'
 finalize_invocations=$(command grep -Fc '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh' "$skill_file" || true)
 [ "$finalize_invocations" -eq 1 ] || fail "expected one step-18.sh invocation in SKILL.md, found $finalize_invocations"
-command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
-command grep -Fq '"implement-finalize", "teardown"' "$finalizer" || fail 'dispatch_step18.py lacks exact teardown argv'
+command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-logs-flush' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
+command grep -Fq '"implement-finalize",' "$cleanup" || fail 'dispatch_step19.py lacks exact teardown argv'
 command grep -Fq '"final-report", "step18b"' "$finalizer" || fail 'dispatch_step18.py lacks live step18b argv'
 command grep -Fq 'def _print_summary_markers' "$finalizer" || fail 'dispatch_step18.py lacks marker helper'
 command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh must remain a thin Python delegate'
+command grep -Fq 'implement step-19 "$@"' skills/implement/scripts/step-19.sh || fail 'step-19.sh must remain a thin Python delegate'
 
 # Invariant F (#4286): round timing duplicate probe returns success when the row exists.
 step5_resume="python/larch/implement/dispatch_commit_route.py"
@@ -127,4 +130,4 @@ if errors:
     sys.exit(1)
 PY
 
-echo "PASS: test-implement-timing-rehydration.sh (Python adapter rehydrates Step 5; closing marks line $done_mark_line < teardown line $teardown_line)"
+echo "PASS: test-implement-timing-rehydration.sh (Python adapter rehydrates Step 5; closing marks line $done_mark_line < terminal snapshot line $snapshot_call_line; teardown is Step 19-owned)"
