@@ -27,11 +27,11 @@ from larch.implement import ship_result
 from larch.issue import migration_governance
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
-from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner, make_run_context, ok
 
 if TYPE_CHECKING:
+    from larch.core.proc import CommandResult
     from larch.core.run_context import RunContext
 
 _REAL_FLUSH_LOGS_PRE = run_log_flush.flush_logs_pre
@@ -471,6 +471,80 @@ def test_ship_rebase_phase_stops_on_stale_receipt(
     assert "stale-plan-base-scope" in (result.terminal.detail or "")
 
 
+def test_ship_rebase_phase_checks_receipt_against_rebase_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(
+        tmp_path,
+        repo="o/r",
+        issue="9",
+        issue_number="9",
+    )
+
+    def fake_flush_logs_pre(**_kw: object) -> run_log_manifest.RefreshSkip:
+        return run_log_manifest.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(**_kw: object) -> object:
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    evaluated_heads: list[object] = []
+
+    def freshness_at_base(
+        *_a: object, **kwargs: object
+    ) -> migration_governance.GovernanceGateVerdict:
+        head_sha = kwargs.get("head_sha")
+        evaluated_heads.append(head_sha)
+        reasons = (
+            ()
+            if head_sha == "a" * 40
+            else (migration_governance.REASON_STALE_PLAN_BASE_SCOPE,)
+        )
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=reasons),
+        )
+
+    resolved_refs: list[str] = []
+
+    def fake_rev_parse(
+        _runner: RecordingRunner, ref: str, *, cwd: str | None = None
+    ) -> str:
+        del cwd
+        resolved_refs.append(ref)
+        return "a" * 40
+
+    monkeypatch.setattr(ship.run_log_flush, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "rev_parse", fake_rev_parse)
+    monkeypatch.setattr(
+        migration_governance, "evaluate_governance_gate", freshness_at_base
+    )
+
+    result = ship._ship_rebase_phase(
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+
+    assert result.terminal is None
+    assert resolved_refs == ["origin/main"]
+    assert evaluated_heads == ["a" * 40]
+
+
 def test_governance_gate_result_blocks_pre_pr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -490,10 +564,59 @@ def test_governance_gate_result_blocks_pre_pr(
         ctx=ctx,
         cwd=str(tmp_path),
         site="pre-pr",
+        base_target="origin/main",
     )
     assert blocked is not None
     assert blocked.outcome == Outcome.STALLED
     assert "stale-blocker-snapshot" in (blocked.detail or "")
+
+
+def test_governance_gate_result_checks_receipt_against_pr_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path, repo="o/r", issue="3", issue_number="3")
+    evaluated_heads: list[object] = []
+
+    def freshness_at_base(
+        *_a: object, **kwargs: object
+    ) -> migration_governance.GovernanceGateVerdict:
+        head_sha = kwargs.get("head_sha")
+        evaluated_heads.append(head_sha)
+        reasons = (
+            ()
+            if head_sha == "b" * 40
+            else (migration_governance.REASON_STALE_PLAN_BASE_SCOPE,)
+        )
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(reasons=reasons),
+        )
+
+    resolved_refs: list[str] = []
+
+    def fake_rev_parse(
+        _runner: RecordingRunner, ref: str, *, cwd: str | None = None
+    ) -> str:
+        del cwd
+        resolved_refs.append(ref)
+        return "b" * 40
+
+    monkeypatch.setattr(ship.git, "rev_parse", fake_rev_parse)
+    monkeypatch.setattr(
+        migration_governance, "evaluate_governance_gate", freshness_at_base
+    )
+
+    blocked = ship._governance_gate_result(
+        runner=RecordingRunner(),
+        ctx=ctx,
+        cwd=str(tmp_path),
+        site="pre-pr",
+        base_target="origin/main",
+    )
+
+    assert blocked is None
+    assert resolved_refs == ["origin/main"]
+    assert evaluated_heads == ["b" * 40]
 
 
 def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1307,9 +1307,11 @@ def test_tracking_side_effects_defer_rename_until_lease_activation(tmp_path, mon
 
 def test_tracking_lease_verifies_before_implementing_title(tmp_path, monkeypatch) -> None:
     calls: list[str] = []
+    lease_heads: list[object] = []
 
     def initialize(*_args: object, **_kwargs: object) -> object:
         calls.append("lease")
+        lease_heads.append(_kwargs.get("head_sha"))
         return object()
 
     def title(*_args: object, **_kwargs: object) -> CommandResult:
@@ -1323,6 +1325,9 @@ def test_tracking_lease_verifies_before_implementing_title(tmp_path, monkeypatch
         )
 
     monkeypatch.setattr(bootstrap.tracking_issue, "initialize_implementation_lease", initialize)
+    monkeypatch.setattr(
+        bootstrap.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
+    )
     monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", title)
     monkeypatch.setattr(bootstrap.tracking_issue, "rename_with_details", rename)
     st = bootstrap.BootstrapState(
@@ -1335,6 +1340,7 @@ def test_tracking_lease_verifies_before_implementing_title(tmp_path, monkeypatch
     )
     assert bootstrap._activate_tracking_lease(st)  # pyright: ignore[reportPrivateUsage]
     assert calls == ["lease", "title-read", "rename"]
+    assert lease_heads == ["a" * 40]
 
 
 def test_tracking_activation_failure_terminalizes_created_lease(tmp_path, monkeypatch) -> None:
@@ -1355,6 +1361,9 @@ def test_tracking_activation_failure_terminalizes_created_lease(tmp_path, monkey
         )
 
     monkeypatch.setattr(bootstrap.tracking_issue, "initialize_implementation_lease", initialize)
+    monkeypatch.setattr(
+        bootstrap.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
+    )
     monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", title)
     monkeypatch.setattr(bootstrap.tracking_issue, "rename_terminal_with_lease", terminal)
     st = bootstrap.BootstrapState(

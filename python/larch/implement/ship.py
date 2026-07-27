@@ -168,6 +168,7 @@ def _governance_gate_result(
     ctx: RunContext,
     cwd: str,
     site: str,
+    base_target: str,
 ) -> ShipResult | None:
     """Fail closed on blocker/receipt drift after rebase and before PR creation."""
     issue = (ctx.issue_number or ctx.issue or "").strip()
@@ -175,6 +176,9 @@ def _governance_gate_result(
     if not issue or not repo or ctx.repo_unavailable:
         return None
     try:
+        base_target_sha = git.rev_parse(
+            runner, base_target, cwd=cwd
+        )
         body = migration_governance.read_issue_body(
             runner, issue=issue, repo=repo, cwd=cwd
         )
@@ -185,6 +189,7 @@ def _governance_gate_result(
             body=body,
             repo_root=Path(cwd),
             cwd=cwd,
+            head_sha=base_target_sha,
         )
     except ShipError as exc:
         return ShipResult(
@@ -1561,11 +1566,17 @@ def run_ship(
         )
         if assessment_result is not None:
             return assessment_result
+        base_remote = (
+            "upstream"
+            if pr_context.forked or pr_context.forked_target
+            else "origin"
+        )
         governance_blocked = _governance_gate_result(
             runner=runner,
             ctx=pr_context,
             cwd=repo_root,
             site="pre-pr",
+            base_target=f"{base_remote}/{base_ref}",
         )
         if governance_blocked is not None:
             return governance_blocked
@@ -1622,7 +1633,6 @@ def run_ship(
         if post_ensure_terminal is not None:
             return post_ensure_terminal
 
-        base_remote = "upstream" if working.forked or working.forked_target else "origin"
         preserve_counters = _merge_loop_uses_resume_counters(resume)
         iteration: int = resume.iteration if preserve_counters else 0
         rebase_count: int = resume.rebase_count if preserve_counters else 0

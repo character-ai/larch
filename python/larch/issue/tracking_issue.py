@@ -401,6 +401,7 @@ def initialize_implementation_lease(
     *,
     run: ImplementationLeaseRun,
     branch: str,
+    head_sha: str,
 ) -> issue_wire.ImplementationLeaseMarker:
     """Create and read-verify the lease before lifecycle adoption."""
     from larch.issue import migration_governance  # noqa: PLC0415 - receipt parser imports tracking mutation only lazily
@@ -415,6 +416,7 @@ def initialize_implementation_lease(
         body=snapshot.body,
         repo_root=Path(run.cwd).resolve() if run.cwd else Path.cwd(),
         cwd=run.cwd,
+        head_sha=head_sha,
     )
     if not verdict.ok:
         reasons = ",".join(verdict.blocking_reasons) or "unknown"
@@ -452,6 +454,7 @@ def initialize_implementation_lease(
         body=mutation.after.body,
         repo_root=Path(run.cwd).resolve() if run.cwd else Path.cwd(),
         cwd=run.cwd,
+        head_sha=head_sha,
     )
     if not post_verdict.ok:
         reasons = ",".join(post_verdict.blocking_reasons) or "unknown"

@@ -25,6 +25,7 @@ from larch.core import logging_util
 from larch.core.repo_roots import repo_root_probe
 from larch.calibration import difficulty
 from larch.core import redact
+from larch.git import git
 from larch.issue import issue_wire
 from larch.issue import migration_governance
 from larch.core import proc
@@ -828,6 +829,10 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     repo_slug = _session_get(file=session_env, key="REPO", default="") if session_env.is_file() else ""
     if issue_number and repo_slug:
         try:
+            base_remote = "upstream" if forked_target == "true" else "origin"
+            base_target_sha = git.rev_parse(
+                proc, f"{base_remote}/main", cwd=str(repo_root)
+            )
             body = migration_governance.read_issue_body(
                 proc, issue=issue_number, repo=repo_slug, cwd=str(repo_root)
             )
@@ -838,6 +843,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
                 body=body,
                 repo_root=repo_root,
                 cwd=str(repo_root),
+                head_sha=base_target_sha,
             )
         except ShipError as exc:
             _err(f"implement step2-dispatch: migration governance read failed: {exc}")

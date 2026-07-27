@@ -1170,7 +1170,7 @@ def evaluate_owner_admission(
     )
 
 
-def evaluate_governance_gate(  # noqa: PLR0913 - shared gate identity is deliberately explicit across four call sites
+def evaluate_governance_gate(  # noqa: PLR0913 - shared gate identity is deliberately explicit across workflow consumers
     runner: Runner,
     *,
     issue: str,
@@ -1180,7 +1180,7 @@ def evaluate_governance_gate(  # noqa: PLR0913 - shared gate identity is deliber
     cwd: str | None = None,
     head_sha: str | None = None,
 ) -> GovernanceGateVerdict:
-    """Shared verifier used by preflight, Step 2, post-rebase, and pre-PR."""
+    """Verify lease admission and the preflight, Step 2, rebase, and PR gates."""
     rows, parity = load_blocker_snapshot(
         runner, issue=issue, repo=repo, body=body, cwd=cwd
     )

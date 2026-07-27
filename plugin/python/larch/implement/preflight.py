@@ -18,7 +18,9 @@ from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.design import plan_grammar
 from larch.core import config, proc
+from larch.errors import ShipError
 from larch.git import gh
+from larch.git import git
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, plugin_root as resolve_plugin_root
 from larch.implement import main_health
 from larch.issue import issue_wire, migration_governance
@@ -473,14 +475,34 @@ def _refuse_governance_gate(*, site: str, verdict: migration_governance.Governan
     return 2
 
 
-def _migration_governance_status(*, issue: str, repo: str, issue_body: str, repo_root: Path) -> int | None:
+def _migration_governance_status(
+    *,
+    issue: str,
+    repo: str,
+    issue_body: str,
+    repo_root: Path,
+    forked_target: bool,
+) -> int | None:
     gate_repo = repo or (gh.resolve_repo(proc) or "")
     if not gate_repo:
         print("**❌ /implement preflight: repository slug required for migration governance.**")
         return 2
-    gate = migration_governance.evaluate_governance_gate(
-        proc, issue=issue, repo=gate_repo, body=issue_body, repo_root=repo_root,
-    )
+    try:
+        base_target = "upstream/main" if forked_target else "origin/main"
+        base_target_sha = git.rev_parse(
+            proc, base_target, cwd=str(repo_root)
+        )
+        gate = migration_governance.evaluate_governance_gate(
+            proc,
+            issue=issue,
+            repo=gate_repo,
+            body=issue_body,
+            repo_root=repo_root,
+            head_sha=base_target_sha,
+        )
+    except ShipError as exc:
+        print(f"**❌ /implement preflight: migration governance read failed: {exc}.**")
+        return 2
     if not gate.ok:
         return _refuse_governance_gate(site="/implement preflight", verdict=gate)
     for token, command in zip(gate.owners.report_only, gate.owners.cleanup_commands, strict=True):
@@ -590,7 +612,11 @@ def preflight_main(argv: list[str] | None = None) -> int:
     block_present = "true"
 
     governance_status = _migration_governance_status(
-        issue=issue, repo=repo, issue_body=issue_body, repo_root=repo_root
+        issue=issue,
+        repo=repo,
+        issue_body=issue_body,
+        repo_root=repo_root,
+        forked_target=bool(repo),
     )
     if governance_status is not None:
         return governance_status
