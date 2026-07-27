@@ -18,6 +18,7 @@ from larch.issue import issue_blocks
 from larch.issue import issue_mutation
 from larch.issue.issue_blocks import classify_named_block_lines, parse_named_block, strip_named_block
 from larch.design import plan_grammar
+from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
@@ -438,6 +439,20 @@ def _verify_named_block_post_write(
         raise ShipError("post-write-verify-empty")
 
 
+def named_block_lease(*, marker: str) -> issue_mutation.ImplementationLease | None:
+    """Build a named-block lease from the active or rehydrated run identity."""
+    run_id = (
+        os.environ.get("RUN_ID", "").strip()
+        or os.environ.get(config.ENV_LARCH_RUN_ID, "").strip()
+        or os.environ.get(config.ENV_SESSION_ID, "").strip()
+    )
+    return (
+        issue_mutation.ImplementationLease(run_id=run_id, marker=marker)
+        if run_id
+        else None
+    )
+
+
 def named_block_write(
     *, runner: Runner,
     marker: str,
@@ -497,19 +512,13 @@ def named_block_write(
     except Exception as exc:  # pragma: no cover - defensive seam for monkeypatch tests
         msg = f"redaction:{exc}"
         raise ShipError(msg) from exc
-    run_id = os.environ.get("RUN_ID", "").strip()
-    lease = (
-        issue_mutation.ImplementationLease(run_id=run_id, marker=marker)
-        if run_id
-        else None
-    )
     _ = issue_mutation.update_named_block(
         runner,
         repository=repo,
         issue=issue,
         marker=marker,
         body=redacted_body,
-        lease=lease,
+        lease=named_block_lease(marker=marker),
     )
     _verify_named_block_post_write(
         runner=runner, marker=marker, issue=issue, repo=repo, delete=delete,

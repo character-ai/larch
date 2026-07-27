@@ -10,8 +10,9 @@ from typing import Any
 
 import pytest
 
+from larch.core import config
 from larch.core.proc import CommandResult
-from larch.issue import issue_mutation, issue_wire
+from larch.issue import issue_mutation, issue_wire, migration_governance
 
 
 def _empty_labels() -> set[str]:
@@ -184,6 +185,52 @@ def test_protected_body_requires_its_matching_named_marker_and_lease() -> None:
         lease=issue_mutation.ImplementationLease(run_id="run-7", marker="plan"),
     )
     assert issue_mutation.apply(runner, allowed).after.body == replacement
+
+
+def test_plan_receipt_uses_rehydrated_named_block_lease(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("RUN_ID", raising=False)
+    monkeypatch.setenv(config.ENV_LARCH_RUN_ID, "run-7985")
+    monkeypatch.delenv(config.ENV_SESSION_ID, raising=False)
+    receipt = migration_governance.PlanReceipt(
+        plan_sha256="a" * 64,
+        base_sha="b" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+
+    def build_receipt(
+        _runner: object,
+        *,
+        issue: str,
+        repo: str,
+        body: str,
+        repo_root: Path,
+        base_sha: str | None = None,
+        cwd: str | None = None,
+    ) -> tuple[migration_governance.PlanReceipt, migration_governance.ParityVerdict]:
+        _ = (issue, repo, body, repo_root, base_sha, cwd)
+        return receipt, migration_governance.ParityVerdict(reasons=())
+
+    monkeypatch.setattr(
+        migration_governance,
+        "build_receipt_for_body",
+        build_receipt,
+    )
+    runner = MutationRunner(
+        title="[DESIGNING] Protected",
+        body=issue_wire.compose_named_block(marker="plan", inner="plan"),
+    )
+
+    assert migration_governance.persist_plan_receipt(
+        runner,
+        issue="7",
+        repo="owner/repo",
+        repo_root=tmp_path,
+    ) == receipt
+    assert migration_governance.parse_receipt(body=runner.body) == receipt
 
 
 def test_named_block_rejects_foreign_text_and_redaction_failure(monkeypatch: pytest.MonkeyPatch) -> None:

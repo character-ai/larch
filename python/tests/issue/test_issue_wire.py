@@ -14,7 +14,7 @@ import pytest
 
 from larch.core import config
 from larch.git import gh
-from larch.issue import issue_wire
+from larch.issue import issue_mutation, issue_wire
 from larch.core import logging_util
 from larch.core import retry
 from larch.errors import ShipError
@@ -183,6 +183,7 @@ def _empty_call_list() -> list[list[str]]:
 @dataclass
 class IssueRunner:
     body: str
+    title: str = "Regular issue"
     edit_bodies: list[str] = field(default_factory=_empty_str_list)
     calls: list[list[str]] = field(default_factory=_empty_call_list)
     edit_failures: int = 0
@@ -205,7 +206,7 @@ class IssueRunner:
         if args[:4] == ["gh", "issue", "view", "9"]:  # lint-gh-argv-literal: ok fixture assertion
             labels: list[object] = []
             payload: dict[str, object] = {
-                "title": "Regular issue",
+                "title": self.title,
                 "body": self.body,
                 "labels": labels,
                 "state": "OPEN",
@@ -245,6 +246,35 @@ def test_named_block_write_append_replace_delete_and_lf_normalization() -> None:
     result = issue_wire.named_block_write(runner=runner, marker="design-pause", issue="9", repo="owner/repo", content=None, delete=True)
     assert result["mode"] == "absent-noop"
     assert not runner.edit_bodies
+
+
+@pytest.mark.parametrize(
+    "run_id_key",
+    [config.ENV_LARCH_RUN_ID, config.ENV_SESSION_ID],
+)
+def test_named_block_write_uses_rehydrated_run_id_for_protected_issue(
+    monkeypatch: pytest.MonkeyPatch,
+    run_id_key: str,
+) -> None:
+    for key in ("RUN_ID", config.ENV_LARCH_RUN_ID, config.ENV_SESSION_ID):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(run_id_key, "run-7985")
+    runner = IssueRunner("body", title="[DESIGNING] Example")
+    assert issue_wire.named_block_lease(marker="plan") == (
+        issue_mutation.ImplementationLease(run_id="run-7985", marker="plan")
+    )
+
+    result = issue_wire.named_block_write(
+        runner=runner,
+        marker="plan",
+        issue="9",
+        repo="owner/repo",
+        content="NEW\n",
+        delete=False,
+    )
+
+    assert result["mode"] == "appended"
+    assert runner.edit_bodies
 
 
 def test_named_block_write_malformed_skips_edit() -> None:

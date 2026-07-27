@@ -161,7 +161,9 @@ collision key return an ambiguous outcome instead of risking a duplicate.
 
 Protected issue-body updates require an expected `updatedAt`, the expected
 state, a matching lease, one named block, redaction, and a strictly newer exact
-read-back. Dependency and migration-governance paths bind blocker, owner, plan,
+read-back. Named-block writers resolve the lease identity from `RUN_ID`, then
+the rehydrated `LARCH_RUN_ID` and `SESSION_ID`; missing all three still fails
+closed. Dependency and migration-governance paths bind blocker, owner, plan,
 base, and lease evidence. Unavailable or stale evidence fails closed.
 
 ### Local mutation safety
