@@ -11,7 +11,6 @@ import argparse
 import fnmatch
 import hashlib
 import json
-import os
 import re
 import shutil
 import sys
@@ -1208,12 +1207,6 @@ def persist_plan_receipt(
         return receipt
     # Prefer named-block mutation so [DESIGNING] issues can refresh the adjacent
     # receipt with the plan marker lease; fall back to body mutation otherwise.
-    run_id = os.environ.get("RUN_ID", "").strip()
-    lease = (
-        issue_mutation.ImplementationLease(run_id=run_id, marker="plan")
-        if run_id
-        else None
-    )
     try:
         verified_mutation = issue_mutation.update_named_block(
             runner,
@@ -1221,7 +1214,7 @@ def persist_plan_receipt(
             issue=issue,
             marker="plan",
             body=updated_body,
-            lease=lease,
+            lease=issue_wire.named_block_lease(marker="plan"),
             cwd=cwd,
         )
     except issue_mutation.ProtectedIssueMutation:
