@@ -142,7 +142,7 @@ def load_proposal(path: Path) -> ProposalRecord:
     updated = _string(row.get("expected_updated_at"), "invalid-proposal-record")
     context = _string(row.get("common_context"), "invalid-proposal-record")
     leaves_value = row.get("leaves")
-    if not isinstance(leaves_value, list) or not 0 < len(leaves_value) <= MAX_LEAVES:
+    if not isinstance(leaves_value, list) or not 0 < len(cast("list[object]", leaves_value)) <= MAX_LEAVES:
         raise UmbrellaError("invalid-proposal-record")
     leaves = tuple(_expected_leaf(item) for item in cast("list[object]", leaves_value))
     if len({leaf.identity for leaf in leaves}) != len(leaves):
@@ -251,7 +251,7 @@ def finalize(*, repository: str, issue: str, title: str, body: str) -> None:
     if not title.startswith(UMBRELLA_PREFIX) or PROPOSAL_MARKER not in body:
         raise UmbrellaError("invalid-final-umbrella")
     snapshot = issue_mutation.read_snapshot(proc, repository=repository, issue=issue)
-    issue_mutation.apply(
+    _ = issue_mutation.apply(
         proc,
         issue_mutation.request_for_snapshot(
             snapshot,
@@ -299,7 +299,7 @@ def mark_in_flight_main(argv: list[str]) -> int:
     if values is None or not {"--proposal", "--identity"} <= values.keys():
         return _emit_error("usage")
     try:
-        mark_in_flight(proposal_path=Path(values["--proposal"]), identity=values["--identity"])
+        _ = mark_in_flight(proposal_path=Path(values["--proposal"]), identity=values["--identity"])
     except UmbrellaError as exc:
         return _emit_error(exc.reason)
     logging_util.emit_kv(key="IN_FLIGHT_PERSISTED", value="true")
@@ -311,7 +311,7 @@ def record_resolved_main(argv: list[str]) -> int:
     if values is None or not {"--proposal", "--identity", "--number", "--url"} <= values.keys():
         return _emit_error("usage")
     try:
-        record_resolved(proposal_path=Path(values["--proposal"]), identity=values["--identity"], number=values["--number"], url=values["--url"], issue_id=values.get("--issue-id", ""))
+        _ = record_resolved(proposal_path=Path(values["--proposal"]), identity=values["--identity"], number=values["--number"], url=values["--url"], issue_id=values.get("--issue-id", ""))
     except UmbrellaError as exc:
         return _emit_error(exc.reason)
     logging_util.emit_kv(key="RESOLVED_PERSISTED", value="true")
@@ -324,10 +324,10 @@ def reconcile_in_flight_main(argv: list[str]) -> int:
         return _emit_error("usage")
     try:
         candidate_value = _load_json(Path(values["--candidates"]))
-        if not isinstance(candidate_value, list) or not all(isinstance(item, dict) for item in candidate_value):
+        if not isinstance(candidate_value, list) or not all(isinstance(item, dict) for item in cast("list[object]", candidate_value)):
             raise UmbrellaError("ambiguous-in-flight-recovery")
         result = reconcile_in_flight(proposal=load_proposal(Path(values["--proposal"])), identity=values["--identity"], candidates=cast("list[dict[str, object]]", candidate_value))
-        record_resolved(proposal_path=Path(values["--proposal"]), identity=result.identity, number=result.number, url=result.url, issue_id=result.issue_id)
+        _ = record_resolved(proposal_path=Path(values["--proposal"]), identity=result.identity, number=result.number, url=result.url, issue_id=result.issue_id)
     except UmbrellaError as exc:
         return _emit_error(exc.reason)
     logging_util.emit_kv(key="RECONCILED", value="true")
@@ -360,7 +360,7 @@ def verify_main(argv: list[str]) -> int:
     try:
         proposal = load_proposal(Path(values["--proposal"]))
         rows_value = _load_json(Path(values["--leaves"]))
-        if not isinstance(rows_value, list) or not all(isinstance(item, dict) for item in rows_value):
+        if not isinstance(rows_value, list) or not all(isinstance(item, dict) for item in cast("list[object]", rows_value)):
             raise UmbrellaError("incomplete-graph-state")
         actual = cast("list[dict[str, object]]", rows_value)
         for leaf in proposal.leaves:

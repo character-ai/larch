@@ -3430,21 +3430,21 @@ planning_issue = 7681
 
 [[commands]]
 domain = "issue"
-verb = "add-sub-issue"
+verb = "add-blocked-by"
 python_module = "larch.issue.issue_create"
-python_function = "add_sub_issue_main"
+python_function = "add_blocked_by_main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7983
+planning_issue = 7682
 
 [[commands]]
 domain = "issue"
-verb = "add-blocked-by"
+verb = "add-sub-issue"
 python_module = "larch.issue.issue_create"
-python_function = "add_blocked_by_main"
+python_function = "add_sub_issue_main"
 machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
@@ -8018,18 +8018,6 @@ python = ["generate code-reviewer-agent"]
 rust = []
 
 [[callers]]
-path = "skills/implement/prompts/codex-implementer.md"
-kind = "skill"
-python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
-rust = []
-
-[[callers]]
-path = "skills/implement/prompts/cursor-implementer.md"
-kind = "skill"
-python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
-rust = []
-
-[[callers]]
 path = "agents/reviewer-code-robustness.md"
 kind = "agent"
 python = ["generate reviewer-code-robustness-agent"]
@@ -8750,6 +8738,18 @@ python = ["admission fork-env", "admission gate", "architectural-assessment mate
 rust = ["git current-branch", "push branch", "push checkpoint-probe", "push rebase"]
 
 [[callers]]
+path = "skills/implement/prompts/codex-implementer.md"
+kind = "skill"
+python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
+rust = []
+
+[[callers]]
+path = "skills/implement/prompts/cursor-implementer.md"
+kind = "skill"
+python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
+rust = []
+
+[[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
 kind = "skill"
 python = ["architectural-assessment materialize"]
@@ -9341,6 +9341,12 @@ rust = []
 path = "skills/triage/SKILL.md"
 kind = "skill"
 python = ["issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block", "verify skill-called"]
+rust = []
+
+[[callers]]
+path = "skills/umbrella/SKILL.md"
+kind = "skill"
+python = ["session setup", "umbrella mark-in-flight", "umbrella persist-proposal", "umbrella prepare", "verify skill-called"]
 rust = []
 
 [[callers]]

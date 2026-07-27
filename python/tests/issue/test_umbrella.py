@@ -53,7 +53,7 @@ def test_in_flight_recovery_requires_exact_unique_leaf_contract() -> None:
     )
     assert result.number == "34"
     with pytest.raises(umbrella.UmbrellaError, match="ambiguous-in-flight-recovery"):
-        umbrella.reconcile_in_flight(
+        _ = umbrella.reconcile_in_flight(
             proposal=in_flight,
             identity=leaf.identity,
             candidates=[{"number": 34, "url": "u", "title": leaf.title, "body": leaf.body}] * 2,
@@ -64,6 +64,6 @@ def test_invalid_proposal_refuses_tampered_leaf_identity(tmp_path: Path) -> None
     path = tmp_path / "proposal.json"
     payload = json.loads(json.dumps(umbrella.asdict(_proposal())))
     payload["leaves"][0]["identity"] = "tampered"
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    _ = path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(umbrella.UmbrellaError, match="invalid-proposal-record"):
-        umbrella.load_proposal(path)
+        _ = umbrella.load_proposal(path)
