@@ -7,7 +7,11 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::unix::{ffi::OsStringExt, fs::PermissionsExt, process::ExitStatusExt};
+use std::os::unix::{
+    ffi::{OsStrExt, OsStringExt},
+    fs::PermissionsExt,
+    process::ExitStatusExt,
+};
 
 use crate::{TestEnvironment, TestWorkspace, filesystem::validate_relative};
 
@@ -463,15 +467,24 @@ impl GitRepository {
     #[cfg(unix)]
     fn setup_attributes(&self) -> Result<(), GitFixtureError> {
         let filter = self.workspace.root().join("bin/larch-filter");
-        let script = "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"${LARCH_GIT_FIXTURE_TRANSCRIPTS}/filter.log\"\n/bin/cat\n";
+        let script = "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$1\" >> \"${0%/*}/../transcripts/filter.log\"\n/bin/cat\n";
         fs::write(&filter, script)?;
         fs::set_permissions(&filter, fs::Permissions::from_mode(0o755))?;
         self.write(
             ".gitattributes",
             b"filtered.txt filter=larch eol=crlf\n*.bin -text\n",
         )?;
-        self.checked(["config", "filter.larch.clean", "larch-filter clean"])?;
-        self.checked(["config", "filter.larch.smudge", "larch-filter smudge"])?;
+        self.checked([
+            OsString::from("config"),
+            OsString::from("filter.larch.clean"),
+            filter_command(&filter, b"clean"),
+        ])?;
+        self.checked([
+            OsString::from("config"),
+            OsString::from("filter.larch.smudge"),
+            filter_command(&filter, b"smudge"),
+        ])?;
+        self.checked(["config", "filter.larch.required", "true"])?;
         self.write("filtered.txt", b"one\ntwo\n")?;
         self.write("payload.bin", b"\x00\xff\n")?;
         self.checked(["add", "--all"])?;
@@ -1115,6 +1128,22 @@ fn command_output(status: ExitStatus, stdout: Vec<u8>, stderr: Vec<u8>) -> GitCo
     }
 }
 
+#[cfg(unix)]
+fn filter_command(executable: &Path, operation: &[u8]) -> OsString {
+    let mut command = Vec::with_capacity(executable.as_os_str().as_bytes().len() + operation.len());
+    command.push(b'\'');
+    for byte in executable.as_os_str().as_bytes() {
+        if *byte == b'\'' {
+            command.extend_from_slice(b"'\\''");
+        } else {
+            command.push(*byte);
+        }
+    }
+    command.extend_from_slice(b"' ");
+    command.extend_from_slice(operation);
+    OsString::from_vec(command)
+}
+
 fn find_git() -> io::Result<PathBuf> {
     find_executable(git_binary_name())
 }
@@ -1172,6 +1201,43 @@ fn file_mode(metadata: &fs::Metadata) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn filter_commands_shell_quote_absolute_paths() {
+        assert_eq!(
+            filter_command(Path::new("/tmp/larch fixture's/filter"), b"clean"),
+            OsString::from("'/tmp/larch fixture'\\''s/filter' clean")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn attribute_filter_fixture_uses_required_absolute_commands() {
+        let repository = GitRepository::builder(GitFixture::AttributesAndFilters)
+            .build()
+            .expect("attributes fixture");
+        let executable = repository.workspace_root().join("bin/larch-filter");
+        assert!(executable.is_absolute());
+
+        for (key, operation) in [
+            ("filter.larch.clean", b"clean".as_slice()),
+            ("filter.larch.smudge", b"smudge".as_slice()),
+        ] {
+            let output = repository
+                .git(["config", "--get", key])
+                .expect("read filter command");
+            let mut expected = filter_command(&executable, operation).into_vec();
+            expected.push(b'\n');
+            assert!(output.success());
+            assert_eq!(output.stdout, expected);
+        }
+        let required = repository
+            .git(["config", "--get", "filter.larch.required"])
+            .expect("read required filter setting");
+        assert!(required.success());
+        assert_eq!(required.stdout, b"true\n");
+    }
 
     fn fixture_or_skip(builder: GitRepositoryBuilder) -> Option<GitRepository> {
         match builder.build() {
