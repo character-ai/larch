@@ -246,3 +246,5 @@ The operator choices are:
 The coverage fingerprint covers plan paths, touched paths, and bounded `todos_left`. Step 5 commits, Step 7 commits, checks repair, ship pre-driver, and PR mutation recompute coverage. If the fingerprint changes, the old disposition is stale and the operator must choose again. Ship route-exit maps this to `halt-scope-disposition`.
 
 Partial scope changes completion surfaces. The PR footer uses `Part of #N` instead of a closing keyword, the PR body includes a bounded deferred inventory, `[DONE]` rename is suppressed, and the final summary includes plan coverage and `todos_left` count.
+
+- **`/umbrella [--skip-approve|-s] [--no-dedup] <issue-N | description>`** — Stateful `/issue` orchestrator for a single flat native issue graph. It persists the proposal before leaf creation, verifies `/issue` counters plus its sentinel, requires complete dependency-only analysis when dedup is disabled, and reads back sub-issue/blocker graph relations before success.

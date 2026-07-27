@@ -732,6 +732,28 @@ def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
     assert len(calls) == 2
 
 
+def test_add_sub_issue_verifies_native_relation(monkeypatch: Any, capsys: Any) -> None:
+    calls: list[tuple[str, str, str]] = []
+
+    def add_sub_issue(_runner: object, parent: str, child_id: int, *, repo: str) -> proc.CommandResult:
+        calls.append((parent, str(child_id), repo))
+        return _result(["gh", "api"])  # lint-gh-argv-literal: ok fixture assertion
+
+    def read_sub_issues(_runner: object, parent: str, *, repo: str) -> proc.CommandResult:
+        assert (parent, repo) == ("1", "o/r")
+        return _result(["gh", "api"], stdout='[{"number":2}]')  # lint-gh-argv-literal: ok fixture assertion
+
+    monkeypatch.setattr(issue_create.gh, "issue_add_sub_issue", add_sub_issue)
+    monkeypatch.setattr(issue_create.gh, "issue_sub_issues_read", read_sub_issues)
+    rc = issue_create.add_sub_issue_main(
+        ["--parent-issue", "1", "--child-issue", "2", "--child-id", "200", "--repo", "o/r", "--operator-invoked"],
+        sleep_fn=lambda _seconds: None,
+    )
+    assert rc == 0
+    assert calls == [("1", "200", "o/r")]
+    assert "SUB_ISSUE_ADDED=true" in capsys.readouterr().out
+
+
 def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
     payload = [
         {"number": 1, "title": "Keep\tTitle", "state": "OPEN", "url": "u1"},

@@ -3442,6 +3442,18 @@ planning_issue = 7682
 
 [[commands]]
 domain = "issue"
+verb = "add-sub-issue"
+python_module = "larch.issue.issue_create"
+python_function = "add_sub_issue_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7682
+
+[[commands]]
+domain = "issue"
 verb = "allocate-candidates"
 python_module = "larch.issue.issue_create"
 python_function = "allocate_candidates_main"
@@ -7400,6 +7412,90 @@ python_removal = "pending"
 planning_issue = 7682
 
 [[commands]]
+domain = "umbrella"
+verb = "mark-in-flight"
+python_module = "larch.issue.umbrella"
+python_function = "mark_in_flight_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "mutate"
+python_module = "larch.issue.umbrella"
+python_function = "mutate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "persist-proposal"
+python_module = "larch.issue.umbrella"
+python_function = "persist_proposal_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "prepare"
+python_module = "larch.issue.umbrella"
+python_function = "prepare_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "reconcile-in-flight"
+python_module = "larch.issue.umbrella"
+python_function = "reconcile_in_flight_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "record-resolved"
+python_module = "larch.issue.umbrella"
+python_function = "record_resolved_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
+domain = "umbrella"
+verb = "verify"
+python_module = "larch.issue.umbrella"
+python_function = "verify_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7983
+
+[[commands]]
 domain = "untrusted"
 verb = "content-block"
 python_module = "larch.issue.issue_wire"
@@ -7919,18 +8015,6 @@ rust = []
 path = "agents/code-reviewer.md"
 kind = "agent"
 python = ["generate code-reviewer-agent"]
-rust = []
-
-[[callers]]
-path = "skills/implement/prompts/codex-implementer.md"
-kind = "skill"
-python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
-rust = []
-
-[[callers]]
-path = "skills/implement/prompts/cursor-implementer.md"
-kind = "skill"
-python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
 rust = []
 
 [[callers]]
@@ -8654,6 +8738,18 @@ python = ["admission fork-env", "admission gate", "architectural-assessment mate
 rust = ["git current-branch", "push branch", "push checkpoint-probe", "push rebase"]
 
 [[callers]]
+path = "skills/implement/prompts/codex-implementer.md"
+kind = "skill"
+python = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
+rust = []
+
+[[callers]]
+path = "skills/implement/prompts/cursor-implementer.md"
+kind = "skill"
+python = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
+rust = []
+
+[[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
 kind = "skill"
 python = ["architectural-assessment materialize"]
@@ -9245,6 +9341,12 @@ rust = []
 path = "skills/triage/SKILL.md"
 kind = "skill"
 python = ["issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block", "verify skill-called"]
+rust = []
+
+[[callers]]
+path = "skills/umbrella/SKILL.md"
+kind = "skill"
+python = ["session setup", "umbrella mark-in-flight", "umbrella persist-proposal", "umbrella prepare", "verify skill-called"]
 rust = []
 
 [[callers]]

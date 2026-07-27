@@ -13,7 +13,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Support Skills
 
-- Manage issues and their dependencies: `/issue`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
+- Manage issues and their dependencies: `/issue`, `/umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
 - Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 
@@ -142,6 +142,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><code>[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [&lt;issue description or title&gt;]</code></td>
     </tr>
     <tr><td colspan="2">Create one or more GitHub issues with LLM-based semantic duplicate detection and always-on inter-issue blocker-dependency analysis. <code>--no-dedup</code> skips both passes; <code>--no-dep-llm</code> keeps dedup but skips the LLM dependency pass. Batch/wiring flags (<code>--input-file</code>, <code>--body-file</code>, <code>--blocked-by-issue</code>, <code>--intra-batch-deps-file</code>, <code>--sentinel-file</code>) are used mainly by calling skills.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#umbrella"><code>/umbrella</code></a></td>
+      <td><code>[--skip-approve|-s] [--no-dedup] &lt;issue-N | description&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Create or resume a flat <code>[UMBRELLA]</code> issue whose direct leaves are durable native sub-issues that block it. One approval precedes all mutation; <code>--skip-approve</code>/<code>-s</code> follows the same proposal, sentinel, and graph-verification path. Leaf filing runs through <code>/issue</code> (<code>--no-dedup</code> uses dependency-only analysis); a resume reconciles only an exact title/body match before creating anything else, and never nests umbrellas.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#learn-from-bugs"><code>/learn-from-bugs</code></a></td>

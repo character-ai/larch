@@ -84,7 +84,7 @@ See `## Anti-halt continuation reminder` below — the two sections govern the s
 <a id="anti-halt"></a>
 ## Anti-halt continuation reminder
 
-**Scope**: this rule applies to the same orchestrator set as `## Post-invocation verification` above — stateful orchestrators (`/implement`, `/review`, `/alias`, `/research`, `/bug`, `/triage`) that run additional steps after a child `Skill` tool call returns. Pure forwarders (`/im`, `/block-issue`) are exempt — once they delegate, they do nothing further. The two sections are complementary: `## Post-invocation verification` asks **"did the child run?"**; this section asks **"did the parent continue?"** Both failure modes are distinct and real (see GitHub issue #177 for the originating report).
+**Scope**: this rule applies to the same orchestrator set as `## Post-invocation verification` above — stateful orchestrators (`/implement`, `/review`, `/alias`, `/research`, `/bug`, `/triage`, `/umbrella`) that run additional steps after a child `Skill` tool call returns. Pure forwarders (`/im`, `/block-issue`) are exempt — once they delegate, they do nothing further. The two sections are complementary: `## Post-invocation verification` asks **"did the child run?"**; this section asks **"did the parent continue?"** Both failure modes are distinct and real (see GitHub issue #177 for the originating report).
 
 **The rule**: after every child `Skill` tool call (`/design`, `/review`, `/release`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `python/cli.py checks run-relevant`, the main agent MUST immediately continue with the parent skill's NEXT step. The child's cleanup / summary output and helper stdout are NOT end-of-turn. Visible outputs (plans, diagrams, voting tallies, skip breadcrumbs, PR URLs, helper KEY=VALUE envelopes) are intermediate artifacts, NOT stopping points. Likewise, a summary, handoff, status recap, or "returning to parent" turn-ending message is a halt in disguise, not a valid continuation. In long sessions where the child produces many tokens (e.g., `/design` with 3 reviewers + voting easily produces 15k+ tokens), the main agent's attention can drift to the child's local "mission accomplished" framing and lose the parent orchestration frame. A short, standardized banner at the top of every orchestrator plus short per-call-site micro-reminders reinforce the rule where attention is most at risk.
 
@@ -132,6 +132,7 @@ The banner MUST appear in these orchestrator SKILL.md files:
 - `skills/research/SKILL.md`
 - `skills/bug/SKILL.md`
 - `skills/triage/SKILL.md`
+- `skills/umbrella/SKILL.md`
 
 The banner MUST NOT appear in pure-delegator SKILL.md files:
 

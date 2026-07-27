@@ -1288,6 +1288,7 @@ files = [
   "skills/set-up-forked-open-source-repo/SKILL.md",
   "skills/status/SKILL.md",
   "skills/triage/SKILL.md",
+  "skills/umbrella/SKILL.md",
   "skills/upgrade-larch/SKILL.md",
   "skills/voter-calibration/SKILL.md",
 ]
@@ -1326,6 +1327,7 @@ files = [
   "skills/set-up-forked-open-source-repo/SKILL.md",
   "skills/status/SKILL.md",
   "skills/triage/SKILL.md",
+  "skills/umbrella/SKILL.md",
   "skills/upgrade-larch/SKILL.md",
   "skills/voter-calibration/SKILL.md",
 ]
