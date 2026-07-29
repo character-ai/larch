@@ -250,22 +250,54 @@ def _write_context(*, started: LifecycleStart) -> None:
     )
 
 
-def load_run_context(
+def _provided_context_resolution(
+    *,
+    storage_root: ToolRepositoryStorage | None,
+    storage_resolution: RunLogStorageResolution | None,
+) -> RunLogStorageResolution | None:
+    """Return caller-pinned storage state while preserving the legacy seam."""
+    if storage_resolution is not None and storage_root is not None:
+        raise ValueError("provide storage_resolution or storage_root, not both")
+    if storage_resolution is not None:
+        return storage_resolution
+    if storage_root is not None:
+        return storage_config.injected_storage_resolution(storage_root)
+    return None
+
+
+def _active_context_resolution(
+    *,
+    repo_root: Path,
+    environ: Mapping[str, str],
+    provided_resolution: RunLogStorageResolution | None,
+) -> RunLogStorageResolution:
+    """Resolve storage only when the caller has not already pinned it."""
+    if provided_resolution is not None:
+        return provided_resolution
+    return storage_config.resolve_run_log_storage(repo_root=repo_root, environ=environ)
+
+
+def load_run_context(  # noqa: PLR0913 - preserves the legacy raw-storage seam alongside resolved production storage.
     *,
     repo_root: Path,
     skill: str,
     run_id: str,
     environ: Mapping[str, str] | None = None,
     storage_root: ToolRepositoryStorage | None = None,
+    storage_resolution: RunLogStorageResolution | None = None,
 ) -> LifecycleStart:
     """Rehydrate one lifecycle context without inherited shell state."""
     environment = os.environ if environ is None else environ
     root = _validated_repo_root(repo_root)
     skill_name = run_log_publish.validated_component(skill, label="skill", slug=True)
     run_name = run_log_publish.validated_component(run_id, label="run-id", slug=True)
+    provided_resolution = _provided_context_resolution(
+        storage_root=storage_root,
+        storage_resolution=storage_resolution,
+    )
     client_repo: str = (
-        storage_root.client_repo
-        if storage_root is not None
+        provided_resolution.client_repo
+        if provided_resolution is not None
         else storage_config.derive_client_repo(repo_root=root)
     )
     local_resolution = RunLogStorageResolution(
@@ -297,12 +329,10 @@ def load_run_context(
         context_file = disabled_context_file
         active_resolution = local_resolution
     else:
-        active_resolution = (
-            storage_config.injected_storage_resolution(storage_root)
-            if storage_root is not None
-            else storage_config.resolve_run_log_storage(
-                repo_root=root, environ=environment
-            )
+        active_resolution = _active_context_resolution(
+            repo_root=root,
+            environ=environment,
+            provided_resolution=provided_resolution,
         )
         context_file = _context_file(
             resolution=active_resolution,
@@ -439,7 +469,7 @@ def _parent_identity_from_context(
         skill=cast("str", data["skill"]),
         run_id=cast("str", data["run_id"]),
         environ=environ,
-        storage_root=resolution.storage,
+        storage_resolution=resolution,
     )
     _require_lifecycle(
         parent.context_file == context_file, "parent lifecycle context path mismatch"
@@ -610,7 +640,7 @@ def start_run(  # noqa: PLR0913 - lifecycle boundary validates identity, adoptio
             skill=skill_name,
             run_id=run_name,
             environ=environment,
-            storage_root=active_resolution.storage,
+            storage_resolution=active_resolution,
         )
         _require_lifecycle(
             existing == started, "existing lifecycle context does not match adoption"
