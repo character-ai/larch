@@ -407,6 +407,116 @@ def test_alias_target_and_nested_review_record_parent_child_ids(
     assert len(store.objects) == 2
 
 
+def test_repository_config_parent_context_cli_starts_child_and_adopts(
+    lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, environment, _storage_root = lifecycle_fixture
+    _ = subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:fixture/consumer.git"],
+        cwd=repo,
+        check=True,
+    )
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://bucket"\n',
+        encoding="utf-8",
+    )
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+
+    def no_op_preflight(*, storage: ToolRepositoryStorage) -> None:
+        _ = storage
+
+    monkeypatch.setattr(storage_config, "preflight_tool_repository", no_op_preflight)
+
+    assert (
+        run_lifecycle.start_main(
+            [
+                "--repo-root",
+                str(repo),
+                "--skill",
+                "bug",
+                "--run-id",
+                "repository-config-parent",
+            ]
+        )
+        == 0
+    )
+    parent_values: dict[str, str] = {
+        line.split("=", 1)[0]: line.split("=", 1)[1]
+        for line in capsys.readouterr().out.splitlines()
+        if "=" in line
+    }
+    parent_context = Path(parent_values["CONTEXT_FILE"])
+    assert parent_values["RUN_LOG_STORAGE"] == "enabled"
+    assert parent_values["RUN_LOG_STORAGE_REASON"] == "repository-config"
+
+    assert (
+        run_lifecycle.start_main(
+            [
+                "--repo-root",
+                str(repo),
+                "--skill",
+                "issue",
+                "--run-id",
+                "repository-config-child",
+                "--lifecycle-parent-context",
+                str(parent_context),
+            ]
+        )
+        == 0
+    )
+    child_values: dict[str, str] = {
+        line.split("=", 1)[0]: line.split("=", 1)[1]
+        for line in capsys.readouterr().out.splitlines()
+        if "=" in line
+    }
+    child_context = Path(child_values["CONTEXT_FILE"])
+    child_manifest = json.loads(
+        (Path(child_values["RUN_DIR"]) / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert (
+        child_values["LIFECYCLE_STARTED"],
+        child_values["RUN_ID"],
+        child_context != parent_context,
+        child_manifest["parent_skill"],
+        child_manifest["parent_run_id"],
+    ) == (
+        "true",
+        "repository-config-child",
+        True,
+        "bug",
+        "repository-config-parent",
+    )
+
+    adopted = run_lifecycle.start_run(
+        repo_root=repo,
+        skill="issue",
+        run_id="repository-config-child",
+        adopt_existing=True,
+        parent_context=parent_context,
+        environ=environment,
+        preflight=lambda _storage: None,
+    )
+    assert adopted.context_file == child_context
+    assert adopted.storage_resolution.reason == "repository-config"
+
+    _ = (repo / "tools-config.toml").write_text(
+        '[larch]\nstorage_base_uri = "s3://other-bucket"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(run_lifecycle.RunLifecycleError):
+        _ = run_lifecycle.start_run(
+            repo_root=repo,
+            skill="review",
+            run_id="repository-config-drifted-child",
+            parent_context=parent_context,
+            environ=environment,
+            preflight=lambda _storage: None,
+        )
+
+
 def test_upload_failure_is_loud_and_retry_uses_durable_pending_archive(
     lifecycle_fixture: tuple[Path, dict[str, str], ToolRepositoryStorage],
 ) -> None:
