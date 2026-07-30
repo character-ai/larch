@@ -3,8 +3,7 @@
 use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode, time::Duration};
 
 use larch_adapters::{
-    GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest, PushRequest, SecureTempDir,
-    TagMutationRequest, TemporaryRoot,
+    GitRef, GixRepository, SecureTempDir, TagMutationRequest, TemporaryRoot,
     clock::TokioClock,
     github::{
         AttestationOperations, DraftReleaseInput, OctocrabAttestationTransport,
@@ -183,23 +182,7 @@ impl Services for ProductionServices {
     fn remote_tag(&self, _repo: &RepoSlug, tag: &str) -> Result<Option<String>, String> {
         let direct = format!("refs/tags/{tag}");
         let peeled = format!("{direct}^{{}}");
-        let result = self
-            .runtime
-            .block_on(self.git_cli().ls_remote(
-                LsRemoteRequest {
-                    remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
-                    patterns: vec![
-                        GitRef::new(&direct).map_err(|error| error.to_string())?,
-                        GitRef::new(&peeled).map_err(|error| error.to_string())?,
-                    ],
-                    heads: false,
-                    exit_code: false,
-                },
-                &self.cancellation,
-            ))
-            .map_err(|error| error.to_string())?;
-        let output = String::from_utf8(result.output().stdout().to_vec())
-            .map_err(|_| "remote tag read returned non-UTF-8 output".to_owned())?;
+        let output = self.origin_refs(&[direct.clone(), peeled.clone()])?;
         let mut direct_oid = None;
         let mut peeled_oid = None;
         for line in output.lines() {
@@ -244,17 +227,7 @@ impl Services for ProductionServices {
 
     fn push_tag(&self, tag: &str) -> Result<(), String> {
         let reference = format!("refs/tags/{tag}");
-        let request = PushRequest {
-            remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
-            refspec: GitRefspec::new(format!("{reference}:{reference}"))
-                .map_err(|error| error.to_string())?,
-            force_with_lease: None,
-            set_upstream: false,
-        };
-        self.runtime
-            .block_on(self.git_cli().push(request, &self.cancellation))
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+        self.push_origin_ref(&format!("{reference}:{reference}"))
     }
 
     fn staged_release(

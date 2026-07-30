@@ -5,6 +5,12 @@ set -eEuo pipefail
 
 readonly RELEASE_REPO="character-ai/larch"
 readonly RELEASE_WORKFLOW="character-ai/larch/.github/workflows/rust-release-assets.yaml"
+# The branch .claude-plugin/marketplace.json pins installed plugin content to.
+# Shared with RELEASE_PIN_REF in crates/larch-cli/src/release_publish.rs and the
+# descriptor's "ref" field; all three change together. Not "release": Git refs
+# are paths, so refs/heads/release cannot coexist with the release/v<version>
+# candidate branches /release Step 5 creates.
+readonly RELEASE_PIN_REF="stable"
 readonly LOCK_WAIT_SECONDS=120
 
 plugin_root=""
@@ -231,6 +237,32 @@ write_expected_release_assets() {
         "larch-v$version-manifest.json" | sort > "$output"
 }
 
+# Call from a function body, never inside a command substitution: `die` must run
+# in the main shell so one clear message replaces the generic ERR-trap report.
+require_commit_sha() {
+    local label="$1"
+    local sha="$2"
+    case "$sha" in
+        *[!0-9a-f]*|'') die "$label is invalid" ;;
+    esac
+    [ "${#sha}" -eq 40 ] || die "$label has an invalid length"
+}
+
+# Prove the plugin content a pinned install would fetch and the binary this
+# release ships come from one commit, before any plugin state is mutated.
+verify_release_pin() {
+    local tag="$1"
+    local tag_commit="$2"
+    local pin_commit=""
+    pin_commit="$(gh api "repos/$RELEASE_REPO/git/ref/heads/$RELEASE_PIN_REF" --jq '.object.sha' 2>/dev/null || true)"
+    [ -n "$pin_commit" ] || die "release pin branch refs/heads/$RELEASE_PIN_REF could not be read; the marketplace descriptor pins installed plugin content to it"
+    require_commit_sha "release pin commit" "$pin_commit"
+    if [ "$pin_commit" != "$tag_commit" ]; then
+        die "plugin content and executable would come from different commits: refs/heads/$RELEASE_PIN_REF is at $pin_commit but $tag is at $tag_commit. Retry after the in-flight release finishes advancing the pin."
+    fi
+    printf 'LARCH_PREFLIGHT_PIN_VERIFIED=true\n'
+}
+
 verify_release_surface() {
     local version="$1"
     local tag="$2"
@@ -423,6 +455,7 @@ install_release_binary() {
     local version="$1"
     local target="$2"
     local publish_binary="${3:-true}"
+    local verify_pin="${4:-false}"
     local tag="v$version"
     local source_commit=""
     local download_dir=""
@@ -446,10 +479,10 @@ install_release_binary() {
     require_release_install_target "$target"
     verify_release_surface "$version" "$tag"
     source_commit="$(gh api "repos/$RELEASE_REPO/commits/$tag" --jq '.sha')"
-    case "$source_commit" in
-        *[!0-9a-f]*|'') die "release source commit is invalid" ;;
-    esac
-    [ "${#source_commit}" -eq 40 ] || die "release source commit has an invalid length"
+    require_commit_sha "release source commit" "$source_commit"
+    if [ "$verify_pin" = true ]; then
+        verify_release_pin "$tag" "$source_commit"
+    fi
 
     download_dir="$stage_dir/download"
     mkdir "$download_dir"
@@ -543,7 +576,7 @@ preflight_release() {
         *) die "mktemp returned a preflight path outside plugin data" ;;
     esac
     [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || die "release preflight staging path is unsafe"
-    install_release_binary "$version" "$target" false
+    install_release_binary "$version" "$target" false true
     printf 'LARCH_PREFLIGHT_VERSION=%s\n' "$version"
 }
 

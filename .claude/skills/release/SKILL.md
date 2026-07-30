@@ -259,7 +259,7 @@ The merge helper must report a merged result. The merge-commit method preserves 
 
 On candidate CI, asset workflow, draft validation, or merge failure, stop before publication. Keep the candidate branch, tag, and mutable draft for repair. A failed asset workflow may be rerun for the same tag and draft; never cut a second version. Repeat `release stage`, the asset workflow wait, and `release validate-draft` for recovery. Asset replacement is allowed only while the Release remains a draft.
 
-## Step 6 — Publish the immutable Release and promote Latest
+## Step 6 — Publish the immutable Release, promote Latest, and advance the content pin
 
 ```bash
 SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
@@ -272,6 +272,8 @@ CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh"
 ```
 
 `release finish` revalidates repository policy, tag identity, candidate ancestry, both `plugin.json` versions, the complete asset allowlist, every GitHub asset digest, the manifest, checksums, archives, and artifact attestations. It then publishes with `--latest=false`, verifies the immutable release attestation and every release asset against that attestation, and only then promotes the same release to Latest.
+
+Last, it fast-forwards `refs/heads/stable` to the tagged commit and re-reads the remote branch to confirm it. That branch is what `.claude-plugin/marketplace.json` pins installed plugin content to, so this ordering guarantees an install never fetches content for a version whose verified binary does not exist yet. A pin failure fails the command: the release is published but no installer would receive it, so re-run Step 6 rather than continuing. `RELEASE_PIN_REF` and `RELEASE_PIN_OID` report the advanced pin on success. Re-running is safe; the command skips the push when the branch already names the tagged commit.
 
 If Step 6 fails after Step 5 merged the release PR, do **not** re-run full `/release`. Re-run Step 6 only with the same version, PR, and source commit:
 
@@ -443,9 +445,11 @@ Runtime helpers:
 - `"$PWD/scripts/larch.sh" release stage`: tag the candidate and create or verify its draft Release
 - `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
 - `"$PWD/scripts/larch.sh" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
-- `"$PWD/scripts/larch.sh" release finish`: revalidate, publish immutable, verify release attestations, and promote Latest
+- `"$PWD/scripts/larch.sh" release finish`: revalidate, publish immutable, verify release attestations, promote Latest, and fast-forward the marketplace-pinned `stable` branch to the tagged commit
 - `"$PWD/scripts/larch.sh" release promote`: promote a specific release after `finish`, or during promote-only recovery
 - `"$PWD/scripts/larch.sh" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
+
+`release finish` is the only command that advances the marketplace-pinned `stable` branch. Neither promote verb touches it, so a promote-only recovery leaves installs on the previous release's plugin content until `release finish` runs. `/upgrade-larch` refuses loudly in that window rather than installing a mismatch.
 
 Repo-root helpers referenced from steps above:
 

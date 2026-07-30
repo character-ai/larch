@@ -21,10 +21,11 @@ from larch.release import assets
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 SOURCE_COMMIT = "a" * 40
-SCRIPT = Path(__file__).parents[3] / "scripts" / "larch.sh"
-RELEASE_SKILL = (
-    Path(__file__).parents[3] / ".claude" / "skills" / "release" / "SKILL.md"
-)
+REPO_ROOT = Path(__file__).parents[3]
+SCRIPT = REPO_ROOT / "scripts" / "larch.sh"
+MARKETPLACE = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+RELEASE_SKILL = REPO_ROOT / ".claude" / "skills" / "release" / "SKILL.md"
+PREFLIGHT_STDOUT = f"LARCH_PREFLIGHT_PIN_VERIFIED=true\nLARCH_PREFLIGHT_VERSION={VERSION}\n"
 
 
 @dataclass(frozen=True)
@@ -195,7 +196,10 @@ if [ "$1" = api ] && [ "$2" = --paginate ]; then
   exit 0
 fi
 if [ "$1" = api ]; then
-  printf '%s\\n' "$TEST_SOURCE_COMMIT"
+  case "$2" in
+    */git/ref/heads/*) printf '%s\\n' "${TEST_PIN_COMMIT:-$TEST_SOURCE_COMMIT}" ;;
+    *) printf '%s\\n' "$TEST_SOURCE_COMMIT" ;;
+  esac
   exit 0
 fi
 if [ "$1:$2" = "release:download" ]; then
@@ -319,10 +323,88 @@ def test_release_preflight_verifies_without_touching_plugin_cache_root(tmp_path:
     result = _run(fixture, "--preflight-release", VERSION)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout == f"LARCH_PREFLIGHT_VERSION={VERSION}\n"
+    assert result.stdout == PREFLIGHT_STDOUT
     assert marker.read_text(encoding="utf-8") == "unchanged"
     assert not (fixture.root / "bin").exists()
     assert not list(fixture.data.glob(".larch-bootstrap.*"))
+
+
+def _pin_ref() -> str:
+    """The branch token the bootstrap and the marketplace descriptor share."""
+    match = re.search(
+        r'^readonly RELEASE_PIN_REF="([^"]+)"$',
+        SCRIPT.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert match is not None, "scripts/larch.sh no longer declares RELEASE_PIN_REF"
+    return match.group(1)
+
+
+def test_bootstrap_and_descriptor_name_the_same_release_pin_branch() -> None:
+    """One token for the pin: the descriptor's writer and the bootstrap's
+    verifier must not drift (issue #8007, G-Cfg-3).
+    """
+    descriptor = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
+    source = next(
+        plugin["source"]
+        for plugin in descriptor["plugins"]
+        if plugin["name"] == "larch"
+    )
+
+    assert source["source"] == "git-subdir"
+    assert source["path"] == "plugin"
+    assert source["ref"] == _pin_ref()
+
+
+def test_pin_ref_cannot_collide_with_release_candidate_branches() -> None:
+    """Git refs are paths: `refs/heads/<pin>` and `<pin>/v1.2.3` cannot coexist,
+    so the pin must not be the first segment of a release candidate branch.
+    """
+    candidates = re.findall(
+        r'git checkout -b "([^"$]+)', RELEASE_SKILL.read_text(encoding="utf-8")
+    )
+    assert candidates, "release SKILL.md no longer creates a candidate branch"
+
+    pin = _pin_ref()
+    for candidate in candidates:
+        assert candidate.split("/")[0] != pin, (
+            f"pin branch {pin!r} collides with candidate branch {candidate!r}"
+        )
+
+
+def test_release_pin_mismatch_fails_preflight_before_downloading_assets(
+    tmp_path: Path,
+) -> None:
+    """The exact smarts#323 shape: the pinned branch trails the release being
+    installed, so plugin content and executable would come from two commits.
+    """
+    fixture = _fixture(tmp_path)
+    environment = _environment(fixture)
+    environment["TEST_PIN_COMMIT"] = "b" * 40
+
+    result = _run(fixture, "--preflight-release", VERSION, environment=environment)
+
+    assert result.returncode == 1
+    assert "come from different commits" in result.stderr
+    assert f"refs/heads/{_pin_ref()}" in result.stderr
+    assert "LARCH_PREFLIGHT_PIN_VERIFIED" not in result.stdout
+    assert "LARCH_PREFLIGHT_VERSION" not in result.stdout
+    assert not fixture.log.exists(), "no asset download or attestation should run"
+
+
+def test_clean_install_does_not_gate_on_the_moving_release_pin(tmp_path: Path) -> None:
+    """An install already at an older release must keep bootstrapping its own
+    matching binary after the pin advances to a newer release.
+    """
+    fixture = _fixture(tmp_path)
+    environment = _environment(fixture)
+    environment["TEST_PIN_COMMIT"] = "b" * 40
+
+    result = _run(fixture, "example", "echo", "ok", environment=environment)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ran:example echo ok\n"
+    assert (fixture.root / "bin" / "larch").is_file()
 
 
 def _macos_shaped_tmpdir(tmp_path: Path) -> tuple[str, Path]:
@@ -389,7 +471,7 @@ def test_step7_fence_plugin_data_passes_preflight_with_symlinked_tmpdir(
     result = _run(fixture, "--preflight-release", VERSION, environment=environment)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout == f"LARCH_PREFLIGHT_VERSION={VERSION}\n"
+    assert result.stdout == PREFLIGHT_STDOUT
 
 
 def test_step7_fence_leaves_parent_empty_for_broken_or_relative_tmpdir(

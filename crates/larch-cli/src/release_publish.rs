@@ -18,6 +18,25 @@ use crate::{release_common, release_stage};
 
 const ORIGIN_MAIN: &str = "origin/main";
 
+/// The branch that `.claude-plugin/marketplace.json` pins the installed plugin
+/// projection to with its `git-subdir` `ref` field.
+///
+/// A release version is an alias for exactly one commit: everything an install
+/// places on disk for that version, plugin content and executable alike, comes
+/// from the commit this branch names. `release finish` fast-forwards it to the
+/// tagged commit only after immutable publication, attestation verification, and
+/// Latest promotion all succeed, so a pinned install can never fetch content for
+/// a version whose verified binary does not exist yet.
+///
+/// Three surfaces share this token and change together: the descriptor's `ref`
+/// field, this constant, and `RELEASE_PIN_REF` in `scripts/larch.sh`.
+/// `marketplace_descriptor_pins_the_release_ref` pins the first two.
+///
+/// Not `release`: Git refs are paths, so `refs/heads/release` and the
+/// `release/v<version>` candidate branch `/release` Step 5 creates cannot
+/// coexist. `pin_ref_cannot_collide_with_release_candidate_branches` pins that.
+pub const RELEASE_PIN_REF: &str = "stable";
+
 pub fn finish(version: &str, repo: &str, pr: &str, source_commit: &str) -> ExitCode {
     release_common::command(
         ProductionServices::new(),
@@ -29,6 +48,8 @@ pub fn finish(version: &str, repo: &str, pr: &str, source_commit: &str) -> ExitC
             emit_kv("VERSION", version);
             emit_kv("IMMUTABLE_RELEASE_VALID", "true");
             emit_kv("LATEST", "true");
+            emit_kv("RELEASE_PIN_REF", RELEASE_PIN_REF);
+            emit_kv("RELEASE_PIN_OID", source_commit);
         },
     )
 }
@@ -98,6 +119,8 @@ trait Services {
     fn latest(&self, repo: &RepoSlug) -> Result<Option<ReleaseState>, String>;
     fn newest_published(&self, repo: &RepoSlug) -> Result<Option<ReleaseState>, String>;
     fn promote(&self, repo: &RepoSlug, release: &ReleaseState) -> Result<ReleaseState, String>;
+    fn remote_branch_commit(&self, branch: &str) -> Result<Option<String>, String>;
+    fn fast_forward_remote_branch(&self, branch: &str, commit: &str) -> Result<(), String>;
 }
 
 type ProductionServices = release_common::ProductionReleaseServices;
@@ -204,6 +227,48 @@ impl Services for ProductionServices {
         )
         .map_err(|error| error.to_string())
     }
+
+    fn remote_branch_commit(&self, branch: &str) -> Result<Option<String>, String> {
+        let reference = branch_reference(branch);
+        let output = self.origin_refs(std::slice::from_ref(&reference))?;
+        sole_remote_commit(&output, &reference)
+    }
+
+    fn fast_forward_remote_branch(&self, branch: &str, commit: &str) -> Result<(), String> {
+        self.push_origin_ref(&format!("{commit}:{}", branch_reference(branch)))
+    }
+}
+
+fn branch_reference(branch: &str) -> String {
+    format!("refs/heads/{branch}")
+}
+
+/// Select the commit `git ls-remote` reported for exactly one reference.
+///
+/// A branch has no peeled form, so a second row for the same name means the
+/// remote answered ambiguously and the caller must not act on either value.
+fn sole_remote_commit(output: &str, reference: &str) -> Result<Option<String>, String> {
+    let mut commit: Option<&str> = None;
+    for line in output.lines() {
+        let mut fields = line.split_ascii_whitespace();
+        let (Some(oid), Some(name), None) = (fields.next(), fields.next(), fields.next()) else {
+            continue;
+        };
+        if name != reference {
+            continue;
+        }
+        if commit.is_some() {
+            return Err(format!("remote reported {reference} more than once"));
+        }
+        commit = Some(oid);
+    }
+    commit
+        .map(|oid| {
+            ReleaseSourceCommit::parse(oid)
+                .map(|parsed| parsed.as_str().to_owned())
+                .map_err(|_| format!("remote reported an invalid commit for {reference}"))
+        })
+        .transpose()
 }
 
 fn main_fetch_request() -> Result<FetchRequest, String> {
@@ -312,7 +377,31 @@ fn finish_with(
     {
         return Err("Latest release promotion postcondition failed".to_owned());
     }
+    advance_release_pin(services, source_commit)?;
     Ok(action)
+}
+
+/// Fast-forward the marketplace-pinned branch to the verified tagged commit.
+///
+/// This runs last on purpose. Until it succeeds, a pinned install keeps fetching
+/// the previous release's plugin content, which pairs with the previous binary;
+/// once it succeeds, both sides of the new install come from `source_commit`. A
+/// failure here fails `release finish`, because a published release whose pin
+/// never advanced is invisible to every installer.
+fn advance_release_pin(services: &dyn Services, source_commit: &str) -> Result<(), String> {
+    if services.remote_branch_commit(RELEASE_PIN_REF)?.as_deref() != Some(source_commit) {
+        services.fast_forward_remote_branch(RELEASE_PIN_REF, source_commit)?;
+    }
+    let observed = services
+        .remote_branch_commit(RELEASE_PIN_REF)?
+        .ok_or_else(|| format!("release pin refs/heads/{RELEASE_PIN_REF} is missing after push"))?;
+    if observed == source_commit {
+        Ok(())
+    } else {
+        Err(format!(
+            "release pin refs/heads/{RELEASE_PIN_REF} is at {observed}, not the tagged commit"
+        ))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -448,6 +537,7 @@ mod tests {
 
     const SOURCE: &str = "1111111111111111111111111111111111111111";
     const DIGEST: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    const PRIOR_PIN: &str = "3333333333333333333333333333333333333333";
 
     struct FakeServices {
         origin: String,
@@ -461,6 +551,7 @@ mod tests {
         release_missing: bool,
         failure: Option<&'static str>,
         events: RefCell<Vec<&'static str>>,
+        pin: RefCell<Option<String>>,
     }
 
     impl Default for FakeServices {
@@ -481,6 +572,7 @@ mod tests {
                 release_missing: false,
                 failure: None,
                 events: RefCell::new(Vec::new()),
+                pin: RefCell::new(Some(PRIOR_PIN.to_owned())),
             }
         }
     }
@@ -584,6 +676,26 @@ mod tests {
             }
             Ok(promoted)
         }
+        fn remote_branch_commit(&self, _branch: &str) -> Result<Option<String>, String> {
+            self.events.borrow_mut().push("read-pin");
+            if self.failure == Some("pin-read") {
+                return Err("remote branch read failed".to_owned());
+            }
+            Ok(self.pin.borrow().clone())
+        }
+        fn fast_forward_remote_branch(&self, _branch: &str, commit: &str) -> Result<(), String> {
+            self.events.borrow_mut().push("advance-pin");
+            match self.failure {
+                Some("pin-push") => Err("non-fast-forward pin update rejected".to_owned()),
+                // A push that reports success but leaves the branch elsewhere is
+                // exactly what the re-read after the mutation exists to catch.
+                Some("pin-silent-noop") => Ok(()),
+                _ => {
+                    *self.pin.borrow_mut() = Some(commit.to_owned());
+                    Ok(())
+                }
+            }
+        }
     }
 
     fn state(id: u64, draft: bool, immutable: bool, prerelease: bool, tag: &str) -> ReleaseState {
@@ -610,7 +722,138 @@ mod tests {
                 "validate-published",
                 "verify-attestation",
                 "promote",
+                "read-pin",
+                "advance-pin",
+                "read-pin",
             ]
+        );
+        assert_eq!(services.pin.borrow().as_deref(), Some(SOURCE));
+    }
+
+    #[test]
+    fn pin_advances_only_after_publication_verification_and_promotion_succeed() {
+        for failure in ["validate", "attestation", "promote", "postcondition"] {
+            let services = FakeServices {
+                failure: Some(failure),
+                ..FakeServices::default()
+            };
+            assert!(finish(&services).is_err(), "{failure} must fail closed");
+            assert!(
+                !services.events.borrow().contains(&"advance-pin"),
+                "{failure} must not advance the release pin"
+            );
+            assert_eq!(services.pin.borrow().as_deref(), Some(PRIOR_PIN));
+        }
+    }
+
+    #[test]
+    fn pin_advance_is_idempotent_and_creates_a_missing_pin() {
+        let already_pinned = FakeServices {
+            pin: RefCell::new(Some(SOURCE.to_owned())),
+            ..FakeServices::default()
+        };
+        assert_eq!(finish(&already_pinned), Ok("publish"));
+        assert!(!already_pinned.events.borrow().contains(&"advance-pin"));
+
+        let unborn = FakeServices {
+            pin: RefCell::new(None),
+            ..FakeServices::default()
+        };
+        assert_eq!(finish(&unborn), Ok("publish"));
+        assert_eq!(unborn.pin.borrow().as_deref(), Some(SOURCE));
+    }
+
+    #[test]
+    fn pin_failures_fail_the_release_instead_of_reporting_a_pinned_install() {
+        let rejected = FakeServices {
+            failure: Some("pin-push"),
+            ..FakeServices::default()
+        };
+        assert!(
+            finish(&rejected)
+                .unwrap_err()
+                .contains("non-fast-forward pin update rejected")
+        );
+
+        let unreadable = FakeServices {
+            failure: Some("pin-read"),
+            ..FakeServices::default()
+        };
+        assert!(
+            finish(&unreadable)
+                .unwrap_err()
+                .contains("remote branch read failed")
+        );
+
+        // The re-read, not the push's own exit status, decides the outcome.
+        let silent = FakeServices {
+            failure: Some("pin-silent-noop"),
+            ..FakeServices::default()
+        };
+        let error = finish(&silent).unwrap_err();
+        assert!(error.contains(RELEASE_PIN_REF) && error.contains(PRIOR_PIN));
+
+        let vanished = FakeServices {
+            failure: Some("pin-silent-noop"),
+            pin: RefCell::new(None),
+            ..FakeServices::default()
+        };
+        assert!(
+            finish(&vanished)
+                .unwrap_err()
+                .contains("missing after push")
+        );
+    }
+
+    #[test]
+    fn sole_remote_commit_rejects_ambiguous_and_malformed_remote_answers() {
+        let reference = format!("refs/heads/{RELEASE_PIN_REF}");
+        assert_eq!(sole_remote_commit("", &reference), Ok(None));
+        assert_eq!(
+            sole_remote_commit(&format!("{SOURCE}\t{reference}\n"), &reference),
+            Ok(Some(SOURCE.to_owned()))
+        );
+        // A prefix match such as refs/heads/release-notes must not be selected.
+        assert_eq!(
+            sole_remote_commit(&format!("{SOURCE}\t{reference}-notes\n"), &reference),
+            Ok(None)
+        );
+        assert!(
+            sole_remote_commit(
+                &format!("{SOURCE}\t{reference}\n{PRIOR_PIN}\t{reference}\n"),
+                &reference
+            )
+            .unwrap_err()
+            .contains("more than once")
+        );
+        assert!(
+            sole_remote_commit(&format!("not-a-commit\t{reference}\n"), &reference)
+                .unwrap_err()
+                .contains("invalid commit")
+        );
+    }
+
+    #[test]
+    fn marketplace_descriptor_pins_the_release_ref() {
+        let descriptor = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.claude-plugin/marketplace.json"),
+        )
+        .expect("marketplace descriptor");
+        let value: serde_json::Value =
+            serde_json::from_str(&descriptor).expect("descriptor is valid JSON");
+        let source = value["plugins"]
+            .as_array()
+            .expect("plugins array")
+            .iter()
+            .find(|plugin| plugin["name"] == "larch")
+            .map(|plugin| plugin["source"].clone())
+            .expect("larch plugin entry");
+        assert_eq!(source["source"], "git-subdir");
+        assert_eq!(source["path"], "plugin");
+        assert_eq!(
+            source["ref"], RELEASE_PIN_REF,
+            "the descriptor must pin installed plugin content to the release branch"
         );
     }
 

@@ -26,6 +26,8 @@ Upgrade the larch plugin to the latest stable version. This skill is for the run
 
 2. Verify the script exited successfully with no recovery banner. If it printed `Binary verification passed. No upgrade needed.`, report that the current plugin and executable match, so no restart is required. If it printed `LARCH_MARKETPLACE_RECONCILED=true`, report the runtime-only marketplace migration. Otherwise, confirm the installed version block matches the preflighted version. Tell the user to restart Claude Code after an install or marketplace migration.
 
+If the driver stopped because the marketplace-pinned `stable` branch is not at the release's tagged commit, report that no plugin state changed and that a release is likely still in flight. Tell the user to retry once it finishes.
+
 See the Rust `upgrade-larch` command for the driver contract and failure recovery. `/release` Step 7 runs both `upgrade-larch release-step7-root` and `upgrade-larch run` from the release working tree.
 
 Edit-in-sync: marketplace-source changes also touch `.claude-plugin/marketplace.json`, the Rust `upgrade-larch` command, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, and `docs/security/supply-chain-credentials-and-services.md`.

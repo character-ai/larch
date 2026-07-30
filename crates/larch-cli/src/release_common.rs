@@ -1,7 +1,8 @@
 use std::{env, process::ExitCode};
 
 use larch_adapters::{
-    GitCli, GitCliPolicy, GixRepository, TokioProcessRunner,
+    GitCli, GitCliPolicy, GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest,
+    PushRequest, TokioProcessRunner,
     github::{
         OctocrabGitHubService, OctocrabReleaseTransport, ReleaseCandidatePullRequest,
         ReleaseOperations, RepoSlug,
@@ -82,6 +83,58 @@ impl ProductionReleaseServices {
         let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
         run(ReleaseOperations::new(&transport), repo.clone())
     }
+
+    /// Read `origin`'s advertised refs for the given fully qualified patterns.
+    ///
+    /// Returns the raw `git ls-remote` text so each caller can apply the
+    /// selection its ref kind needs: tags peel, branches do not.
+    ///
+    /// # Errors
+    /// Returns a message when the remote read fails or is not UTF-8.
+    pub fn origin_refs(&self, patterns: &[String]) -> Result<String, String> {
+        let patterns = patterns
+            .iter()
+            .map(|pattern| GitRef::new(pattern).map_err(|error| error.to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = self
+            .runtime
+            .block_on(self.git_cli().ls_remote(
+                LsRemoteRequest {
+                    remote: origin()?,
+                    patterns,
+                    heads: false,
+                    exit_code: false,
+                },
+                &self.cancellation,
+            ))
+            .map_err(|error| error.to_string())?;
+        String::from_utf8(result.output().stdout().to_vec())
+            .map_err(|_| "remote ref read returned non-UTF-8 output".to_owned())
+    }
+
+    /// Push one refspec to `origin` with no force and no lease.
+    ///
+    /// Git itself rejects a non-fast-forward update, so every caller inherits
+    /// forward-only semantics for the destination ref.
+    ///
+    /// # Errors
+    /// Returns a message when the refspec is unsafe or the push fails.
+    pub fn push_origin_ref(&self, refspec: &str) -> Result<(), String> {
+        let request = PushRequest {
+            remote: origin()?,
+            refspec: GitRefspec::new(refspec).map_err(|error| error.to_string())?,
+            force_with_lease: None,
+            set_upstream: false,
+        };
+        self.runtime
+            .block_on(self.git_cli().push(request, &self.cancellation))
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn origin() -> Result<GitRemote, String> {
+    GitRemote::new("origin").map_err(|error| error.to_string())
 }
 
 pub fn command<S, T>(
