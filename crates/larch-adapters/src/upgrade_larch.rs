@@ -17,11 +17,21 @@ use std::{
     time::Duration,
 };
 
+/// The marketplace descriptor, read from `main` on purpose.
+///
+/// The descriptor is a pointer, not installed content: it names the branch that
+/// installed plugin content is pinned to. Reading it from `main` keeps that
+/// pointer editable without a release, while the content it points at stays
+/// pinned to one commit per version.
 pub const MARKETPLACE_SOURCE: &str =
     "https://raw.githubusercontent.com/character-ai/larch/main/.claude-plugin/marketplace.json";
 const CACHE_RELATIVE: &str = ".claude/plugins/cache/larch-local/larch";
 const MARKETPLACE_RELATIVE: &str = ".claude/plugins/marketplaces/larch-local";
 const LARCH_ID: &str = "larch@larch-local";
+/// The bootstrap's proof that the branch `.claude-plugin/marketplace.json` pins
+/// installed plugin content to is at the same commit as the release being
+/// installed. Written by `verify_release_pin` in `scripts/larch.sh`.
+const PREFLIGHT_PIN_MARKER: &str = "LARCH_PREFLIGHT_PIN_VERIFIED=true";
 
 #[derive(Debug)]
 pub struct Failure {
@@ -507,6 +517,13 @@ fn expected_or_latest(context: &Context, root: &Path) -> Result<String, Failure>
     Err(Failure::new(1, "Stable release resolution failed."))
 }
 
+/// Verify the release before any plugin state changes.
+///
+/// The preflight must prove two things: the immutable release for `version`
+/// verifies end to end, and the marketplace-pinned branch is at that release's
+/// tagged commit. Requiring the pin proof here, rather than after
+/// `claude plugin install`, keeps a content-and-binary mismatch from ever
+/// becoming the active installation.
 fn preflight(context: &Context, root: &Path, version: &str) -> Result<(), Failure> {
     eprintln!("Preflighting immutable larch release v{version}...");
     let output = match context.bootstrap(
@@ -521,14 +538,21 @@ fn preflight(context: &Context, root: &Path, version: &str) -> Result<(), Failur
         }
     };
     relay(&output);
-    let marker = format!("LARCH_PREFLIGHT_VERSION={version}");
-    if output.status().success()
-        && !output.stdout_truncated()
-        && String::from_utf8_lossy(output.stdout())
-            .lines()
-            .any(|line| line == marker)
-    {
-        return Ok(());
+    let version_marker = format!("LARCH_PREFLIGHT_VERSION={version}");
+    if output.status().success() && !output.stdout_truncated() {
+        let stdout = String::from_utf8_lossy(output.stdout());
+        let reported = |marker: &str| stdout.lines().any(|line| line == marker);
+        match (reported(&version_marker), reported(PREFLIGHT_PIN_MARKER)) {
+            (true, true) => return Ok(()),
+            (true, false) => {
+                eprintln!(
+                    "Upgrade stopped because the release preflight did not prove that the installed plugin content and the release executable come from one commit."
+                );
+                recovery();
+                return Err(Failure::new(1, "Release pin verification is missing."));
+            }
+            _ => {}
+        }
     }
     eprintln!("Upgrade stopped because stable release preflight failed.");
     recovery();

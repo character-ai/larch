@@ -161,7 +161,11 @@ claude plugin install larch@larch-local
 ```
 
 The remote marketplace fetches only the checked runtime projection under
-`plugin/`. Both its fetch and the installed cache exclude Rust source,
+`plugin/`, pinned to the `stable` branch. That branch moves only when a release
+is cut, and always to the tagged release commit, so an install receives the
+plugin content and the executable that the same commit produced. Merges to
+`main` between releases do not change what an install receives. Both its fetch
+and the installed cache exclude Rust source,
 repository linters, tests, release automation, and CI support files. Python
 runtime modules remain because larch still executes them during the Rust
 migration. The projection includes the root security policy, the
@@ -192,6 +196,15 @@ commands. The latter holds the bounded first-use lock. A failed bootstrap keeps
 an existing executable intact and prints retry guidance. Run the same command
 again after fixing a missing tool, authentication problem, or interrupted
 download.
+
+`--preflight-release`, the upgrade path's pre-install verification, adds one
+check on top of that set: the `stable` branch must be at the release's tagged
+commit. It refuses the upgrade otherwise, before any plugin state changes,
+because the plugin content an install would fetch and the executable it would
+run would come from two different commits. Retry after an in-flight release
+finishes. First-use bootstrap does not run this check, so an install that is
+deliberately on an older release keeps bootstrapping its own matching
+executable after the pin advances.
 
 Local `--plugin-dir` development never downloads into the checkout. Build and
 select the executable explicitly:

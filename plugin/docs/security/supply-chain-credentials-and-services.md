@@ -73,6 +73,23 @@ rechecks ancestry and versions, publishes without Latest, verifies every
 immutable asset, then promotes. Failures resume the same draft or release.
 Published tags and assets never change. Installation verifies separately.
 
+### Release content pin
+
+A release version names one commit, and both halves of an install derive from
+it. `.claude-plugin/marketplace.json` pins its `git-subdir` source to the
+`stable` branch, so no merge to `main` can change what an install receives.
+`release finish` fast-forwards that branch to the tagged commit last, only after
+immutable publication, release and asset attestation verification, and Latest
+promotion succeed, then re-reads the remote branch and fails the release when it
+does not name the tagged commit. The push carries no force and no lease, so Git
+rejects any non-fast-forward update and the pin can only advance. A published
+release whose pin did not advance fails `release finish` rather than reporting
+success, because no installer would see it.
+
+Version-string equality is not content identity, so the pin is verified
+separately at install time. See [`../../ARCHITECTURAL_INVARIANTS.md`](../../ARCHITECTURAL_INVARIANTS.md)
+`I-Release-1`.
+
 ### Bootstrap and atomic installation
 
 `scripts/larch.sh` is the only clean-install exec shim and uses no Python. It
@@ -128,7 +145,14 @@ children do not.
 Before any marketplace mutation, the current root's bootstrap verifies the
 exact immutable stable release, complete asset allowlist, attestations,
 manifest, checksums, archive, target, and staged binary identity in confined
-`${CLAUDE_PLUGIN_DATA}` staging. The driver then uses supported Claude plugin
+`${CLAUDE_PLUGIN_DATA}` staging. It also verifies that the pinned `stable`
+branch is at that release's tagged commit and reports the proof as
+`LARCH_PREFLIGHT_PIN_VERIFIED=true`. The driver requires both that proof and the
+preflighted version before it touches the marketplace, so a content-and-binary
+mismatch is refused while the prior installation is still the active one rather
+than after it has been replaced. First-use bootstrap does not gate on the pin,
+because the branch moves ahead of installs that are deliberately on an older
+release. The driver then uses supported Claude plugin
 commands and resolves exactly one new cache root through
 `claude plugin list --json`. Success requires the new root's manifest and
 executable to report the expected version. A failure leaves the prior cache root

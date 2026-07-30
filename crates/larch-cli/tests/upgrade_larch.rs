@@ -362,6 +362,28 @@ fn interrupted_preflight_is_retryable_and_does_not_mutate_plugin_state() {
 }
 
 #[test]
+fn unproven_release_pin_stops_the_upgrade_before_the_marketplace_is_touched() {
+    let harness = Harness::new();
+    harness.flag("skip_pin_proof");
+    harness
+        .command()
+        .arg("upgrade-larch")
+        .arg("run")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("come from one commit"));
+    let log = fs::read_to_string(&harness.log).expect("log");
+    assert!(log.contains("bootstrap --preflight-release 2.0.0"));
+    assert!(!log.contains("plugin marketplace update"));
+    assert!(!log.contains("plugin install"));
+    assert!(!log.contains("plugin update"));
+    assert_eq!(
+        fs::read_to_string(harness.state.join("installed")).expect("installed state"),
+        "1.0.0"
+    );
+}
+
+#[test]
 fn missing_plugin_data_fails_closed_before_any_mutation_with_the_remedy() {
     let harness = Harness::new();
     harness
@@ -466,6 +488,7 @@ case "${{1:-}}" in
   --latest-stable-version) printf 'LARCH_STABLE_VERSION=2.0.0\n' ;;
   --preflight-release)
     [ ! -f '{state}/fail_preflight' ] || exit 1
+    [ -f '{state}/skip_pin_proof' ] || printf 'LARCH_PREFLIGHT_PIN_VERIFIED=true\n'
     printf 'LARCH_PREFLIGHT_VERSION=%s\n' "$2"
     ;;
   bootstrap)
