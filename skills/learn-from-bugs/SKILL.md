@@ -46,6 +46,7 @@ Use these canonical targets:
 - `guideline`: `<repo-relative-markdown-path>#<exact-guideline-id-or-visible-heading>`.
 - `hook`: `hook:<exact-normalized-command-path-or-matcher-token>` from `hooks/hooks.json`.
 - `test`: `<repo-relative-test-path>` or `<repo-relative-test-path>::<test-function-name>`.
+- `lint` and `test` can also use `check:<repo-relative-path>#<symbol-or-test-name>` for a repository-hosted check that is not a Python lint registration.
 - `fix`: `fix:<stable-descriptive-token>`. Filing populates `filed_issue`; it never rewrites the durable fix target to an issue number.
 
 Proposal IDs are stable kebab-case identifiers derived only from durable proposal meaning. For one ID, `type`, `target`, and the original `run_date` never change. `status` and `filed_issue` are lifecycle fields. Retain an existing non-null `filed_issue`; reject conflicting non-null issue numbers. Preserve proposal order so marker diffs remain stable.

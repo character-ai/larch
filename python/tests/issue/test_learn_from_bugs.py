@@ -943,6 +943,7 @@ def _proposal(
     status: learn_from_bugs.ProposalStatus = "proposed",
     filed_issue: int | None = None,
     run_date: str = "2026-07-01T00:00:00Z",
+    adoption_evidence: learn_from_bugs.AdoptionEvidence | None = None,
 ) -> learn_from_bugs.Proposal:
     return learn_from_bugs.Proposal(
         id=proposal_id,
@@ -951,6 +952,7 @@ def _proposal(
         run_date=run_date,
         status=status,
         filed_issue=filed_issue,
+        adoption_evidence=adoption_evidence,
     )
 
 
@@ -969,9 +971,13 @@ def test_state_v1_reads_as_v2_with_empty_proposals(tmp_path: Path) -> None:
     assert not state.proposals
 
 
-def test_state_v2_round_trip_preserves_proposals(tmp_path: Path) -> None:
+def test_state_v2_round_trip_preserves_check_target(tmp_path: Path) -> None:
     marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
-    proposal = _proposal(status="pending", filed_issue=123)
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+        status="pending",
+        filed_issue=123,
+    )
     state = learn_from_bugs.LearnFromBugsState(
         run_date="2026-07-09T12:00:00Z",
         repo="o/r",
@@ -994,6 +1000,8 @@ def test_state_v2_round_trip_preserves_proposals(tmp_path: Path) -> None:
         ("test", "../test_x.py"),
         ("lint", "module:/tmp/x.py"),
         ("guideline", "README.md"),
+        ("lint", "check:crates/larch-lint/src/checks.rs"),
+        ("test", "check:crates/larch-lint/src/checks.rs#not-a-symbol"),
     ],
 )
 def test_invalid_canonical_targets_are_rejected(
@@ -1126,6 +1134,98 @@ def test_lint_registration_ignores_comments_and_strings(
     assert checked[0].status == "pending"
 
 
+@pytest.mark.parametrize("proposal_type", ["lint", "test"])
+def test_check_target_adopts_existing_symbol(
+    tmp_path: Path, proposal_type: learn_from_bugs.ProposalType
+) -> None:
+    check_path = tmp_path / "crates" / "larch-lint" / "src" / "checks.rs"
+    check_path.parent.mkdir(parents=True)
+    check_path.write_text("pub fn hosted_check() {}\n", encoding="utf-8")
+    proposal = _proposal(
+        proposal_type=proposal_type,
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+    )
+
+    checked = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "adopted"
+    assert checked[0].adoption_evidence == "target-verified"
+
+
+def test_check_target_is_pending_when_symbol_is_absent(tmp_path: Path) -> None:
+    check_path = tmp_path / "crates" / "larch-lint" / "src" / "checks.rs"
+    check_path.parent.mkdir(parents=True)
+    check_path.write_text("pub fn hosted_check_extra() {}\n", encoding="utf-8")
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+    )
+
+    checked = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "pending"
+    assert checked[0].adoption_evidence is None
+
+
+def test_check_proposals_main_writes_ephemeral_adoption_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    check_path = tmp_path / "crates" / "larch-lint" / "src" / "checks.rs"
+    check_path.parent.mkdir(parents=True)
+    check_path.write_text("pub fn hosted_check() {}\n", encoding="utf-8")
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+    )
+    learn_from_bugs.write_state(
+        learn_from_bugs.state_path(tmp_path),
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(proposal,),
+        ),
+    )
+    proposals_out = tmp_path / "checked-proposals.jsonl"
+    adoption_out = tmp_path / "adoption-summary.md"
+    monkeypatch.setattr(
+        learn_from_bugs, "_runner", lambda: RecordingRunner(strict=True)
+    )
+
+    assert (
+        learn_from_bugs.check_proposals_main(
+            [
+                "--root",
+                str(tmp_path),
+                "--repo",
+                "o/r",
+                "--proposals-out",
+                str(proposals_out),
+                "--adoption-out",
+                str(adoption_out),
+            ]
+        )
+        == 0
+    )
+
+    row = json.loads(proposals_out.read_text(encoding="utf-8"))
+    assert row["adoption_evidence"] == "target-verified"
+    summary = adoption_out.read_text(encoding="utf-8")
+    assert "- Adopted: 1 (1 target-verified)" in summary
+    assert "- `add-audit-lint`: `target-verified`" in summary
+    assert learn_from_bugs.load_proposals_jsonl(proposals_out, root=tmp_path) == (
+        _proposal(
+            target="check:crates/larch-lint/src/checks.rs#hosted_check",
+            status="adopted",
+        ),
+    )
+
+
 def test_repository_orphaned_status_remains_orphaned(tmp_path: Path) -> None:
     proposal = _proposal(status="orphaned")
 
@@ -1150,7 +1250,8 @@ def test_repository_checks_ignore_fenced_architectural_heading(tmp_path: Path) -
 def test_filed_issue_status_precedes_repository_target(tmp_path: Path) -> None:
     (tmp_path / "python" / "larch").mkdir(parents=True)
     (tmp_path / "python" / "larch" / "cli.py").write_text(
-        '("lint", "audit-lint", "x")\n', encoding="utf-8"
+        '_REGISTRY = {("lint", "audit-lint"): ("module", "main")}\n',
+        encoding="utf-8",
     )
     proposal = _proposal(filed_issue=9)
     runner = RecordingRunner(
@@ -1167,6 +1268,56 @@ def test_filed_issue_status_precedes_repository_target(tmp_path: Path) -> None:
     checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
 
     assert checked[0].status == "orphaned"
+    assert checked[0].adoption_evidence is None
+
+
+def test_filed_issue_closed_without_target_records_issue_closed_only_evidence(
+    tmp_path: Path,
+) -> None:
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+        filed_issue=9,
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "COMPLETED"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
+
+    assert checked[0].status == "adopted"
+    assert checked[0].adoption_evidence == "issue-closed-only"
+
+
+def test_filed_issue_closed_with_target_records_both_evidence(tmp_path: Path) -> None:
+    check_path = tmp_path / "crates" / "larch-lint" / "src" / "checks.rs"
+    check_path.parent.mkdir(parents=True)
+    check_path.write_text("pub fn hosted_check() {}\n", encoding="utf-8")
+    proposal = _proposal(
+        target="check:crates/larch-lint/src/checks.rs#hosted_check",
+        filed_issue=9,
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "COMPLETED"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
+
+    assert checked[0].status == "adopted"
+    assert checked[0].adoption_evidence == "both"
 
 
 def test_adoption_summary_orders_pending_and_clamps_future_age() -> None:
@@ -1175,7 +1326,12 @@ def test_adoption_summary_orders_pending_and_clamps_future_age() -> None:
         learn_from_bugs.Proposal(
             "a-first", "fix", "fix:a-first", "2026-08-01", "pending"
         ),
-        _proposal("adopted-one", target="registration:adopted-one", status="adopted"),
+        _proposal(
+            "adopted-one",
+            target="registration:adopted-one",
+            status="adopted",
+            adoption_evidence="target-verified",
+        ),
     )
 
     summary = learn_from_bugs.render_adoption_summary(
@@ -1185,6 +1341,36 @@ def test_adoption_summary_orders_pending_and_clamps_future_age() -> None:
     assert "Adoption rate: 33.3%" in summary
     assert summary.index("z-last") < summary.index("a-first")
     assert "`a-first`: 0 days" in summary
+
+
+def test_adoption_summary_renders_evidence_per_row_and_rollup() -> None:
+    proposals = (
+        _proposal(
+            "target-only",
+            status="adopted",
+            adoption_evidence="target-verified",
+        ),
+        _proposal(
+            "issue-only",
+            status="adopted",
+            adoption_evidence="issue-closed-only",
+        ),
+        _proposal("both", status="adopted", adoption_evidence="both"),
+    )
+
+    summary = learn_from_bugs.render_adoption_summary(proposals)
+
+    assert "- Adopted: 3 (1 target-verified, 1 issue-closed-only, 1 both)" in summary
+    assert "- `target-only`: `target-verified`" in summary
+    assert "- `issue-only`: `issue-closed-only`" in summary
+    assert "- `both`: `both`" in summary
+
+
+def test_adoption_summary_marks_adopted_proposal_without_evidence_unavailable() -> None:
+    summary = learn_from_bugs.render_adoption_summary((_proposal(status="adopted"),))
+
+    assert "- Adopted: 1 (1 unavailable)" in summary
+    assert "- `add-audit-lint`: `unavailable`" in summary
 
 
 def test_reconcile_keeps_stable_fix_target_and_filed_issue() -> None:
