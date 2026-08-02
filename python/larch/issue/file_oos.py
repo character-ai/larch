@@ -855,7 +855,6 @@ class FileConflictInvalidCap(ValueError):
 
 
 _FILE_CONFLICT_DEFAULT_CLUSTER_CAP = 200
-_FILE_CONFLICT_DEFAULT_GLOBAL_CAP = 500
 _FILE_CONFLICT_MIN_COMPONENT_NODES = 2
 _FILE_CONFLICT_RANGE_RE = re.compile(r"^(.+):([0-9]+)(-([0-9]+))?$")
 _FILE_CONFLICT_SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
@@ -874,7 +873,10 @@ def _file_conflict_cap(*, name: str, default: int) -> int:
 def _file_conflict_caps() -> tuple[int, int]:
     return (
         _file_conflict_cap(name="OOS_FILE_CONFLICT_CLUSTER_CAP", default=_FILE_CONFLICT_DEFAULT_CLUSTER_CAP),
-        _file_conflict_cap(name="OOS_FILE_CONFLICT_GLOBAL_CAP", default=_FILE_CONFLICT_DEFAULT_GLOBAL_CAP),
+        _file_conflict_cap(
+            name="OOS_FILE_CONFLICT_GLOBAL_CAP",
+            default=config.ISSUE_INTRA_BATCH_DEPS_MAX_ROWS,
+        ),
     )
 
 
@@ -1081,7 +1083,7 @@ def file_conflict_deps(input_file: Path, *, cluster_cap: int | None = None, glob
         env_cluster_cap, env_global_cap = _file_conflict_caps()
         cluster_cap = env_cluster_cap if cluster_cap is None else cluster_cap
         global_cap = env_global_cap if global_cap is None else global_cap
-    text = input_file.read_text(encoding="utf-8")
+    text = larch_io.read_text(input_file, errors="strict")
     items, _mode = parse_issue_input(text)
     return _planned_file_conflict_deps(items, cluster_cap=cluster_cap, global_cap=global_cap)
 

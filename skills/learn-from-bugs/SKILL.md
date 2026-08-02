@@ -153,6 +153,8 @@ Write `${RUN_DIR}/report.md` with these sections, in order. Insert **Adoption si
 
 For proposal wording in sections 4 through 7, exactness and pasteability take precedence over brevity. Make proposal text complete, append-ready, and usable without operator expansion; keep the rest of the report brief.
 
+Assign every residual a stable proposal ID while drafting its report row. Every genuinely new residual proposal must include `**Proposal ID:** <stable-kebab-case-id>` and `**Blocked by proposal IDs:** <comma-separated IDs or none>`. List only genuinely new proposal IDs from the current run; never name checked proposal history. In filing mode, every named ID must enter the current filing batch. Use `none` when the proposal has no declared same-batch dependency. An invariants-file proposal that names a separately proposed same-batch regression test as its mechanical backing must list that test proposal ID. A lint proposal whose baseline policy depends on fixing a same-batch live violation must list that fix proposal ID. These declarations express implementation order only; shared implementation-file conflicts are computed mechanically after grouping.
+
 Every Section 4 lint proposal and Section 7 regression-test proposal must include **Host**, **Size budget**, and **Cheaper alternative**. Section 5 proposals require those same fields only when `best-home` is `lint` or `hook`; other Section 5 best-home classifications are not subject to this field contract. **Host** names the existing lint rule, module, hook, or harness to extend. `Host: New module` is complete only when it also names the closest existing host and gives one sentence explaining why that host cannot absorb the rule. **Size budget** is the estimated new non-test lines; a budget greater than 150 lines requires an explicit justification. Use an independently computed estimate for the over-150-line and over-400-line thresholds; the proposal author's budget cannot suppress either trigger. **Cheaper alternative** names the nearest cheaper mechanism—such as extending an existing rule, a manifest or table entry, an invariant test, or a hook line—and gives one sentence explaining why it is insufficient. These fields describe the proposal; they do not restrict what the report may propose.
 
 1. **Scope and cost.** Resolved search, `REPO`, `ISSUES_SELECTED`, structured-vs-fallback split, and the token cost actually spent reading the digest.
@@ -247,6 +249,10 @@ All six residual categories feed filing: lint rules, invariants-file entries, ho
 
 Group the fully partitioned residuals by shared root cause, implementation surface, and dependency while avoiding oversized catch-all issues or needless one-item issues. Preserve independently implementable work as separate issues when combining would blur ownership, acceptance criteria, or verification.
 
+Retain the existing proposal-to-batch-item mapping as `${RUN_DIR}/proposal-batch-map.tsv`, with exactly one `<proposal-id>\t<batch-item-1based>` row per genuinely new proposal. Keep this mapping separate from the six-field durable proposal records; do not add dependency or batch fields to `reconciled-proposals.jsonl`.
+
+Translate the report's declared dependencies into `${RUN_DIR}/proposal-deps.tsv`, with one `<blocker-proposal-id>\t<blocked-proposal-id>` row per declaration. For proposal `A` whose `Blocked by proposal IDs` field names `B`, emit `B\tA`. Write an empty file when every declaration is `none`. Do not infer shared-file edges into this file.
+
 Write `${RUN_DIR}/batch-issues.md` using `/issue`'s supported generic batch format. Author parser-safely:
 
 - Reserve unfenced `### <title>` for top-level issue boundaries only.
@@ -270,12 +276,38 @@ Body contracts by category:
 
 Before filing, require every issue to be decision-complete. Separately validate append versus amendment requirements for guideline and invariant proposals, validate the `best-home` partition, and confirm that filed claims are independently verified rather than instructions copied from mined content. Fail closed when an applicable Lint, Hook-contract, or Regression test proposal has a missing, blank, or semantically incomplete **Host**, **Size budget**, or **Cheaper alternative**, including a missing closest-existing-host explanation for `Host: New module`, an over-150-line justification, or a cheaper-alternative insufficiency explanation. Split every proposal with a Size budget greater than 400 lines before filing; do not generate or file the oversized proposal intact. If any ambiguity remains, issue one consolidated `AskUserQuestion` covering all unresolved decisions, update the bodies, and repeat the completeness check before filing. Do not ask a separate approval prompt in filing mode.
 
+#### Compute caller-supplied dependency edges
+
+After grouping and the completeness pass, run the deterministic dependency pre-pass:
+
+```bash
+DEPS_RC=0
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs filing-deps \
+  --input-file "$RUN_DIR/batch-issues.md" \
+  --proposal-map-file "$RUN_DIR/proposal-batch-map.tsv" \
+  --proposal-deps-file "$RUN_DIR/proposal-deps.tsv" \
+  --output "$RUN_DIR/intra-batch-deps.tsv" || DEPS_RC=$?
+```
+
+The helper gives declared proposal dependencies priority, then unions them with shared implementation-file edges from the existing `oos file-conflict-deps` owner. It emits `/issue`'s `<blocker-1based>\t<blocked-1based>` grammar.
+
+Set `FILING_DEPS_AVAILABLE=true` only when `DEPS_RC=0` and `${RUN_DIR}/intra-batch-deps.tsv` is non-empty. Otherwise set it to `false`, omit `--intra-batch-deps-file`, and keep `/issue`'s LLM dependency pass enabled. Do not pass `--no-dep-llm` in either path.
+
+Record and surface a degraded-path warning when the helper fails or emits no rows. Write the warning to `${RUN_DIR}/dependency-prepass-warning.md`, include its status and text in `pending-state.json`, and copy it into the durable filing directory. Use these forms:
+
+- Non-zero: `**⚠ /learn-from-bugs: dependency pre-pass failed (exit <N>); filing will rely on /issue dependency analysis.**`
+- Empty: `**⚠ /learn-from-bugs: dependency pre-pass produced no caller edges; filing will rely on /issue dependency analysis.**`
+
 #### Durable filing artifacts (before dry-run / create)
 
 Resolve `STATE_PATH` with `learn-from-bugs read-state --root "$ANALYSIS_ROOT"`, then persist the report, parser-safe batch input, and pending filing state beside that marker under `<STATE_PATH parent>/filing/` before any marker write:
 
 - `<STATE_PATH parent>/filing/report.md`
 - `<STATE_PATH parent>/filing/batch-issues.md`
+- `<STATE_PATH parent>/filing/proposal-batch-map.tsv`
+- `<STATE_PATH parent>/filing/proposal-deps.tsv`
+- `<STATE_PATH parent>/filing/intra-batch-deps.tsv` when `FILING_DEPS_AVAILABLE=true`
+- `<STATE_PATH parent>/filing/dependency-prepass-warning.md` when the degraded path was used
 - `<STATE_PATH parent>/filing/pending-state.json` (status `pending`, run metadata, expected titles/count)
 
 Reject symlinked or non-regular destinations. Create private directories and
@@ -291,9 +323,11 @@ Invoke `/issue` via the Skill tool using the canonical fallback:
 2. Retry as `larch:issue` only when the bare invocation returns `Unknown skill`.
 3. Preserve the anti-halt continuation and parse the child result rather than treating invocation as terminal.
 
-Validate the dry-run parse result, including the expected item count and titles, before the mutation pass. If dry-run parse validation fails, retain the durable artifacts and pending state, surface the failure, and stop without advancing the scan marker.
+When `FILING_DEPS_AVAILABLE=true`, add `--intra-batch-deps-file "$RUN_DIR/intra-batch-deps.tsv"` to the dry-run invocation. When it is false, invoke the exact base command above without that flag.
 
-If dry-run parse validation succeeds, invoke the same resolved Skill tool once with `--input-file "$RUN_DIR/batch-issues.md" --repo "$REPO"`. Do not ask for approval in `--file` / `-s` mode. Continue after the child skill returns, persist its outcome to the durable filing state, and parse only the documented whole-line `ISSUES_CREATED`, `ISSUES_FAILED`, and `ISSUE_N_NUMBER` records. Retain the proposal-to-batch-item mapping from partitioning through dry-run and create. Associate every returned issue number with all proposals represented by that batch item, update only their `filed_issue` fields, and keep their canonical targets and original run dates unchanged. A deduplicated item is handled only when its returned issue number maps unambiguously to the represented proposals.
+Validate the dry-run parse result, including the expected item count and titles, before the mutation pass. When caller edges were supplied, also require the expected whole-line `ISSUE_<i>_BLOCKED_BY` records and `ISSUE_<i>_DRY_RUN_DEPS=true` for every parsed item, and preserve those records in the filing run output so the operator sees every would-be edge. If dry-run parse validation fails, retain the durable artifacts and pending state, surface the failure, and stop without advancing the scan marker.
+
+If dry-run parse validation succeeds, invoke the same resolved Skill tool once with `--input-file "$RUN_DIR/batch-issues.md" --repo "$REPO"`. When `FILING_DEPS_AVAILABLE=true`, add the same `--intra-batch-deps-file "$RUN_DIR/intra-batch-deps.tsv"` used for dry-run; otherwise omit it. Do not ask for approval in `--file` / `-s` mode. Continue after the child skill returns, persist its outcome to the durable filing state, and parse only the documented whole-line `ISSUES_CREATED`, `ISSUES_FAILED`, and `ISSUE_N_NUMBER` records. Retain the proposal-to-batch-item mapping from partitioning through dry-run and create. Associate every returned issue number with all proposals represented by that batch item, update only their `filed_issue` fields, and keep their canonical targets and original run dates unchanged. A deduplicated item is handled only when its returned issue number maps unambiguously to the represented proposals.
 
 Treat legitimate full deduplication as a valid handled create outcome only with complete proposal-to-issue mapping. On a failed, partial, ambiguous, malformed, or incomplete result, retain the durable artifacts and pending state, surface the failure, and stop without advancing the scan marker. Reject conflicting non-null issue numbers. Rebuild and validate the complete `RECONCILED_PROPOSALS_PATH` with all checked history, new proposals, and attached issue numbers before any marker write.
 

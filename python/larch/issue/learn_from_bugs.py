@@ -37,6 +37,8 @@ from larch.errors import ShipError
 from larch.git import gh, git
 from larch.issue import issue_wire
 from larch.issue.analyze_bugs import resolve_repo
+from larch.issue.file_oos import file_conflict_deps
+from larch.issue.issue_create import parse_issue_input
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
 from larch.report import analysis_state
 
@@ -1670,6 +1672,177 @@ def validate_report_main(argv: list[str]) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     _print_kv({"REPORT_CONTRACT": "pass"})
+    return 0
+
+
+def _read_filing_tsv(path: Path, *, label: str) -> list[tuple[int, str]]:
+    """Read one bounded filing TSV without normalizing malformed rows."""
+    if path.is_symlink() or not path.is_file():
+        raise LearnFromBugsError(f"{label} is not a regular file: {path}")
+    if path.stat().st_size > config.ISSUE_INTRA_BATCH_DEPS_MAX_BYTES:
+        raise LearnFromBugsError(
+            f"{label} exceeds {config.ISSUE_INTRA_BATCH_DEPS_MAX_BYTES} bytes: {path}"
+        )
+    text: str = larch_io.read_text(path, errors="strict", reject_cr=True)
+    lines: list[str] = text.splitlines()
+    if len(lines) > config.ISSUE_INTRA_BATCH_DEPS_MAX_ROWS:
+        raise LearnFromBugsError(
+            f"{label} exceeds {config.ISSUE_INTRA_BATCH_DEPS_MAX_ROWS} rows"
+        )
+    return list(enumerate(lines, start=1))
+
+
+def _proposal_batch_map(path: Path, *, item_count: int) -> dict[str, int]:
+    """Parse ``proposal-id<TAB>batch-item`` rows with complete item coverage."""
+    rows: list[tuple[int, str]] = _read_filing_tsv(path, label="proposal batch map")
+    if not rows:
+        raise LearnFromBugsError("proposal batch map is empty")
+    mapping: dict[str, int] = {}
+    for line_number, row in rows:
+        try:
+            proposal_id, item_raw = row.split("\t")
+        except ValueError as exc:
+            raise LearnFromBugsError(
+                f"proposal batch map line {line_number} must have two TSV fields"
+            ) from exc
+        if _PROPOSAL_ID_RE.fullmatch(proposal_id) is None:
+            raise LearnFromBugsError(f"proposal batch map line {line_number} has invalid proposal id")
+        if proposal_id in mapping:
+            raise LearnFromBugsError(f"proposal batch map line {line_number} repeats proposal id {proposal_id}")
+        if not item_raw.isdigit() or not 1 <= int(item_raw) <= item_count:
+            raise LearnFromBugsError(f"proposal batch map line {line_number} has out-of-range batch item")
+        mapping[proposal_id] = int(item_raw)
+    mapped_items: set[int] = set(mapping.values())
+    expected_items: set[int] = set(range(1, item_count + 1))
+    if mapped_items != expected_items:
+        missing: str = ",".join(str(index) for index in sorted(expected_items - mapped_items))
+        raise LearnFromBugsError(f"proposal batch map does not cover batch item(s): {missing}")
+    return mapping
+
+
+def _declared_filing_edges(path: Path, *, proposal_items: Mapping[str, int]) -> set[tuple[int, int]]:
+    """Translate proposal-id blocker rows to 1-based batch-item edges."""
+    rows: list[tuple[int, str]] = _read_filing_tsv(path, label="proposal dependency file")
+    proposal_edges: set[tuple[str, str]] = set()
+    item_edges: set[tuple[int, int]] = set()
+    for line_number, row in rows:
+        try:
+            blocker_id, blocked_id = row.split("\t")
+        except ValueError as exc:
+            raise LearnFromBugsError(
+                f"proposal dependency line {line_number} must have two TSV fields"
+            ) from exc
+        if blocker_id == blocked_id:
+            raise LearnFromBugsError(f"proposal dependency line {line_number} is a self-dependency")
+        for proposal_id in (blocker_id, blocked_id):
+            if _PROPOSAL_ID_RE.fullmatch(proposal_id) is None:
+                raise LearnFromBugsError(f"proposal dependency line {line_number} has invalid proposal id")
+            if proposal_id not in proposal_items:
+                raise LearnFromBugsError(
+                    f"proposal dependency line {line_number} names unmapped proposal {proposal_id}"
+                )
+        proposal_edge: tuple[str, str] = (blocker_id, blocked_id)
+        if proposal_edge in proposal_edges:
+            raise LearnFromBugsError(f"proposal dependency line {line_number} repeats an earlier edge")
+        proposal_edges.add(proposal_edge)
+        blocker_item: int = proposal_items[blocker_id]
+        blocked_item: int = proposal_items[blocked_id]
+        if blocker_item == blocked_item:
+            continue
+        item_edge: tuple[int, int] = (blocker_item, blocked_item)
+        if (blocked_item, blocker_item) in item_edges:
+            raise LearnFromBugsError("proposal dependencies map to reciprocal batch-item edges")
+        item_edges.add(item_edge)
+    return item_edges
+
+
+def _filing_path_exists(
+    edges: set[tuple[int, int]], *, start: int, target: int
+) -> bool:
+    """Return whether directed ``edges`` already connect ``start`` to ``target``."""
+    pending: list[int] = [start]
+    visited: set[int] = set()
+    while pending:
+        node: int = pending.pop()
+        if node == target:
+            return True
+        if node in visited:
+            continue
+        visited.add(node)
+        pending.extend(right for left, right in edges if left == node)
+    return False
+
+
+def _merge_filing_edges(
+    *, declared: set[tuple[int, int]], shared_file: set[tuple[int, int]]
+) -> set[tuple[int, int]]:
+    """Merge edges without letting shared-file order override semantic order."""
+    combined: set[tuple[int, int]] = set()
+    for edge in sorted(declared):
+        if _filing_path_exists(combined, start=edge[1], target=edge[0]):
+            raise LearnFromBugsError("proposal dependencies contain a cycle")
+        combined.add(edge)
+    for edge in sorted(shared_file):
+        if edge in combined:
+            continue
+        if not _filing_path_exists(combined, start=edge[1], target=edge[0]):
+            combined.add(edge)
+    return combined
+
+
+def filing_dependencies(
+    *, input_file: Path, proposal_map_file: Path, proposal_deps_file: Path
+) -> tuple[tuple[int, int], ...]:
+    """Build caller-supplied batch edges from declarations and shared files."""
+    if input_file.is_symlink() or not input_file.is_file():
+        raise LearnFromBugsError(f"batch input is not a regular file: {input_file}")
+    batch_text: str = larch_io.read_text(input_file, errors="strict")
+    items, _mode = parse_issue_input(batch_text)
+    if not items:
+        raise LearnFromBugsError("batch input has no issue items")
+    if any(item.malformed for item in items):
+        raise LearnFromBugsError("batch input contains a malformed issue item")
+    proposal_items: dict[str, int] = _proposal_batch_map(proposal_map_file, item_count=len(items))
+    declared_edges: set[tuple[int, int]] = _declared_filing_edges(
+        proposal_deps_file, proposal_items=proposal_items
+    )
+    shared_file_edges: set[tuple[int, int]] = set(file_conflict_deps(input_file))
+    combined: set[tuple[int, int]] = _merge_filing_edges(
+        declared=declared_edges, shared_file=shared_file_edges
+    )
+    if len(combined) > config.ISSUE_INTRA_BATCH_DEPS_MAX_ROWS:
+        raise LearnFromBugsError(
+            f"filing dependency output exceeds {config.ISSUE_INTRA_BATCH_DEPS_MAX_ROWS} rows"
+        )
+    return tuple(sorted(combined))
+
+
+def filing_deps_main(argv: list[str]) -> int:
+    """Write deterministic caller-side dependency edges for filing mode."""
+    parser = argparse.ArgumentParser(prog="learn-from-bugs filing-deps", allow_abbrev=False)
+    parser.add_argument("--input-file", required=True)
+    parser.add_argument("--proposal-map-file", required=True)
+    parser.add_argument("--proposal-deps-file", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    output_path = Path(args.output)
+    try:
+        edges: tuple[tuple[int, int], ...] = filing_dependencies(
+            input_file=Path(args.input_file),
+            proposal_map_file=Path(args.proposal_map_file),
+            proposal_deps_file=Path(args.proposal_deps_file),
+        )
+        rendered: str = "".join(f"{blocker}\t{blocked}\n" for blocker, blocked in edges)
+        larch_io.atomic_write(
+            path=output_path,
+            text=rendered,
+            mode=0o600,
+            prefix=f".{output_path.name}.",
+            nofollow=False,
+        )
+    except (LearnFromBugsError, OSError, ValueError) as exc:
+        print(f"learn-from-bugs filing-deps: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
