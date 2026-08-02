@@ -187,8 +187,12 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(C2.8) Step 4 must require self-chain warning")
     if "prose-only prevention: unlikely to stick" not in text:
         failures.append("(C2.9) Step 4 must require exact prose-only marker")
-    if "#6746 and #6747" not in text:
-        failures.append("(C2.10) prose-only marker must cite #6746 and #6747")
+    if "character-ai/larch#6746 and character-ai/larch#6747" not in text:
+        failures.append(
+            "(C2.10) prose-only marker must cite character-ai/larch#6746 and character-ai/larch#6747"
+        )
+    if "outside the prepared `REPO` must use the `owner/repo#number` form" not in text:
+        failures.append("(C2.10b) Step 4 must require owner/repo#number for cross-repo citations")
     if "nearest lint, hook, or invariant-test alternative" not in text:
         failures.append("(C2.11) prose-only marker must require mechanical-alternative line")
     if "learn-from-bugs validate-report" not in text:

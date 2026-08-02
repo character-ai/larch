@@ -111,7 +111,7 @@ _SPEC_GAP_PHRASES: Final = ("never designed", "was never told", "no handling for
 _NEW_CODE_PHRASES: Final = ("first time this path ran", "newly added")
 
 PROSE_ONLY_MARKER: Final = "prose-only prevention: unlikely to stick"
-_PROSE_ONLY_CITATIONS: Final = ("#6746", "#6747")
+_PROSE_ONLY_CITATIONS: Final = ("character-ai/larch#6746", "character-ai/larch#6747")
 _MECHANICAL_ALT_RE: Final = re.compile(
     r"\b(?:lint|hook|invariant(?:[-\s]?test)?)\b|no mechanical alternative",
     re.IGNORECASE,
