@@ -138,6 +138,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("learn-from-bugs", "state-publish"): ("larch.issue.learn_from_bugs", "state_publish_main", True),
     ("learn-from-bugs", "resolve-zones"): ("larch.issue.learn_from_bugs", "resolve_zones_main", False),
     ("learn-from-bugs", "validate-report"): ("larch.issue.learn_from_bugs", "validate_report_main", False),
+    ("learn-from-bugs", "filing-deps"): ("larch.issue.learn_from_bugs", "filing_deps_main", False),
     ("rejected-analysis", "prepare"): ("larch.issue.rejected_analysis", "prepare_main", False),
     ("rejected-analysis", "ingest-verdict"): ("larch.issue.rejected_analysis", "ingest_verdict_main", False),
     ("rejected-analysis", "finalize"): ("larch.issue.rejected_analysis", "finalize_main", False),
