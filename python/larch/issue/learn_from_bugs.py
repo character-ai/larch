@@ -259,6 +259,7 @@ class PrepareRequest:
     repo_explicit: str
     out_dir: Path
     root: Path
+    full: bool = False
 
 
 def _runner() -> Runner:
@@ -564,6 +565,16 @@ def _read_existing_state(path: Path) -> LearnFromBugsState | None:
     return state
 
 
+def _read_repo_state(root: Path, repo: str) -> LearnFromBugsState | None:
+    """Read the repository marker and reject state for another repository."""
+    state = _read_existing_state(state_path(root))
+    if state is not None and state.repo != repo:
+        raise LearnFromBugsError(
+            "--repo does not match the durable learn-from-bugs state repository"
+        )
+    return state
+
+
 def write_state(path: Path, state: LearnFromBugsState) -> None:
     """Atomically write a durable state marker after symlink rejection."""
     larch_io.assert_no_symlink_path_or_ancestors(path)
@@ -589,6 +600,24 @@ def _highest_issue_number(issues: list[dict[str, object]]) -> int:
         except (TypeError, ValueError):
             continue
     return max(numbers) if numbers else 0
+
+
+def _issue_number(issue: Mapping[str, object]) -> int | None:
+    """Return a positive issue number when the GitHub row supplies one."""
+    raw = issue.get("number")
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+        return None
+    try:
+        number = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _in_prior_scan_window(issue: Mapping[str, object], highest_scanned: int) -> bool:
+    """Return whether an issue belongs to the durable marker's prior window."""
+    number = _issue_number(issue)
+    return number is not None and number <= highest_scanned
 
 
 # --- Digest extraction (offline, pure) --------------------------------------
@@ -1036,6 +1065,7 @@ def coverage_index(root: Path) -> CoverageIndex:
 def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
     """Fetch, digest, and coverage-index; write artifacts; return KV stats."""
     repo = resolve_repo(runner, request.repo_explicit)
+    prior_state = _read_repo_state(request.root, repo)
     scan_started_at = _utc_now_iso()
     raw_issues: list[dict[str, object]] = list_issues(
         runner,
@@ -1048,6 +1078,21 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         issue for issue in raw_issues if bug_title_match(str(issue.get("title") or ""))
     ]
     filtered_non_bug = len(raw_issues) - len(issues)
+    prior_highest: int = (
+        prior_state.highest_closed_issue_number_scanned if prior_state is not None else 0
+    )
+    issues_previously_scanned: int = (
+        sum(_in_prior_scan_window(issue, prior_highest) for issue in issues)
+        if prior_state is not None
+        else 0
+    )
+    incremental: bool = (
+        prior_state is not None and not request.full and not request.search_explicit
+    )
+    if incremental:
+        issues = [
+            issue for issue in issues if not _in_prior_scan_window(issue, prior_highest)
+        ]
     highest_closed_issue_number_scanned = _highest_issue_number(raw_issues)
     digests = [build_digest(issue) for issue in issues]
     out_dir = request.out_dir
@@ -1090,6 +1135,8 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         "SCAN_STARTED_AT": scan_started_at,
         "HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED": highest_closed_issue_number_scanned,
         "ISSUES_SELECTED": len(digests),
+        "ISSUES_PREVIOUSLY_SCANNED": issues_previously_scanned,
+        "INCREMENTAL": str(incremental).lower(),
         "ISSUES_FILTERED_NON_BUG": filtered_non_bug,
         "STRUCTURED": structured,
         "FREEFORM_OR_TITLE_ONLY": len(digests) - structured,
@@ -1115,6 +1162,7 @@ def prepare_main(argv: list[str]) -> int:
     parser.add_argument("--repo", default="")
     parser.add_argument("--out", required=True)
     parser.add_argument("--root", default=".")
+    parser.add_argument("--full", action="store_true")
     search_explicit: bool = any(
         token == "--search" or token.startswith("--search=") for token in argv
     )
@@ -1127,6 +1175,7 @@ def prepare_main(argv: list[str]) -> int:
         repo_explicit=args.repo,
         out_dir=Path(args.out),
         root=Path(args.root),
+        full=args.full,
     )
     _print_kv(run_prepare(_runner(), request))
     return 0
@@ -1522,11 +1571,7 @@ def check_proposals_main(argv: list[str]) -> int:
     parser.add_argument("--base-proposals-out")
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
-    state = _read_existing_state(state_path(root))
-    if state is not None and state.repo != args.repo:
-        raise LearnFromBugsError(
-            "--repo does not match the durable learn-from-bugs state repository"
-        )
+    state = _read_repo_state(root, args.repo)
     proposals = () if state is None else state.proposals
     checked = check_proposals(_runner(), proposals, root, args.repo)
     raw_proposals_out = Path(args.proposals_out).expanduser()

@@ -167,6 +167,37 @@ def _self_analysis_failures(text: str) -> list[str]:
     return failures
 
 
+def _incremental_scan_failures(text: str) -> list[str]:
+    requirements: tuple[tuple[str, str], ...] = (
+        ("[--full]", "(A.11) frontmatter argument-hint must include [--full]"),
+        (
+            "`--full` (disable marker-driven incrementality)",
+            "(A.12) contract must document --full incrementality override",
+        ),
+        (
+            "durable marker for the resolved repository makes preparation incremental",
+            "(A.13) contract must document marker-driven default incrementality",
+        ),
+        ("FULL_ARGS=(--full)", "(B.13) Step 2 must forward --full through FULL_ARGS"),
+        (
+            "Before reading `DIGEST_PATH`, surface `ISSUES_PREVIOUSLY_SCANNED` and `INCREMENTAL`",
+            "(B.15) Step 2 must surface overlap before reading the digest",
+        ),
+        (
+            "If `ISSUES_SELECTED=0`, do not read `DIGEST_PATH`",
+            "(B.16) zero selection must short-circuit before reading the digest",
+        ),
+        (
+            "After `STATE_PUBLISH_STATUS=saved`, continue directly to Step 5a",
+            "(B.17) zero selection must preserve end-of-run self-analysis",
+        ),
+    )
+    failures = [failure for required, failure in requirements if required not in text]
+    if "ISSUES_PREVIOUSLY_SCANNED" not in text or "INCREMENTAL" not in text:
+        failures.append("(B.14) Step 2 must parse overlap and incremental stats")
+    return failures
+
+
 def run(repo_root: Path) -> list[str]:
     failures: list[str] = []
     skill = repo_root / "skills/learn-from-bugs/SKILL.md"
@@ -364,8 +395,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(T.9) publication must accept only a saved absolute state path")
     if "A write failure leaves `${RUN_DIR}/reconciled-proposals.jsonl` available for retry" not in text:
         failures.append("(T.11) write failure must preserve reconciled proposals for retry")
-    if text.count("run the shared state-publication fragment now") != 3:
-        failures.append("(U.1) all three marker-producing paths must invoke the shared fragment")
+    if text.count("run the shared state-publication fragment now") != 4:
+        failures.append("(U.1) all four marker-producing paths must invoke the shared fragment")
     if "Do not rerun `/issue` merely because the marker write needs retry" not in text:
         failures.append("(U.3) marker retry must not repeat successful issue creation")
     if "Keep `pending-state.json` through publication" not in text:
@@ -392,6 +423,7 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(V.4) old direct ANALYSIS_ROOT commit flow must be absent")
     return [
         *failures,
+        *_incremental_scan_failures(text),
         *_prevention_field_failures(text),
         *_dependency_filing_failures(text),
         *_self_analysis_failures(text),

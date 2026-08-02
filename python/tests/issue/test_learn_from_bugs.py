@@ -694,6 +694,135 @@ def test_run_prepare_captures_scan_started_at_before_issue_list(
     assert stats["ISSUES_SELECTED"] == 0
 
 
+def _write_scan_marker(root: Path, *, highest_scanned: int) -> None:
+    learn_from_bugs.write_state(
+        learn_from_bugs.state_path(root),
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search=learn_from_bugs.DEFAULT_SEARCH,
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=highest_scanned,
+        ),
+    )
+
+
+def test_run_prepare_uses_marker_to_select_only_new_issues(tmp_path: Path) -> None:
+    _write_scan_marker(tmp_path, highest_scanned=10)
+    rows = [
+        _issue(9, "[BUG] already scanned", STRUCTURED_BODY),
+        _issue(11, "[BUG] newly closed", STRUCTURED_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+
+    stats = learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search=learn_from_bugs.DEFAULT_SEARCH,
+            search_explicit=False,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=tmp_path / "out",
+            root=tmp_path,
+        ),
+    )
+
+    assert stats["INCREMENTAL"] == "true"
+    assert stats["ISSUES_PREVIOUSLY_SCANNED"] == 1
+    assert stats["ISSUES_SELECTED"] == 1
+    assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == [11]
+
+
+def test_run_prepare_with_marker_and_no_new_issues_selects_nothing(tmp_path: Path) -> None:
+    _write_scan_marker(tmp_path, highest_scanned=10)
+    rows = [
+        _issue(8, "[BUG] first prior issue", STRUCTURED_BODY),
+        _issue(10, "[BUG] last prior issue", STRUCTURED_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+
+    stats = learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search=learn_from_bugs.DEFAULT_SEARCH,
+            search_explicit=False,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=tmp_path / "out",
+            root=tmp_path,
+        ),
+    )
+
+    assert stats["INCREMENTAL"] == "true"
+    assert stats["ISSUES_PREVIOUSLY_SCANNED"] == 2
+    assert stats["ISSUES_SELECTED"] == 0
+    assert stats["DIGEST_TOKENS_EST"] == 0
+    assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == []
+
+
+def test_run_prepare_without_marker_keeps_first_scan_behavior(tmp_path: Path) -> None:
+    rows = [_issue(8, "[BUG] first scan", STRUCTURED_BODY)]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+
+    stats = learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search=learn_from_bugs.DEFAULT_SEARCH,
+            search_explicit=False,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=tmp_path / "out",
+            root=tmp_path,
+        ),
+    )
+
+    assert stats["INCREMENTAL"] == "false"
+    assert stats["ISSUES_PREVIOUSLY_SCANNED"] == 0
+    assert stats["ISSUES_SELECTED"] == 1
+    assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == [8]
+
+
+def test_prepare_main_full_includes_prior_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_scan_marker(tmp_path, highest_scanned=10)
+    rows = [
+        _issue(9, "[BUG] already scanned", STRUCTURED_BODY),
+        _issue(11, "[BUG] newly closed", STRUCTURED_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+    out_dir = tmp_path / "out"
+
+    assert learn_from_bugs.prepare_main(
+        [
+            "--repo",
+            "o/r",
+            "--out",
+            str(out_dir),
+            "--root",
+            str(tmp_path),
+            "--full",
+        ]
+    ) == 0
+
+    stats = dict(
+        line.split("=", 1)
+        for line in capsys.readouterr().out.splitlines()
+        if "=" in line
+    )
+    assert stats["INCREMENTAL"] == "false"
+    assert stats["ISSUES_PREVIOUSLY_SCANNED"] == "1"
+    assert stats["ISSUES_SELECTED"] == "2"
+    assert _digest_numbers(out_dir / "digest.jsonl") == [9, 11]
+
+
 def test_run_prepare_highest_issue_number_uses_unfiltered_rows(tmp_path: Path) -> None:
     rows = [
         _issue(40, "not a bug", FREEFORM_BODY),
@@ -720,6 +849,7 @@ def test_run_prepare_highest_issue_number_uses_unfiltered_rows(tmp_path: Path) -
 
 
 def test_run_prepare_explicit_search_still_filters_non_bug_rows(tmp_path: Path) -> None:
+    _write_scan_marker(tmp_path, highest_scanned=2)
     rows = [
         _issue(1, "plain issue", FREEFORM_BODY),
         _issue(2, "[IMPLEMENTING] [BUG] lifecycle bug", STRUCTURED_BODY),
@@ -741,6 +871,8 @@ def test_run_prepare_explicit_search_still_filters_non_bug_rows(tmp_path: Path) 
 
     assert stats["ISSUES_FILTERED_NON_BUG"] == 1
     assert stats["ISSUES_SELECTED"] == 1
+    assert stats["ISSUES_PREVIOUSLY_SCANNED"] == 1
+    assert stats["INCREMENTAL"] == "false"
     assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == [2]
 
 
