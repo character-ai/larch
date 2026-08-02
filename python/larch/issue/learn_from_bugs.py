@@ -84,13 +84,20 @@ _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 _PROPOSAL_ID_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TEST_NAME_RE: Final = re.compile(r"^test_[A-Za-z0-9_]+$")
 _FIX_TOKEN_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_CHECK_SYMBOL_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 ProposalType = Literal["lint", "invariant", "guideline", "hook", "test", "fix"]
 ProposalStatus = Literal["proposed", "adopted", "pending", "orphaned"]
+AdoptionEvidence = Literal["target-verified", "issue-closed-only", "both"]
 PROPOSAL_TYPES: Final = frozenset(
     {"lint", "invariant", "guideline", "hook", "test", "fix"}
 )
 PROPOSAL_STATUSES: Final = frozenset({"proposed", "adopted", "pending", "orphaned"})
+ADOPTION_EVIDENCE_KINDS: Final[tuple[AdoptionEvidence, ...]] = (
+    "target-verified",
+    "issue-closed-only",
+    "both",
+)
 REGISTRY_KEY_LENGTH: Final = 2
 
 # Origin extraction: referenced residual markers (first match in source order wins).
@@ -133,7 +140,7 @@ class LearnFromBugsError(RuntimeError):
 
 @dataclass(frozen=True)
 class Proposal:
-    """One durable prevention proposal and its observed lifecycle."""
+    """One durable prevention proposal and its observed check-time evidence."""
 
     id: str
     type: ProposalType
@@ -141,9 +148,11 @@ class Proposal:
     run_date: str
     status: ProposalStatus
     filed_issue: int | None = None
+    adoption_evidence: AdoptionEvidence | None = None
 
-    def to_json(self) -> dict[str, object]:
-        return {
+    def to_json(self, *, include_adoption_evidence: bool = False) -> dict[str, object]:
+        """Serialize durable fields, optionally including check-time evidence."""
+        payload: dict[str, object] = {
             "id": self.id,
             "type": self.type,
             "target": self.target,
@@ -151,6 +160,9 @@ class Proposal:
             "status": self.status,
             "filed_issue": self.filed_issue,
         }
+        if include_adoption_evidence:
+            payload["adoption_evidence"] = self.adoption_evidence
+        return payload
 
 
 @dataclass(frozen=True)
@@ -329,6 +341,18 @@ def _validate_architectural_target(target: str) -> tuple[str, str]:
     return path_target, fragment
 
 
+def _validate_check_target(target: str, root: Path | None) -> tuple[str, str]:
+    """Validate one repository-hosted check target and return its path and symbol."""
+    raw_target = target.removeprefix("check:")
+    if not target.startswith("check:") or raw_target.count("#") != 1:
+        raise LearnFromBugsError(f"invalid check target: {target!r}")
+    path_target, symbol = raw_target.split("#", 1)
+    if _CHECK_SYMBOL_RE.fullmatch(symbol) is None:
+        raise LearnFromBugsError(f"invalid check target symbol: {target!r}")
+    _validate_path_target(path_target, (), root)
+    return path_target, symbol
+
+
 def _validate_path_target(
     raw: str, suffixes: tuple[str, ...], root: Path | None
 ) -> None:
@@ -359,7 +383,9 @@ def _validate_target(
 ) -> None:
     if _validate_fix_or_hook_target(proposal_type, target):
         return
-    if proposal_type == "lint" and target.startswith("registration:"):
+    if proposal_type in {"lint", "test"} and target.startswith("check:"):
+        _validate_check_target(target, root)
+    elif proposal_type == "lint" and target.startswith("registration:"):
         name = target.removeprefix("registration:")
         if _FIX_TOKEN_RE.fullmatch(name) is None:
             raise LearnFromBugsError(f"invalid lint registration target: {target!r}")
@@ -1237,6 +1263,17 @@ def _hook_target_adopted(proposal: Proposal, root: Path) -> bool:
     )
 
 
+def _check_target_adopted(proposal: Proposal, root: Path) -> bool:
+    """Return whether an exact repository-hosted check symbol exists."""
+    raw_path, symbol = _validate_check_target(proposal.target, root)
+    path = _safe_relative_path(root, raw_path, ())
+    if not path.is_file():
+        return False
+    return re.search(
+        rf"\b{re.escape(symbol)}\b", path.read_text(encoding="utf-8")
+    ) is not None
+
+
 def _repository_target_adopted(proposal: Proposal, root: Path) -> bool:
     checkers = {
         "lint": _lint_target_adopted,
@@ -1247,6 +1284,8 @@ def _repository_target_adopted(proposal: Proposal, root: Path) -> bool:
     }
     if proposal.type == "fix":
         return False
+    if proposal.target.startswith("check:"):
+        return _check_target_adopted(proposal, root)
     return checkers[proposal.type](proposal, root)
 
 
@@ -1289,6 +1328,24 @@ def _filed_issue_status(
     raise LearnFromBugsError("gh issue view returned an unknown closed issue reason")
 
 
+def _adoption_evidence(
+    *,
+    status: ProposalStatus,
+    target_verified: bool,
+    filed_issue_status: ProposalStatus | None,
+) -> AdoptionEvidence | None:
+    """Classify the evidence supporting an adopted proposal's current status."""
+    if status != "adopted":
+        return None
+    if target_verified and filed_issue_status == "adopted":
+        return "both"
+    if target_verified:
+        return "target-verified"
+    if filed_issue_status == "adopted":
+        return "issue-closed-only"
+    raise LearnFromBugsError("adopted proposal has no adoption evidence")
+
+
 def check_proposals(
     runner: Runner, proposals: tuple[Proposal, ...], root: Path, repo: str
 ) -> tuple[Proposal, ...]:
@@ -1296,24 +1353,33 @@ def check_proposals(
     checked: list[Proposal] = []
     for proposal in proposals:
         _validate_target(proposal.type, proposal.target, root)
+        target_verified: bool = _repository_target_adopted(proposal, root)
+        filed_issue_status: ProposalStatus | None = None
+        status: ProposalStatus
         if proposal.filed_issue is not None:
-            status = _filed_issue_status(runner, proposal, repo)
+            filed_issue_status = _filed_issue_status(runner, proposal, repo)
+            status = filed_issue_status
+        elif target_verified:
+            status = "adopted"
+        elif proposal.status in {"adopted", "orphaned"}:
+            status = "orphaned"
         else:
-            adopted = _repository_target_adopted(proposal, root)
-            if adopted:
-                status = "adopted"
-            elif proposal.status in {"adopted", "orphaned"}:
-                status = "orphaned"
-            else:
-                status = "pending"
-        checked.append(Proposal(
-            id=str(proposal.id),
-            type=proposal.type,
-            target=proposal.target,
-            run_date=proposal.run_date,
-            status=status,  # type: ignore[reportArgumentType]  # reason: local status narrowed from Literal["adopted","pending","orphaned"] to str
-            filed_issue=proposal.filed_issue,
-        ))
+            status = "pending"
+        checked.append(
+            Proposal(
+                id=proposal.id,
+                type=proposal.type,
+                target=proposal.target,
+                run_date=proposal.run_date,
+                status=status,
+                filed_issue=proposal.filed_issue,
+                adoption_evidence=_adoption_evidence(
+                    status=status,
+                    target_verified=target_verified,
+                    filed_issue_status=filed_issue_status,
+                ),
+            )
+        )
     return tuple(checked)
 
 
@@ -1321,20 +1387,50 @@ def render_adoption_summary(
     proposals: tuple[Proposal, ...], today: date | None = None
 ) -> str:
     """Render deterministic proposal adoption statistics."""
+    adopted = sorted(
+        (item for item in proposals if item.status == "adopted"),
+        key=lambda item: (item.run_date, item.id),
+    )
     counts = {
         status: sum(item.status == status for item in proposals)
         for status in ("adopted", "pending", "orphaned")
     }
+    evidence_counts: dict[AdoptionEvidence, int] = {
+        kind: sum(
+            item.status == "adopted" and item.adoption_evidence == kind
+            for item in proposals
+        )
+        for kind in ADOPTION_EVIDENCE_KINDS
+    }
+    unavailable_evidence = len(adopted) - sum(evidence_counts.values())
+    evidence_parts: list[str] = [
+        f"{evidence_counts[kind]} {kind}"
+        for kind in ADOPTION_EVIDENCE_KINDS
+        if evidence_counts[kind]
+    ]
+    if unavailable_evidence:
+        evidence_parts.append(f"{unavailable_evidence} unavailable")
+    evidence_rollup: str = ", ".join(evidence_parts)
     denominator = sum(counts.values())
     rate = 0.0 if denominator == 0 else counts["adopted"] / denominator * 100
+    adopted_line = f"- Adopted: {counts['adopted']}"
+    if evidence_rollup:
+        adopted_line += f" ({evidence_rollup})"
     lines = [
         "## Proposal adoption",
         "",
-        f"- Adopted: {counts['adopted']}",
+        adopted_line,
         f"- Pending: {counts['pending']}",
         f"- Orphaned: {counts['orphaned']}",
         f"- Adoption rate: {rate:.1f}%",
     ]
+    lines.extend(["", "### Adoption evidence", ""])
+    if not adopted:
+        lines.append("None.")
+    else:
+        for proposal in adopted:
+            evidence = proposal.adoption_evidence or "unavailable"
+            lines.append(f"- `{proposal.id}`: `{evidence}`")
     pending = sorted(
         (item for item in proposals if item.status == "pending"),
         key=lambda item: (item.run_date, item.id),
@@ -1439,7 +1535,10 @@ def check_proposals_main(argv: list[str]) -> int:
     adoption_out = raw_adoption_out.parent.resolve() / raw_adoption_out.name
     larch_io.atomic_write(
         proposals_out,
-        "".join(json.dumps(item.to_json()) + "\n" for item in checked),
+        "".join(
+            json.dumps(item.to_json(include_adoption_evidence=True)) + "\n"
+            for item in checked
+        ),
         prefix=f".{proposals_out.name}.",
         nofollow=True,
     )
