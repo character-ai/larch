@@ -1968,7 +1968,8 @@ def test_validate_report_contract_accepts_valid_report() -> None:
         "## 3. Already covered (dedup)\n\nnone\n\n"
         "## 6. Proposed guideline entries\n\n"
         f"Marker: {learn_from_bugs.PROSE_ONLY_MARKER}. "
-        "Cites #6746 and #6747. Nearest mechanical alternative: lint agent-tool-contract.\n"
+        "Cites character-ai/larch#6746 and character-ai/larch#6747. "
+        "Nearest mechanical alternative: lint agent-tool-contract.\n"
     )
     learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
 
@@ -2001,9 +2002,21 @@ def test_validate_report_contract_rejects_prose_only_missing_citation() -> None:
     report = (
         f"## 2. Root-cause clusters\n\n{headline}\n"
         f"## 6. Proposed guideline entries\n\n{learn_from_bugs.PROSE_ONLY_MARKER} "
-        "cites #6746 only. Nearest lint: lint-foo.\n"
+        "cites character-ai/larch#6746 only. Nearest lint: lint-foo.\n"
     )
-    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="#6747"):
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="character-ai/larch#6747"):
+        learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
+
+
+def test_validate_report_contract_rejects_prose_only_bare_larch_citation() -> None:
+    digests = [_digest_with_origin(1, kind="unknown")]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    report = (
+        f"## 2. Root-cause clusters\n\n{headline}\n"
+        f"## 6. Proposed guideline entries\n\n{learn_from_bugs.PROSE_ONLY_MARKER} "
+        "cites #6746 and #6747. Nearest lint: lint-foo.\n"
+    )
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="character-ai/larch#6746"):
         learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
 
 
@@ -2013,7 +2026,7 @@ def test_validate_report_contract_rejects_prose_only_missing_mechanical_alt() ->
     report = (
         f"## 2. Root-cause clusters\n\n{headline}\n"
         f"## 6. Proposed guideline entries\n\n{learn_from_bugs.PROSE_ONLY_MARKER} "
-        "cites #6746 and #6747 without naming any alternative.\n"
+        "cites character-ai/larch#6746 and character-ai/larch#6747 without naming any alternative.\n"
     )
     with pytest.raises(learn_from_bugs.LearnFromBugsError, match="mechanical"):
         learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
