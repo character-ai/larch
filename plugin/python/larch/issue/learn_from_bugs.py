@@ -57,15 +57,24 @@ FREEFORM_CAP: Final = 1100
 # A diagnostic prefix shorter than this means the body is only the appended plan;
 # the bug's signal then lives in its title.
 TITLE_ONLY_PREFIX_MAX: Final = 40
+# Digest chunks stay below the 20k-token Read budget. The two-character estimate
+# is deliberately conservative for JSONL diagnostics.
+DIGEST_CHUNK_TOKEN_LIMIT: Final = 19_000
+DIGEST_CHARS_PER_TOKEN_ESTIMATE: Final = 2
+TABLE_MIN_DELIMITERS: Final = 2
+TABLE_DOMINANCE_MULTIPLIER: Final = 2
 
 # Diagnostic sections to keep, each with its cap. Deduped by the heading's first
 # word so "root cause" and "root cause analysis" do not both land.
 WANT_SECTIONS: Final = (
     ("summary", SUMMARY_CAP),
+    ("impact", SUMMARY_CAP),
+    ("classification", FIX_CAP),
     ("root cause analysis", ROOT_CAUSE_CAP),
     ("root cause", ROOT_CAUSE_CAP),
     ("suggested fix(es)", FIX_CAP),
     ("suggested fix", FIX_CAP),
+    ("repro", FIX_CAP),
 )
 
 # Earliest match marks where the appended /design plan begins; everything before
@@ -79,12 +88,23 @@ _BOUNDARY_PATTERNS: Final = (
     ),
 )
 _HEADING_RE: Final = re.compile(r"^#{2,4}\s+(.+?)\s*$")
+_BOLD_PSEUDO_HEADING_RE: Final = re.compile(
+    r"^\*\*(?P<name>Impact|Classification|Repro)\*\*"
+    r"(?:[ \t]*:[ \t]*|[ \t]*)(?P<body>.*)$",
+    re.IGNORECASE,
+)
+_CLASSIFICATION_VALUE_RE: Final = re.compile(
+    r"^\s*(?P<kind>[A-Z][A-Z0-9_]*)(?:\s*\([^\n)]*\))?\s*,\s*"
+    r"owning\s+surface\s+(?P<surface>[A-Z][A-Z0-9_]*)\b",
+    re.IGNORECASE,
+)
 _FENCE_MARKER_RE: Final = re.compile(r"^(`{3,}|~{3,})(.*)$")
 _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 _PROPOSAL_ID_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TEST_NAME_RE: Final = re.compile(r"^test_[A-Za-z0-9_]+$")
 _FIX_TOKEN_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _CHECK_SYMBOL_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_BOX_DRAWING_CHAR_RE: Final = re.compile(r"[\u2500-\u257f]")
 
 ProposalType = Literal["lint", "invariant", "guideline", "hook", "test", "fix"]
 ProposalStatus = Literal["proposed", "adopted", "pending", "orphaned"]
@@ -116,6 +136,11 @@ _ORIGIN_REF_PATTERNS: Final = (
 _BARE_REGRESSION_RE: Final = re.compile(r"\bregression\b", re.IGNORECASE)
 _SPEC_GAP_PHRASES: Final = ("never designed", "was never told", "no handling for")
 _NEW_CODE_PHRASES: Final = ("first time this path ran", "newly added")
+_CLASSIFICATION_ORIGIN_KINDS: Final[Mapping[str, OriginKind]] = {
+    "IMPLEMENTATION_BUG": "new-code",
+    "CONFIGURATION_GAP": "spec-gap",
+    "DESIGN_GAP": "spec-gap",
+}
 
 PROSE_ONLY_MARKER: Final = "prose-only prevention: unlikely to stick"
 _PROSE_ONLY_CITATIONS: Final = ("character-ai/larch#6746", "character-ai/larch#6747")
@@ -207,6 +232,17 @@ class Origin:
 
 
 @dataclass(frozen=True)
+class BugClass:
+    """Machine-filed defect classification extracted from a digest."""
+
+    kind: str
+    surface: str
+
+    def to_json(self) -> dict[str, str]:
+        return {"kind": self.kind, "surface": self.surface}
+
+
+@dataclass(frozen=True)
 class BugDigest:
     number: int
     title: str
@@ -217,9 +253,10 @@ class BugDigest:
     prefix_chars: int
     sections: Mapping[str, str]
     origin: Origin
+    classification: BugClass | None = None
 
     def to_json(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "number": self.number,
             "title": self.title,
             "closed_at": self.closed_at,
@@ -230,6 +267,9 @@ class BugDigest:
             "sections": dict(self.sections),
             "origin": self.origin.to_json(),
         }
+        if self.classification is not None:
+            payload["class"] = self.classification.to_json()
+        return payload
 
 
 @dataclass(frozen=True)
@@ -684,7 +724,11 @@ def _fenced_line_indices(lines: list[str]) -> set[int]:
 
 
 def _iter_diagnostic_sections(prefix: str) -> list[tuple[str, str]]:
-    """Yield ``(normalized_heading, body)`` in document order; duplicates preserved."""
+    """Yield ``(normalized_heading, body)`` in document order; duplicates preserved.
+
+    In addition to Markdown headings, recognize the bold labels used by the
+    machine-filed test-smarts defect template.
+    """
     positioned = _lines_with_starts(prefix)
     lines = [line for _, line in positioned]
     fenced = _fenced_line_indices(lines)
@@ -694,10 +738,15 @@ def _iter_diagnostic_sections(prefix: str) -> list[tuple[str, str]]:
         if index in fenced:
             continue
         match = _HEADING_RE.match(line)
-        if match is None:
+        if match is not None:
+            name = match.group(1).replace("`", "").strip().lower()
+            heads.append((name, line_start, line_start + match.end()))
             continue
-        name = match.group(1).replace("`", "").strip().lower()
-        heads.append((name, line_start, line_start + match.end()))
+        pseudo_match = _BOLD_PSEUDO_HEADING_RE.match(line)
+        if pseudo_match is None:
+            continue
+        name = pseudo_match.group("name").lower()
+        heads.append((name, line_start, line_start + pseudo_match.start("body")))
     out: list[tuple[str, str]] = []
     for index, (name, _match_start, content_start) in enumerate(heads):
         end = heads[index + 1][1] if index + 1 < len(heads) else len(prefix)
@@ -714,14 +763,68 @@ def _split_sections(prefix: str) -> dict[str, str]:
     return dict(_iter_diagnostic_sections(prefix))
 
 
+def _parse_classification(value: str) -> BugClass | None:
+    """Return the typed class from a template ``Classification`` section."""
+    match: re.Match[str] | None = _CLASSIFICATION_VALUE_RE.match(value)
+    if match is None:
+        return None
+    return BugClass(
+        kind=match.group("kind").upper(),
+        surface=match.group("surface").upper(),
+    )
+
+
+def _is_table_row(line: str) -> bool:
+    """Recognize a Markdown or box-drawing table row without parsing its cells."""
+    stripped: str = line.strip()
+    if not stripped:
+        return False
+    if (
+        stripped.startswith("|")
+        and stripped.endswith("|")
+        and stripped.count("|") >= TABLE_MIN_DELIMITERS
+    ):
+        return True
+    box_count: int = len(_BOX_DRAWING_CHAR_RE.findall(stripped))
+    return box_count * TABLE_DOMINANCE_MULTIPLIER >= len(stripped) or (
+        box_count >= TABLE_MIN_DELIMITERS
+        and "\u2500" <= stripped[0] <= "\u257f"
+        and "\u2500" <= stripped[-1] <= "\u257f"
+    )
+
+
+def _elide_table_runs(text: str) -> str:
+    """Replace multi-line table runs with one bounded diagnostic marker."""
+    lines: list[str] = text.splitlines()
+    elided: list[str] = []
+    index = 0
+    while index < len(lines):
+        if not _is_table_row(lines[index]):
+            elided.append(lines[index])
+            index += 1
+            continue
+        start = index
+        while index < len(lines) and _is_table_row(lines[index]):
+            index += 1
+        count = index - start
+        if count == 1:
+            elided.extend(lines[start:index])
+        else:
+            elided.append(f"[table elided: {count} lines]")
+    return "\n".join(elided)
+
+
 def _squeeze(text: str, cap: int) -> str:
     collapsed = re.sub(r"\n{2,}", "\n", text).strip()
     return collapsed[:cap] + ("…" if len(collapsed) > cap else "")
 
 
-def _pick_sections(prefix: str) -> tuple[dict[str, str], bool]:
-    """Return (kept sections, structured?), falling back to freeform or title-only."""
-    found = _split_sections(prefix)
+def _pick_sections(prefix: str) -> tuple[dict[str, str], bool, BugClass | None]:
+    """Return sections, structured state, and parsed class for one diagnostic prefix."""
+    found: dict[str, str] = _split_sections(prefix)
+    classification: BugClass | None = _parse_classification(
+        found.get("classification", "")
+    )
     picked: dict[str, str] = {}
     seen_roots: set[str] = set()
     for want, cap in WANT_SECTIONS:
@@ -730,10 +833,10 @@ def _pick_sections(prefix: str) -> tuple[dict[str, str], bool]:
             picked[want] = _squeeze(found[want], cap)
             seen_roots.add(root)
     if picked:
-        return picked, True
+        return picked, True, classification
     if len(prefix.strip()) < TITLE_ONLY_PREFIX_MAX:
-        return {"_title_only": ""}, False
-    return {"_freeform": _squeeze(prefix, FREEFORM_CAP)}, False
+        return {"_title_only": ""}, False, None
+    return {"_freeform": _squeeze(_elide_table_runs(prefix), FREEFORM_CAP)}, False, None
 
 
 def _has_structured_want_sections(ordered: Sequence[tuple[str, str]]) -> bool:
@@ -797,25 +900,36 @@ def _phrase_in_sources(sources: Sequence[str], phrases: Sequence[str]) -> bool:
     return False
 
 
-def classify_origin(*, title: str, body: str) -> Origin:
+def classify_origin(
+    *, title: str, body: str, classification: BugClass | None = None
+) -> Origin:
     """Classify origin from title plus unsqueezed diagnostic allowlist bodies.
 
     Precedence is global across sources: any referenced marker (first in
     title-then-body order) beats bare ``regression``, which beats ``spec-gap``
     phrases, which beat ``new-code`` phrases, which default to ``unknown``.
+    Parsed machine-filed classifications are an additional diagnostic source.
     """
     prefix = diagnostic_prefix(body)
     normalized_title = _DONE_PREFIX_RE.sub("", title)
+    parsed_classification = classification or _parse_classification(
+        _split_sections(prefix).get("classification", "")
+    )
     sources = _origin_source_texts(title=normalized_title, prefix=prefix)
+    classification_origin = (
+        None
+        if parsed_classification is None
+        else _CLASSIFICATION_ORIGIN_KINDS.get(parsed_classification.kind)
+    )
 
     ref = _first_referenced_across_sources(sources)
     if ref is not None:
         return Origin(kind="regression", ref=ref)
     if any(_BARE_REGRESSION_RE.search(source) for source in sources):
         return Origin(kind="regression", ref=None)
-    if _phrase_in_sources(sources, _SPEC_GAP_PHRASES):
+    if _phrase_in_sources(sources, _SPEC_GAP_PHRASES) or classification_origin == "spec-gap":
         return Origin(kind="spec-gap", ref=None)
-    if _phrase_in_sources(sources, _NEW_CODE_PHRASES):
+    if _phrase_in_sources(sources, _NEW_CODE_PHRASES) or classification_origin == "new-code":
         return Origin(kind="new-code", ref=None)
     return Origin(kind="unknown", ref=None)
 
@@ -965,8 +1079,8 @@ def build_digest(issue: Mapping[str, object]) -> BugDigest:
     body = str(issue.get("body") or "")
     prefix = diagnostic_prefix(body)
     title = _DONE_PREFIX_RE.sub("", str(issue.get("title") or ""))
-    origin = classify_origin(title=title, body=body)
-    sections, structured = _pick_sections(prefix)
+    sections, structured, classification = _pick_sections(prefix)
+    origin = classify_origin(title=title, body=body, classification=classification)
     closed_at = str(issue.get("closedAt") or issue.get("closed_at") or "")[:10]
     number_raw = issue.get("number")
     number = (
@@ -984,7 +1098,48 @@ def build_digest(issue: Mapping[str, object]) -> BugDigest:
         prefix_chars=len(prefix),
         sections=sections,
         origin=origin,
+        classification=classification,
     )
+
+
+def _serialize_digest(digest: BugDigest) -> str:
+    """Serialize one digest record with an ASCII-safe character count."""
+    return json.dumps(digest.to_json(), ensure_ascii=True) + "\n"
+
+
+def _estimate_digest_tokens(serialized_chars: int) -> int:
+    """Return a conservative token estimate for an ASCII-safe digest payload."""
+    return (serialized_chars + DIGEST_CHARS_PER_TOKEN_ESTIMATE - 1) // DIGEST_CHARS_PER_TOKEN_ESTIMATE
+
+
+def _write_digest_chunks(
+    out_dir: Path, digests: Sequence[BugDigest]
+) -> tuple[tuple[Path, ...], int]:
+    """Write numbered JSONL chunks below the conservative Read-token budget."""
+    records: list[str] = [_serialize_digest(digest) for digest in digests]
+    chunk_char_limit = DIGEST_CHUNK_TOKEN_LIMIT * DIGEST_CHARS_PER_TOKEN_ESTIMATE
+    chunks: list[list[str]] = [[]]
+    chunk_chars = 0
+    for record in records:
+        if len(record) > chunk_char_limit:
+            raise LearnFromBugsError("digest record exceeds the configured chunk token limit")
+        if chunks[-1] and chunk_chars + len(record) > chunk_char_limit:
+            chunks.append([])
+            chunk_chars = 0
+        chunks[-1].append(record)
+        chunk_chars += len(record)
+
+    paths: list[Path] = []
+    for index, chunk in enumerate(chunks, start=1):
+        path = out_dir / f"digest-{index:02d}.jsonl"
+        larch_io.atomic_write(
+            path,
+            "".join(chunk),
+            prefix=f".{path.name}.",
+            nofollow=True,
+        )
+        paths.append(path)
+    return tuple(paths), sum(len(record) for record in records)
 
 
 # --- Issue listing (through the Runner seam) --------------------------------
@@ -1098,13 +1253,7 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
     out_dir = request.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     out_dir = out_dir.resolve()
-    digest_path = out_dir / "digest.jsonl"
-    larch_io.atomic_write(
-        digest_path,
-        "".join(json.dumps(digest.to_json()) + "\n" for digest in digests),
-        prefix=f".{digest_path.name}.",
-        nofollow=True,
-    )
+    digest_paths, digest_chars = _write_digest_chunks(out_dir, digests)
     coverage = coverage_index(request.root)
     coverage_path = out_dir / "coverage-index.json"
     larch_io.atomic_write(
@@ -1121,12 +1270,11 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         prefix=f".{headline_path.name}.",
         nofollow=True,
     )
-    # Measure the full serialized digest payload the model reads, including origin.
-    digest_chars = sum(len(json.dumps(digest.to_json())) for digest in digests)
     structured = sum(1 for digest in digests if digest.structured)
     return {
         "RUN_DIR": str(out_dir),
-        "DIGEST_PATH": str(digest_path),
+        "DIGEST_PATH": str(digest_paths[0]),
+        "DIGEST_PATHS": tuple(str(path) for path in digest_paths),
         "COVERAGE_INDEX_PATH": str(coverage_path),
         "ORIGIN_HEADLINE_PATH": str(headline_path),
         "REPO": repo,
@@ -1141,7 +1289,7 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         "STRUCTURED": structured,
         "FREEFORM_OR_TITLE_ONLY": len(digests) - structured,
         "DIGEST_CHARS": digest_chars,
-        "DIGEST_TOKENS_EST": digest_chars // 4,
+        "DIGEST_TOKENS_EST": _estimate_digest_tokens(digest_chars),
         "GUIDELINES_INDEXED": len(coverage.guidelines),
         "INVARIANTS_INDEXED": len(coverage.invariants),
         "PYTHON_LINTS_INDEXED": len(coverage.python_lints),
@@ -1152,6 +1300,17 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
 def _print_kv(pairs: Mapping[str, object]) -> None:
     for key, value in pairs.items():
         print(f"{key}={value}")
+
+
+def _print_prepare_kv(pairs: Mapping[str, object]) -> None:
+    """Emit the prepare grammar, preserving one ``DIGEST_PATH`` per chunk."""
+    for key, value in pairs.items():
+        if key == "DIGEST_PATH":
+            digest_paths = cast("tuple[str, ...]", pairs["DIGEST_PATHS"])
+            for path in digest_paths:
+                print(f"DIGEST_PATH={path}")
+        elif key != "DIGEST_PATHS":
+            print(f"{key}={value}")
 
 
 def prepare_main(argv: list[str]) -> int:
@@ -1177,7 +1336,7 @@ def prepare_main(argv: list[str]) -> int:
         root=Path(args.root),
         full=args.full,
     )
-    _print_kv(run_prepare(_runner(), request))
+    _print_prepare_kv(run_prepare(_runner(), request))
     return 0
 
 
