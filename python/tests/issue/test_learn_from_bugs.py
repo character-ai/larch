@@ -130,6 +130,16 @@ FREEFORM_BODY = """**Summary.** Something went wrong in the flush path and nobod
 More detail about the failure that is not under a recognized heading.
 """
 
+TEST_SMARTS_TEMPLATE_BODY = """**Impact**: configuration-backed service data stays unavailable to operators.
+
+**Classification**: DESIGN_GAP (low severity), owning surface CONFIGURATION. Publish the missing projection.
+
+**Repro**:
+Ask for the service record and observe the typed limitation.
+
+Found by /smarts:test-smarts seed `abc123` (2026-08-02).
+"""
+
 TITLE_ONLY_BODY = "<!-- larch:plan:start -->\n## Plan\n## Approach\nonly a plan here\n"
 
 
@@ -211,6 +221,46 @@ def test_build_digest_h4_canonical_sections_are_structured() -> None:
     assert "_freeform" not in digest.sections
 
 
+def test_build_digest_parses_test_smarts_bold_template() -> None:
+    digest = learn_from_bugs.build_digest(
+        _issue(16, "[BUG] template", TEST_SMARTS_TEMPLATE_BODY)
+    )
+
+    assert digest.structured is True
+    assert set(digest.sections) == {"impact", "classification", "repro"}
+    assert digest.sections["impact"] == (
+        "configuration-backed service data stays unavailable to operators."
+    )
+    assert digest.classification == learn_from_bugs.BugClass(
+        kind="DESIGN_GAP",
+        surface="CONFIGURATION",
+    )
+    assert digest.to_json()["class"] == {
+        "kind": "DESIGN_GAP",
+        "surface": "CONFIGURATION",
+    }
+    assert digest.origin == learn_from_bugs.Origin(kind="spec-gap", ref=None)
+    assert "_freeform" not in digest.sections
+
+
+def test_template_corpus_populates_origin_headline() -> None:
+    bodies = [
+        TEST_SMARTS_TEMPLATE_BODY.replace("DESIGN_GAP", "IMPLEMENTATION_BUG", 1),
+        TEST_SMARTS_TEMPLATE_BODY.replace("DESIGN_GAP", "CONFIGURATION_GAP", 1),
+        TEST_SMARTS_TEMPLATE_BODY,
+    ]
+
+    digests = [
+        learn_from_bugs.build_digest(_issue(number, "[BUG] template", body))
+        for number, body in enumerate(bodies, start=1)
+    ]
+    headline = learn_from_bugs.render_origin_headline(digests)
+
+    assert "- new-code: 1 (33.3%)" in headline
+    assert "- spec-gap: 2 (66.7%)" in headline
+    assert "- unknown: 0 (0.0%)" in headline
+
+
 def test_build_digest_ignores_headings_inside_backtick_fence() -> None:
     digest = learn_from_bugs.build_digest(
         _issue(14, "[BUG] fenced backtick", FENCED_HEADING_BACKTICK_BODY)
@@ -240,6 +290,44 @@ def test_build_digest_freeform_fallback() -> None:
     assert digest.structured is False
     assert "_freeform" in digest.sections
     assert "flush path" in digest.sections["_freeform"]
+
+
+def test_build_digest_elides_box_drawing_and_pipe_table_runs_in_freeform() -> None:
+    box_table = [
+        "┌────────┬────────┐",
+        "│ report │ status │",
+        "├────────┼────────┤",
+        "│ one    │ red    │",
+        "└────────┴────────┘",
+    ]
+    body = "\n".join(
+        [
+            "Keep this diagnostic prose.",
+            *box_table,
+            *box_table,
+            *box_table,
+            *box_table,
+            *box_table,
+            *box_table,
+            "This prose separates the two table formats.",
+            "| Name | Value |",
+            "| --- | --- |",
+            "| useful | row |",
+            "Keep this closing prose.",
+        ]
+    )
+
+    digest = learn_from_bugs.build_digest(_issue(17, "[BUG] tables", body))
+    freeform = digest.sections["_freeform"]
+
+    assert digest.structured is False
+    assert "Keep this diagnostic prose." in freeform
+    assert "This prose separates the two table formats." in freeform
+    assert "Keep this closing prose." in freeform
+    assert "[table elided: 30 lines]" in freeform
+    assert "[table elided: 3 lines]" in freeform
+    assert "┌" not in freeform
+    assert "| Name | Value |" not in freeform
 
 
 def test_build_digest_title_only_when_body_is_plan_only() -> None:
@@ -820,7 +908,7 @@ def test_prepare_main_full_includes_prior_window(
     assert stats["INCREMENTAL"] == "false"
     assert stats["ISSUES_PREVIOUSLY_SCANNED"] == "1"
     assert stats["ISSUES_SELECTED"] == "2"
-    assert _digest_numbers(out_dir / "digest.jsonl") == [9, 11]
+    assert _digest_numbers(out_dir / "digest-01.jsonl") == [9, 11]
 
 
 def test_run_prepare_highest_issue_number_uses_unfiltered_rows(tmp_path: Path) -> None:
@@ -955,7 +1043,7 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     assert stats["ISSUES_FILTERED_NON_BUG"] == 0
     assert stats["STRUCTURED"] == 1
     assert stats["REPO"] == "o/r"
-    digest_lines = (out_dir / "digest.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    digest_lines = (out_dir / "digest-01.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(digest_lines) == 2
     first = json.loads(digest_lines[0])
     assert first["number"] == 1
@@ -963,6 +1051,99 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     coverage = json.loads((out_dir / "coverage-index.json").read_text(encoding="utf-8"))
     assert set(coverage) == {"guidelines", "invariants", "python_lints", "script_lints"}
     assert "RULES_INDEXED" not in stats
+
+
+def test_prepare_main_pages_digest_and_emits_each_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = [_issue(index, f"[BUG] {index}", STRUCTURED_BODY) for index in range(1, 4)]
+    records = [
+        json.dumps(learn_from_bugs.build_digest(row).to_json(), ensure_ascii=True) + "\n"
+        for row in rows
+    ]
+    token_limit = max(
+        (len(record) + learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE - 1)
+        // learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
+        for record in records
+    )
+    monkeypatch.setattr(learn_from_bugs, "DIGEST_CHUNK_TOKEN_LIMIT", token_limit)
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+    out_dir = tmp_path / "run"
+
+    assert learn_from_bugs.prepare_main(
+        [
+            "--repo",
+            "o/r",
+            "--out",
+            str(out_dir),
+            "--root",
+            str(tmp_path),
+        ]
+    ) == 0
+
+    output_lines = capsys.readouterr().out.splitlines()
+    digest_paths = [
+        Path(line.removeprefix("DIGEST_PATH="))
+        for line in output_lines
+        if line.startswith("DIGEST_PATH=")
+    ]
+    max_chars = token_limit * learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
+    stats = dict(line.split("=", 1) for line in output_lines if "=" in line)
+
+    assert [path.name for path in digest_paths] == [
+        "digest-01.jsonl",
+        "digest-02.jsonl",
+        "digest-03.jsonl",
+    ]
+    assert all(len(path.read_text(encoding="utf-8")) <= max_chars for path in digest_paths)
+    assert [number for path in digest_paths for number in _digest_numbers(path)] == [1, 2, 3]
+    assert "DIGEST_PATHS" not in stats
+    assert int(stats["DIGEST_TOKENS_EST"]) == (
+        sum(len(record) for record in records)
+        + learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
+        - 1
+    ) // learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
+
+
+def test_run_prepare_default_chunk_bound_splits_large_corpus(tmp_path: Path) -> None:
+    large_body = (
+        "## Summary\n\n"
+        + ("S" * learn_from_bugs.SUMMARY_CAP)
+        + "\n\n## Root cause analysis\n\n"
+        + ("R" * learn_from_bugs.ROOT_CAUSE_CAP)
+        + "\n\n## Suggested fix(es)\n\n"
+        + ("F" * learn_from_bugs.FIX_CAP)
+    )
+    rows = [_issue(number, f"[BUG] large {number}", large_body) for number in range(1, 31)]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    out_dir = tmp_path / "run"
+
+    learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search="[BUG] in:title",
+            search_explicit=False,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=out_dir,
+            root=tmp_path,
+        ),
+    )
+
+    digest_paths = sorted(out_dir.glob("digest-*.jsonl"))
+    max_chars = (
+        learn_from_bugs.DIGEST_CHUNK_TOKEN_LIMIT
+        * learn_from_bugs.DIGEST_CHARS_PER_TOKEN_ESTIMATE
+    )
+
+    assert len(digest_paths) > 1
+    assert max_chars < 40_000
+    assert all(len(path.read_text(encoding="utf-8")) <= max_chars for path in digest_paths)
+    assert [number for path in digest_paths for number in _digest_numbers(path)] == list(range(1, 31))
 
 
 def test_run_prepare_filters_implicit_default_search_to_bug_titles(tmp_path: Path) -> None:
@@ -987,7 +1168,7 @@ def test_run_prepare_filters_implicit_default_search_to_bug_titles(tmp_path: Pat
 
     assert stats["ISSUES_SELECTED"] == 2
     assert stats["ISSUES_FILTERED_NON_BUG"] == 1
-    assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2]
+    assert _digest_numbers(out_dir / "digest-01.jsonl") == [1, 2]
 
 
 def test_run_prepare_filters_explicit_default_search_to_bug_titles(tmp_path: Path) -> None:
@@ -1012,7 +1193,7 @@ def test_run_prepare_filters_explicit_default_search_to_bug_titles(tmp_path: Pat
 
     assert stats["ISSUES_SELECTED"] == 2
     assert stats["ISSUES_FILTERED_NON_BUG"] == 1
-    assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2]
+    assert _digest_numbers(out_dir / "digest-01.jsonl") == [1, 2]
 
 
 def test_prepare_main_filters_explicit_search_results(
@@ -1043,7 +1224,7 @@ def test_prepare_main_filters_explicit_search_results(
     assert rc == 0
     assert stats["ISSUES_SELECTED"] == "0"
     assert stats["ISSUES_FILTERED_NON_BUG"] == "1"
-    assert _digest_numbers(out_dir / "digest.jsonl") == []
+    assert _digest_numbers(out_dir / "digest-01.jsonl") == []
 
 
 def test_prepare_main_rejects_abbreviated_search_flag(
@@ -1923,11 +2104,11 @@ def test_prepare_main_accepts_symlinked_ancestor_out_dir(
     )
 
     assert rc == 0
-    assert (real / "run" / "digest.jsonl").is_file()
+    assert (real / "run" / "digest-01.jsonl").is_file()
     assert (real / "run" / "coverage-index.json").is_file()
     assert (real / "run" / "origin-headline.md").is_file()
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line)
-    assert Path(out["DIGEST_PATH"]) == real.resolve() / "run" / "digest.jsonl"
+    assert Path(out["DIGEST_PATH"]) == real.resolve() / "run" / "digest-01.jsonl"
 
 
 def test_check_proposals_main_refuses_symlinked_destination_file(
@@ -2045,6 +2226,33 @@ def test_origin_bare_regression_has_null_ref() -> None:
 def test_origin_no_marker_is_unknown() -> None:
     body = "## Root cause\n\nA plain logic error with no residual language.\n"
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+@pytest.mark.parametrize(
+    ("classification", "expected"),
+    [
+        ("IMPLEMENTATION_BUG", "new-code"),
+        ("CONFIGURATION_GAP", "spec-gap"),
+        ("DESIGN_GAP", "spec-gap"),
+    ],
+)
+def test_origin_uses_parsed_template_classification(
+    classification: str, expected: learn_from_bugs.OriginKind
+) -> None:
+    body = f"**Classification**: {classification} (low severity), owning surface RUST_CRATE.\n"
+
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+
+    assert origin == learn_from_bugs.Origin(kind=expected, ref=None)
+
+
+def test_origin_ignores_unstructured_classification_terms() -> None:
+    origin = learn_from_bugs.classify_origin(
+        title="[BUG] x",
+        body="A DESIGN_GAP, owning surface CONFIGURATION, needs investigation.\n",
+    )
+
     assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
 
 
@@ -2168,6 +2376,7 @@ def test_build_digest_json_includes_origin() -> None:
     )
     payload = digest.to_json()
     assert payload["origin"] == {"kind": "unknown", "ref": None}
+    assert "class" not in payload
     assert digest.title == "[BUG] widget"
 
 
@@ -2528,10 +2737,10 @@ def test_run_prepare_writes_origin_headline_and_digest_origin(tmp_path: Path) ->
     headline = Path(str(stats["ORIGIN_HEADLINE_PATH"])).read_text(encoding="utf-8")
     assert "#100 -> #200" in headline
     assert "1/1 (100.0%)" in headline
-    first = json.loads((out_dir / "digest.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    first = json.loads((out_dir / "digest-01.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert first["origin"] == {"kind": "regression", "ref": 100}
     # DIGEST_CHARS measures full serialized digest including origin.
-    assert int(str(stats["DIGEST_CHARS"])) == len(json.dumps(first))
+    assert int(str(stats["DIGEST_CHARS"])) == len(json.dumps(first)) + 1
 
 
 # --- state-publish ----------------------------------------------------------
