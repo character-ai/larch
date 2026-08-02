@@ -40,6 +40,67 @@ def _prevention_field_failures(text: str) -> list[str]:
     return [failure for required, failure in requirements if required not in text]
 
 
+def _dependency_filing_failures(text: str) -> list[str]:
+    requirements: tuple[tuple[str, str], ...] = (
+        (
+            "`**Proposal ID:** <stable-kebab-case-id>` and `**Blocked by proposal IDs:** <comma-separated IDs or none>`",
+            "(C2.15) residual proposals must declare stable IDs and dependencies",
+        ),
+        (
+            "List only genuinely new proposal IDs from the current run; never name checked proposal history",
+            "(C2.16) residual dependencies must exclude checked proposal history",
+        ),
+        (
+            "every named ID must enter the current filing batch",
+            "(C2.17) filing dependencies must stay within the current batch",
+        ),
+        (
+            "An invariants-file proposal that names a separately proposed same-batch regression test as its mechanical backing must list that test proposal ID",
+            "(C2.18) invariant proposals must declare separately proposed backing tests",
+        ),
+        (
+            "A lint proposal whose baseline policy depends on fixing a same-batch live violation must list that fix proposal ID",
+            "(C2.19) lint proposals must declare same-batch live fixes",
+        ),
+        (
+            "`${RUN_DIR}/proposal-batch-map.tsv`, with exactly one `<proposal-id>\\t<batch-item-1based>` row per genuinely new proposal",
+            "(I.3) filing must preserve the proposal-to-batch mapping TSV shape",
+        ),
+        (
+            "`${RUN_DIR}/proposal-deps.tsv`, with one `<blocker-proposal-id>\\t<blocked-proposal-id>` row per declaration",
+            "(I.4) filing must materialize declared proposal dependency rows",
+        ),
+        (
+            "do not add dependency or batch fields to `reconciled-proposals.jsonl`",
+            "(I.5) dependency filing must preserve the durable proposal schema",
+        ),
+        (
+            "learn-from-bugs filing-deps \\",
+            "(K.3) filing mode must run the deterministic dependency pre-pass",
+        ),
+        (
+            "Do not pass `--no-dep-llm` in either path",
+            "(K.5) learn-from-bugs must retain /issue LLM dependency analysis",
+        ),
+        (
+            "`ISSUE_<i>_BLOCKED_BY` records and `ISSUE_<i>_DRY_RUN_DEPS=true`",
+            "(K.6) dry-run must validate would-be caller dependency edges",
+        ),
+        (
+            "dependency pre-pass failed (exit <N>); filing will rely on /issue dependency analysis",
+            "(K.7) pre-pass failure must record the degraded path",
+        ),
+        (
+            "dependency pre-pass produced no caller edges; filing will rely on /issue dependency analysis",
+            "(K.8) empty pre-pass output must record the degraded path",
+        ),
+    )
+    failures = [failure for required, failure in requirements if required not in text]
+    if text.count('--intra-batch-deps-file "$RUN_DIR/intra-batch-deps.tsv"') < 2:
+        failures.append("(K.4) dry-run and create must both forward the caller TSV when available")
+    return failures
+
+
 def run(repo_root: Path) -> list[str]:
     failures: list[str] = []
     skill = repo_root / "skills/learn-from-bugs/SKILL.md"
@@ -134,16 +195,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(C2.12) Step 4 must run report-contract validation before print/marker/filing")
     if 'if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report' not in text:
         failures.append("(C2.13) Step 4 must stop when report-contract validation fails")
-    if "`**Proposal ID:** <stable-kebab-case-id>` and `**Blocked by proposal IDs:** <comma-separated IDs or none>`" not in text:
-        failures.append("(C2.15) residual proposals must declare stable IDs and dependencies")
-    if "List only genuinely new proposal IDs from the current run; never name checked proposal history" not in text:
-        failures.append("(C2.16) residual dependencies must exclude checked proposal history")
-    if "every named ID must enter the current filing batch" not in text:
-        failures.append("(C2.17) filing dependencies must stay within the current batch")
-    if "An invariants-file proposal that names a separately proposed same-batch regression test as its mechanical backing must list that test proposal ID" not in text:
-        failures.append("(C2.18) invariant proposals must declare separately proposed backing tests")
-    if "A lint proposal whose baseline policy depends on fixing a same-batch live violation must list that fix proposal ID" not in text:
-        failures.append("(C2.19) lint proposals must declare same-batch live fixes")
     if "**Proposed regression tests.**" not in text:
         failures.append("(D.1) report must include Proposed regression tests section")
     if "target test file (or best-justified new test file), the behavior or symbol, fixture/setup, action, assertions, backing bug issues" not in text:
@@ -188,12 +239,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(I.1) must file through /issue, never gh issue create")
     if "using `/issue`'s supported generic batch format" not in text:
         failures.append("(I.2) filing must use /issue generic batch format")
-    if "`${RUN_DIR}/proposal-batch-map.tsv`, with exactly one `<proposal-id>\\t<batch-item-1based>` row per genuinely new proposal" not in text:
-        failures.append("(I.3) filing must preserve the proposal-to-batch mapping TSV shape")
-    if "`${RUN_DIR}/proposal-deps.tsv`, with one `<blocker-proposal-id>\\t<blocked-proposal-id>` row per declaration" not in text:
-        failures.append("(I.4) filing must materialize declared proposal dependency rows")
-    if "do not add dependency or batch fields to `reconciled-proposals.jsonl`" not in text:
-        failures.append("(I.5) dependency filing must preserve the durable proposal schema")
     if "Try bare `issue` with" not in text:
         failures.append("(J.1) must try bare issue first")
     if "Retry as `larch:issue` only when the bare invocation returns `Unknown skill`" not in text:
@@ -202,18 +247,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(K.1) first /issue invocation must use --dry-run")
     if "Validate the dry-run parse result, including the expected item count and titles, before the mutation pass" not in text:
         failures.append("(K.2) dry-run parse validation must check expected item count and titles before create")
-    if 'learn-from-bugs filing-deps \\' not in text:
-        failures.append("(K.3) filing mode must run the deterministic dependency pre-pass")
-    if text.count('--intra-batch-deps-file "$RUN_DIR/intra-batch-deps.tsv"') < 2:
-        failures.append("(K.4) dry-run and create must both forward the caller TSV when available")
-    if "Do not pass `--no-dep-llm` in either path" not in text:
-        failures.append("(K.5) learn-from-bugs must retain /issue LLM dependency analysis")
-    if "`ISSUE_<i>_BLOCKED_BY` records and `ISSUE_<i>_DRY_RUN_DEPS=true`" not in text:
-        failures.append("(K.6) dry-run must validate would-be caller dependency edges")
-    if "dependency pre-pass failed (exit <N>); filing will rely on /issue dependency analysis" not in text:
-        failures.append("(K.7) pre-pass failure must record the degraded path")
-    if "dependency pre-pass produced no caller edges; filing will rely on /issue dependency analysis" not in text:
-        failures.append("(K.8) empty pre-pass output must record the degraded path")
     if "Reserve unfenced `### <title>` for top-level issue boundaries only" not in text:
         failures.append("(L.1) unfenced ### must be reserved for titles")
     if "Use `####` or deeper for unfenced body subsections" not in text:
@@ -295,4 +328,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(V.3) publication must not reject detached ANALYSIS_ROOT")
     if 'git -C "$ANALYSIS_ROOT" commit' in text:
         failures.append("(V.4) old direct ANALYSIS_ROOT commit flow must be absent")
-    return [*failures, *_prevention_field_failures(text)]
+    return [
+        *failures,
+        *_prevention_field_failures(text),
+        *_dependency_filing_failures(text),
+    ]
