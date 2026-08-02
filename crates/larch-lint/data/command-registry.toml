@@ -3683,6 +3683,18 @@ planning_issue = 7682
 
 [[commands]]
 domain = "learn-from-bugs"
+verb = "filing-deps"
+python_module = "larch.issue.learn_from_bugs"
+python_function = "filing_deps_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7682
+
+[[commands]]
+domain = "learn-from-bugs"
 verb = "prepare"
 python_module = "larch.issue.learn_from_bugs"
 python_function = "prepare_main"
@@ -9210,7 +9222,7 @@ rust = []
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"
 kind = "skill"
-python = ["learn-from-bugs check-proposals", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report"]
+python = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report"]
 rust = []
 
 [[callers]]

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import config
 from larch.issue import file_oos
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -816,6 +817,18 @@ def run_file_conflict_deps(
         text=True,
         capture_output=True,
         check=False,
+    )
+
+
+def test_file_conflict_default_global_cap_uses_shared_issue_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OOS_FILE_CONFLICT_CLUSTER_CAP", raising=False)
+    monkeypatch.delenv("OOS_FILE_CONFLICT_GLOBAL_CAP", raising=False)
+
+    assert (
+        file_oos._file_conflict_caps()[1]  # pyright: ignore[reportPrivateUsage]
+        == config.ISSUE_INTRA_BATCH_DEPS_MAX_ROWS
     )
 
 

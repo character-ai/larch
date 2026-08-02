@@ -2019,6 +2019,161 @@ def test_validate_report_contract_rejects_prose_only_missing_mechanical_alt() ->
         learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
 
 
+def _filing_dependency_files(
+    tmp_path: Path,
+    *,
+    batch: str,
+    proposal_map: str,
+    proposal_deps: str,
+) -> tuple[Path, Path, Path]:
+    batch_path = tmp_path / "batch-issues.md"
+    map_path = tmp_path / "proposal-batch-map.tsv"
+    deps_path = tmp_path / "proposal-deps.tsv"
+    _ = batch_path.write_text(batch, encoding="utf-8")
+    _ = map_path.write_text(proposal_map, encoding="utf-8")
+    _ = deps_path.write_text(proposal_deps, encoding="utf-8")
+    return batch_path, map_path, deps_path
+
+
+def test_filing_dependencies_maps_invariant_to_named_backing_test(tmp_path: Path) -> None:
+    batch, proposal_map, proposal_deps = _filing_dependency_files(
+        tmp_path,
+        batch=(
+            "### Add the invariant\n"
+            "Update ARCHITECTURAL_INVARIANTS.md.\n\n"
+            "### Add its mechanical backing\n"
+            "Add python/tests/core/test_architectural_invariants.py.\n"
+        ),
+        proposal_map="invariant-owner\t1\nbacking-test\t2\n",
+        proposal_deps="backing-test\tinvariant-owner\n",
+    )
+
+    edges = learn_from_bugs.filing_dependencies(
+        input_file=batch,
+        proposal_map_file=proposal_map,
+        proposal_deps_file=proposal_deps,
+    )
+
+    assert edges == ((2, 1),)
+
+
+def test_filing_dependencies_serializes_shared_implementation_file(tmp_path: Path) -> None:
+    batch, proposal_map, proposal_deps = _filing_dependency_files(
+        tmp_path,
+        batch=(
+            "### First change\n"
+            "Update python/larch/issue/learn_from_bugs.py.\n\n"
+            "### Second change\n"
+            "Also update python/larch/issue/learn_from_bugs.py.\n"
+        ),
+        proposal_map="first-change\t1\nsecond-change\t2\n",
+        proposal_deps="",
+    )
+
+    edges = learn_from_bugs.filing_dependencies(
+        input_file=batch,
+        proposal_map_file=proposal_map,
+        proposal_deps_file=proposal_deps,
+    )
+
+    assert edges == ((1, 2),)
+
+
+def test_filing_dependencies_declared_direction_beats_shared_file_order(tmp_path: Path) -> None:
+    batch, proposal_map, proposal_deps = _filing_dependency_files(
+        tmp_path,
+        batch=(
+            "### Lint change\n"
+            "Update python/larch/lint/lint_example.py.\n\n"
+            "### Live violation fix\n"
+            "Update python/larch/lint/lint_example.py.\n"
+        ),
+        proposal_map="lint-change\t1\nlive-fix\t2\n",
+        proposal_deps="live-fix\tlint-change\n",
+    )
+
+    edges = learn_from_bugs.filing_dependencies(
+        input_file=batch,
+        proposal_map_file=proposal_map,
+        proposal_deps_file=proposal_deps,
+    )
+
+    assert edges == ((2, 1),)
+
+
+def test_filing_dependencies_declared_chain_beats_transitive_shared_cycle(
+    tmp_path: Path,
+) -> None:
+    batch, proposal_map, proposal_deps = _filing_dependency_files(
+        tmp_path,
+        batch=(
+            "### First change\n"
+            "Update python/larch/shared.py.\n\n"
+            "### Second change\n"
+            "Update python/larch/shared.py.\n\n"
+            "### Third change\n"
+            "Update python/larch/shared.py.\n"
+        ),
+        proposal_map="first\t1\nsecond\t2\nthird\t3\n",
+        proposal_deps="third\tsecond\nsecond\tfirst\n",
+    )
+
+    edges = learn_from_bugs.filing_dependencies(
+        input_file=batch,
+        proposal_map_file=proposal_map,
+        proposal_deps_file=proposal_deps,
+    )
+
+    assert edges == ((2, 1), (3, 2))
+
+
+def test_filing_deps_main_writes_empty_tsv_for_disjoint_residuals(tmp_path: Path) -> None:
+    batch, proposal_map, proposal_deps = _filing_dependency_files(
+        tmp_path,
+        batch=(
+            "### First change\n"
+            "Update python/larch/first.py.\n\n"
+            "### Second change\n"
+            "Update python/larch/second.py.\n"
+        ),
+        proposal_map="first-change\t1\nsecond-change\t2\n",
+        proposal_deps="",
+    )
+    output = tmp_path / "intra-batch-deps.tsv"
+
+    rc = learn_from_bugs.filing_deps_main(
+        [
+            "--input-file",
+            str(batch),
+            "--proposal-map-file",
+            str(proposal_map),
+            "--proposal-deps-file",
+            str(proposal_deps),
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert rc == 0
+    assert output.read_text(encoding="utf-8") == ""
+
+
+def test_filing_dependencies_rejects_unmapped_batch_item(tmp_path: Path) -> None:
+    batch, proposal_map, proposal_deps = _filing_dependency_files(
+        tmp_path,
+        batch="### First\nBody one.\n\n### Second\nBody two.\n",
+        proposal_map="first\t1\n",
+        proposal_deps="",
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="does not cover batch item"):
+        learn_from_bugs.filing_dependencies(
+            input_file=batch,
+            proposal_map_file=proposal_map,
+            proposal_deps_file=proposal_deps,
+        )
+
+
 def test_run_prepare_writes_origin_headline_and_digest_origin(tmp_path: Path) -> None:
     body = (
         "## Summary\n\nBroke.\n\n"
