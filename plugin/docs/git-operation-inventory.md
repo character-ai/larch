@@ -64,7 +64,7 @@ python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/git/rebase.py	later-domain	#7681	checkout
 python/larch/implement/checks_lint_fix.py	later-domain	#7681	checkout,diff,merge-base,reset,rev-parse
 python/larch/implement/checks_result_identity.py	later-domain	#7681	dynamic
-python/larch/implement/checks_run_relevant.py	later-domain	#7681	diff,ls-files,rev-parse
+python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/ci_monitor.py	later-domain	#7681	ls-remote,rev-list,symbolic-ref
 python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
 python/larch/implement/dispatch_recovery.py	later-domain	#7681	rev-parse
