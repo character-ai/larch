@@ -438,6 +438,10 @@ jobs:
   rust-coverage:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      CARGO_LLVM_COV_VERSION: "0.8.7"
+      RUST_COVERAGE_MIN_LINES: "88.000"
+      RUST_COVERAGE_IGNORE_REGEX: '(^|/)(crates/larch-test-support|tests|fixtures)(/|$)|/build\.rs$'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -460,9 +464,20 @@ jobs:
             cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
             cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
       - name: Install pinned coverage tools
-        run: make rust-coverage-install
+        run: |
+          set -euo pipefail
+          rustup component add llvm-tools-preview
+          test "$(cargo llvm-cov --version 2>/dev/null)" = "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}" \
+            || cargo install cargo-llvm-cov --version "${CARGO_LLVM_COV_VERSION}" --locked --force
       - name: Test Rust workspace with coverage
-        run: make rust-coverage
+        run: |
+          set -euo pipefail
+          cargo llvm-cov --workspace --all-features --locked \
+            --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
+            --summary-only --fail-under-lines "${RUST_COVERAGE_MIN_LINES}"
+          mkdir -p target/llvm-cov
+          cargo llvm-cov report --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
+            --lcov --output-path target/llvm-cov/lcov.info
       - name: Upload Rust coverage report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

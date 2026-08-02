@@ -3,7 +3,9 @@
 # CI lint job uses: make lint-only (repo-wide via pre-commit run --all-files); harness
 # matrix runs make test-harnesses-N separately. Local make lint runs test-harnesses
 # then lint-only.
-# python/cli.py checks run-relevant uses: pre-commit run --files <changed-files> (scoped)
+# python/cli.py checks run-relevant uses: pre-commit run --files <changed-files> (scoped).
+# The default stage accepts only bounded, filename-aware work. Repository-wide
+# policy, secret, and agent scans stay in their dedicated CI jobs or manual stage.
 # Developers use: pre-commit install (opt-in git hook)
 
 # Legacy larch-logs/ fixtures can hold redacted reviewer prompts, voter outputs,
@@ -11,10 +13,8 @@
 # from every file-passing hook so linters never scan it: jsonlint alone spent
 # ~80s/run validating ~9.6k larch-logs JSON files, and the larch-logs file
 # list (~62k paths) inflated per-hook matching across the whole config.
-# Secret scanning still covers larch-logs — the gitleaks pre-commit hook uses
-# `--no-git --source .` (pass_filenames: false) and ignores this list, and the
-# dedicated CI gitleaks job scans the newly-added subdir. always_run hooks that
-# scan internally exclude larch-logs in their own logic. See
+# The manual gitleaks hook and the dedicated CI gitleaks job scan larch-logs
+# independently of this file-passing exclusion. See
 # docs/security/artifacts-redaction-and-publication.md.
 exclude: ^(\.venv/|node_modules/|larch-logs/|plugin/)
 
@@ -194,7 +194,7 @@ repos:
         pass_filenames: true
 
       - id: pyright
-        name: pyright (changed Python files)
+        name: pyright (manual full-project type check)
         # language: system so pyright resolves project + dev deps (e.g. pytest)
         # from the ambient env, mirroring CI's python-pyright job. An isolated
         # additional_dependencies venv can't see those imports and reports
@@ -204,6 +204,7 @@ repos:
         language: system
         files: ^python/.*\.py$
         pass_filenames: true
+        stages: [manual]
 
       - id: lint-wire-artifact-pairing
         name: lint wire-artifact-pairing
@@ -212,6 +213,7 @@ repos:
         files: ^python/.*\.py$|^scripts/.*|^python/wire-artifact-.*\.json$
         pass_filenames: false
         always_run: true
+        stages: [manual]
 
       - id: cargo-fmt
         name: Rust format check
@@ -221,17 +223,19 @@ repos:
         files: ^(Cargo\.(toml|lock)|deny\.toml|rust-toolchain\.toml|crates/.*(Cargo\.toml|\.rs))$
 
       - id: cargo-clippy
-        name: Rust Clippy lint
-        entry: make rust-clippy
+        name: changed-path Rust Clippy lint
+        entry: python3 python/cli.py checks rust-clippy --repo-root .
         language: system
-        pass_filenames: false
-        files: ^(Cargo\.(toml|lock)|deny\.toml|rust-toolchain\.toml|crates/.*(Cargo\.toml|\.rs))$
+        pass_filenames: true
+        verbose: true
+        files: ^(Cargo\.(toml|lock)|deny\.toml|rust-toolchain\.toml|\.cargo/.*|crates/.*(Cargo\.toml|\.rs))$
 
   - repo: https://github.com/zhupanov/agent-lint
     rev: v4.0.2
     hooks:
       - id: agent-lint
         args: [--pedantic]
+        stages: [manual]
 
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.7
@@ -248,14 +252,12 @@ repos:
         # includes staged/uncommitted content at commit time). `--no-git`
         # is load-bearing: without it, `gitleaks detect` scans only git
         # history and silently passes secrets that are staged but not
-        # yet committed. `pass_filenames: false` is intentional — the
-        # hook always scans the whole tree, even when pre-commit is
-        # invoked with a scoped `--files <path>` argument. Git-history
-        # scanning is the dedicated CI job's responsibility (see
-        # .github/workflows/ci.yaml `gitleaks` job).
+        # yet committed. This full working-tree scan is manual-only. The
+        # dedicated CI job owns both working-tree and commit-range scanning.
         entry: python3 python/cli.py checks gitleaks --mode working-tree
         language: system
         pass_filenames: false
+        stages: [manual]
 
   - repo: local
     hooks:
@@ -265,6 +267,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
 
   - repo: local
     hooks:
@@ -273,6 +276,7 @@ repos:
         entry: python3 python/cli.py lint run-log-walkers
         language: system
         pass_filenames: false
+        stages: [manual]
         files: ^(python/.*\.py|skills/fluff-analysis/scripts/fluff-analysis\.py|skills/voter-calibration/scripts/voter-calibration\.py)$
 
       - id: lint-keyword-only
@@ -281,6 +285,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/[^/]+\.py$
 
       - id: lint-subprocess-via-runner
@@ -289,6 +294,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/.*\.py$
 
       - id: lint-gh-argv-literal
@@ -297,6 +303,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/.*\.py$
 
       - id: lint-git-push-refspec
@@ -305,6 +312,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/.*\.py$
 
       - id: lint-markdown-heading-fence-state
@@ -313,6 +321,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/.*\.py$|^python/markdown-heading-fence-state-baseline\.json$
 
       - id: lint-self-disarmable-gate
@@ -321,6 +330,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/larch/design/.*\.py$
 
       - id: lint-unreachable-branch
@@ -329,6 +339,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/larch/.*\.py$|^python/unreachable-branch-baseline\.json$
 
       - id: lint-env-via-config-constant
@@ -337,6 +348,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/.*\.py$
 
       - id: lint-root-resolution
@@ -345,6 +357,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/larch/.*\.py$|^python/root-resolution-baseline\.json$
 
       - id: lint-suppression-reason
@@ -353,6 +366,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^(python/.*\.py|python/suppression-reason-baseline\.json)$
 
       - id: lint-pylint-skip-file
@@ -361,6 +375,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
         files: ^python/larch/.*\.py$|^python/pylint-skip-file-baseline\.json$
 
       - id: bash-syntax-check
@@ -509,6 +524,7 @@ repos:
         entry: cargo run --quiet --locked --package larch-lint -- rule topology-rule-paths
         language: system
         pass_filenames: false
+        stages: [manual]
         files: ^(skills/shared/topology\.tsv|crates/larch-lint/(src/rules/topology_rule_paths\.rs|tests/topology_rule_paths\.rs|migration-ledger/topology-rule-paths\.toml))$
 
       - id: lint-em-dash-output
@@ -517,6 +533,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
 
       - id: lint-codex-exec-auth
         name: lint unwired codex exec call sites
@@ -524,6 +541,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
 
       - id: test-legacy-title-prefix-literals-scope
         name: Check legacy title-prefix literal scope
@@ -531,6 +549,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
 
   - repo: local
     hooks:
@@ -540,6 +559,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+        stages: [manual]
 
   - repo: local
     hooks:
@@ -549,6 +569,7 @@ repos:
         language: node
         additional_dependencies: ['agnix@0.40.0']
         pass_filenames: false
+        stages: [manual]
         files: |
           (?x)^(
             .*SKILL\.md|

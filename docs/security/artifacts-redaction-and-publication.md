@@ -72,17 +72,17 @@ or scanner result as a content-classification decision.
 
 Larch uses three distinct scanner layers:
 
-1. **Local working-tree scan**. The optional pre-commit hook runs
+1. **Manual local working-tree scan**. The manual pre-commit stage runs
    `python3 python/cli.py checks gitleaks --mode working-tree`. The wrapper
    verifies the pinned Gitleaks release archive, extracted binary, and reported
    version, then runs with the repository `.gitleaks.toml`. `--no-git` and
-   `pass_filenames: false` keep the scan on the full working tree even for a
-   file-scoped pre-commit invocation. `git commit --no-verify` bypasses this
-   layer.
+   `pass_filenames: false` keep the scan on the full working tree. Select it
+   explicitly with `pre-commit run --hook-stage manual --all-files`; it is not
+   part of the default commit hook or changed-file relevant checks.
 2. **CI working-tree and history scan**. The `gitleaks` CI job uses the same
    wrapper, scans the working tree with `--no-git`, and scans the PR commit
-   range with full history available. This is the enforced backstop for a
-   bypassed local hook.
+   range with full history available. This is the enforced backstop for the
+   opt-in local scan.
 3. **CI live-credential verification**. The `trufflehog` job pins the action to
    an immutable commit and pins its Docker version. `--only-verified` reports
    credentials that authenticate against a live provider. It does not replace

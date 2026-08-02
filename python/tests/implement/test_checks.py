@@ -35,6 +35,14 @@ def _empty_calls() -> list[tuple[tuple[str, ...], dict[str, object]]]:
     return []
 
 
+def _successful_contains_pin_phase(**_kwargs: object) -> int:
+    return 0
+
+
+def _command_is_available(**_kwargs: object) -> bool:
+    return True
+
+
 @dataclass
 class StubRunner:
     """Scripted subprocess responses for unit tests."""
@@ -1093,34 +1101,26 @@ def _checks_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, precommit: 
     return bin_dir
 
 
-def test_run_relevant_checks_no_changed_files_runs_agent_lint(
+def test_run_relevant_checks_no_changed_files_is_a_fast_freshness_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
-    _checks_path(
-        monkeypatch,
-        tmp_path,
-        precommit="#!/usr/bin/env bash\nexit 0\n",
-        agent_lint="#!/usr/bin/env bash\necho agent ok\n",
-    )
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-    assert result.coverage == "post-check-only"
+    assert result.raw_log_path is not None
+    assert "No modified files detected — no scoped validation needed." in Path(result.raw_log_path).read_text(encoding="utf-8")
 
 
-def test_run_relevant_checks_no_phase_fails_when_agent_lint_missing(
+def test_run_relevant_checks_no_changed_files_does_not_require_agent_lint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
-    bin_dir = _checks_path(monkeypatch, tmp_path, precommit="#!/usr/bin/env bash\nexit 0\n")
-    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
-    assert result.ok is False
-    assert result.redacted_log_path is not None
+    assert result.ok is True
 
 
 def test_run_relevant_checks_precommit_missing_fails(
@@ -1157,7 +1157,7 @@ def test_run_relevant_checks_changed_file_precommit_success(
     )
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-    assert result.coverage == "full"
+    assert result.coverage == "changed-file-only"
     assert "=== Running pre-commit on 1 changed file(s) ===" in Path(result.raw_log_path or "").read_text(encoding="utf-8")
 
 
@@ -1206,9 +1206,7 @@ def test_run_relevant_checks_precommit_failure_skips_later_phases(
     )
     calls = {
         "run_logged": 0,
-        "direct_targets": 0,
         "contains_pin": 0,
-        "agent_lint": 0,
     }
 
     def fake_run_logged(*, runner: object, argv: list[str], log_fd: int, **_kwargs: object) -> CommandResult:
@@ -1218,21 +1216,12 @@ def test_run_relevant_checks_precommit_failure_skips_later_phases(
         os.write(log_fd, b"precommit failed\n")
         return _ok("precommit failed\n", rc=1)
 
-    def fake_direct_targets(*_args: object, **_kwargs: object) -> tuple[str, ...]:
-        calls["direct_targets"] += 1
-        return ()
-
     def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
         calls["contains_pin"] += 1
         return 0
 
-    def fake_agent_lint(*_args: object, **_kwargs: object) -> int | None:
-        calls["agent_lint"] += 1
-
     monkeypatch.setattr(_crr, "_run_logged", fake_run_logged)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_direct_targets", fake_direct_targets)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
 
@@ -1240,14 +1229,12 @@ def test_run_relevant_checks_precommit_failure_skips_later_phases(
     assert result.phase == "pre-commit"
     assert calls == {
         "run_logged": 1,
-        "direct_targets": 0,
         "contains_pin": 0,
-        "agent_lint": 0,
     }
     log = Path(result.raw_log_path or "").read_text(encoding="utf-8")
     marker_index = log.index("=== Running pre-commit on 1 changed file(s) ===")
     assert "precommit failed" in log[marker_index:]
-    assert "=== Running direct relevant make target(s):" not in log[marker_index:]
+    assert "bounded Rust Clippy fallback" not in log[marker_index:]
     assert "=== Running agent-lint ===" not in log[marker_index:]
     assert "contains-pin" not in log[marker_index:]
 
@@ -3940,39 +3927,30 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
     assert captured["codex_present"] is True
     assert captured["cursor_present"] is False
 
+def _precommit_hook_rows(text: str) -> dict[str, dict[str, str]]:
+    hooks: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- id: "):
+            hook_id = stripped.removeprefix("- id: ")
+            current = {"id": hook_id}
+            hooks[hook_id] = current
+            continue
+        if current is None or ": " not in stripped:
+            continue
+        key, value = stripped.split(": ", 1)
+        if key in {"entry", "files", "pass_filenames", "always_run", "stages", "verbose"}:
+            current[key] = value
+    return hooks
 
 
-
-def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ...]:
-    return _crr._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_direct_targets_are_ci_first_no_local_make_fanout(tmp_path: Path) -> None:
-    assert not _direct_targets_for(("skills/implement/SKILL.md",), tmp_path)
-    assert not _direct_targets_for(("python/larch/review/review_and_fix.py",), tmp_path)
-    assert not _direct_targets_for(("python/test_plan_review.py",), tmp_path)
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "Cargo.lock",
-        "Cargo.toml",
-        "deny.toml",
-        "rust-toolchain.toml",
-        ".cargo/config.toml",
-        "crates/larch-lint/Cargo.toml",
-        "crates/larch-lint/src/main.rs",
-    ],
-)
-def test_direct_targets_route_rust_inputs(path: str, tmp_path: Path) -> None:
-    assert _direct_targets_for((path,), tmp_path) == ("rust-check",)
-
-
-def test_local_relevant_checks_ci_superset_guard() -> None:
+def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     precommit = (repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+    makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
+    hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-build-test:", 1)[0]
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
     lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  # Python duplicate-code", 1)[0]
@@ -3983,6 +3961,22 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     assert "ruff check --fix" in precommit
     assert "id: pyright" in precommit
     assert "pyright --project python/pyrightconfig.json" in precommit
+    assert hooks["cargo-clippy"]["entry"] == "python3 python/cli.py checks rust-clippy --repo-root ."
+    assert "\\.cargo/.*" in hooks["cargo-clippy"]["files"]
+    assert hooks["cargo-clippy"]["pass_filenames"] == "true"
+    assert hooks["cargo-clippy"]["verbose"] == "true"
+    assert hooks["pyright"]["stages"] == "[manual]"
+    assert hooks["agent-lint"]["stages"] == "[manual]"
+    for manual_only in ("agent-lint", "agnix", "gitleaks", "larch-lint", "pyright"):
+        assert hooks[manual_only]["stages"] == "[manual]"
+    for hook in hooks.values():
+        if hook.get("stages") == "[manual]":
+            continue
+        entry = hook.get("entry", "")
+        assert not (hook.get("pass_filenames") == "false" and hook.get("always_run") == "true")
+        for forbidden in ("cargo build", "cargo test", "cargo llvm-cov", "--all-targets", "--all-features", "--release"):
+            assert forbidden not in entry
+        assert "cargo run" not in entry
     assert "contains-pins:" in workflow
     assert "python3 python/cli.py checks contains-pins" in workflow
     assert "python-lint:" in workflow
@@ -3998,7 +3992,9 @@ def test_local_relevant_checks_ci_superset_guard() -> None:
     assert "make rust-clippy" in rust_lint
     assert "make rust-build" in workflow
     assert "make rust-test" in workflow
-    assert "make rust-coverage" in workflow
+    assert "cargo llvm-cov --workspace --all-features --locked \\" in workflow
+    assert "make rust-coverage" not in workflow
+    assert "rust-coverage" not in makefile
     assert "cargo-deny-action@" in workflow
     for hook in (
         "cargo-fmt",
@@ -4022,136 +4018,211 @@ def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None
     assert _crr._existing_regular_files(repo=repo, paths=("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_run_relevant_checks_deletion_only_runs_direct_targets(
+def test_run_relevant_checks_non_rust_deletion_runs_contains_pins_without_make(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
-    make_calls: list[list[str]] = []
-    direct_changed: list[tuple[str, ...]] = []
+    contains_calls: list[tuple[str, ...]] = []
 
     def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
         _ = cwd
         return ("scripts/read-result-env.sh",)
 
-    def fake_direct(*, runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
-        _ = runner
-        direct_changed.append(changed)
-        return ("test-read-result-env",)
-
-    def fake_logged(*, runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
-        _ = runner
-        if argv and argv[0] == "make":
-            make_calls.append(list(argv))
-        return _ok("")
-
-    def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
+    def fake_contains_pin_phase(*_args: object, changed: tuple[str, ...], **_kwargs: object) -> int:
+        contains_calls.append(changed)
         return 0
 
-    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
-        return None
-
     monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
-
-    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
-        _ = runner
-        return name != "pre-commit"
-
-    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-    assert direct_changed == [("scripts/read-result-env.sh",)]
-    assert make_calls == [["make", "test-read-result-env"]]
+    assert contains_calls == [("scripts/read-result-env.sh",)]
 
 
-def test_run_relevant_checks_skips_undefined_direct_make_targets(
+def test_run_relevant_checks_regular_rust_hook_runs_once_without_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
-    (repo / "Makefile").write_text("test-read-result-env:\n\t@true\n", encoding="utf-8")
-    make_calls: list[list[str]] = []
+    rust_path = repo / "crates" / "demo" / "src" / "lib.rs"
+    rust_path.parent.mkdir(parents=True)
+    rust_path.write_text("pub fn demo() {}\n", encoding="utf-8")
+    calls: list[tuple[list[str], dict[str, str]]] = []
 
     def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
         _ = cwd
-        return ("scripts/unwired-direct-target.sh", "scripts/read-result-env.sh")
+        return ("crates/demo/src/lib.rs",)
 
-    def fake_direct(*, runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
-        _ = (runner, changed)
-        return ("test-unwired-direct-target", "test-read-result-env")
-
-    def fake_logged(*, runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+    def fake_logged(*, runner: object, argv: list[str], log_fd: int, env: dict[str, str], **_kwargs: object) -> CommandResult:
         _ = runner
-        if argv and argv[0] == "make":
-            make_calls.append(list(argv))
+        calls.append((argv, env))
+        os.write(log_fd, b"RUST_CLIPPY_HOOK_RAN=true\n")
         return _ok("")
 
     def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
         return 0
 
-    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
-        return None
-
     monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
     def available(*, runner: object, name: str, **_kwargs: object) -> bool:
         _ = runner
-        return name != "pre-commit"
+        return name == "pre-commit"
 
     monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-    assert make_calls == [["make", "test-read-result-env"]]
-    assert result.raw_log_path is not None
-    log = Path(result.raw_log_path).read_text(encoding="utf-8")
-    assert "skipping undefined direct make target(s): test-unwired-direct-target" in log
+    assert len(calls) == 1
+    assert calls[0][0][:3] == ["pre-commit", "run", "--files"]
+    assert all(
+        forbidden not in " ".join(calls[0][0])
+        for forbidden in ("rust-check", "cargo check", "cargo build", "cargo test", "cargo llvm-cov")
+    )
+    for key in (
+        config.ENV_CARGO_INCREMENTAL,
+        config.ENV_CARGO_PROFILE_DEV_DEBUG,
+        config.ENV_CARGO_PROFILE_TEST_DEBUG,
+    ):
+        assert calls[0][1][key] == "0"
 
 
-def test_run_relevant_checks_deletion_only_counts_contains_pins_phase(
+def test_run_relevant_checks_deleted_rust_path_uses_bounded_fallback_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
+    calls: list[tuple[list[str], dict[str, str]]] = []
 
     def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
         _ = cwd
-        return ("scripts/unrouted-deleted.sh",)
+        return ("crates/demo/src/lib.rs",)
 
-    def fake_direct(*, runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
-        _ = (runner, changed)
-        return ()
+    def fake_logged(*, runner: object, argv: list[str], log_fd: int, env: dict[str, str], **_kwargs: object) -> CommandResult:
+        _ = runner
+        calls.append((argv, env))
+        os.write(log_fd, b"RUST_CLIPPY_HOOK_RAN=true\n")
+        return _ok("")
 
     def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
         return 0
 
-    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
-        return None
-
     monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
-
-    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
-        _ = runner
-        return name != "pre-commit"
-
-    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-    assert result.exit_code == 0
-    assert result.failure_reason is None
+    assert len(calls) == 1
+    assert calls[0][0][2:4] == ["checks", "rust-clippy"]
+    assert "make" not in calls[0][0]
+    assert calls[0][1][config.ENV_CARGO_INCREMENTAL] == "0"
+
+
+def test_run_relevant_checks_non_regular_rust_skips_hook_and_falls_back_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    python_path = repo / "python" / "changed.py"
+    python_path.parent.mkdir()
+    python_path.write_text("print('ok')\n", encoding="utf-8")
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("crates/demo/src/lib.rs", "python/changed.py")
+
+    def fake_logged(*, runner: object, argv: list[str], log_fd: int, env: dict[str, str], **_kwargs: object) -> CommandResult:
+        _ = runner
+        calls.append((argv, env))
+        if argv[0] != "pre-commit":
+            os.write(log_fd, b"RUST_CLIPPY_HOOK_RAN=true\n")
+        return _ok("")
+
+    monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", _successful_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", _command_is_available)  # pyright: ignore[reportPrivateUsage]
+
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+
+    assert result.ok is True
+    assert len(calls) == 2
+    assert calls[0][0][0] == "pre-commit"
+    assert _crr._RUST_CLIPPY_HOOK_ID in calls[0][1][config.ENV_PRECOMMIT_SKIP]  # pyright: ignore[reportPrivateUsage]
+    assert calls[1][0][2:4] == ["checks", "rust-clippy"]
+
+
+def test_run_relevant_checks_rust_hook_without_marker_fails_without_second_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    rust_path = repo / "crates" / "demo" / "src" / "lib.rs"
+    rust_path.parent.mkdir(parents=True)
+    rust_path.write_text("pub fn demo() {}\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("crates/demo/src/lib.rs",)
+
+    def fake_logged(*, runner: object, argv: list[str], log_fd: int, **_kwargs: object) -> CommandResult:
+        _ = runner, log_fd
+        calls.append(argv)
+        return _ok("")
+
+    monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", _successful_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", _command_is_available)  # pyright: ignore[reportPrivateUsage]
+
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+
+    assert result.ok is False
+    assert len(calls) == 1
+    assert calls[0][0] == "pre-commit"
+    assert "make" not in calls[0]
+    assert "refusing a second Rust configuration" in Path(result.raw_log_path or "").read_text(encoding="utf-8")
+
+
+def test_run_relevant_checks_missing_rust_proof_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    rust_path = repo / "crates" / "demo" / "src" / "lib.rs"
+    rust_path.parent.mkdir(parents=True)
+    rust_path.write_text("pub fn demo() {}\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("crates/demo/src/lib.rs",)
+
+    def fake_logged(*, runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+        _ = runner
+        calls.append(argv)
+        return _ok("")
+
+    monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", _successful_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", _command_is_available)  # pyright: ignore[reportPrivateUsage]
+
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+
+    assert result.ok is False
+    assert result.exit_code == 1
+    assert len(calls) == 1
+    assert "refusing a second Rust configuration" in Path(result.raw_log_path or "").read_text(encoding="utf-8")
 
 
 def test_run_relevant_checks_no_changes_skips_precommit_requirement(

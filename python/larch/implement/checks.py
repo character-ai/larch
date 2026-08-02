@@ -24,6 +24,7 @@ from larch.implement.checks_run_relevant import (
     checks_fixer_evidence_main,
     checks_run_relevant_main,
 )
+from larch.implement.rust_clippy import rust_clippy_main
 
 from larch.implement.checks_lint_fix import (
     run_lint_fix,
@@ -54,5 +55,6 @@ __all__ = [
     "run_checks_phase",
     "run_lint_fix",
     "run_relevant_checks",
+    "rust_clippy_main",
     "validate_tmpdir",
 ]

@@ -15,7 +15,7 @@ import re
 import sys
 import tempfile
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TextIO
@@ -34,6 +34,11 @@ from larch.report.tokens import (
     _locked_tsv_append,  # pyright: ignore[reportPrivateUsage]
 )
 from larch.implement.self_edit_log import digest_paths, record_self_edits
+from larch.implement.rust_clippy import (
+    bounded_cargo_env,
+    changed_paths_from_git,
+    is_rust_relevant_path,
+)
 
 _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
@@ -53,6 +58,8 @@ _CHECKS_FAILURE_DIGEST_LOCATION_RE: Final = re.compile(
 )
 _CHECKS_FAILURE_DIGEST_PRECOMMIT_RE: Final = re.compile(r"^(.+?)(?:\.{2,}|\s{2,})Failed\b")
 _CHECKS_FAILURE_DIGEST_DIRECT_RE: Final = re.compile(r"^=== Running direct relevant make target\(s\): (.+) ===$")
+_RUST_CLIPPY_HOOK_ID: Final = "cargo-clippy"
+_RUST_CLIPPY_HOOK_MARKER: Final = "RUST_CLIPPY_HOOK_RAN=true"
 
 
 def plugin_scripts_dir() -> Path:
@@ -72,6 +79,15 @@ class ChecksResult:
     raw_log_path: str | None = None
     failure_reason: str | None = None
     digest_file_path: str | None = None
+
+
+@dataclass(frozen=True)
+class _RustFallbackRequest:
+    repo: Path
+    changed: tuple[str, ...]
+    env: Mapping[str, str]
+    log_fd: int
+    log_file: Path
 
 
 @dataclass(frozen=True)
@@ -479,28 +495,6 @@ def _resolve_repo_root(*, runner: Runner, repo_root: str) -> Path | None:
         return None
 
 
-def _git_lines(*, runner: Runner, argv: Sequence[str], cwd: str) -> tuple[str, ...]:
-    result = runner.run(argv, cwd=cwd)
-    if result.returncode != 0:
-        return ()
-    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
-
-
-def _changed_files(runner: Runner, *, cwd: str) -> tuple[str, ...]:
-    branch_diff: tuple[str, ...] = ()
-    # Prefer the remote-tracking origin/main over a possibly-stale local main so
-    # mid-run rebases onto an advanced origin/main do not widen the changed-file
-    # set with already-merged upstream files (issue #5460).
-    if runner.run(["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
-        branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "origin/main...HEAD"], cwd=cwd)
-    elif runner.run(["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
-        branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
-    staged = _git_lines(runner=runner, argv=["git", "diff", "--cached", "--name-only"], cwd=cwd)
-    unstaged = _git_lines(runner=runner, argv=["git", "diff", "--name-only"], cwd=cwd)
-    untracked = _git_lines(runner=runner, argv=["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)
-    return tuple(sorted({*branch_diff, *staged, *unstaged, *untracked}))
-
-
 def _existing_regular_files(*, repo: Path, paths: Iterable[str]) -> tuple[str, ...]:
     regular: list[str] = []
     for raw in paths:
@@ -513,66 +507,60 @@ def _existing_regular_files(*, repo: Path, paths: Iterable[str]) -> tuple[str, .
     return tuple(regular)
 
 
-_RUST_RELEVANT_ROOT_FILES: Final = frozenset(
-    {"Cargo.lock", "Cargo.toml", "deny.toml", "rust-toolchain.toml"}
-)
+def _changed_files(runner: Runner, *, cwd: str) -> tuple[str, ...]:
+    """Keep the relevant-checks injection seam over the shared discovery owner."""
+    return changed_paths_from_git(runner=runner, cwd=cwd)
 
 
-def _is_rust_relevant_path(path: str) -> bool:
-    if path in _RUST_RELEVANT_ROOT_FILES or path.startswith(".cargo/"):
-        return True
-    return path.startswith("crates/") and path.endswith((".rs", "/Cargo.toml"))
+def _with_precommit_skip(*, env: dict[str, str], hook_id: str) -> dict[str, str]:
+    updated = dict(env)
+    existing = tuple(token for token in updated.get(config.ENV_PRECOMMIT_SKIP, "").split(",") if token)
+    updated[config.ENV_PRECOMMIT_SKIP] = ",".join((*existing, hook_id) if hook_id not in existing else existing)
+    return updated
 
 
-# Heavy Python and shell coverage stays CI-first. Rust inputs route to the
-# bounded workspace check because Cargo can replay their complete local gate.
-
-def _direct_targets(
-    *, runner: Runner,
-    changed: tuple[str, ...],
-    cwd: str,
-    env: dict[str, str],
-    log_fd: int,
-) -> tuple[str, ...]:
-    _ = runner, cwd, env, log_fd
-    if any(_is_rust_relevant_path(path) for path in changed):
-        return ("rust-check",)
-    return ()
+def _rust_hook_ran(log_file: Path) -> bool:
+    text = read_log_file_text(log_file)
+    return text is not None and _RUST_CLIPPY_HOOK_MARKER in text
 
 
-_MAKE_TARGET_RE: Final = re.compile(r"^([A-Za-z0-9_.-]+)\s*:")
-
-
-def _make_targets(repo: Path) -> set[str] | None:
-    makefile = repo / "Makefile"
-    if not makefile.is_file() or makefile.is_symlink():
-        return None
-    targets: set[str] = set()
-    for line in makefile.read_text(encoding="utf-8", errors="replace").splitlines():
-        match: re.Match[str] | None = _MAKE_TARGET_RE.match(line)
-        if match and not match.group(1).startswith("."):
-            targets.add(match.group(1))
-    return targets
-
-
-def _filter_defined_make_targets(*, repo: Path, targets: tuple[str, ...], log_fd: int) -> tuple[str, ...]:
-    defined = _make_targets(repo)
-    if defined is None:
-        return targets
-    filtered = tuple(target for target in targets if target in defined)
-    missing = tuple(target for target in targets if target not in defined)
-    if missing:
-        _write_log(log_fd=log_fd, text=f"\nWARNING: skipping undefined direct make target(s): {' '.join(missing)}\n")
-    return filtered
-
-
-def _run_agent_lint(runner: Runner, *, cwd: str, log_fd: int, env: dict[str, str]) -> int | None:
-    if _command_available(runner=runner, name="agent-lint", cwd=cwd, env=env):
-        _write_log(log_fd=log_fd, text="\n=== Running agent-lint ===\n")
-        result = _run_logged(runner=runner, argv=["agent-lint", "--pedantic", cwd], cwd=cwd, log_fd=log_fd, env=env)
+def _run_bounded_rust_fallback(
+    *,
+    runner: Runner,
+    request: _RustFallbackRequest,
+) -> int:
+    _write_log(
+        log_fd=request.log_fd,
+        text=(
+            "\n=== Running bounded Rust Clippy fallback for changed path(s): "
+            f"{', '.join(request.changed)} ===\n"
+        ),
+    )
+    cli_path = Path(__file__).resolve().parents[2] / "cli.py"
+    result = _run_logged(
+        runner=runner,
+        argv=[
+            sys.executable,
+            str(cli_path),
+            "checks",
+            "rust-clippy",
+            "--repo-root",
+            str(request.repo),
+            *request.changed,
+        ],
+        cwd=str(request.repo),
+        log_fd=request.log_fd,
+        env=bounded_cargo_env(request.env),
+    )
+    if result.returncode != 0:
         return result.returncode
-    _write_log(log_fd=log_fd, text="\nWARNING: agent-lint not found on PATH — skipping\n")
-    return None
+    if not _rust_hook_ran(request.log_file):
+        _write_log(
+            log_fd=request.log_fd,
+            text="ERROR: bounded Rust Clippy fallback completed without its proof marker.\n",
+        )
+        return 1
+    return 0
 
 
 def _redact_log(*, log_file: Path, redacted_file: Path) -> bool:
@@ -1137,48 +1125,40 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
     *,
     repo: Path,
     log_fd: int,
+    log_file: Path,
     canonical_tmp: Path,
 ) -> int:
     env = _clean_child_env()
     cwd = str(repo)
-    phases_run = 0
 
     changed = _changed_files(runner, cwd=cwd)
     if not changed:
-        _write_log(log_fd=log_fd, text="No modified files detected — running full-repo post-checks if available.\n")
-        agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
-        if agent_rc is not None:
-            phases_run += 1
-            rc = agent_rc
-        else:
-            rc = 0
-        if phases_run == 0:
-            _write_log(log_fd=log_fd, text="\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
-            return 2
-        return rc
+        _write_log(log_fd=log_fd, text="No modified files detected — no scoped validation needed.\n")
+        return 0
 
     regular = _existing_regular_files(repo=repo, paths=changed)
+    rust_changed = tuple(path for path in changed if is_rust_relevant_path(path))
+    rust_regular = tuple(path for path in regular if is_rust_relevant_path(path))
+    rust_needs_fallback = bool(rust_changed) and len(rust_regular) != len(rust_changed)
     if not regular:
         _write_log(log_fd=log_fd, text="No existing regular files to pass to pre-commit.\n")
-        targets = _direct_targets(runner=runner, changed=changed, cwd=cwd, env=env, log_fd=log_fd)
-        targets = _filter_defined_make_targets(repo=repo, targets=targets, log_fd=log_fd)
-        if targets:
-            _write_log(log_fd=log_fd, text=f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
-            make_result = _run_logged(runner=runner, argv=["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
-            phases_run += 1
-            if make_result.returncode != 0:
-                return make_result.returncode
+        if rust_changed:
+            fallback_rc = _run_bounded_rust_fallback(
+                runner=runner,
+                request=_RustFallbackRequest(
+                    repo=repo,
+                    changed=rust_changed,
+                    env=env,
+                    log_fd=log_fd,
+                    log_file=log_file,
+                ),
+            )
+            if fallback_rc != 0:
+                return fallback_rc
         pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd, canonical_tmp=canonical_tmp)
         if pins_rc != 0:
             return pins_rc
-        phases_run += 1
-        agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
-        if agent_rc is not None:
-            phases_run += 1
-            rc = agent_rc
-        else:
-            rc = 0
-        return rc
+        return 0
 
     if not _command_available(runner=runner, name="pre-commit", cwd=cwd, env=env):
         _write_log(log_fd=log_fd, text="ERROR: pre-commit not found. Run: pip install pre-commit (or: make setup)\n")
@@ -1186,31 +1166,53 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
 
     _write_log(log_fd=log_fd, text=f"=== Running pre-commit on {len(regular)} changed file(s) ===\n")
     before_digests = digest_paths(repo, regular)
-    precommit = _run_logged(runner=runner, argv=["pre-commit", "run", "--files", *regular], cwd=cwd, log_fd=log_fd, env=env)
+    precommit_env = bounded_cargo_env(env) if rust_changed else env
+    if rust_needs_fallback:
+        _write_log(
+            log_fd=log_fd,
+            text=(
+                "Rust change set includes a deleted or non-regular path; skipping the pre-commit "
+                "Cargo hook so the bounded fallback can select every Rust path once.\n"
+            ),
+        )
+        precommit_env = _with_precommit_skip(env=precommit_env, hook_id=_RUST_CLIPPY_HOOK_ID)
+    precommit = _run_logged(
+        runner=runner,
+        argv=["pre-commit", "run", "--files", *regular],
+        cwd=cwd,
+        log_fd=log_fd,
+        env=precommit_env,
+    )
     _record_precommit_self_edits(repo=repo, regular=regular, before_digests=before_digests, canonical_tmp=canonical_tmp)
     if precommit.returncode != 0:
         return precommit.returncode
-    phases_run += 1
 
-    targets = _direct_targets(runner=runner, changed=changed, cwd=cwd, env=env, log_fd=log_fd)
-    targets = _filter_defined_make_targets(repo=repo, targets=targets, log_fd=log_fd)
-    if targets:
-        _write_log(log_fd=log_fd, text=f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
-        make_result = _run_logged(runner=runner, argv=["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
-        phases_run += 1
-        if make_result.returncode != 0:
-            return make_result.returncode
+    if rust_needs_fallback:
+        fallback_rc = _run_bounded_rust_fallback(
+            runner=runner,
+            request=_RustFallbackRequest(
+                repo=repo,
+                changed=rust_changed,
+                env=env,
+                log_fd=log_fd,
+                log_file=log_file,
+            ),
+        )
+        if fallback_rc != 0:
+            return fallback_rc
+    elif rust_changed and not _rust_hook_ran(log_file):
+        _write_log(
+            log_fd=log_fd,
+            text=(
+                "ERROR: pre-commit completed without the bounded Rust Clippy proof marker; "
+                "refusing a second Rust configuration.\n"
+            ),
+        )
+        return 1
 
     pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd, canonical_tmp=canonical_tmp)
-    phases_run += 1
     if pins_rc != 0:
         return pins_rc
-
-    agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
-    if agent_rc is not None:
-        phases_run += 1
-        if agent_rc != 0:
-            return agent_rc
     return 0
 
 
@@ -1300,6 +1302,7 @@ def _run_relevant_checks_impl(  # noqa: PLR0911,RUF100
                 runner,
                 repo=repo,
                 log_fd=log_fd,
+                log_file=log_file,
                 canonical_tmp=canonical_tmp,
             )
         except Exception as exc:  # fail closed and retain the captured diagnostic
