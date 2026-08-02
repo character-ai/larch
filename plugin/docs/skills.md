@@ -425,4 +425,17 @@ Operator-run release cut for `character-ai/larch` (`disable-model-invocation: tr
 
 **Source**: consumer repo file at `python/cli.py checks run-relevant` (larch ships a reference implementation in-tree for this repository).
 
-Run relevant local checks from Python: changed-file `pre-commit`, direct make-target routing, contains-pin validation, and `agent-lint` when available. Human operators run it with `python3 python/cli.py checks run-relevant --site local --tmpdir <tmpdir>`, or another site label. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
+Run relevant local checks from Python: changed-file `pre-commit`, bounded changed-target Clippy where Rust paths are present, and contains-pin validation. It does not run broad make targets or a full-repository agent-lint scan. Human operators run it with `python3 python/cli.py checks run-relevant --site local --tmpdir <tmpdir>`, or another site label. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
+
+### Changed-path Rust Clippy selector
+
+**Path**: `python/cli.py checks rust-clippy`
+
+**Arguments**: `--repo-root DIR (--changed-from-git | <repository-relative-rust-path>...)`
+
+This non-skill entrypoint maps changed Rust paths through locked Cargo metadata,
+then runs only the affected package defaults or explicit target. It prints the
+selected packages, targets, command, and `RUST_CLIPPY_HOOK_RAN=true` proof
+marker on success. The normal local contract uses default features with
+incremental compilation and dev/test debug information disabled; CI owns broad
+all-target/all-feature checks and coverage.

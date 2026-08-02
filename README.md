@@ -296,6 +296,12 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>python/cli.py checks run-relevant --site &lt;site&gt; --tmpdir &lt;tmpdir&gt;</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#changed-path-rust-clippy-selector"><code>python/cli.py checks rust-clippy</code></a></td>
+      <td><code>--repo-root DIR (--changed-from-git | PATH...)</code></td>
+    </tr>
+    <tr><td colspan="2">Bounded local Rust selector: maps changed paths to the smallest safe default-feature Clippy package or target set. It is used by the local pre-commit hook and <code>make rust-check</code>; CI owns exhaustive Rust checks.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/migration-governance.md"><code>python/cli.py issue migration-audit</code></a></td>
       <td><code>--repo owner/name --chief N [--output FILE] [--table-output stderr|stdout|none]</code></td>
     </tr>

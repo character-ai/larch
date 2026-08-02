@@ -126,16 +126,17 @@ credentials, and remote endpoints belong only in explicit live-smoke runs.
 
 ## Coverage and CI
 
-Install the pinned tool with `make rust-coverage-install`. Run
-`make rust-coverage` to print the workspace summary, enforce the measured line
-baseline, and write `target/llvm-cov/lcov.info`.
+Coverage is CI-only. The `rust-coverage` job installs the pinned tool, enforces
+the workspace line baseline, and writes `target/llvm-cov/lcov.info`. Normal
+local checks use changed-path Clippy and do not install coverage tooling or
+create instrumented artifacts.
 
-The baseline is 87.377% lines. This was the measured unrounded floor when the
-policy was introduced. It is a no-regression floor, not a chosen repository
-target. Raise it when coverage
-improves. Lower it only with a documented reason and issue. Coverage excludes
+The current CI floor is 88.000% lines. It is a no-regression floor, not a
+chosen repository target. Raise it when coverage improves. Lower it only with
+a documented reason and issue. Coverage excludes
 the shared test-support crate, `tests/` and `fixtures/` trees, and build scripts.
-Keep that exclusion expression in the Makefile so local and CI reports match.
+Keep that exclusion expression in the CI workflow so the coverage job stays
+reproducible.
 
 The Rust suite remains one workspace test lane while it is fast. When it needs
 partitioning, shard by Cargo package rather than test-name or source-file

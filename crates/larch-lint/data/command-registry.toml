@@ -1178,6 +1178,18 @@ planning_issue = 7681
 
 [[commands]]
 domain = "checks"
+verb = "rust-clippy"
+python_module = "larch.implement.checks"
+python_function = "rust_clippy_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8013
+
+[[commands]]
+domain = "checks"
 verb = "self-edit-log"
 python_module = "larch.implement.checks"
 python_function = "checks_self_edit_log_main"
@@ -8040,13 +8052,13 @@ rust = ["release asset-candidate", "release collect-assets", "release package-as
 [[callers]]
 path = ".pre-commit-config.yaml"
 kind = "ci"
-python = ["checks gitleaks", "checks run-relevant", "lint env-via-config-constant", "lint gh-argv-literal", "lint git-push-refspec", "lint keyword-only", "lint markdown-heading-fence-state", "lint pylint-skip-file", "lint root-resolution", "lint run-log-walkers", "lint self-disarmable-gate", "lint subprocess-via-runner", "lint suppression-reason", "lint unreachable-branch", "lint wire-artifact-pairing"]
+python = ["checks gitleaks", "checks run-relevant", "checks rust-clippy", "lint env-via-config-constant", "lint gh-argv-literal", "lint git-push-refspec", "lint keyword-only", "lint markdown-heading-fence-state", "lint pylint-skip-file", "lint root-resolution", "lint run-log-walkers", "lint self-disarmable-gate", "lint subprocess-via-runner", "lint suppression-reason", "lint unreachable-branch", "lint wire-artifact-pairing"]
 rust = []
 
 [[callers]]
 path = "Makefile"
 kind = "ci"
-python = ["eval research", "generate check", "lint codex-exec-auth", "lint complexity-baseline", "lint complexity-debt", "lint duplicate-code", "lint em-dash-output", "lint flat-tests", "lint keyword-only", "lint kv-codec", "lint run-log-walkers", "timing harness-mark"]
+python = ["checks rust-clippy", "eval research", "generate check", "lint codex-exec-auth", "lint complexity-baseline", "lint complexity-debt", "lint duplicate-code", "lint em-dash-output", "lint flat-tests", "lint keyword-only", "lint kv-codec", "lint run-log-walkers", "timing harness-mark"]
 rust = []
 
 [[callers]]

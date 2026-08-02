@@ -74,6 +74,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("checks", "lint-fix"): ("larch.implement.checks", "checks_lint_fix_main", True),
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main", True),
     ("checks", "contains-pins"): ("larch.implement.checks", "check_contains_pins_main", True),
+    ("checks", "rust-clippy"): ("larch.implement.checks", "rust_clippy_main", False),
     ("checks", "gitleaks"): ("larch.lint.gitleaks", "gitleaks_main", False),
     ("checks", "self-edit-log"): ("larch.implement.checks", "checks_self_edit_log_main", True),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
