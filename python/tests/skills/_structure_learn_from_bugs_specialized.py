@@ -101,6 +101,72 @@ def _dependency_filing_failures(text: str) -> list[str]:
     return failures
 
 
+def _self_analysis_failures(text: str) -> list[str]:
+    requirements: tuple[tuple[str, str], ...] = (
+        (
+            "### Default mode (FILE_MODE=false): state publication before Step 5a",
+            "(P.1) default mode must preserve state-publication-before-Step-5a ordering",
+        ),
+        (
+            "Then continue to Step 5a (end-of-run self-analysis)",
+            "(P.2) default mode must continue to Step 5a self-analysis after publication resolution",
+        ),
+        (
+            "## Step 5a - End-of-run self-analysis",
+            "(P.4) skill must define Step 5a end-of-run self-analysis",
+        ),
+        (
+            "after every marker-producing path reports `STATE_PUBLISH_STATUS=saved`",
+            "(P.5) self-analysis must run only after successful state publication",
+        ),
+        (
+            "A self-analysis filing failure must never block the scan marker or the primary residual filing pass",
+            "(P.6) self-analysis failure must not block marker or residual filing",
+        ),
+        (
+            "`/learn-from-bugs self-analysis: <REPO> <YYYY-MM-DD>`",
+            "(P.7) self-analysis issue title must use the pinned template",
+        ),
+        (
+            '--input-file "$RUN_DIR/self-analysis-issue.md" --repo character-ai/larch',
+            "(P.8) self-analysis filing must target character-ai/larch via self-analysis-issue.md",
+        ),
+        (
+            "Do not mutate the mined repository's `REPO` binding",
+            "(P.9) self-analysis must leave mined REPO untouched for other filing paths",
+        ),
+        (
+            "**File self-analysis.**",
+            "(P.10) default Step 5 must offer self-analysis filing as its own approval item",
+        ),
+        (
+            "When zero suggestions survive, state that to the operator",
+            "(P.11) zero-suggestion self-analysis must state that and skip /issue",
+        ),
+        (
+            "still run Step 5a (self-analysis); do not skip it with the Step 5 apply gates",
+            "(P.12) filing mode must run Step 5a after state publication",
+        ),
+        (
+            "9. End-of-run self-analysis",
+            "(P.13) self-analysis must use report section 9. End-of-run self-analysis",
+        ),
+        (
+            "append a brief `9. End-of-run self-analysis` section to `${RUN_DIR}/report.md` that names that issue number",
+            "(P.14) filing-mode self-analysis must name the filed issue in report.md",
+        ),
+    )
+    failures = [failure for required, failure in requirements if required not in text]
+    default_publication = text.find("### Default mode (FILE_MODE=false): state publication before Step 5a")
+    step_five_a = text.find("## Step 5a - End-of-run self-analysis")
+    step_five = text.find("## Step 5 - Follow-up gates")
+    if default_publication < 0 or step_five_a < 0 or default_publication >= step_five_a:
+        failures.append("(U.2) default state publication must remain before Step 5a")
+    if step_five_a < 0 or step_five < 0 or step_five_a >= step_five:
+        failures.append("(U.2b) Step 5a self-analysis must remain before Step 5 follow-up gates")
+    return failures
+
+
 def run(repo_root: Path) -> list[str]:
     failures: list[str] = []
     skill = repo_root / "skills/learn-from-bugs/SKILL.md"
@@ -275,10 +341,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(O.4) dry-run/create failures must retain retry artifacts and block marker advancement")
     if "Only after a successful create pass" not in text:
         failures.append("(O.5) successful create outcomes must precede marker commit")
-    if "### Default mode (FILE_MODE=false): state publication before Step 5" not in text:
-        failures.append("(P.1) default mode must preserve state-publication-before-Step-5 ordering")
-    if "Then continue to Step 5 (approval-gated follow-ups)" not in text:
-        failures.append("(P.2) default mode must continue to approval-gated Step 5 after publication resolution")
     if "with private permissions and no Git mutation" not in text:
         failures.append("(Q.1) publication must be private local state without Git mutation")
     if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs state-publish' not in text:
@@ -304,10 +366,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(T.11) write failure must preserve reconciled proposals for retry")
     if text.count("run the shared state-publication fragment now") != 3:
         failures.append("(U.1) all three marker-producing paths must invoke the shared fragment")
-    default_publication = text.find("### Default mode (FILE_MODE=false): state publication before Step 5")
-    step_five = text.find("## Step 5 - Follow-up gates")
-    if default_publication < 0 or step_five < 0 or default_publication >= step_five:
-        failures.append("(U.2) default state publication must remain before Step 5")
     if "Do not rerun `/issue` merely because the marker write needs retry" not in text:
         failures.append("(U.3) marker retry must not repeat successful issue creation")
     if "Keep `pending-state.json` through publication" not in text:
@@ -336,4 +394,5 @@ def run(repo_root: Path) -> list[str]:
         *failures,
         *_prevention_field_failures(text),
         *_dependency_filing_failures(text),
+        *_self_analysis_failures(text),
     ]
